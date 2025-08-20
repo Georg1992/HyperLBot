@@ -267,7 +267,15 @@ class HybridPaperTradingBot:
         # Auto-detect market volatility and adjust strategy
         current_strategy = self._auto_detect_strategy(binance_analysis, hyperliquid_price)
         if current_strategy != self.strategy_name:
-            logger.info(f"🔄 Auto-switching strategy: {self.strategy_name} → {current_strategy}")
+            # Determine threshold for new strategy
+            if current_strategy == "low_volatility":
+                new_threshold = 0.2
+            elif current_strategy == "high_volatility":
+                new_threshold = 0.6
+            else:
+                new_threshold = 0.5
+                
+            logger.info(f"🔄 Auto-switching strategy: {self.strategy_name} → {current_strategy} (variability threshold: {new_threshold})")
             
             # Log strategy switch to JSON files
             self.trading_logger.log_analysis({
@@ -293,8 +301,19 @@ class HybridPaperTradingBot:
         if current_time - self.last_trade_time < min_interval:
             return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
-        # Get variability analysis
-        variability_decision = self.variability_analyzer.should_trade_based_on_variability(0.5)
+        # Get variability analysis with strategy-specific threshold
+        if self.strategy_name == "low_volatility":
+            variability_threshold = 0.2  # Lower threshold for low volatility
+        elif self.strategy_name == "high_volatility":
+            variability_threshold = 0.6  # Higher threshold for high volatility
+        else:
+            variability_threshold = 0.5  # Standard threshold
+            
+        variability_decision = self.variability_analyzer.should_trade_based_on_variability(variability_threshold)
+        
+        # Log variability analysis with threshold info
+        logger.info(f"📊 Variability Analysis: Score={variability_decision.get('variability_score', 0):.3f}, Threshold={variability_threshold:.1f}, Strategy={self.strategy_name}")
+        
         if not variability_decision["should_trade"]:
             return {
                 "should_trade": False, 
