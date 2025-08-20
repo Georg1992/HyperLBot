@@ -43,6 +43,9 @@ class HybridPaperTradingBot:
         self.closed_positions = []
         self.trade_history = []
         
+        # Load existing open positions from previous sessions
+        self._load_existing_positions()
+        
         # Market data storage
         self.binance_analysis = {}
         self.weekly_trend_analysis = {}
@@ -80,11 +83,52 @@ class HybridPaperTradingBot:
             "momentum_leverage": 38
         }
         
+        # Update session metadata with initial balance
+        self.trading_logger.update_initial_balance(initial_balance)
+        
         logger.info(f"📊 Hybrid Paper Trading Bot initialized with ${initial_balance:.2f} balance")
         if self.whale_integration.is_available():
             logger.info("🐋 Whale analytics integration enabled")
         else:
             logger.info("🐋 Whale analytics integration disabled")
+    
+    def _load_existing_positions(self):
+        """Load existing open positions from previous sessions"""
+        try:
+            # Check for open positions file
+            positions_file = "open_positions.json"
+            if os.path.exists(positions_file):
+                with open(positions_file, 'r') as f:
+                    saved_positions = json.load(f)
+                
+                # Filter positions that are still open
+                current_time = time.time()
+                for position in saved_positions:
+                    if position.get("status") == "OPEN":
+                        # Check if position is still valid (not too old)
+                        entry_time = position.get("entry_time", 0)
+                        if current_time - entry_time < 86400:  # 24 hours
+                            self.open_positions.append(position)
+                            logger.info(f"📈 Loaded existing position: {position.get('trade_id')} - {position.get('side')} {position.get('size')} @ ${position.get('entry_price'):,.2f}")
+                        else:
+                            # Close old positions
+                            position["status"] = "CLOSED"
+                            position["close_reason"] = "session_timeout"
+                            self.closed_positions.append(position)
+                            logger.info(f"🔒 Closed old position: {position.get('trade_id')} - session timeout")
+                
+                logger.info(f"📊 Loaded {len(self.open_positions)} existing open positions")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not load existing positions: {e}")
+    
+    def _save_positions(self):
+        """Save current positions to file"""
+        try:
+            all_positions = self.open_positions + self.closed_positions
+            with open("open_positions.json", 'w') as f:
+                json.dump(all_positions, f, indent=2)
+        except Exception as e:
+            logger.warning(f"⚠️ Could not save positions: {e}")
     
     def connect(self) -> bool:
         """Connect to both Hyperliquid and Binance APIs"""
@@ -801,11 +845,13 @@ class HybridPaperTradingBot:
         # Calculate fees using Hyperliquid fee structure
         fees = self.fee_manager.calculate_order_fees(size, execution_price, "LIMIT")
         
-        # Calculate position value
-        position_value = size * execution_price * leverage
+        # Calculate position value and required margin
+        position_value = size * execution_price
+        required_margin = position_value / leverage
         
-        # Check if we have enough balance
-        if position_value > self.paper_balance:
+        # Check if we have enough balance for margin + fees
+        total_required = required_margin + fees["total_cost"]
+        if total_required > self.paper_balance:
             return {
                 "success": False,
                 "error": "Insufficient balance for position"
@@ -849,7 +895,20 @@ class HybridPaperTradingBot:
             execution_result = self.simulate_trade_execution(side, size, hyperliquid_price, leverage)
             
             if not execution_result["success"]:
-                logger.error(f"❌ Paper trade failed: {execution_result['error']}")
+                error_msg = f"Paper trade failed: {execution_result['error']}"
+                logger.error(f"❌ {error_msg}")
+                
+                # Log error to JSON file
+                self.trading_logger.log_error({
+                    "error_type": "trade_execution_failed",
+                    "message": error_msg,
+                    "trade_id": f"hybrid_trade_{len(self.trade_history) + 1}",
+                    "side": side,
+                    "size": size,
+                    "leverage": leverage,
+                    "paper_balance": self.paper_balance,
+                    "required_margin": size * hyperliquid_price / leverage
+                })
                 return False
             
             # Create position record
@@ -870,6 +929,9 @@ class HybridPaperTradingBot:
             
             # Add to open positions
             self.open_positions.append(position)
+            
+            # Save positions to file
+            self._save_positions()
             
             # Prepare trade data for logging
             trade_data = {
@@ -999,6 +1061,9 @@ class HybridPaperTradingBot:
         # Move to closed positions
         self.open_positions.remove(position)
         self.closed_positions.append(position)
+        
+        # Save updated positions
+        self._save_positions()
         
         # Update trade result in logger
         self.trading_logger.update_trade_result(position["trade_id"], {

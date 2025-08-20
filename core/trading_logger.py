@@ -67,6 +67,7 @@ class TradingLogger:
             "bot_version": "Enhanced BTC 5-Min Strategy v2.0",
             "strategy": "Multi-timeframe with Variability Theory",
             "max_leverage": 40,
+            "initial_balance": 0.0,  # Will be updated by bot
             "analysis_frequency": {
                 "price_updates": "5 seconds",
                 "market_analysis": "10 seconds", 
@@ -87,6 +88,12 @@ class TradingLogger:
         metadata_file = self.log_directory / f"session_metadata_{self.session_id}.json"
         with open(metadata_file, 'w') as f:
             json.dump(self.session_metadata, f, indent=2)
+    
+    def update_initial_balance(self, balance: float):
+        """Update initial balance in session metadata"""
+        self.session_metadata["initial_balance"] = balance
+        self._save_session_metadata()
+        logger.info(f"💰 Updated initial balance: ${balance:.2f}")
     
     def log_trade(self, trade_data: Dict[str, Any]):
         """Log a completed trade with comprehensive details"""
