@@ -1,0 +1,8 @@
+# Hyperliquid API Credentials
+# Get these from https://app.hyperliquid.xyz/
+API_KEY=your_hyperliquid_api_key_here
+API_SECRET=your_hyperliquid_api_secret_here
+
+# Optional: Override default settings
+# SYMBOL=BTC
+# LEVERAGE=1
