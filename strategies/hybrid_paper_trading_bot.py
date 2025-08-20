@@ -407,6 +407,11 @@ class HybridPaperTradingBot:
         variability_analysis = variability_decision["analysis"]
         optimal_params = variability_analysis["optimal_trading_params"]
         
+        # Override with strategy-based position sizing
+        strategy_position_size_pct = self.strategy_config["position_size"]
+        strategy_position_size_usd = self.paper_balance * strategy_position_size_pct
+        optimal_params["position_size"] = strategy_position_size_usd / hyperliquid_price  # Convert USD to BTC
+        
         # Adjust leverage to respect strategy and Hyperliquid limits
         max_leverage = min(self.strategy_config["max_leverage"], self.leverage_settings["max_leverage"])
         optimal_params["leverage"] = min(optimal_params["leverage"], max_leverage)

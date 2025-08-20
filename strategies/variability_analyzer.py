@@ -248,7 +248,7 @@ class VariabilityAnalyzer:
         market_condition = self._classify_market_condition(current_volatility, current_variability_score)
         
         # Calculate optimal trading parameters
-        optimal_params = self._calculate_optimal_trading_params(current_volatility, current_variability_score)
+        optimal_params = self._calculate_optimal_trading_params(current_volatility, current_variability_score, balance=1000.0)
         
         return {
             "insufficient_data": False,
@@ -281,10 +281,11 @@ class VariabilityAnalyzer:
         else:
             return "EXTREME_VOLATILITY_AVOID"
     
-    def _calculate_optimal_trading_params(self, volatility: float, variability_score: float) -> Dict[str, Any]:
+    def _calculate_optimal_trading_params(self, volatility: float, variability_score: float, balance: float = 1000.0) -> Dict[str, Any]:
         """Calculate optimal trading parameters based on variability"""
-        # Base parameters
-        base_position_size = 0.001
+        # Base parameters - use percentage of balance instead of fixed size
+        base_position_size_pct = 0.10  # 10% of balance as base
+        base_position_size = (balance * base_position_size_pct) / 114000  # Convert to BTC at current price
         base_leverage = 30
         base_profit_target = 0.003  # 0.3%
         base_stop_loss = 0.0015     # 0.15%
