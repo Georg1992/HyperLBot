@@ -924,10 +924,14 @@ class HybridPaperTradingBot:
             # Ensure leverage doesn't exceed Hyperliquid limit
             leverage = min(leverage, self.leverage_settings["max_leverage"])
             
+            # Calculate position value in USD
+            position_value_usd = size * hyperliquid_price
+            
             logger.info(f"📝 Placing HYBRID PAPER {side} trade:")
             logger.info(f"   Hyperliquid Price: ${hyperliquid_price:,.2f}")
-            logger.info(f"   Size: {size}")
+            logger.info(f"   Size: {size} BTC (${position_value_usd:,.2f})")
             logger.info(f"   Leverage: {leverage}x")
+            logger.info(f"   Required Margin: ${position_value_usd/leverage:.2f}")
             logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
             
             # Simulate trade execution with Hyperliquid data
@@ -1005,6 +1009,7 @@ class HybridPaperTradingBot:
             
             logger.success(f"✅ HYBRID PAPER {side} trade placed successfully!")
             logger.info(f"   Execution Price: ${execution_result['execution_price']:,.2f}")
+            logger.info(f"   Position Value: ${execution_result['position_value']:,.2f}")
             logger.info(f"   Slippage: {execution_result['slippage']*100:.3f}%")
             logger.info(f"   Fees: ${execution_result['fees']['total_cost']:.4f}")
             logger.info(f"   Remaining Balance: ${execution_result['remaining_balance']:.2f}")
@@ -1116,8 +1121,11 @@ class HybridPaperTradingBot:
             "was_profitable": net_pnl > 0
         })
         
+        # Calculate position value in USD
+        position_value_usd = size * entry_price
+        
         logger.info(f"📊 Position closed: {position['trade_id']}")
-        logger.info(f"   {side} {size} @ ${entry_price:,.2f} → ${exit_price:,.2f}")
+        logger.info(f"   {side} {size} BTC (${position_value_usd:,.2f}) @ ${entry_price:,.2f} → ${exit_price:,.2f}")
         logger.info(f"   P&L: {pnl_pct*100:.2f}% (${pnl_amount:.4f})")
         logger.info(f"   Net P&L: ${net_pnl:.4f} (fees: ${total_fees:.4f})")
         logger.info(f"   Reason: {exit_reason}")
@@ -1198,10 +1206,15 @@ class HybridPaperTradingBot:
                     signal = self.should_trade(hyperliquid_price, self.binance_analysis)
                     
                     if signal["should_trade"]:
+                        # Calculate position value from signal data
+                        signal_size = signal.get("optimal_params", {}).get("position_size", 0.00035)
+                        position_value_usd = signal_size * hyperliquid_price
+                        
                         logger.info(f"📊 Hybrid signal detected: {signal['reason']}")
                         logger.info(f"   Hyperliquid Price: ${hyperliquid_price:,.2f}")
                         logger.info(f"   Binance Price: ${self.binance_analysis.get('current_price', 0):,.2f}")
                         logger.info(f"   Action: {signal['side']}")
+                        logger.info(f"   Position Size: {signal_size} BTC (${position_value_usd:,.2f})")
                         
                         # Place the hybrid paper trade
                         if self.place_paper_trade(signal['side'], signal_data=signal):
