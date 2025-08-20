@@ -407,9 +407,15 @@ class HybridPaperTradingBot:
         variability_analysis = variability_decision["analysis"]
         optimal_params = variability_analysis["optimal_trading_params"]
         
-        # Override with strategy-based position sizing
-        strategy_position_size_pct = self.strategy_config["position_size"]
-        strategy_position_size_usd = self.paper_balance * strategy_position_size_pct
+        # Calculate dynamic position sizing based on risk and probability
+        position_size_pct = self._calculate_dynamic_position_size(
+            variability_analysis, 
+            binance_analysis, 
+            hyperliquid_price,
+            support_5m,
+            resistance_5m
+        )
+        strategy_position_size_usd = self.paper_balance * position_size_pct
         optimal_params["position_size"] = strategy_position_size_usd / hyperliquid_price  # Convert USD to BTC
         
         # Adjust leverage to respect strategy and Hyperliquid limits
@@ -844,6 +850,218 @@ class HybridPaperTradingBot:
             return (range_size / current_price) if current_price > 0 else 0.0
         except:
             return 0.0
+    
+    def _calculate_dynamic_position_size(self, variability_analysis: Dict[str, Any], binance_analysis: Dict[str, Any], 
+                                       current_price: float, support: float, resistance: float) -> float:
+        """Calculate dynamic position size based on risk assessment and win probability"""
+        
+        # Base position size from strategy config
+        base_position_size = self.strategy_config["position_size"]
+        
+        # 1. VARIABILITY SCORE FACTOR (0.5x - 2.0x)
+        variability_score = variability_analysis.get("current_variability_score", 0.5)
+        if variability_score > 0.8:
+            variability_multiplier = 2.0  # High variability = optimal conditions
+        elif variability_score > 0.6:
+            variability_multiplier = 1.5  # Good variability
+        elif variability_score > 0.4:
+            variability_multiplier = 1.0  # Standard variability
+        else:
+            variability_multiplier = 0.5  # Low variability = poor conditions
+        
+        # 2. MARKET CONDITION FACTOR (0.7x - 1.3x)
+        market_condition = binance_analysis.get("market_condition", "UNKNOWN")
+        if market_condition == "LOW_VOLATILITY_CHOPPY":
+            market_multiplier = 0.7  # Reduce size in choppy markets
+        elif market_condition in ["MEDIUM_VOLATILITY_OPTIMAL", "HIGH_VOLATILITY_OPTIMAL"]:
+            market_multiplier = 1.3  # Increase size in optimal conditions
+        elif market_condition in ["EXTREME_VOLATILITY_RISKY", "EXTREME_VOLATILITY_AVOID"]:
+            market_multiplier = 0.5  # Significantly reduce in extreme volatility
+        else:
+            market_multiplier = 1.0  # Standard conditions
+        
+        # 3. TREND ALIGNMENT FACTOR (0.8x - 1.4x)
+        trend_5m = binance_analysis.get("trend_5m", {}).get("trend", "UNKNOWN")
+        trend_1h = binance_analysis.get("trend_1h", {}).get("trend", "UNKNOWN")
+        trend_strength_1h = binance_analysis.get("trend_1h", {}).get("strength", 0)
+        
+        # Check if trends align with our signal direction
+        trend_alignment = 1.0
+        if trend_1h == "UP" and trend_5m == "UP":
+            trend_alignment = 1.4  # Strong bullish alignment
+        elif trend_1h == "DOWN" and trend_5m == "DOWN":
+            trend_alignment = 1.4  # Strong bearish alignment
+        elif trend_1h == "UP" or trend_5m == "UP":
+            trend_alignment = 1.2  # Partial bullish alignment
+        elif trend_1h == "DOWN" or trend_5m == "DOWN":
+            trend_alignment = 1.2  # Partial bearish alignment
+        elif trend_strength_1h < 0.3:
+            trend_alignment = 0.8  # Weak trends
+        
+        # 4. SUPPORT/RESISTANCE PROXIMITY FACTOR (0.6x - 1.2x)
+        range_size = resistance - support
+        if range_size > 0:
+            # Calculate how close we are to support/resistance
+            distance_to_support = abs(current_price - support) / range_size
+            distance_to_resistance = abs(current_price - resistance) / range_size
+            
+            # If very close to support/resistance, reduce position size
+            if distance_to_support < 0.1 or distance_to_resistance < 0.1:
+                proximity_multiplier = 0.6  # Too close to key levels
+            elif distance_to_support < 0.2 or distance_to_resistance < 0.2:
+                proximity_multiplier = 0.8  # Close to key levels
+            else:
+                proximity_multiplier = 1.2  # Good distance from key levels
+        else:
+            proximity_multiplier = 1.0
+        
+        # 5. WEEKLY TREND CONTEXT FACTOR (0.7x - 1.3x)
+        weekly_context = self._apply_weekly_trend_context(current_price, support, resistance)
+        if weekly_context.get("risk_level") == "HIGH":
+            weekly_multiplier = 0.7  # High risk weekly context
+        elif weekly_context.get("preferred_direction") in ["BUY", "SELL"]:
+            weekly_multiplier = 1.3  # Weekly trend supports our direction
+        else:
+            weekly_multiplier = 1.0  # Neutral weekly context
+        
+        # 6. VOLATILITY STRATEGY FACTOR (0.8x - 1.5x)
+        if self.strategy_name == "low_volatility":
+            strategy_multiplier = 1.5  # Low volatility = safer, can use larger positions
+        elif self.strategy_name == "high_volatility":
+            strategy_multiplier = 0.8  # High volatility = riskier, use smaller positions
+        else:
+            strategy_multiplier = 1.0  # Standard volatility
+        
+        # 7. WIN PROBABILITY FACTOR (0.5x - 2.0x)
+        win_probability = self._calculate_win_probability(
+            variability_analysis, binance_analysis, current_price, support, resistance
+        )
+        
+        if win_probability > 0.8:
+            probability_multiplier = 2.0  # Very high win probability
+        elif win_probability > 0.7:
+            probability_multiplier = 1.5  # High win probability
+        elif win_probability > 0.6:
+            probability_multiplier = 1.2  # Good win probability
+        elif win_probability > 0.5:
+            probability_multiplier = 1.0  # Average win probability
+        else:
+            probability_multiplier = 0.5  # Low win probability
+        
+        # Calculate final position size
+        final_position_size = base_position_size * \
+                             variability_multiplier * \
+                             market_multiplier * \
+                             trend_alignment * \
+                             proximity_multiplier * \
+                             weekly_multiplier * \
+                             strategy_multiplier * \
+                             probability_multiplier
+        
+        # Apply limits
+        min_position_size = 0.05   # Minimum 5% of balance
+        max_position_size = 0.80   # Maximum 80% of balance (as requested)
+        
+        final_position_size = max(min_position_size, min(max_position_size, final_position_size))
+        
+        # Log the position sizing calculation
+        logger.info(f"🎯 Dynamic Position Sizing:")
+        logger.info(f"   Base Size: {base_position_size*100:.1f}%")
+        logger.info(f"   Variability: {variability_multiplier:.1f}x (score: {variability_score:.3f})")
+        logger.info(f"   Market: {market_multiplier:.1f}x ({market_condition})")
+        logger.info(f"   Trend: {trend_alignment:.1f}x (5m: {trend_5m}, 1h: {trend_1h})")
+        logger.info(f"   Proximity: {proximity_multiplier:.1f}x")
+        logger.info(f"   Weekly: {weekly_multiplier:.1f}x")
+        logger.info(f"   Strategy: {strategy_multiplier:.1f}x ({self.strategy_name})")
+        logger.info(f"   Win Probability: {probability_multiplier:.1f}x ({win_probability*100:.1f}%)")
+        logger.info(f"   Final Size: {final_position_size*100:.1f}% (${self.paper_balance * final_position_size:.2f})")
+        
+        return final_position_size
+    
+    def _calculate_win_probability(self, variability_analysis: Dict[str, Any], binance_analysis: Dict[str, Any],
+                                 current_price: float, support: float, resistance: float) -> float:
+        """Calculate win probability based on multiple factors"""
+        
+        # Base probability starts at 50%
+        base_probability = 0.5
+        
+        # 1. VARIABILITY SCORE CONTRIBUTION (0-20%)
+        variability_score = variability_analysis.get("current_variability_score", 0.5)
+        variability_contribution = variability_score * 0.2  # Up to 20% contribution
+        
+        # 2. TREND STRENGTH CONTRIBUTION (0-15%)
+        trend_1h = binance_analysis.get("trend_1h", {})
+        trend_strength = trend_1h.get("strength", 0.5)
+        trend_contribution = trend_strength * 0.15  # Up to 15% contribution
+        
+        # 3. MARKET CONDITION CONTRIBUTION (0-10%)
+        market_condition = binance_analysis.get("market_condition", "UNKNOWN")
+        if market_condition in ["MEDIUM_VOLATILITY_OPTIMAL", "HIGH_VOLATILITY_OPTIMAL"]:
+            market_contribution = 0.10  # Optimal conditions
+        elif market_condition == "LOW_VOLATILITY_CHOPPY":
+            market_contribution = 0.05  # Choppy conditions
+        elif market_condition in ["EXTREME_VOLATILITY_RISKY", "EXTREME_VOLATILITY_AVOID"]:
+            market_contribution = 0.02  # Risky conditions
+        else:
+            market_contribution = 0.07  # Standard conditions
+        
+        # 4. SUPPORT/RESISTANCE QUALITY CONTRIBUTION (0-10%)
+        range_size = resistance - support
+        if range_size > 0:
+            range_percentage = range_size / current_price
+            if range_percentage > 0.01:  # Good range (>1%)
+                range_contribution = 0.10
+            elif range_percentage > 0.005:  # Decent range (>0.5%)
+                range_contribution = 0.07
+            else:
+                range_contribution = 0.03  # Small range
+        else:
+            range_contribution = 0.05
+        
+        # 5. WEEKLY TREND ALIGNMENT CONTRIBUTION (0-10%)
+        weekly_context = self._apply_weekly_trend_context(current_price, support, resistance)
+        if weekly_context.get("preferred_direction") in ["BUY", "SELL"]:
+            weekly_contribution = 0.10  # Weekly trend supports our direction
+        elif weekly_context.get("risk_level") == "HIGH":
+            weekly_contribution = 0.03  # High risk weekly context
+        else:
+            weekly_contribution = 0.07  # Neutral weekly context
+        
+        # 6. VOLATILITY STRATEGY CONTRIBUTION (0-5%)
+        if self.strategy_name == "low_volatility":
+            strategy_contribution = 0.05  # Low volatility = more predictable
+        elif self.strategy_name == "high_volatility":
+            strategy_contribution = 0.02  # High volatility = less predictable
+        else:
+            strategy_contribution = 0.04  # Standard volatility
+        
+        # 7. PRICE POSITION CONTRIBUTION (0-10%)
+        # Check if price is in a good position relative to support/resistance
+        if range_size > 0:
+            price_position = (current_price - support) / range_size
+            if 0.2 < price_position < 0.8:  # Price in middle range
+                position_contribution = 0.10
+            elif 0.1 < price_position < 0.9:  # Price in good range
+                position_contribution = 0.07
+            else:
+                position_contribution = 0.03  # Price at extremes
+        else:
+            position_contribution = 0.05
+        
+        # Calculate total probability
+        total_probability = base_probability + \
+                          variability_contribution + \
+                          trend_contribution + \
+                          market_contribution + \
+                          range_contribution + \
+                          weekly_contribution + \
+                          strategy_contribution + \
+                          position_contribution
+        
+        # Ensure probability is between 0.1 and 0.95
+        total_probability = max(0.1, min(0.95, total_probability))
+        
+        return total_probability
     
     def simulate_trade_execution(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
         """Simulate trade execution with realistic Hyperliquid slippage and fees"""
