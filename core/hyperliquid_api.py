@@ -6,15 +6,16 @@ import hashlib
 import eth_account
 from typing import Dict, Any, Optional, List
 from loguru import logger
-from config import config
+from config import TradingConfig
 
 class HyperliquidAPI:
     """Hyperliquid API client for trading operations"""
     
     def __init__(self, wallet_address: str = None, wallet_private_key: str = None):
-        self.wallet_address = wallet_address or config.WALLET_ADDRESS
-        self.wallet_private_key = wallet_private_key or config.WALLET_PRIVATE_KEY
-        self.base_url = config.HYPERLIQUID_API_URL
+        self.config = TradingConfig()
+        self.wallet_address = wallet_address or self.config.WALLET_ADDRESS
+        self.wallet_private_key = wallet_private_key or self.config.WALLET_PRIVATE_KEY
+        self.base_url = self.config.HYPERLIQUID_API_URL
         self.session = requests.Session()
         self.session.headers.update({
             'Content-Type': 'application/json',
@@ -106,7 +107,7 @@ class HyperliquidAPI:
     def get_market_data(self, symbol: str = None) -> Dict[str, Any]:
         """Get current market data for a symbol"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             endpoint = "/info"
             payload = {
                 "type": "l2Book",
@@ -127,7 +128,7 @@ class HyperliquidAPI:
     def get_mark_price(self, symbol: str = None) -> Dict[str, Any]:
         """Get mark price for a symbol"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             endpoint = "/info"
             payload = {
                 "type": "meta",
@@ -148,7 +149,7 @@ class HyperliquidAPI:
     def get_orderbook(self, symbol: str = None) -> Dict[str, Any]:
         """Get order book for a symbol"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             endpoint = "/info"
             payload = {
                 "type": "orderBook",
@@ -168,8 +169,8 @@ class HyperliquidAPI:
     def set_leverage(self, symbol: str = None, leverage: int = None) -> Dict[str, Any]:
         """Set leverage for a symbol"""
         try:
-            symbol = symbol or config.SYMBOL
-            leverage = leverage or config.LEVERAGE
+            symbol = symbol or self.config.SYMBOL
+            leverage = leverage or self.config.LEVERAGE
             
             endpoint = "/exchange"
             payload = {
@@ -192,7 +193,7 @@ class HyperliquidAPI:
     def get_leverage(self, symbol: str = None) -> Dict[str, Any]:
         """Get current leverage for a symbol"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             
             endpoint = "/info"
             payload = {
@@ -233,8 +234,8 @@ class HyperliquidAPI:
                    leverage: int = None) -> Dict[str, Any]:
         """Place a new order with leverage"""
         try:
-            symbol = symbol or config.SYMBOL
-            leverage = leverage or config.LEVERAGE
+            symbol = symbol or self.config.SYMBOL
+            leverage = leverage or self.config.LEVERAGE
             
             # Create base order data
             order_data = {
@@ -303,7 +304,7 @@ class HyperliquidAPI:
     def cancel_order(self, order_id: str, symbol: str = None) -> Dict[str, Any]:
         """Cancel an existing order"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             
             cancel_data = {
                 "type": "cancel",
@@ -326,7 +327,7 @@ class HyperliquidAPI:
     def get_open_orders(self, symbol: str = None) -> List[Dict[str, Any]]:
         """Get all open orders"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             
             # Get user state which includes open orders
             account_info = self.get_account_info()
@@ -348,7 +349,7 @@ class HyperliquidAPI:
     def get_positions(self, symbol: str = None) -> List[Dict[str, Any]]:
         """Get current positions"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             
             account_info = self.get_account_info()
             
@@ -368,7 +369,7 @@ class HyperliquidAPI:
     def get_trade_history(self, symbol: str = None, limit: int = 100) -> List[Dict[str, Any]]:
         """Get trade history"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             
             endpoint = "/info"
             payload = {
@@ -392,7 +393,7 @@ class HyperliquidAPI:
     def get_klines(self, symbol: str = None, interval: str = "1m", limit: int = 100) -> List[Dict[str, Any]]:
         """Get historical kline/candlestick data"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             
             endpoint = "/info"
             payload = {
@@ -416,7 +417,7 @@ class HyperliquidAPI:
     def get_funding_rate(self, symbol: str = None) -> Dict[str, Any]:
         """Get current funding rate for a symbol"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             
             endpoint = "/info"
             payload = {
@@ -438,7 +439,7 @@ class HyperliquidAPI:
     def get_liquidation_price(self, symbol: str = None) -> float:
         """Calculate liquidation price for current position"""
         try:
-            symbol = symbol or config.SYMBOL
+            symbol = symbol or self.config.SYMBOL
             
             # Get current position and account info
             positions = self.get_positions(symbol)

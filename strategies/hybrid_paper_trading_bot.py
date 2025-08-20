@@ -10,6 +10,15 @@ import random
 import statistics
 from typing import Dict, Any, Optional, List
 from loguru import logger
+import sys
+import os
+# Add paths for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.insert(0, os.path.join(project_root, 'core'))
+sys.path.insert(0, os.path.join(project_root, 'data'))
+sys.path.insert(0, os.path.join(project_root, 'strategies'))
+
 from hyperliquid_api import HyperliquidAPI
 from external_data_fetcher import ExternalDataFetcher
 from config import TradingConfig
@@ -18,8 +27,10 @@ from variability_analyzer import VariabilityAnalyzer
 from trading_logger import TradingLogger
 
 class HybridPaperTradingBot:
-    def __init__(self, initial_balance: float = 120.0):
+    def __init__(self, initial_balance: float = 120.0, strategy_name: str = "standard"):
         self.config = TradingConfig()
+        self.strategy_name = strategy_name
+        self.strategy_config = self.config.STRATEGY_CONFIGS.get(strategy_name, self.config.STRATEGY_CONFIGS["standard"])
         self.hyperliquid_api = None
         self.binance_fetcher = ExternalDataFetcher()
         self.connected = False
@@ -245,10 +256,18 @@ class HybridPaperTradingBot:
         if not binance_analysis or "error" in binance_analysis:
             return {"should_trade": False, "reason": "No Binance analysis available"}
         
+        # Auto-detect market volatility and adjust strategy
+        current_strategy = self._auto_detect_strategy(binance_analysis, hyperliquid_price)
+        if current_strategy != self.strategy_name:
+            logger.info(f"🔄 Auto-switching strategy: {self.strategy_name} → {current_strategy}")
+            self.strategy_name = current_strategy
+            self.strategy_config = self.config.STRATEGY_CONFIGS.get(current_strategy, self.config.STRATEGY_CONFIGS["standard"])
+        
         # Check if enough time has passed since last trade
         current_time = time.time()
-        if current_time - self.last_trade_time < self.min_interval:
-            return {"should_trade": False, "reason": "Too soon since last trade"}
+        min_interval = self.strategy_config["min_interval"]
+        if current_time - self.last_trade_time < min_interval:
+            return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
         # Get variability analysis
         variability_decision = self.variability_analyzer.should_trade_based_on_variability(0.5)
@@ -274,15 +293,17 @@ class HybridPaperTradingBot:
         range_size_5m = support_resistance_5m.get("range", 0)
         
         # Minimum range requirement (avoid choppy markets)
-        if range_size_5m < hyperliquid_price * 0.002:  # Less than 0.2% range
-            return {"should_trade": False, "reason": "Range too small"}
+        min_range_percentage = self.strategy_config["min_range_percentage"]
+        if range_size_5m < hyperliquid_price * min_range_percentage:
+            return {"should_trade": False, "reason": f"Range too small (need {min_range_percentage*100:.1f}%, have {range_size_5m/hyperliquid_price*100:.1f}%)"}
         
         # Get optimal trading parameters from variability analysis
         variability_analysis = variability_decision["analysis"]
         optimal_params = variability_analysis["optimal_trading_params"]
         
-        # Adjust leverage to respect Hyperliquid limit
-        optimal_params["leverage"] = min(optimal_params["leverage"], self.leverage_settings["max_leverage"])
+        # Adjust leverage to respect strategy and Hyperliquid limits
+        max_leverage = min(self.strategy_config["max_leverage"], self.leverage_settings["max_leverage"])
+        optimal_params["leverage"] = min(optimal_params["leverage"], max_leverage)
         
         # Apply weekly trend context to trading decisions
         weekly_context = self._apply_weekly_trend_context(hyperliquid_price, support_5m, resistance_5m)
@@ -303,7 +324,7 @@ class HybridPaperTradingBot:
                 if weekly_context.get("preferred_direction") == "BUY" and weekly_context.get("risk_level") == "HIGH":
                     return {"should_trade": False, "reason": "Strong bull market - avoiding short on breakout"}
                 
-                target_price = hyperliquid_price * (1 - optimal_params["profit_target"])
+                target_price = hyperliquid_price * (1 - self.strategy_config["profit_target"])
                 
                 # Check if trade is profitable after fees
                 profitability = self.fee_manager.is_trade_profitable(
@@ -318,7 +339,7 @@ class HybridPaperTradingBot:
                     "side": "SELL",  # Short the breakout
                     "reason": f"Breakout above resistance ${resistance_5m:,.2f} (1h trend: {trend_1h.get('trend', 'UNKNOWN')}, weekly: {weekly_context.get('reason', 'N/A')})",
                     "target": target_price,
-                    "stop": hyperliquid_price * (1 + optimal_params["stop_loss"]),
+                    "stop": hyperliquid_price * (1 + self.strategy_config["stop_loss"]),
                     "profitability": profitability,
                     "variability_analysis": variability_analysis,
                     "optimal_params": optimal_params,
@@ -348,7 +369,7 @@ class HybridPaperTradingBot:
                 if weekly_context.get("preferred_direction") == "SELL" and weekly_context.get("risk_level") == "HIGH":
                     return {"should_trade": False, "reason": "Strong bear market - avoiding long on breakdown"}
                 
-                target_price = hyperliquid_price * (1 + optimal_params["profit_target"])
+                target_price = hyperliquid_price * (1 + self.strategy_config["profit_target"])
                 
                 # Check if trade is profitable after fees
                 profitability = self.fee_manager.is_trade_profitable(
@@ -363,7 +384,7 @@ class HybridPaperTradingBot:
                     "side": "BUY",  # Long the breakout
                     "reason": f"Breakout below support ${support_5m:,.2f} (1h trend: {trend_1h.get('trend', 'UNKNOWN')}, weekly: {weekly_context.get('reason', 'N/A')})",
                     "target": target_price,
-                    "stop": hyperliquid_price * (1 - optimal_params["stop_loss"]),
+                    "stop": hyperliquid_price * (1 - self.strategy_config["stop_loss"]),
                     "profitability": profitability,
                     "variability_analysis": variability_analysis,
                     "optimal_params": optimal_params,
@@ -569,6 +590,62 @@ class HybridPaperTradingBot:
             "reason": "Weekly trend context allows trading",
             "risk_level": "NORMAL"
         }
+    
+    def _auto_detect_strategy(self, binance_analysis: Dict[str, Any], current_price: float) -> str:
+        """Auto-detect market volatility and return appropriate strategy"""
+        try:
+            # Get market condition from Binance analysis
+            market_condition = binance_analysis.get("market_condition", "UNKNOWN")
+            
+            # Get volatility indicators
+            candles_5m = binance_analysis.get("candles_5m", [])
+            candles_1h = binance_analysis.get("candles_1h", [])
+            
+            if len(candles_5m) < 10 or len(candles_1h) < 10:
+                return self.strategy_name  # Keep current strategy if insufficient data
+            
+            # Calculate 5-minute volatility
+            prices_5m = [candle["close"] for candle in candles_5m[-20:]]  # Last 20 candles
+            returns_5m = []
+            for i in range(1, len(prices_5m)):
+                ret = abs((prices_5m[i] - prices_5m[i-1]) / prices_5m[i-1])
+                returns_5m.append(ret)
+            
+            volatility_5m = statistics.mean(returns_5m) if returns_5m else 0
+            
+            # Calculate 1-hour volatility
+            prices_1h = [candle["close"] for candle in candles_1h[-24:]]  # Last 24 candles
+            returns_1h = []
+            for i in range(1, len(prices_1h)):
+                ret = abs((prices_1h[i] - prices_1h[i-1]) / prices_1h[i-1])
+                returns_1h.append(ret)
+            
+            volatility_1h = statistics.mean(returns_1h) if returns_1h else 0
+            
+            # Get range size
+            support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
+            range_size = support_resistance_5m.get("range", 0)
+            range_percentage = (range_size / current_price) if current_price > 0 else 0
+            
+            # Strategy selection logic
+            if market_condition == "LOW_VOLATILITY" or volatility_5m < 0.001 or range_percentage < 0.003:
+                # Low volatility conditions
+                logger.info(f"📊 Low volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%")
+                return "low_volatility"
+            
+            elif market_condition == "HIGH_VOLATILITY" or volatility_5m > 0.005 or volatility_1h > 0.01 or range_percentage > 0.01:
+                # High volatility conditions
+                logger.info(f"📊 High volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%")
+                return "high_volatility"
+            
+            else:
+                # Medium volatility conditions
+                logger.info(f"📊 Medium volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%")
+                return "standard"
+                
+        except Exception as e:
+            logger.error(f"❌ Error in auto-strategy detection: {e}")
+            return self.strategy_name  # Keep current strategy on error
     
     def simulate_trade_execution(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
         """Simulate trade execution with realistic Hyperliquid slippage and fees"""
@@ -856,6 +933,7 @@ class HybridPaperTradingBot:
         logger.info(f"   Max Leverage: {self.leverage_settings['max_leverage']}x")
         logger.info(f"   Analysis: Binance candlesticks + Hyperliquid execution")
         logger.info(f"   Analysis Frequency: Price every {self.price_update_interval}s, Signals every {self.signal_check_interval}s")
+        logger.info(f"   Strategy: Auto-Detection (Standard/Low/High Volatility)")
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
         logger.info(f"   Logging: Comprehensive hybrid paper trading logs enabled")
         logger.info("=" * 50)

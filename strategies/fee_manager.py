@@ -7,6 +7,9 @@ Handles trading fees, slippage, and cost calculations
 import time
 from typing import Dict, Any, Optional, Tuple
 from loguru import logger
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
 from hyperliquid_api import HyperliquidAPI
 from config import TradingConfig
 
