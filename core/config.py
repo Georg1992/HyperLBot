@@ -37,7 +37,7 @@ class TradingConfig:
             "min_range_percentage": 0.001,  # 0.1% minimum range (more sensitive)
             "volatility_threshold": "low",
             "confidence_threshold": 0.1,  # Lower confidence requirement
-            "min_interval": 15,  # Faster trading
+            "min_interval": 300,  # 5 minutes between trades (increased from 15s)
             "max_leverage": 30,  # Slightly lower leverage for safety
             "profit_target": 0.005,  # 0.5% profit target (smaller moves)
             "stop_loss": 0.003,  # 0.3% stop loss (tighter)

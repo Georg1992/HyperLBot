@@ -53,6 +53,12 @@ class HybridPaperTradingBot:
         self.last_trade_time = 0
         self.min_interval = 300  # 5 minutes in seconds
         
+        # Signal deduplication
+        self.last_signal_reason = ""
+        self.last_signal_price = 0
+        self.last_signal_time = 0
+        self.signal_cooldown = 300  # 5 minutes between similar signals
+        
         # Analysis components
         self.fee_manager = FeeManager()
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
@@ -345,6 +351,19 @@ class HybridPaperTradingBot:
         if current_time - self.last_trade_time < min_interval:
             return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
+        # Signal deduplication check
+        if self.last_signal_reason and current_time - self.last_signal_time < self.signal_cooldown:
+            # Check if this is a duplicate signal
+            if self.last_signal_reason == f"Reversion from support ${support_5m:,.2f}" or \
+               self.last_signal_reason == f"Reversion from resistance ${resistance_5m:,.2f}" or \
+               self.last_signal_reason == f"Breakout above resistance ${resistance_5m:,.2f}" or \
+               self.last_signal_reason == f"Breakout below support ${support_5m:,.2f}":
+                
+                # Check if price is too close to last signal
+                price_change = abs(hyperliquid_price - self.last_signal_price) / self.last_signal_price
+                if price_change < 0.001:  # Less than 0.1% price change
+                    return {"should_trade": False, "reason": f"Duplicate signal within {self.signal_cooldown}s (price change: {price_change*100:.2f}%)"}
+        
         # Get variability analysis with strategy-specific threshold
         if self.strategy_name == "low_volatility":
             variability_threshold = 0.2  # Lower threshold for low volatility
@@ -450,6 +469,11 @@ class HybridPaperTradingBot:
                 # Log the signal
                 self.trading_logger.log_signal(signal_data)
                 
+                # Update signal memory for deduplication
+                self.last_signal_reason = signal_data["reason"]
+                self.last_signal_price = hyperliquid_price
+                self.last_signal_time = current_time
+                
                 return signal_data
         
         elif hyperliquid_price < support_5m * 0.9995:  # Break below support
@@ -500,6 +524,11 @@ class HybridPaperTradingBot:
                 
                 # Log the signal
                 self.trading_logger.log_signal(signal_data)
+                
+                # Update signal memory for deduplication
+                self.last_signal_reason = signal_data["reason"]
+                self.last_signal_price = hyperliquid_price
+                self.last_signal_time = current_time
                 
                 return signal_data
         
@@ -553,6 +582,11 @@ class HybridPaperTradingBot:
                 # Log the signal
                 self.trading_logger.log_signal(signal_data)
                 
+                # Update signal memory for deduplication
+                self.last_signal_reason = signal_data["reason"]
+                self.last_signal_price = hyperliquid_price
+                self.last_signal_time = current_time
+                
                 return signal_data
         
         elif hyperliquid_price < support_5m * 1.001:  # Near support
@@ -603,6 +637,11 @@ class HybridPaperTradingBot:
                 
                 # Log the signal
                 self.trading_logger.log_signal(signal_data)
+                
+                # Update signal memory for deduplication
+                self.last_signal_reason = signal_data["reason"]
+                self.last_signal_price = hyperliquid_price
+                self.last_signal_time = current_time
                 
                 return signal_data
         
