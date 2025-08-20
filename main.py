@@ -64,6 +64,7 @@ def run_paper_trading():
         print(f"  📊 Max Trades: {max_trades} (safety limit)")
         print(f"  ⏱️  Check Interval: {check_interval} seconds (fixed - optimal speed)")
         print(f"  🎯 Strategy: Auto-Detection (Standard → Low/High Volatility)")
+        print(f"  🐋 Whale Analytics: Enabled (BlockCypher integration)")
         print(f"  🔒 Mode: Paper Trading (no real money)")
         
         # Initialize and run the bot with selected strategy

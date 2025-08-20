@@ -57,6 +57,10 @@ class TradingConfig:
     
     # Default strategy
     DEFAULT_STRATEGY = "standard"
+    
+    # Whale Analytics Configuration
+    WHALE_ANALYTICS_ENABLED = True  # Set to True to enable whale tracking
+    WHALE_CONFIRMATION_THRESHOLD = 0.7  # Confidence threshold for blocking trades
 
 # Global config instance
 config = TradingConfig()

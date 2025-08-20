@@ -25,6 +25,7 @@ from config import TradingConfig
 from fee_manager import FeeManager
 from variability_analyzer import VariabilityAnalyzer
 from trading_logger import TradingLogger
+from whale_integration import WhaleIntegration, integrate_whale_analytics_into_signal
 
 class HybridPaperTradingBot:
     def __init__(self, initial_balance: float = 120.0, strategy_name: str = "standard"):
@@ -54,6 +55,9 @@ class HybridPaperTradingBot:
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
         self.trading_logger = TradingLogger("hybrid_paper_trading_logs")
         
+        # Whale analytics integration
+        self.whale_integration = WhaleIntegration(enabled=self.config.WHALE_ANALYTICS_ENABLED)
+        
         # Enhanced analysis frequency
         self.price_update_interval = 5  # Update price every 5 seconds
         self.market_analysis_interval = 10  # Market analysis every 10 seconds
@@ -77,6 +81,10 @@ class HybridPaperTradingBot:
         }
         
         logger.info(f"📊 Hybrid Paper Trading Bot initialized with ${initial_balance:.2f} balance")
+        if self.whale_integration.is_available():
+            logger.info("🐋 Whale analytics integration enabled")
+        else:
+            logger.info("🐋 Whale analytics integration disabled")
     
     def connect(self) -> bool:
         """Connect to both Hyperliquid and Binance APIs"""
@@ -260,6 +268,22 @@ class HybridPaperTradingBot:
         current_strategy = self._auto_detect_strategy(binance_analysis, hyperliquid_price)
         if current_strategy != self.strategy_name:
             logger.info(f"🔄 Auto-switching strategy: {self.strategy_name} → {current_strategy}")
+            
+            # Log strategy switch to JSON files
+            self.trading_logger.log_analysis({
+                "type": "strategy_switch",
+                "timestamp": time.time(),
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "previous_strategy": self.strategy_name,
+                "new_strategy": current_strategy,
+                "reason": "auto_detection",
+                "market_condition": binance_analysis.get("market_condition", "UNKNOWN"),
+                "hyperliquid_price": hyperliquid_price,
+                "volatility_5m": self._get_volatility_5m(binance_analysis),
+                "volatility_1h": self._get_volatility_1h(binance_analysis),
+                "range_percentage": self._get_range_percentage(binance_analysis, hyperliquid_price)
+            })
+            
             self.strategy_name = current_strategy
             self.strategy_config = self.config.STRATEGY_CONFIGS.get(current_strategy, self.config.STRATEGY_CONFIGS["standard"])
         
@@ -354,6 +378,12 @@ class HybridPaperTradingBot:
                     "weekly_context": weekly_context
                 }
                 
+                # Add whale confirmation to signal
+                signal_data = integrate_whale_analytics_into_signal(signal_data, self.whale_integration)
+                
+                # Log whale analysis
+                self.whale_integration.log_whale_analysis(self.trading_logger)
+                
                 # Log the signal
                 self.trading_logger.log_signal(signal_data)
                 
@@ -398,6 +428,12 @@ class HybridPaperTradingBot:
                     "range_size": range_size_5m,
                     "weekly_context": weekly_context
                 }
+                
+                # Add whale confirmation to signal
+                signal_data = integrate_whale_analytics_into_signal(signal_data, self.whale_integration)
+                
+                # Log whale analysis
+                self.whale_integration.log_whale_analysis(self.trading_logger)
                 
                 # Log the signal
                 self.trading_logger.log_signal(signal_data)
@@ -445,6 +481,12 @@ class HybridPaperTradingBot:
                     "weekly_context": weekly_context
                 }
                 
+                # Add whale confirmation to signal
+                signal_data = integrate_whale_analytics_into_signal(signal_data, self.whale_integration)
+                
+                # Log whale analysis
+                self.whale_integration.log_whale_analysis(self.trading_logger)
+                
                 # Log the signal
                 self.trading_logger.log_signal(signal_data)
                 
@@ -489,6 +531,12 @@ class HybridPaperTradingBot:
                     "range_size": range_size_5m,
                     "weekly_context": weekly_context
                 }
+                
+                # Add whale confirmation to signal
+                signal_data = integrate_whale_analytics_into_signal(signal_data, self.whale_integration)
+                
+                # Log whale analysis
+                self.whale_integration.log_whale_analysis(self.trading_logger)
                 
                 # Log the signal
                 self.trading_logger.log_signal(signal_data)
@@ -646,6 +694,49 @@ class HybridPaperTradingBot:
         except Exception as e:
             logger.error(f"❌ Error in auto-strategy detection: {e}")
             return self.strategy_name  # Keep current strategy on error
+    
+    def _get_volatility_5m(self, binance_analysis: Dict[str, Any]) -> float:
+        """Extract 5-minute volatility from analysis"""
+        try:
+            candles_5m = binance_analysis.get("candles_5m", [])
+            if len(candles_5m) < 10:
+                return 0.0
+            
+            prices_5m = [candle["close"] for candle in candles_5m[-20:]]
+            returns_5m = []
+            for i in range(1, len(prices_5m)):
+                ret = abs((prices_5m[i] - prices_5m[i-1]) / prices_5m[i-1])
+                returns_5m.append(ret)
+            
+            return statistics.mean(returns_5m) if returns_5m else 0.0
+        except:
+            return 0.0
+    
+    def _get_volatility_1h(self, binance_analysis: Dict[str, Any]) -> float:
+        """Extract 1-hour volatility from analysis"""
+        try:
+            candles_1h = binance_analysis.get("candles_1h", [])
+            if len(candles_1h) < 10:
+                return 0.0
+            
+            prices_1h = [candle["close"] for candle in candles_1h[-24:]]
+            returns_1h = []
+            for i in range(1, len(prices_1h)):
+                ret = abs((prices_1h[i] - prices_1h[i-1]) / prices_1h[i-1])
+                returns_1h.append(ret)
+            
+            return statistics.mean(returns_1h) if returns_1h else 0.0
+        except:
+            return 0.0
+    
+    def _get_range_percentage(self, binance_analysis: Dict[str, Any], current_price: float) -> float:
+        """Extract range percentage from analysis"""
+        try:
+            support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
+            range_size = support_resistance_5m.get("range", 0)
+            return (range_size / current_price) if current_price > 0 else 0.0
+        except:
+            return 0.0
     
     def simulate_trade_execution(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
         """Simulate trade execution with realistic Hyperliquid slippage and fees"""
@@ -935,6 +1026,7 @@ class HybridPaperTradingBot:
         logger.info(f"   Analysis Frequency: Price every {self.price_update_interval}s, Signals every {self.signal_check_interval}s")
         logger.info(f"   Strategy: Auto-Detection (Standard/Low/High Volatility)")
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
+        logger.info(f"   Whale Analytics: {'Enabled' if self.whale_integration.is_available() else 'Disabled'}")
         logger.info(f"   Logging: Comprehensive hybrid paper trading logs enabled")
         logger.info("=" * 50)
         
