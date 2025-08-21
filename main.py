@@ -94,7 +94,7 @@ def run_paper_trading():
         print("\nPaper Trading Configuration:")
         initial_balance = float(input("Enter initial balance (default 120.0): ") or "120.0")
         max_trades = int(input("Enter max trades (default 10): ") or "10")
-        check_interval = 10  # Fixed at 10 seconds for optimal responsiveness
+        check_interval = 5  # Fixed at 5 seconds for ultra-fast responsiveness
         
         # Auto-strategy detection enabled
         selected_strategy = "standard"  # Starting strategy, will auto-switch based on market conditions
@@ -102,7 +102,7 @@ def run_paper_trading():
         print(f"\n✅ Configuration Set:")
         print(f"  💰 Initial Balance: ${initial_balance:.2f}")
         print(f"  📊 Max Trades: {max_trades} (safety limit)")
-        print(f"  ⏱️  Check Interval: {check_interval} seconds (fixed - optimal speed)")
+        print(f"  ⏱️  Check Interval: {check_interval} seconds (ULTRA-FAST REACTION MODE)")
         print(f"  🎯 Strategy: Auto-Detection (Standard → Low/High Volatility)")
         print(f"  🐋 Whale Analytics: Enabled (BlockCypher integration)")
         print(f"  🔒 Mode: Paper Trading (no real money)")

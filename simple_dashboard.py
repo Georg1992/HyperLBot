@@ -183,6 +183,44 @@ class SimpleBotDashboard:
                 "total_pnl": 0.0,
                 "current_balance": 1000.0
             }
+    
+    def get_latest_predictions(self):
+        """Get latest predictions from analysis logs"""
+        try:
+            analysis_dir = os.path.join(self.log_dir, "analysis")
+            
+            if not os.path.exists(analysis_dir):
+                return []
+            
+            analysis_files = [f for f in os.listdir(analysis_dir) if f.endswith('.json')]
+            if not analysis_files:
+                return []
+            
+            latest_analysis = max(analysis_files)
+            analysis_path = os.path.join(analysis_dir, latest_analysis)
+            
+            with open(analysis_path, 'r') as f:
+                analysis_data = json.load(f)
+                if analysis_data and len(analysis_data) > 0:
+                    # Find the latest entry with predictions
+                    latest = None
+                    for entry in reversed(analysis_data):
+                        if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("predictions"):
+                            latest = entry
+                            break
+                    
+                    if latest and latest.get("predictions"):
+                        predictions = latest.get("predictions", {})
+                        if predictions.get("has_prediction") and predictions.get("all_predictions"):
+                            return predictions.get("all_predictions", [])
+                        elif predictions.get("has_prediction") and predictions.get("best_prediction"):
+                            return [predictions.get("best_prediction")]
+            
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error reading predictions: {e}")
+            return []
 
 # Global dashboard instance
 dashboard = SimpleBotDashboard()
@@ -213,12 +251,14 @@ def get_status():
         market_status = dashboard.get_market_status()
         latest_logs = dashboard.get_latest_logs()
         trade_summary = dashboard.get_trade_summary()
+        latest_predictions = dashboard.get_latest_predictions()
         
         return jsonify({
             "session": session_data,
             "market": market_status,
             "logs": latest_logs,
             "summary": trade_summary,
+            "predictions": latest_predictions,
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
@@ -329,6 +369,76 @@ def create_template():
         .trend-down { color: #f44336; }
         .trend-neutral { color: #ff9800; }
         .warning { color: #ff9800; font-weight: bold; }
+        
+        /* Predictions Panel Styles */
+        .predictions-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .prediction-card {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 15px;
+            border-left: 4px solid #4CAF50;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .prediction-buy {
+            border-left-color: #4CAF50;
+        }
+        .prediction-sell {
+            border-left-color: #f44336;
+        }
+        .high-confidence {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+            box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+        }
+        .medium-confidence {
+            background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+            box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
+        }
+        .low-confidence {
+            background: linear-gradient(135deg, #1a1a1a 0%, #262626 100%);
+            box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
+        }
+        .prediction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #333;
+        }
+        .prediction-type {
+            font-weight: bold;
+            color: #4CAF50;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        .prediction-side {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 10px;
+            text-transform: uppercase;
+        }
+        .prediction-buy .prediction-side {
+            background: #4CAF50;
+            color: white;
+        }
+        .prediction-sell .prediction-side {
+            background: #f44336;
+            color: white;
+        }
+        .prediction-details p {
+            margin: 5px 0;
+            line-height: 1.4;
+        }
+        .prediction-details strong {
+            color: #4CAF50;
+        }
     </style>
 </head>
 <body>
@@ -336,7 +446,8 @@ def create_template():
         <div class="header">
             <h1>🤖 Yahoo + Hyperliquid Trading Bot Dashboard</h1>
             <p>Real-time trading bot monitoring (Hyperliquid Price + Yahoo Analysis)</p>
-            <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+                         <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+             <div id="update-indicator" style="margin-top: 10px; font-size: 12px; color: #4CAF50;">🔄 Auto-updating every 1 second</div>
         </div>
         
         <div class="grid">
@@ -363,6 +474,13 @@ def create_template():
         </div>
         
         <div class="card">
+            <h3>🎯 Live Trading Predictions</h3>
+            <div id="predictions-panel">
+                <p>Loading predictions...</p>
+            </div>
+        </div>
+        
+        <div class="card">
             <h3>📝 Latest Activity</h3>
             <div id="latest-logs">
                 <p>Loading...</p>
@@ -372,6 +490,13 @@ def create_template():
 
     <script>
         function refreshData() {
+            // Show updating indicator
+            const indicator = document.getElementById('update-indicator');
+            if (indicator) {
+                indicator.innerHTML = '⏳ Updating...';
+                indicator.style.color = '#ff9800';
+            }
+            
             fetch('/api/status')
                 .then(response => response.json())
                 .then(data => {
@@ -383,9 +508,21 @@ def create_template():
                     updateMarketStatus(data.market);
                     updateTradingSummary(data.summary);
                     updateLatestLogs(data.logs);
+                    updatePredictionsPanel(data.predictions);
+                    
+                    // Show last update time
+                    if (indicator) {
+                        const now = new Date().toLocaleTimeString();
+                        indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 1s)`;
+                        indicator.style.color = '#4CAF50';
+                    }
                 })
                 .catch(error => {
                     console.error('Error fetching data:', error);
+                    if (indicator) {
+                        indicator.innerHTML = '❌ Update failed';
+                        indicator.style.color = '#f44336';
+                    }
                 });
         }
         
@@ -460,8 +597,43 @@ def create_template():
             }
         }
         
-        // Auto-refresh every 10 seconds
-        setInterval(refreshData, 10000);
+        function updatePredictionsPanel(predictions) {
+            const div = document.getElementById('predictions-panel');
+            if (predictions && predictions.length > 0) {
+                let html = '<div class="predictions-container">';
+                
+                predictions.forEach((pred, index) => {
+                    const sideClass = pred.side === 'BUY' ? 'prediction-buy' : 'prediction-sell';
+                    const confidenceClass = pred.confidence > 0.7 ? 'high-confidence' : 
+                                          pred.confidence > 0.5 ? 'medium-confidence' : 'low-confidence';
+                    
+                    html += `
+                        <div class="prediction-card ${sideClass} ${confidenceClass}">
+                            <div class="prediction-header">
+                                <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
+                                <span class="prediction-side">${pred.side}</span>
+                            </div>
+                            <div class="prediction-details">
+                                <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
+                                <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
+                                <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
+                                <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
+                                ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
+                                ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += '</div>';
+                div.innerHTML = html;
+            } else {
+                div.innerHTML = '<p>No active predictions</p>';
+            }
+        }
+        
+        // Auto-refresh every 1 second for ultra-fast real-time updates
+        setInterval(refreshData, 1000);
         
         // Initial load
         refreshData();
@@ -484,6 +656,6 @@ if __name__ == '__main__':
     
     logger.info("🚀 Starting Simple HyperLBot Dashboard...")
     logger.info("📊 Dashboard will be available at: http://localhost:5000")
-    logger.info("🔄 Auto-refreshing every 10 seconds")
+    logger.info("🔄 Auto-refreshing every 1 second for ultra-fast real-time updates")
     
     app.run(host='0.0.0.0', port=5001, debug=False)

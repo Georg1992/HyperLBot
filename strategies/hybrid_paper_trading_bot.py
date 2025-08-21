@@ -84,9 +84,9 @@ class YahooHyperliquidPaperTradingBot:
         self.trade_manager.get_open_positions = self.get_open_positions
         
         # Enhanced analysis frequency
-        self.price_update_interval = 5  # Update price every 5 seconds
+        self.price_update_interval = 2  # Update price every 2 seconds for ultra-fast reaction
         self.market_analysis_interval = 10  # Market analysis every 10 seconds
-        self.signal_check_interval = 30  # Check for signals every 30 seconds
+        self.signal_check_interval = 5  # Check for signals every 5 seconds for faster reaction
         self.candle_update_interval = 30   # Update candles every 30 seconds for more frequent dashboard updates
         self.hourly_analysis_interval = 3600  # Hourly analysis every hour
         
@@ -2099,7 +2099,7 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"   Reason: {exit_reason}")
         logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
     
-    def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 30):
+    def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
         """Run the Hyperliquid paper trading bot"""
         if not self.connected:
             logger.error("❌ Not connected to APIs")
@@ -2119,10 +2119,10 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"🤖 Starting Yahoo + Hyperliquid Paper Trading Bot")
         logger.info(f"   Initial Balance: ${self.initial_balance:.2f}")
         logger.info(f"   Max Trades: {max_trades}")
-        logger.info(f"   Check Interval: {check_interval} seconds")
+        logger.info(f"   Check Interval: {check_interval} seconds (FAST REACTION MODE)")
         logger.info(f"   Max Leverage: {self.leverage_settings['max_leverage']}x")
         logger.info(f"   Data Sources: Yahoo Finance (Historical) + Hyperliquid (Real-time Price)")
-        logger.info(f"   Analysis Frequency: Price every {self.price_update_interval}s, Signals every {self.signal_check_interval}s")
+        logger.info(f"   Analysis Frequency: Price every {self.price_update_interval}s, Signals every {self.signal_check_interval}s (ULTRA-FAST)")
         logger.info(f"   Strategy: Auto-Detection (Standard/Low/High Volatility)")
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
         logger.info(f"   Whale Analytics: {'Enabled' if self.whale_integration.is_available() else 'Disabled'}")
@@ -2304,7 +2304,7 @@ def main():
     # Parameters: max_trades, check_interval_seconds
     bot.run_yahoo_hyperliquid_paper_trading(
         max_trades=5,      # Place 5 trades maximum
-        check_interval=30  # Check every 30 seconds
+        check_interval=5  # Check every 5 seconds for ultra-fast reaction
     )
 
 if __name__ == "__main__":

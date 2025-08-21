@@ -83,34 +83,39 @@ class PredictionEngine:
                 if recent_prices[-1] > recent_prices[0]:
                     signal = {
                         "type": "FAST_BREAKOUT",
-                        "entry_price": current_price * 1.0002,  # Slightly above current
+                        "entry_price": current_price * 0.995,  # Enter well below current price for BUY
                         "side": "BUY",
                         "confidence": min(0.9, 0.6 + (price_acceleration * 50)),
                         "timeframe": 5,  # Very short timeframe
-                        "reason": f"Fast upward breakout detected (acceleration: {price_acceleration:.3f})",
+                        "reason": f"Fast upward breakout detected (acceleration: {price_acceleration:.3f}) - enter below current",
                         "reactive_factor": "price_acceleration"
                     }
                 else:
                     signal = {
                         "type": "FAST_BREAKOUT",
-                        "entry_price": current_price * 0.9998,  # Slightly below current
+                        "entry_price": current_price * 1.005,  # Enter well above current price for SELL
                         "side": "SELL",
                         "confidence": min(0.9, 0.6 + (price_acceleration * 50)),
                         "timeframe": 5,
-                        "reason": f"Fast downward breakout detected (acceleration: {price_acceleration:.3f})",
+                        "reason": f"Fast downward breakout detected (acceleration: {price_acceleration:.3f}) - enter above current",
                         "reactive_factor": "price_acceleration"
                     }
                 reactive_signals.append(signal)
             
             # 2. MOMENTUM SURGE DETECTION
             if momentum_surge["detected"]:
+                if momentum_surge["direction"] == "UP":
+                    entry_price = current_price * 0.995  # Enter well below current for BUY
+                else:
+                    entry_price = current_price * 1.005  # Enter well above current for SELL
+                    
                 signal = {
                     "type": "MOMENTUM_SURGE",
-                    "entry_price": current_price * (1.0001 if momentum_surge["direction"] == "UP" else 0.9999),
+                    "entry_price": entry_price,
                     "side": "BUY" if momentum_surge["direction"] == "UP" else "SELL",
                     "confidence": min(0.85, 0.5 + momentum_surge["strength"]),
                     "timeframe": 8,
-                    "reason": f"Momentum surge detected ({momentum_surge['direction']}, strength: {momentum_surge['strength']:.2f})",
+                    "reason": f"Momentum surge detected ({momentum_surge['direction']}, strength: {momentum_surge['strength']:.2f}) - enter at better price",
                     "reactive_factor": "momentum_surge"
                 }
                 reactive_signals.append(signal)
@@ -147,19 +152,33 @@ class PredictionEngine:
             # 4. VOLUME SPIKE DETECTION
             if volume_spike["detected"]:
                 # Volume spike often precedes significant moves
+                if volume_spike["direction"] == "UP":
+                    entry_price = current_price * 0.995  # Enter well below current for BUY
+                else:
+                    entry_price = current_price * 1.005  # Enter well above current for SELL
+                    
                 signal = {
                     "type": "PRICE_ACCELERATION",
-                    "entry_price": current_price * (1.0001 if volume_spike["direction"] == "UP" else 0.9999),
+                    "entry_price": entry_price,
                     "side": "BUY" if volume_spike["direction"] == "UP" else "SELL",
                     "confidence": min(0.75, 0.5 + volume_spike["strength"]),
                     "timeframe": 7,
-                    "reason": f"Volume spike detected ({volume_spike['direction']}, strength: {volume_spike['strength']:.2f})",
+                    "reason": f"Volume spike detected ({volume_spike['direction']}, strength: {volume_spike['strength']:.2f}) - enter at better price",
                     "reactive_factor": "volume_spike"
                 }
                 reactive_signals.append(signal)
             
             # Select best reactive signal
             if reactive_signals:
+                # Get support/resistance for validation
+                support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
+                support_5m = support_resistance_5m.get("support", current_price * 0.99)
+                resistance_5m = support_resistance_5m.get("resistance", current_price * 1.01)
+                
+                # Validate and fix entry prices for reactive signals
+                for signal in reactive_signals:
+                    signal = self._validate_entry_price(signal, current_price, support_5m, resistance_5m)
+                
                 best_signal = max(reactive_signals, key=lambda x: x["confidence"])
                 
                 return {
@@ -209,101 +228,184 @@ class PredictionEngine:
             # Build predictions based on market conditions
             predictions = []
             
-            # 1. BREAKOUT PREDICTIONS
+            # 1. BREAKOUT PREDICTIONS - Smart direction analysis
             if current_price > resistance_5m * 0.998:  # Near resistance
-                # Predict potential breakout above resistance
-                breakout_prediction = {
-                    "type": "BREAKOUT_ABOVE",
-                    "entry_price": resistance_5m * 1.0005,  # Slightly above resistance
-                    "side": "BUY",
-                    "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                    "reason": f"Potential breakout above ${resistance_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
-                    "prediction_mode": "TECHNICAL_ANALYSIS"
-                }
-                predictions.append(breakout_prediction)
+                # Analyze whether to expect breakout or reversion
+                breakout_probability = self._analyze_breakout_probability(trend_1h, trend_5m, volatility_5m, range_size_5m)
+                
+                if breakout_probability > 0.6:  # High probability of breakout
+                    # Predict potential breakout above resistance - wait for pullback to support
+                    breakout_prediction = {
+                        "type": "BREAKOUT_ABOVE",
+                        "entry_price": support_5m * 1.001,  # Enter near support level, below current price
+                        "side": "BUY",
+                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
+                        "reason": f"High probability breakout above ${resistance_5m:,.2f} - enter at support ${support_5m:,.2f}",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "breakout_probability": breakout_probability
+                    }
+                    predictions.append(breakout_prediction)
+                else:  # Higher probability of reversion
+                    # Predict potential reversion from resistance
+                    reversion_prediction = {
+                        "type": "REVERSION_FROM_RESISTANCE",
+                        "entry_price": current_price,  # Enter at resistance level for immediate reversal
+                        "side": "SELL",
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
+                        "reason": f"High probability reversion from ${resistance_5m:,.2f} - enter at resistance",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "breakout_probability": breakout_probability
+                    }
+                    predictions.append(reversion_prediction)
             
             elif current_price < support_5m * 1.002:  # Near support
-                # Predict potential breakout below support
-                breakout_prediction = {
-                    "type": "BREAKOUT_BELOW",
-                    "entry_price": support_5m * 0.9995,  # Slightly below support
-                    "side": "SELL",
-                    "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                    "reason": f"Potential breakout below ${support_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
-                    "prediction_mode": "TECHNICAL_ANALYSIS"
-                }
-                predictions.append(breakout_prediction)
+                # Analyze whether to expect breakout or reversion
+                breakdown_probability = self._analyze_breakdown_probability(trend_1h, trend_5m, volatility_5m, range_size_5m)
+                
+                if breakdown_probability > 0.6:  # High probability of breakdown
+                    # Predict potential breakout below support - wait for bounce to resistance
+                    breakout_prediction = {
+                        "type": "BREAKOUT_BELOW",
+                        "entry_price": resistance_5m * 0.999,  # Enter near resistance level, above current price
+                        "side": "SELL",
+                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
+                        "reason": f"High probability breakdown below ${support_5m:,.2f} - enter at resistance ${resistance_5m:,.2f}",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "breakdown_probability": breakdown_probability
+                    }
+                    predictions.append(breakout_prediction)
+                else:  # Higher probability of bounce
+                    # Predict potential reversion from support
+                    reversion_prediction = {
+                        "type": "REVERSION_FROM_SUPPORT",
+                        "entry_price": support_5m * 1.0005,  # Slightly above support
+                        "side": "BUY",
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
+                        "reason": f"High probability bounce from ${support_5m:,.2f} - enter at support",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "breakdown_probability": breakdown_probability
+                    }
+                    predictions.append(reversion_prediction)
             
-            # 2. REVERSION PREDICTIONS
-            if current_price > resistance_5m * 0.999:  # Very near resistance
-                # Predict potential reversion from resistance
-                reversion_prediction = {
-                    "type": "REVERSION_FROM_RESISTANCE",
-                    "entry_price": resistance_5m * 0.9995,  # Slightly below resistance
-                    "side": "SELL",
-                    "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                    "reason": f"Potential reversion from ${resistance_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
-                    "prediction_mode": "TECHNICAL_ANALYSIS"
-                }
-                predictions.append(reversion_prediction)
-            
-            elif current_price < support_5m * 1.001:  # Very near support
-                # Predict potential reversion from support
-                reversion_prediction = {
-                    "type": "REVERSION_FROM_SUPPORT",
-                    "entry_price": support_5m * 1.0005,  # Slightly above support
-                    "side": "BUY",
-                    "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                    "reason": f"Potential reversion from ${support_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
-                    "prediction_mode": "TECHNICAL_ANALYSIS"
-                }
-                predictions.append(reversion_prediction)
-            
-            # 3. MOMENTUM PREDICTIONS
+            # 2. MOMENTUM PREDICTIONS - Smart direction analysis
             if trend_1h.get("trend") == "UP" and trend_5m.get("trend") == "UP":
-                # Strong upward momentum
-                momentum_prediction = {
-                    "type": "MOMENTUM_UP",
-                    "entry_price": current_price * 1.0005,  # Slightly above current
-                    "side": "BUY",
-                    "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_momentum_timeframe(volatility_5m),
-                    "reason": "Strong upward momentum",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
-                    "prediction_mode": "TECHNICAL_ANALYSIS"
-                }
-                predictions.append(momentum_prediction)
+                # Strong upward momentum - analyze if it's sustainable
+                momentum_strength = self._analyze_momentum_strength(trend_1h, trend_5m, volatility_5m)
+                
+                if momentum_strength > 0.7:  # Strong momentum
+                    momentum_prediction = {
+                        "type": "MOMENTUM_UP",
+                        "entry_price": support_5m * 1.001,  # Enter at support level, well below current price
+                        "side": "BUY",
+                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_momentum_timeframe(volatility_5m),
+                        "reason": f"Strong upward momentum (strength: {momentum_strength:.2f}) - enter at support ${support_5m:,.2f}",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "momentum_strength": momentum_strength
+                    }
+                    predictions.append(momentum_prediction)
+                else:  # Weak momentum - might reverse
+                    momentum_prediction = {
+                        "type": "MOMENTUM_REVERSION",
+                        "entry_price": current_price,  # Enter at current price for reversal
+                        "side": "SELL",
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
+                        "reason": f"Weak upward momentum (strength: {momentum_strength:.2f}) - expect reversal",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "momentum_strength": momentum_strength
+                    }
+                    predictions.append(momentum_prediction)
             
             elif trend_1h.get("trend") == "DOWN" and trend_5m.get("trend") == "DOWN":
-                # Strong downward momentum
-                momentum_prediction = {
-                    "type": "MOMENTUM_DOWN",
-                    "entry_price": current_price * 0.9995,  # Slightly below current
-                    "side": "SELL",
-                    "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_momentum_timeframe(volatility_5m),
-                    "reason": "Strong downward momentum",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
-                    "prediction_mode": "TECHNICAL_ANALYSIS"
-                }
-                predictions.append(momentum_prediction)
+                # Strong downward momentum - analyze if it's sustainable
+                momentum_strength = self._analyze_momentum_strength(trend_1h, trend_5m, volatility_5m)
+                
+                if momentum_strength > 0.7:  # Strong momentum
+                    momentum_prediction = {
+                        "type": "MOMENTUM_DOWN",
+                        "entry_price": resistance_5m * 0.999,  # Enter at resistance level, well above current price
+                        "side": "SELL",
+                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_momentum_timeframe(volatility_5m),
+                        "reason": f"Strong downward momentum (strength: {momentum_strength:.2f}) - enter at resistance ${resistance_5m:,.2f}",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "momentum_strength": momentum_strength
+                    }
+                    predictions.append(momentum_prediction)
+                else:  # Weak momentum - might reverse
+                    momentum_prediction = {
+                        "type": "MOMENTUM_REVERSION",
+                        "entry_price": current_price,  # Enter at current price for reversal
+                        "side": "BUY",
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
+                        "reason": f"Weak downward momentum (strength: {momentum_strength:.2f}) - expect reversal",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "momentum_strength": momentum_strength
+                    }
+                    predictions.append(momentum_prediction)
+            
+            # 3. RANGE-BOUND ANALYSIS - When price is in the middle of range
+            if support_5m < current_price < resistance_5m and range_size_5m > current_price * 0.01:
+                # Price is in the middle of a significant range - analyze direction
+                range_direction = self._analyze_range_direction(trend_1h, trend_5m, volatility_5m, current_price, support_5m, resistance_5m)
+                
+                if range_direction["direction"] == "UP":
+                    range_prediction = {
+                        "type": "RANGE_BREAKOUT_UP",
+                        "entry_price": support_5m * 1.001,  # Enter at support level, well below current price
+                        "side": "BUY",
+                        "confidence": range_direction["confidence"],
+                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
+                        "reason": f"Range analysis suggests upward move (confidence: {range_direction['confidence']:.2f}) - enter at support ${support_5m:,.2f}",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "range_position": (current_price - support_5m) / (resistance_5m - support_5m)
+                    }
+                    predictions.append(range_prediction)
+                else:
+                    range_prediction = {
+                        "type": "RANGE_BREAKOUT_DOWN",
+                        "entry_price": resistance_5m * 0.999,  # Enter at resistance level, well above current price
+                        "side": "SELL",
+                        "confidence": range_direction["confidence"],
+                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
+                        "reason": f"Range analysis suggests downward move (confidence: {range_direction['confidence']:.2f}) - enter at resistance ${resistance_5m:,.2f}",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "range_position": (current_price - support_5m) / (resistance_5m - support_5m)
+                    }
+                    predictions.append(range_prediction)
             
             # Select best prediction based on confidence
             if predictions:
+                # Validate and fix entry prices to ensure they're logical
+                for prediction in predictions:
+                    prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m)
+                
                 best_prediction = max(predictions, key=lambda x: x["confidence"])
                 
                 return {
@@ -323,6 +425,34 @@ class PredictionEngine:
         except Exception as e:
             logger.error(f"Error building predictive prediction: {e}")
             return {"has_prediction": False, "reason": f"Predictive prediction error: {str(e)}"}
+    
+    def _validate_entry_price(self, prediction: Dict, current_price: float, support: float, resistance: float) -> Dict:
+        """Validate and fix entry prices to ensure they're logical"""
+        try:
+            entry_price = prediction.get("entry_price", 0)
+            side = prediction.get("side", "UNKNOWN")
+            
+            # For BUY orders: entry price should be below current price
+            if side == "BUY" and entry_price >= current_price:
+                # Set entry price to support level or 0.5% below current
+                new_entry = min(support * 1.001, current_price * 0.995)
+                prediction["entry_price"] = new_entry
+                prediction["reason"] += f" (adjusted entry to ${new_entry:,.2f})"
+                logger.warning(f"Fixed BUY entry price from ${entry_price:,.2f} to ${new_entry:,.2f} (current: ${current_price:,.2f})")
+            
+            # For SELL orders: entry price should be above current price
+            elif side == "SELL" and entry_price <= current_price:
+                # Set entry price to resistance level or 0.5% above current
+                new_entry = max(resistance * 0.999, current_price * 1.005)
+                prediction["entry_price"] = new_entry
+                prediction["reason"] += f" (adjusted entry to ${new_entry:,.2f})"
+                logger.warning(f"Fixed SELL entry price from ${entry_price:,.2f} to ${new_entry:,.2f} (current: ${current_price:,.2f})")
+            
+            return prediction
+            
+        except Exception as e:
+            logger.error(f"Error validating entry price: {e}")
+            return prediction
     
     def _calculate_price_acceleration(self, candles_5m: List) -> float:
         """Calculate price acceleration (rate of change of price changes)"""
@@ -566,6 +696,138 @@ class PredictionEngine:
             base_timeframe -= 2
         
         return max(5, min(30, base_timeframe))  # Between 5-30 minutes
+    
+    def _analyze_breakout_probability(self, trend_1h: Dict, trend_5m: Dict, volatility: float, range_size: float) -> float:
+        """Analyze probability of breakout vs reversion from resistance"""
+        base_probability = 0.5
+        
+        # Trend alignment - strong trends favor breakouts
+        if trend_1h.get("trend") == "UP" and trend_5m.get("trend") == "UP":
+            base_probability += 0.2
+        elif trend_1h.get("trend") == "DOWN" and trend_5m.get("trend") == "DOWN":
+            base_probability -= 0.2
+        
+        # Trend strength
+        trend_strength_1h = trend_1h.get("strength", 0.5)
+        trend_strength_5m = trend_5m.get("strength", 0.5)
+        avg_strength = (trend_strength_1h + trend_strength_5m) / 2
+        base_probability += (avg_strength - 0.5) * 0.3
+        
+        # Volatility - moderate volatility favors breakouts
+        if 0.002 < volatility < 0.005:
+            base_probability += 0.1
+        elif volatility > 0.008:
+            base_probability -= 0.1
+        
+        # Range size - larger ranges favor breakouts
+        range_percentage = range_size / 114000  # Assuming current BTC price
+        if range_percentage > 0.015:
+            base_probability += 0.1
+        elif range_percentage < 0.005:
+            base_probability -= 0.1
+        
+        return min(0.95, max(0.05, base_probability))
+    
+    def _analyze_breakdown_probability(self, trend_1h: Dict, trend_5m: Dict, volatility: float, range_size: float) -> float:
+        """Analyze probability of breakdown vs bounce from support"""
+        base_probability = 0.5
+        
+        # Trend alignment - strong trends favor breakdowns
+        if trend_1h.get("trend") == "DOWN" and trend_5m.get("trend") == "DOWN":
+            base_probability += 0.2
+        elif trend_1h.get("trend") == "UP" and trend_5m.get("trend") == "UP":
+            base_probability -= 0.2
+        
+        # Trend strength
+        trend_strength_1h = trend_1h.get("strength", 0.5)
+        trend_strength_5m = trend_5m.get("strength", 0.5)
+        avg_strength = (trend_strength_1h + trend_strength_5m) / 2
+        base_probability += (avg_strength - 0.5) * 0.3
+        
+        # Volatility - moderate volatility favors breakdowns
+        if 0.002 < volatility < 0.005:
+            base_probability += 0.1
+        elif volatility > 0.008:
+            base_probability -= 0.1
+        
+        # Range size - larger ranges favor breakdowns
+        range_percentage = range_size / 114000  # Assuming current BTC price
+        if range_percentage > 0.015:
+            base_probability += 0.1
+        elif range_percentage < 0.005:
+            base_probability -= 0.1
+        
+        return min(0.95, max(0.05, base_probability))
+    
+    def _analyze_momentum_strength(self, trend_1h: Dict, trend_5m: Dict, volatility: float) -> float:
+        """Analyze the strength and sustainability of momentum"""
+        base_strength = 0.5
+        
+        # Trend alignment strength
+        if trend_1h.get("trend") == trend_5m.get("trend"):
+            base_strength += 0.2
+        
+        # Individual trend strengths
+        trend_strength_1h = trend_1h.get("strength", 0.5)
+        trend_strength_5m = trend_5m.get("strength", 0.5)
+        avg_strength = (trend_strength_1h + trend_strength_5m) / 2
+        base_strength += avg_strength * 0.2
+        
+        # Volatility adjustment - moderate volatility is good for momentum
+        if 0.002 < volatility < 0.006:
+            base_strength += 0.1
+        elif volatility > 0.008:
+            base_strength -= 0.1
+        
+        return min(1.0, max(0.0, base_strength))
+    
+    def _analyze_range_direction(self, trend_1h: Dict, trend_5m: Dict, volatility: float, current_price: float, support: float, resistance: float) -> Dict[str, Any]:
+        """Analyze which direction price is likely to break from a range"""
+        # Calculate position within range
+        range_size = resistance - support
+        if range_size <= 0:
+            return {"direction": "NEUTRAL", "confidence": 0.5}
+        
+        position_in_range = (current_price - support) / range_size
+        
+        # Base confidence starts at 0.5
+        confidence = 0.5
+        
+        # Trend analysis
+        if trend_1h.get("trend") == "UP" and trend_5m.get("trend") == "UP":
+            confidence += 0.2
+            direction = "UP"
+        elif trend_1h.get("trend") == "DOWN" and trend_5m.get("trend") == "DOWN":
+            confidence += 0.2
+            direction = "DOWN"
+        else:
+            # Mixed trends - use position in range
+            if position_in_range > 0.6:  # Closer to resistance
+                direction = "DOWN"
+                confidence += 0.1
+            elif position_in_range < 0.4:  # Closer to support
+                direction = "UP"
+                confidence += 0.1
+            else:
+                direction = "NEUTRAL"
+        
+        # Position in range adjustment
+        if direction == "UP" and position_in_range < 0.3:
+            confidence += 0.1  # Near support, good for upward break
+        elif direction == "DOWN" and position_in_range > 0.7:
+            confidence += 0.1  # Near resistance, good for downward break
+        
+        # Volatility adjustment
+        if 0.002 < volatility < 0.006:
+            confidence += 0.05  # Moderate volatility is good for breakouts
+        elif volatility > 0.008:
+            confidence -= 0.05  # High volatility can be unpredictable
+        
+        return {
+            "direction": direction,
+            "confidence": min(0.95, max(0.1, confidence)),
+            "position_in_range": position_in_range
+        }
     
     def is_prediction_valid(self, prediction: Dict[str, Any], current_price: float) -> bool:
         """Check if prediction is still valid given current price"""
