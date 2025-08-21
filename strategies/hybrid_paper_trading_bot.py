@@ -83,12 +83,19 @@ class YahooHyperliquidPaperTradingBot:
         # Override trade manager's get_open_positions method
         self.trade_manager.get_open_positions = self.get_open_positions
         
-        # Enhanced analysis frequency
+        # Enhanced analysis frequency - Optimized for rolling candle updates
         self.price_update_interval = 2  # Update price every 2 seconds for ultra-fast reaction
         self.market_analysis_interval = 10  # Market analysis every 10 seconds
         self.signal_check_interval = 5  # Check for signals every 5 seconds for faster reaction
-        self.candle_update_interval = 30   # Update candles every 30 seconds for more frequent dashboard updates
-        self.hourly_analysis_interval = 3600  # Hourly analysis every hour
+        self.candle_update_interval = 300   # Update 5m candles every 5 minutes (300 seconds) for rolling analysis
+        self.hourly_analysis_interval = 3600  # Update 1h candles every hour
+        
+        # Enhanced candle management
+        self.candles_5m_buffer = []  # Rolling buffer of 24 most recent 5m candles
+        self.candles_1h_buffer = []  # Rolling buffer of 24 most recent 1h candles
+        self.last_candle_5m_time = 0
+        self.last_candle_1h_time = 0
+        self.initial_analysis_complete = False
         
         self.last_price_update = 0
         self.last_market_analysis = 0
