@@ -105,16 +105,47 @@ class SimpleBotDashboard:
                         price_diff_amount = base_entry.get("price_difference_amount", 0.0)
                         data_source = base_entry.get("data_source", "Unknown")
                         
-                        # Extract RSI and volume data from latest prediction if available
+                        # Get live RSI and volume data directly from Hyperliquid API
                         rsi_data = None
                         volume_data = None
                         orderbook_imbalance = None
                         
-                        if latest_prediction and latest_prediction.get("best_prediction"):
-                            best_pred = latest_prediction["best_prediction"]
-                            rsi_data = best_pred.get("rsi_context")
-                            volume_data = best_pred.get("orderbook_depth")
-                            orderbook_imbalance = best_pred.get("orderbook_imbalance")
+                        try:
+                            # Import and get live data
+                            from core.config import TradingConfig
+                            from core.hyperliquid_api import HyperliquidAPI
+                            
+                            config = TradingConfig()
+                            api = HyperliquidAPI(config.WALLET_ADDRESS, config.WALLET_PRIVATE_KEY)
+                            
+                            # Get current market indicators
+                            indicators = api.get_current_market_indicators("BTC")
+                            if indicators and "liquidity_metrics" in indicators:
+                                liquidity = indicators["liquidity_metrics"]
+                                volume_data = liquidity.get("total_depth")
+                                orderbook_imbalance = liquidity.get("depth_imbalance")
+                            
+                            # Get proper RSI from Yahoo data
+                            if base_entry.get("candles_5m") or latest_prediction:
+                                # Try to get candles from current entry or reconstruct
+                                try:
+                                    from data.yahoo_data_fetcher import YahooDataFetcher
+                                    fetcher = YahooDataFetcher()
+                                    candles = fetcher.get_klines("BTC", "5m", 20)
+                                    if candles and len(candles) >= 15:
+                                        rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=14)
+                                        rsi_data = rsi_result.get("rsi")
+                                except Exception as e:
+                                    logger.warning(f"Could not get live RSI: {e}")
+                                    
+                        except Exception as e:
+                            logger.warning(f"Could not get live market data: {e}")
+                            # Fallback to log data
+                            if latest_prediction and latest_prediction.get("best_prediction"):
+                                best_pred = latest_prediction["best_prediction"]
+                                rsi_data = best_pred.get("rsi_context")
+                                volume_data = best_pred.get("orderbook_depth")
+                                orderbook_imbalance = best_pred.get("orderbook_imbalance")
                         
                         logger.info(f"Market data: ${current_price} - {trend} - {market_condition} - RSI: {rsi_data} - Volume: {volume_data}")
                         
