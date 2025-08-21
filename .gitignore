@@ -40,22 +40,25 @@ venv.bak/
 *.swo
 *~
 
-# Logs (temporarily allowing for analysis)
-#*.log
-#trading_logs/
-#logs/
-#*.log.*
+# Logs and trading data
+*.log
+*.log.*
+logs/
+trading_logs/
+hybrid_paper_trading_logs/
+yahoo_hyperliquid_paper_trading_logs/
 
-# Trading data (temporarily allowing session logs for analysis)
+# Trading data and session logs
 *.csv
-#*.json
-#trades/
-#market_data/
-#signals/
-#analysis/
-#performance/
-#errors/
 csv_exports/
+trades/
+market_data/
+signals/
+analysis/
+performance/
+errors/
+session_metadata_*.json
+analysis_*.json
 
 # OS
 .DS_Store
