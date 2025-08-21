@@ -1712,10 +1712,20 @@ class HybridPaperTradingBot:
                 partial_close_decision = self.trade_manager.should_partial_close(position, hyperliquid_price)
                 if partial_close_decision["should_partial_close"]:
                     logger.info(f"💰 Partial close opportunity: {partial_close_decision['reason']}")
-                    # Implement partial close logic here
-                    # For now, we'll just log it
+                    # Implement partial close logic
+                    self._execute_partial_close(position, partial_close_decision, hyperliquid_price)
+                    continue  # Skip other checks after partial close
             
-            # 4. CHECK FOR EMERGENCY CLOSE
+            # 4. CHECK FOR SCALING OPPORTUNITIES
+            if current_analysis:
+                scale_decision = self.trade_manager.should_scale_in_position(position, hyperliquid_price, current_analysis)
+                if scale_decision["should_scale"]:
+                    logger.info(f"📈 Scaling opportunity: {scale_decision['reason']}")
+                    # Implement scaling logic
+                    self._execute_scale_in(position, scale_decision, hyperliquid_price)
+                    continue  # Skip other checks after scaling
+            
+            # 5. CHECK FOR EMERGENCY CLOSE
             if current_analysis:
                 emergency_decision = self.trade_manager.should_emergency_close(position, hyperliquid_price, current_analysis)
                 if emergency_decision["should_emergency_close"]:
@@ -1728,8 +1738,24 @@ class HybridPaperTradingBot:
                 stop_adjustment = self.trade_manager.calculate_dynamic_stops(position, hyperliquid_price, current_analysis)
                 if stop_adjustment["should_adjust"]:
                     positions_to_adjust.append((position, stop_adjustment))
+                
+                # Enhanced market condition tracking
+                original_analysis = position.get("original_market_analysis", {})
+                if original_analysis:
+                    condition_change = self.trade_manager._analyze_condition_change(original_analysis, current_analysis)
+                    if condition_change["favorable"]:
+                        logger.info(f"📈 Market conditions improved for {position['trade_id']}: {condition_change['reason']}")
+                    elif not condition_change["favorable"] and condition_change["confidence"] > 0.7:
+                        logger.warning(f"📉 Market conditions deteriorated for {position['trade_id']}: {condition_change['reason']}")
             
-            # 6. CHECK FOR TIME-BASED EXIT (1 hour max)
+            # 6. CHECK POSITION HEAT
+            heat_analysis = self.trade_manager.calculate_position_heat(position, hyperliquid_price)
+            if heat_analysis["heat_level"] == "CRITICAL":
+                logger.warning(f"🔥 CRITICAL position heat: {heat_analysis['heat_pct']*100:.1f}% - {position['trade_id']}")
+            elif heat_analysis["heat_level"] == "HIGH":
+                logger.info(f"⚠️ HIGH position heat: {heat_analysis['heat_pct']*100:.1f}% - {position['trade_id']}")
+            
+            # 7. CHECK FOR TIME-BASED EXIT (1 hour max)
             if time.time() - position["entry_time"] > 3600:  # 1 hour
                 positions_to_close.append((position, "TIME_EXIT", hyperliquid_price))
                 continue
@@ -1745,6 +1771,146 @@ class HybridPaperTradingBot:
         # Close positions
         for position, exit_reason, exit_price in positions_to_close:
             self.close_paper_position(position, exit_reason, exit_price)
+    
+    def _execute_partial_close(self, position: Dict[str, Any], partial_close_decision: Dict[str, Any], current_price: float):
+        """Execute partial close of a position"""
+        try:
+            close_size = partial_close_decision["close_size"]
+            close_pct = partial_close_decision["close_pct"]
+            target_level = partial_close_decision["target_level"]
+            
+            # Calculate P&L for the closed portion
+            entry_price = position["entry_price"]
+            side = position["side"]
+            
+            if side == "BUY":
+                pnl_pct = (current_price - entry_price) / entry_price
+            else:
+                pnl_pct = (entry_price - current_price) / entry_price
+            
+            # Apply leverage
+            leverage = position["leverage"]
+            pnl_amount = close_size * entry_price * leverage * pnl_pct
+            
+            # Calculate fees
+            exit_fees = self.fee_manager.calculate_order_fees(close_size, current_price, "LIMIT")
+            
+            # Net P&L for partial close
+            net_pnl = pnl_amount - exit_fees["total_cost"]
+            
+            # Update balance
+            self.paper_balance += net_pnl
+            
+            # Update position size
+            position["size"] -= close_size
+            
+            # Record partial close
+            partial_close_record = {
+                "timestamp": time.time(),
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "close_size": close_size,
+                "close_pct": close_pct,
+                "close_price": current_price,
+                "target_level": target_level,
+                "pnl_pct": pnl_pct,
+                "pnl_amount": pnl_amount,
+                "net_pnl": net_pnl,
+                "fees": exit_fees
+            }
+            
+            position["partial_closes"].append(partial_close_record)
+            
+            # Log the partial close
+            logger.success(f"💰 Partial close executed: {target_level}")
+            logger.info(f"   Closed: {close_size} BTC ({close_pct*100:.0f}% of position)")
+            logger.info(f"   Price: ${current_price:,.2f}")
+            logger.info(f"   P&L: {pnl_pct*100:.2f}% (${net_pnl:.4f})")
+            logger.info(f"   Remaining size: {position['size']} BTC")
+            logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
+            
+            # Save updated positions
+            self._save_positions()
+            
+        except Exception as e:
+            logger.error(f"❌ Error executing partial close: {e}")
+            self.trading_logger.log_error({
+                "type": "partial_close_error",
+                "message": str(e),
+                "position_id": position.get("trade_id"),
+                "partial_close_decision": partial_close_decision
+            })
+    
+    def _execute_scale_in(self, position: Dict[str, Any], scale_decision: Dict[str, Any], current_price: float):
+        """Execute scaling into an existing position"""
+        try:
+            scale_size = scale_decision["scale_size"]
+            scale_price = scale_decision["scale_price"]
+            
+            # Check if we have enough balance for the scale-in
+            position_value = scale_size * scale_price
+            leverage = position["leverage"]
+            required_margin = position_value / leverage
+            
+            # Calculate fees
+            fees = self.fee_manager.calculate_order_fees(scale_size, scale_price, "LIMIT")
+            total_required = required_margin + fees["total_cost"]
+            
+            if total_required > self.paper_balance:
+                logger.warning(f"⚠️ Insufficient balance for scale-in: need ${total_required:.2f}, have ${self.paper_balance:.2f}")
+                return
+            
+            # Deduct fees from balance
+            self.paper_balance -= fees["total_cost"]
+            
+            # Update position with scaled-in size
+            original_size = position["size"]
+            position["size"] += scale_size
+            
+            # Calculate new average entry price
+            original_value = original_size * position["entry_price"]
+            scale_value = scale_size * scale_price
+            total_value = original_value + scale_value
+            new_avg_entry = total_value / position["size"]
+            
+            # Update position entry price to weighted average
+            position["entry_price"] = new_avg_entry
+            
+            # Record scale-in
+            scale_record = {
+                "timestamp": time.time(),
+                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "scale_size": scale_size,
+                "scale_price": scale_price,
+                "original_size": original_size,
+                "new_size": position["size"],
+                "original_entry": position["entry_price"],
+                "new_avg_entry": new_avg_entry,
+                "fees": fees
+            }
+            
+            if "scale_ins" not in position:
+                position["scale_ins"] = []
+            position["scale_ins"].append(scale_record)
+            
+            # Log the scale-in
+            logger.success(f"📈 Scale-in executed successfully")
+            logger.info(f"   Added: {scale_size} BTC at ${scale_price:,.2f}")
+            logger.info(f"   New total size: {position['size']} BTC")
+            logger.info(f"   New avg entry: ${new_avg_entry:,.2f}")
+            logger.info(f"   Fees: ${fees['total_cost']:.4f}")
+            logger.info(f"   Remaining balance: ${self.paper_balance:.2f}")
+            
+            # Save updated positions
+            self._save_positions()
+            
+        except Exception as e:
+            logger.error(f"❌ Error executing scale-in: {e}")
+            self.trading_logger.log_error({
+                "type": "scale_in_error",
+                "message": str(e),
+                "position_id": position.get("trade_id"),
+                "scale_decision": scale_decision
+            })
     
     def close_paper_position(self, position: Dict, exit_reason: str, exit_price: float):
         """Close a paper trading position"""
@@ -1912,10 +2078,21 @@ class HybridPaperTradingBot:
                             trades_placed += 1
                             logger.info(f"   Hybrid Paper Trade {trades_placed}/{max_trades} completed")
                             
-                            # Log portfolio risk after trade
-                            if self.open_positions:
-                                portfolio_risk = self.trade_manager.calculate_portfolio_risk(self.open_positions, hyperliquid_price)
-                                logger.info(f"📊 Portfolio Risk: {portfolio_risk['risk_level']} (Total Risk: {portfolio_risk['total_risk']*100:.1f}%)")
+                                                         # Log portfolio risk after trade
+                             if self.open_positions:
+                                 portfolio_risk = self.trade_manager.calculate_portfolio_risk(self.open_positions, hyperliquid_price)
+                                 logger.info(f"📊 Portfolio Risk: {portfolio_risk['risk_level']} (Total Risk: {portfolio_risk['total_risk']*100:.1f}%)")
+                                 
+                                 # Enhanced portfolio monitoring
+                                 if portfolio_risk['risk_level'] == 'HIGH':
+                                     logger.warning(f"🚨 HIGH PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
+                                     logger.warning(f"   Max Drawdown: ${portfolio_risk['max_drawdown']:.2f}")
+                                     logger.warning(f"   Correlation Risk: {portfolio_risk['correlation_risk']:.2f}")
+                                     logger.warning(f"   Concentration Risk: {portfolio_risk['concentration_risk']:.2f}")
+                                 elif portfolio_risk['risk_level'] == 'MEDIUM':
+                                     logger.info(f"⚠️ MEDIUM PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
+                                 else:
+                                     logger.info(f"✅ LOW PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
                         else:
                             logger.error("   Hybrid paper trade placement failed")
                     
