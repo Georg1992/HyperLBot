@@ -444,6 +444,89 @@ def create_template():
         .prediction-details strong {
             color: #4CAF50;
         }
+        
+        /* Market Indicators - RSI and Volume Display */
+        .market-indicator {
+            background: rgba(76, 175, 80, 0.1);
+            border-radius: 6px;
+            padding: 8px;
+            margin: 8px 0;
+            border-left: 3px solid #4CAF50;
+        }
+        
+        .rsi-indicator {
+            border-left-color: #2196F3;
+            background: rgba(33, 150, 243, 0.1);
+        }
+        
+        .volume-indicator {
+            border-left-color: #FF9800;
+            background: rgba(255, 152, 0, 0.1);
+        }
+        
+        /* RSI Status Colors */
+        .rsi-value.overbought {
+            color: #f44336;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .rsi-value.oversold {
+            color: #4CAF50;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .rsi-value.neutral {
+            color: #2196F3;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .rsi-status {
+            font-size: 11px;
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 3px;
+            margin-left: 5px;
+        }
+        
+        .rsi-status.overbought {
+            background: #f44336;
+            color: white;
+        }
+        
+        .rsi-status.oversold {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .rsi-status.neutral {
+            background: #2196F3;
+            color: white;
+        }
+        
+        /* Volume/Order Flow Colors */
+        .volume-value {
+            color: #FF9800;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .order-flow.bullish {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .order-flow.bearish {
+            color: #f44336;
+            font-weight: bold;
+        }
+        
+        .order-flow.neutral {
+            color: #2196F3;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -622,10 +705,23 @@ def create_template():
                                 <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
                                 <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
                                 <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
+                                
+                                <!-- RSI Data - Prominently Displayed -->
+                                ${pred.rsi_context ? `
+                                <div class="market-indicator rsi-indicator">
+                                    <p><strong>📊 RSI:</strong> <span class="rsi-value ${pred.rsi_context > 70 ? 'overbought' : pred.rsi_context < 30 ? 'oversold' : 'neutral'}">${pred.rsi_context.toFixed(1)}</span> 
+                                    ${pred.rsi_context > 70 ? '<span class="rsi-status overbought">🔴 OVERBOUGHT</span>' : pred.rsi_context < 30 ? '<span class="rsi-status oversold">🟢 OVERSOLD</span>' : '<span class="rsi-status neutral">⚪ NEUTRAL</span>'}
+                                    </p>
+                                </div>` : ''}
+                                
+                                <!-- Volume Data - Prominently Displayed -->
+                                ${pred.orderbook_depth ? `
+                                <div class="market-indicator volume-indicator">
+                                    <p><strong>📈 Volume:</strong> <span class="volume-value">${pred.orderbook_depth.toFixed(1)} BTC</span> depth</p>
+                                    ${pred.orderbook_imbalance ? `<p><strong>📊 Order Flow:</strong> <span class="order-flow ${pred.orderbook_imbalance > 0.1 ? 'bullish' : pred.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${(pred.orderbook_imbalance * 100).toFixed(1)}%</span> ${pred.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : pred.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}</p>` : ''}
+                                </div>` : ''}
+                                
                                 <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
-                                ${pred.rsi_context ? `<p><strong>RSI:</strong> ${pred.rsi_context.toFixed(1)} ${pred.rsi_context > 70 ? '(Overbought)' : pred.rsi_context < 30 ? '(Oversold)' : '(Neutral)'}</p>` : ''}
-                                ${pred.orderbook_depth ? `<p><strong>Liquidity:</strong> ${pred.orderbook_depth.toFixed(1)} BTC depth</p>` : ''}
-                                ${pred.orderbook_imbalance ? `<p><strong>Order Flow:</strong> ${(pred.orderbook_imbalance * 100).toFixed(1)}% ${pred.orderbook_imbalance > 0.1 ? 'Buy Pressure' : pred.orderbook_imbalance < -0.1 ? 'Sell Pressure' : 'Balanced'}</p>` : ''}
                                 <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
                                 ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
                                 ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
