@@ -929,28 +929,37 @@ class YahooHyperliquidPaperTradingBot:
                     "variability_threshold": 0.5
                 }
             
+            # Get real-time Hyperliquid price for accurate stop loss calculation
+            hyperliquid_price = self.get_hyperliquid_price()
+            if not hyperliquid_price:
+                return {
+                    "should_place_order": False,
+                    "reason": "Cannot get real-time Hyperliquid price for stop loss calculation",
+                    "variability_threshold": 0.5
+                }
+            
             # Analyze both BUY and SELL opportunities
             buy_opportunities = []
             sell_opportunities = []
             
             for prediction in predictions:
-                # Calculate realistic entry price based on current market price
+                # Calculate realistic entry price based on Hyperliquid market price
                 if prediction["side"] == "BUY":
-                    # For BUY: entry should be at or below current price
+                    # For BUY: entry should be at or below current Hyperliquid price
                     if prediction["type"] == "BREAKOUT_ABOVE":
-                        # Wait for breakout confirmation - entry at current price
-                        entry_price = current_price
+                        # Wait for breakout confirmation - entry at Hyperliquid price
+                        entry_price = hyperliquid_price
                     elif prediction["type"] == "REVERSION_FROM_SUPPORT":
-                        # Buy near support - entry at current price or slightly below
-                        entry_price = min(current_price, prediction["support"] * 1.001)
+                        # Buy near support - entry at Hyperliquid price or slightly below
+                        entry_price = min(hyperliquid_price, prediction["support"] * 1.001)
                     elif prediction["type"] == "MOMENTUM_UP":
-                        # Buy on momentum - entry at current price
-                        entry_price = current_price
+                        # Buy on momentum - entry at Hyperliquid price
+                        entry_price = hyperliquid_price
                     else:
-                        # Default: entry at current price
-                        entry_price = current_price
+                        # Default: entry at Hyperliquid price
+                        entry_price = hyperliquid_price
                     
-                    # Calculate realistic targets (not too far)
+                    # Calculate realistic targets using Hyperliquid price for accuracy
                     target_distance = min(0.002, self.strategy_config["profit_target"])  # Max 0.2% target
                     stop_distance = min(0.001, self.strategy_config["stop_loss"])  # Max 0.1% stop
                     
@@ -966,21 +975,21 @@ class YahooHyperliquidPaperTradingBot:
                     })
                     
                 else:  # SELL
-                    # For SELL: entry should be at or above current price
+                    # For SELL: entry should be at or above current Hyperliquid price
                     if prediction["type"] == "BREAKOUT_BELOW":
-                        # Wait for breakdown confirmation - entry at current price
-                        entry_price = current_price
+                        # Wait for breakdown confirmation - entry at Hyperliquid price
+                        entry_price = hyperliquid_price
                     elif prediction["type"] == "REVERSION_FROM_RESISTANCE":
-                        # Sell near resistance - entry at current price or slightly above
-                        entry_price = max(current_price, prediction["resistance"] * 0.999)
+                        # Sell near resistance - entry at Hyperliquid price or slightly above
+                        entry_price = max(hyperliquid_price, prediction["resistance"] * 0.999)
                     elif prediction["type"] == "MOMENTUM_DOWN":
-                        # Sell on momentum - entry at current price
-                        entry_price = current_price
+                        # Sell on momentum - entry at Hyperliquid price
+                        entry_price = hyperliquid_price
                     else:
-                        # Default: entry at current price
-                        entry_price = current_price
+                        # Default: entry at Hyperliquid price
+                        entry_price = hyperliquid_price
                     
-                    # Calculate realistic targets (not too far)
+                    # Calculate realistic targets using Hyperliquid price for accuracy
                     target_distance = min(0.002, self.strategy_config["profit_target"])  # Max 0.2% target
                     stop_distance = min(0.001, self.strategy_config["stop_loss"])  # Max 0.1% stop
                     
@@ -1057,10 +1066,18 @@ class YahooHyperliquidPaperTradingBot:
                 30
             )
             
+            # Log the entry analysis with price comparison
+            yahoo_price = current_price  # Yahoo analysis price
+            hyperliquid_exec_price = best_opportunity['entry_price']  # Hyperliquid execution price
+            price_diff = abs(hyperliquid_exec_price - yahoo_price)
+            price_diff_pct = (price_diff / yahoo_price) * 100
+            
             logger.info(f"🎯 Entry Point Analysis:")
             logger.info(f"   Prediction Type: {prediction['type']}")
             logger.info(f"   Side: {prediction['side']}")
-            logger.info(f"   Entry Price: ${best_opportunity['entry_price']:,.2f}")
+            logger.info(f"   Yahoo Analysis Price: ${yahoo_price:,.2f}")
+            logger.info(f"   Hyperliquid Exec Price: ${hyperliquid_exec_price:,.2f}")
+            logger.info(f"   Price Alignment: ${price_diff:,.2f} ({price_diff_pct:.3f}%)")
             logger.info(f"   Target Price: ${best_opportunity['target_price']:,.2f}")
             logger.info(f"   Stop Price: ${best_opportunity['stop_price']:,.2f}")
             logger.info(f"   Risk/Reward: {best_opportunity['risk_reward']:.2f}:1")
