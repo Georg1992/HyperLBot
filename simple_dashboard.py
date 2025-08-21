@@ -205,16 +205,16 @@ class SimpleBotDashboard:
                     # Find the latest entry with predictions
                     latest = None
                     for entry in reversed(analysis_data):
-                        if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("predictions"):
+                        if entry.get("analysis_type") == "prediction_analysis" and entry.get("has_prediction"):
                             latest = entry
                             break
                     
-                    if latest and latest.get("predictions"):
-                        predictions = latest.get("predictions", {})
-                        if predictions.get("has_prediction") and predictions.get("all_predictions"):
-                            return predictions.get("all_predictions", [])
-                        elif predictions.get("has_prediction") and predictions.get("best_prediction"):
-                            return [predictions.get("best_prediction")]
+                    if latest and latest.get("has_prediction"):
+                        # Check for all_predictions first, then fall back to best_prediction
+                        if latest.get("all_predictions"):
+                            return latest.get("all_predictions", [])
+                        elif latest.get("best_prediction"):
+                            return [latest.get("best_prediction")]
             
             return []
             
