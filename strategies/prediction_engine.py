@@ -236,34 +236,34 @@ class PredictionEngine:
                 
                 if breakout_probability > 0.6:  # High probability of breakout
                     # Predict potential breakout above resistance - wait for pullback to support
-                breakout_prediction = {
-                    "type": "BREAKOUT_ABOVE",
+                    breakout_prediction = {
+                        "type": "BREAKOUT_ABOVE",
                         "entry_price": support_5m * 1.001,  # Enter near support level, below current price
-                    "side": "BUY",
-                    "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
+                        "side": "BUY",
+                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
                         "reason": f"High probability breakout above ${resistance_5m:,.2f} - enter at support ${support_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
+                        "support": support_5m,
+                        "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
                         "breakout_probability": breakout_probability
-                }
-                predictions.append(breakout_prediction)
+                    }
+                    predictions.append(breakout_prediction)
                 else:  # Higher probability of reversion
-                # Predict potential reversion from resistance
-                reversion_prediction = {
-                    "type": "REVERSION_FROM_RESISTANCE",
+                    # Predict potential reversion from resistance
+                    reversion_prediction = {
+                        "type": "REVERSION_FROM_RESISTANCE",
                         "entry_price": current_price,  # Enter at resistance level for immediate reversal
-                    "side": "SELL",
-                    "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_reversion_timeframe(volatility_5m),
+                        "side": "SELL",
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"High probability reversion from ${resistance_5m:,.2f} - enter at resistance",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
+                        "support": support_5m,
+                        "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
                         "breakout_probability": breakout_probability
-                }
-                predictions.append(reversion_prediction)
+                    }
+                    predictions.append(reversion_prediction)
             
             elif current_price < support_5m * 1.002:  # Near support
                 # Analyze whether to expect breakout or reversion
@@ -285,20 +285,20 @@ class PredictionEngine:
                     }
                     predictions.append(breakout_prediction)
                 else:  # Higher probability of bounce
-                # Predict potential reversion from support
-                reversion_prediction = {
-                    "type": "REVERSION_FROM_SUPPORT",
-                    "entry_price": support_5m * 1.0005,  # Slightly above support
-                    "side": "BUY",
-                    "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_reversion_timeframe(volatility_5m),
+                    # Predict potential reversion from support
+                    reversion_prediction = {
+                        "type": "REVERSION_FROM_SUPPORT",
+                        "entry_price": support_5m * 1.0005,  # Slightly above support
+                        "side": "BUY",
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"High probability bounce from ${support_5m:,.2f} - enter at support",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
+                        "support": support_5m,
+                        "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
                         "breakdown_probability": breakdown_probability
-                }
-                predictions.append(reversion_prediction)
+                    }
+                    predictions.append(reversion_prediction)
             
             # 2. MOMENTUM PREDICTIONS - Smart direction analysis
             if trend_1h.get("trend") == "UP" and trend_5m.get("trend") == "UP":
@@ -306,15 +306,15 @@ class PredictionEngine:
                 momentum_strength = self._analyze_momentum_strength(trend_1h, trend_5m, volatility_5m)
                 
                 if momentum_strength > 0.7:  # Strong momentum
-                momentum_prediction = {
-                    "type": "MOMENTUM_UP",
+                    momentum_prediction = {
+                        "type": "MOMENTUM_UP",
                         "entry_price": support_5m * 1.001,  # Enter at support level, well below current price
-                    "side": "BUY",
-                    "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_momentum_timeframe(volatility_5m),
+                        "side": "BUY",
+                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_momentum_timeframe(volatility_5m),
                         "reason": f"Strong upward momentum (strength: {momentum_strength:.2f}) - enter at support ${support_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
+                        "support": support_5m,
+                        "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
                         "momentum_strength": momentum_strength
                     }
@@ -339,15 +339,15 @@ class PredictionEngine:
                 momentum_strength = self._analyze_momentum_strength(trend_1h, trend_5m, volatility_5m)
                 
                 if momentum_strength > 0.7:  # Strong momentum
-                momentum_prediction = {
-                    "type": "MOMENTUM_DOWN",
+                    momentum_prediction = {
+                        "type": "MOMENTUM_DOWN",
                         "entry_price": resistance_5m * 0.999,  # Enter at resistance level, well above current price
-                    "side": "SELL",
-                    "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_momentum_timeframe(volatility_5m),
+                        "side": "SELL",
+                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
+                        "timeframe": self._calculate_momentum_timeframe(volatility_5m),
                         "reason": f"Strong downward momentum (strength: {momentum_strength:.2f}) - enter at resistance ${resistance_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m,
+                        "support": support_5m,
+                        "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
                         "momentum_strength": momentum_strength
                     }
@@ -429,14 +429,14 @@ class PredictionEngine:
                         "prediction_mode": "BASIC",
                         "best_prediction": basic_predictions[0],
                         "all_predictions": basic_predictions,
-                    "volatility_5m": volatility_5m,
-                    "volatility_1h": volatility_1h,
-                    "range_size": range_size_5m,
-                    "support": support_5m,
-                    "resistance": resistance_5m
-                }
-            else:
-                return {"has_prediction": False, "reason": "No valid predictions found"}
+                        "volatility_5m": volatility_5m,
+                        "volatility_1h": volatility_1h,
+                        "range_size": range_size_5m,
+                        "support": support_5m,
+                        "resistance": resistance_5m
+                    }
+                else:
+                    return {"has_prediction": False, "reason": "No valid predictions found"}
                 
         except Exception as e:
             logger.error(f"Error building predictive prediction: {e}")
@@ -455,164 +455,164 @@ class PredictionEngine:
                 distance_to_level = abs(current_price - level["price"]) / current_price
                 
                 if distance_to_level < 0.002:  # Within 0.2% of key level
-                     if level["type"] == "SUPPORT" and current_price > level["price"]:
-                         # Price approaching support from above - potential bounce
-                         prediction = {
-                             "type": "SUPPORT_BOUNCE",
-                             "entry_price": level["price"] * 1.001,  # Just above support
-                             "side": "BUY",
-                             "confidence": 0.65 + (level["strength"] * 0.2),
-                             "timeframe": 15,
-                             "reason": f"Approaching key support at ${level['price']:,.0f} - expect bounce",
-                             "support": level["price"],
-                             "resistance": resistance,
-                             "prediction_mode": "KEY_LEVEL_ANALYSIS",
-                             "key_level": level
-                         }
-                         predictions.append(prediction)
-                         
-                     elif level["type"] == "RESISTANCE" and current_price < level["price"]:
-                         # Price approaching resistance from below - potential rejection
-                         prediction = {
-                             "type": "RESISTANCE_REJECTION",
-                             "entry_price": level["price"] * 0.999,  # Just below resistance
-                             "side": "SELL",
-                             "confidence": 0.65 + (level["strength"] * 0.2),
-                             "timeframe": 15,
-                             "reason": f"Approaching key resistance at ${level['price']:,.0f} - expect rejection",
-                             "support": support,
-                             "resistance": level["price"],
-                             "prediction_mode": "KEY_LEVEL_ANALYSIS",
-                             "key_level": level
-                         }
-                         predictions.append(prediction)
+                    if level["type"] == "SUPPORT" and current_price > level["price"]:
+                        # Price approaching support from above - potential bounce
+                        prediction = {
+                            "type": "SUPPORT_BOUNCE",
+                            "entry_price": level["price"] * 1.001,  # Just above support
+                            "side": "BUY",
+                            "confidence": 0.65 + (level["strength"] * 0.2),
+                            "timeframe": 15,
+                            "reason": f"Approaching key support at ${level['price']:,.0f} - expect bounce",
+                            "support": level["price"],
+                            "resistance": resistance,
+                            "prediction_mode": "KEY_LEVEL_ANALYSIS",
+                            "key_level": level
+                        }
+                        predictions.append(prediction)
+                        
+                    elif level["type"] == "RESISTANCE" and current_price < level["price"]:
+                        # Price approaching resistance from below - potential rejection
+                        prediction = {
+                            "type": "RESISTANCE_REJECTION",
+                            "entry_price": level["price"] * 0.999,  # Just below resistance
+                            "side": "SELL",
+                            "confidence": 0.65 + (level["strength"] * 0.2),
+                            "timeframe": 15,
+                            "reason": f"Approaching key resistance at ${level['price']:,.0f} - expect rejection",
+                            "support": support,
+                            "resistance": level["price"],
+                            "prediction_mode": "KEY_LEVEL_ANALYSIS",
+                            "key_level": level
+                        }
+                        predictions.append(prediction)
              
-             # 2. PRICE MOMENTUM ANALYSIS (even with small ranges)
-             if trend_5m.get("trend") == "UP" and trend_1h.get("trend") == "UP":
-                 # Both timeframes showing upward momentum
-                 prediction = {
-                     "type": "MOMENTUM_CONTINUATION",
-                     "entry_price": current_price * 0.998,  # Enter slightly below current
-                     "side": "BUY",
-                     "confidence": 0.6 + (trend_5m.get("strength", 0.5) * 0.2),
-                     "timeframe": 10,
-                     "reason": f"Strong upward momentum on both 5m and 1h timeframes",
-                     "support": support,
-                     "resistance": resistance,
-                     "prediction_mode": "MOMENTUM_ANALYSIS"
-                 }
-                 predictions.append(prediction)
+            # 2. PRICE MOMENTUM ANALYSIS (even with small ranges)
+            if trend_5m.get("trend") == "UP" and trend_1h.get("trend") == "UP":
+                # Both timeframes showing upward momentum
+                prediction = {
+                    "type": "MOMENTUM_CONTINUATION",
+                    "entry_price": current_price * 0.998,  # Enter slightly below current
+                    "side": "BUY",
+                    "confidence": 0.6 + (trend_5m.get("strength", 0.5) * 0.2),
+                    "timeframe": 10,
+                    "reason": f"Strong upward momentum on both 5m and 1h timeframes",
+                    "support": support,
+                    "resistance": resistance,
+                    "prediction_mode": "MOMENTUM_ANALYSIS"
+                }
+                predictions.append(prediction)
                  
-             elif trend_5m.get("trend") == "DOWN" and trend_1h.get("trend") == "DOWN":
-                 # Both timeframes showing downward momentum
-                 prediction = {
-                     "type": "MOMENTUM_CONTINUATION",
-                     "entry_price": current_price * 1.002,  # Enter slightly above current
-                     "side": "SELL",
-                     "confidence": 0.6 + (trend_5m.get("strength", 0.5) * 0.2),
-                     "timeframe": 10,
-                     "reason": f"Strong downward momentum on both 5m and 1h timeframes",
-                     "support": support,
-                     "resistance": resistance,
-                     "prediction_mode": "MOMENTUM_ANALYSIS"
-                 }
-                 predictions.append(prediction)
+            elif trend_5m.get("trend") == "DOWN" and trend_1h.get("trend") == "DOWN":
+                # Both timeframes showing downward momentum
+                prediction = {
+                    "type": "MOMENTUM_CONTINUATION",
+                    "entry_price": current_price * 1.002,  # Enter slightly above current
+                    "side": "SELL",
+                    "confidence": 0.6 + (trend_5m.get("strength", 0.5) * 0.2),
+                    "timeframe": 10,
+                    "reason": f"Strong downward momentum on both 5m and 1h timeframes",
+                    "support": support,
+                    "resistance": resistance,
+                    "prediction_mode": "MOMENTUM_ANALYSIS"
+                }
+                predictions.append(prediction)
              
-             # 3. RANGE POSITION ANALYSIS
-             if support > 0 and resistance > 0:
-                 range_size = resistance - support
-                 position_in_range = (current_price - support) / range_size if range_size > 0 else 0.5
+            # 3. RANGE POSITION ANALYSIS
+            if support > 0 and resistance > 0:
+                range_size = resistance - support
+                position_in_range = (current_price - support) / range_size if range_size > 0 else 0.5
                  
-                 if position_in_range < 0.3:  # Near bottom of range
-                     prediction = {
-                         "type": "RANGE_BOTTOM_BOUNCE",
-                         "entry_price": support * 1.001,
-                         "side": "BUY",
-                         "confidence": 0.55,
-                         "timeframe": 12,
-                         "reason": f"Near bottom of range (${support:,.0f} - ${resistance:,.0f}) - expect bounce",
-                         "support": support,
-                         "resistance": resistance,
-                         "prediction_mode": "RANGE_ANALYSIS",
-                         "position_in_range": position_in_range
-                     }
-                     predictions.append(prediction)
+                if position_in_range < 0.3:  # Near bottom of range
+                    prediction = {
+                        "type": "RANGE_BOTTOM_BOUNCE",
+                        "entry_price": support * 1.001,
+                        "side": "BUY",
+                        "confidence": 0.55,
+                        "timeframe": 12,
+                        "reason": f"Near bottom of range (${support:,.0f} - ${resistance:,.0f}) - expect bounce",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "RANGE_ANALYSIS",
+                        "position_in_range": position_in_range
+                    }
+                    predictions.append(prediction)
                      
-                 elif position_in_range > 0.7:  # Near top of range
-                     prediction = {
-                         "type": "RANGE_TOP_REJECTION",
-                         "entry_price": resistance * 0.999,
-                         "side": "SELL",
-                         "confidence": 0.55,
-                         "timeframe": 12,
-                         "reason": f"Near top of range (${support:,.0f} - ${resistance:,.0f}) - expect rejection",
-                         "support": support,
-                         "resistance": resistance,
-                         "prediction_mode": "RANGE_ANALYSIS",
-                         "position_in_range": position_in_range
-                     }
-                     predictions.append(prediction)
+                elif position_in_range > 0.7:  # Near top of range
+                    prediction = {
+                        "type": "RANGE_TOP_REJECTION",
+                        "entry_price": resistance * 0.999,
+                        "side": "SELL",
+                        "confidence": 0.55,
+                        "timeframe": 12,
+                        "reason": f"Near top of range (${support:,.0f} - ${resistance:,.0f}) - expect rejection",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "RANGE_ANALYSIS",
+                        "position_in_range": position_in_range
+                    }
+                    predictions.append(prediction)
              
-             # 4. VOLATILITY-BASED PREDICTIONS
-             if volatility > 0.002:  # Lower threshold for volatility predictions
-                 # In high volatility, look for reversal opportunities
-                 if trend_5m.get("trend") == "UP":
-                     prediction = {
-                         "type": "VOLATILITY_REVERSAL",
-                         "entry_price": current_price * 1.001,
-                         "side": "SELL",
-                         "confidence": 0.5,
-                         "timeframe": 8,
-                         "reason": f"High volatility ({volatility:.3f}) - expect reversal from upward move",
-                         "support": support,
-                         "resistance": resistance,
-                         "prediction_mode": "VOLATILITY_ANALYSIS"
-                     }
-                     predictions.append(prediction)
-                 else:
-                     prediction = {
-                         "type": "VOLATILITY_REVERSAL",
-                         "entry_price": current_price * 0.999,
-                         "side": "BUY",
-                         "confidence": 0.5,
-                         "timeframe": 8,
-                         "reason": f"High volatility ({volatility:.3f}) - expect reversal from downward move",
-                         "support": support,
-                         "resistance": resistance,
-                         "prediction_mode": "VOLATILITY_ANALYSIS"
-                     }
-                     predictions.append(prediction)
+            # 4. VOLATILITY-BASED PREDICTIONS
+            if volatility > 0.002:  # Lower threshold for volatility predictions
+                # In high volatility, look for reversal opportunities
+                if trend_5m.get("trend") == "UP":
+                    prediction = {
+                        "type": "VOLATILITY_REVERSAL",
+                        "entry_price": current_price * 1.001,
+                        "side": "SELL",
+                        "confidence": 0.5,
+                        "timeframe": 8,
+                        "reason": f"High volatility ({volatility:.3f}) - expect reversal from upward move",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "VOLATILITY_ANALYSIS"
+                    }
+                    predictions.append(prediction)
+                else:
+                    prediction = {
+                        "type": "VOLATILITY_REVERSAL",
+                        "entry_price": current_price * 0.999,
+                        "side": "BUY",
+                        "confidence": 0.5,
+                        "timeframe": 8,
+                        "reason": f"High volatility ({volatility:.3f}) - expect reversal from downward move",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "VOLATILITY_ANALYSIS"
+                    }
+                    predictions.append(prediction)
              
-             # 5. FALLBACK PREDICTION - Always provide at least one prediction
-             if not predictions:
-                 # Generate a simple prediction based on current trend
-                 if trend_5m.get("trend") == "UP":
-                     prediction = {
-                         "type": "TREND_FOLLOWING",
-                         "entry_price": current_price * 0.999,
-                         "side": "BUY",
-                         "confidence": 0.4,
-                         "timeframe": 15,
-                         "reason": f"Following 5m uptrend - enter below current price",
-                         "support": support,
-                         "resistance": resistance,
-                         "prediction_mode": "TREND_FOLLOWING"
-                     }
-                 else:
-                     prediction = {
-                         "type": "TREND_FOLLOWING",
-                         "entry_price": current_price * 1.001,
-                         "side": "SELL",
-                         "confidence": 0.4,
-                         "timeframe": 15,
-                         "reason": f"Following 5m downtrend - enter above current price",
-                         "support": support,
-                         "resistance": resistance,
-                         "prediction_mode": "TREND_FOLLOWING"
-                     }
-                 predictions.append(prediction)
+            # 5. FALLBACK PREDICTION - Always provide at least one prediction
+            if not predictions:
+                # Generate a simple prediction based on current trend
+                if trend_5m.get("trend") == "UP":
+                    prediction = {
+                        "type": "TREND_FOLLOWING",
+                        "entry_price": current_price * 0.999,
+                        "side": "BUY",
+                        "confidence": 0.4,
+                        "timeframe": 15,
+                        "reason": f"Following 5m uptrend - enter below current price",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "TREND_FOLLOWING"
+                    }
+                else:
+                    prediction = {
+                        "type": "TREND_FOLLOWING",
+                        "entry_price": current_price * 1.001,
+                        "side": "SELL",
+                        "confidence": 0.4,
+                        "timeframe": 15,
+                        "reason": f"Following 5m downtrend - enter above current price",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "TREND_FOLLOWING"
+                    }
+                predictions.append(prediction)
              
-             return predictions
+            return predictions
              
         except Exception as e:
             logger.error(f"Error generating basic predictions: {e}")
@@ -623,77 +623,77 @@ class PredictionEngine:
         try:
             levels = []
              
-             # Major psychological levels (round numbers)
-             major_levels = [110000, 111000, 112000, 113000, 114000, 115000, 116000, 117000, 118000, 119000, 120000]
+            # Major psychological levels (round numbers)
+            major_levels = [110000, 111000, 112000, 113000, 114000, 115000, 116000, 117000, 118000, 119000, 120000]
              
-             for level in major_levels:
-                 distance = abs(current_price - level) / current_price
-                 if distance < 0.02:  # Within 2% of major level
-                     if current_price > level:
-                         levels.append({
-                             "price": level,
-                             "type": "SUPPORT",
-                             "strength": 0.8,
-                             "description": f"Major support at ${level:,}"
-                         })
-                     else:
-                         levels.append({
-                             "price": level,
-                             "type": "RESISTANCE", 
-                             "strength": 0.8,
-                             "description": f"Major resistance at ${level:,}"
-                         })
+            for level in major_levels:
+                distance = abs(current_price - level) / current_price
+                if distance < 0.02:  # Within 2% of major level
+                    if current_price > level:
+                        levels.append({
+                            "price": level,
+                            "type": "SUPPORT",
+                            "strength": 0.8,
+                            "description": f"Major support at ${level:,}"
+                        })
+                    else:
+                        levels.append({
+                            "price": level,
+                            "type": "RESISTANCE", 
+                            "strength": 0.8,
+                            "description": f"Major resistance at ${level:,}"
+                        })
              
-             # Mid-levels (like 112,500)
-             mid_levels = [110500, 111500, 112500, 113500, 114500, 115500, 116500, 117500, 118500, 119500]
+            # Mid-levels (like 112,500)
+            mid_levels = [110500, 111500, 112500, 113500, 114500, 115500, 116500, 117500, 118500, 119500]
              
-             for level in mid_levels:
-                 distance = abs(current_price - level) / current_price
-                 if distance < 0.015:  # Within 1.5% of mid-level
-                     if current_price > level:
-                         levels.append({
-                             "price": level,
-                             "type": "SUPPORT",
-                             "strength": 0.7,
-                             "description": f"Mid-level support at ${level:,}"
-                         })
-                     else:
-                         levels.append({
-                             "price": level,
-                             "type": "RESISTANCE",
-                             "strength": 0.7,
-                             "description": f"Mid-level resistance at ${level:,}"
-                         })
+            for level in mid_levels:
+                distance = abs(current_price - level) / current_price
+                if distance < 0.015:  # Within 1.5% of mid-level
+                    if current_price > level:
+                        levels.append({
+                            "price": level,
+                            "type": "SUPPORT",
+                            "strength": 0.7,
+                            "description": f"Mid-level support at ${level:,}"
+                        })
+                    else:
+                        levels.append({
+                            "price": level,
+                            "type": "RESISTANCE",
+                            "strength": 0.7,
+                            "description": f"Mid-level resistance at ${level:,}"
+                        })
              
-             # Fibonacci levels (if we have recent high/low)
-             # For now, use approximate levels based on current price
-             fib_levels = [
-                 current_price * 0.95,  # 0.236 retracement
-                 current_price * 0.97,  # 0.382 retracement
-                 current_price * 1.03,  # 0.618 extension
-                 current_price * 1.05   # 0.786 extension
-             ]
+            # Fibonacci levels (if we have recent high/low)
+            # For now, use approximate levels based on current price
+            fib_levels = [
+                current_price * 0.95,  # 0.236 retracement
+                current_price * 0.97,  # 0.382 retracement
+                current_price * 1.03,  # 0.618 extension
+                current_price * 1.05   # 0.786 extension
+            ]
              
-             for i, level in enumerate(fib_levels):
-                 distance = abs(current_price - level) / current_price
-                 if distance < 0.01:  # Within 1% of Fibonacci level
-                     fib_names = ["0.236", "0.382", "0.618", "0.786"]
-                     if current_price > level:
-                         levels.append({
-                             "price": level,
-                             "type": "SUPPORT",
-                             "strength": 0.6,
-                             "description": f"Fibonacci {fib_names[i]} support at ${level:,.0f}"
-                         })
-                     else:
-                         levels.append({
-                             "price": level,
-                             "type": "RESISTANCE",
-                             "strength": 0.6,
-                             "description": f"Fibonacci {fib_names[i]} resistance at ${level:,.0f}"
-                         })
+            for i, level in enumerate(fib_levels):
+                distance = abs(current_price - level) / current_price
+                if distance < 0.01:  # Within 1% of Fibonacci level
+                    fib_names = ["0.236", "0.382", "0.618", "0.786"]
+                    if current_price > level:
+                        levels.append({
+                            "price": level,
+                            "type": "SUPPORT",
+                            "strength": 0.6,
+                            "description": f"Fibonacci {fib_names[i]} support at ${level:,.0f}"
+                        })
+                    else:
+                        levels.append({
+                            "price": level,
+                            "type": "RESISTANCE",
+                            "strength": 0.6,
+                            "description": f"Fibonacci {fib_names[i]} resistance at ${level:,.0f}"
+                        })
              
-             return levels
+            return levels
              
         except Exception as e:
             logger.error(f"Error identifying key levels: {e}")
