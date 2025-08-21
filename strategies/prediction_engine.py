@@ -81,7 +81,7 @@ class PredictionEngine:
             # 1. FAST BREAKOUT DETECTION
             if price_acceleration > 0.003:  # Strong acceleration
                 # Determine direction based on recent price action
-                recent_prices = [float(candle[4]) for candle in candles_5m[-3:]]
+                recent_prices = [candle["close"] for candle in candles_5m[-3:]]
                 if recent_prices[-1] > recent_prices[0]:
                     signal = {
                         "type": "FAST_BREAKOUT",
@@ -120,8 +120,8 @@ class PredictionEngine:
             # 3. VOLATILITY SPIKE DETECTION
             if volatility_5m > 0.008:  # High volatility threshold
                 # Look for reversal opportunities in high volatility
-                recent_highs = [float(candle[2]) for candle in candles_5m[-3:]]
-                recent_lows = [float(candle[3]) for candle in candles_5m[-3:]]
+                recent_highs = [candle["high"] for candle in candles_5m[-3:]]
+                recent_lows = [candle["low"] for candle in candles_5m[-3:]]
                 
                 if current_price > max(recent_highs) * 0.998:  # Near recent high
                     signal = {
@@ -333,7 +333,7 @@ class PredictionEngine:
                 return 0.0
             
             # Calculate price changes
-            prices = [float(candle[4]) for candle in candles_5m[-4:]]
+            prices = [candle["close"] for candle in candles_5m[-4:]]
             price_changes = []
             
             for i in range(1, len(prices)):
@@ -358,8 +358,8 @@ class PredictionEngine:
                 return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
             
             # Calculate recent momentum
-            recent_prices = [float(candle[4]) for candle in candles_5m[-5:]]
-            recent_volumes = [float(candle[5]) for candle in candles_5m[-5:]]
+            recent_prices = [candle["close"] for candle in candles_5m[-5:]]
+            recent_volumes = [candle["volume"] for candle in candles_5m[-5:]]
             
             # Calculate price momentum
             price_momentum = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
@@ -395,8 +395,8 @@ class PredictionEngine:
                 return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
             
             # Calculate recent volumes
-            recent_volumes = [float(candle[5]) for candle in candles_5m[-6:]]
-            recent_prices = [float(candle[4]) for candle in candles_5m[-6:]]
+            recent_volumes = [candle["volume"] for candle in candles_5m[-6:]]
+            recent_prices = [candle["close"] for candle in candles_5m[-6:]]
             
             # Calculate average volume (excluding current)
             avg_volume = sum(recent_volumes[:-1]) / len(recent_volumes[:-1])
@@ -433,8 +433,9 @@ class PredictionEngine:
             # Calculate price changes
             price_changes = []
             for i in range(1, min(10, len(candles_5m))):
-                prev_close = float(candles_5m[i-1][4])
-                curr_close = float(candles_5m[i][4])
+                # Access close price using dictionary key, not array index
+                prev_close = candles_5m[i-1]["close"]
+                curr_close = candles_5m[i]["close"]
                 change = abs(curr_close - prev_close) / prev_close
                 price_changes.append(change)
             
@@ -454,8 +455,9 @@ class PredictionEngine:
             # Calculate price changes
             price_changes = []
             for i in range(1, min(10, len(candles_1h))):
-                prev_close = float(candles_1h[i-1][4])
-                curr_close = float(candles_1h[i][4])
+                # Access close price using dictionary key, not array index
+                prev_close = candles_1h[i-1]["close"]
+                curr_close = candles_1h[i]["close"]
                 change = abs(curr_close - prev_close) / prev_close
                 price_changes.append(change)
             
