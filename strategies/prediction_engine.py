@@ -478,10 +478,7 @@ class PredictionEngine:
                 # Validate and fix entry prices to ensure they're logical
                 for i, prediction in enumerate(predictions):
                     prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m)
-                    # Add prediction metadata including current price and RSI context
-                    prediction["rsi_context"] = current_rsi
-                    prediction["orderbook_depth"] = total_depth
-                    prediction["orderbook_imbalance"] = depth_imbalance
+                    # Add prediction metadata (RSI and volume data only for internal use, not display)
                     predictions[i] = self._add_prediction_metadata(prediction, current_price)
                 
                 best_prediction = max(predictions, key=lambda x: x["confidence"])
