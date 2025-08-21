@@ -586,8 +586,8 @@ class HyperliquidAPI:
             logger.error(f"Failed to get market indicators: {e}")
             return {"error": str(e)}
     
-    def calculate_rsi_from_yahoo_data(self, candles: List[Dict], periods: int = 14) -> Dict[str, Any]:
-        """Calculate proper RSI using historical price data from Yahoo Finance"""
+    def calculate_rsi_from_yahoo_data(self, candles: List[Dict], periods: int = 20) -> Dict[str, Any]:
+        """Calculate proper RSI using historical price data from Yahoo Finance (20-period for crypto accuracy)"""
         try:
             if not candles or len(candles) < periods + 1:
                 return {
@@ -626,7 +626,7 @@ class HyperliquidAPI:
             return {
                 "rsi": rsi,
                 "current_price": current_price,
-                "calculation_method": "proper_rsi_14_period",
+                "calculation_method": f"proper_rsi_{periods}_period",
                 "periods_used": periods,
                 "avg_gain": avg_gain,
                 "avg_loss": avg_loss,

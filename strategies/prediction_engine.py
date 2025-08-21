@@ -287,9 +287,9 @@ class PredictionEngine:
             
             logger.info(f"📊 Multi-timeframe Context: RSI={current_rsi:.1f}, 5m={trend_5m.get('trend','?')}, 1h={trend_1h.get('trend','?')}, 1d={trend_1d.get('trend','?')}, Depth={total_depth:.1f}BTC")
             
-            # Enhanced data validation for multi-timeframe analysis
-            if len(candles_5m) < 30 or len(candles_1h) < 24 or len(candles_1d) < 15:
-                return {"has_prediction": False, "reason": f"Insufficient candlestick data - need 30+ 5m ({len(candles_5m)}), 24+ 1h ({len(candles_1h)}), 15+ 1d ({len(candles_1d)}) candles"}
+            # Enhanced data validation for multi-timeframe analysis (increased for 20-period RSI)
+            if len(candles_5m) < 45 or len(candles_1h) < 30 or len(candles_1d) < 20:
+                return {"has_prediction": False, "reason": f"Insufficient candlestick data - need 45+ 5m ({len(candles_5m)}), 30+ 1h ({len(candles_1h)}), 20+ 1d ({len(candles_1d)}) candles for reliable analysis"}
             
             support_5m = support_resistance_5m.get("support", 0)
             resistance_5m = support_resistance_5m.get("resistance", 0)

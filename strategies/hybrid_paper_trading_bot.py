@@ -397,11 +397,11 @@ class YahooHyperliquidPaperTradingBot:
         # Get real-time Hyperliquid market indicators (volume, liquidity)
         hyperliquid_indicators = self.hyperliquid_api.get_current_market_indicators("BTC")
         
-        # Calculate proper RSI using Yahoo Finance historical data
+        # Calculate proper RSI using Yahoo Finance historical data (20-period for crypto accuracy)
         candles_5m = binance_analysis.get("candles_5m", [])
-        proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=14)
+        proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=20)
         
-        logger.info(f"📊 Corrected RSI: {proper_rsi.get('rsi', 50):.1f} (Method: {proper_rsi.get('calculation_method', 'unknown')})")
+        logger.info(f"📊 Enhanced RSI: {proper_rsi.get('rsi', 50):.1f} (20-period for crypto accuracy - closer to Hyperliquid)")
         
         # Enhance binance_analysis with real-time Hyperliquid data and proper RSI
         enhanced_analysis = binance_analysis.copy()

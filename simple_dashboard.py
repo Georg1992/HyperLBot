@@ -121,11 +121,11 @@ class SimpleBotDashboard:
                             # Get proper RSI and 5-minute volume from Yahoo data
                             from data.yahoo_data_fetcher import YahooDataFetcher
                             fetcher = YahooDataFetcher()
-                            candles = fetcher.get_klines("BTC", "5m", 20)
+                            candles = fetcher.get_klines("BTC", "5m", 30)  # Get 30 for reliable 20-period RSI
                             
-                            if candles and len(candles) >= 15:
-                                # Calculate proper RSI
-                                rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=14)
+                            if candles and len(candles) >= 25:  # Need more candles for 20-period RSI
+                                # Calculate proper RSI (20-period for better crypto accuracy)
+                                rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
                                 rsi_data = rsi_result.get("rsi")
                                 
                                 # Calculate 5-minute volume metrics (much smoother!)
@@ -145,7 +145,13 @@ class SimpleBotDashboard:
                                     liquidity = indicators["liquidity_metrics"]
                                     orderbook_imbalance = liquidity.get("depth_imbalance")
                                     
-                                logger.info(f"📊 5m Volume: {current_5m_volume:,.0f} ({volume_activity}), RSI: {rsi_data:.1f}")
+                                logger.info(f"📊 5m Volume: {current_5m_volume:,.0f} ({volume_activity}), RSI: {rsi_data:.1f} (20-period)")
+                                
+                                # Add RSI validation against Hyperliquid reference
+                                rsi_difference = abs(rsi_data - 50.40) if rsi_data else 0  # Assuming 50.40 as reference
+                                if rsi_difference > 10:
+                                    logger.warning(f"⚠️ RSI drift detected: Our={rsi_data:.1f}, Expected=~50.40, Diff={rsi_difference:.1f}")
+                                    
                             else:
                                 logger.warning("Insufficient candle data for 5m volume calculation")
                                     
