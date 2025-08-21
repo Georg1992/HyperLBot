@@ -713,14 +713,14 @@ def create_template():
             </div>
             
             <div class="card">
-                <h3>📈 Trading Summary</h3>
-                <div id="trading-summary">
-                    <p>Loading...</p>
+                <h3>📊 Live Orderbook</h3>
+                <div id="orderbook-panel">
+                    <p>Loading orderbook...</p>
                 </div>
             </div>
         </div>
         
-        <!-- Main Content Area with Predictions and Orderbook Side by Side -->
+        <!-- Main Content Area with Predictions and Trading Summary Side by Side -->
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px;">
             <div class="card">
                 <h3>🎯 Live Trading Predictions</h3>
@@ -730,9 +730,9 @@ def create_template():
             </div>
             
             <div class="card">
-                <h3>📊 Live Orderbook</h3>
-                <div id="orderbook-panel">
-                    <p>Loading orderbook...</p>
+                <h3>📈 Trading Summary</h3>
+                <div id="trading-summary">
+                    <p>Loading...</p>
                 </div>
             </div>
         </div>
@@ -805,26 +805,33 @@ def create_template():
                 const trendClass = market.trend === 'UP' ? 'trend-up' : 
                                  market.trend === 'DOWN' ? 'trend-down' : 'trend-neutral';
                 
+                // Debug RSI and Volume values
+                console.log('Market data:', market);
+                console.log('RSI value:', market.rsi, 'Type:', typeof market.rsi);
+                console.log('Volume value:', market.volume_depth, 'Type:', typeof market.volume_depth);
                 
+                const rsiValue = market.rsi !== undefined && market.rsi !== null ? market.rsi.toFixed(1) : 'N/A';
+                const volumeValue = market.volume_depth !== undefined && market.volume_depth !== null ? market.volume_depth.toFixed(1) : 'N/A';
+                const flowValue = market.orderbook_imbalance !== undefined && market.orderbook_imbalance !== null ? (market.orderbook_imbalance * 100).toFixed(1) : 'N/A';
                 
-                                 div.innerHTML = `
+                div.innerHTML = `
                      <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
                      <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
                      <p><strong>Condition:</strong> ${market.market_condition}</p>
                      
-                     <!-- RSI - Always Show -->
+                     <!-- RSI - Fixed Display -->
                      <div class="market-indicator rsi-indicator" style="margin: 15px 0;">
                          <p><strong>📊 RSI:</strong> 
-                         <span class="rsi-value ${market.rsi > 70 ? 'overbought' : market.rsi < 30 ? 'oversold' : 'neutral'}">${market.rsi ? market.rsi.toFixed(1) : 'N/A'}</span>
+                         <span class="rsi-value ${market.rsi > 70 ? 'overbought' : market.rsi < 30 ? 'oversold' : 'neutral'}">${rsiValue}</span>
                          ${market.rsi > 70 ? '<span class="rsi-status overbought">🔴 OVERBOUGHT</span>' : market.rsi < 30 ? '<span class="rsi-status oversold">🟢 OVERSOLD</span>' : '<span class="rsi-status neutral">⚪ NEUTRAL</span>'}
                          </p>
                      </div>
                      
-                     <!-- Volume - Always Show -->
+                     <!-- Volume - Fixed Display -->
                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 Volume Depth:</strong> <span class="volume-value">${market.volume_depth ? market.volume_depth.toFixed(1) : 'N/A'} BTC</span></p>
+                         <p><strong>📈 Volume Depth:</strong> <span class="volume-value">${volumeValue} BTC</span></p>
                          <p><strong>📊 Order Flow:</strong> 
-                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${market.orderbook_imbalance ? (market.orderbook_imbalance * 100).toFixed(1) : 'N/A'}%</span>
+                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
                          </p>
                      </div>
