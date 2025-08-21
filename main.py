@@ -9,8 +9,8 @@ import sys
 import os
 from loguru import logger
 
-# Add project root to Python path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Import core module to setup paths
+import core
 
 def main():
     """Main entry point with simplified menu"""
@@ -39,12 +39,6 @@ def main():
 def run_paper_trading():
     """Run the hybrid paper trading bot for testing"""
     try:
-        # Add all necessary paths for imports
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        sys.path.insert(0, os.path.join(current_dir, 'strategies'))
-        sys.path.insert(0, os.path.join(current_dir, 'core'))
-        sys.path.insert(0, os.path.join(current_dir, 'data'))
-        
         from hybrid_paper_trading_bot import HybridPaperTradingBot
         
         logger.info("Starting Paper Trading Bot (Testing Mode)...")

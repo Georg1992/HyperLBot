@@ -1,115 +1,54 @@
-# HyperLBot - Simple Hyperliquid Trading Interface
+# HyperLBot Documentation
 
-A simple Python interface to connect to your Hyperliquid account and execute trades.
+This directory contains detailed documentation for various components and features of HyperLBot.
 
-## Features
+## 📚 Documentation Overview
 
-- **Connect to Hyperliquid**: Authenticate with your API credentials
-- **Get Account Balance**: View your account information and balances
-- **Get Market Prices**: Check current prices for any symbol
-- **Place Market Orders**: Execute immediate trades at market price
-- **Place Limit Orders**: Set orders at specific price levels
-- **View Positions**: Check your current open positions
-- **View Open Orders**: See your pending orders
+### Core Features Documentation
+- **[ADVANCED_TRADE_MANAGEMENT.md](./ADVANCED_TRADE_MANAGEMENT.md)** - Advanced trade management system with intelligent quality evaluation and dynamic stop loss management
+- **[ENHANCED_PREDICTION_ENGINE.md](./ENHANCED_PREDICTION_ENGINE.md)** - Enhanced prediction engine with dual-mode architecture for different market conditions
 
-## Installation
+### Integration Guides
+- **[WHALE_INTEGRATION.md](./WHALE_INTEGRATION.md)** - Complete guide for whale analytics integration
+- **[WHALE_INTEGRATION_SUMMARY.md](./WHALE_INTEGRATION_SUMMARY.md)** - Summary of completed whale analytics integration
 
-1. **Clone the repository**:
-   ```bash
-   git clone https://github.com/Georg1992/HyperLBot.git
-   cd HyperLBot
-   ```
+### Development Documentation
+- **[PREDICTION_ENGINE_REFACTORING.md](./PREDICTION_ENGINE_REFACTORING.md)** - Summary of prediction engine modularization
+- **[VARIABILITY_THRESHOLD_ADJUSTMENT.md](./VARIABILITY_THRESHOLD_ADJUSTMENT.md)** - Variability analysis optimization
 
-2. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## 🚀 Quick Navigation
 
-3. **Set up environment variables**:
-   ```bash
-   copy env_example.txt .env
-   ```
-   
-   Edit `.env` file with your Hyperliquid API credentials:
-   ```
-   API_KEY=your_hyperliquid_api_key_here
-   API_SECRET=your_hyperliquid_api_secret_here
-   ```
+### For Users
+- Start with the main [README.md](../README.md) for installation and usage
+- Review [WHALE_INTEGRATION.md](./WHALE_INTEGRATION.md) for whale analytics features
+- Check [ADVANCED_TRADE_MANAGEMENT.md](./ADVANCED_TRADE_MANAGEMENT.md) for advanced trading features
 
-## Getting API Credentials
+### For Developers
+- See [PREDICTION_ENGINE_REFACTORING.md](./PREDICTION_ENGINE_REFACTORING.md) for architecture details
+- Review [ENHANCED_PREDICTION_ENGINE.md](./ENHANCED_PREDICTION_ENGINE.md) for prediction algorithms
+- Check [VARIABILITY_THRESHOLD_ADJUSTMENT.md](./VARIABILITY_THRESHOLD_ADJUSTMENT.md) for analysis optimization
 
-1. Go to [Hyperliquid](https://app.hyperliquid.xyz/)
-2. Create an account and complete KYC
-3. Navigate to API settings
-4. Generate API key and secret
-5. Add the credentials to your `.env` file
+## 📋 Feature Status
 
-## Usage
+✅ **Completed Features:**
+- Hybrid paper trading with multi-strategy support
+- Advanced trade management with dynamic stops
+- Enhanced prediction engine with dual-mode operation
+- Whale analytics integration with BlockCypher
+- Comprehensive logging and performance tracking
 
-Run the trading interface:
-```bash
-python main.py
-```
+🔄 **Active Development:**
+- Real trading mode implementation
+- Additional exchange integrations
+- Performance optimizations
 
-The interface will present you with a menu to:
-1. Get Account Balance
-2. Get Market Price
-3. Place Market Order
-4. Place Limit Order
-5. Get Positions
-6. Get Open Orders
-7. Exit
+## 🆘 Need Help?
 
-## Example Usage
+1. Check the main [README.md](../README.md) for basic setup and usage
+2. Run `python test_setup.py` to verify your installation
+3. Review the relevant documentation file for your specific feature
+4. Check the logs for detailed error information
 
-```
-Hyperliquid Trading Interface
-==================================================
-1. Get Account Balance
-2. Get Market Price
-3. Place Market Order
-4. Place Limit Order
-5. Get Positions
-6. Get Open Orders
-7. Exit
-==================================================
-Enter your choice (1-7): 2
+---
 
-Enter symbol (default: BTC): BTC
-Current BTC price: $43,250.00
-```
-
-## Safety Features
-
-- **Interactive Confirmation**: All trades require manual confirmation
-- **Error Handling**: Comprehensive error handling and logging
-- **Input Validation**: Validates all user inputs before execution
-
-## Important Warnings
-
-⚠️ **Trading cryptocurrencies involves significant risk of loss**
-
-- Only trade with money you can afford to lose
-- Test with small amounts first
-- Monitor your trades regularly
-- Keep your API credentials secure
-
-## Project Structure
-
-```
-HyperLBot/
-├── main.py               # Main trading interface
-├── hyperliquid_api.py    # Hyperliquid API client
-├── config.py             # Configuration settings
-├── requirements.txt      # Python dependencies
-├── env_example.txt       # Environment variables template
-└── README.md            # This file
-```
-
-## Disclaimer
-
-This trading interface is provided as-is for educational purposes. Trading cryptocurrencies involves substantial risk of loss. The authors are not responsible for any financial losses incurred from using this software. Always test thoroughly with small amounts before using real money.
-
-## License
-
-This project is for educational purposes. Use at your own risk.
+**Note**: This documentation is actively maintained. Please refer to the latest version for the most accurate information.

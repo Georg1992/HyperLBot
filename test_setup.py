@@ -7,13 +7,15 @@ import sys
 import os
 from loguru import logger
 
+# Import core module to setup paths
+import core
+
 def test_imports():
     """Test that all modules can be imported"""
     logger.info("🔍 Testing imports...")
     
     try:
         # Test core imports
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'core'))
         from config import TradingConfig
         logger.success("✅ Config imported successfully")
         
@@ -24,12 +26,10 @@ def test_imports():
         logger.success("✅ TradingLogger imported successfully")
         
         # Test data imports
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'data'))
         from external_data_fetcher import ExternalDataFetcher
         logger.success("✅ ExternalDataFetcher imported successfully")
         
         # Test strategy imports
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'strategies'))
         from fee_manager import FeeManager
         logger.success("✅ FeeManager imported successfully")
         
@@ -51,13 +51,11 @@ def test_basic_functionality():
     
     try:
         # Test config
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'core'))
         from config import TradingConfig
         config = TradingConfig()
         logger.success("✅ Config initialization successful")
         
         # Test fee manager
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'strategies'))
         from fee_manager import FeeManager
         fee_manager = FeeManager()
         fees = fee_manager.calculate_order_fees(0.001, 50000, "LIMIT")
@@ -71,7 +69,6 @@ def test_basic_functionality():
         logger.success("✅ Variability analyzer test successful")
         
         # Test trading logger
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'core'))
         from trading_logger import TradingLogger
         trading_logger = TradingLogger("test_logs")
         logger.success("✅ Trading logger initialization successful")

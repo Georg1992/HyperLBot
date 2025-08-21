@@ -1,1 +1,4 @@
-# Strategies package for HyperLBot
+"""
+Strategies module - HyperLBot
+Contains trading strategies, analysis tools, and management components
+"""

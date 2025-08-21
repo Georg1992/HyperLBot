@@ -151,6 +151,7 @@ HyperLBot/
 ├── requirements.txt                 # Python dependencies
 ├── env_example.txt                  # Environment template
 ├── README.md                        # This file
+├── test_setup.py                    # Setup verification script
 ├── core/                           # Core functionality
 │   ├── __init__.py
 │   ├── config.py                   # Configuration management
@@ -158,14 +159,23 @@ HyperLBot/
 │   └── trading_logger.py           # Comprehensive logging
 ├── data/                           # Data handling
 │   ├── __init__.py
+│   ├── blockcypher_analyzer.py     # Blockchain whale analytics
 │   └── external_data_fetcher.py    # Binance data fetcher
 ├── strategies/                     # Trading strategies
 │   ├── __init__.py
 │   ├── hybrid_paper_trading_bot.py # Main trading bot
 │   ├── fee_manager.py              # Fee calculations
-│   └── variability_analyzer.py     # Market variability analysis
+│   ├── prediction_engine.py        # Market prediction algorithms
+│   ├── trade_manager.py            # Advanced trade management
+│   ├── variability_analyzer.py     # Market variability analysis
+│   └── whale_integration.py        # Whale analytics integration
 └── docs/                          # Documentation
-    └── README.md                   # Legacy documentation
+    ├── ADVANCED_TRADE_MANAGEMENT.md        # Trade management docs
+    ├── ENHANCED_PREDICTION_ENGINE.md       # Prediction engine docs
+    ├── PREDICTION_ENGINE_REFACTORING.md    # Refactoring summary
+    ├── VARIABILITY_THRESHOLD_ADJUSTMENT.md # Variability analysis
+    ├── WHALE_INTEGRATION.md                # Whale analytics guide
+    └── WHALE_INTEGRATION_SUMMARY.md        # Integration summary
 ```
 
 ## ⚠️ Important Warnings

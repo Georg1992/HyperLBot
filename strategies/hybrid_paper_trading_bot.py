@@ -12,12 +12,9 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 import sys
 import os
-# Add paths for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-sys.path.insert(0, os.path.join(project_root, 'core'))
-sys.path.insert(0, os.path.join(project_root, 'data'))
-sys.path.insert(0, os.path.join(project_root, 'strategies'))
+
+# Import core module to setup paths
+import core
 
 from hyperliquid_api import HyperliquidAPI
 from external_data_fetcher import ExternalDataFetcher
