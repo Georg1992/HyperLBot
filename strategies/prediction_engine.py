@@ -337,7 +337,7 @@ class PredictionEngine:
                     # Predict potential reversion from resistance
                     reversion_prediction = {
                         "type": "REVERSION_FROM_RESISTANCE",
-                        "entry_price": current_price,  # Enter at resistance level for immediate reversal
+                        "entry_price": resistance_5m * 1.001,  # Enter slightly above resistance for SELL order
                         "side": "SELL",
                         "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
@@ -406,7 +406,7 @@ class PredictionEngine:
                 else:  # Weak momentum - might reverse
                     momentum_prediction = {
                         "type": "MOMENTUM_REVERSION",
-                        "entry_price": current_price,  # Enter at current price for reversal
+                        "entry_price": current_price * 1.001,  # Enter slightly above current price for SELL order
                         "side": "SELL",
                         "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
@@ -439,7 +439,7 @@ class PredictionEngine:
                 else:  # Weak momentum - might reverse
                     momentum_prediction = {
                         "type": "MOMENTUM_REVERSION",
-                        "entry_price": current_price,  # Enter at current price for reversal
+                        "entry_price": current_price * 0.999,  # Enter slightly below current price for BUY order
                         "side": "BUY",
                         "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
