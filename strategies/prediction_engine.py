@@ -150,7 +150,7 @@ class PredictionEngine:
                     reactive_signals.append(signal)
             
             # 4. VOLUME SPIKE DETECTION
-            if volume_spike["detected"] or True:  # Always check for volume-based predictions
+            if volume_spike["detected"]:  # Only trigger when actual volume spike is detected
                 # Volume spike often precedes significant moves
                 if volume_spike["direction"] == "UP":
                     entry_price = current_price * 0.995  # Enter well below current for BUY

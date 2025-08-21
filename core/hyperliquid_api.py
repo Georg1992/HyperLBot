@@ -469,3 +469,177 @@ class HyperliquidAPI:
         except Exception as e:
             logger.error(f"Failed to calculate liquidation price: {e}")
             return 0.0
+    
+    def get_volume_stats(self, symbol: str = None) -> Dict[str, Any]:
+        """Get current volume statistics and 24h trading data"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Try to get volume data from trade history
+            try:
+                trades = self.get_trade_history(symbol, limit=100)
+                if trades:
+                    # Calculate recent volume from trades
+                    current_time = time.time() * 1000  # Convert to milliseconds
+                    one_hour_ago = current_time - (60 * 60 * 1000)
+                    
+                    recent_trades = [t for t in trades if t.get('time', 0) > one_hour_ago]
+                    hour_volume = sum(float(t.get('size', 0)) for t in recent_trades)
+                    hour_trade_count = len(recent_trades)
+                    
+                    # Estimate 24h volume
+                    volume_24h_estimate = hour_volume * 24
+                    
+                    return {
+                        "symbol": symbol,
+                        "hour_volume": hour_volume,
+                        "hour_trade_count": hour_trade_count,
+                        "estimated_24h_volume": volume_24h_estimate,
+                        "avg_trade_size": hour_volume / hour_trade_count if hour_trade_count > 0 else 0,
+                        "data_source": "trade_history_calculation"
+                    }
+            except Exception as e:
+                logger.warning(f"Could not calculate volume from trades: {e}")
+            
+            # Fallback: Try to get from orderbook depth
+            try:
+                market_data = self.get_market_data(symbol)
+                if market_data and 'levels' in market_data:
+                    bids = market_data['levels'][0] if len(market_data['levels']) > 0 else []
+                    asks = market_data['levels'][1] if len(market_data['levels']) > 1 else []
+                    
+                    # Calculate orderbook depth as proxy for volume activity
+                    bid_depth = sum(float(level['sz']) for level in bids[:10]) if bids else 0
+                    ask_depth = sum(float(level['sz']) for level in asks[:10]) if asks else 0
+                    total_depth = bid_depth + ask_depth
+                    
+                    return {
+                        "symbol": symbol,
+                        "orderbook_depth": total_depth,
+                        "bid_depth": bid_depth,
+                        "ask_depth": ask_depth,
+                        "depth_imbalance": (bid_depth - ask_depth) / (bid_depth + ask_depth) if total_depth > 0 else 0,
+                        "data_source": "orderbook_depth"
+                    }
+            except Exception as e:
+                logger.warning(f"Could not get orderbook depth: {e}")
+            
+            return {
+                "symbol": symbol,
+                "error": "No volume data available from Hyperliquid",
+                "data_source": "none"
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get volume stats: {e}")
+            return {"error": str(e), "data_source": "error"}
+    
+    def get_current_market_indicators(self, symbol: str = None) -> Dict[str, Any]:
+        """Get comprehensive current market indicators including volume and liquidity metrics"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Get current price from allMids
+            endpoint = "/info"
+            payload = {"type": "allMids"}
+            response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
+            current_price = 0
+            
+            if response.status_code == 200:
+                mids_data = response.json()
+                current_price = float(mids_data.get(symbol, 0))
+            
+            # Get volume stats
+            volume_stats = self.get_volume_stats(symbol)
+            
+            # Get orderbook for liquidity analysis
+            market_data = self.get_market_data(symbol)
+            liquidity_metrics = {}
+            
+            if market_data and 'levels' in market_data:
+                bids = market_data['levels'][0]
+                asks = market_data['levels'][1]
+                
+                bid_depth = sum(float(level['sz']) for level in bids[:10])
+                ask_depth = sum(float(level['sz']) for level in asks[:10])
+                total_depth = bid_depth + ask_depth
+                
+                liquidity_metrics = {
+                    "bid_depth": bid_depth,
+                    "ask_depth": ask_depth,
+                    "total_depth": total_depth,
+                    "depth_imbalance": (bid_depth - ask_depth) / total_depth if total_depth > 0 else 0,
+                    "spread": float(asks[0]['px']) - float(bids[0]['px']) if bids and asks else 0,
+                    "spread_pct": ((float(asks[0]['px']) - float(bids[0]['px'])) / current_price * 100) if bids and asks and current_price > 0 else 0
+                }
+            
+            return {
+                "symbol": symbol,
+                "current_price": current_price,
+                "volume_stats": volume_stats,
+                "liquidity_metrics": liquidity_metrics,
+                "timestamp": time.time(),
+                "data_source": "hyperliquid_real_time"
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get market indicators: {e}")
+            return {"error": str(e)}
+    
+    def calculate_simple_rsi(self, symbol: str = None, periods: int = 14) -> Dict[str, Any]:
+        """Calculate RSI using recent price data (simplified approach)"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Get recent prices from allMids over time
+            # Note: This is a simplified approach since we don't have historical klines
+            current_price = 0
+            endpoint = "/info"
+            payload = {"type": "allMids"}
+            response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
+            
+            if response.status_code == 200:
+                mids_data = response.json()
+                current_price = float(mids_data.get(symbol, 0))
+            
+            # For now, return a basic structure that could be enhanced with price history
+            # In a real implementation, you'd need to store historical prices
+            rsi_estimate = 50.0  # Neutral RSI as placeholder
+            
+            # Get orderbook to estimate market pressure as RSI proxy
+            market_data = self.get_market_data(symbol)
+            if market_data and 'levels' in market_data:
+                bids = market_data['levels'][0]
+                asks = market_data['levels'][1]
+                
+                bid_depth = sum(float(level['sz']) for level in bids[:5])
+                ask_depth = sum(float(level['sz']) for level in asks[:5])
+                
+                # Use depth imbalance as RSI proxy
+                if bid_depth + ask_depth > 0:
+                    imbalance = (bid_depth - ask_depth) / (bid_depth + ask_depth)
+                    # Convert imbalance (-1 to +1) to RSI-like value (0 to 100)
+                    rsi_estimate = 50 + (imbalance * 25)  # Scale to 25-75 range
+                    
+                    # Extreme values
+                    if imbalance > 0.5:  # Heavy buying pressure
+                        rsi_estimate = min(85, rsi_estimate)
+                    elif imbalance < -0.5:  # Heavy selling pressure  
+                        rsi_estimate = max(15, rsi_estimate)
+            
+            return {
+                "symbol": symbol,
+                "rsi_estimate": rsi_estimate,
+                "current_price": current_price,
+                "calculation_method": "orderbook_depth_proxy",
+                "note": "RSI estimated from orderbook imbalance - not true RSI calculation",
+                "overbought_threshold": 70,
+                "oversold_threshold": 30,
+                "is_overbought": rsi_estimate > 70,
+                "is_oversold": rsi_estimate < 30,
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to calculate RSI: {e}")
+            return {"error": str(e)}

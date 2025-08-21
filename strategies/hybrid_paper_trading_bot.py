@@ -2161,6 +2161,24 @@ class YahooHyperliquidPaperTradingBot:
                     time.sleep(check_interval)
                     continue
                 
+                # Get current Hyperliquid volume/liquidity data
+                hyperliquid_indicators = self.hyperliquid_api.get_current_market_indicators("BTC")
+                if hyperliquid_indicators and "liquidity_metrics" in hyperliquid_indicators:
+                    liquidity = hyperliquid_indicators["liquidity_metrics"]
+                    imbalance = liquidity.get("depth_imbalance", 0)
+                    total_depth = liquidity.get("total_depth", 0)
+                    
+                    # Log significant market conditions
+                    if abs(imbalance) > 0.3:  # > 30% imbalance
+                        direction = "BEARISH (Heavy Selling)" if imbalance < -0.3 else "BULLISH (Heavy Buying)"
+                        logger.warning(f"🚨 SIGNIFICANT ORDERBOOK IMBALANCE: {direction} ({imbalance*100:+.1f}%)")
+                        logger.warning(f"   Total Depth: {total_depth:.2f} BTC, Bid: {liquidity.get('bid_depth', 0):.2f} BTC, Ask: {liquidity.get('ask_depth', 0):.2f} BTC")
+                    
+                    # Store for analysis
+                    self.hyperliquid_volume_data = hyperliquid_indicators
+                else:
+                    self.hyperliquid_volume_data = None
+                
                 # Check for position exits with advanced management
                 self.check_position_exits(hyperliquid_price, self.binance_analysis)
                 
