@@ -44,8 +44,12 @@ Successfully completed a comprehensive cleanup and optimization of the HyperLBot
 ### 6. **Critical Bug Fixes** ✅
 - **Fixed indentation error**: Corrected syntax error in `hybrid_paper_trading_bot.py` line 2086
 - **Fixed KeyError**: Fixed `'variability_threshold'` runtime error by calling correct `_analyze_entry_point()` method
+- **Fixed volatility calculation errors**: Fixed candle data access in prediction engine
+  - Changed array index access `candle[4]` → `candle["close"]`
+  - Fixed `candle[2]` → `candle["high"]`, `candle[3]` → `candle["low"]`, `candle[5]` → `candle["volume"]`
+  - Resolves "Error calculating 5m/1h volatility: 4" runtime errors
 - **Verified syntax**: All Python files now compile successfully
-- **Verified runtime**: Fixed method call ensures proper key access
+- **Verified runtime**: Fixed method calls and data access patterns
 
 ## 📊 **Optimization Results**
 
