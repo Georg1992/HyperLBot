@@ -34,14 +34,14 @@ class TradingConfig:
             "position_size": 0.1  # 10% of balance
         },
         "low_volatility": {
-            "min_range_percentage": 0.001,  # 0.1% minimum range (more sensitive)
+            "min_range_percentage": 0.0005,  # 0.05% minimum range (very sensitive)
             "volatility_threshold": "low",
-            "confidence_threshold": 0.1,  # Lower confidence requirement
-            "min_interval": 300,  # 5 minutes between trades (increased from 15s)
+            "confidence_threshold": 0.05,  # Very low confidence requirement for active predictions
+            "min_interval": 60,  # 1 minute between trades (much faster)
             "max_leverage": 30,  # Slightly lower leverage for safety
-            "profit_target": 0.005,  # 0.5% profit target (smaller moves)
-            "stop_loss": 0.003,  # 0.3% stop loss (tighter)
-            "position_size": 0.15  # 15% of balance (larger positions for smaller moves)
+            "profit_target": 0.003,  # 0.3% profit target (even smaller moves)
+            "stop_loss": 0.002,  # 0.2% stop loss (very tight)
+            "position_size": 0.2  # 20% of balance (larger positions for smaller moves)
         },
         "high_volatility": {
             "min_range_percentage": 0.005,  # 0.5% minimum range

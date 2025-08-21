@@ -376,6 +376,25 @@ class YahooHyperliquidPaperTradingBot:
         # 2. BUILD PRICE PREDICTION AND ENTRY POINT ANALYSIS
         prediction_analysis = self.prediction_engine.build_price_prediction(binance_analysis, hyperliquid_price, self.strategy_name)
         
+        # Log prediction analysis for dashboard
+        self.trading_logger.log_analysis({
+            "type": "prediction_analysis",
+            "timestamp": time.time(),
+            "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "has_prediction": prediction_analysis.get("has_prediction", False),
+            "prediction_mode": prediction_analysis.get("prediction_mode", "UNKNOWN"),
+            "best_prediction": prediction_analysis.get("best_prediction", {}),
+            "all_predictions": prediction_analysis.get("all_predictions", []),
+            "reason": prediction_analysis.get("reason", "No reason provided"),
+            "hyperliquid_price": hyperliquid_price,
+            "strategy_name": self.strategy_name,
+            "volatility_5m": prediction_analysis.get("volatility_5m", 0),
+            "volatility_1h": prediction_analysis.get("volatility_1h", 0),
+            "range_size": prediction_analysis.get("range_size", 0),
+            "support": prediction_analysis.get("support", 0),
+            "resistance": prediction_analysis.get("resistance", 0)
+        })
+        
         if not prediction_analysis["has_prediction"]:
             return {
                 "should_trade": False,
