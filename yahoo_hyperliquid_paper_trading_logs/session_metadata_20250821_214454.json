@@ -1,0 +1,15 @@
+{
+  "session_id": "20250821_214454",
+  "start_time": "2025-08-21T21:44:54.544479",
+  "bot_version": "Enhanced BTC 5-Min Strategy v2.0",
+  "strategy": "Multi-timeframe with Variability Theory",
+  "max_leverage": 40,
+  "initial_balance": 1000.0,
+  "analysis_frequency": {
+    "price_updates": "5 seconds",
+    "market_analysis": "10 seconds",
+    "signal_checks": "30 seconds",
+    "candle_updates": "5 minutes",
+    "hourly_analysis": "1 hour"
+  }
+}
