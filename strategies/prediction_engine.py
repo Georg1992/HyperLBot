@@ -84,7 +84,7 @@ class PredictionEngine:
             hyperliquid_volume = binance_analysis.get("hyperliquid_volume", {})
             hyperliquid_rsi = binance_analysis.get("hyperliquid_rsi", {})
             
-            current_rsi = hyperliquid_rsi.get("rsi_estimate", 50.0)
+            current_rsi = hyperliquid_rsi.get("rsi", 50.0)  # Use proper RSI calculation
             liquidity_metrics = hyperliquid_volume.get("liquidity_metrics", {})
             total_depth = liquidity_metrics.get("total_depth", 0)
             depth_imbalance = liquidity_metrics.get("depth_imbalance", 0)
@@ -268,8 +268,8 @@ class PredictionEngine:
             hyperliquid_volume = binance_analysis.get("hyperliquid_volume", {})
             hyperliquid_rsi = binance_analysis.get("hyperliquid_rsi", {})
             
-            # Get current market conditions from Hyperliquid
-            current_rsi = hyperliquid_rsi.get("rsi_estimate", 50.0)
+            # Get current market conditions from Hyperliquid (corrected RSI)
+            current_rsi = hyperliquid_rsi.get("rsi", 50.0)  # Use proper RSI calculation
             is_oversold = hyperliquid_rsi.get("is_oversold", False)
             is_overbought = hyperliquid_rsi.get("is_overbought", False)
             

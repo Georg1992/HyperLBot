@@ -374,14 +374,19 @@ class YahooHyperliquidPaperTradingBot:
             return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
         # 2. BUILD PRICE PREDICTION AND ENTRY POINT ANALYSIS
-        # Get real-time Hyperliquid market indicators (volume, RSI, liquidity)
+        # Get real-time Hyperliquid market indicators (volume, liquidity)
         hyperliquid_indicators = self.hyperliquid_api.get_current_market_indicators("BTC")
-        hyperliquid_rsi = self.hyperliquid_api.calculate_simple_rsi("BTC")
         
-        # Enhance binance_analysis with real-time Hyperliquid data
+        # Calculate proper RSI using Yahoo Finance historical data
+        candles_5m = binance_analysis.get("candles_5m", [])
+        proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=14)
+        
+        logger.info(f"📊 Corrected RSI: {proper_rsi.get('rsi', 50):.1f} (Method: {proper_rsi.get('calculation_method', 'unknown')})")
+        
+        # Enhance binance_analysis with real-time Hyperliquid data and proper RSI
         enhanced_analysis = binance_analysis.copy()
         enhanced_analysis["hyperliquid_volume"] = hyperliquid_indicators
-        enhanced_analysis["hyperliquid_rsi"] = hyperliquid_rsi
+        enhanced_analysis["hyperliquid_rsi"] = proper_rsi
         
         prediction_analysis = self.prediction_engine.build_price_prediction(enhanced_analysis, hyperliquid_price, self.strategy_name)
         

@@ -586,60 +586,57 @@ class HyperliquidAPI:
             logger.error(f"Failed to get market indicators: {e}")
             return {"error": str(e)}
     
-    def calculate_simple_rsi(self, symbol: str = None, periods: int = 14) -> Dict[str, Any]:
-        """Calculate RSI using recent price data (simplified approach)"""
+    def calculate_rsi_from_yahoo_data(self, candles: List[Dict], periods: int = 14) -> Dict[str, Any]:
+        """Calculate proper RSI using historical price data from Yahoo Finance"""
         try:
-            symbol = symbol or self.config.SYMBOL
+            if not candles or len(candles) < periods + 1:
+                return {
+                    "rsi": 50.0,
+                    "error": f"Insufficient data for RSI calculation (need {periods + 1}, have {len(candles)})",
+                    "calculation_method": "insufficient_data"
+                }
             
-            # Get recent prices from allMids over time
-            # Note: This is a simplified approach since we don't have historical klines
-            current_price = 0
-            endpoint = "/info"
-            payload = {"type": "allMids"}
-            response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
+            # Get closing prices
+            closes = [float(candle["close"]) for candle in candles[-(periods + 1):]]
             
-            if response.status_code == 200:
-                mids_data = response.json()
-                current_price = float(mids_data.get(symbol, 0))
+            # Calculate price changes
+            price_changes = []
+            for i in range(1, len(closes)):
+                change = closes[i] - closes[i-1]
+                price_changes.append(change)
             
-            # For now, return a basic structure that could be enhanced with price history
-            # In a real implementation, you'd need to store historical prices
-            rsi_estimate = 50.0  # Neutral RSI as placeholder
+            # Separate gains and losses
+            gains = [change if change > 0 else 0 for change in price_changes]
+            losses = [-change if change < 0 else 0 for change in price_changes]
             
-            # Get orderbook to estimate market pressure as RSI proxy
-            market_data = self.get_market_data(symbol)
-            if market_data and 'levels' in market_data:
-                bids = market_data['levels'][0]
-                asks = market_data['levels'][1]
-                
-                bid_depth = sum(float(level['sz']) for level in bids[:5])
-                ask_depth = sum(float(level['sz']) for level in asks[:5])
-                
-                # Use depth imbalance as RSI proxy
-                if bid_depth + ask_depth > 0:
-                    imbalance = (bid_depth - ask_depth) / (bid_depth + ask_depth)
-                    # Convert imbalance (-1 to +1) to RSI-like value (0 to 100)
-                    rsi_estimate = 50 + (imbalance * 25)  # Scale to 25-75 range
-                    
-                    # Extreme values
-                    if imbalance > 0.5:  # Heavy buying pressure
-                        rsi_estimate = min(85, rsi_estimate)
-                    elif imbalance < -0.5:  # Heavy selling pressure  
-                        rsi_estimate = max(15, rsi_estimate)
+            # Calculate average gain and loss
+            avg_gain = sum(gains) / periods if gains else 0
+            avg_loss = sum(losses) / periods if losses else 0
+            
+            # Calculate RSI
+            if avg_loss == 0:
+                rsi = 100.0  # No losses = maximum RSI
+            else:
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+            
+            # Get current price
+            current_price = closes[-1]
             
             return {
-                "symbol": symbol,
-                "rsi_estimate": rsi_estimate,
+                "rsi": rsi,
                 "current_price": current_price,
-                "calculation_method": "orderbook_depth_proxy",
-                "note": "RSI estimated from orderbook imbalance - not true RSI calculation",
+                "calculation_method": "proper_rsi_14_period",
+                "periods_used": periods,
+                "avg_gain": avg_gain,
+                "avg_loss": avg_loss,
                 "overbought_threshold": 70,
                 "oversold_threshold": 30,
-                "is_overbought": rsi_estimate > 70,
-                "is_oversold": rsi_estimate < 30,
+                "is_overbought": rsi > 70,
+                "is_oversold": rsi < 30,
                 "timestamp": time.time()
             }
             
         except Exception as e:
-            logger.error(f"Failed to calculate RSI: {e}")
-            return {"error": str(e)}
+            logger.error(f"Failed to calculate RSI from Yahoo data: {e}")
+            return {"error": str(e), "rsi": 50.0}
