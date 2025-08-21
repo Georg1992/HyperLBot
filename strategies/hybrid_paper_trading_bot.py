@@ -26,6 +26,7 @@ from fee_manager import FeeManager
 from variability_analyzer import VariabilityAnalyzer
 from trading_logger import TradingLogger
 from whale_integration import WhaleIntegration, integrate_whale_analytics_into_signal
+from prediction_engine import PredictionEngine
 
 class HybridPaperTradingBot:
     def __init__(self, initial_balance: float = 120.0, strategy_name: str = "standard"):
@@ -66,6 +67,9 @@ class HybridPaperTradingBot:
         
         # Whale analytics integration
         self.whale_integration = WhaleIntegration(enabled=self.config.WHALE_ANALYTICS_ENABLED)
+        
+        # Prediction engine
+        self.prediction_engine = PredictionEngine(self.strategy_config)
         
         # Enhanced analysis frequency
         self.price_update_interval = 5  # Update price every 5 seconds
@@ -352,7 +356,7 @@ class HybridPaperTradingBot:
             return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
         # 2. BUILD PRICE PREDICTION AND ENTRY POINT ANALYSIS
-        prediction_analysis = self._build_price_prediction(binance_analysis, hyperliquid_price)
+        prediction_analysis = self.prediction_engine.build_price_prediction(binance_analysis, hyperliquid_price)
         
         if not prediction_analysis["has_prediction"]:
             return {
@@ -361,7 +365,7 @@ class HybridPaperTradingBot:
             }
         
         # 3. ANALYZE ENTRY POINT AND WIN CONDITIONS
-        entry_analysis = self._analyze_entry_point(prediction_analysis, hyperliquid_price)
+        entry_analysis = self.prediction_engine.analyze_entry_point(prediction_analysis, hyperliquid_price)
         
         if not entry_analysis["should_place_order"]:
             return {
