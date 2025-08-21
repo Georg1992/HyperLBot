@@ -1431,36 +1431,381 @@ class PredictionEngine:
             "position_in_range": position_in_range
         }
     
-    def is_prediction_valid(self, prediction: Dict[str, Any], current_price: float, candles_5m: List = None) -> bool:
-        """Check if prediction is still valid given current price and movement"""
-        entry_price = prediction["entry_price"]
-        side = prediction.get("side", "UNKNOWN")
-        execution_timing = prediction.get("execution_timing", "IMMEDIATE")
-        
-        # Basic validity check: price within 0.5% of entry
-        price_diff = abs(current_price - entry_price) / current_price
-        if price_diff > 0.005:
-            return False
-        
-        # Smart validity check based on execution timing
-        if execution_timing == "WAIT_FOR_ENTRY" and candles_5m and len(candles_5m) >= 3:
-            # For predictions waiting for entry, check if price is still moving toward entry
-            recent_prices = [candle["close"] for candle in candles_5m[-3:]]
+    def validate_prediction_scenario(self, prediction: Dict[str, Any], candles_5m: List, current_price: float) -> Dict[str, Any]:
+        """Validate if the market is following the predicted scenario before executing trade"""
+        try:
+            pred_type = prediction.get("type", "UNKNOWN")
+            side = prediction.get("side", "UNKNOWN")
+            entry_price = prediction.get("entry_price", 0)
+            
+            # Initialize validation result
+            validation_result = {
+                "is_valid": False,
+                "confidence": 0.0,
+                "reason": "",
+                "should_execute": False,
+                "validation_stage": "INITIAL"
+            }
+            
+            if not candles_5m or len(candles_5m) < 10:
+                validation_result["reason"] = "Insufficient data for validation"
+                return validation_result
+            
+            # Get recent price action for validation
+            recent_prices = [candle["close"] for candle in candles_5m[-10:]]
+            recent_volumes = [candle["volume"] for candle in candles_5m[-10:]]
+            recent_highs = [candle["high"] for candle in candles_5m[-5:]]
+            recent_lows = [candle["low"] for candle in candles_5m[-5:]]
+            
+            # Calculate key metrics
             price_direction = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+            price_momentum = (recent_prices[-1] - recent_prices[-3]) / recent_prices[-3]
+            avg_volume = sum(recent_volumes[:-1]) / len(recent_volumes[:-1])
+            current_volume = recent_volumes[-1]
+            volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1.0
             
-            if side == "BUY" and entry_price >= current_price:
-                # For BUY orders: price should still be moving DOWN toward entry
-                if price_direction >= -0.0002:  # Price stopped moving down or reversed
-                    logger.info(f"❌ BUY prediction invalidated: Price stopped moving toward entry (direction: {price_direction:.4f})")
-                    return False
+            # VALIDATION LOGIC BASED ON PREDICTION TYPE
+            if pred_type == "SUPPORT_BOUNCE" and side == "BUY":
+                validation_result = self._validate_support_bounce_scenario(
+                    prediction, recent_prices, recent_lows, price_direction, 
+                    price_momentum, volume_ratio, current_price, entry_price
+                )
             
-            elif side == "SELL" and entry_price <= current_price:
-                # For SELL orders: price should still be moving UP toward entry
-                if price_direction <= 0.0002:  # Price stopped moving up or reversed
-                    logger.info(f"❌ SELL prediction invalidated: Price stopped moving toward entry (direction: {price_direction:.4f})")
-                    return False
+            elif pred_type == "REVERSION_FROM_RESISTANCE" and side == "SELL":
+                validation_result = self._validate_resistance_rejection_scenario(
+                    prediction, recent_prices, recent_highs, price_direction,
+                    price_momentum, volume_ratio, current_price, entry_price
+                )
+            
+            elif pred_type == "MOMENTUM_UP" and side == "BUY":
+                validation_result = self._validate_momentum_continuation_scenario(
+                    prediction, recent_prices, price_direction, price_momentum,
+                    volume_ratio, current_price, entry_price, "UP"
+                )
+            
+            elif pred_type == "MOMENTUM_DOWN" and side == "SELL":
+                validation_result = self._validate_momentum_continuation_scenario(
+                    prediction, recent_prices, price_direction, price_momentum,
+                    volume_ratio, current_price, entry_price, "DOWN"
+                )
+            
+            elif pred_type == "BREAKOUT_ABOVE" and side == "BUY":
+                validation_result = self._validate_breakout_scenario(
+                    prediction, recent_prices, recent_highs, price_direction,
+                    price_momentum, volume_ratio, current_price, entry_price, "UP"
+                )
+            
+            elif pred_type == "BREAKOUT_BELOW" and side == "SELL":
+                validation_result = self._validate_breakout_scenario(
+                    prediction, recent_prices, recent_lows, price_direction,
+                    price_momentum, volume_ratio, current_price, entry_price, "DOWN"
+                )
+            
+            else:
+                # Generic validation for other prediction types
+                validation_result = self._validate_generic_scenario(
+                    prediction, recent_prices, price_direction, price_momentum,
+                    volume_ratio, current_price, entry_price
+                )
+            
+            # Log validation result
+            if validation_result["is_valid"]:
+                logger.info(f"✅ {pred_type} prediction VALIDATED: {validation_result['reason']}")
+                if validation_result["should_execute"]:
+                    logger.info(f"🚀 EXECUTING TRADE: {side} at ${entry_price:,.2f}")
+            else:
+                logger.info(f"❌ {pred_type} prediction INVALIDATED: {validation_result['reason']}")
+            
+            return validation_result
+            
+        except Exception as e:
+            logger.error(f"Error validating prediction scenario: {e}")
+            return {
+                "is_valid": False,
+                "confidence": 0.0,
+                "reason": f"Validation error: {str(e)}",
+                "should_execute": False,
+                "validation_stage": "ERROR"
+            }
+    
+    def _validate_support_bounce_scenario(self, prediction: Dict, recent_prices: List, recent_lows: List, 
+                                        price_direction: float, price_momentum: float, volume_ratio: float,
+                                        current_price: float, entry_price: float) -> Dict[str, Any]:
+        """Validate support bounce scenario: price dropping toward support, then bouncing"""
         
-        return True
+        # Stage 1: Check if price is moving toward support (entry price)
+        if current_price > entry_price:
+            # Price should be moving DOWN toward support
+            if price_direction > -0.001:  # Not moving down significantly
+                return {
+                    "is_valid": False,
+                    "confidence": 0.0,
+                    "reason": "Price not moving toward support level",
+                    "should_execute": False,
+                    "validation_stage": "STAGE1_FAILED"
+                }
+            
+            # Check if we're getting close to support
+            distance_to_support = (current_price - entry_price) / current_price
+            if distance_to_support > 0.01:  # More than 1% away from support
+                return {
+                    "is_valid": True,
+                    "confidence": 0.3,
+                    "reason": f"Price moving toward support (${entry_price:,.2f}), {distance_to_support:.2%} away",
+                    "should_execute": False,
+                    "validation_stage": "STAGE1_PENDING"
+                }
+        
+        # Stage 2: Check if price reached support and showing bounce signs
+        if current_price <= entry_price * 1.002:  # Within 0.2% of support
+            # Look for bounce confirmation
+            if price_momentum > 0.0005:  # Price starting to move up
+                if volume_ratio > 1.2:  # Increased volume on bounce
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.8,
+                        "reason": f"Support bounce confirmed at ${entry_price:,.2f} with volume surge",
+                        "should_execute": True,
+                        "validation_stage": "STAGE2_CONFIRMED"
+                    }
+                else:
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.6,
+                        "reason": f"Support bounce detected at ${entry_price:,.2f}, waiting for volume confirmation",
+                        "should_execute": False,
+                        "validation_stage": "STAGE2_PENDING"
+                    }
+            else:
+                return {
+                    "is_valid": True,
+                    "confidence": 0.4,
+                    "reason": f"Price at support ${entry_price:,.2f}, waiting for bounce confirmation",
+                    "should_execute": False,
+                    "validation_stage": "STAGE2_PENDING"
+                }
+        
+        return {
+            "is_valid": True,
+            "confidence": 0.5,
+            "reason": "Support scenario in progress",
+            "should_execute": False,
+            "validation_stage": "IN_PROGRESS"
+        }
+    
+    def _validate_resistance_rejection_scenario(self, prediction: Dict, recent_prices: List, recent_highs: List,
+                                              price_direction: float, price_momentum: float, volume_ratio: float,
+                                              current_price: float, entry_price: float) -> Dict[str, Any]:
+        """Validate resistance rejection scenario: price rising toward resistance, then rejecting"""
+        
+        # Stage 1: Check if price is moving toward resistance (entry price)
+        if current_price < entry_price:
+            # Price should be moving UP toward resistance
+            if price_direction < 0.001:  # Not moving up significantly
+                return {
+                    "is_valid": False,
+                    "confidence": 0.0,
+                    "reason": "Price not moving toward resistance level",
+                    "should_execute": False,
+                    "validation_stage": "STAGE1_FAILED"
+                }
+            
+            # Check if we're getting close to resistance
+            distance_to_resistance = (entry_price - current_price) / current_price
+            if distance_to_resistance > 0.01:  # More than 1% away from resistance
+                return {
+                    "is_valid": True,
+                    "confidence": 0.3,
+                    "reason": f"Price moving toward resistance (${entry_price:,.2f}), {distance_to_resistance:.2%} away",
+                    "should_execute": False,
+                    "validation_stage": "STAGE1_PENDING"
+                }
+        
+        # Stage 2: Check if price reached resistance and showing rejection signs
+        if current_price >= entry_price * 0.998:  # Within 0.2% of resistance
+            # Look for rejection confirmation
+            if price_momentum < -0.0005:  # Price starting to move down
+                if volume_ratio > 1.2:  # Increased volume on rejection
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.8,
+                        "reason": f"Resistance rejection confirmed at ${entry_price:,.2f} with volume surge",
+                        "should_execute": True,
+                        "validation_stage": "STAGE2_CONFIRMED"
+                    }
+                else:
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.6,
+                        "reason": f"Resistance rejection detected at ${entry_price:,.2f}, waiting for volume confirmation",
+                        "should_execute": False,
+                        "validation_stage": "STAGE2_PENDING"
+                    }
+            else:
+                return {
+                    "is_valid": True,
+                    "confidence": 0.4,
+                    "reason": f"Price at resistance ${entry_price:,.2f}, waiting for rejection confirmation",
+                    "should_execute": False,
+                    "validation_stage": "STAGE2_PENDING"
+                }
+        
+        return {
+            "is_valid": True,
+            "confidence": 0.5,
+            "reason": "Resistance scenario in progress",
+            "should_execute": False,
+            "validation_stage": "IN_PROGRESS"
+        }
+    
+    def _validate_momentum_continuation_scenario(self, prediction: Dict, recent_prices: List,
+                                               price_direction: float, price_momentum: float, volume_ratio: float,
+                                               current_price: float, entry_price: float, expected_direction: str) -> Dict[str, Any]:
+        """Validate momentum continuation scenario"""
+        
+        if expected_direction == "UP":
+            # Check if momentum is continuing upward
+            if price_direction > 0.002 and price_momentum > 0.001:  # Strong upward momentum
+                if volume_ratio > 1.1:  # Good volume support
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.8,
+                        "reason": "Strong upward momentum with volume confirmation",
+                        "should_execute": True,
+                        "validation_stage": "MOMENTUM_CONFIRMED"
+                    }
+                else:
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.6,
+                        "reason": "Upward momentum detected, waiting for volume confirmation",
+                        "should_execute": False,
+                        "validation_stage": "MOMENTUM_PENDING"
+                    }
+            else:
+                return {
+                    "is_valid": False,
+                    "confidence": 0.0,
+                    "reason": "Upward momentum not confirmed",
+                    "should_execute": False,
+                    "validation_stage": "MOMENTUM_FAILED"
+                }
+        
+        else:  # DOWN momentum
+            if price_direction < -0.002 and price_momentum < -0.001:  # Strong downward momentum
+                if volume_ratio > 1.1:  # Good volume support
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.8,
+                        "reason": "Strong downward momentum with volume confirmation",
+                        "should_execute": True,
+                        "validation_stage": "MOMENTUM_CONFIRMED"
+                    }
+                else:
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.6,
+                        "reason": "Downward momentum detected, waiting for volume confirmation",
+                        "should_execute": False,
+                        "validation_stage": "MOMENTUM_PENDING"
+                    }
+            else:
+                return {
+                    "is_valid": False,
+                    "confidence": 0.0,
+                    "reason": "Downward momentum not confirmed",
+                    "should_execute": False,
+                    "validation_stage": "MOMENTUM_FAILED"
+                }
+    
+    def _validate_breakout_scenario(self, prediction: Dict, recent_prices: List, recent_extremes: List,
+                                  price_direction: float, price_momentum: float, volume_ratio: float,
+                                  current_price: float, entry_price: float, expected_direction: str) -> Dict[str, Any]:
+        """Validate breakout scenario"""
+        
+        # Check if price is breaking out with volume confirmation
+        if expected_direction == "UP":
+            if price_direction > 0.003 and price_momentum > 0.002:  # Strong breakout
+                if volume_ratio > 1.5:  # High volume breakout
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.9,
+                        "reason": "Strong upward breakout with high volume",
+                        "should_execute": True,
+                        "validation_stage": "BREAKOUT_CONFIRMED"
+                    }
+                else:
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.7,
+                        "reason": "Upward breakout detected, waiting for volume confirmation",
+                        "should_execute": False,
+                        "validation_stage": "BREAKOUT_PENDING"
+                    }
+        else:  # DOWN breakout
+            if price_direction < -0.003 and price_momentum < -0.002:  # Strong breakdown
+                if volume_ratio > 1.5:  # High volume breakdown
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.9,
+                        "reason": "Strong downward breakout with high volume",
+                        "should_execute": True,
+                        "validation_stage": "BREAKOUT_CONFIRMED"
+                    }
+                else:
+                    return {
+                        "is_valid": True,
+                        "confidence": 0.7,
+                        "reason": "Downward breakout detected, waiting for volume confirmation",
+                        "should_execute": False,
+                        "validation_stage": "BREAKOUT_PENDING"
+                    }
+        
+        return {
+            "is_valid": False,
+            "confidence": 0.0,
+            "reason": "Breakout not confirmed",
+            "should_execute": False,
+            "validation_stage": "BREAKOUT_FAILED"
+        }
+    
+    def _validate_generic_scenario(self, prediction: Dict, recent_prices: List,
+                                 price_direction: float, price_momentum: float, volume_ratio: float,
+                                 current_price: float, entry_price: float) -> Dict[str, Any]:
+        """Generic validation for other prediction types"""
+        
+        # Basic validation: check if price is moving in expected direction
+        side = prediction.get("side", "UNKNOWN")
+        
+        if side == "BUY" and entry_price < current_price:
+            # For BUY orders below current price, check if price is moving down
+            if price_direction < -0.001:
+                return {
+                    "is_valid": True,
+                    "confidence": 0.5,
+                    "reason": "Price moving toward BUY entry level",
+                    "should_execute": False,
+                    "validation_stage": "GENERIC_PENDING"
+                }
+        
+        elif side == "SELL" and entry_price > current_price:
+            # For SELL orders above current price, check if price is moving up
+            if price_direction > 0.001:
+                return {
+                    "is_valid": True,
+                    "confidence": 0.5,
+                    "reason": "Price moving toward SELL entry level",
+                    "should_execute": False,
+                    "validation_stage": "GENERIC_PENDING"
+                }
+        
+        return {
+            "is_valid": False,
+            "confidence": 0.0,
+            "reason": "Generic scenario not validated",
+            "should_execute": False,
+            "validation_stage": "GENERIC_FAILED"
+        }
     
     def calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
         """Calculate win probability for a prediction"""
@@ -1510,9 +1855,19 @@ class PredictionEngine:
             prediction = prediction_analysis["best_prediction"]
             prediction_mode = prediction_analysis.get("prediction_mode", "PREDICTIVE")
             
-            # Check if prediction is still valid
-            if not self.is_prediction_valid(prediction, current_price, candles_5m):
-                return {"should_place_order": False, "reason": "Prediction no longer valid"}
+            # PREDICTIVE LOGIC: Validate prediction before execution
+            if prediction_mode == "PREDICTIVE":
+                validation_result = self._validate_predictive_prediction(prediction, current_price, candles_5m, prediction_analysis)
+                if not validation_result["is_valid"]:
+                    return {"should_place_order": False, "reason": f"Prediction validation failed: {validation_result['reason']}"}
+                
+                # If prediction is validated, proceed with execution
+                logger.info(f"🎯 PREDICTIVE VALIDATION PASSED: {prediction['type']} - {validation_result['reason']}")
+            
+            # REACTIVE LOGIC: Direct execution for reactive signals
+            elif prediction_mode == "REACTIVE":
+                if not self.is_prediction_valid(prediction, current_price, candles_5m):
+                    return {"should_place_order": False, "reason": "Reactive prediction no longer valid"}
             
             # Calculate win probability
             win_probability = self.calculate_prediction_win_probability(prediction, prediction_analysis)
@@ -1572,3 +1927,137 @@ class PredictionEngine:
         except Exception as e:
             logger.error(f"Error analyzing entry point: {e}")
             return {"should_place_order": False, "reason": f"Analysis error: {str(e)}"}
+    
+    def _validate_predictive_prediction(self, prediction: Dict[str, Any], current_price: float, candles_5m: List, prediction_analysis: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate predictive prediction by checking if market behavior confirms the prediction"""
+        try:
+            pred_type = prediction.get("type", "UNKNOWN")
+            side = prediction.get("side", "UNKNOWN")
+            entry_price = prediction.get("entry_price", 0)
+            prediction_time = prediction.get("prediction_timestamp", 0)
+            
+            if not candles_5m or len(candles_5m) < 6:
+                return {"is_valid": False, "reason": "Insufficient market data for validation"}
+            
+            # Get candles since prediction was made
+            current_time = time.time()
+            candles_since_prediction = [c for c in candles_5m if c.get("timestamp", 0) > prediction_time]
+            
+            if len(candles_since_prediction) < 3:
+                return {"is_valid": False, "reason": "Not enough time passed since prediction"}
+            
+            # Analyze market behavior since prediction
+            validation_result = self._analyze_prediction_confirmation(prediction, candles_since_prediction, current_price)
+            
+            return validation_result
+            
+        except Exception as e:
+            logger.error(f"Error validating predictive prediction: {e}")
+            return {"is_valid": False, "reason": f"Validation error: {str(e)}"}
+    
+    def _analyze_prediction_confirmation(self, prediction: Dict[str, Any], candles_since_prediction: List, current_price: float) -> Dict[str, Any]:
+        """Analyze if market behavior confirms the prediction"""
+        try:
+            pred_type = prediction.get("type", "UNKNOWN")
+            side = prediction.get("side", "UNKNOWN")
+            entry_price = prediction.get("entry_price", 0)
+            
+            # Extract price data
+            prices = [candle["close"] for candle in candles_since_prediction]
+            volumes = [candle["volume"] for candle in candles_since_prediction]
+            
+            # Calculate key metrics
+            price_trend = (prices[-1] - prices[0]) / prices[0]  # Overall trend since prediction
+            price_movement = abs(prices[-1] - entry_price) / entry_price  # Distance to entry
+            volume_trend = sum(volumes[-3:]) / sum(volumes[:3]) if len(volumes) >= 6 else 1.0  # Volume trend
+            
+            # Validation logic based on prediction type
+            if pred_type == "SUPPORT_BOUNCE" and side == "BUY":
+                # For support bounce BUY: price should be moving toward support level
+                if entry_price < current_price:  # Entry below current price
+                    # Check if price is moving down toward entry
+                    if price_trend < -0.001:  # Price moving down
+                        if price_movement < 0.005:  # Close to entry level
+                            return {"is_valid": True, "reason": "Price moving toward support level as predicted"}
+                        else:
+                            return {"is_valid": False, "reason": "Price not close enough to support level"}
+                    else:
+                        return {"is_valid": False, "reason": "Price not moving toward support level"}
+                else:
+                    return {"is_valid": False, "reason": "Support bounce entry should be below current price"}
+            
+            elif pred_type == "REVERSION_FROM_RESISTANCE" and side == "SELL":
+                # For resistance reversion SELL: price should be moving toward resistance level
+                if entry_price > current_price:  # Entry above current price
+                    # Check if price is moving up toward entry
+                    if price_trend > 0.001:  # Price moving up
+                        if price_movement < 0.005:  # Close to entry level
+                            return {"is_valid": True, "reason": "Price moving toward resistance level as predicted"}
+                        else:
+                            return {"is_valid": False, "reason": "Price not close enough to resistance level"}
+                    else:
+                        return {"is_valid": False, "reason": "Price not moving toward resistance level"}
+                else:
+                    return {"is_valid": False, "reason": "Resistance reversion entry should be above current price"}
+            
+            elif pred_type == "MOMENTUM_UP" and side == "BUY":
+                # For momentum UP: price should be showing upward momentum
+                if price_trend > 0.002 and volume_trend > 1.1:  # Strong upward momentum with volume
+                    return {"is_valid": True, "reason": "Upward momentum confirmed with volume"}
+                else:
+                    return {"is_valid": False, "reason": "Insufficient upward momentum or volume"}
+            
+            elif pred_type == "MOMENTUM_REVERSION" and side == "SELL":
+                # For momentum reversion SELL: price should be showing reversal signs
+                if price_trend < -0.001 and volume_trend > 1.0:  # Downward reversal with volume
+                    return {"is_valid": True, "reason": "Momentum reversal confirmed"}
+                else:
+                    return {"is_valid": False, "reason": "No clear momentum reversal detected"}
+            
+            elif pred_type == "BREAKOUT_BELOW" and side == "SELL":
+                # For breakout below: price should be breaking below support
+                if price_trend < -0.003:  # Strong downward movement
+                    return {"is_valid": True, "reason": "Breakout below support confirmed"}
+                else:
+                    return {"is_valid": False, "reason": "No clear breakout below support"}
+            
+            elif pred_type == "REVERSION_FROM_SUPPORT" and side == "BUY":
+                # For support reversion BUY: price should be bouncing from support
+                if price_trend > 0.002:  # Upward bounce
+                    return {"is_valid": True, "reason": "Support reversion confirmed"}
+                else:
+                    return {"is_valid": False, "reason": "No clear support reversion"}
+            
+            elif pred_type == "RANGE_BREAKOUT_UP" and side == "BUY":
+                # For range breakout up: price should be breaking above resistance
+                if price_trend > 0.003:  # Strong upward breakout
+                    return {"is_valid": True, "reason": "Range breakout up confirmed"}
+                else:
+                    return {"is_valid": False, "reason": "No clear range breakout up"}
+            
+            elif pred_type == "RANGE_BREAKOUT_DOWN" and side == "SELL":
+                # For range breakout down: price should be breaking below support
+                if price_trend < -0.003:  # Strong downward breakout
+                    return {"is_valid": True, "reason": "Range breakout down confirmed"}
+                else:
+                    return {"is_valid": False, "reason": "No clear range breakout down"}
+            
+            # Default case
+            return {"is_valid": False, "reason": f"Unknown prediction type: {pred_type}"}
+            
+        except Exception as e:
+            logger.error(f"Error analyzing prediction confirmation: {e}")
+            return {"is_valid": False, "reason": f"Analysis error: {str(e)}"}
+    
+    def is_prediction_valid(self, prediction: Dict[str, Any], current_price: float, candles_5m: List = None) -> bool:
+        """Check if prediction is still valid given current price and movement"""
+        entry_price = prediction["entry_price"]
+        side = prediction.get("side", "UNKNOWN")
+        prediction_type = prediction.get("type", "UNKNOWN")
+        
+        # Basic validity check: price within 1% of entry for predictive logic
+        price_diff = abs(current_price - entry_price) / current_price
+        if price_diff > 0.01:
+            return False
+        
+        return True
