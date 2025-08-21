@@ -327,28 +327,20 @@ class YahooHyperliquidPaperTradingBot:
     def get_hyperliquid_price(self) -> Optional[float]:
         """Get current price from Hyperliquid"""
         try:
-            market_data = self.hyperliquid_api.get_market_data("BTC")
+            mid_price = self.hyperliquid_api.get_current_price("BTC")
             
-            if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
-                bids = market_data['levels'][0]
-                asks = market_data['levels'][1]
+            if mid_price:
+                # Update variability analyzer with new price data
+                current_time = time.time()
+                if current_time - self.last_price_update >= self.price_update_interval:
+                    # Get real volume data from Hyperliquid 5m candles
+                    volume_data = self.hyperliquid_api.get_current_5m_volume("BTC")
+                    real_volume = volume_data.get("current_volume", 100)  # Fallback to 100 if no data
+                    
+                    self.variability_analyzer.add_price_data(mid_price, volume=real_volume)
+                    self.last_price_update = current_time
                 
-                if bids and asks:
-                    best_bid = float(bids[0]['px'])
-                    best_ask = float(asks[0]['px'])
-                    mid_price = (best_bid + best_ask) / 2
-                    
-                    # Update variability analyzer with new price data
-                    current_time = time.time()
-                    if current_time - self.last_price_update >= self.price_update_interval:
-                        # Get real volume data from Hyperliquid 5m candles
-                        volume_data = self.hyperliquid_api.get_current_5m_volume("BTC")
-                        real_volume = volume_data.get("current_volume", 100)  # Fallback to 100 if no data
-                        
-                        self.variability_analyzer.add_price_data(mid_price, volume=real_volume)
-                        self.last_price_update = current_time
-                    
-                    return mid_price
+                return mid_price
             
             return None
         except Exception as e:

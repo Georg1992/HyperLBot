@@ -113,6 +113,21 @@ class SimpleBotDashboard:
                             config = TradingConfig()
                             api = HyperliquidAPI(config.WALLET_ADDRESS, config.WALLET_PRIVATE_KEY)
                             
+                            # Get REAL-TIME price from Hyperliquid (not from logs)
+                            try:
+                                real_time_price = api.get_current_price("BTC")
+                                if real_time_price:
+                                    # Use real-time price instead of log price
+                                    current_price = real_time_price
+                                    hyperliquid_price = real_time_price
+                                    
+                                    logger.info(f"📈 Real-time Hyperliquid price: ${real_time_price:,.2f}")
+                                else:
+                                    logger.warning("Could not get real-time price from Hyperliquid")
+                            except Exception as price_error:
+                                logger.warning(f"Could not get real-time price: {price_error}")
+                                # Fallback to log price
+                            
                             # Get proper RSI from Yahoo data
                             from data.yahoo_data_fetcher import YahooDataFetcher
                             fetcher = YahooDataFetcher()
@@ -151,6 +166,9 @@ class SimpleBotDashboard:
                                 rsi_data = best_pred.get("rsi_context")
                                 volume_data = best_pred.get("orderbook_depth")
                                 orderbook_imbalance = best_pred.get("orderbook_imbalance")
+                        
+                        # Update last_update to reflect real-time data
+                        last_update = datetime.now().isoformat()
                         
                         logger.info(f"Market data: ${current_price} - {trend} - {market_condition} - RSI: {rsi_data} - Volume: {volume_data}")
                         

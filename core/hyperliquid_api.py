@@ -104,6 +104,31 @@ class HyperliquidAPI:
             logger.error(f"Failed to get account info: {e}")
             raise
     
+    def get_current_price(self, symbol: str = None) -> Optional[float]:
+        """Get current mid-price from orderbook"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            market_data = self.get_market_data(symbol)
+            
+            if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
+                bids = market_data['levels'][0]
+                asks = market_data['levels'][1]
+                
+                if bids and asks:
+                    best_bid = float(bids[0]['px'])
+                    best_ask = float(asks[0]['px'])
+                    mid_price = (best_bid + best_ask) / 2
+                    
+                    logger.debug(f"Current {symbol} price: ${mid_price:,.2f} (Bid: ${best_bid:,.2f}, Ask: ${best_ask:,.2f})")
+                    return mid_price
+            
+            logger.warning(f"Could not get current price for {symbol}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get current price for {symbol}: {e}")
+            return None
+
     def get_market_data(self, symbol: str = None) -> Dict[str, Any]:
         """Get current market data for a symbol"""
         try:
