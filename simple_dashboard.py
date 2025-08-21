@@ -76,28 +76,46 @@ class SimpleBotDashboard:
             with open(analysis_path, 'r') as f:
                 analysis_data = json.load(f)
                 if analysis_data and len(analysis_data) > 0:
-                    # Find the latest entry with actual market data (not strategy_switch)
-                    latest = None
-                    for entry in reversed(analysis_data):
-                        if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis"):
-                            latest = entry
-                            break
+                    # Find the latest entry with actual market data (check both hybrid_analysis_update and prediction_analysis)
+                    latest_market = None
+                    latest_prediction = None
                     
-                    if latest:
-                        trend_analysis = latest.get("trend_analysis", {})
-                        current_price = latest.get("hyperliquid_price", 0.0)  # Use hyperliquid_price directly
+                    for entry in reversed(analysis_data):
+                        if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis") and not latest_market:
+                            latest_market = entry
+                        if entry.get("analysis_type") == "prediction_analysis" and entry.get("has_prediction") and not latest_prediction:
+                            latest_prediction = entry
+                    
+                    # Use market data entry for basic info, prediction entry for RSI/volume
+                    base_entry = latest_market or latest_prediction
+                    
+                    if base_entry:
+                        # Basic market data
+                        trend_analysis = base_entry.get("trend_analysis", {})
+                        current_price = base_entry.get("hyperliquid_price", 0.0)
                         trend = trend_analysis.get("trend", "UNKNOWN")
-                        market_condition = latest.get("market_condition", "UNKNOWN")
-                        last_update = latest.get("datetime", "Never")
+                        market_condition = base_entry.get("market_condition", "UNKNOWN")
+                        last_update = base_entry.get("datetime", "Never")
                         
-                        # Get price information from new architecture
-                        hyperliquid_price = latest.get("hyperliquid_price", 0.0)
-                        yahoo_last_close = latest.get("yahoo_last_close", 0.0)
-                        price_diff_pct = latest.get("price_difference_pct", 0.0)
-                        price_diff_amount = latest.get("price_difference_amount", 0.0)
-                        data_source = latest.get("data_source", "Unknown")
+                        # Get price information
+                        hyperliquid_price = base_entry.get("hyperliquid_price", 0.0)
+                        yahoo_last_close = base_entry.get("yahoo_last_close", 0.0)
+                        price_diff_pct = base_entry.get("price_difference_pct", 0.0)
+                        price_diff_amount = base_entry.get("price_difference_amount", 0.0)
+                        data_source = base_entry.get("data_source", "Unknown")
                         
-                        logger.info(f"Market data: ${current_price} - {trend} - {market_condition}")
+                        # Extract RSI and volume data from latest prediction if available
+                        rsi_data = None
+                        volume_data = None
+                        orderbook_imbalance = None
+                        
+                        if latest_prediction and latest_prediction.get("best_prediction"):
+                            best_pred = latest_prediction["best_prediction"]
+                            rsi_data = best_pred.get("rsi_context")
+                            volume_data = best_pred.get("orderbook_depth")
+                            orderbook_imbalance = best_pred.get("orderbook_imbalance")
+                        
+                        logger.info(f"Market data: ${current_price} - {trend} - {market_condition} - RSI: {rsi_data} - Volume: {volume_data}")
                         
                         return {
                             "current_price": current_price,
@@ -108,7 +126,10 @@ class SimpleBotDashboard:
                             "yahoo_last_close": yahoo_last_close,
                             "price_difference_pct": price_diff_pct,
                             "price_difference_amount": price_diff_amount,
-                            "data_source": data_source
+                            "data_source": data_source,
+                            "rsi": rsi_data,
+                            "volume_depth": volume_data,
+                            "orderbook_imbalance": orderbook_imbalance
                         }
                     else:
                         logger.warning("No valid market data found in analysis")
@@ -641,11 +662,31 @@ def create_template():
                      <p><strong>Current Price (Hyperliquid):</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
                      <p><strong>Yahoo Last Close:</strong> $${market.yahoo_last_close ? market.yahoo_last_close.toLocaleString() : 'N/A'}</p>
                      <p><strong>Price Diff:</strong> $${market.price_difference_amount ? market.price_difference_amount.toLocaleString() : 'N/A'} (${market.price_difference_pct ? market.price_difference_pct.toFixed(3) : 'N/A'}%)</p>
+                     
+                     <!-- Enhanced Market Indicators -->
+                     ${market.rsi !== null && market.rsi !== undefined ? `
+                     <div class="market-indicator rsi-indicator" style="margin: 10px 0;">
+                         <p><strong>📊 RSI:</strong> 
+                         <span class="rsi-value ${market.rsi > 70 ? 'overbought' : market.rsi < 30 ? 'oversold' : 'neutral'}">${market.rsi.toFixed(1)}</span>
+                         ${market.rsi > 70 ? '<span class="rsi-status overbought">🔴 OVERBOUGHT</span>' : market.rsi < 30 ? '<span class="rsi-status oversold">🟢 OVERSOLD</span>' : '<span class="rsi-status neutral">⚪ NEUTRAL</span>'}
+                         </p>
+                     </div>` : ''}
+                     
+                     ${market.volume_depth !== null && market.volume_depth !== undefined ? `
+                     <div class="market-indicator volume-indicator" style="margin: 10px 0;">
+                         <p><strong>📈 Volume Depth:</strong> <span class="volume-value">${market.volume_depth.toFixed(1)} BTC</span></p>
+                         ${market.orderbook_imbalance !== null && market.orderbook_imbalance !== undefined ? `
+                         <p><strong>📊 Order Flow:</strong> 
+                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${(market.orderbook_imbalance * 100).toFixed(1)}%</span>
+                         ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
+                         </p>` : ''}
+                     </div>` : ''}
+                     
                      <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
                      <p><strong>Condition:</strong> ${market.market_condition}</p>
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
                      <p><strong>Data Source:</strong> ${market.data_source || 'Hyperliquid + Yahoo'}</p>
-                     <p><small>Real-time price from Hyperliquid, Historical analysis from Yahoo Finance</small></p>
+                     <p><small>Real-time price & volume from Hyperliquid, Historical analysis & RSI from Yahoo Finance</small></p>
                  `;
             } else {
                 div.innerHTML = '<p>No market data available</p>';
