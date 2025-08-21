@@ -483,6 +483,10 @@ class PredictionEngine:
                 
                 best_prediction = max(predictions, key=lambda x: x["confidence"])
                 
+                # Ensure best prediction has metadata (safety check)
+                if "current_price" not in best_prediction:
+                    best_prediction = self._add_prediction_metadata(best_prediction, current_price)
+                
                 return {
                     "has_prediction": True,
                     "prediction_mode": "PREDICTIVE",
@@ -498,10 +502,15 @@ class PredictionEngine:
                 # Generate basic predictions even with small ranges
                 basic_predictions = self._generate_basic_predictions(current_price, support_5m, resistance_5m, trend_5m, trend_1h, volatility_5m)
                 if basic_predictions:
+                    # Ensure best prediction has metadata (safety check)
+                    best_basic = basic_predictions[0]
+                    if "current_price" not in best_basic:
+                        best_basic = self._add_prediction_metadata(best_basic, current_price)
+                    
                     return {
                         "has_prediction": True,
                         "prediction_mode": "BASIC",
-                        "best_prediction": basic_predictions[0],
+                        "best_prediction": best_basic,
                         "all_predictions": basic_predictions,
                         "volatility_5m": volatility_5m,
                         "volatility_1h": volatility_1h,
@@ -685,6 +694,10 @@ class PredictionEngine:
                         "prediction_mode": "TREND_FOLLOWING"
                     }
                 predictions.append(prediction)
+             
+            # Add metadata to all predictions before returning
+            for i, prediction in enumerate(predictions):
+                predictions[i] = self._add_prediction_metadata(prediction, current_price)
              
             return predictions
              
