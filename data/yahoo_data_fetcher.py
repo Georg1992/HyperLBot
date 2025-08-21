@@ -2,6 +2,7 @@
 """
 Yahoo Finance Data Fetcher for Historical BTC/USD Data
 Provides real historical candlestick data that aligns with Hyperliquid BTC/USD perpetuals
+NOTE: This fetcher is for HISTORICAL DATA ONLY. Real-time pricing should come from Hyperliquid.
 """
 
 import time
@@ -20,6 +21,7 @@ class YahooDataFetcher:
     """
     Yahoo Finance data fetcher for BTC/USD historical data
     Provides real historical candlestick data aligned with Hyperliquid BTC/USD perpetuals
+    NOTE: For real-time pricing, use Hyperliquid API exclusively
     """
     
     def __init__(self):
@@ -27,7 +29,8 @@ class YahooDataFetcher:
         self.cache = {}
         self.cache_duration = 30  # 30 seconds cache
         
-        logger.info("🔗 Yahoo Finance Data Fetcher initialized for BTC-USD")
+        logger.info("🔗 Yahoo Finance Data Fetcher initialized for BTC-USD (HISTORICAL DATA ONLY)")
+        logger.info("📊 Real-time pricing should come from Hyperliquid API")
     
     def _get_cached_data(self, key: str) -> Optional[Dict]:
         """Get cached data if still valid"""
@@ -43,109 +46,92 @@ class YahooDataFetcher:
     
     def _convert_yf_to_standard(self, yf_data) -> List[Dict[str, Any]]:
         """Convert yfinance DataFrame to standard candlestick format"""
-        try:
-            candles = []
-            
-            for index, row in yf_data.iterrows():
-                timestamp = int(index.timestamp() * 1000)  # Convert to milliseconds
-                
-                candle = {
-                    "open_time": timestamp,
-                    "open": float(row['Open']),
-                    "high": float(row['High']),
-                    "low": float(row['Low']),
-                    "close": float(row['Close']),
-                    "volume": float(row['Volume']),
-                    "close_time": timestamp + (5 * 60 * 1000),  # Add 5 minutes for 5m candles
-                    "quote_volume": float(row['Volume']) * float(row['Close']),
-                    "trades": 0,  # Not provided by Yahoo Finance
-                    "taker_buy_base": float(row['Volume']) * 0.5,  # Estimate
-                    "taker_buy_quote": float(row['Volume']) * float(row['Close']) * 0.5  # Estimate
-                }
-                candles.append(candle)
-            
-            return candles
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to convert Yahoo Finance data: {e}")
+        if yf_data.empty:
             return []
+        
+        candles = []
+        for index, row in yf_data.iterrows():
+            candle = {
+                "open_time": int(index.timestamp() * 1000),
+                "open": float(row['Open']),
+                "high": float(row['High']),
+                "low": float(row['Low']),
+                "close": float(row['Close']),
+                "volume": float(row['Volume']) if 'Volume' in row else 0,
+                "close_time": int(index.timestamp() * 1000),
+                "quote_asset_volume": float(row['Volume']) if 'Volume' in row else 0,
+                "number_of_trades": 0,
+                "taker_buy_base_asset_volume": 0,
+                "taker_buy_quote_asset_volume": 0
+            }
+            candles.append(candle)
+        
+        return candles
     
     def get_klines(self, symbol: str = "BTC", interval: str = "5m", limit: int = 100) -> List[Dict[str, Any]]:
-        """Get candlestick data from Yahoo Finance API"""
+        """Get candlestick data from Yahoo Finance"""
         try:
             cache_key = f"klines_{symbol}_{interval}_{limit}"
             cached_data = self._get_cached_data(cache_key)
             if cached_data:
                 return cached_data
             
-            logger.info(f"📊 Fetching {limit} {interval} candles for {symbol} from Yahoo Finance...")
+            # Convert interval to Yahoo Finance format
+            interval_map = {
+                "1m": "1m",
+                "5m": "5m", 
+                "15m": "15m",
+                "30m": "30m",
+                "1h": "1h",
+                "4h": "4h",
+                "1d": "1d"
+            }
             
-            # Map interval formats
-            yf_interval = self._map_interval(interval)
+            yf_interval = interval_map.get(interval, "5m")
             
             # Calculate period based on interval and limit
-            period_days = self._calculate_period(interval, limit)
+            # Use more generous periods that were working before
+            if interval == "1m":
+                period = "7d"  # 7 days for 1m data
+            elif interval == "5m":
+                period = "60d"  # 60 days for 5m data
+            elif interval == "15m":
+                period = "90d"  # 90 days for 15m data
+            elif interval == "30m":
+                period = "180d"  # 180 days for 30m data
+            elif interval == "1h":
+                period = "1y"  # 1 year for 1h data
+            elif interval == "4h":
+                period = "2y"  # 2 years for 4h data
+            elif interval == "1d":
+                period = "5y"  # 5 years for 1d data
+            else:
+                period = "60d"  # Default to 60 days
             
-            # Fetch data from Yahoo Finance
+            # Get data from Yahoo Finance
             ticker = yf.Ticker(self.symbol)
-            yf_data = ticker.history(period=f"{period_days}d", interval=yf_interval)
+            data = ticker.history(period=period, interval=yf_interval)
             
-            if yf_data.empty:
-                logger.error(f"❌ No data received from Yahoo Finance for {self.symbol}")
+            if data.empty:
+                logger.warning(f"⚠️ No data received from Yahoo Finance for {symbol} {interval}")
                 return []
             
             # Convert to standard format
-            candles = self._convert_yf_to_standard(yf_data)
+            candles = self._convert_yf_to_standard(data)
             
-            # Limit to requested number of candles
+            # Limit to requested number of candles (most recent)
             if len(candles) > limit:
                 candles = candles[-limit:]
             
+            # Cache the result
             self._cache_data(cache_key, candles)
-            logger.success(f"✅ Retrieved {len(candles)} real BTC/USD candles from Yahoo Finance")
+            
+            logger.info(f"✅ Retrieved {len(candles)} {interval} candles from Yahoo Finance")
             return candles
             
         except Exception as e:
-            logger.error(f"❌ Failed to get Yahoo Finance data: {e}")
+            logger.error(f"❌ Failed to get {interval} klines from Yahoo Finance: {e}")
             return []
-    
-    def _map_interval(self, interval: str) -> str:
-        """Map our interval format to Yahoo Finance format"""
-        interval_map = {
-            "1m": "1m",
-            "5m": "5m", 
-            "15m": "15m",
-            "30m": "30m",
-            "1h": "1h",
-            "4h": "4h",
-            "1d": "1d"
-        }
-        return interval_map.get(interval, "5m")
-    
-    def _calculate_period(self, interval: str, limit: int) -> int:
-        """Calculate how many days of data we need"""
-        interval_minutes = {
-            "1m": 1,
-            "5m": 5,
-            "15m": 15,
-            "30m": 30,
-            "1h": 60,
-            "4h": 240,
-            "1d": 1440
-        }
-        
-        minutes_needed = interval_minutes.get(interval, 5) * limit
-        days_needed = max(1, int(minutes_needed / 1440) + 1)
-        
-        # Yahoo Finance limitations
-        if days_needed > 60:
-            days_needed = 60
-            
-        return days_needed
-    
-    def get_1h_klines(self, symbol: str = "BTC", limit: int = 24) -> List[Dict[str, Any]]:
-        """Get 1-hour candlestick data from Yahoo Finance"""
-        return self.get_klines(symbol, "1h", limit)
     
     def get_5m_klines(self, symbol: str = "BTC", limit: int = 100) -> List[Dict[str, Any]]:
         """Get 5-minute candlestick data from Yahoo Finance"""
@@ -155,31 +141,14 @@ class YahooDataFetcher:
         """Get 1-minute candlestick data from Yahoo Finance"""
         return self.get_klines(symbol, "1m", limit)
     
-    def get_current_price(self, symbol: str = "BTC") -> Optional[float]:
-        """Get current price from Yahoo Finance"""
-        try:
-            cache_key = f"price_{symbol}"
-            cached_data = self._get_cached_data(cache_key)
-            if cached_data:
-                return cached_data
-            
-            ticker = yf.Ticker(self.symbol)
-            info = ticker.info
-            
-            current_price = info.get('regularMarketPrice') or info.get('previousClose')
-            
-            if current_price:
-                self._cache_data(cache_key, current_price)
-                return float(current_price)
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get current price from Yahoo Finance: {e}")
-            return None
+    def get_1h_klines(self, symbol: str = "BTC", limit: int = 100) -> List[Dict[str, Any]]:
+        """Get 1-hour candlestick data from Yahoo Finance"""
+        return self.get_klines(symbol, "1h", limit)
+    
+    # REMOVED: get_current_price method - Real-time pricing should come from Hyperliquid
     
     def get_ticker_data(self, symbol: str = "BTC") -> Optional[Dict[str, Any]]:
-        """Get ticker-like data from Yahoo Finance"""
+        """Get ticker-like data from Yahoo Finance (historical context only)"""
         try:
             cache_key = f"ticker_{symbol}"
             cached_data = self._get_cached_data(cache_key)
@@ -189,19 +158,16 @@ class YahooDataFetcher:
             ticker = yf.Ticker(self.symbol)
             info = ticker.info
             
-            current_price = info.get('regularMarketPrice', 0)
+            # Use previous close as reference (not current price)
             previous_close = info.get('previousClose', 0)
-            
-            price_change = current_price - previous_close if current_price and previous_close else 0
-            price_change_pct = (price_change / previous_close * 100) if previous_close else 0
             
             ticker_data = {
                 "symbol": symbol,
-                "priceChange": price_change,
-                "priceChangePercent": price_change_pct,
-                "lastPrice": current_price,
+                "priceChange": 0,  # No real-time price change
+                "priceChangePercent": 0,  # No real-time price change
+                "lastPrice": previous_close,  # Use previous close for historical context
                 "volume": info.get('regularMarketVolume', 0),
-                "quoteVolume": info.get('regularMarketVolume', 0) * current_price,
+                "quoteVolume": info.get('regularMarketVolume', 0) * previous_close,
                 "count": 0  # Not provided by Yahoo Finance
             }
             
@@ -247,26 +213,24 @@ class YahooDataFetcher:
         # Determine trend
         if price_change > 0.001:  # 0.1% uptrend
             trend = "UP"
+            strength = min(abs(price_change), 0.1)  # Cap at 10%
         elif price_change < -0.001:  # 0.1% downtrend
             trend = "DOWN"
+            strength = min(abs(price_change), 0.1)  # Cap at 10%
         else:
             trend = "NEUTRAL"
-        
-        # Calculate trend strength
-        strength = abs(price_change)
+            strength = 0
         
         return {
             "trend": trend,
             "strength": strength,
-            "direction": price_change,
-            "first_close": first_close,
-            "last_close": last_close
+            "direction": price_change
         }
     
     def calculate_volatility(self, candles: List[Dict[str, Any]], periods: int = 20) -> float:
         """Calculate price volatility"""
         if len(candles) < periods:
-            return 0.0
+            return 0
         
         recent_candles = candles[-periods:]
         returns = []
@@ -274,34 +238,48 @@ class YahooDataFetcher:
         for i in range(1, len(recent_candles)):
             prev_close = recent_candles[i-1]["close"]
             curr_close = recent_candles[i]["close"]
-            ret = (curr_close - prev_close) / prev_close
+            ret = abs((curr_close - prev_close) / prev_close)
             returns.append(ret)
         
-        if not returns:
-            return 0.0
-        
-        # Calculate standard deviation of returns
-        volatility = statistics.stdev(returns)
-        return volatility
+        return statistics.mean(returns) if returns else 0
     
-    def get_market_analysis(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """Get comprehensive market analysis from Yahoo Finance data"""
+    def get_market_analysis(self, symbol: str = "BTC", hyperliquid_price: float = None) -> Dict[str, Any]:
+        """
+        Get comprehensive market analysis from Yahoo Finance (HISTORICAL DATA ONLY)
+        NOTE: hyperliquid_price parameter should be provided for current price context
+        """
         try:
             # Get different timeframe data
             candles_1m = self.get_1m_klines(symbol, 100)
             candles_5m = self.get_5m_klines(symbol, 100)
             candles_1h = self.get_1h_klines(symbol, 24)
             ticker = self.get_ticker_data(symbol)
-            current_price = self.get_current_price(symbol)
             
             if not candles_5m or not candles_1h:
                 return {"error": "Could not fetch candlestick data from Yahoo Finance"}
             
-            if not current_price:
-                # Fallback to last close price
-                current_price = candles_5m[-1]["close"] if candles_5m else 0
+            # Get Yahoo Finance historical close price for comparison
+            yahoo_last_close = candles_5m[-1]["close"] if candles_5m else 0
             
-            # Calculate indicators
+            # Use Hyperliquid price if provided, otherwise use last close from historical data
+            if hyperliquid_price is not None:
+                current_price = hyperliquid_price
+                logger.info(f"📊 Using Hyperliquid price: ${current_price:,.2f}")
+                
+                # Calculate price difference between Hyperliquid and Yahoo Finance
+                price_difference = abs(hyperliquid_price - yahoo_last_close)
+                price_difference_pct = (price_difference / yahoo_last_close * 100) if yahoo_last_close > 0 else 0
+                
+                logger.info(f"📊 Yahoo last close: ${yahoo_last_close:,.2f}")
+                logger.info(f"📊 Price difference: ${price_difference:,.2f} ({price_difference_pct:.3f}%)")
+            else:
+                # Fallback to last close price from historical data
+                current_price = yahoo_last_close
+                price_difference = 0
+                price_difference_pct = 0
+                logger.warning(f"⚠️ No Hyperliquid price provided, using last close: ${current_price:,.2f}")
+            
+            # Calculate indicators using Yahoo Finance historical data
             support_resistance_5m = self.calculate_support_resistance(candles_5m)
             support_resistance_1h = self.calculate_support_resistance(candles_1h)
             
@@ -314,7 +292,10 @@ class YahooDataFetcher:
             analysis = {
                 "timestamp": time.time(),
                 "symbol": symbol,
-                "current_price": current_price,
+                "current_price": current_price,  # Hyperliquid price for trading
+                "yahoo_last_close": yahoo_last_close,  # Yahoo Finance historical close
+                "price_difference": price_difference,  # Absolute difference
+                "price_difference_pct": price_difference_pct,  # Percentage difference
                 "candles_1m": candles_1m[-10:] if candles_1m else [],  # Last 10 1-min candles
                 "candles_5m": candles_5m[-20:] if candles_5m else [],  # Last 20 5-min candles
                 "candles_1h": candles_1h[-10:] if candles_1h else [],  # Last 10 1-hour candles
@@ -325,7 +306,8 @@ class YahooDataFetcher:
                 "volatility_5m": volatility_5m,
                 "volatility_1h": volatility_1h,
                 "ticker": ticker,
-                "market_condition": self._determine_market_condition(trend_5m, trend_1h, volatility_5m)
+                "market_condition": self._determine_market_condition(trend_5m, trend_1h, volatility_5m),
+                "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"
             }
             
             logger.success(f"✅ Yahoo Finance market analysis completed for {symbol}")
@@ -355,14 +337,15 @@ class YahooDataFetcher:
         return "NORMAL"
     
     def test_connection(self) -> bool:
-        """Test connection to Yahoo Finance"""
+        """Test connection to Yahoo Finance (historical data only)"""
         try:
-            current_price = self.get_current_price("BTC")
-            if current_price and current_price > 0:
-                logger.success("✅ Yahoo Finance connection successful")
+            # Test with historical data instead of current price
+            candles = self.get_5m_klines("BTC", 10)
+            if candles and len(candles) > 0:
+                logger.success("✅ Yahoo Finance connection successful (historical data)")
                 return True
             else:
-                logger.error("❌ Yahoo Finance connection failed - no price data")
+                logger.error("❌ Yahoo Finance connection failed - no historical data")
                 return False
         except Exception as e:
             logger.error(f"❌ Yahoo Finance connection error: {e}")
@@ -371,8 +354,8 @@ class YahooDataFetcher:
 
 def main():
     """Test the Yahoo Finance data fetcher"""
-    logger.info("🔍 Testing Yahoo Finance Data Fetcher")
-    logger.info("=" * 50)
+    logger.info("🔍 Testing Yahoo Finance Data Fetcher (HISTORICAL DATA ONLY)")
+    logger.info("=" * 60)
     
     fetcher = YahooDataFetcher()
     
@@ -381,18 +364,20 @@ def main():
         logger.error("❌ Cannot connect to Yahoo Finance")
         return
     
-    # Test market analysis
+    # Test market analysis with mock Hyperliquid price
     logger.info("📊 Getting market analysis...")
-    analysis = fetcher.get_market_analysis("BTC")
+    mock_hyperliquid_price = 45000.0  # Mock price for testing
+    analysis = fetcher.get_market_analysis("BTC", hyperliquid_price=mock_hyperliquid_price)
     
     if "error" not in analysis:
         logger.success("✅ Market analysis successful!")
-        logger.info(f"Current Price: ${analysis['current_price']:,.2f}")
+        logger.info(f"Current Price (Hyperliquid): ${analysis['current_price']:,.2f}")
         logger.info(f"5m Trend: {analysis['trend_5m']['trend']} ({analysis['trend_5m']['strength']*100:.2f}%)")
         logger.info(f"1h Trend: {analysis['trend_1h']['trend']} ({analysis['trend_1h']['strength']*100:.2f}%)")
         logger.info(f"5m Support: ${analysis['support_resistance_5m']['support']:,.2f}")
         logger.info(f"5m Resistance: ${analysis['support_resistance_5m']['resistance']:,.2f}")
         logger.info(f"Market Condition: {analysis['market_condition']}")
+        logger.info(f"Data Source: {analysis['data_source']}")
         logger.info(f"5m Candles: {len(analysis['candles_5m'])}")
         logger.info(f"1h Candles: {len(analysis['candles_1h'])}")
     else:

@@ -14,7 +14,13 @@ app = Flask(__name__)
 
 class SimpleBotDashboard:
     def __init__(self):
-        self.log_dir = "hybrid_paper_trading_logs"
+        # Check for both old and new log directory names
+        if os.path.exists("yahoo_hyperliquid_paper_trading_logs"):
+            self.log_dir = "yahoo_hyperliquid_paper_trading_logs"
+        elif os.path.exists("hybrid_paper_trading_logs"):
+            self.log_dir = "hybrid_paper_trading_logs"
+        else:
+            self.log_dir = "yahoo_hyperliquid_paper_trading_logs"  # Default to new name
         
     def get_session_data(self):
         """Get session data from logs"""
@@ -79,16 +85,17 @@ class SimpleBotDashboard:
                     
                     if latest:
                         trend_analysis = latest.get("trend_analysis", {})
-                        current_price = trend_analysis.get("last_close", 0.0)
+                        current_price = latest.get("hyperliquid_price", 0.0)  # Use hyperliquid_price directly
                         trend = trend_analysis.get("trend", "UNKNOWN")
                         market_condition = latest.get("market_condition", "UNKNOWN")
                         last_update = latest.get("datetime", "Never")
                         
-                        # Get price difference information
+                        # Get price information from new architecture
                         hyperliquid_price = latest.get("hyperliquid_price", 0.0)
-                        binance_price = latest.get("binance_price", 0.0)
+                        yahoo_last_close = latest.get("yahoo_last_close", 0.0)
                         price_diff_pct = latest.get("price_difference_pct", 0.0)
                         price_diff_amount = latest.get("price_difference_amount", 0.0)
+                        data_source = latest.get("data_source", "Unknown")
                         
                         logger.info(f"Market data: ${current_price} - {trend} - {market_condition}")
                         
@@ -98,9 +105,10 @@ class SimpleBotDashboard:
                             "market_condition": market_condition,
                             "last_update": last_update,
                             "hyperliquid_price": hyperliquid_price,
-                            "binance_price": binance_price,
+                            "yahoo_last_close": yahoo_last_close,
                             "price_difference_pct": price_diff_pct,
-                            "price_difference_amount": price_diff_amount
+                            "price_difference_amount": price_diff_amount,
+                            "data_source": data_source
                         }
                     else:
                         logger.warning("No valid market data found in analysis")
@@ -326,8 +334,8 @@ def create_template():
 <body>
     <div class="container">
         <div class="header">
-            <h1>🤖 HyperLBot Dashboard</h1>
-            <p>Real-time trading bot monitoring</p>
+            <h1>🤖 Yahoo + Hyperliquid Trading Bot Dashboard</h1>
+            <p>Real-time trading bot monitoring (Hyperliquid Price + Yahoo Analysis)</p>
             <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
         </div>
         
@@ -404,13 +412,16 @@ def create_template():
                 
                 
                 
-                div.innerHTML = `
-                    <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.current_price.toLocaleString()}</span></p>
-                    <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
-                    <p><strong>Condition:</strong> ${market.market_condition}</p>
-                    <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
-                                            <p><strong>Current Price:</strong> $${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</p>
-                `;
+                                 div.innerHTML = `
+                     <p><strong>Current Price (Hyperliquid):</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
+                     <p><strong>Yahoo Last Close:</strong> $${market.yahoo_last_close ? market.yahoo_last_close.toLocaleString() : 'N/A'}</p>
+                     <p><strong>Price Diff:</strong> $${market.price_difference_amount ? market.price_difference_amount.toLocaleString() : 'N/A'} (${market.price_difference_pct ? market.price_difference_pct.toFixed(3) : 'N/A'}%)</p>
+                     <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
+                     <p><strong>Condition:</strong> ${market.market_condition}</p>
+                     <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
+                     <p><strong>Data Source:</strong> ${market.data_source || 'Hyperliquid + Yahoo'}</p>
+                     <p><small>Real-time price from Hyperliquid, Historical analysis from Yahoo Finance</small></p>
+                 `;
             } else {
                 div.innerHTML = '<p>No market data available</p>';
             }

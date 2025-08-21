@@ -69,7 +69,7 @@ class YahooHyperliquidPaperTradingBot:
         # Analysis components
         self.fee_manager = FeeManager()
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
-        self.trading_logger = TradingLogger("hybrid_paper_trading_logs")
+        self.trading_logger = TradingLogger("yahoo_hyperliquid_paper_trading_logs")
         
         # Whale analytics integration
         self.whale_integration = WhaleIntegration(enabled=self.config.WHALE_ANALYTICS_ENABLED)
@@ -287,10 +287,11 @@ class YahooHyperliquidPaperTradingBot:
             logger.error(f"❌ Failed to get weekly trend analysis: {e}")
             return {"error": str(e)}
     
-    def get_yahoo_analysis(self) -> Dict[str, Any]:
-        """Get comprehensive market analysis from Yahoo Finance"""
+    def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
+        """Get comprehensive market analysis from Yahoo Finance (HISTORICAL DATA ONLY)"""
         try:
-            analysis = self.yahoo_fetcher.get_market_analysis("BTC")
+            # Pass Hyperliquid price to Yahoo analysis for current price context
+            analysis = self.yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price=hyperliquid_price)
             
             if "error" not in analysis:
                 logger.info(f"📊 Yahoo Finance analysis: ${analysis['current_price']:,.2f} - {analysis['market_condition']}")
@@ -2115,17 +2116,17 @@ class YahooHyperliquidPaperTradingBot:
             logger.warning("⚠️ Could not get weekly trend analysis, proceeding without it")
             self.weekly_trend_analysis = {}
         
-        logger.info(f"🤖 Starting Hyperliquid Paper Trading Bot")
+        logger.info(f"🤖 Starting Yahoo + Hyperliquid Paper Trading Bot")
         logger.info(f"   Initial Balance: ${self.initial_balance:.2f}")
         logger.info(f"   Max Trades: {max_trades}")
         logger.info(f"   Check Interval: {check_interval} seconds")
         logger.info(f"   Max Leverage: {self.leverage_settings['max_leverage']}x")
-                        logger.info(f"   Analysis: Yahoo Finance historical + Hyperliquid real-time")
+        logger.info(f"   Data Sources: Yahoo Finance (Historical) + Hyperliquid (Real-time Price)")
         logger.info(f"   Analysis Frequency: Price every {self.price_update_interval}s, Signals every {self.signal_check_interval}s")
         logger.info(f"   Strategy: Auto-Detection (Standard/Low/High Volatility)")
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
         logger.info(f"   Whale Analytics: {'Enabled' if self.whale_integration.is_available() else 'Disabled'}")
-        logger.info(f"   Logging: Comprehensive Yahoo Finance + Hyperliquid paper trading logs enabled")
+        logger.info(f"   Logging: Comprehensive Yahoo + Hyperliquid paper trading logs enabled")
         logger.info("=" * 50)
         
         trades_placed = 0
@@ -2146,12 +2147,12 @@ class YahooHyperliquidPaperTradingBot:
                 
                 # Update market data for dashboard (every 10 seconds)
                 if current_time - self.last_market_update >= 10:
-                    yahoo_analysis = self.get_yahoo_analysis()
+                    yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price=hyperliquid_price)
                     if yahoo_analysis:
                         self.binance_analysis = yahoo_analysis  # Keep variable name for compatibility
                         self.last_market_update = current_time
                         
-                        # Log market data for dashboard (no price difference monitoring needed)
+                        # Log market data for dashboard (Hyperliquid price + Yahoo historical comparison)
                         self.trading_logger.log_analysis({
                             "type": "hybrid_analysis_update",
                             "timeframe": "5m",
@@ -2159,19 +2160,20 @@ class YahooHyperliquidPaperTradingBot:
                             "trend_analysis": yahoo_analysis.get("trend_5m", {}),
                             "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
                             "hyperliquid_price": hyperliquid_price,
-                            "binance_price": hyperliquid_price,  # Same as Hyperliquid price
-                            "price_difference_pct": 0.0,  # No difference
-                            "price_difference_amount": 0.0  # No difference
+                            "yahoo_last_close": yahoo_analysis.get("yahoo_last_close", hyperliquid_price),
+                            "price_difference_pct": yahoo_analysis.get("price_difference_pct", 0.0),
+                            "price_difference_amount": yahoo_analysis.get("price_difference", 0.0),
+                            "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"
                         })
                 
-                # Update Hyperliquid analysis periodically (every 30 seconds)
+                # Update Yahoo analysis periodically (every 30 seconds)
                 if current_time - self.last_candle_update >= self.candle_update_interval:
-                    yahoo_analysis = self.get_yahoo_analysis()
+                    yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price=hyperliquid_price)
                     if yahoo_analysis:
                         self.binance_analysis = yahoo_analysis  # Keep variable name for compatibility
                         self.last_candle_update = current_time
                         
-                        # Log analysis (no price difference monitoring needed)
+                        # Log analysis (Hyperliquid price + Yahoo historical comparison)
                         self.trading_logger.log_analysis({
                             "type": "hybrid_analysis_update",
                             "timeframe": "5m",
@@ -2179,19 +2181,20 @@ class YahooHyperliquidPaperTradingBot:
                             "trend_analysis": yahoo_analysis.get("trend_5m", {}),
                             "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
                             "hyperliquid_price": hyperliquid_price,
-                            "binance_price": hyperliquid_price,  # Same as Hyperliquid price
-                            "price_difference_pct": 0.0,  # No difference
-                            "price_difference_amount": 0.0  # No difference
+                            "yahoo_last_close": yahoo_analysis.get("yahoo_last_close", hyperliquid_price),
+                            "price_difference_pct": yahoo_analysis.get("price_difference_pct", 0.0),
+                            "price_difference_amount": yahoo_analysis.get("price_difference", 0.0),
+                            "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"
                         })
                 
                 # Check for signals periodically
                 if current_time - self.last_signal_check >= self.signal_check_interval:
                     if not self.binance_analysis:
-                        logger.warning("⚠️ Could not get Hyperliquid analysis, retrying...")
+                        logger.warning("⚠️ Could not get Yahoo analysis, retrying...")
                         time.sleep(check_interval)
                         continue
                     
-                    # Analyze market using Hyperliquid data
+                    # Analyze market using Yahoo historical data + Hyperliquid real-time price
                     signal = self.should_trade(hyperliquid_price, self.binance_analysis)
                     
                     if signal["should_trade"]:
@@ -2199,8 +2202,8 @@ class YahooHyperliquidPaperTradingBot:
                         signal_size = signal.get("optimal_params", {}).get("position_size", 0.00035)
                         position_value_usd = signal_size * hyperliquid_price
                         
-                        logger.info(f"📊 Hyperliquid signal detected: {signal['reason']}")
-                        logger.info(f"   Current Price: ${hyperliquid_price:,.2f}")
+                        logger.info(f"📊 Signal detected: {signal['reason']}")
+                        logger.info(f"   Current Price (Hyperliquid): ${hyperliquid_price:,.2f}")
                         
                         logger.info(f"   Action: {signal['side']}")
                         logger.info(f"   Position Size: {signal_size} BTC (${position_value_usd:,.2f})")
@@ -2211,10 +2214,10 @@ class YahooHyperliquidPaperTradingBot:
                             logger.info(f"   Quality: {quality_eval.get('quality_rating', 'UNKNOWN')} ({quality_eval.get('quality_score', 0):.2f})")
                             logger.info(f"   Confidence: {quality_eval.get('confidence_level', 'UNKNOWN')}")
                         
-                        # Place the hybrid paper trade
+                        # Place the paper trade
                         if self.place_paper_trade(signal['side'], signal_data=signal):
                             trades_placed += 1
-                            logger.info(f"   Hyperliquid Paper Trade {trades_placed}/{max_trades} completed")
+                            logger.info(f"   Paper Trade {trades_placed}/{max_trades} completed")
                             
                             # Log portfolio risk after trade
                             if self.open_positions:
@@ -2235,7 +2238,7 @@ class YahooHyperliquidPaperTradingBot:
                             logger.error("   Hybrid paper trade placement failed")
                     
                     else:
-                        logger.info(f"⏳ No Yahoo Finance signal: {signal['reason']}")
+                        logger.info(f"⏳ No signal: {signal['reason']}")
                     
                     self.last_signal_check = current_time
                 
@@ -2243,9 +2246,9 @@ class YahooHyperliquidPaperTradingBot:
                 time.sleep(check_interval)
                 
             except Exception as e:
-                logger.error(f"❌ Error in hybrid paper trading loop: {e}")
+                logger.error(f"❌ Error in Yahoo + Hyperliquid paper trading loop: {e}")
                 self.trading_logger.log_error({
-                    "type": "hybrid_paper_trading_loop_error",
+                    "type": "yahoo_hyperliquid_paper_trading_loop_error",
                     "message": str(e),
                     "details": {"trades_placed": trades_placed, "max_trades": max_trades}
                 })
@@ -2258,7 +2261,7 @@ class YahooHyperliquidPaperTradingBot:
                 self.close_paper_position(position, "SESSION_END", hyperliquid_price)
         
         logger.info("=" * 50)
-        logger.success(f"🎯 Hyperliquid Paper Trading session completed!")
+        logger.success(f"🎯 Yahoo + Hyperliquid Paper Trading session completed!")
         logger.info(f"   Total trades placed: {trades_placed}")
         logger.info(f"   Final Balance: ${self.paper_balance:.2f}")
         logger.info(f"   Total P&L: ${self.paper_balance - self.initial_balance:.2f}")
@@ -2266,7 +2269,7 @@ class YahooHyperliquidPaperTradingBot:
         
         # Generate comprehensive trading report
         trading_report = self.trading_logger.generate_trading_report()
-        logger.info(f"📊 Hyperliquid Paper Trading Report Generated:")
+        logger.info(f"📊 Yahoo + Hyperliquid Paper Trading Report Generated:")
         logger.info(f"   Session ID: {trading_report['session_info']['session_id']}")
         logger.info(f"   Total Trades: {trading_report['trade_analysis']['total_trades']}")
         logger.info(f"   Win Rate: {trading_report['trade_analysis']['win_rate']}")
@@ -2286,20 +2289,20 @@ class YahooHyperliquidPaperTradingBot:
 
 
 def main():
-    """Main function to run the Hyperliquid paper trading bot"""
-    logger.info("🚀 Hyperliquid Paper Trading Bot Starting...")
+    """Main function to run the Yahoo + Hyperliquid paper trading bot"""
+    logger.info("🚀 Yahoo + Hyperliquid Paper Trading Bot Starting...")
     
-    # Initialize Hyperliquid paper trading bot with $120 starting balance
-    bot = HyperliquidPaperTradingBot(initial_balance=120.0)
+    # Initialize Yahoo + Hyperliquid paper trading bot with $120 starting balance
+    bot = YahooHyperliquidPaperTradingBot(initial_balance=120.0)
     
     # Connect to Hyperliquid
     if not bot.connect():
         logger.error("❌ Failed to connect to Hyperliquid API")
         return
     
-    # Run Hyperliquid paper trading
+    # Run Yahoo + Hyperliquid paper trading
     # Parameters: max_trades, check_interval_seconds
-    bot.run_hyperliquid_paper_trading(
+    bot.run_yahoo_hyperliquid_paper_trading(
         max_trades=5,      # Place 5 trades maximum
         check_interval=30  # Check every 30 seconds
     )

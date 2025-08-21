@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Real-time Price Difference Checker
-Compares BTC/USD prices between Hyperliquid and Yahoo Finance APIs
+Real-time Price Validation Checker
+Validates that Hyperliquid is the exclusive source for real-time BTC/USD pricing
+Yahoo Finance is used only for historical data and analysis
 """
 
 import time
@@ -17,10 +18,14 @@ from core.hyperliquid_api import HyperliquidAPI
 from data.yahoo_data_fetcher import YahooDataFetcher
 from core.config import TradingConfig
 
-def check_price_differences():
-    """Check real-time price differences between Hyperliquid and Yahoo Finance"""
+def validate_price_architecture():
+    """Validate that Hyperliquid is the exclusive source for real-time pricing"""
     
-    logger.info("🔍 Checking Real-time Price Differences")
+    logger.info("🔍 Validating Price Architecture")
+    logger.info("=" * 60)
+    logger.info("📊 Expected Architecture:")
+    logger.info("   • Hyperliquid: EXCLUSIVE real-time pricing source")
+    logger.info("   • Yahoo Finance: Historical data and analysis only")
     logger.info("=" * 60)
     
     # Initialize APIs
@@ -31,7 +36,7 @@ def check_price_differences():
     # Test connections
     logger.info("🔌 Testing API connections...")
     
-    # Test Yahoo Finance
+    # Test Yahoo Finance (historical data only)
     if not yahoo_fetcher.test_connection():
         logger.error("❌ Yahoo Finance connection failed")
         return
@@ -47,7 +52,7 @@ def check_price_differences():
         logger.error(f"❌ Hyperliquid connection error: {e}")
         return
     
-    logger.info("\n📊 Starting real-time price comparison...")
+    logger.info("\n📊 Starting price validation...")
     logger.info("Press Ctrl+C to stop\n")
     
     try:
@@ -55,10 +60,7 @@ def check_price_differences():
             # Get current timestamp
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # Get Yahoo Finance price
-            yahoo_price = yahoo_fetcher.get_current_price("BTC")
-            
-            # Get Hyperliquid price
+            # Get Hyperliquid price (EXCLUSIVE real-time source)
             try:
                 market_data = hyperliquid_api.get_market_data("BTC")
                 if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
@@ -69,80 +71,59 @@ def check_price_differences():
                         best_bid = float(bids[0]['px'])
                         best_ask = float(asks[0]['px'])
                         hyperliquid_price = (best_bid + best_ask) / 2
+                        spread = best_ask - best_bid
                     else:
                         hyperliquid_price = None
+                        spread = None
                 else:
                     hyperliquid_price = None
+                    spread = None
             except Exception as e:
                 hyperliquid_price = None
+                spread = None
                 logger.error(f"❌ Hyperliquid price fetch error: {e}")
             
-            # Calculate difference if both prices available
-            if yahoo_price and hyperliquid_price:
-                difference = hyperliquid_price - yahoo_price
-                difference_pct = (difference / yahoo_price) * 100
-                
-                # Determine status
-                if abs(difference_pct) < 0.1:
-                    status = "✅ EXCELLENT"
-                elif abs(difference_pct) < 0.5:
-                    status = "⚠️ GOOD"
-                elif abs(difference_pct) < 1.0:
-                    status = "⚠️ MODERATE"
+            # Get Yahoo Finance historical analysis (NO real-time price)
+            try:
+                yahoo_analysis = yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price=hyperliquid_price)
+                if "error" not in yahoo_analysis:
+                    yahoo_last_close = yahoo_analysis.get("current_price", 0)  # This should be Hyperliquid price
+                    yahoo_trend = yahoo_analysis.get("trend_5m", {}).get("trend", "UNKNOWN")
+                    yahoo_condition = yahoo_analysis.get("market_condition", "UNKNOWN")
                 else:
-                    status = "❌ HIGH"
-                
-                # Color coding for difference
-                if abs(difference_pct) < 0.1:
-                    diff_color = "🟢"
-                elif abs(difference_pct) < 0.5:
-                    diff_color = "🟡"
-                else:
-                    diff_color = "🔴"
-                
-                print(f"[{current_time}] {diff_color} {status}")
-                print(f"   Yahoo Finance: ${yahoo_price:,.2f}")
-                print(f"   Hyperliquid:   ${hyperliquid_price:,.2f}")
-                print(f"   Difference:    ${difference:,.2f} ({difference_pct:+.3f}%)")
-                print(f"   Spread:        ${best_ask - best_bid:,.2f}")
-                print("-" * 60)
-                
-            else:
-                print(f"[{current_time}] ❌ Price fetch failed")
-                if yahoo_price:
-                    print(f"   Yahoo Finance: ${yahoo_price:,.2f}")
-                else:
-                    print(f"   Yahoo Finance: ❌ Failed")
-                
-                if hyperliquid_price:
-                    print(f"   Hyperliquid:   ${hyperliquid_price:,.2f}")
-                else:
-                    print(f"   Hyperliquid:   ❌ Failed")
-                print("-" * 60)
+                    yahoo_last_close = 0
+                    yahoo_trend = "ERROR"
+                    yahoo_condition = "ERROR"
+            except Exception as e:
+                yahoo_last_close = 0
+                yahoo_trend = "ERROR"
+                yahoo_condition = "ERROR"
+                logger.error(f"❌ Yahoo analysis error: {e}")
             
-            # Wait 5 seconds before next check
+            # Display results
+            if hyperliquid_price:
+                logger.info(f"⏰ {current_time}")
+                logger.info(f"💰 Hyperliquid Price: ${hyperliquid_price:,.2f} (Spread: ${spread:,.2f})")
+                logger.info(f"📊 Yahoo Analysis: ${yahoo_last_close:,.2f} | Trend: {yahoo_trend} | Condition: {yahoo_condition}")
+                
+                # Validate architecture
+                if abs(hyperliquid_price - yahoo_last_close) < 0.01:  # Should be identical
+                    logger.success("✅ Architecture Valid: Yahoo using Hyperliquid price for analysis")
+                else:
+                    logger.warning("⚠️ Architecture Issue: Price mismatch detected")
+                
+                logger.info("-" * 50)
+            else:
+                logger.warning(f"⚠️ {current_time} - No Hyperliquid price available")
+            
+            # Wait before next check
             time.sleep(5)
             
     except KeyboardInterrupt:
-        logger.info("\n🛑 Price comparison stopped by user")
-        logger.info("📊 Summary:")
-        logger.info("   • Yahoo Finance: Real-time BTC-USD spot price")
-        logger.info("   • Hyperliquid: BTC/USD perpetual futures price")
-        logger.info("   • Small differences are normal due to:")
-        logger.info("     - Spot vs Futures pricing")
-        logger.info("     - Different market makers")
-        logger.info("     - Funding rate effects")
-        logger.info("     - Market microstructure")
+        logger.info("\n🛑 Price validation stopped by user")
+    except Exception as e:
+        logger.error(f"❌ Error in price validation: {e}")
 
-def main():
-    """Main function"""
-    logger.info("🚀 Starting Real-time Price Difference Checker")
-    logger.info("This will compare BTC/USD prices between:")
-    logger.info("   • Yahoo Finance (Spot)")
-    logger.info("   • Hyperliquid (Perpetual Futures)")
-    logger.info("=" * 60)
-    
-    check_price_differences()
 
 if __name__ == "__main__":
-    main()
+    validate_price_architecture()

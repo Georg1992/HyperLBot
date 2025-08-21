@@ -85,13 +85,14 @@
         .trend-up { color: #4CAF50; }
         .trend-down { color: #f44336; }
         .trend-neutral { color: #ff9800; }
+        .warning { color: #ff9800; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🤖 HyperLBot Dashboard</h1>
-            <p>Real-time trading bot monitoring</p>
+            <h1>🤖 Yahoo + Hyperliquid Trading Bot Dashboard</h1>
+            <p>Real-time trading bot monitoring (Hyperliquid Price + Yahoo Analysis)</p>
             <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
         </div>
         
@@ -165,12 +166,19 @@
             if (market && market.current_price) {
                 const trendClass = market.trend === 'UP' ? 'trend-up' : 
                                  market.trend === 'DOWN' ? 'trend-down' : 'trend-neutral';
-                div.innerHTML = `
-                    <p><strong>Price:</strong> <span class="price ${trendClass}">$${market.current_price.toLocaleString()}</span></p>
-                    <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
-                    <p><strong>Condition:</strong> ${market.market_condition}</p>
-                    <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
-                `;
+                
+                
+                
+                                 div.innerHTML = `
+                     <p><strong>Current Price (Hyperliquid):</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
+                     <p><strong>Yahoo Last Close:</strong> $${market.yahoo_last_close ? market.yahoo_last_close.toLocaleString() : 'N/A'}</p>
+                     <p><strong>Price Diff:</strong> $${market.price_difference_amount ? market.price_difference_amount.toLocaleString() : 'N/A'} (${market.price_difference_pct ? market.price_difference_pct.toFixed(3) : 'N/A'}%)</p>
+                     <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
+                     <p><strong>Condition:</strong> ${market.market_condition}</p>
+                     <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
+                     <p><strong>Data Source:</strong> ${market.data_source || 'Hyperliquid + Yahoo'}</p>
+                     <p><small>Real-time price from Hyperliquid, Historical analysis from Yahoo Finance</small></p>
+                 `;
             } else {
                 div.innerHTML = '<p>No market data available</p>';
             }

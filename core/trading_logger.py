@@ -196,9 +196,14 @@ class TradingLogger:
     
     def log_analysis(self, analysis_data: Dict[str, Any]):
         """Log detailed analysis for strategy improvement"""
+        # Start with timestamp and datetime
         analysis_record = {
             "timestamp": time.time(),
             "datetime": datetime.now().isoformat(),
+        }
+        
+        # Add all fields from analysis_data, with defaults for core fields
+        analysis_record.update({
             "analysis_type": analysis_data.get("type", "general"),
             "timeframe": analysis_data.get("timeframe", "5m"),
             "indicators": analysis_data.get("indicators", {}),
@@ -211,7 +216,12 @@ class TradingLogger:
             "market_condition": analysis_data.get("market_condition", "UNKNOWN"),
             "confidence_score": analysis_data.get("confidence_score", 0.0),
             "recommendations": analysis_data.get("recommendations", [])
-        }
+        })
+        
+        # Add any additional fields from analysis_data (like hyperliquid_price)
+        for key, value in analysis_data.items():
+            if key not in analysis_record and key != "type":  # 'type' is already mapped to 'analysis_type'
+                analysis_record[key] = value
         
         self.analysis_records.append(analysis_record)
         
