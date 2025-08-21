@@ -42,6 +42,13 @@ class PredictionEngine:
         
         logger.info("🎯 Enhanced Prediction Engine initialized")
     
+    def _add_prediction_metadata(self, prediction: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Add standard metadata to all predictions"""
+        prediction["current_price"] = current_price
+        prediction["prediction_timestamp"] = time.time()
+        prediction["prediction_datetime"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        return prediction
+    
     def build_price_prediction(self, binance_analysis: Dict[str, Any], current_price: float, strategy_name: str = "standard") -> Dict[str, Any]:
         """Build price prediction based on market volatility and strategy"""
         try:
@@ -72,6 +79,20 @@ class PredictionEngine:
             price_acceleration = self._calculate_price_acceleration(candles_5m)
             momentum_surge = self._detect_momentum_surge(candles_5m, trend_5m)
             volume_spike = self._detect_volume_spike(candles_5m)
+            
+            # Get real-time Hyperliquid data for enhanced reactive predictions
+            hyperliquid_volume = binance_analysis.get("hyperliquid_volume", {})
+            hyperliquid_rsi = binance_analysis.get("hyperliquid_rsi", {})
+            
+            current_rsi = hyperliquid_rsi.get("rsi_estimate", 50.0)
+            liquidity_metrics = hyperliquid_volume.get("liquidity_metrics", {})
+            total_depth = liquidity_metrics.get("total_depth", 0)
+            depth_imbalance = liquidity_metrics.get("depth_imbalance", 0)
+            
+            # Enhanced volume spike detection with Hyperliquid real-time data
+            hyperliquid_volume_spike = self._detect_hyperliquid_volume_activity(liquidity_metrics, depth_imbalance)
+            
+            logger.info(f"⚡ Reactive Mode: RSI={current_rsi:.1f}, Depth={total_depth:.1f}BTC, Yahoo Vol Spike={volume_spike['detected']}, HL Vol Activity={hyperliquid_volume_spike['detected']}")
             
             # Build reactive signals
             reactive_signals = []
@@ -168,6 +189,38 @@ class PredictionEngine:
                 }
                 reactive_signals.append(signal)
             
+            # 5. HYPERLIQUID REAL-TIME VOLUME ACTIVITY DETECTION
+            if hyperliquid_volume_spike["detected"]:
+                # Real-time volume activity from orderbook depth
+                if hyperliquid_volume_spike["direction"] == "DOWN":
+                    entry_price = current_price * 1.002  # Enter above current for SELL (selling pressure)
+                    side = "SELL"
+                elif hyperliquid_volume_spike["direction"] == "UP":
+                    entry_price = current_price * 0.998  # Enter below current for BUY (buying pressure)
+                    side = "BUY"
+                else:  # NEUTRAL - high activity but balanced
+                    # Use RSI to determine direction
+                    if current_rsi > 55:
+                        entry_price = current_price * 1.001
+                        side = "SELL"
+                    else:
+                        entry_price = current_price * 0.999
+                        side = "BUY"
+                
+                signal = {
+                    "type": "HYPERLIQUID_VOLUME_ACTIVITY",
+                    "entry_price": entry_price,
+                    "side": side,
+                    "confidence": min(0.85, 0.6 + hyperliquid_volume_spike["strength"]),
+                    "timeframe": 5,
+                    "reason": f"High orderbook activity detected ({hyperliquid_volume_spike['direction']}, depth: {hyperliquid_volume_spike['total_depth']:.1f}BTC, imbalance: {hyperliquid_volume_spike['imbalance']*100:+.1f}%)",
+                    "reactive_factor": "hyperliquid_volume",
+                    "rsi_context": current_rsi,
+                    "orderbook_depth": hyperliquid_volume_spike["total_depth"],
+                    "orderbook_imbalance": hyperliquid_volume_spike["imbalance"]
+                }
+                reactive_signals.append(signal)
+            
             # Select best reactive signal
             if reactive_signals:
                 # Get support/resistance for validation
@@ -176,8 +229,10 @@ class PredictionEngine:
                 resistance_5m = support_resistance_5m.get("resistance", current_price * 1.01)
                 
                 # Validate and fix entry prices for reactive signals
-                for signal in reactive_signals:
+                for i, signal in enumerate(reactive_signals):
                     signal = self._validate_entry_price(signal, current_price, support_5m, resistance_5m)
+                    # Add prediction metadata to all signals
+                    reactive_signals[i] = self._add_prediction_metadata(signal, current_price)
                 
                 best_signal = max(reactive_signals, key=lambda x: x["confidence"])
                 
@@ -255,7 +310,7 @@ class PredictionEngine:
                         "type": "BREAKOUT_ABOVE",
                         "entry_price": support_5m * 1.001,  # Enter near support level, below current price
                         "side": "BUY",
-                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
+                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
                         "reason": f"High probability breakout above ${resistance_5m:,.2f} - enter at support ${support_5m:,.2f}",
                         "support": support_5m,
@@ -272,7 +327,7 @@ class PredictionEngine:
                         "type": "REVERSION_FROM_RESISTANCE",
                         "entry_price": current_price,  # Enter at resistance level for immediate reversal
                         "side": "SELL",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"High probability reversion from ${resistance_5m:,.2f} - enter at resistance",
                         "support": support_5m,
@@ -292,7 +347,7 @@ class PredictionEngine:
                         "type": "BREAKOUT_BELOW",
                         "entry_price": resistance_5m * 0.999,  # Enter near resistance level, above current price
                         "side": "SELL",
-                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
+                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
                         "reason": f"High probability breakdown below ${support_5m:,.2f} - enter at resistance ${resistance_5m:,.2f}",
                         "support": support_5m,
@@ -307,7 +362,7 @@ class PredictionEngine:
                         "type": "REVERSION_FROM_SUPPORT",
                         "entry_price": support_5m * 1.0005,  # Slightly above support
                         "side": "BUY",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"High probability bounce from ${support_5m:,.2f} - enter at support",
                         "support": support_5m,
@@ -327,7 +382,7 @@ class PredictionEngine:
                         "type": "MOMENTUM_UP",
                         "entry_price": support_5m * 1.001,  # Enter at support level, well below current price
                         "side": "BUY",
-                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
+                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_momentum_timeframe(volatility_5m),
                         "reason": f"Strong upward momentum (strength: {momentum_strength:.2f}) - enter at support ${support_5m:,.2f}",
                         "support": support_5m,
@@ -341,7 +396,7 @@ class PredictionEngine:
                         "type": "MOMENTUM_REVERSION",
                         "entry_price": current_price,  # Enter at current price for reversal
                         "side": "SELL",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"Weak upward momentum (strength: {momentum_strength:.2f}) - expect reversal",
                         "support": support_5m,
@@ -360,7 +415,7 @@ class PredictionEngine:
                         "type": "MOMENTUM_DOWN",
                         "entry_price": resistance_5m * 0.999,  # Enter at resistance level, well above current price
                         "side": "SELL",
-                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
+                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_momentum_timeframe(volatility_5m),
                         "reason": f"Strong downward momentum (strength: {momentum_strength:.2f}) - enter at resistance ${resistance_5m:,.2f}",
                         "support": support_5m,
@@ -374,7 +429,7 @@ class PredictionEngine:
                         "type": "MOMENTUM_REVERSION",
                         "entry_price": current_price,  # Enter at current price for reversal
                         "side": "BUY",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"Weak downward momentum (strength: {momentum_strength:.2f}) - expect reversal",
                         "support": support_5m,
@@ -421,8 +476,13 @@ class PredictionEngine:
             # Select best prediction based on confidence
             if predictions:
                 # Validate and fix entry prices to ensure they're logical
-                for prediction in predictions:
+                for i, prediction in enumerate(predictions):
                     prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m)
+                    # Add prediction metadata including current price and RSI context
+                    prediction["rsi_context"] = current_rsi
+                    prediction["orderbook_depth"] = total_depth
+                    prediction["orderbook_imbalance"] = depth_imbalance
+                    predictions[i] = self._add_prediction_metadata(prediction, current_price)
                 
                 best_prediction = max(predictions, key=lambda x: x["confidence"])
                 
@@ -841,6 +901,49 @@ class PredictionEngine:
             logger.error(f"Error detecting volume spike: {e}")
             return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
     
+    def _detect_hyperliquid_volume_activity(self, liquidity_metrics: Dict, depth_imbalance: float) -> Dict[str, Any]:
+        """Detect high volume activity from Hyperliquid real-time orderbook data"""
+        try:
+            total_depth = liquidity_metrics.get("total_depth", 0)
+            bid_depth = liquidity_metrics.get("bid_depth", 0)
+            ask_depth = liquidity_metrics.get("ask_depth", 0)
+            
+            # Detect high volume activity based on orderbook depth
+            volume_activity_detected = False
+            activity_strength = 0.0
+            direction = "UNKNOWN"
+            
+            # High total depth indicates active trading
+            if total_depth > 80:  # Very high activity threshold
+                volume_activity_detected = True
+                activity_strength = min(1.0, (total_depth - 80) / 100)  # Scale 80-180 -> 0-1
+                
+                # Determine direction from imbalance
+                if depth_imbalance < -0.3:  # Heavy selling pressure
+                    direction = "DOWN"
+                elif depth_imbalance > 0.3:  # Heavy buying pressure  
+                    direction = "UP"
+                else:
+                    direction = "NEUTRAL"
+                    
+            elif total_depth > 50:  # Moderate activity
+                volume_activity_detected = True
+                activity_strength = min(0.6, (total_depth - 50) / 60)  # Scale 50-110 -> 0-0.6
+                direction = "DOWN" if depth_imbalance < -0.2 else "UP" if depth_imbalance > 0.2 else "NEUTRAL"
+            
+            return {
+                "detected": volume_activity_detected,
+                "direction": direction,
+                "strength": activity_strength,
+                "total_depth": total_depth,
+                "imbalance": depth_imbalance,
+                "data_source": "hyperliquid_orderbook"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error detecting Hyperliquid volume activity: {e}")
+            return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
+    
     def _get_volatility_5m(self, binance_analysis: Dict[str, Any]) -> float:
         """Calculate 5-minute volatility"""
         try:
@@ -885,8 +988,8 @@ class PredictionEngine:
             logger.error(f"Error calculating 1h volatility: {e}")
             return 0.005
     
-    def _calculate_breakout_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float) -> float:
-        """Calculate confidence for breakout predictions"""
+    def _calculate_breakout_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0) -> float:
+        """Calculate confidence for breakout predictions with RSI and volume integration"""
         base_confidence = 0.5
         
         # Trend alignment bonus
@@ -903,10 +1006,28 @@ class PredictionEngine:
         elif volatility > 0.005:  # High volatility = less predictable
             base_confidence -= 0.1
         
-        return min(0.95, max(0.1, base_confidence))
+        # RSI enhancement for breakouts
+        if rsi < 35:  # Oversold - good for upward breakouts
+            base_confidence += 0.15
+        elif rsi > 65:  # Overbought - good for downward breakouts
+            base_confidence += 0.15
+        elif 45 <= rsi <= 55:  # Neutral RSI - slightly positive for breakouts
+            base_confidence += 0.05
+        
+        # Volume/liquidity enhancement
+        if volume_depth > 50:  # High liquidity supports breakouts
+            base_confidence += 0.1
+        elif volume_depth < 20:  # Low liquidity = harder breakouts
+            base_confidence -= 0.05
+            
+        # Orderbook imbalance support for breakout direction
+        if abs(depth_imbalance) > 0.3:  # Strong directional pressure
+            base_confidence += 0.1
+        
+        return min(0.95, max(0.15, base_confidence))
     
-    def _calculate_reversion_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float) -> float:
-        """Calculate confidence for reversion predictions"""
+    def _calculate_reversion_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0) -> float:
+        """Calculate confidence for reversion predictions with RSI and volume integration"""
         base_confidence = 0.4  # Lower base for reversions
         
         # Trend divergence bonus (reversion more likely when trends diverge)
@@ -919,10 +1040,26 @@ class PredictionEngine:
         elif volatility > 0.005:  # High volatility = less predictable
             base_confidence -= 0.1
         
+        # RSI enhancement for reversions - key factor!
+        if rsi > 70:  # Overbought - high confidence for downward reversion
+            base_confidence += 0.2
+        elif rsi < 30:  # Oversold - high confidence for upward reversion
+            base_confidence += 0.2
+        elif rsi > 60 or rsi < 40:  # Moderately extreme levels
+            base_confidence += 0.1
+        
+        # Volume enhancement for reversions
+        if volume_depth > 40:  # High liquidity = better reversion execution
+            base_confidence += 0.08
+        
+        # Orderbook imbalance indicates reversion potential
+        if abs(depth_imbalance) > 0.4:  # Extreme imbalance often reverts
+            base_confidence += 0.12
+        
         return min(0.9, max(0.1, base_confidence))
     
-    def _calculate_momentum_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float) -> float:
-        """Calculate confidence for momentum predictions"""
+    def _calculate_momentum_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0) -> float:
+        """Calculate confidence for momentum predictions with RSI and volume integration"""
         base_confidence = 0.6  # Higher base for momentum
         
         # Strong trend alignment
@@ -938,6 +1075,22 @@ class PredictionEngine:
             base_confidence += 0.1
         elif volatility > 0.006:  # High volatility = less predictable
             base_confidence -= 0.1
+        
+        # RSI enhancement for momentum
+        if 40 <= rsi <= 60:  # RSI in momentum-friendly range
+            base_confidence += 0.1
+        elif rsi < 25 or rsi > 75:  # Extreme RSI may signal momentum continuation
+            base_confidence += 0.05
+        
+        # Volume enhancement for momentum
+        if volume_depth > 60:  # High liquidity supports strong momentum
+            base_confidence += 0.12
+        elif volume_depth > 30:  # Medium liquidity
+            base_confidence += 0.06
+        
+        # Orderbook imbalance supports momentum direction
+        if abs(depth_imbalance) > 0.2:  # Directional pressure supports momentum
+            base_confidence += 0.08
         
         return min(0.95, max(0.1, base_confidence))
     

@@ -620,11 +620,16 @@ def create_template():
                             </div>
                             <div class="prediction-details">
                                 <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
+                                <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
                                 <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
                                 <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
+                                ${pred.rsi_context ? `<p><strong>RSI:</strong> ${pred.rsi_context.toFixed(1)} ${pred.rsi_context > 70 ? '(Overbought)' : pred.rsi_context < 30 ? '(Oversold)' : '(Neutral)'}</p>` : ''}
+                                ${pred.orderbook_depth ? `<p><strong>Liquidity:</strong> ${pred.orderbook_depth.toFixed(1)} BTC depth</p>` : ''}
+                                ${pred.orderbook_imbalance ? `<p><strong>Order Flow:</strong> ${(pred.orderbook_imbalance * 100).toFixed(1)}% ${pred.orderbook_imbalance > 0.1 ? 'Buy Pressure' : pred.orderbook_imbalance < -0.1 ? 'Sell Pressure' : 'Balanced'}</p>` : ''}
                                 <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
                                 ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
                                 ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
+                                ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
                             </div>
                         </div>
                     `;
