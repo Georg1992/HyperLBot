@@ -246,7 +246,9 @@ class PredictionEngine:
                         "support": support_5m,
                         "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "breakout_probability": breakout_probability
+                        "breakout_probability": breakout_probability,
+                        "current_price": current_price,
+                        "prediction_timestamp": time.time()
                     }
                     predictions.append(breakout_prediction)
                 else:  # Higher probability of reversion
