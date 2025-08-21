@@ -241,6 +241,9 @@ class PredictionEngine:
                 
                 best_signal = max(reactive_signals, key=lambda x: x["confidence"])
                 
+                # FINAL VALIDATION: Ensure best signal has valid entry price
+                best_signal = self._validate_entry_price(best_signal, current_price, support_5m, resistance_5m)
+                
                 return {
                     "has_prediction": True,
                     "prediction_mode": "REACTIVE",
@@ -492,6 +495,9 @@ class PredictionEngine:
                 
                 best_prediction = max(predictions, key=lambda x: x["confidence"])
                 
+                # FINAL VALIDATION: Ensure best prediction has valid entry price
+                best_prediction = self._validate_entry_price(best_prediction, current_price, support_5m, resistance_5m)
+                
                 # Ensure best prediction has metadata (safety check)
                 if "current_price" not in best_prediction:
                     best_prediction = self._add_prediction_metadata(best_prediction, current_price)
@@ -511,8 +517,16 @@ class PredictionEngine:
                 # Generate basic predictions even with small ranges
                 basic_predictions = self._generate_basic_predictions(current_price, support_5m, resistance_5m, trend_5m, trend_1h, volatility_5m)
                 if basic_predictions:
+                    # Validate and fix entry prices to ensure they're logical
+                    for i, prediction in enumerate(basic_predictions):
+                        prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m)
+                        # Add prediction metadata
+                        basic_predictions[i] = self._add_prediction_metadata(prediction, current_price)
+                    
+                    # FINAL VALIDATION: Ensure best prediction has valid entry price
+                    best_basic = self._validate_entry_price(basic_predictions[0], current_price, support_5m, resistance_5m)
+                    
                     # Ensure best prediction has metadata (safety check)
-                    best_basic = basic_predictions[0]
                     if "current_price" not in best_basic:
                         best_basic = self._add_prediction_metadata(best_basic, current_price)
                     
@@ -800,27 +814,55 @@ class PredictionEngine:
         try:
             entry_price = prediction.get("entry_price", 0)
             side = prediction.get("side", "UNKNOWN")
+            pred_type = prediction.get("type", "UNKNOWN")
             
-            # For BUY orders: entry price should be below current price
+            # CRITICAL VALIDATION: For BUY orders, entry price MUST be below current price
             if side == "BUY" and entry_price >= current_price:
-                # Set entry price to support level or 0.5% below current
-                new_entry = min(support * 1.001, current_price * 0.995)
-                prediction["entry_price"] = new_entry
-                prediction["reason"] += f" (adjusted entry to ${new_entry:,.2f})"
-                logger.warning(f"Fixed BUY entry price from ${entry_price:,.2f} to ${new_entry:,.2f} (current: ${current_price:,.2f})")
+                # Calculate safe entry price (0.3% below current price)
+                safe_entry = current_price * 0.997
+                
+                # If we have a valid support level, use it as a reference
+                if support > 0 and support < current_price:
+                    safe_entry = min(safe_entry, support * 1.001)
+                
+                prediction["entry_price"] = safe_entry
+                prediction["reason"] += f" (CRITICAL FIX: adjusted entry from ${entry_price:,.2f} to ${safe_entry:,.2f})"
+                logger.error(f"🚨 CRITICAL BUG FIXED: {pred_type} BUY order had entry price ${entry_price:,.2f} >= current price ${current_price:,.2f}")
+                logger.error(f"   Fixed to: ${safe_entry:,.2f} (0.3% below current)")
             
-            # For SELL orders: entry price should be above current price
+            # CRITICAL VALIDATION: For SELL orders, entry price MUST be above current price
             elif side == "SELL" and entry_price <= current_price:
-                # Set entry price to resistance level or 0.5% above current
-                new_entry = max(resistance * 0.999, current_price * 1.005)
-                prediction["entry_price"] = new_entry
-                prediction["reason"] += f" (adjusted entry to ${new_entry:,.2f})"
-                logger.warning(f"Fixed SELL entry price from ${entry_price:,.2f} to ${new_entry:,.2f} (current: ${current_price:,.2f})")
+                # Calculate safe entry price (0.3% above current price)
+                safe_entry = current_price * 1.003
+                
+                # If we have a valid resistance level, use it as a reference
+                if resistance > 0 and resistance > current_price:
+                    safe_entry = max(safe_entry, resistance * 0.999)
+                
+                prediction["entry_price"] = safe_entry
+                prediction["reason"] += f" (CRITICAL FIX: adjusted entry from ${entry_price:,.2f} to ${safe_entry:,.2f})"
+                logger.error(f"🚨 CRITICAL BUG FIXED: {pred_type} SELL order had entry price ${entry_price:,.2f} <= current price ${current_price:,.2f}")
+                logger.error(f"   Fixed to: ${safe_entry:,.2f} (0.3% above current)")
+            
+            # Additional validation: ensure entry price is reasonable
+            if entry_price <= 0:
+                logger.error(f"🚨 Invalid entry price: ${entry_price:,.2f} for {pred_type}")
+                if side == "BUY":
+                    prediction["entry_price"] = current_price * 0.997
+                else:
+                    prediction["entry_price"] = current_price * 1.003
             
             return prediction
             
         except Exception as e:
-            logger.error(f"Error validating entry price: {e}")
+            logger.error(f"🚨 Error in entry price validation: {e}")
+            # Emergency fallback: set safe entry prices
+            if prediction.get("side") == "BUY":
+                prediction["entry_price"] = current_price * 0.997
+                prediction["reason"] += " (emergency fallback entry)"
+            elif prediction.get("side") == "SELL":
+                prediction["entry_price"] = current_price * 1.003
+                prediction["reason"] += " (emergency fallback entry)"
             return prediction
     
     def _calculate_price_acceleration(self, candles_5m: List) -> float:
