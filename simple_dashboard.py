@@ -659,34 +659,31 @@ def create_template():
                 
                 
                                  div.innerHTML = `
-                     <p><strong>Current Price (Hyperliquid):</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
-                     <p><strong>Yahoo Last Close:</strong> $${market.yahoo_last_close ? market.yahoo_last_close.toLocaleString() : 'N/A'}</p>
-                     <p><strong>Price Diff:</strong> $${market.price_difference_amount ? market.price_difference_amount.toLocaleString() : 'N/A'} (${market.price_difference_pct ? market.price_difference_pct.toFixed(3) : 'N/A'}%)</p>
+                     <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
+                     <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
+                     <p><strong>Condition:</strong> ${market.market_condition}</p>
                      
-                     <!-- Enhanced Market Indicators -->
+                     <!-- RSI - Prominently Featured -->
                      ${market.rsi !== null && market.rsi !== undefined ? `
-                     <div class="market-indicator rsi-indicator" style="margin: 10px 0;">
+                     <div class="market-indicator rsi-indicator" style="margin: 15px 0;">
                          <p><strong>📊 RSI:</strong> 
                          <span class="rsi-value ${market.rsi > 70 ? 'overbought' : market.rsi < 30 ? 'oversold' : 'neutral'}">${market.rsi.toFixed(1)}</span>
                          ${market.rsi > 70 ? '<span class="rsi-status overbought">🔴 OVERBOUGHT</span>' : market.rsi < 30 ? '<span class="rsi-status oversold">🟢 OVERSOLD</span>' : '<span class="rsi-status neutral">⚪ NEUTRAL</span>'}
                          </p>
-                     </div>` : ''}
+                     </div>` : '<div class="market-indicator rsi-indicator" style="margin: 15px 0;"><p><strong>📊 RSI:</strong> <span class="rsi-value neutral">N/A</span></p></div>'}
                      
+                     <!-- Volume - Prominently Featured -->
                      ${market.volume_depth !== null && market.volume_depth !== undefined ? `
-                     <div class="market-indicator volume-indicator" style="margin: 10px 0;">
+                     <div class="market-indicator volume-indicator" style="margin: 15px 0;">
                          <p><strong>📈 Volume Depth:</strong> <span class="volume-value">${market.volume_depth.toFixed(1)} BTC</span></p>
                          ${market.orderbook_imbalance !== null && market.orderbook_imbalance !== undefined ? `
                          <p><strong>📊 Order Flow:</strong> 
                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${(market.orderbook_imbalance * 100).toFixed(1)}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
                          </p>` : ''}
-                     </div>` : ''}
+                     </div>` : '<div class="market-indicator volume-indicator" style="margin: 15px 0;"><p><strong>📈 Volume Depth:</strong> <span class="volume-value">N/A</span></p></div>'}
                      
-                     <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
-                     <p><strong>Condition:</strong> ${market.market_condition}</p>
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
-                     <p><strong>Data Source:</strong> ${market.data_source || 'Hyperliquid + Yahoo'}</p>
-                     <p><small>Real-time price & volume from Hyperliquid, Historical analysis & RSI from Yahoo Finance</small></p>
                  `;
             } else {
                 div.innerHTML = '<p>No market data available</p>';
