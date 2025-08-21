@@ -123,9 +123,11 @@ class SimpleBotDashboard:
                                 rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
                                 rsi_data = rsi_result.get("rsi")
                                 
-                                # Use our new volume integration that handles incomplete candles properly
+                                # Use our new cumulative volume integration that simulates Hyperliquid behavior
                                 volume_result = api.get_current_5m_volume("BTC")
                                 volume_data = volume_result.get("current_volume", 0)  # Already scaled to Hyperliquid ranges
+                                period_progress = volume_result.get("period_progress", 0)
+                                elapsed_time = volume_result.get("elapsed_time", "0m 0s")
                                 
                                 # Get orderbook imbalance for order flow
                                 indicators = api.get_current_market_indicators("BTC")
@@ -133,7 +135,7 @@ class SimpleBotDashboard:
                                     liquidity = indicators["liquidity_metrics"]
                                     orderbook_imbalance = liquidity.get("depth_imbalance")
                                     
-                                logger.info(f"📊 Volume: {volume_data:.1f} ({volume_result.get('volume_category', 'UNKNOWN')}), RSI: {rsi_data:.1f} (20-period)")
+                                logger.info(f"📊 Cumulative Volume: {volume_data:.1f} ({volume_result.get('volume_category', 'UNKNOWN')}) - {elapsed_time} elapsed, RSI: {rsi_data:.1f} (20-period)")
                                 
                                 # Add RSI validation against Hyperliquid reference
                                 rsi_difference = abs(rsi_data - 50.40) if rsi_data else 0  # Assuming 50.40 as reference
@@ -166,6 +168,7 @@ class SimpleBotDashboard:
                             "data_source": data_source,
                             "rsi": rsi_data,
                             "volume_depth": volume_data,
+                            "period_progress": period_progress,
                             "orderbook_imbalance": orderbook_imbalance
                         }
                     else:

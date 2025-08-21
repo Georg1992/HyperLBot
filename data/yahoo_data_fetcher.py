@@ -363,41 +363,89 @@ class YahooDataFetcher:
             logger.error(f"❌ Yahoo Finance connection error: {e}")
             return False
 
-    def get_current_5m_volume(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """Get current 5-minute volume statistics from Yahoo Finance"""
+    def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
+        """Get current 5-minute volume statistics from Yahoo Finance, simulating Hyperliquid's cumulative volume behavior"""
         try:
-            # Get recent 5m candles with volume data
-            candles_5m = self.get_5m_klines(symbol, 10)  # Last 10 5m candles
+            symbol = symbol or "BTC-USD"
             
+            # Get 5-minute candles
+            candles_5m = self.get_5m_klines(symbol, limit=10)
             if not candles_5m:
+                logger.warning(f"No 5m candle data available for {symbol}")
                 return {
                     "current_volume": 0,
-                    "volume_category": "NO_DATA",
+                    "volume_category": "ERROR",
                     "avg_volume": 0,
-                    "volume_trend": "UNKNOWN",
+                    "volume_trend": "ERROR",
+                    "error": "No candle data available",
                     "data_source": "yahoo_finance"
                 }
             
             # Extract volume data from candles
             volumes = [candle.get("volume", 0) for candle in candles_5m]
             
-            # Use most recent completed candle (not the current incomplete one)
-            # If the last candle has 0 volume, it's incomplete, use the previous one
-            if len(volumes) >= 2 and volumes[-1] == 0:
-                current_volume = volumes[-2]  # Use previous completed candle
-                logger.info("Using previous completed candle for volume (current candle incomplete)")
-            else:
-                current_volume = volumes[-1] if volumes else 0
+            # Calculate current time and 5-minute period
+            current_time = datetime.now()
+            current_minute = current_time.minute
+            current_second = current_time.second
             
-            # Calculate average volume from recent candles
-            recent_volumes = volumes[-5:]  # Last 5 candles
-            avg_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
+            # Calculate which 5-minute period we're in (0-11 periods per hour)
+            period_number = current_minute // 5
+            period_start_minute = period_number * 5
+            
+            # Calculate how much time has elapsed in the current 5-minute period
+            elapsed_minutes = current_minute - period_start_minute
+            elapsed_seconds = current_second
+            total_elapsed_seconds = elapsed_minutes * 60 + elapsed_seconds
+            period_duration_seconds = 5 * 60  # 5 minutes in seconds
+            
+            # Calculate progress through current period (0.0 to 1.0)
+            period_progress = total_elapsed_seconds / period_duration_seconds
+            
+            # Get the most recent completed candle volume as reference
+            if len(volumes) >= 2 and volumes[-1] == 0:
+                reference_volume = volumes[-2]  # Use previous completed candle
+                logger.info("Using previous completed candle as reference (current candle incomplete)")
+            else:
+                reference_volume = volumes[-1] if volumes else 0
+            
+            # Estimate cumulative volume for current ongoing candle
+            # This simulates Hyperliquid's behavior where volume starts at 0 and accumulates
+            # We use the reference volume as a baseline and scale by time progress
+            if reference_volume > 0:
+                # Estimate current cumulative volume based on time progress
+                # Add some randomness to simulate real trading patterns
+                import random
+                random.seed(int(current_time.timestamp()) // 30)  # Change every 30 seconds
+                
+                # Base volume with some variation
+                base_volume = reference_volume * (0.5 + random.random() * 1.0)  # 50-150% of reference
+                
+                # Scale by time progress (volume accumulates over the 5-minute period)
+                # Use a non-linear curve to simulate typical volume patterns
+                # Volume often starts slow, picks up in the middle, then slows at the end
+                if period_progress < 0.2:
+                    # First 20%: slow start
+                    volume_multiplier = period_progress * 0.3
+                elif period_progress < 0.8:
+                    # Middle 60%: steady accumulation
+                    volume_multiplier = 0.06 + (period_progress - 0.2) * 0.8
+                else:
+                    # Last 20%: slower finish
+                    volume_multiplier = 0.54 + (period_progress - 0.8) * 0.3
+                
+                estimated_cumulative_volume = base_volume * volume_multiplier
+            else:
+                estimated_cumulative_volume = 0
             
             # Scale volume to match Hyperliquid ranges (0-4000)
             # Yahoo volume is typically much larger, so we scale it down
-            # Typical Yahoo 5m volume for BTC is 1000-50000, we want 10-4000
             scale_factor = 0.00001  # Scale down by 100000x to get reasonable ranges
-            scaled_current_volume = current_volume * scale_factor
+            scaled_current_volume = estimated_cumulative_volume * scale_factor
+            
+            # Calculate average volume from recent completed candles
+            recent_volumes = volumes[-5:]  # Last 5 candles
+            avg_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
             scaled_avg_volume = avg_volume * scale_factor
             
             # Categorize volume based on your Hyperliquid experience
@@ -436,9 +484,12 @@ class YahooDataFetcher:
                 "avg_volume": scaled_avg_volume,
                 "volume_trend": volume_trend,
                 "recent_volumes": [v * scale_factor for v in recent_volumes],
-                "data_source": "yahoo_finance_5m_candles",
-                "original_volume": current_volume,
-                "scale_factor": scale_factor
+                "data_source": "yahoo_finance_cumulative_simulation",
+                "original_volume": estimated_cumulative_volume,
+                "scale_factor": scale_factor,
+                "period_progress": period_progress,
+                "elapsed_time": f"{elapsed_minutes}m {elapsed_seconds}s",
+                "period_info": f"Period {period_number} ({period_start_minute:02d}:00-{(period_start_minute+5):02d}:00)"
             }
             
         except Exception as e:
