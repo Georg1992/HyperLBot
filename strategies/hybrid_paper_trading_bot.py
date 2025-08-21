@@ -69,7 +69,7 @@ class YahooHyperliquidPaperTradingBot:
         # Analysis components
         self.fee_manager = FeeManager()
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
-        self.trading_logger = TradingLogger("yahoo_hyperliquid_paper_trading_logs")
+        self.trading_logger = TradingLogger("trading_logs")
         
         # Whale analytics integration
         self.whale_integration = WhaleIntegration(enabled=self.config.WHALE_ANALYTICS_ENABLED)

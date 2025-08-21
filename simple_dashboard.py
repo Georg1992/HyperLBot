@@ -15,13 +15,8 @@ app = Flask(__name__)
 
 class SimpleBotDashboard:
     def __init__(self):
-        # Check for both old and new log directory names
-        if os.path.exists("yahoo_hyperliquid_paper_trading_logs"):
-            self.log_dir = "yahoo_hyperliquid_paper_trading_logs"
-        elif os.path.exists("hybrid_paper_trading_logs"):
-            self.log_dir = "hybrid_paper_trading_logs"
-        else:
-            self.log_dir = "yahoo_hyperliquid_paper_trading_logs"  # Default to new name
+        # Use standardized log directory
+        self.log_dir = "trading_logs"
         
     def get_session_data(self):
         """Get session data from logs"""

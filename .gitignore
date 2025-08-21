@@ -45,8 +45,6 @@ venv.bak/
 *.log.*
 logs/
 trading_logs/
-hybrid_paper_trading_logs/
-yahoo_hyperliquid_paper_trading_logs/
 
 # Trading data and session logs
 *.csv
