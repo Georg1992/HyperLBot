@@ -40,7 +40,12 @@ class PredictionEngine:
             "PRICE_ACCELERATION": "BUY/SELL"
         }
         
-        logger.info("🎯 Enhanced Prediction Engine initialized")
+        # Initialize confidence smoothing variables for stability
+        self._last_reversion_confidence = 0.5
+        self._last_momentum_confidence = 0.6
+        self._last_breakout_confidence = 0.5
+        
+        logger.info("🎯 Enhanced Prediction Engine initialized with conservative confidence system")
     
     def _add_prediction_metadata(self, prediction: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """Add standard metadata to all predictions"""
@@ -1055,55 +1060,88 @@ class PredictionEngine:
         if abs(depth_imbalance) > 0.3:  # Strong directional pressure
             base_confidence += 0.1
         
-        return min(0.95, max(0.15, base_confidence))
+        # Conservative confidence cap for breakouts  
+        return min(0.85, max(0.20, base_confidence))  # Max 85% for breakouts, min 20%
     
     def _calculate_reversion_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0, trend_1d: Dict = {}) -> float:
-        """Calculate confidence for reversion predictions with multi-timeframe RSI and volume integration"""
-        base_confidence = 0.4  # Lower base for reversions
+        """Calculate confidence for reversion predictions with conservative multi-timeframe analysis"""
+        base_confidence = 0.35  # More conservative base for reversions (reduced from 0.4)
         
         # Multi-timeframe trend analysis for reversions
         trend_5m_dir = trend_5m.get("trend", "UNKNOWN")
         trend_1h_dir = trend_1h.get("trend", "UNKNOWN") 
         trend_1d_dir = trend_1d.get("trend", "UNKNOWN")
         
-        # Trend divergence bonus (reversion more likely when trends diverge)
+        # Conservative trend divergence analysis
         if trend_1h_dir != trend_5m_dir:
-            base_confidence += 0.15
+            base_confidence += 0.08  # Reduced from 0.15 - more conservative
             
-        # Daily trend context (powerful for reversion predictions)
+        # Daily trend context - much more conservative
         if trend_1d_dir == "DOWN" and trend_5m_dir == "UP":
-            # Daily downtrend with short-term up = high reversion probability
-            base_confidence += 0.18
+            # Daily downtrend with short-term up = moderate reversion probability
+            base_confidence += 0.10  # Reduced from 0.18
         elif trend_1d_dir == "UP" and trend_5m_dir == "DOWN":
-            # Daily uptrend with short-term down = high reversion probability  
-            base_confidence += 0.18
+            # Daily uptrend with short-term down = moderate reversion probability  
+            base_confidence += 0.10  # Reduced from 0.18
         elif trend_1d_dir != "UNKNOWN" and trend_1d_dir == trend_5m_dir:
-            # Daily trend aligned with short-term = lower reversion probability
-            base_confidence -= 0.05
+            # Daily trend aligned with short-term = much lower reversion probability
+            base_confidence -= 0.12  # Increased penalty from -0.05
+            
+        # Counter-trend penalty - penalize risky trades against momentum
+        if trend_5m_dir == trend_1h_dir == trend_1d_dir:
+            # All timeframes aligned = very low reversion probability
+            base_confidence -= 0.15
         
-        # Volatility adjustment
-        if volatility < 0.002:  # Low volatility = more predictable reversions
-            base_confidence += 0.1
+        # Conservative volatility adjustment
+        if volatility < 0.002:  # Low volatility = slightly more predictable reversions
+            base_confidence += 0.05  # Reduced from 0.1
         elif volatility > 0.005:  # High volatility = less predictable
-            base_confidence -= 0.1
+            base_confidence -= 0.08
         
-        # RSI enhancement for reversions - key factor!
-        if rsi > 70:  # Overbought - high confidence for downward reversion
-            base_confidence += 0.2
-        elif rsi < 30:  # Oversold - high confidence for upward reversion
-            base_confidence += 0.2
-        elif rsi > 60 or rsi < 40:  # Moderately extreme levels
-            base_confidence += 0.1
+        # Conservative RSI enhancement - much more realistic
+        if rsi > 75:  # Extremely overbought - moderate confidence for downward reversion
+            base_confidence += 0.12  # Reduced from 0.2
+        elif rsi < 25:  # Extremely oversold - moderate confidence for upward reversion
+            base_confidence += 0.12  # Reduced from 0.2
+        elif rsi > 65 or rsi < 35:  # Moderately extreme levels
+            base_confidence += 0.06  # Reduced from 0.1
+        elif 40 <= rsi <= 60:  # Neutral RSI = lower reversion probability
+            base_confidence -= 0.05  # Penalty for neutral RSI reversions
         
-        # Volume enhancement for reversions
-        if volume_depth > 40:  # High liquidity = better reversion execution
-            base_confidence += 0.08
+        # Conservative volume enhancement
+        if volume_depth > 60:  # Very high liquidity
+            base_confidence += 0.05  # Reduced from 0.08
+        elif volume_depth > 40:  # High liquidity
+            base_confidence += 0.03
         
-        # Orderbook imbalance indicates reversion potential
-        if abs(depth_imbalance) > 0.4:  # Extreme imbalance often reverts
-            base_confidence += 0.12
+        # Conservative orderbook imbalance - requires extreme conditions
+        if abs(depth_imbalance) > 0.6:  # Only very extreme imbalance
+            base_confidence += 0.08  # Reduced from 0.12
+        elif abs(depth_imbalance) > 0.4:  # Moderate imbalance
+            base_confidence += 0.04
+            
+        # Risk penalty for counter-trend trades (your key concern!)
+        if trend_5m_dir != "UNKNOWN" and trend_1h_dir != "UNKNOWN":
+            # If betting against recent momentum, reduce confidence
+            if trend_5m_dir == "UP" and trend_1h_dir == "UP":
+                # Betting on downward reversion while trends are up = risky
+                base_confidence -= 0.10
+            elif trend_5m_dir == "DOWN" and trend_1h_dir == "DOWN":
+                # Betting on upward reversion while trends are down = risky
+                base_confidence -= 0.10
         
-        return min(0.9, max(0.1, base_confidence))
+        # Stability enhancement - prevent confidence jumping
+        # Apply smoothing to make confidence more stable
+        if hasattr(self, '_last_reversion_confidence'):
+            # Smooth with previous confidence to prevent jumping
+            smoothing_factor = 0.3
+            base_confidence = (base_confidence * (1 - smoothing_factor)) + (self._last_reversion_confidence * smoothing_factor)
+        
+        # Store for next calculation
+        self._last_reversion_confidence = base_confidence
+        
+        # Very conservative confidence cap for reversions (much lower than before)
+        return min(0.65, max(0.20, base_confidence))  # Max 65% for reversions (was 90%!), min 20%
     
     def _calculate_momentum_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0) -> float:
         """Calculate confidence for momentum predictions with RSI and volume integration"""
@@ -1129,17 +1167,27 @@ class PredictionEngine:
         elif rsi < 25 or rsi > 75:  # Extreme RSI may signal momentum continuation
             base_confidence += 0.05
         
-        # Volume enhancement for momentum
-        if volume_depth > 60:  # High liquidity supports strong momentum
-            base_confidence += 0.12
-        elif volume_depth > 30:  # Medium liquidity
-            base_confidence += 0.06
+        # Conservative volume enhancement for momentum
+        if volume_depth > 70:  # Very high liquidity supports strong momentum
+            base_confidence += 0.08  # Reduced from 0.12
+        elif volume_depth > 40:  # Medium liquidity
+            base_confidence += 0.04  # Reduced from 0.06
         
-        # Orderbook imbalance supports momentum direction
-        if abs(depth_imbalance) > 0.2:  # Directional pressure supports momentum
-            base_confidence += 0.08
+        # Conservative orderbook imbalance for momentum
+        if abs(depth_imbalance) > 0.3:  # Strong directional pressure supports momentum
+            base_confidence += 0.05  # Reduced from 0.08
         
-        return min(0.95, max(0.1, base_confidence))
+        # Stability enhancement - prevent confidence jumping
+        if hasattr(self, '_last_momentum_confidence'):
+            # Smooth with previous confidence to prevent jumping
+            smoothing_factor = 0.3
+            base_confidence = (base_confidence * (1 - smoothing_factor)) + (self._last_momentum_confidence * smoothing_factor)
+        
+        # Store for next calculation
+        self._last_momentum_confidence = base_confidence
+        
+        # Conservative confidence cap for momentum
+        return min(0.85, max(0.25, base_confidence))  # Max 85% for momentum (was 95%), min 25%
     
     def _calculate_breakout_timeframe(self, volatility: float, range_size: float) -> int:
         """Calculate expected timeframe for breakout"""
