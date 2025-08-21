@@ -812,25 +812,22 @@ def create_template():
                      <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
                      <p><strong>Condition:</strong> ${market.market_condition}</p>
                      
-                     <!-- RSI - Prominently Featured -->
-                     ${market.rsi !== null && market.rsi !== undefined ? `
+                     <!-- RSI - Always Show -->
                      <div class="market-indicator rsi-indicator" style="margin: 15px 0;">
                          <p><strong>📊 RSI:</strong> 
-                         <span class="rsi-value ${market.rsi > 70 ? 'overbought' : market.rsi < 30 ? 'oversold' : 'neutral'}">${market.rsi.toFixed(1)}</span>
+                         <span class="rsi-value ${market.rsi > 70 ? 'overbought' : market.rsi < 30 ? 'oversold' : 'neutral'}">${market.rsi ? market.rsi.toFixed(1) : 'N/A'}</span>
                          ${market.rsi > 70 ? '<span class="rsi-status overbought">🔴 OVERBOUGHT</span>' : market.rsi < 30 ? '<span class="rsi-status oversold">🟢 OVERSOLD</span>' : '<span class="rsi-status neutral">⚪ NEUTRAL</span>'}
                          </p>
-                     </div>` : '<div class="market-indicator rsi-indicator" style="margin: 15px 0;"><p><strong>📊 RSI:</strong> <span class="rsi-value neutral">N/A</span></p></div>'}
+                     </div>
                      
-                     <!-- Volume - Prominently Featured -->
-                     ${market.volume_depth !== null && market.volume_depth !== undefined ? `
+                     <!-- Volume - Always Show -->
                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 Volume Depth:</strong> <span class="volume-value">${market.volume_depth.toFixed(1)} BTC</span></p>
-                         ${market.orderbook_imbalance !== null && market.orderbook_imbalance !== undefined ? `
+                         <p><strong>📈 Volume Depth:</strong> <span class="volume-value">${market.volume_depth ? market.volume_depth.toFixed(1) : 'N/A'} BTC</span></p>
                          <p><strong>📊 Order Flow:</strong> 
-                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${(market.orderbook_imbalance * 100).toFixed(1)}%</span>
+                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${market.orderbook_imbalance ? (market.orderbook_imbalance * 100).toFixed(1) : 'N/A'}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
-                         </p>` : ''}
-                     </div>` : '<div class="market-indicator volume-indicator" style="margin: 15px 0;"><p><strong>📈 Volume Depth:</strong> <span class="volume-value">N/A</span></p></div>'}
+                         </p>
+                     </div>
                      
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
                  `;
