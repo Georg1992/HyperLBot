@@ -495,6 +495,8 @@ class PredictionEngine:
                 
                 best_prediction = max(predictions, key=lambda x: x["confidence"])
                 
+                logger.info(f"🎯 Selected best prediction: {best_prediction['type']} ({best_prediction['side']}) - Confidence: {best_prediction['confidence']:.1%}")
+                
                 # FINAL VALIDATION: Ensure best prediction has valid entry price
                 best_prediction = self._validate_entry_price(best_prediction, current_price, support_5m, resistance_5m, candles_5m)
                 
@@ -523,8 +525,13 @@ class PredictionEngine:
                         # Add prediction metadata
                         basic_predictions[i] = self._add_prediction_metadata(prediction, current_price)
                     
+                    # Select the prediction with highest confidence
+                    best_basic = max(basic_predictions, key=lambda x: x["confidence"])
+                    
+                    logger.info(f"🎯 Selected best basic prediction: {best_basic['type']} ({best_basic['side']}) - Confidence: {best_basic['confidence']:.1%}")
+                    
                     # FINAL VALIDATION: Ensure best prediction has valid entry price
-                    best_basic = self._validate_entry_price(basic_predictions[0], current_price, support_5m, resistance_5m, candles_5m)
+                    best_basic = self._validate_entry_price(best_basic, current_price, support_5m, resistance_5m, candles_5m)
                     
                     # Ensure best prediction has metadata (safety check)
                     if "current_price" not in best_basic:

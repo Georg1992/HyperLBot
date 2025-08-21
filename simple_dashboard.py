@@ -128,9 +128,10 @@ class SimpleBotDashboard:
                                 logger.warning(f"Could not get real-time price: {price_error}")
                                 # Fallback to log price
                             
-                            # Get proper RSI from Yahoo data
+                            # Get proper RSI from Yahoo data (updated every 2 seconds)
                             from data.yahoo_data_fetcher import YahooDataFetcher
                             fetcher = YahooDataFetcher()
+                            logger.debug("📊 Fetching fresh Yahoo candlestick data for RSI and volume...")
                             candles = fetcher.get_klines("BTC", "5m", 30)  # Get 30 for reliable 20-period RSI
                             
                             if candles and len(candles) >= 25:  # Need more candles for 20-period RSI
@@ -286,11 +287,16 @@ class SimpleBotDashboard:
                             break
                     
                     if latest and latest.get("has_prediction"):
-                        # Check for all_predictions first, then fall back to best_prediction
-                        if latest.get("all_predictions"):
-                            return latest.get("all_predictions", [])
-                        elif latest.get("best_prediction"):
+                        # Only return the best prediction (highest confidence)
+                        if latest.get("best_prediction"):
                             return [latest.get("best_prediction")]
+                        # Fallback to first prediction if best_prediction not available
+                        elif latest.get("all_predictions"):
+                            all_predictions = latest.get("all_predictions", [])
+                            if all_predictions:
+                                # Select the prediction with highest confidence
+                                best_prediction = max(all_predictions, key=lambda x: x.get("confidence", 0))
+                                return [best_prediction]
             
             return []
             
@@ -748,7 +754,7 @@ def create_template():
             <h1>🤖 Yahoo + Hyperliquid Trading Bot Dashboard</h1>
             <p>Real-time trading bot monitoring (Hyperliquid Price + Yahoo Analysis)</p>
                          <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
-             <div id="update-indicator" style="margin-top: 10px; font-size: 12px; color: #4CAF50;">🔄 Auto-updating every 1 second</div>
+             <div id="update-indicator" style="margin-top: 10px; font-size: 12px; color: #4CAF50;">🔄 Auto-updating every 2 seconds (Yahoo candlestick data)</div>
         </div>
         
         <div class="grid">
@@ -776,12 +782,12 @@ def create_template():
         
         <!-- Main Content Area with Predictions and Trading Summary Side by Side -->
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <div class="card">
-                <h3>🎯 Live Trading Predictions</h3>
-                <div id="predictions-panel">
-                    <p>Loading predictions...</p>
-                </div>
-            </div>
+                         <div class="card">
+                 <h3>🎯 Best Trading Prediction (Highest Confidence)</h3>
+                 <div id="predictions-panel">
+                     <p>Loading best prediction...</p>
+                 </div>
+             </div>
             
             <div class="card">
                 <h3>📈 Trading Summary</h3>
@@ -825,7 +831,7 @@ def create_template():
                     // Show last update time
                     if (indicator) {
                         const now = new Date().toLocaleTimeString();
-                        indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 1s)`;
+                                                 indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 2s)`;
                         indicator.style.color = '#4CAF50';
                     }
                 })
@@ -930,41 +936,43 @@ def create_template():
             }
         }
         
-        function updatePredictionsPanel(predictions) {
-            const div = document.getElementById('predictions-panel');
-            if (predictions && predictions.length > 0) {
-                let html = '<div class="predictions-container">';
-                
-                predictions.forEach((pred, index) => {
+                 function updatePredictionsPanel(predictions) {
+             const div = document.getElementById('predictions-panel');
+             if (predictions && predictions.length > 0) {
+                 let html = '<div class="predictions-container">';
+                 
+                 // Show only the best prediction (should be only one now)
+                 const pred = predictions[0];
+                 if (pred) {
                     const sideClass = pred.side === 'BUY' ? 'prediction-buy' : 'prediction-sell';
                     const confidenceClass = pred.confidence > 0.7 ? 'high-confidence' : 
                                           pred.confidence > 0.5 ? 'medium-confidence' : 'low-confidence';
                     
-                    html += `
-                        <div class="prediction-card ${sideClass} ${confidenceClass}">
-                            <div class="prediction-header">
-                                <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
-                                <span class="prediction-side">${pred.side}</span>
-                            </div>
-                            <div class="prediction-details">
-                                <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
-                                <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
-                                <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
-                                <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
-                                <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
-                                ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
-                                ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
-                                ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                html += '</div>';
-                div.innerHTML = html;
-            } else {
-                div.innerHTML = '<p>No active predictions</p>';
-            }
+                                         html += `
+                         <div class="prediction-card ${sideClass} ${confidenceClass}">
+                             <div class="prediction-header">
+                                 <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
+                                 <span class="prediction-side">${pred.side}</span>
+                             </div>
+                             <div class="prediction-details">
+                                 <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
+                                 <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
+                                 <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
+                                 <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
+                                 <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
+                                 ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
+                                 ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
+                                 ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
+                             </div>
+                         </div>
+                     `;
+                 }
+                 
+                 html += '</div>';
+                 div.innerHTML = html;
+             } else {
+                 div.innerHTML = '<p>No active predictions</p>';
+             }
         }
         
         function updateOrderbook(orderbook) {
@@ -1022,8 +1030,8 @@ def create_template():
             }
         }
         
-        // Auto-refresh every 1 second for ultra-fast real-time updates
-        setInterval(refreshData, 1000);
+        // Auto-refresh every 2 seconds for frequent Yahoo candlestick updates
+        setInterval(refreshData, 2000);
         
         // Initial load
         refreshData();
@@ -1044,8 +1052,8 @@ if __name__ == '__main__':
     # Create the template
     create_template()
     
-         logger.info("🚀 Starting Simple HyperLBot Dashboard...")
-     logger.info("📊 Dashboard will be available at: http://localhost:5001")
-     logger.info("🔄 Auto-refreshing every 500ms for faster real-time updates")
+    logger.info("🚀 Starting Simple HyperLBot Dashboard...")
+    logger.info("📊 Dashboard will be available at: http://localhost:5001")
+    logger.info("🔄 Auto-refreshing every 2 seconds for frequent Yahoo candlestick updates")
     
     app.run(host='0.0.0.0', port=5001, debug=False)
