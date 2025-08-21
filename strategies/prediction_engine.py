@@ -235,14 +235,14 @@ class PredictionEngine:
                 
                 # Validate and fix entry prices for reactive signals
                 for i, signal in enumerate(reactive_signals):
-                    signal = self._validate_entry_price(signal, current_price, support_5m, resistance_5m)
+                    signal = self._validate_entry_price(signal, current_price, support_5m, resistance_5m, candles_5m)
                     # Add prediction metadata to all signals
                     reactive_signals[i] = self._add_prediction_metadata(signal, current_price)
                 
                 best_signal = max(reactive_signals, key=lambda x: x["confidence"])
                 
                 # FINAL VALIDATION: Ensure best signal has valid entry price
-                best_signal = self._validate_entry_price(best_signal, current_price, support_5m, resistance_5m)
+                best_signal = self._validate_entry_price(best_signal, current_price, support_5m, resistance_5m, candles_5m)
                 
                 return {
                     "has_prediction": True,
@@ -489,14 +489,14 @@ class PredictionEngine:
             if predictions:
                 # Validate and fix entry prices to ensure they're logical
                 for i, prediction in enumerate(predictions):
-                    prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m)
+                    prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m, candles_5m)
                     # Add prediction metadata (RSI and volume data only for internal use, not display)
                     predictions[i] = self._add_prediction_metadata(prediction, current_price)
                 
                 best_prediction = max(predictions, key=lambda x: x["confidence"])
                 
                 # FINAL VALIDATION: Ensure best prediction has valid entry price
-                best_prediction = self._validate_entry_price(best_prediction, current_price, support_5m, resistance_5m)
+                best_prediction = self._validate_entry_price(best_prediction, current_price, support_5m, resistance_5m, candles_5m)
                 
                 # Ensure best prediction has metadata (safety check)
                 if "current_price" not in best_prediction:
@@ -519,12 +519,12 @@ class PredictionEngine:
                 if basic_predictions:
                     # Validate and fix entry prices to ensure they're logical
                     for i, prediction in enumerate(basic_predictions):
-                        prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m)
+                        prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m, candles_5m)
                         # Add prediction metadata
                         basic_predictions[i] = self._add_prediction_metadata(prediction, current_price)
                     
                     # FINAL VALIDATION: Ensure best prediction has valid entry price
-                    best_basic = self._validate_entry_price(basic_predictions[0], current_price, support_5m, resistance_5m)
+                    best_basic = self._validate_entry_price(basic_predictions[0], current_price, support_5m, resistance_5m, candles_5m)
                     
                     # Ensure best prediction has metadata (safety check)
                     if "current_price" not in best_basic:
@@ -809,40 +809,12 @@ class PredictionEngine:
             logger.error(f"Error identifying key levels: {e}")
             return []
     
-    def _validate_entry_price(self, prediction: Dict, current_price: float, support: float, resistance: float) -> Dict:
-        """Validate and fix entry prices to ensure they're logical"""
+    def _validate_entry_price(self, prediction: Dict, current_price: float, support: float, resistance: float, candles_5m: List = None) -> Dict:
+        """Smart entry price validation that allows equal prices when price is moving toward entry level"""
         try:
             entry_price = prediction.get("entry_price", 0)
             side = prediction.get("side", "UNKNOWN")
             pred_type = prediction.get("type", "UNKNOWN")
-            
-            # CRITICAL VALIDATION: For BUY orders, entry price MUST be below current price
-            if side == "BUY" and entry_price >= current_price:
-                # Calculate safe entry price (0.3% below current price)
-                safe_entry = current_price * 0.997
-                
-                # If we have a valid support level, use it as a reference
-                if support > 0 and support < current_price:
-                    safe_entry = min(safe_entry, support * 1.001)
-                
-                prediction["entry_price"] = safe_entry
-                prediction["reason"] += f" (CRITICAL FIX: adjusted entry from ${entry_price:,.2f} to ${safe_entry:,.2f})"
-                logger.error(f"🚨 CRITICAL BUG FIXED: {pred_type} BUY order had entry price ${entry_price:,.2f} >= current price ${current_price:,.2f}")
-                logger.error(f"   Fixed to: ${safe_entry:,.2f} (0.3% below current)")
-            
-            # CRITICAL VALIDATION: For SELL orders, entry price MUST be above current price
-            elif side == "SELL" and entry_price <= current_price:
-                # Calculate safe entry price (0.3% above current price)
-                safe_entry = current_price * 1.003
-                
-                # If we have a valid resistance level, use it as a reference
-                if resistance > 0 and resistance > current_price:
-                    safe_entry = max(safe_entry, resistance * 0.999)
-                
-                prediction["entry_price"] = safe_entry
-                prediction["reason"] += f" (CRITICAL FIX: adjusted entry from ${entry_price:,.2f} to ${safe_entry:,.2f})"
-                logger.error(f"🚨 CRITICAL BUG FIXED: {pred_type} SELL order had entry price ${entry_price:,.2f} <= current price ${current_price:,.2f}")
-                logger.error(f"   Fixed to: ${safe_entry:,.2f} (0.3% above current)")
             
             # Additional validation: ensure entry price is reasonable
             if entry_price <= 0:
@@ -851,6 +823,56 @@ class PredictionEngine:
                     prediction["entry_price"] = current_price * 0.997
                 else:
                     prediction["entry_price"] = current_price * 1.003
+                return prediction
+            
+            # SMART VALIDATION: Check if price is moving toward entry level
+            price_moving_toward_entry = False
+            if candles_5m and len(candles_5m) >= 3:
+                # Calculate recent price direction (last 3 candles)
+                recent_prices = [candle["close"] for candle in candles_5m[-3:]]
+                price_direction = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+                
+                if side == "BUY" and entry_price >= current_price:
+                    # For BUY orders: price should be moving DOWN toward entry level
+                    if price_direction < -0.0005:  # Price dropping by at least 0.05%
+                        price_moving_toward_entry = True
+                        logger.info(f"✅ BUY order: Price moving DOWN toward entry ${entry_price:,.2f} (direction: {price_direction:.4f})")
+                
+                elif side == "SELL" and entry_price <= current_price:
+                    # For SELL orders: price should be moving UP toward entry level
+                    if price_direction > 0.0005:  # Price rising by at least 0.05%
+                        price_moving_toward_entry = True
+                        logger.info(f"✅ SELL order: Price moving UP toward entry ${entry_price:,.2f} (direction: {price_direction:.4f})")
+            
+            # Apply validation based on price movement
+            if side == "BUY" and entry_price >= current_price and not price_moving_toward_entry:
+                # Price not moving toward entry - adjust to safe level
+                safe_entry = current_price * 0.997
+                if support > 0 and support < current_price:
+                    safe_entry = min(safe_entry, support * 1.001)
+                
+                prediction["entry_price"] = safe_entry
+                prediction["reason"] += f" (ADJUSTED: price not moving toward entry, set to ${safe_entry:,.2f})"
+                logger.warning(f"⚠️ BUY order adjusted: entry ${entry_price:,.2f} >= current ${current_price:,.2f}, price not moving down")
+            
+            elif side == "SELL" and entry_price <= current_price and not price_moving_toward_entry:
+                # Price not moving toward entry - adjust to safe level
+                safe_entry = current_price * 1.003
+                if resistance > 0 and resistance > current_price:
+                    safe_entry = max(safe_entry, resistance * 0.999)
+                
+                prediction["entry_price"] = safe_entry
+                prediction["reason"] += f" (ADJUSTED: price not moving toward entry, set to ${safe_entry:,.2f})"
+                logger.warning(f"⚠️ SELL order adjusted: entry ${entry_price:,.2f} <= current ${current_price:,.2f}, price not moving up")
+            
+            # Add execution timing metadata for equal-price scenarios
+            if price_moving_toward_entry:
+                prediction["execution_timing"] = "WAIT_FOR_ENTRY"  # Wait for price to reach entry level
+                prediction["price_movement_direction"] = "TOWARD_ENTRY"
+                logger.info(f"🎯 {pred_type}: Price moving toward entry ${entry_price:,.2f} - execution timing: WAIT_FOR_ENTRY")
+            else:
+                prediction["execution_timing"] = "IMMEDIATE"  # Can execute immediately
+                prediction["price_movement_direction"] = "AWAY_FROM_ENTRY"
             
             return prediction
             
@@ -1409,13 +1431,36 @@ class PredictionEngine:
             "position_in_range": position_in_range
         }
     
-    def is_prediction_valid(self, prediction: Dict[str, Any], current_price: float) -> bool:
-        """Check if prediction is still valid given current price"""
+    def is_prediction_valid(self, prediction: Dict[str, Any], current_price: float, candles_5m: List = None) -> bool:
+        """Check if prediction is still valid given current price and movement"""
         entry_price = prediction["entry_price"]
-        price_diff = abs(current_price - entry_price) / current_price
+        side = prediction.get("side", "UNKNOWN")
+        execution_timing = prediction.get("execution_timing", "IMMEDIATE")
         
-        # Prediction is valid if price is within 0.5% of entry
-        return price_diff < 0.005
+        # Basic validity check: price within 0.5% of entry
+        price_diff = abs(current_price - entry_price) / current_price
+        if price_diff > 0.005:
+            return False
+        
+        # Smart validity check based on execution timing
+        if execution_timing == "WAIT_FOR_ENTRY" and candles_5m and len(candles_5m) >= 3:
+            # For predictions waiting for entry, check if price is still moving toward entry
+            recent_prices = [candle["close"] for candle in candles_5m[-3:]]
+            price_direction = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+            
+            if side == "BUY" and entry_price >= current_price:
+                # For BUY orders: price should still be moving DOWN toward entry
+                if price_direction >= -0.0002:  # Price stopped moving down or reversed
+                    logger.info(f"❌ BUY prediction invalidated: Price stopped moving toward entry (direction: {price_direction:.4f})")
+                    return False
+            
+            elif side == "SELL" and entry_price <= current_price:
+                # For SELL orders: price should still be moving UP toward entry
+                if price_direction <= 0.0002:  # Price stopped moving up or reversed
+                    logger.info(f"❌ SELL prediction invalidated: Price stopped moving toward entry (direction: {price_direction:.4f})")
+                    return False
+        
+        return True
     
     def calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
         """Calculate win probability for a prediction"""
@@ -1456,7 +1501,7 @@ class PredictionEngine:
         
         return min(0.95, max(0.1, base_probability))
     
-    def analyze_entry_point(self, prediction_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+    def analyze_entry_point(self, prediction_analysis: Dict[str, Any], current_price: float, candles_5m: List = None) -> Dict[str, Any]:
         """Analyze entry point and determine if order should be placed"""
         try:
             if not prediction_analysis.get("has_prediction", False):
@@ -1466,7 +1511,7 @@ class PredictionEngine:
             prediction_mode = prediction_analysis.get("prediction_mode", "PREDICTIVE")
             
             # Check if prediction is still valid
-            if not self.is_prediction_valid(prediction, current_price):
+            if not self.is_prediction_valid(prediction, current_price, candles_5m):
                 return {"should_place_order": False, "reason": "Prediction no longer valid"}
             
             # Calculate win probability
