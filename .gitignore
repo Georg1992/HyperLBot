@@ -40,21 +40,21 @@ venv.bak/
 *.swo
 *~
 
-# Logs
-*.log
-trading_logs/
-logs/
-*.log.*
+# Logs (temporarily allowing for analysis)
+#*.log
+#trading_logs/
+#logs/
+#*.log.*
 
-# Trading data
+# Trading data (temporarily allowing session logs for analysis)
 *.csv
-*.json
-trades/
-market_data/
-signals/
-analysis/
-performance/
-errors/
+#*.json
+#trades/
+#market_data/
+#signals/
+#analysis/
+#performance/
+#errors/
 csv_exports/
 
 # OS
