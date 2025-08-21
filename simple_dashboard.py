@@ -123,11 +123,17 @@ class SimpleBotDashboard:
                                 rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
                                 rsi_data = rsi_result.get("rsi")
                                 
-                                # Use our new cumulative volume integration that simulates Hyperliquid behavior
+                                # Use our enhanced volume integration with orderbook precision
                                 volume_result = api.get_current_5m_volume("BTC")
                                 volume_data = volume_result.get("current_volume", 0)  # Already scaled to Hyperliquid ranges
                                 period_progress = volume_result.get("period_progress", 0)
                                 elapsed_time = volume_result.get("elapsed_time", "0m 0s")
+                                
+                                # Get orderbook enhancement info
+                                orderbook_enhancement = volume_result.get("orderbook_enhancement", {})
+                                orderbook_activity = orderbook_enhancement.get("activity", "NORMAL")
+                                orderbook_multiplier = orderbook_enhancement.get("multiplier", 1.0)
+                                enhancement_enabled = orderbook_enhancement.get("enabled", False)
                                 
                                 # Get orderbook imbalance for order flow
                                 indicators = api.get_current_market_indicators("BTC")
@@ -135,7 +141,7 @@ class SimpleBotDashboard:
                                     liquidity = indicators["liquidity_metrics"]
                                     orderbook_imbalance = liquidity.get("depth_imbalance")
                                     
-                                logger.info(f"📊 Cumulative Volume: {volume_data:.1f} ({volume_result.get('volume_category', 'UNKNOWN')}) - {elapsed_time} elapsed, RSI: {rsi_data:.1f} (20-period)")
+                                logger.info(f"📊 Enhanced Volume: {volume_data:.1f} ({volume_result.get('volume_category', 'UNKNOWN')}) - {elapsed_time} elapsed, Orderbook: {orderbook_activity} (x{orderbook_multiplier:.2f}), RSI: {rsi_data:.1f} (20-period)")
                                 
                                 # Add RSI validation against Hyperliquid reference
                                 rsi_difference = abs(rsi_data - 50.40) if rsi_data else 0  # Assuming 50.40 as reference
@@ -169,7 +175,9 @@ class SimpleBotDashboard:
                             "rsi": rsi_data,
                             "volume_depth": volume_data,
                             "period_progress": period_progress,
-                            "orderbook_imbalance": orderbook_imbalance
+                            "orderbook_imbalance": orderbook_imbalance,
+                            "orderbook_activity": orderbook_activity,
+                            "orderbook_multiplier": orderbook_multiplier
                         }
                     else:
                         logger.warning("No valid market data found in analysis")

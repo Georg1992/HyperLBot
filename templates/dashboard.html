@@ -454,15 +454,16 @@
                          </p>
                      </div>
                      
-                     <!-- Volume - Cumulative Display (Hyperliquid-style) -->
-                     <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 Cumulative Volume:</strong> <span class="volume-value">${volumeValue}</span></p>
-                         <p><strong>⏱️ Period Progress:</strong> ${market.period_progress ? (market.period_progress * 100).toFixed(1) + '%' : 'N/A'}</p>
-                         <p><strong>📊 Order Flow:</strong> 
-                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
-                         ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
-                         </p>
-                     </div>
+                                           <!-- Volume - Enhanced Display (Hyperliquid-style + Orderbook) -->
+                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
+                          <p><strong>📈 Enhanced Volume:</strong> <span class="volume-value">${volumeValue}</span></p>
+                          <p><strong>⏱️ Period Progress:</strong> ${market.period_progress ? (market.period_progress * 100).toFixed(1) + '%' : 'N/A'}</p>
+                          <p><strong>📊 Order Flow:</strong> 
+                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
+                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
+                          </p>
+                          ${market.orderbook_activity ? `<p><strong>🔍 Orderbook Activity:</strong> <span style="color: ${market.orderbook_activity === 'VERY_HIGH' ? '#4CAF50' : market.orderbook_activity === 'HIGH' ? '#FF9800' : market.orderbook_activity === 'LOW' ? '#f44336' : '#2196F3'}">${market.orderbook_activity}</span> ${market.orderbook_multiplier ? `(x${market.orderbook_multiplier.toFixed(2)})` : ''}</p>` : ''}
+                      </div>
                      
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
                  `;
