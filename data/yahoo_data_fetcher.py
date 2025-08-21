@@ -380,7 +380,14 @@ class YahooDataFetcher:
             
             # Extract volume data from candles
             volumes = [candle.get("volume", 0) for candle in candles_5m]
-            current_volume = volumes[-1] if volumes else 0
+            
+            # Use most recent completed candle (not the current incomplete one)
+            # If the last candle has 0 volume, it's incomplete, use the previous one
+            if len(volumes) >= 2 and volumes[-1] == 0:
+                current_volume = volumes[-2]  # Use previous completed candle
+                logger.info("Using previous completed candle for volume (current candle incomplete)")
+            else:
+                current_volume = volumes[-1] if volumes else 0
             
             # Calculate average volume from recent candles
             recent_volumes = volumes[-5:]  # Last 5 candles

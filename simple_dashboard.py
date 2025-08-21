@@ -100,7 +100,7 @@ class SimpleBotDashboard:
                         price_diff_amount = base_entry.get("price_difference_amount", 0.0)
                         data_source = base_entry.get("data_source", "Unknown")
                         
-                        # Get live RSI and volume data directly from Hyperliquid API
+                        # Get live RSI and volume data using our new integration
                         rsi_data = None
                         volume_data = None
                         orderbook_imbalance = None
@@ -113,7 +113,7 @@ class SimpleBotDashboard:
                             config = TradingConfig()
                             api = HyperliquidAPI(config.WALLET_ADDRESS, config.WALLET_PRIVATE_KEY)
                             
-                            # Get proper RSI and 5-minute volume from Yahoo data
+                            # Get proper RSI from Yahoo data
                             from data.yahoo_data_fetcher import YahooDataFetcher
                             fetcher = YahooDataFetcher()
                             candles = fetcher.get_klines("BTC", "5m", 30)  # Get 30 for reliable 20-period RSI
@@ -123,24 +123,17 @@ class SimpleBotDashboard:
                                 rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
                                 rsi_data = rsi_result.get("rsi")
                                 
-                                # Calculate 5-minute volume metrics (much smoother!)
-                                recent_volumes = [candle.get("volume", 0) for candle in candles[-5:]]
-                                current_5m_volume = recent_volumes[-1] if recent_volumes else 0
-                                avg_5m_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
+                                # Use our new volume integration that handles incomplete candles properly
+                                volume_result = api.get_current_5m_volume("BTC")
+                                volume_data = volume_result.get("current_volume", 0)  # Already scaled to Hyperliquid ranges
                                 
-                                # Volume activity level
-                                volume_activity = "HIGH" if current_5m_volume > avg_5m_volume * 1.2 else "NORMAL" if current_5m_volume > avg_5m_volume * 0.8 else "LOW"
-                                
-                                # Use 5m volume instead of orderbook depth (smoother!)
-                                volume_data = current_5m_volume / 1000000  # Convert to millions for readability
-                                
-                                # Still get orderbook imbalance for order flow
+                                # Get orderbook imbalance for order flow
                                 indicators = api.get_current_market_indicators("BTC")
                                 if indicators and "liquidity_metrics" in indicators:
                                     liquidity = indicators["liquidity_metrics"]
                                     orderbook_imbalance = liquidity.get("depth_imbalance")
                                     
-                                logger.info(f"📊 5m Volume: {current_5m_volume:,.0f} ({volume_activity}), RSI: {rsi_data:.1f} (20-period)")
+                                logger.info(f"📊 Volume: {volume_data:.1f} ({volume_result.get('volume_category', 'UNKNOWN')}), RSI: {rsi_data:.1f} (20-period)")
                                 
                                 # Add RSI validation against Hyperliquid reference
                                 rsi_difference = abs(rsi_data - 50.40) if rsi_data else 0  # Assuming 50.40 as reference
@@ -148,7 +141,7 @@ class SimpleBotDashboard:
                                     logger.warning(f"⚠️ RSI drift detected: Our={rsi_data:.1f}, Expected=~50.40, Diff={rsi_difference:.1f}")
                                     
                             else:
-                                logger.warning("Insufficient candle data for 5m volume calculation")
+                                logger.warning("Insufficient candle data for RSI calculation")
                                     
                         except Exception as e:
                             logger.warning(f"Could not get live market data: {e}")
@@ -872,7 +865,7 @@ def create_template():
                      
                      <!-- Volume - Fixed Display (5m Volume) -->
                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 5m Volume:</strong> <span class="volume-value">${volumeValue}M</span></p>
+                         <p><strong>📈 5m Volume:</strong> <span class="volume-value">${volumeValue}</span></p>
                          <p><strong>📊 Order Flow:</strong> 
                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
