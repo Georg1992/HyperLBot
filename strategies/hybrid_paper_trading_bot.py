@@ -27,6 +27,7 @@ from variability_analyzer import VariabilityAnalyzer
 from trading_logger import TradingLogger
 from whale_integration import WhaleIntegration, integrate_whale_analytics_into_signal
 from prediction_engine import PredictionEngine
+from trade_manager import TradeManager
 
 class HybridPaperTradingBot:
     def __init__(self, initial_balance: float = 120.0, strategy_name: str = "standard"):
@@ -70,6 +71,12 @@ class HybridPaperTradingBot:
         
         # Prediction engine
         self.prediction_engine = PredictionEngine(self.strategy_config)
+        
+        # Advanced trade manager
+        self.trade_manager = TradeManager(self.strategy_config)
+        
+        # Override trade manager's get_open_positions method
+        self.trade_manager.get_open_positions = self.get_open_positions
         
         # Enhanced analysis frequency
         self.price_update_interval = 5  # Update price every 5 seconds
@@ -419,6 +426,22 @@ class HybridPaperTradingBot:
             "hyperliquid_price": hyperliquid_price,
             "strategy_name": self.strategy_name
         }
+        
+        # 6. INTELLIGENT TRADE QUALITY EVALUATION
+        trade_decision = self.trade_manager.should_place_trade(
+            signal_data, binance_analysis, hyperliquid_price, self.open_positions
+        )
+        
+        if not trade_decision["should_place"]:
+            return {
+                "should_trade": False,
+                "reason": f"Trade quality check failed: {trade_decision['reason']}",
+                "quality_evaluation": trade_decision.get("quality_evaluation", {})
+            }
+        
+        # Add quality evaluation to signal data
+        signal_data["quality_evaluation"] = trade_decision["quality_evaluation"]
+        signal_data["trade_decision"] = trade_decision
         
         # Add whale confirmation
         signal_data = integrate_whale_analytics_into_signal(signal_data, self.whale_integration)
@@ -1547,7 +1570,7 @@ class HybridPaperTradingBot:
                 })
                 return False
             
-            # Create position record with prediction data
+            # Create position record with prediction data and market analysis
             position = {
                 "trade_id": f"hybrid_trade_{len(self.trade_history) + 1}",
                 "side": side,
@@ -1561,13 +1584,19 @@ class HybridPaperTradingBot:
                 "signal_data": signal_data,
                 "target_price": execution_result["target_price"],
                 "stop_price": execution_result["stop_price"],
+                "current_stop_loss": execution_result["stop_price"],  # Initialize dynamic stop
                 "status": "OPEN",
                 "order_type": "PREDICTIVE_LIMIT",
                 "prediction_type": prediction_type,
                 "prediction_confidence": prediction_confidence,
                 "entry_timeframe": entry_timeframe,
                 "time_to_execution": execution_result.get("time_to_execution", 0),
-                "order_status": execution_result.get("order_status", "FILLED")
+                "order_status": execution_result.get("order_status", "FILLED"),
+                "original_market_analysis": self.binance_analysis.copy(),  # Store original analysis for comparison
+                "quality_evaluation": signal_data.get("quality_evaluation", {}),
+                "stop_adjustment_count": 0,
+                "partial_closes": [],
+                "current_pnl_pct": 0.0
             }
             
             # Add to open positions
@@ -1643,32 +1672,71 @@ class HybridPaperTradingBot:
             })
             return False
     
-    def check_position_exits(self, hyperliquid_price: float):
-        """Check if any open positions should be closed"""
+    def check_position_exits(self, hyperliquid_price: float, current_analysis: Dict[str, Any] = None):
+        """Advanced position management with dynamic stops and intelligent exits"""
         positions_to_close = []
+        positions_to_adjust = []
         
         for position in self.open_positions:
             entry_price = position["entry_price"]
             side = position["side"]
             target_price = position["target_price"]
-            stop_price = position["stop_price"]
+            stop_price = position.get("current_stop_loss", position["stop_price"])
             
-            # Check for target hit
+            # Update current P&L for position
+            if side == "BUY":
+                current_pnl_pct = (hyperliquid_price - entry_price) / entry_price
+            else:
+                current_pnl_pct = (entry_price - hyperliquid_price) / entry_price
+            
+            position["current_pnl_pct"] = current_pnl_pct
+            
+            # 1. CHECK FOR TARGET HIT
             if target_price:
                 if (side == "BUY" and hyperliquid_price >= target_price) or (side == "SELL" and hyperliquid_price <= target_price):
                     positions_to_close.append((position, "TARGET_HIT", target_price))
                     continue
             
-            # Check for stop loss
+            # 2. CHECK FOR STOP LOSS
             if stop_price:
                 if (side == "BUY" and hyperliquid_price <= stop_price) or (side == "SELL" and hyperliquid_price >= stop_price):
                     positions_to_close.append((position, "STOP_LOSS", stop_price))
                     continue
             
-            # Check for time-based exit (1 hour max)
+            # 3. CHECK FOR PARTIAL CLOSE OPPORTUNITIES
+            if current_analysis:
+                partial_close_decision = self.trade_manager.should_partial_close(position, hyperliquid_price)
+                if partial_close_decision["should_partial_close"]:
+                    logger.info(f"💰 Partial close opportunity: {partial_close_decision['reason']}")
+                    # Implement partial close logic here
+                    # For now, we'll just log it
+            
+            # 4. CHECK FOR EMERGENCY CLOSE
+            if current_analysis:
+                emergency_decision = self.trade_manager.should_emergency_close(position, hyperliquid_price, current_analysis)
+                if emergency_decision["should_emergency_close"]:
+                    positions_to_close.append((position, "EMERGENCY_CLOSE", hyperliquid_price))
+                    logger.warning(f"🚨 Emergency close: {emergency_decision['reason']}")
+                    continue
+            
+            # 5. CHECK FOR DYNAMIC STOP ADJUSTMENT
+            if current_analysis:
+                stop_adjustment = self.trade_manager.calculate_dynamic_stops(position, hyperliquid_price, current_analysis)
+                if stop_adjustment["should_adjust"]:
+                    positions_to_adjust.append((position, stop_adjustment))
+            
+            # 6. CHECK FOR TIME-BASED EXIT (1 hour max)
             if time.time() - position["entry_time"] > 3600:  # 1 hour
                 positions_to_close.append((position, "TIME_EXIT", hyperliquid_price))
                 continue
+        
+        # Apply stop adjustments
+        for position, adjustment_result in positions_to_adjust:
+            updated_position = self.trade_manager.update_position_with_adjustment(position, adjustment_result)
+            # Update position in our list
+            position_index = next((i for i, p in enumerate(self.open_positions) if p["trade_id"] == position["trade_id"]), None)
+            if position_index is not None:
+                self.open_positions[position_index] = updated_position
         
         # Close positions
         for position, exit_reason, exit_price in positions_to_close:
@@ -1787,8 +1855,8 @@ class HybridPaperTradingBot:
                     time.sleep(check_interval)
                     continue
                 
-                # Check for position exits
-                self.check_position_exits(hyperliquid_price)
+                # Check for position exits with advanced management
+                self.check_position_exits(hyperliquid_price, self.binance_analysis)
                 
                 # Update Binance analysis periodically
                 if current_time - self.last_candle_update >= self.candle_update_interval:
@@ -1829,10 +1897,21 @@ class HybridPaperTradingBot:
                         logger.info(f"   Action: {signal['side']}")
                         logger.info(f"   Position Size: {signal_size} BTC (${position_value_usd:,.2f})")
                         
+                        # Log quality evaluation
+                        quality_eval = signal.get("quality_evaluation", {})
+                        if quality_eval:
+                            logger.info(f"   Quality: {quality_eval.get('quality_rating', 'UNKNOWN')} ({quality_eval.get('quality_score', 0):.2f})")
+                            logger.info(f"   Confidence: {quality_eval.get('confidence_level', 'UNKNOWN')}")
+                        
                         # Place the hybrid paper trade
                         if self.place_paper_trade(signal['side'], signal_data=signal):
                             trades_placed += 1
                             logger.info(f"   Hybrid Paper Trade {trades_placed}/{max_trades} completed")
+                            
+                            # Log portfolio risk after trade
+                            if self.open_positions:
+                                portfolio_risk = self.trade_manager.calculate_portfolio_risk(self.open_positions, hyperliquid_price)
+                                logger.info(f"📊 Portfolio Risk: {portfolio_risk['risk_level']} (Total Risk: {portfolio_risk['total_risk']*100:.1f}%)")
                         else:
                             logger.error("   Hybrid paper trade placement failed")
                     
