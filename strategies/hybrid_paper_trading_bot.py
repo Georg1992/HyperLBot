@@ -2075,21 +2075,21 @@ class HybridPaperTradingBot:
                             trades_placed += 1
                             logger.info(f"   Hybrid Paper Trade {trades_placed}/{max_trades} completed")
                             
-                                                         # Log portfolio risk after trade
-                             if self.open_positions:
-                                 portfolio_risk = self.trade_manager.calculate_portfolio_risk(self.open_positions, hyperliquid_price)
-                                 logger.info(f"📊 Portfolio Risk: {portfolio_risk['risk_level']} (Total Risk: {portfolio_risk['total_risk']*100:.1f}%)")
-                                 
-                                 # Enhanced portfolio monitoring
-                                 if portfolio_risk['risk_level'] == 'HIGH':
-                                     logger.warning(f"🚨 HIGH PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
-                                     logger.warning(f"   Max Drawdown: ${portfolio_risk['max_drawdown']:.2f}")
-                                     logger.warning(f"   Correlation Risk: {portfolio_risk['correlation_risk']:.2f}")
-                                     logger.warning(f"   Concentration Risk: {portfolio_risk['concentration_risk']:.2f}")
-                                 elif portfolio_risk['risk_level'] == 'MEDIUM':
-                                     logger.info(f"⚠️ MEDIUM PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
-                                 else:
-                                     logger.info(f"✅ LOW PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
+                            # Log portfolio risk after trade
+                            if self.open_positions:
+                                portfolio_risk = self.trade_manager.calculate_portfolio_risk(self.open_positions, hyperliquid_price)
+                                logger.info(f"📊 Portfolio Risk: {portfolio_risk['risk_level']} (Total Risk: {portfolio_risk['total_risk']*100:.1f}%)")
+                                
+                                # Enhanced portfolio monitoring
+                                if portfolio_risk['risk_level'] == 'HIGH':
+                                    logger.warning(f"🚨 HIGH PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
+                                    logger.warning(f"   Max Drawdown: ${portfolio_risk['max_drawdown']:.2f}")
+                                    logger.warning(f"   Correlation Risk: {portfolio_risk['correlation_risk']:.2f}")
+                                    logger.warning(f"   Concentration Risk: {portfolio_risk['concentration_risk']:.2f}")
+                                elif portfolio_risk['risk_level'] == 'MEDIUM':
+                                    logger.info(f"⚠️ MEDIUM PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
+                                else:
+                                    logger.info(f"✅ LOW PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
                         else:
                             logger.error("   Hybrid paper trade placement failed")
                     
