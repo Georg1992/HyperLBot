@@ -978,6 +978,104 @@ class HybridPaperTradingBot:
         
         return final_position_size
     
+    def _calculate_smart_limit_price(self, side: str, current_price: float) -> float:
+        """Calculate smart limit price for better execution than market price"""
+        try:
+            # Get market data for spread analysis
+            market_data = self.hyperliquid_api.get_market_data("BTC")
+            
+            if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
+                bids = market_data['levels'][0]
+                asks = market_data['levels'][1]
+                
+                if bids and asks:
+                    best_bid = float(bids[0]['px'])
+                    best_ask = float(asks[0]['px'])
+                    spread = best_ask - best_bid
+                    
+                    # Calculate smart limit price
+                    if side == "BUY":
+                        # For BUY orders, place limit slightly below current ask for better fill
+                        limit_price = best_ask - (spread * 0.1)  # 10% of spread below ask
+                    else:
+                        # For SELL orders, place limit slightly above current bid for better fill
+                        limit_price = best_bid + (spread * 0.1)  # 10% of spread above bid
+                    
+                    # Ensure limit price is reasonable
+                    if side == "BUY" and limit_price > current_price:
+                        limit_price = current_price * 0.9995  # Slightly below current price
+                    elif side == "SELL" and limit_price < current_price:
+                        limit_price = current_price * 1.0005  # Slightly above current price
+                    
+                    return limit_price
+            
+            # Fallback: use current price with small adjustment
+            if side == "BUY":
+                return current_price * 0.9995  # Slightly below current price
+            else:
+                return current_price * 1.0005  # Slightly above current price
+                
+        except Exception as e:
+            logger.warning(f"Could not calculate smart limit price: {e}")
+            # Fallback to current price
+            return current_price
+    
+    def simulate_limit_order_execution(self, side: str, size: float, limit_price: float, current_price: float, leverage: int) -> Dict[str, Any]:
+        """Simulate limit order execution with better pricing than market orders"""
+        try:
+            # Limit orders typically get better execution than market orders
+            # Simulate execution at or better than limit price
+            if side == "BUY":
+                # For BUY limit orders, we might get filled at limit price or better
+                execution_price = min(limit_price, current_price * 0.9998)  # Slightly better than limit
+            else:
+                # For SELL limit orders, we might get filled at limit price or better
+                execution_price = max(limit_price, current_price * 1.0002)  # Slightly better than limit
+            
+            # Calculate fees using Hyperliquid LIMIT order fee structure (much lower than market)
+            fees = self.fee_manager.calculate_order_fees(size, execution_price, "LIMIT")
+            
+            # Calculate position value and required margin
+            position_value = size * execution_price
+            required_margin = position_value / leverage
+            
+            # Check if we have enough balance for margin + fees
+            total_required = required_margin + fees["total_cost"]
+            if total_required > self.paper_balance:
+                return {
+                    "success": False,
+                    "error": "Insufficient balance for position"
+                }
+            
+            # Calculate target and stop prices based on strategy
+            if side == "BUY":
+                target_price = execution_price * (1 + self.strategy_config["profit_target"])
+                stop_price = execution_price * (1 - self.strategy_config["stop_loss"])
+            else:
+                target_price = execution_price * (1 - self.strategy_config["profit_target"])
+                stop_price = execution_price * (1 + self.strategy_config["stop_loss"])
+            
+            # Deduct fees from balance
+            self.paper_balance -= fees["total_cost"]
+            
+            return {
+                "success": True,
+                "execution_price": execution_price,
+                "limit_price": limit_price,
+                "price_improvement": abs(current_price - execution_price),
+                "fees": fees,
+                "position_value": position_value,
+                "target_price": target_price,
+                "stop_price": stop_price,
+                "remaining_balance": self.paper_balance
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": f"Limit order simulation failed: {e}"
+            }
+    
     def _calculate_win_probability(self, variability_analysis: Dict[str, Any], binance_analysis: Dict[str, Any],
                                  current_price: float, support: float, resistance: float) -> float:
         """Calculate win probability based on multiple factors"""
@@ -1132,7 +1230,7 @@ class HybridPaperTradingBot:
         }
     
     def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
-        """Place a paper trade using Hyperliquid execution prices"""
+        """Place a paper trade using LIMIT orders for better pricing and lower fees"""
         try:
             hyperliquid_price = self.get_hyperliquid_price()
             if not hyperliquid_price:
@@ -1147,18 +1245,23 @@ class HybridPaperTradingBot:
             # Ensure leverage doesn't exceed Hyperliquid limit
             leverage = min(leverage, self.leverage_settings["max_leverage"])
             
-            # Calculate position value in USD
-            position_value_usd = size * hyperliquid_price
+            # Calculate smart limit price (better than market price)
+            limit_price = self._calculate_smart_limit_price(side, hyperliquid_price)
             
-            logger.info(f"📝 Placing HYBRID PAPER {side} trade:")
+            # Calculate position value in USD
+            position_value_usd = size * limit_price
+            
+            logger.info(f"📝 Placing HYBRID PAPER {side} LIMIT trade:")
             logger.info(f"   Hyperliquid Price: ${hyperliquid_price:,.2f}")
+            logger.info(f"   Limit Price: ${limit_price:,.2f}")
             logger.info(f"   Size: {size} BTC (${position_value_usd:,.2f})")
             logger.info(f"   Leverage: {leverage}x")
             logger.info(f"   Required Margin: ${position_value_usd/leverage:.2f}")
             logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
+            logger.info(f"   Order Type: LIMIT (Lower fees than MARKET!)")
             
-            # Simulate trade execution with Hyperliquid data
-            execution_result = self.simulate_trade_execution(side, size, hyperliquid_price, leverage)
+            # Simulate LIMIT order execution (better than market orders)
+            execution_result = self.simulate_limit_order_execution(side, size, limit_price, hyperliquid_price, leverage)
             
             if not execution_result["success"]:
                 error_msg = f"Paper trade failed: {execution_result['error']}"
@@ -1182,15 +1285,17 @@ class HybridPaperTradingBot:
                 "trade_id": f"hybrid_trade_{len(self.trade_history) + 1}",
                 "side": side,
                 "entry_price": execution_result["execution_price"],
+                "limit_price": execution_result["limit_price"],
                 "size": size,
                 "leverage": leverage,
                 "entry_time": time.time(),
                 "entry_datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "fees": execution_result["fees"],
                 "signal_data": signal_data,
-                "target_price": signal_data.get("target") if signal_data else None,
-                "stop_price": signal_data.get("stop") if signal_data else None,
-                "status": "OPEN"
+                "target_price": execution_result["target_price"],
+                "stop_price": execution_result["stop_price"],
+                "status": "OPEN",
+                "order_type": "LIMIT"
             }
             
             # Add to open positions
@@ -1204,12 +1309,14 @@ class HybridPaperTradingBot:
                 "trade_id": position["trade_id"],
                 "side": side,
                 "price": execution_result["execution_price"],
+                "limit_price": execution_result["limit_price"],
                 "size": size,
                 "leverage": leverage,
                 "order_type": "LIMIT",
                 "fees": execution_result["fees"],
+                "price_improvement": execution_result["price_improvement"],
                 "signal_data": signal_data,
-                "order_result": {"status": "ok", "paper_trade": True, "hybrid": True},
+                "order_result": {"status": "ok", "paper_trade": True, "hybrid": True, "limit_order": True},
                 "hyperliquid_price": hyperliquid_price,
                 "support": signal_data.get("support_5m") if signal_data else None,
                 "resistance": signal_data.get("resistance_5m") if signal_data else None,
@@ -1218,8 +1325,8 @@ class HybridPaperTradingBot:
                 "variability_score": signal_data.get("variability_analysis", {}).get("current_variability_score") if signal_data else None,
                 "market_condition": signal_data.get("binance_analysis", {}).get("market_condition") if signal_data else None,
                 "signal_reason": signal_data.get("reason") if signal_data else None,
-                "profit_target": signal_data.get("target") if signal_data else None,
-                "stop_loss": signal_data.get("stop") if signal_data else None,
+                "profit_target": execution_result["target_price"],
+                "stop_loss": execution_result["stop_price"],
                 "risk_level": signal_data.get("variability_analysis", {}).get("risk_level") if signal_data else "STANDARD"
             }
             
@@ -1230,11 +1337,12 @@ class HybridPaperTradingBot:
             self.fee_manager.record_trade_fees(trade_data)
             self.last_trade_time = time.time()
             
-            logger.success(f"✅ HYBRID PAPER {side} trade placed successfully!")
+            logger.success(f"✅ HYBRID PAPER {side} LIMIT trade placed successfully!")
+            logger.info(f"   Limit Price: ${execution_result['limit_price']:,.2f}")
             logger.info(f"   Execution Price: ${execution_result['execution_price']:,.2f}")
             logger.info(f"   Position Value: ${execution_result['position_value']:,.2f}")
-            logger.info(f"   Slippage: {execution_result['slippage']*100:.3f}%")
-            logger.info(f"   Fees: ${execution_result['fees']['total_cost']:.4f}")
+            logger.info(f"   Price Improvement: ${execution_result['price_improvement']:,.2f}")
+            logger.info(f"   Fees: ${execution_result['fees']['total_cost']:.4f} (LIMIT ORDER - MUCH LOWER!)")
             logger.info(f"   Remaining Balance: ${execution_result['remaining_balance']:.2f}")
             
             return True
