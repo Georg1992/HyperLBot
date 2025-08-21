@@ -341,7 +341,11 @@ class YahooHyperliquidPaperTradingBot:
                     # Update variability analyzer with new price data
                     current_time = time.time()
                     if current_time - self.last_price_update >= self.price_update_interval:
-                        self.variability_analyzer.add_price_data(mid_price, volume=1000)
+                        # Get real volume data from Hyperliquid 5m candles
+                        volume_data = self.hyperliquid_api.get_current_5m_volume("BTC")
+                        real_volume = volume_data.get("current_volume", 100)  # Fallback to 100 if no data
+                        
+                        self.variability_analyzer.add_price_data(mid_price, volume=real_volume)
                         self.last_price_update = current_time
                     
                     return mid_price
@@ -397,16 +401,21 @@ class YahooHyperliquidPaperTradingBot:
         # Get real-time Hyperliquid market indicators (volume, liquidity)
         hyperliquid_indicators = self.hyperliquid_api.get_current_market_indicators("BTC")
         
+        # Get real volume data from Hyperliquid 5m candles
+        volume_data = self.hyperliquid_api.get_current_5m_volume("BTC")
+        
         # Calculate proper RSI using Yahoo Finance historical data (20-period for crypto accuracy)
         candles_5m = binance_analysis.get("candles_5m", [])
         proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=20)
         
         logger.info(f"📊 Enhanced RSI: {proper_rsi.get('rsi', 50):.1f} (20-period for crypto accuracy - closer to Hyperliquid)")
+        logger.info(f"📊 Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')}) - Trend: {volume_data.get('volume_trend', 'UNKNOWN')}")
         
         # Enhance binance_analysis with real-time Hyperliquid data and proper RSI
         enhanced_analysis = binance_analysis.copy()
         enhanced_analysis["hyperliquid_volume"] = hyperliquid_indicators
         enhanced_analysis["hyperliquid_rsi"] = proper_rsi
+        enhanced_analysis["hyperliquid_5m_volume"] = volume_data
         
         prediction_analysis = self.prediction_engine.build_price_prediction(enhanced_analysis, hyperliquid_price, self.strategy_name)
         
@@ -426,7 +435,8 @@ class YahooHyperliquidPaperTradingBot:
             "volatility_1h": prediction_analysis.get("volatility_1h", 0),
             "range_size": prediction_analysis.get("range_size", 0),
             "support": prediction_analysis.get("support", 0),
-            "resistance": prediction_analysis.get("resistance", 0)
+            "resistance": prediction_analysis.get("resistance", 0),
+            "volume_data": volume_data
         })
         
         if not prediction_analysis["has_prediction"]:

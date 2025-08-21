@@ -414,6 +414,55 @@ class HyperliquidAPI:
             logger.error(f"Failed to get klines: {e}")
             raise
     
+    def get_5m_candles_with_volume(self, symbol: str = None, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get 5-minute candlestick data with volume information from Yahoo Finance"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Use Yahoo Finance for volume data since Hyperliquid API doesn't support candlestick volume
+            from data.yahoo_data_fetcher import YahooDataFetcher
+            
+            yahoo_fetcher = YahooDataFetcher()
+            candles = yahoo_fetcher.get_5m_klines(symbol, limit)
+            
+            if candles:
+                logger.info(f"Retrieved {len(candles)} 5m candles with volume from Yahoo Finance for {symbol}")
+                return candles
+            else:
+                logger.warning(f"No volume data available from Yahoo Finance for {symbol}")
+                return []
+            
+        except Exception as e:
+            logger.error(f"Failed to get 5m candles with volume: {e}")
+            return []
+    
+    def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
+        """Get current 5-minute volume statistics from Yahoo Finance"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Use Yahoo Finance for volume data since Hyperliquid API doesn't support candlestick volume
+            from data.yahoo_data_fetcher import YahooDataFetcher
+            
+            yahoo_fetcher = YahooDataFetcher()
+            volume_data = yahoo_fetcher.get_current_5m_volume(symbol)
+            
+            logger.info(f"Retrieved volume data from Yahoo Finance for {symbol}: {volume_data.get('volume_category', 'UNKNOWN')}")
+            return volume_data
+            
+        except Exception as e:
+            logger.error(f"Failed to get current 5m volume: {e}")
+            return {
+                "current_volume": 0,
+                "volume_category": "ERROR",
+                "avg_volume": 0,
+                "volume_trend": "ERROR",
+                "error": str(e),
+                "data_source": "yahoo_finance"
+            }
+    
+
+    
     def get_funding_rate(self, symbol: str = None) -> Dict[str, Any]:
         """Get current funding rate for a symbol"""
         try:

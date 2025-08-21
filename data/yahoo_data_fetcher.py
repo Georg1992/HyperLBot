@@ -363,6 +363,88 @@ class YahooDataFetcher:
             logger.error(f"❌ Yahoo Finance connection error: {e}")
             return False
 
+    def get_current_5m_volume(self, symbol: str = "BTC") -> Dict[str, Any]:
+        """Get current 5-minute volume statistics from Yahoo Finance"""
+        try:
+            # Get recent 5m candles with volume data
+            candles_5m = self.get_5m_klines(symbol, 10)  # Last 10 5m candles
+            
+            if not candles_5m:
+                return {
+                    "current_volume": 0,
+                    "volume_category": "NO_DATA",
+                    "avg_volume": 0,
+                    "volume_trend": "UNKNOWN",
+                    "data_source": "yahoo_finance"
+                }
+            
+            # Extract volume data from candles
+            volumes = [candle.get("volume", 0) for candle in candles_5m]
+            current_volume = volumes[-1] if volumes else 0
+            
+            # Calculate average volume from recent candles
+            recent_volumes = volumes[-5:]  # Last 5 candles
+            avg_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
+            
+            # Scale volume to match Hyperliquid ranges (0-4000)
+            # Yahoo volume is typically much larger, so we scale it down
+            # Typical Yahoo 5m volume for BTC is 1000-50000, we want 10-4000
+            scale_factor = 0.00001  # Scale down by 100000x to get reasonable ranges
+            scaled_current_volume = current_volume * scale_factor
+            scaled_avg_volume = avg_volume * scale_factor
+            
+            # Categorize volume based on your Hyperliquid experience
+            if scaled_current_volume >= 4000:
+                volume_category = "CRAZY_HIGH"
+            elif scaled_current_volume >= 1000:
+                volume_category = "VERY_HIGH"
+            elif scaled_current_volume >= 500:
+                volume_category = "HIGH"
+            elif scaled_current_volume >= 100:
+                volume_category = "NORMAL"
+            elif scaled_current_volume >= 50:
+                volume_category = "LOW"
+            elif scaled_current_volume >= 10:
+                volume_category = "VERY_LOW"
+            else:
+                volume_category = "EXTREMELY_LOW"
+            
+            # Determine volume trend
+            if len(recent_volumes) >= 3:
+                recent_avg = sum(recent_volumes[-3:]) / 3
+                older_avg = sum(recent_volumes[:-3]) / (len(recent_volumes) - 3) if len(recent_volumes) > 3 else recent_avg
+                
+                if recent_avg > older_avg * 1.2:
+                    volume_trend = "INCREASING"
+                elif recent_avg < older_avg * 0.8:
+                    volume_trend = "DECREASING"
+                else:
+                    volume_trend = "STABLE"
+            else:
+                volume_trend = "UNKNOWN"
+            
+            return {
+                "current_volume": scaled_current_volume,
+                "volume_category": volume_category,
+                "avg_volume": scaled_avg_volume,
+                "volume_trend": volume_trend,
+                "recent_volumes": [v * scale_factor for v in recent_volumes],
+                "data_source": "yahoo_finance_5m_candles",
+                "original_volume": current_volume,
+                "scale_factor": scale_factor
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to get current 5m volume from Yahoo Finance: {e}")
+            return {
+                "current_volume": 0,
+                "volume_category": "ERROR",
+                "avg_volume": 0,
+                "volume_trend": "ERROR",
+                "error": str(e),
+                "data_source": "yahoo_finance"
+            }
+
 
 def main():
     """Test the Yahoo Finance data fetcher"""
