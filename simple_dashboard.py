@@ -118,25 +118,36 @@ class SimpleBotDashboard:
                             config = TradingConfig()
                             api = HyperliquidAPI(config.WALLET_ADDRESS, config.WALLET_PRIVATE_KEY)
                             
-                            # Get current market indicators
-                            indicators = api.get_current_market_indicators("BTC")
-                            if indicators and "liquidity_metrics" in indicators:
-                                liquidity = indicators["liquidity_metrics"]
-                                volume_data = liquidity.get("total_depth")
-                                orderbook_imbalance = liquidity.get("depth_imbalance")
+                            # Get proper RSI and 5-minute volume from Yahoo data
+                            from data.yahoo_data_fetcher import YahooDataFetcher
+                            fetcher = YahooDataFetcher()
+                            candles = fetcher.get_klines("BTC", "5m", 20)
                             
-                            # Get proper RSI from Yahoo data
-                            if base_entry.get("candles_5m") or latest_prediction:
-                                # Try to get candles from current entry or reconstruct
-                                try:
-                                    from data.yahoo_data_fetcher import YahooDataFetcher
-                                    fetcher = YahooDataFetcher()
-                                    candles = fetcher.get_klines("BTC", "5m", 20)
-                                    if candles and len(candles) >= 15:
-                                        rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=14)
-                                        rsi_data = rsi_result.get("rsi")
-                                except Exception as e:
-                                    logger.warning(f"Could not get live RSI: {e}")
+                            if candles and len(candles) >= 15:
+                                # Calculate proper RSI
+                                rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=14)
+                                rsi_data = rsi_result.get("rsi")
+                                
+                                # Calculate 5-minute volume metrics (much smoother!)
+                                recent_volumes = [candle.get("volume", 0) for candle in candles[-5:]]
+                                current_5m_volume = recent_volumes[-1] if recent_volumes else 0
+                                avg_5m_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
+                                
+                                # Volume activity level
+                                volume_activity = "HIGH" if current_5m_volume > avg_5m_volume * 1.2 else "NORMAL" if current_5m_volume > avg_5m_volume * 0.8 else "LOW"
+                                
+                                # Use 5m volume instead of orderbook depth (smoother!)
+                                volume_data = current_5m_volume / 1000000  # Convert to millions for readability
+                                
+                                # Still get orderbook imbalance for order flow
+                                indicators = api.get_current_market_indicators("BTC")
+                                if indicators and "liquidity_metrics" in indicators:
+                                    liquidity = indicators["liquidity_metrics"]
+                                    orderbook_imbalance = liquidity.get("depth_imbalance")
+                                    
+                                logger.info(f"📊 5m Volume: {current_5m_volume:,.0f} ({volume_activity}), RSI: {rsi_data:.1f}")
+                            else:
+                                logger.warning("Insufficient candle data for 5m volume calculation")
                                     
                         except Exception as e:
                             logger.warning(f"Could not get live market data: {e}")
@@ -858,9 +869,9 @@ def create_template():
                          </p>
                      </div>
                      
-                     <!-- Volume - Fixed Display -->
+                     <!-- Volume - Fixed Display (5m Volume) -->
                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 Volume Depth:</strong> <span class="volume-value">${volumeValue} BTC</span></p>
+                         <p><strong>📈 5m Volume:</strong> <span class="volume-value">${volumeValue}M</span></p>
                          <p><strong>📊 Order Flow:</strong> 
                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
