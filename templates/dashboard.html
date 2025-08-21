@@ -321,7 +321,7 @@
             <h1>🤖 Yahoo + Hyperliquid Trading Bot Dashboard</h1>
             <p>Real-time trading bot monitoring (Hyperliquid Price + Yahoo Analysis)</p>
                          <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
-             <div id="update-indicator" style="margin-top: 10px; font-size: 12px; color: #4CAF50;">🔄 Auto-updating every 1 second</div>
+             <div id="update-indicator" style="margin-top: 10px; font-size: 12px; color: #4CAF50;">🔄 Auto-updating every 500ms</div>
         </div>
         
         <div class="grid">
@@ -398,7 +398,7 @@
                     // Show last update time
                     if (indicator) {
                         const now = new Date().toLocaleTimeString();
-                        indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 1s)`;
+                                                 indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 500ms)`;
                         indicator.style.color = '#4CAF50';
                     }
                 })
@@ -454,15 +454,13 @@
                          </p>
                      </div>
                      
-                                           <!-- Volume - Enhanced Display (Hyperliquid-style + Orderbook) -->
+                                           <!-- Volume - Simple Yahoo Finance Display -->
                       <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                          <p><strong>📈 Enhanced Volume:</strong> <span class="volume-value">${volumeValue}</span></p>
-                          <p><strong>⏱️ Period Progress:</strong> ${market.period_progress ? (market.period_progress * 100).toFixed(1) + '%' : 'N/A'}</p>
+                          <p><strong>📈 5m Volume:</strong> <span class="volume-value">${volumeValue}</span></p>
                           <p><strong>📊 Order Flow:</strong> 
                           <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
                           ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
                           </p>
-                          ${market.orderbook_activity ? `<p><strong>🔍 Orderbook Activity:</strong> <span style="color: ${market.orderbook_activity === 'VERY_HIGH' ? '#4CAF50' : market.orderbook_activity === 'HIGH' ? '#FF9800' : market.orderbook_activity === 'LOW' ? '#f44336' : '#2196F3'}">${market.orderbook_activity}</span> ${market.orderbook_multiplier ? `(x${market.orderbook_multiplier.toFixed(2)})` : ''}</p>` : ''}
                       </div>
                      
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
@@ -597,8 +595,8 @@
             }
         }
         
-        // Auto-refresh every 1 second for ultra-fast real-time updates
-        setInterval(refreshData, 1000);
+                 // Auto-refresh every 500ms for faster real-time updates
+         setInterval(refreshData, 500);
         
         // Initial load
         refreshData();

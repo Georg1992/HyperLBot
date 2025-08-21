@@ -364,7 +364,7 @@ class YahooDataFetcher:
             return False
 
     def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
-        """Get current 5-minute volume statistics from Yahoo Finance, enhanced with Hyperliquid orderbook data for precision"""
+        """Get current 5-minute volume statistics from Yahoo Finance"""
         try:
             symbol = symbol or "BTC-USD"
             
@@ -384,127 +384,26 @@ class YahooDataFetcher:
             # Extract volume data from candles
             volumes = [candle.get("volume", 0) for candle in candles_5m]
             
-            # Calculate current time and 5-minute period
-            current_time = datetime.now()
-            current_minute = current_time.minute
-            current_second = current_time.second
-            
-            # Calculate which 5-minute period we're in (0-11 periods per hour)
-            period_number = current_minute // 5
-            period_start_minute = period_number * 5
-            
-            # Calculate how much time has elapsed in the current 5-minute period
-            elapsed_minutes = current_minute - period_start_minute
-            elapsed_seconds = current_second
-            total_elapsed_seconds = elapsed_minutes * 60 + elapsed_seconds
-            period_duration_seconds = 5 * 60  # 5 minutes in seconds
-            
-            # Calculate progress through current period (0.0 to 1.0)
-            period_progress = total_elapsed_seconds / period_duration_seconds
-            
-            # Get the most recent completed candle volume as reference
+            # Use most recent completed candle (not the current incomplete one)
+            # If the last candle has 0 volume, it's incomplete, use the previous one
             if len(volumes) >= 2 and volumes[-1] == 0:
-                reference_volume = volumes[-2]  # Use previous completed candle
-                logger.info("Using previous completed candle as reference (current candle incomplete)")
+                current_volume = volumes[-2]  # Use previous completed candle
+                logger.info("Using previous completed candle for volume (current candle incomplete)")
             else:
-                reference_volume = volumes[-1] if volumes else 0
+                current_volume = volumes[-1] if volumes else 0
             
-            # ENHANCEMENT: Get real-time orderbook data from Hyperliquid for volume precision
-            orderbook_multiplier = 1.0  # Default multiplier
-            orderbook_activity = "NORMAL"
-            
-            try:
-                # Import Hyperliquid API for orderbook data
-                import sys
-                import os
-                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                
-                from core.config import TradingConfig
-                from core.hyperliquid_api import HyperliquidAPI
-                
-                config = TradingConfig()
-                api = HyperliquidAPI(config.WALLET_ADDRESS, config.WALLET_PRIVATE_KEY)
-                
-                # Get orderbook data
-                market_data = api.get_market_data("BTC")
-                if market_data and 'levels' in market_data:
-                    bids = market_data['levels'][0] if len(market_data['levels']) > 0 else []
-                    asks = market_data['levels'][1] if len(market_data['levels']) > 1 else []
-                    
-                    # Calculate orderbook depth and activity
-                    bid_depth = sum(float(level['sz']) for level in bids[:10]) if bids else 0
-                    ask_depth = sum(float(level['sz']) for level in asks[:10]) if asks else 0
-                    total_depth = bid_depth + ask_depth
-                    
-                    # Calculate orderbook imbalance
-                    depth_imbalance = (bid_depth - ask_depth) / total_depth if total_depth > 0 else 0
-                    
-                    # Determine orderbook activity level based on depth
-                    if total_depth > 50:
-                        orderbook_activity = "VERY_HIGH"
-                        orderbook_multiplier = 1.3  # 30% increase for high activity
-                    elif total_depth > 30:
-                        orderbook_activity = "HIGH"
-                        orderbook_multiplier = 1.15  # 15% increase for high activity
-                    elif total_depth > 15:
-                        orderbook_activity = "NORMAL"
-                        orderbook_multiplier = 1.0  # No change
-                    elif total_depth > 8:
-                        orderbook_activity = "LOW"
-                        orderbook_multiplier = 0.85  # 15% decrease for low activity
-                    else:
-                        orderbook_activity = "VERY_LOW"
-                        orderbook_multiplier = 0.7  # 30% decrease for very low activity
-                    
-                    logger.info(f"Orderbook activity: {orderbook_activity} (depth: {total_depth:.1f}, imbalance: {depth_imbalance*100:+.1f}%)")
-                    
-            except Exception as e:
-                logger.warning(f"Could not get orderbook data for volume enhancement: {e}")
-                # Continue with Yahoo-only volume if orderbook fails
-            
-            # Estimate cumulative volume for current ongoing candle
-            # This simulates Hyperliquid's behavior where volume starts at 0 and accumulates
-            # We use the reference volume as a baseline and scale by time progress
-            if reference_volume > 0:
-                # Estimate current cumulative volume based on time progress
-                # Add some randomness to simulate real trading patterns
-                import random
-                random.seed(int(current_time.timestamp()) // 30)  # Change every 30 seconds
-                
-                # Base volume with some variation
-                base_volume = reference_volume * (0.5 + random.random() * 1.0)  # 50-150% of reference
-                
-                # ENHANCEMENT: Apply orderbook-based multiplier
-                base_volume = base_volume * orderbook_multiplier
-                
-                # Scale by time progress (volume accumulates over the 5-minute period)
-                # Use a non-linear curve to simulate typical volume patterns
-                # Volume often starts slow, picks up in the middle, then slows at the end
-                if period_progress < 0.2:
-                    # First 20%: slow start
-                    volume_multiplier = period_progress * 0.3
-                elif period_progress < 0.8:
-                    # Middle 60%: steady accumulation
-                    volume_multiplier = 0.06 + (period_progress - 0.2) * 0.8
-                else:
-                    # Last 20%: slower finish
-                    volume_multiplier = 0.54 + (period_progress - 0.8) * 0.3
-                
-                estimated_cumulative_volume = base_volume * volume_multiplier
-            else:
-                estimated_cumulative_volume = 0
+            # Calculate average volume from recent candles
+            recent_volumes = volumes[-5:]  # Last 5 candles
+            avg_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
             
             # Scale volume to match Hyperliquid ranges (0-4000)
             # Yahoo volume is typically much larger, so we scale it down
+            # Typical Yahoo 5m volume for BTC is 1000-50000, we want 10-4000
             scale_factor = 0.00001  # Scale down by 100000x to get reasonable ranges
-            scaled_current_volume = estimated_cumulative_volume * scale_factor
-            
-            # Calculate average volume from recent completed candles
-            recent_volumes = volumes[-5:]  # Last 5 candles
-            avg_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
+            scaled_current_volume = current_volume * scale_factor
             scaled_avg_volume = avg_volume * scale_factor
             
-            # Categorize volume based on your Hyperliquid experience
+            # Categorize volume
             if scaled_current_volume >= 4000:
                 volume_category = "CRAZY_HIGH"
             elif scaled_current_volume >= 1000:
@@ -521,13 +420,13 @@ class YahooDataFetcher:
                 volume_category = "EXTREMELY_LOW"
             
             # Determine volume trend
-            if len(recent_volumes) >= 3:
-                recent_avg = sum(recent_volumes[-3:]) / 3
-                older_avg = sum(recent_volumes[:-3]) / (len(recent_volumes) - 3) if len(recent_volumes) > 3 else recent_avg
+            if len(volumes) >= 3:
+                recent_avg = sum(volumes[-3:]) / 3
+                older_avg = sum(volumes[-6:-3]) / 3 if len(volumes) >= 6 else recent_avg
                 
-                if recent_avg > older_avg * 1.2:
+                if recent_avg > older_avg * 1.1:
                     volume_trend = "INCREASING"
-                elif recent_avg < older_avg * 0.8:
+                elif recent_avg < older_avg * 0.9:
                     volume_trend = "DECREASING"
                 else:
                     volume_trend = "STABLE"
@@ -540,21 +439,13 @@ class YahooDataFetcher:
                 "avg_volume": scaled_avg_volume,
                 "volume_trend": volume_trend,
                 "recent_volumes": [v * scale_factor for v in recent_volumes],
-                "data_source": "yahoo_finance_enhanced_with_orderbook",
-                "original_volume": estimated_cumulative_volume,
-                "scale_factor": scale_factor,
-                "period_progress": period_progress,
-                "elapsed_time": f"{elapsed_minutes}m {elapsed_seconds}s",
-                "period_info": f"Period {period_number} ({period_start_minute:02d}:00-{(period_start_minute+5):02d}:00)",
-                "orderbook_enhancement": {
-                    "activity": orderbook_activity,
-                    "multiplier": orderbook_multiplier,
-                    "enabled": orderbook_multiplier != 1.0
-                }
+                "data_source": "yahoo_finance",
+                "raw_volume": current_volume,
+                "scale_factor": scale_factor
             }
             
         except Exception as e:
-            logger.error(f"Failed to get current 5m volume from Yahoo Finance: {e}")
+            logger.error(f"Failed to get current 5m volume: {e}")
             return {
                 "current_volume": 0,
                 "volume_category": "ERROR",
