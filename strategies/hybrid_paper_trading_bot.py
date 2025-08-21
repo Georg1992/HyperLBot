@@ -1034,8 +1034,8 @@ class YahooHyperliquidPaperTradingBot:
                 # Calculate win probability
                 win_probability = self._calculate_prediction_win_probability(prediction, prediction_analysis)
                 
-                # Check minimum confidence
-                min_confidence = 0.6
+                # Check minimum confidence - made more lenient for better prediction acceptance
+                min_confidence = 0.45  # Reduced from 0.6 to 0.45 (45%)
                 if prediction["confidence"] < min_confidence:
                     continue
                 

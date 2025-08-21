@@ -265,6 +265,11 @@ def get_status():
         logger.error(f"Error in status API: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/data')
+def get_data():
+    """API endpoint for dashboard data (alias for status)"""
+    return get_status()
+
 @app.route('/api/logs')
 def get_logs():
     """API endpoint for latest logs"""
