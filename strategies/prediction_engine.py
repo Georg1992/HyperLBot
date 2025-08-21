@@ -320,11 +320,11 @@ class PredictionEngine:
                     # Predict potential breakout above resistance - wait for pullback to support
                     breakout_prediction = {
                         "type": "BREAKOUT_ABOVE",
-                        "entry_price": support_5m * 1.001,  # Enter near support level, below current price
+                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),  # Below support AND below current price
                         "side": "BUY",
                         "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                        "reason": f"High probability breakout above ${resistance_5m:,.2f} - enter at support ${support_5m:,.2f}",
+                        "reason": f"High probability breakout above ${resistance_5m:,.2f} - enter below support ${support_5m:,.2f}",
                         "support": support_5m,
                         "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
@@ -372,11 +372,11 @@ class PredictionEngine:
                     # Predict potential reversion from support
                     reversion_prediction = {
                         "type": "REVERSION_FROM_SUPPORT",
-                        "entry_price": support_5m * 1.0005,  # Slightly above support
+                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),  # Below support AND below current price
                         "side": "BUY",
                         "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                        "reason": f"High probability bounce from ${support_5m:,.2f} - enter at support",
+                        "reason": f"High probability bounce from ${support_5m:,.2f} - enter below support",
                         "support": support_5m,
                         "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
@@ -392,11 +392,11 @@ class PredictionEngine:
                 if momentum_strength > 0.7:  # Strong momentum
                     momentum_prediction = {
                         "type": "MOMENTUM_UP",
-                        "entry_price": support_5m * 1.001,  # Enter at support level, well below current price
+                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),  # Below support AND below current price
                         "side": "BUY",
                         "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
                         "timeframe": self._calculate_momentum_timeframe(volatility_5m),
-                        "reason": f"Strong upward momentum (strength: {momentum_strength:.2f}) - enter at support ${support_5m:,.2f}",
+                        "reason": f"Strong upward momentum (strength: {momentum_strength:.2f}) - enter below support ${support_5m:,.2f}",
                         "support": support_5m,
                         "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
@@ -459,11 +459,11 @@ class PredictionEngine:
                 if range_direction["direction"] == "UP":
                     range_prediction = {
                         "type": "RANGE_BREAKOUT_UP",
-                        "entry_price": support_5m * 1.001,  # Enter at support level, well below current price
+                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),  # Below support AND below current price
                         "side": "BUY",
                         "confidence": range_direction["confidence"],
                         "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                        "reason": f"Range analysis suggests upward move (confidence: {range_direction['confidence']:.2f}) - enter at support ${support_5m:,.2f}",
+                        "reason": f"Range analysis suggests upward move (confidence: {range_direction['confidence']:.2f}) - enter below support ${support_5m:,.2f}",
                         "support": support_5m,
                         "resistance": resistance_5m,
                         "prediction_mode": "TECHNICAL_ANALYSIS",
