@@ -71,6 +71,9 @@ class YahooHyperliquidPaperTradingBot:
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
         self.trading_logger = TradingLogger("trading_logs")
         
+        # Clean up old sessions - keep only last 3 sessions
+        self.trading_logger.cleanup_old_sessions(keep_sessions=3)
+        
         # Whale analytics integration
         self.whale_integration = WhaleIntegration(enabled=self.config.WHALE_ANALYTICS_ENABLED)
         

@@ -481,6 +481,58 @@ class TradingLogger:
         
         return insights
 
+    def cleanup_old_sessions(self, keep_sessions: int = 3):
+        """Clean up old sessions, keeping only the specified number of most recent ones"""
+        try:
+            logger.info(f"🧹 Starting log cleanup - keeping last {keep_sessions} sessions")
+            
+            # Get all session metadata files
+            metadata_files = list(self.log_directory.glob("session_metadata_*.json"))
+            
+            if len(metadata_files) <= keep_sessions:
+                logger.info(f"📁 Only {len(metadata_files)} sessions found, no cleanup needed")
+                return
+            
+            # Sort by modification time (newest first)
+            metadata_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            
+            # Keep the most recent sessions
+            sessions_to_keep = metadata_files[:keep_sessions]
+            sessions_to_delete = metadata_files[keep_sessions:]
+            
+            logger.info(f"📁 Found {len(metadata_files)} total sessions")
+            logger.info(f"💾 Keeping {len(sessions_to_keep)} recent sessions")
+            logger.info(f"🗑️ Deleting {len(sessions_to_delete)} old sessions")
+            
+            # Delete old sessions
+            for metadata_file in sessions_to_delete:
+                session_id = metadata_file.stem.replace("session_metadata_", "")
+                logger.info(f"🗑️ Cleaning up session: {session_id}")
+                
+                # Delete all files for this session
+                for subdir in ["trades", "market_data", "signals", "analysis", "performance", "errors"]:
+                    subdir_path = self.log_directory / subdir
+                    if subdir_path.exists():
+                        session_files = list(subdir_path.glob(f"*_{session_id}.*"))
+                        for file in session_files:
+                            try:
+                                file.unlink()
+                                logger.debug(f"   Deleted: {file.name}")
+                            except Exception as e:
+                                logger.warning(f"   Failed to delete {file.name}: {e}")
+                
+                # Delete the metadata file itself
+                try:
+                    metadata_file.unlink()
+                    logger.debug(f"   Deleted: {metadata_file.name}")
+                except Exception as e:
+                    logger.warning(f"   Failed to delete {metadata_file.name}: {e}")
+            
+            logger.info(f"✅ Log cleanup completed - kept {len(sessions_to_keep)} sessions")
+            
+        except Exception as e:
+            logger.error(f"❌ Error during log cleanup: {e}")
+
 def generate_logging_report():
     """Generate a report showing the logging system capabilities"""
     logger.info("📊 Trading Logger System Report")
