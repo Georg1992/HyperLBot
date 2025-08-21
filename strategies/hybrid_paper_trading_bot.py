@@ -373,7 +373,7 @@ class HybridPaperTradingBot:
             }
         
         # 3. ANALYZE ENTRY POINT AND WIN CONDITIONS
-        entry_analysis = self.prediction_engine.analyze_entry_point(prediction_analysis, hyperliquid_price)
+        entry_analysis = self._analyze_entry_point(prediction_analysis, hyperliquid_price)
         
         if not entry_analysis["should_place_order"]:
             return {
