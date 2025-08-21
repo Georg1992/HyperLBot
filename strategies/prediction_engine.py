@@ -2061,3 +2061,367 @@ class PredictionEngine:
             return False
         
         return True
+    
+    def should_cancel_order(self, prediction: Dict[str, Any], current_price: float, candles_5m: List, order_placed_time: float) -> Dict[str, Any]:
+        """Determine if an active limit order should be cancelled based on market conditions"""
+        try:
+            pred_type = prediction.get("type", "UNKNOWN")
+            side = prediction.get("side", "UNKNOWN")
+            entry_price = prediction.get("entry_price", 0)
+            prediction_time = prediction.get("prediction_timestamp", 0)
+            
+            # Initialize cancellation result
+            cancellation_result = {
+                "should_cancel": False,
+                "reason": "",
+                "urgency": "NORMAL",  # NORMAL, HIGH, CRITICAL
+                "market_conditions": {}
+            }
+            
+            if not candles_5m or len(candles_5m) < 6:
+                return cancellation_result
+            
+            # Get candles since order was placed
+            current_time = time.time()
+            candles_since_order = [c for c in candles_5m if c.get("timestamp", 0) > order_placed_time]
+            
+            if len(candles_since_order) < 3:
+                return cancellation_result  # Not enough time passed
+            
+            # Analyze market behavior since order placement
+            market_analysis = self._analyze_market_conditions_for_cancellation(
+                prediction, candles_since_order, current_price, order_placed_time
+            )
+            
+            # Determine if order should be cancelled based on prediction type
+            if pred_type == "SUPPORT_BOUNCE" and side == "BUY":
+                cancellation_result = self._check_support_bounce_cancellation(
+                    prediction, market_analysis, current_price, entry_price
+                )
+            
+            elif pred_type == "REVERSION_FROM_RESISTANCE" and side == "SELL":
+                cancellation_result = self._check_resistance_reversion_cancellation(
+                    prediction, market_analysis, current_price, entry_price
+                )
+            
+            elif pred_type == "MOMENTUM_UP" and side == "BUY":
+                cancellation_result = self._check_momentum_cancellation(
+                    prediction, market_analysis, current_price, entry_price, "UP"
+                )
+            
+            elif pred_type == "MOMENTUM_REVERSION" and side == "SELL":
+                cancellation_result = self._check_momentum_cancellation(
+                    prediction, market_analysis, current_price, entry_price, "DOWN"
+                )
+            
+            elif pred_type == "BREAKOUT_BELOW" and side == "SELL":
+                cancellation_result = self._check_breakout_cancellation(
+                    prediction, market_analysis, current_price, entry_price, "DOWN"
+                )
+            
+            elif pred_type == "REVERSION_FROM_SUPPORT" and side == "BUY":
+                cancellation_result = self._check_support_reversion_cancellation(
+                    prediction, market_analysis, current_price, entry_price
+                )
+            
+            else:
+                # Generic cancellation logic for other prediction types
+                cancellation_result = self._check_generic_cancellation(
+                    prediction, market_analysis, current_price, entry_price
+                )
+            
+            # Add market conditions to result
+            cancellation_result["market_conditions"] = market_analysis
+            
+            # Log cancellation decision
+            if cancellation_result["should_cancel"]:
+                logger.warning(f"🚨 ORDER CANCELLATION RECOMMENDED: {pred_type} {side} - {cancellation_result['reason']} (Urgency: {cancellation_result['urgency']})")
+            else:
+                logger.info(f"✅ Order remains valid: {pred_type} {side} - Market conditions favorable")
+            
+            return cancellation_result
+            
+        except Exception as e:
+            logger.error(f"Error checking order cancellation: {e}")
+            return {
+                "should_cancel": False,
+                "reason": f"Error in cancellation check: {str(e)}",
+                "urgency": "NORMAL",
+                "market_conditions": {}
+            }
+    
+    def _analyze_market_conditions_for_cancellation(self, prediction: Dict[str, Any], candles_since_order: List, current_price: float, order_placed_time: float) -> Dict[str, Any]:
+        """Analyze market conditions to determine if order should be cancelled"""
+        try:
+            # Extract price and volume data
+            prices = [candle["close"] for candle in candles_since_order]
+            volumes = [candle["volume"] for candle in candles_since_order]
+            highs = [candle["high"] for candle in candles_since_order]
+            lows = [candle["low"] for candle in candles_since_order]
+            
+            # Calculate key metrics
+            price_trend = (prices[-1] - prices[0]) / prices[0]  # Overall trend since order
+            price_momentum = (prices[-1] - prices[-3]) / prices[-3] if len(prices) >= 4 else 0  # Recent momentum
+            volume_trend = sum(volumes[-3:]) / sum(volumes[:3]) if len(volumes) >= 6 else 1.0  # Volume trend
+            
+            # Calculate volatility
+            price_changes = [abs(prices[i] - prices[i-1]) / prices[i-1] for i in range(1, len(prices))]
+            volatility = sum(price_changes) / len(price_changes) if price_changes else 0
+            
+            # Calculate price extremes
+            max_high = max(highs)
+            min_low = min(lows)
+            price_range = (max_high - min_low) / current_price
+            
+            # Time since order placement
+            time_since_order = time.time() - order_placed_time
+            minutes_since_order = time_since_order / 60
+            
+            return {
+                "price_trend": price_trend,
+                "price_momentum": price_momentum,
+                "volume_trend": volume_trend,
+                "volatility": volatility,
+                "price_range": price_range,
+                "max_high": max_high,
+                "min_low": min_low,
+                "minutes_since_order": minutes_since_order,
+                "candles_analyzed": len(candles_since_order)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error analyzing market conditions for cancellation: {e}")
+            return {}
+    
+    def _check_support_bounce_cancellation(self, prediction: Dict, market_analysis: Dict, current_price: float, entry_price: float) -> Dict[str, Any]:
+        """Check if support bounce BUY order should be cancelled"""
+        price_trend = market_analysis.get("price_trend", 0)
+        price_momentum = market_analysis.get("price_momentum", 0)
+        volume_trend = market_analysis.get("volume_trend", 1.0)
+        volatility = market_analysis.get("volatility", 0)
+        minutes_since_order = market_analysis.get("minutes_since_order", 0)
+        
+        # CRITICAL: Price moving away from support (upward) - cancel immediately
+        if price_trend > 0.005:  # Price up 0.5% since order
+            return {
+                "should_cancel": True,
+                "reason": f"Price moving UP away from support (trend: {price_trend:.3f}) - support bounce failed",
+                "urgency": "CRITICAL"
+            }
+        
+        # HIGH: Price broke below support level significantly
+        if current_price < entry_price * 0.995:  # 0.5% below entry
+            return {
+                "should_cancel": True,
+                "reason": f"Price broke below support level (${entry_price:,.2f} -> ${current_price:,.2f})",
+                "urgency": "HIGH"
+            }
+        
+        # NORMAL: No volume confirmation after reasonable time
+        if minutes_since_order > 10 and volume_trend < 0.8:
+            return {
+                "should_cancel": True,
+                "reason": f"No volume confirmation after {minutes_since_order:.1f} minutes (volume trend: {volume_trend:.2f})",
+                "urgency": "NORMAL"
+            }
+        
+        # NORMAL: High volatility suggests unstable market
+        if volatility > 0.008:  # Very high volatility
+            return {
+                "should_cancel": True,
+                "reason": f"High volatility ({volatility:.3f}) suggests unstable market conditions",
+                "urgency": "NORMAL"
+            }
+        
+        return {"should_cancel": False, "reason": "Support bounce conditions still valid"}
+    
+    def _check_resistance_reversion_cancellation(self, prediction: Dict, market_analysis: Dict, current_price: float, entry_price: float) -> Dict[str, Any]:
+        """Check if resistance reversion SELL order should be cancelled"""
+        price_trend = market_analysis.get("price_trend", 0)
+        price_momentum = market_analysis.get("price_momentum", 0)
+        volume_trend = market_analysis.get("volume_trend", 1.0)
+        volatility = market_analysis.get("volatility", 0)
+        minutes_since_order = market_analysis.get("minutes_since_order", 0)
+        
+        # CRITICAL: Price moving away from resistance (downward) - cancel immediately
+        if price_trend < -0.005:  # Price down 0.5% since order
+            return {
+                "should_cancel": True,
+                "reason": f"Price moving DOWN away from resistance (trend: {price_trend:.3f}) - resistance reversion failed",
+                "urgency": "CRITICAL"
+            }
+        
+        # HIGH: Price broke above resistance level significantly
+        if current_price > entry_price * 1.005:  # 0.5% above entry
+            return {
+                "should_cancel": True,
+                "reason": f"Price broke above resistance level (${entry_price:,.2f} -> ${current_price:,.2f})",
+                "urgency": "HIGH"
+            }
+        
+        # NORMAL: No volume confirmation after reasonable time
+        if minutes_since_order > 10 and volume_trend < 0.8:
+            return {
+                "should_cancel": True,
+                "reason": f"No volume confirmation after {minutes_since_order:.1f} minutes (volume trend: {volume_trend:.2f})",
+                "urgency": "NORMAL"
+            }
+        
+        return {"should_cancel": False, "reason": "Resistance reversion conditions still valid"}
+    
+    def _check_momentum_cancellation(self, prediction: Dict, market_analysis: Dict, current_price: float, entry_price: float, expected_direction: str) -> Dict[str, Any]:
+        """Check if momentum order should be cancelled"""
+        price_trend = market_analysis.get("price_trend", 0)
+        price_momentum = market_analysis.get("price_momentum", 0)
+        volume_trend = market_analysis.get("volume_trend", 1.0)
+        minutes_since_order = market_analysis.get("minutes_since_order", 0)
+        
+        if expected_direction == "UP":
+            # CRITICAL: Momentum reversed to downward
+            if price_trend < -0.003:  # Strong downward reversal
+                return {
+                    "should_cancel": True,
+                    "reason": f"Upward momentum reversed to downward (trend: {price_trend:.3f})",
+                    "urgency": "CRITICAL"
+                }
+            
+            # HIGH: No momentum confirmation
+            if price_momentum < 0.001 and minutes_since_order > 5:
+                return {
+                    "should_cancel": True,
+                    "reason": f"No upward momentum confirmation after {minutes_since_order:.1f} minutes",
+                    "urgency": "HIGH"
+                }
+        
+        else:  # DOWN momentum
+            # CRITICAL: Momentum reversed to upward
+            if price_trend > 0.003:  # Strong upward reversal
+                return {
+                    "should_cancel": True,
+                    "reason": f"Downward momentum reversed to upward (trend: {price_trend:.3f})",
+                    "urgency": "CRITICAL"
+                }
+            
+            # HIGH: No momentum confirmation
+            if price_momentum > -0.001 and minutes_since_order > 5:
+                return {
+                    "should_cancel": True,
+                    "reason": f"No downward momentum confirmation after {minutes_since_order:.1f} minutes",
+                    "urgency": "HIGH"
+                }
+        
+        # NORMAL: Volume drying up
+        if volume_trend < 0.7 and minutes_since_order > 8:
+            return {
+                "should_cancel": True,
+                "reason": f"Volume drying up (trend: {volume_trend:.2f}) after {minutes_since_order:.1f} minutes",
+                "urgency": "NORMAL"
+            }
+        
+        return {"should_cancel": False, "reason": f"{expected_direction} momentum conditions still valid"}
+    
+    def _check_breakout_cancellation(self, prediction: Dict, market_analysis: Dict, current_price: float, entry_price: float, expected_direction: str) -> Dict[str, Any]:
+        """Check if breakout order should be cancelled"""
+        price_trend = market_analysis.get("price_trend", 0)
+        price_momentum = market_analysis.get("price_momentum", 0)
+        volume_trend = market_analysis.get("volume_trend", 1.0)
+        minutes_since_order = market_analysis.get("minutes_since_order", 0)
+        
+        if expected_direction == "DOWN":
+            # CRITICAL: Breakout failed - price moving up instead
+            if price_trend > 0.002:  # Price moving up instead of down
+                return {
+                    "should_cancel": True,
+                    "reason": f"Breakout failed - price moving UP instead of DOWN (trend: {price_trend:.3f})",
+                    "urgency": "CRITICAL"
+                }
+            
+            # HIGH: No strong downward movement
+            if price_momentum > -0.002 and minutes_since_order > 5:
+                return {
+                    "should_cancel": True,
+                    "reason": f"No strong downward breakout movement after {minutes_since_order:.1f} minutes",
+                    "urgency": "HIGH"
+                }
+        
+        else:  # UP breakout
+            # CRITICAL: Breakout failed - price moving down instead
+            if price_trend < -0.002:  # Price moving down instead of up
+                return {
+                    "should_cancel": True,
+                    "reason": f"Breakout failed - price moving DOWN instead of UP (trend: {price_trend:.3f})",
+                    "urgency": "CRITICAL"
+                }
+            
+            # HIGH: No strong upward movement
+            if price_momentum < 0.002 and minutes_since_order > 5:
+                return {
+                    "should_cancel": True,
+                    "reason": f"No strong upward breakout movement after {minutes_since_order:.1f} minutes",
+                    "urgency": "HIGH"
+                }
+        
+        # NORMAL: No volume confirmation for breakout
+        if volume_trend < 1.2 and minutes_since_order > 8:
+            return {
+                "should_cancel": True,
+                "reason": f"No volume confirmation for breakout (volume trend: {volume_trend:.2f})",
+                "urgency": "NORMAL"
+            }
+        
+        return {"should_cancel": False, "reason": f"{expected_direction} breakout conditions still valid"}
+    
+    def _check_support_reversion_cancellation(self, prediction: Dict, market_analysis: Dict, current_price: float, entry_price: float) -> Dict[str, Any]:
+        """Check if support reversion BUY order should be cancelled"""
+        price_trend = market_analysis.get("price_trend", 0)
+        price_momentum = market_analysis.get("price_momentum", 0)
+        minutes_since_order = market_analysis.get("minutes_since_order", 0)
+        
+        # CRITICAL: No bounce from support - price continuing down
+        if price_trend < -0.003:  # Strong downward movement
+            return {
+                "should_cancel": True,
+                "reason": f"No bounce from support - price continuing DOWN (trend: {price_trend:.3f})",
+                "urgency": "CRITICAL"
+            }
+        
+        # HIGH: No upward momentum after reasonable time
+        if price_momentum < 0.001 and minutes_since_order > 8:
+            return {
+                "should_cancel": True,
+                "reason": f"No upward bounce momentum after {minutes_since_order:.1f} minutes",
+                "urgency": "HIGH"
+            }
+        
+        return {"should_cancel": False, "reason": "Support reversion conditions still valid"}
+    
+    def _check_generic_cancellation(self, prediction: Dict, market_analysis: Dict, current_price: float, entry_price: float) -> Dict[str, Any]:
+        """Generic cancellation logic for other prediction types"""
+        price_trend = market_analysis.get("price_trend", 0)
+        minutes_since_order = market_analysis.get("minutes_since_order", 0)
+        side = prediction.get("side", "UNKNOWN")
+        
+        # Check if price moved significantly against the prediction
+        if side == "BUY" and price_trend < -0.005:  # Price down 0.5% for BUY order
+            return {
+                "should_cancel": True,
+                "reason": f"Price moved significantly against BUY prediction (trend: {price_trend:.3f})",
+                "urgency": "HIGH"
+            }
+        
+        elif side == "SELL" and price_trend > 0.005:  # Price up 0.5% for SELL order
+            return {
+                "should_cancel": True,
+                "reason": f"Price moved significantly against SELL prediction (trend: {price_trend:.3f})",
+                "urgency": "HIGH"
+            }
+        
+        # Check if too much time has passed without execution
+        if minutes_since_order > 15:  # 15 minutes without execution
+            return {
+                "should_cancel": True,
+                "reason": f"Order not executed after {minutes_since_order:.1f} minutes - market conditions may have changed",
+                "urgency": "NORMAL"
+            }
+        
+        return {"should_cancel": False, "reason": "Generic conditions still valid"}
