@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Prediction Engine Module
-Handles price prediction, entry point calculation, and timeframe estimation
+Enhanced Prediction Engine Module
+Supports both reactive (high volatility) and predictive (standard/low volatility) algorithms
 """
 
 import time
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(project_root, 'core'))
 from config import TradingConfig
 
 class PredictionEngine:
-    """Advanced prediction engine for trading entry points"""
+    """Advanced prediction engine with reactive and predictive modes"""
     
     def __init__(self, strategy_config: Dict[str, Any]):
         self.strategy_config = strategy_config
@@ -34,10 +34,156 @@ class PredictionEngine:
             "MOMENTUM_DOWN": "SELL"
         }
         
-        logger.info("🎯 Prediction Engine initialized")
+        # Reactive types for high volatility
+        self.REACTIVE_TYPES = {
+            "FAST_BREAKOUT": "BUY/SELL",
+            "MOMENTUM_SURGE": "BUY/SELL",
+            "VOLATILITY_SPIKE": "BUY/SELL",
+            "PRICE_ACCELERATION": "BUY/SELL"
+        }
+        
+        logger.info("🎯 Enhanced Prediction Engine initialized")
     
-    def build_price_prediction(self, binance_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Build price prediction and identify potential entry points"""
+    def build_price_prediction(self, binance_analysis: Dict[str, Any], current_price: float, strategy_name: str = "standard") -> Dict[str, Any]:
+        """Build price prediction based on market volatility and strategy"""
+        try:
+            # Determine if we should use reactive or predictive approach
+            if strategy_name == "high_volatility":
+                return self._build_reactive_prediction(binance_analysis, current_price)
+            else:
+                return self._build_predictive_prediction(binance_analysis, current_price)
+                
+        except Exception as e:
+            logger.error(f"Error building price prediction: {e}")
+            return {"has_prediction": False, "reason": f"Prediction error: {str(e)}"}
+    
+    def _build_reactive_prediction(self, binance_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Build reactive prediction for high volatility markets - catch fast movements"""
+        try:
+            # Extract data
+            candles_5m = binance_analysis.get("candles_5m", [])
+            candles_1h = binance_analysis.get("candles_1h", [])
+            trend_5m = binance_analysis.get("trend_5m", {})
+            trend_1h = binance_analysis.get("trend_1h", {})
+            
+            if len(candles_5m) < 5 or len(candles_1h) < 5:
+                return {"has_prediction": False, "reason": "Insufficient data for reactive analysis"}
+            
+            # Calculate reactive indicators
+            volatility_5m = self._get_volatility_5m(binance_analysis)
+            price_acceleration = self._calculate_price_acceleration(candles_5m)
+            momentum_surge = self._detect_momentum_surge(candles_5m, trend_5m)
+            volume_spike = self._detect_volume_spike(candles_5m)
+            
+            # Build reactive signals
+            reactive_signals = []
+            
+            # 1. FAST BREAKOUT DETECTION
+            if price_acceleration > 0.003:  # Strong acceleration
+                # Determine direction based on recent price action
+                recent_prices = [float(candle[4]) for candle in candles_5m[-3:]]
+                if recent_prices[-1] > recent_prices[0]:
+                    signal = {
+                        "type": "FAST_BREAKOUT",
+                        "entry_price": current_price * 1.0002,  # Slightly above current
+                        "side": "BUY",
+                        "confidence": min(0.9, 0.6 + (price_acceleration * 50)),
+                        "timeframe": 5,  # Very short timeframe
+                        "reason": f"Fast upward breakout detected (acceleration: {price_acceleration:.3f})",
+                        "reactive_factor": "price_acceleration"
+                    }
+                else:
+                    signal = {
+                        "type": "FAST_BREAKOUT",
+                        "entry_price": current_price * 0.9998,  # Slightly below current
+                        "side": "SELL",
+                        "confidence": min(0.9, 0.6 + (price_acceleration * 50)),
+                        "timeframe": 5,
+                        "reason": f"Fast downward breakout detected (acceleration: {price_acceleration:.3f})",
+                        "reactive_factor": "price_acceleration"
+                    }
+                reactive_signals.append(signal)
+            
+            # 2. MOMENTUM SURGE DETECTION
+            if momentum_surge["detected"]:
+                signal = {
+                    "type": "MOMENTUM_SURGE",
+                    "entry_price": current_price * (1.0001 if momentum_surge["direction"] == "UP" else 0.9999),
+                    "side": "BUY" if momentum_surge["direction"] == "UP" else "SELL",
+                    "confidence": min(0.85, 0.5 + momentum_surge["strength"]),
+                    "timeframe": 8,
+                    "reason": f"Momentum surge detected ({momentum_surge['direction']}, strength: {momentum_surge['strength']:.2f})",
+                    "reactive_factor": "momentum_surge"
+                }
+                reactive_signals.append(signal)
+            
+            # 3. VOLATILITY SPIKE DETECTION
+            if volatility_5m > 0.008:  # High volatility threshold
+                # Look for reversal opportunities in high volatility
+                recent_highs = [float(candle[2]) for candle in candles_5m[-3:]]
+                recent_lows = [float(candle[3]) for candle in candles_5m[-3:]]
+                
+                if current_price > max(recent_highs) * 0.998:  # Near recent high
+                    signal = {
+                        "type": "VOLATILITY_SPIKE",
+                        "entry_price": current_price * 0.9995,
+                        "side": "SELL",
+                        "confidence": min(0.8, 0.4 + (volatility_5m * 20)),
+                        "timeframe": 6,
+                        "reason": f"Volatility spike - potential reversal from high (volatility: {volatility_5m:.3f})",
+                        "reactive_factor": "volatility_spike"
+                    }
+                    reactive_signals.append(signal)
+                elif current_price < min(recent_lows) * 1.002:  # Near recent low
+                    signal = {
+                        "type": "VOLATILITY_SPIKE",
+                        "entry_price": current_price * 1.0005,
+                        "side": "BUY",
+                        "confidence": min(0.8, 0.4 + (volatility_5m * 20)),
+                        "timeframe": 6,
+                        "reason": f"Volatility spike - potential reversal from low (volatility: {volatility_5m:.3f})",
+                        "reactive_factor": "volatility_spike"
+                    }
+                    reactive_signals.append(signal)
+            
+            # 4. VOLUME SPIKE DETECTION
+            if volume_spike["detected"]:
+                # Volume spike often precedes significant moves
+                signal = {
+                    "type": "PRICE_ACCELERATION",
+                    "entry_price": current_price * (1.0001 if volume_spike["direction"] == "UP" else 0.9999),
+                    "side": "BUY" if volume_spike["direction"] == "UP" else "SELL",
+                    "confidence": min(0.75, 0.5 + volume_spike["strength"]),
+                    "timeframe": 7,
+                    "reason": f"Volume spike detected ({volume_spike['direction']}, strength: {volume_spike['strength']:.2f})",
+                    "reactive_factor": "volume_spike"
+                }
+                reactive_signals.append(signal)
+            
+            # Select best reactive signal
+            if reactive_signals:
+                best_signal = max(reactive_signals, key=lambda x: x["confidence"])
+                
+                return {
+                    "has_prediction": True,
+                    "prediction_mode": "REACTIVE",
+                    "best_prediction": best_signal,
+                    "all_predictions": reactive_signals,
+                    "volatility_5m": volatility_5m,
+                    "price_acceleration": price_acceleration,
+                    "momentum_surge": momentum_surge,
+                    "volume_spike": volume_spike,
+                    "reactive_factors": [signal["reactive_factor"] for signal in reactive_signals]
+                }
+            else:
+                return {"has_prediction": False, "reason": "No reactive signals detected"}
+                
+        except Exception as e:
+            logger.error(f"Error building reactive prediction: {e}")
+            return {"has_prediction": False, "reason": f"Reactive prediction error: {str(e)}"}
+    
+    def _build_predictive_prediction(self, binance_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Build predictive prediction for standard/low volatility markets - technical analysis based"""
         try:
             # Extract data from Binance analysis
             candles_5m = binance_analysis.get("candles_5m", [])
@@ -76,7 +222,8 @@ class PredictionEngine:
                     "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
                     "reason": f"Potential breakout above ${resistance_5m:,.2f}",
                     "support": support_5m,
-                    "resistance": resistance_5m
+                    "resistance": resistance_5m,
+                    "prediction_mode": "TECHNICAL_ANALYSIS"
                 }
                 predictions.append(breakout_prediction)
             
@@ -90,7 +237,8 @@ class PredictionEngine:
                     "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
                     "reason": f"Potential breakout below ${support_5m:,.2f}",
                     "support": support_5m,
-                    "resistance": resistance_5m
+                    "resistance": resistance_5m,
+                    "prediction_mode": "TECHNICAL_ANALYSIS"
                 }
                 predictions.append(breakout_prediction)
             
@@ -105,7 +253,8 @@ class PredictionEngine:
                     "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                     "reason": f"Potential reversion from ${resistance_5m:,.2f}",
                     "support": support_5m,
-                    "resistance": resistance_5m
+                    "resistance": resistance_5m,
+                    "prediction_mode": "TECHNICAL_ANALYSIS"
                 }
                 predictions.append(reversion_prediction)
             
@@ -119,7 +268,8 @@ class PredictionEngine:
                     "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                     "reason": f"Potential reversion from ${support_5m:,.2f}",
                     "support": support_5m,
-                    "resistance": resistance_5m
+                    "resistance": resistance_5m,
+                    "prediction_mode": "TECHNICAL_ANALYSIS"
                 }
                 predictions.append(reversion_prediction)
             
@@ -134,7 +284,8 @@ class PredictionEngine:
                     "timeframe": self._calculate_momentum_timeframe(volatility_5m),
                     "reason": "Strong upward momentum",
                     "support": support_5m,
-                    "resistance": resistance_5m
+                    "resistance": resistance_5m,
+                    "prediction_mode": "TECHNICAL_ANALYSIS"
                 }
                 predictions.append(momentum_prediction)
             
@@ -148,7 +299,8 @@ class PredictionEngine:
                     "timeframe": self._calculate_momentum_timeframe(volatility_5m),
                     "reason": "Strong downward momentum",
                     "support": support_5m,
-                    "resistance": resistance_5m
+                    "resistance": resistance_5m,
+                    "prediction_mode": "TECHNICAL_ANALYSIS"
                 }
                 predictions.append(momentum_prediction)
             
@@ -158,6 +310,7 @@ class PredictionEngine:
                 
                 return {
                     "has_prediction": True,
+                    "prediction_mode": "PREDICTIVE",
                     "best_prediction": best_prediction,
                     "all_predictions": predictions,
                     "volatility_5m": volatility_5m,
@@ -170,8 +323,105 @@ class PredictionEngine:
                 return {"has_prediction": False, "reason": "No valid predictions found"}
                 
         except Exception as e:
-            logger.error(f"Error building price prediction: {e}")
-            return {"has_prediction": False, "reason": f"Prediction error: {str(e)}"}
+            logger.error(f"Error building predictive prediction: {e}")
+            return {"has_prediction": False, "reason": f"Predictive prediction error: {str(e)}"}
+    
+    def _calculate_price_acceleration(self, candles_5m: List) -> float:
+        """Calculate price acceleration (rate of change of price changes)"""
+        try:
+            if len(candles_5m) < 4:
+                return 0.0
+            
+            # Calculate price changes
+            prices = [float(candle[4]) for candle in candles_5m[-4:]]
+            price_changes = []
+            
+            for i in range(1, len(prices)):
+                change = (prices[i] - prices[i-1]) / prices[i-1]
+                price_changes.append(change)
+            
+            # Calculate acceleration (change in rate of change)
+            if len(price_changes) >= 2:
+                acceleration = abs(price_changes[-1] - price_changes[-2])
+                return acceleration
+            else:
+                return 0.0
+                
+        except Exception as e:
+            logger.error(f"Error calculating price acceleration: {e}")
+            return 0.0
+    
+    def _detect_momentum_surge(self, candles_5m: List, trend_5m: Dict) -> Dict[str, Any]:
+        """Detect momentum surge in recent candles"""
+        try:
+            if len(candles_5m) < 5:
+                return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
+            
+            # Calculate recent momentum
+            recent_prices = [float(candle[4]) for candle in candles_5m[-5:]]
+            recent_volumes = [float(candle[5]) for candle in candles_5m[-5:]]
+            
+            # Calculate price momentum
+            price_momentum = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+            
+            # Calculate volume momentum
+            avg_volume = sum(recent_volumes[:-1]) / len(recent_volumes[:-1])
+            current_volume = recent_volumes[-1]
+            volume_surge = current_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Detect surge conditions
+            if abs(price_momentum) > 0.005 and volume_surge > 1.5:  # 0.5% price move + 50% volume increase
+                direction = "UP" if price_momentum > 0 else "DOWN"
+                strength = min(1.0, abs(price_momentum) * 100 + (volume_surge - 1.0) * 0.5)
+                
+                return {
+                    "detected": True,
+                    "direction": direction,
+                    "strength": strength,
+                    "price_momentum": price_momentum,
+                    "volume_surge": volume_surge
+                }
+            else:
+                return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
+                
+        except Exception as e:
+            logger.error(f"Error detecting momentum surge: {e}")
+            return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
+    
+    def _detect_volume_spike(self, candles_5m: List) -> Dict[str, Any]:
+        """Detect volume spike in recent candles"""
+        try:
+            if len(candles_5m) < 6:
+                return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
+            
+            # Calculate recent volumes
+            recent_volumes = [float(candle[5]) for candle in candles_5m[-6:]]
+            recent_prices = [float(candle[4]) for candle in candles_5m[-6:]]
+            
+            # Calculate average volume (excluding current)
+            avg_volume = sum(recent_volumes[:-1]) / len(recent_volumes[:-1])
+            current_volume = recent_volumes[-1]
+            
+            # Detect volume spike
+            if current_volume > avg_volume * 2.0:  # 100% increase
+                # Determine direction based on price action
+                price_change = (recent_prices[-1] - recent_prices[-2]) / recent_prices[-2]
+                direction = "UP" if price_change > 0 else "DOWN"
+                strength = min(1.0, (current_volume / avg_volume - 1.0) * 0.5)
+                
+                return {
+                    "detected": True,
+                    "direction": direction,
+                    "strength": strength,
+                    "volume_ratio": current_volume / avg_volume,
+                    "price_change": price_change
+                }
+            else:
+                return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
+                
+        except Exception as e:
+            logger.error(f"Error detecting volume spike: {e}")
+            return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
     
     def _get_volatility_5m(self, binance_analysis: Dict[str, Any]) -> float:
         """Calculate 5-minute volatility"""
@@ -329,6 +579,22 @@ class PredictionEngine:
         """Calculate win probability for a prediction"""
         base_probability = prediction["confidence"]
         
+        # Adjust based on prediction mode
+        prediction_mode = prediction_analysis.get("prediction_mode", "PREDICTIVE")
+        
+        if prediction_mode == "REACTIVE":
+            # Reactive predictions have different probability calculations
+            reactive_factor = prediction.get("reactive_factor", "")
+            
+            if reactive_factor == "price_acceleration":
+                base_probability += 0.05  # Higher probability for acceleration
+            elif reactive_factor == "momentum_surge":
+                base_probability += 0.03  # Good probability for momentum
+            elif reactive_factor == "volume_spike":
+                base_probability += 0.02  # Moderate probability for volume
+            elif reactive_factor == "volatility_spike":
+                base_probability -= 0.02  # Lower probability for volatility spikes
+        
         # Adjust based on volatility
         volatility_5m = prediction_analysis.get("volatility_5m", 0.003)
         if volatility_5m < 0.002:
@@ -336,14 +602,15 @@ class PredictionEngine:
         elif volatility_5m > 0.005:
             base_probability -= 0.05  # Less predictable in high volatility
         
-        # Adjust based on range size
-        range_size = prediction_analysis.get("range_size", 0)
-        if range_size > 0:
-            range_percentage = range_size / 114000
-            if range_percentage > 0.01:  # Large range
-                base_probability += 0.03
-            elif range_percentage < 0.005:  # Small range
-                base_probability -= 0.02
+        # Adjust based on range size (for predictive mode)
+        if prediction_mode == "PREDICTIVE":
+            range_size = prediction_analysis.get("range_size", 0)
+            if range_size > 0:
+                range_percentage = range_size / 114000
+                if range_percentage > 0.01:  # Large range
+                    base_probability += 0.03
+                elif range_percentage < 0.005:  # Small range
+                    base_probability -= 0.02
         
         return min(0.95, max(0.1, base_probability))
     
@@ -354,6 +621,7 @@ class PredictionEngine:
                 return {"should_place_order": False, "reason": "No valid prediction"}
             
             prediction = prediction_analysis["best_prediction"]
+            prediction_mode = prediction_analysis.get("prediction_mode", "PREDICTIVE")
             
             # Check if prediction is still valid
             if not self.is_prediction_valid(prediction, current_price):
@@ -362,8 +630,12 @@ class PredictionEngine:
             # Calculate win probability
             win_probability = self.calculate_prediction_win_probability(prediction, prediction_analysis)
             
-            # Check confidence threshold
-            confidence_threshold = self.strategy_config.get("confidence_threshold", 0.6)
+            # Different confidence thresholds for different modes
+            if prediction_mode == "REACTIVE":
+                confidence_threshold = 0.5  # Lower threshold for reactive trades
+            else:
+                confidence_threshold = self.strategy_config.get("confidence_threshold", 0.6)
+            
             if prediction["confidence"] < confidence_threshold:
                 return {"should_place_order": False, "reason": f"Confidence too low ({prediction['confidence']:.2f} < {confidence_threshold})"}
             
@@ -371,9 +643,15 @@ class PredictionEngine:
             entry_price = prediction["entry_price"]
             side = prediction["side"]
             
-            # Get strategy-specific parameters
-            profit_target_pct = self.strategy_config.get("profit_target", 0.01)
-            stop_loss_pct = self.strategy_config.get("stop_loss", 0.005)
+            # Different parameters for different modes
+            if prediction_mode == "REACTIVE":
+                # Reactive trades: tighter stops, smaller targets
+                profit_target_pct = self.strategy_config.get("profit_target", 0.01) * 0.5  # Half the normal target
+                stop_loss_pct = self.strategy_config.get("stop_loss", 0.005) * 0.7  # Tighter stop
+            else:
+                # Predictive trades: normal parameters
+                profit_target_pct = self.strategy_config.get("profit_target", 0.01)
+                stop_loss_pct = self.strategy_config.get("stop_loss", 0.005)
             
             if side == "BUY":
                 target_price = entry_price * (1 + profit_target_pct)
@@ -394,6 +672,7 @@ class PredictionEngine:
                 "stop_price": stop_price,
                 "side": side,
                 "prediction_type": prediction["type"],
+                "prediction_mode": prediction_mode,
                 "confidence": prediction["confidence"],
                 "win_probability": win_probability,
                 "timeframe": prediction["timeframe"],

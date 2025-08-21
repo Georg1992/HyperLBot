@@ -356,7 +356,7 @@ class HybridPaperTradingBot:
             return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
         # 2. BUILD PRICE PREDICTION AND ENTRY POINT ANALYSIS
-        prediction_analysis = self.prediction_engine.build_price_prediction(binance_analysis, hyperliquid_price)
+        prediction_analysis = self.prediction_engine.build_price_prediction(binance_analysis, hyperliquid_price, self.strategy_name)
         
         if not prediction_analysis["has_prediction"]:
             return {
