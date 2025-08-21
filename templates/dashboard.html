@@ -1,0 +1,220 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HyperLBot Dashboard</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #ffffff;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #2d2d2d;
+            border-radius: 10px;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: #2d2d2d;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #4CAF50;
+        }
+        .card h3 {
+            margin-top: 0;
+            color: #4CAF50;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-running { background: #4CAF50; }
+        .status-stopped { background: #f44336; }
+        .status-warning { background: #ff9800; }
+        .log-entry {
+            background: #1a1a1a;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            border-left: 3px solid #4CAF50;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .trade-entry {
+            border-left-color: #2196F3;
+        }
+        .signal-entry {
+            border-left-color: #FF9800;
+        }
+        .refresh-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 10px 0;
+        }
+        .refresh-btn:hover {
+            background: #45a049;
+        }
+        .price {
+            font-size: 24px;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .trend-up { color: #4CAF50; }
+        .trend-down { color: #f44336; }
+        .trend-neutral { color: #ff9800; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 HyperLBot Dashboard</h1>
+            <p>Real-time trading bot monitoring</p>
+            <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+        </div>
+        
+        <div class="grid">
+            <div class="card">
+                <h3>📊 Session Status</h3>
+                <div id="session-status">
+                    <p><span class="status-indicator status-running"></span>Loading...</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>💰 Market Status</h3>
+                <div id="market-status">
+                    <p>Loading...</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>📈 Trading Summary</h3>
+                <div id="trading-summary">
+                    <p>Loading...</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h3>📝 Latest Activity</h3>
+            <div id="latest-logs">
+                <p>Loading...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function refreshData() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('API Error:', data.error);
+                        return;
+                    }
+                    updateSessionStatus(data.session);
+                    updateMarketStatus(data.market);
+                    updateTradingSummary(data.summary);
+                    updateLatestLogs(data.logs);
+                })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                });
+        }
+        
+        function updateSessionStatus(session) {
+            const div = document.getElementById('session-status');
+            if (session && session.session_id) {
+                div.innerHTML = `
+                    <p><span class="status-indicator status-running"></span>Running</p>
+                    <p><strong>Session:</strong> ${session.session_id}</p>
+                    <p><strong>Started:</strong> ${new Date(session.start_time).toLocaleString()}</p>
+                    <p><strong>Strategy:</strong> ${session.strategy}</p>
+                    <p><strong>Balance:</strong> $${session.initial_balance}</p>
+                `;
+            } else {
+                div.innerHTML = '<p><span class="status-indicator status-stopped"></span>No active session</p>';
+            }
+        }
+        
+        function updateMarketStatus(market) {
+            const div = document.getElementById('market-status');
+            if (market && market.current_price) {
+                const trendClass = market.trend === 'UP' ? 'trend-up' : 
+                                 market.trend === 'DOWN' ? 'trend-down' : 'trend-neutral';
+                div.innerHTML = `
+                    <p><strong>Price:</strong> <span class="price ${trendClass}">$${market.current_price.toLocaleString()}</span></p>
+                    <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
+                    <p><strong>Condition:</strong> ${market.market_condition}</p>
+                    <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
+                `;
+            } else {
+                div.innerHTML = '<p>No market data available</p>';
+            }
+        }
+        
+        function updateTradingSummary(summary) {
+            const div = document.getElementById('trading-summary');
+            div.innerHTML = `
+                <p><strong>Total Trades:</strong> ${summary.total_trades}</p>
+                <p><strong>Winning:</strong> ${summary.winning_trades}</p>
+                <p><strong>Losing:</strong> ${summary.losing_trades}</p>
+                <p><strong>Total P&L:</strong> $${summary.total_pnl.toFixed(2)}</p>
+                <p><strong>Current Balance:</strong> $${summary.current_balance.toFixed(2)}</p>
+            `;
+        }
+        
+        function updateLatestLogs(logs) {
+            const div = document.getElementById('latest-logs');
+            if (logs && logs.length > 0) {
+                let html = '';
+                logs.slice(-10).reverse().forEach(log => {
+                    const timestamp = log.datetime ? new Date(log.datetime).toLocaleString() : 'Unknown';
+                    const type = log.trade_id ? 'trade-entry' : 'signal-entry';
+                    const content = log.trade_id ? 
+                        `Trade ${log.trade_id}: ${log.side} $${log.price?.toLocaleString() || 'N/A'}` :
+                        `Signal: ${log.reason || 'N/A'}`;
+                    
+                    html += `<div class="log-entry ${type}">
+                        <strong>${timestamp}</strong><br>
+                        ${content}
+                    </div>`;
+                });
+                div.innerHTML = html;
+            } else {
+                div.innerHTML = '<p>No recent activity</p>';
+            }
+        }
+        
+        // Auto-refresh every 10 seconds
+        setInterval(refreshData, 10000);
+        
+        // Initial load
+        refreshData();
+    </script>
+</body>
+</html>
+        

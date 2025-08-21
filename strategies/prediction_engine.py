@@ -1,19 +1,17 @@
 #!/usr/bin/env python3
 """
-Enhanced Prediction Engine Module
-Supports both reactive (high volatility) and predictive (standard/low volatility) algorithms
+Prediction Engine for Trading Bot
+Generates price predictions using technical analysis
 """
 
+import numpy as np
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
-import sys
-import os
+from collections import deque
 
-# Add paths for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-sys.path.insert(0, os.path.join(project_root, 'core'))
+# Import core module to setup paths
+import core
 
 from config import TradingConfig
 

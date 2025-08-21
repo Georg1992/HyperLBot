@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Hybrid Paper Trading Bot
-Combines Binance candlestick data for analysis with Hyperliquid market data for execution
+Yahoo Finance + Hyperliquid Paper Trading Bot
+Uses Yahoo Finance for historical market data analysis and Hyperliquid API for real-time trading execution
 """
 
 import time
@@ -13,26 +13,29 @@ from loguru import logger
 import sys
 import os
 
-# Import core module to setup paths
-import core
 
-from hyperliquid_api import HyperliquidAPI
-from external_data_fetcher import ExternalDataFetcher
-from config import TradingConfig
-from fee_manager import FeeManager
-from variability_analyzer import VariabilityAnalyzer
-from trading_logger import TradingLogger
-from whale_integration import WhaleIntegration, integrate_whale_analytics_into_signal
-from prediction_engine import PredictionEngine
-from trade_manager import TradeManager
 
-class HybridPaperTradingBot:
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core.hyperliquid_api import HyperliquidAPI
+from data.yahoo_data_fetcher import YahooDataFetcher
+from core.config import TradingConfig
+from strategies.fee_manager import FeeManager
+from strategies.variability_analyzer import VariabilityAnalyzer
+from core.trading_logger import TradingLogger
+from strategies.whale_integration import WhaleIntegration, integrate_whale_analytics_into_signal
+from strategies.prediction_engine import PredictionEngine
+from strategies.trade_manager import TradeManager
+
+class YahooHyperliquidPaperTradingBot:
     def __init__(self, initial_balance: float = 120.0, strategy_name: str = "standard"):
         self.config = TradingConfig()
         self.strategy_name = strategy_name
         self.strategy_config = self.config.STRATEGY_CONFIGS.get(strategy_name, self.config.STRATEGY_CONFIGS["standard"])
         self.hyperliquid_api = None
-        self.binance_fetcher = ExternalDataFetcher()
+        self.yahoo_fetcher = YahooDataFetcher()
         self.connected = False
         
         # Paper trading state
@@ -58,6 +61,11 @@ class HybridPaperTradingBot:
         self.last_signal_time = 0
         self.signal_cooldown = 300  # 5 minutes between similar signals
         
+        # Price difference monitoring
+        self.price_difference_threshold = 0.002  # 0.2% threshold for price difference alerts
+        self.last_price_difference_alert = 0
+        self.price_difference_alert_cooldown = 300  # 5 minutes between alerts
+        
         # Analysis components
         self.fee_manager = FeeManager()
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
@@ -79,7 +87,7 @@ class HybridPaperTradingBot:
         self.price_update_interval = 5  # Update price every 5 seconds
         self.market_analysis_interval = 10  # Market analysis every 10 seconds
         self.signal_check_interval = 30  # Check for signals every 30 seconds
-        self.candle_update_interval = 300  # Update candles every 5 minutes
+        self.candle_update_interval = 30   # Update candles every 30 seconds for more frequent dashboard updates
         self.hourly_analysis_interval = 3600  # Hourly analysis every hour
         
         self.last_price_update = 0
@@ -87,6 +95,7 @@ class HybridPaperTradingBot:
         self.last_signal_check = 0
         self.last_candle_update = 0
         self.last_hourly_analysis = 0
+        self.last_market_update = 0
         
         # Leverage settings (respecting Hyperliquid 40x limit)
         self.leverage_settings = {
@@ -149,13 +158,13 @@ class HybridPaperTradingBot:
         return self.open_positions
     
     def connect(self) -> bool:
-        """Connect to both Hyperliquid and Binance APIs"""
+        """Connect to Hyperliquid API"""
         try:
-            logger.info("🔌 Connecting to Hyperliquid and Binance...")
+            logger.info("🔌 Connecting to Hyperliquid...")
             
-            # Test Binance connection
-            if not self.binance_fetcher.test_connection():
-                logger.error("❌ Failed to connect to Binance")
+            # Test Yahoo Finance connection
+            if not self.yahoo_fetcher.test_connection():
+                logger.error("❌ Failed to connect to Yahoo Finance")
                 return False
             
             # Test Hyperliquid connection
@@ -165,7 +174,7 @@ class HybridPaperTradingBot:
             
             self.hyperliquid_api = HyperliquidAPI(self.config.WALLET_ADDRESS, self.config.WALLET_PRIVATE_KEY)
             account_info = self.hyperliquid_api.get_account_info()
-            logger.success(f"✅ Successfully connected to both APIs!")
+            logger.success(f"✅ Successfully connected to Hyperliquid API!")
             
             if 'data' in account_info and 'marginSummary' in account_info['data']:
                 margin = account_info['data']['marginSummary']
@@ -191,7 +200,7 @@ class HybridPaperTradingBot:
             logger.info("📅 Analyzing weekly trend for overall market context...")
             
             # Get 1-week candlestick data (7 days * 24 hours = 168 candles)
-            weekly_candles = self.binance_fetcher.get_binance_klines("BTCUSDT", "1h", 168)
+            weekly_candles = self.yahoo_fetcher.get_1h_klines("BTC", 168)
             
             if not weekly_candles or len(weekly_candles) < 24:
                 logger.error("❌ Insufficient weekly data for trend analysis")
@@ -278,20 +287,20 @@ class HybridPaperTradingBot:
             logger.error(f"❌ Failed to get weekly trend analysis: {e}")
             return {"error": str(e)}
     
-    def get_binance_analysis(self) -> Dict[str, Any]:
-        """Get comprehensive market analysis from Binance"""
+    def get_yahoo_analysis(self) -> Dict[str, Any]:
+        """Get comprehensive market analysis from Yahoo Finance"""
         try:
-            analysis = self.binance_fetcher.get_market_analysis("BTCUSDT")
+            analysis = self.yahoo_fetcher.get_market_analysis("BTC")
             
             if "error" not in analysis:
-                logger.info(f"📊 Binance analysis: ${analysis['current_price']:,.2f} - {analysis['market_condition']}")
+                logger.info(f"📊 Yahoo Finance analysis: ${analysis['current_price']:,.2f} - {analysis['market_condition']}")
                 return analysis
             else:
-                logger.error(f"❌ Binance analysis failed: {analysis['error']}")
+                logger.error(f"❌ Yahoo Finance analysis failed: {analysis['error']}")
                 return {}
                 
         except Exception as e:
-            logger.error(f"❌ Failed to get Binance analysis: {e}")
+            logger.error(f"❌ Failed to get Yahoo Finance analysis: {e}")
             return {}
     
     def get_hyperliquid_price(self) -> Optional[float]:
@@ -912,43 +921,123 @@ class HybridPaperTradingBot:
     def _analyze_entry_point(self, prediction_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """Analyze entry point and determine if order should be placed"""
         try:
-            prediction = prediction_analysis["best_prediction"]
-            
-            # Check if prediction is still valid
-            if not self._is_prediction_valid(prediction, current_price):
+            predictions = prediction_analysis.get("all_predictions", [])
+            if not predictions:
                 return {
                     "should_place_order": False,
-                    "reason": "Prediction no longer valid"
+                    "reason": "No predictions available",
+                    "variability_threshold": 0.5
                 }
             
-            # Calculate win probability
-            win_probability = self._calculate_prediction_win_probability(prediction, prediction_analysis)
+            # Analyze both BUY and SELL opportunities
+            buy_opportunities = []
+            sell_opportunities = []
             
-            # Determine if win conditions are met
-            min_confidence = 0.6  # 60% minimum confidence
-            if prediction["confidence"] < min_confidence:
+            for prediction in predictions:
+                # Calculate realistic entry price based on current market price
+                if prediction["side"] == "BUY":
+                    # For BUY: entry should be at or below current price
+                    if prediction["type"] == "BREAKOUT_ABOVE":
+                        # Wait for breakout confirmation - entry at current price
+                        entry_price = current_price
+                    elif prediction["type"] == "REVERSION_FROM_SUPPORT":
+                        # Buy near support - entry at current price or slightly below
+                        entry_price = min(current_price, prediction["support"] * 1.001)
+                    elif prediction["type"] == "MOMENTUM_UP":
+                        # Buy on momentum - entry at current price
+                        entry_price = current_price
+                    else:
+                        # Default: entry at current price
+                        entry_price = current_price
+                    
+                    # Calculate realistic targets (not too far)
+                    target_distance = min(0.002, self.strategy_config["profit_target"])  # Max 0.2% target
+                    stop_distance = min(0.001, self.strategy_config["stop_loss"])  # Max 0.1% stop
+                    
+                    target_price = entry_price * (1 + target_distance)
+                    stop_price = entry_price * (1 - stop_distance)
+                    
+                    buy_opportunities.append({
+                        "prediction": prediction,
+                        "entry_price": entry_price,
+                        "target_price": target_price,
+                        "stop_price": stop_price,
+                        "risk_reward": (target_price - entry_price) / (entry_price - stop_price) if entry_price > stop_price else 0
+                    })
+                    
+                else:  # SELL
+                    # For SELL: entry should be at or above current price
+                    if prediction["type"] == "BREAKOUT_BELOW":
+                        # Wait for breakdown confirmation - entry at current price
+                        entry_price = current_price
+                    elif prediction["type"] == "REVERSION_FROM_RESISTANCE":
+                        # Sell near resistance - entry at current price or slightly above
+                        entry_price = max(current_price, prediction["resistance"] * 0.999)
+                    elif prediction["type"] == "MOMENTUM_DOWN":
+                        # Sell on momentum - entry at current price
+                        entry_price = current_price
+                    else:
+                        # Default: entry at current price
+                        entry_price = current_price
+                    
+                    # Calculate realistic targets (not too far)
+                    target_distance = min(0.002, self.strategy_config["profit_target"])  # Max 0.2% target
+                    stop_distance = min(0.001, self.strategy_config["stop_loss"])  # Max 0.1% stop
+                    
+                    target_price = entry_price * (1 - target_distance)
+                    stop_price = entry_price * (1 + stop_distance)
+                    
+                    sell_opportunities.append({
+                        "prediction": prediction,
+                        "entry_price": entry_price,
+                        "target_price": target_price,
+                        "stop_price": stop_price,
+                        "risk_reward": (entry_price - target_price) / (stop_price - entry_price) if stop_price > entry_price else 0
+                    })
+            
+            # Choose the best opportunity
+            best_opportunity = None
+            best_score = 0
+            
+            for opportunity in buy_opportunities + sell_opportunities:
+                prediction = opportunity["prediction"]
+                
+                # Calculate win probability
+                win_probability = self._calculate_prediction_win_probability(prediction, prediction_analysis)
+                
+                # Check minimum confidence
+                min_confidence = 0.6
+                if prediction["confidence"] < min_confidence:
+                    continue
+                
+                # Check profitability
+                profitability = self.fee_manager.is_trade_profitable(
+                    opportunity["entry_price"], 
+                    opportunity["target_price"], 
+                    0.001, 
+                    30
+                )
+                
+                if not profitability["is_profitable"]:
+                    continue
+                
+                # Calculate opportunity score
+                score = (
+                    prediction["confidence"] * 0.4 +
+                    win_probability * 0.3 +
+                    opportunity["risk_reward"] * 0.2 +
+                    profitability["profit_margin"] * 0.1
+                )
+                
+                if score > best_score:
+                    best_score = score
+                    best_opportunity = opportunity
+            
+            if not best_opportunity:
                 return {
                     "should_place_order": False,
-                    "reason": f"Confidence too low ({prediction['confidence']:.1f}% < {min_confidence*100:.0f}%)"
-                }
-            
-            # Calculate target and stop prices
-            if prediction["side"] == "BUY":
-                target_price = prediction["entry_price"] * (1 + self.strategy_config["profit_target"])
-                stop_price = prediction["entry_price"] * (1 - self.strategy_config["stop_loss"])
-            else:
-                target_price = prediction["entry_price"] * (1 - self.strategy_config["profit_target"])
-                stop_price = prediction["entry_price"] * (1 + self.strategy_config["stop_loss"])
-            
-            # Check profitability
-            profitability = self.fee_manager.is_trade_profitable(
-                prediction["entry_price"], target_price, 0.001, 30  # Use sample size for calculation
-            )
-            
-            if not profitability["is_profitable"]:
-                return {
-                    "should_place_order": False,
-                    "reason": f"Trade not profitable after fees (margin: {profitability['profit_margin']:.2f}%)"
+                    "reason": "No profitable opportunities found",
+                    "variability_threshold": 0.5
                 }
             
             # Determine variability threshold based on strategy
@@ -959,21 +1048,32 @@ class HybridPaperTradingBot:
             else:
                 variability_threshold = 0.5
             
+            prediction = best_opportunity["prediction"]
+            win_probability = self._calculate_prediction_win_probability(prediction, prediction_analysis)
+            profitability = self.fee_manager.is_trade_profitable(
+                best_opportunity["entry_price"], 
+                best_opportunity["target_price"], 
+                0.001, 
+                30
+            )
+            
             logger.info(f"🎯 Entry Point Analysis:")
             logger.info(f"   Prediction Type: {prediction['type']}")
-            logger.info(f"   Entry Price: ${prediction['entry_price']:,.2f}")
-            logger.info(f"   Target Price: ${target_price:,.2f}")
-            logger.info(f"   Stop Price: ${stop_price:,.2f}")
+            logger.info(f"   Side: {prediction['side']}")
+            logger.info(f"   Entry Price: ${best_opportunity['entry_price']:,.2f}")
+            logger.info(f"   Target Price: ${best_opportunity['target_price']:,.2f}")
+            logger.info(f"   Stop Price: ${best_opportunity['stop_price']:,.2f}")
+            logger.info(f"   Risk/Reward: {best_opportunity['risk_reward']:.2f}:1")
             logger.info(f"   Win Probability: {win_probability:.1f}%")
-            logger.info(f"   Timeframe: {prediction['timeframe']} minutes")
+            logger.info(f"   Confidence: {prediction['confidence']:.1f}%")
             logger.info(f"   Profitability: {profitability['profit_margin']:.2f}% margin")
             
             return {
                 "should_place_order": True,
                 "side": prediction["side"],
-                "entry_price": prediction["entry_price"],
-                "target_price": target_price,
-                "stop_price": stop_price,
+                "entry_price": best_opportunity["entry_price"],
+                "target_price": best_opportunity["target_price"],
+                "stop_price": best_opportunity["stop_price"],
                 "prediction_type": prediction["type"],
                 "confidence": prediction["confidence"],
                 "win_probability": win_probability,
@@ -982,14 +1082,16 @@ class HybridPaperTradingBot:
                 "support": prediction["support"],
                 "resistance": prediction["resistance"],
                 "variability_threshold": variability_threshold,
-                "profitability": profitability
+                "profitability": profitability,
+                "risk_reward": best_opportunity["risk_reward"]
             }
             
         except Exception as e:
             logger.error(f"❌ Error analyzing entry point: {e}")
             return {
                 "should_place_order": False,
-                "reason": f"Entry analysis error: {e}"
+                "reason": f"Entry analysis error: {e}",
+                "variability_threshold": 0.5
             }
     
     def _calculate_breakout_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float) -> float:
@@ -1979,8 +2081,8 @@ class HybridPaperTradingBot:
         logger.info(f"   Reason: {exit_reason}")
         logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
     
-    def run_hybrid_paper_trading(self, max_trades: int = 10, check_interval: int = 30):
-        """Run the hybrid paper trading bot"""
+    def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 30):
+        """Run the Hyperliquid paper trading bot"""
         if not self.connected:
             logger.error("❌ Not connected to APIs")
             return
@@ -1996,17 +2098,17 @@ class HybridPaperTradingBot:
             logger.warning("⚠️ Could not get weekly trend analysis, proceeding without it")
             self.weekly_trend_analysis = {}
         
-        logger.info(f"🤖 Starting Hybrid Paper Trading Bot")
+        logger.info(f"🤖 Starting Hyperliquid Paper Trading Bot")
         logger.info(f"   Initial Balance: ${self.initial_balance:.2f}")
         logger.info(f"   Max Trades: {max_trades}")
         logger.info(f"   Check Interval: {check_interval} seconds")
         logger.info(f"   Max Leverage: {self.leverage_settings['max_leverage']}x")
-        logger.info(f"   Analysis: Binance candlesticks + Hyperliquid execution")
+                        logger.info(f"   Analysis: Yahoo Finance historical + Hyperliquid real-time")
         logger.info(f"   Analysis Frequency: Price every {self.price_update_interval}s, Signals every {self.signal_check_interval}s")
         logger.info(f"   Strategy: Auto-Detection (Standard/Low/High Volatility)")
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
         logger.info(f"   Whale Analytics: {'Enabled' if self.whale_integration.is_available() else 'Disabled'}")
-        logger.info(f"   Logging: Comprehensive hybrid paper trading logs enabled")
+        logger.info(f"   Logging: Comprehensive Yahoo Finance + Hyperliquid paper trading logs enabled")
         logger.info("=" * 50)
         
         trades_placed = 0
@@ -2025,32 +2127,54 @@ class HybridPaperTradingBot:
                 # Check for position exits with advanced management
                 self.check_position_exits(hyperliquid_price, self.binance_analysis)
                 
-                # Update Binance analysis periodically
-                if current_time - self.last_candle_update >= self.candle_update_interval:
-                    binance_analysis = self.get_binance_analysis()
-                    if binance_analysis:
-                        self.binance_analysis = binance_analysis
-                        self.last_candle_update = current_time
+                # Update market data for dashboard (every 10 seconds)
+                if current_time - self.last_market_update >= 10:
+                    yahoo_analysis = self.get_yahoo_analysis()
+                    if yahoo_analysis:
+                        self.binance_analysis = yahoo_analysis  # Keep variable name for compatibility
+                        self.last_market_update = current_time
                         
-                        # Log analysis
+                        # Log market data for dashboard (no price difference monitoring needed)
                         self.trading_logger.log_analysis({
                             "type": "hybrid_analysis_update",
                             "timeframe": "5m",
-                            "support_resistance": binance_analysis.get("support_resistance_5m", {}),
-                            "trend_analysis": binance_analysis.get("trend_5m", {}),
-                            "market_condition": binance_analysis.get("market_condition", "UNKNOWN"),
+                            "support_resistance": yahoo_analysis.get("support_resistance_5m", {}),
+                            "trend_analysis": yahoo_analysis.get("trend_5m", {}),
+                            "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
                             "hyperliquid_price": hyperliquid_price,
-                            "binance_price": binance_analysis.get("current_price", 0)
+                            "binance_price": hyperliquid_price,  # Same as Hyperliquid price
+                            "price_difference_pct": 0.0,  # No difference
+                            "price_difference_amount": 0.0  # No difference
+                        })
+                
+                # Update Hyperliquid analysis periodically (every 30 seconds)
+                if current_time - self.last_candle_update >= self.candle_update_interval:
+                    yahoo_analysis = self.get_yahoo_analysis()
+                    if yahoo_analysis:
+                        self.binance_analysis = yahoo_analysis  # Keep variable name for compatibility
+                        self.last_candle_update = current_time
+                        
+                        # Log analysis (no price difference monitoring needed)
+                        self.trading_logger.log_analysis({
+                            "type": "hybrid_analysis_update",
+                            "timeframe": "5m",
+                            "support_resistance": yahoo_analysis.get("support_resistance_5m", {}),
+                            "trend_analysis": yahoo_analysis.get("trend_5m", {}),
+                            "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
+                            "hyperliquid_price": hyperliquid_price,
+                            "binance_price": hyperliquid_price,  # Same as Hyperliquid price
+                            "price_difference_pct": 0.0,  # No difference
+                            "price_difference_amount": 0.0  # No difference
                         })
                 
                 # Check for signals periodically
                 if current_time - self.last_signal_check >= self.signal_check_interval:
                     if not self.binance_analysis:
-                        logger.warning("⚠️ Could not get Binance analysis, retrying...")
+                        logger.warning("⚠️ Could not get Hyperliquid analysis, retrying...")
                         time.sleep(check_interval)
                         continue
                     
-                    # Analyze market using hybrid data
+                    # Analyze market using Hyperliquid data
                     signal = self.should_trade(hyperliquid_price, self.binance_analysis)
                     
                     if signal["should_trade"]:
@@ -2058,9 +2182,9 @@ class HybridPaperTradingBot:
                         signal_size = signal.get("optimal_params", {}).get("position_size", 0.00035)
                         position_value_usd = signal_size * hyperliquid_price
                         
-                        logger.info(f"📊 Hybrid signal detected: {signal['reason']}")
-                        logger.info(f"   Hyperliquid Price: ${hyperliquid_price:,.2f}")
-                        logger.info(f"   Binance Price: ${self.binance_analysis.get('current_price', 0):,.2f}")
+                        logger.info(f"📊 Hyperliquid signal detected: {signal['reason']}")
+                        logger.info(f"   Current Price: ${hyperliquid_price:,.2f}")
+                        
                         logger.info(f"   Action: {signal['side']}")
                         logger.info(f"   Position Size: {signal_size} BTC (${position_value_usd:,.2f})")
                         
@@ -2073,7 +2197,7 @@ class HybridPaperTradingBot:
                         # Place the hybrid paper trade
                         if self.place_paper_trade(signal['side'], signal_data=signal):
                             trades_placed += 1
-                            logger.info(f"   Hybrid Paper Trade {trades_placed}/{max_trades} completed")
+                            logger.info(f"   Hyperliquid Paper Trade {trades_placed}/{max_trades} completed")
                             
                             # Log portfolio risk after trade
                             if self.open_positions:
@@ -2094,7 +2218,7 @@ class HybridPaperTradingBot:
                             logger.error("   Hybrid paper trade placement failed")
                     
                     else:
-                        logger.info(f"⏳ No hybrid signal: {signal['reason']}")
+                        logger.info(f"⏳ No Yahoo Finance signal: {signal['reason']}")
                     
                     self.last_signal_check = current_time
                 
@@ -2117,7 +2241,7 @@ class HybridPaperTradingBot:
                 self.close_paper_position(position, "SESSION_END", hyperliquid_price)
         
         logger.info("=" * 50)
-        logger.success(f"🎯 Hybrid Paper Trading session completed!")
+        logger.success(f"🎯 Hyperliquid Paper Trading session completed!")
         logger.info(f"   Total trades placed: {trades_placed}")
         logger.info(f"   Final Balance: ${self.paper_balance:.2f}")
         logger.info(f"   Total P&L: ${self.paper_balance - self.initial_balance:.2f}")
@@ -2125,7 +2249,7 @@ class HybridPaperTradingBot:
         
         # Generate comprehensive trading report
         trading_report = self.trading_logger.generate_trading_report()
-        logger.info(f"📊 Hybrid Paper Trading Report Generated:")
+        logger.info(f"📊 Hyperliquid Paper Trading Report Generated:")
         logger.info(f"   Session ID: {trading_report['session_info']['session_id']}")
         logger.info(f"   Total Trades: {trading_report['trade_analysis']['total_trades']}")
         logger.info(f"   Win Rate: {trading_report['trade_analysis']['win_rate']}")
@@ -2141,22 +2265,24 @@ class HybridPaperTradingBot:
         
         # Export data to CSV for external analysis
         self.trading_logger.export_to_csv()
+    
+
 
 def main():
-    """Main function to run the hybrid paper trading bot"""
-    logger.info("🚀 Hybrid Paper Trading Bot Starting...")
+    """Main function to run the Hyperliquid paper trading bot"""
+    logger.info("🚀 Hyperliquid Paper Trading Bot Starting...")
     
-    # Initialize hybrid paper trading bot with $120 starting balance
-    bot = HybridPaperTradingBot(initial_balance=120.0)
+    # Initialize Hyperliquid paper trading bot with $120 starting balance
+    bot = HyperliquidPaperTradingBot(initial_balance=120.0)
     
-    # Connect to both Hyperliquid and Binance
+    # Connect to Hyperliquid
     if not bot.connect():
-        logger.error("❌ Failed to connect to APIs")
+        logger.error("❌ Failed to connect to Hyperliquid API")
         return
     
-    # Run hybrid paper trading
+    # Run Hyperliquid paper trading
     # Parameters: max_trades, check_interval_seconds
-    bot.run_hybrid_paper_trading(
+    bot.run_hyperliquid_paper_trading(
         max_trades=5,      # Place 5 trades maximum
         check_interval=30  # Check every 30 seconds
     )

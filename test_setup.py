@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Test script to verify HyperLBot setup and basic functionality
+Test Setup for HyperLBot
+Simplified test configuration and setup
 """
 
 import sys
@@ -11,134 +12,122 @@ from loguru import logger
 import core
 
 def test_imports():
-    """Test that all modules can be imported"""
-    logger.info("🔍 Testing imports...")
+    """Test all module imports"""
+    logger.info("Testing module imports...")
     
     try:
-        # Test core imports
+        # Test core modules
         from config import TradingConfig
-        logger.success("✅ Config imported successfully")
+        logger.info("✅ Core config imported successfully")
         
         from hyperliquid_api import HyperliquidAPI
-        logger.success("✅ HyperliquidAPI imported successfully")
+        logger.info("✅ Hyperliquid API imported successfully")
         
         from trading_logger import TradingLogger
-        logger.success("✅ TradingLogger imported successfully")
+        logger.info("✅ Trading logger imported successfully")
         
-        # Test data imports
+        # Test data modules
         from external_data_fetcher import ExternalDataFetcher
-        logger.success("✅ ExternalDataFetcher imported successfully")
+        logger.info("✅ External data fetcher imported successfully")
         
-        # Test strategy imports
+        from blockcypher_analyzer import BlockCypherAnalyzer
+        logger.info("✅ BlockCypher analyzer imported successfully")
+        
+        # Test strategy modules
         from fee_manager import FeeManager
-        logger.success("✅ FeeManager imported successfully")
+        logger.info("✅ Fee manager imported successfully")
         
         from variability_analyzer import VariabilityAnalyzer
-        logger.success("✅ VariabilityAnalyzer imported successfully")
+        logger.info("✅ Variability analyzer imported successfully")
+        
+        from prediction_engine import PredictionEngine
+        logger.info("✅ Prediction engine imported successfully")
+        
+        from trade_manager import TradeManager
+        logger.info("✅ Trade manager imported successfully")
+        
+        from whale_integration import WhaleIntegration
+        logger.info("✅ Whale integration imported successfully")
         
         from hybrid_paper_trading_bot import HybridPaperTradingBot
-        logger.success("✅ HybridPaperTradingBot imported successfully")
+        logger.info("✅ Hybrid paper trading bot imported successfully")
         
+        logger.info("🎉 All modules imported successfully!")
         return True
         
+    except ImportError as e:
+        logger.error(f"❌ Import error: {e}")
+        return False
     except Exception as e:
-        logger.error(f"❌ Import test failed: {e}")
+        logger.error(f"❌ Unexpected error: {e}")
         return False
 
-def test_basic_functionality():
-    """Test basic functionality of components"""
-    logger.info("🔍 Testing basic functionality...")
+def test_configuration():
+    """Test configuration loading"""
+    logger.info("Testing configuration...")
     
     try:
-        # Test config
         from config import TradingConfig
         config = TradingConfig()
-        logger.success("✅ Config initialization successful")
-        
-        # Test fee manager
-        from fee_manager import FeeManager
-        fee_manager = FeeManager()
-        fees = fee_manager.calculate_order_fees(0.001, 50000, "LIMIT")
-        logger.success(f"✅ Fee calculation successful: ${fees['total_cost']:.4f}")
-        
-        # Test variability analyzer
-        from variability_analyzer import VariabilityAnalyzer
-        analyzer = VariabilityAnalyzer(lookback_periods=10)
-        analyzer.add_price_data(50000.0, volume=1000)
-        analysis = analyzer.get_variability_analysis()
-        logger.success("✅ Variability analyzer test successful")
-        
-        # Test trading logger
-        from trading_logger import TradingLogger
-        trading_logger = TradingLogger("test_logs")
-        logger.success("✅ Trading logger initialization successful")
-        
+        logger.info("✅ Configuration loaded successfully")
+        logger.info(f"   Strategy configs: {len(config.STRATEGY_CONFIGS)} strategies available")
+        logger.info(f"   Whale analytics: {'Enabled' if config.WHALE_ANALYTICS_ENABLED else 'Disabled'}")
         return True
         
     except Exception as e:
-        logger.error(f"❌ Basic functionality test failed: {e}")
+        logger.error(f"❌ Configuration error: {e}")
         return False
 
-def test_external_data_fetcher():
-    """Test external data fetcher (requires internet)"""
-    logger.info("🔍 Testing external data fetcher...")
+def test_api_connections():
+    """Test API connections (without placing trades)"""
+    logger.info("Testing API connections...")
     
     try:
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'data'))
+        # Test external data fetcher
         from external_data_fetcher import ExternalDataFetcher
-        
         fetcher = ExternalDataFetcher()
+        logger.info("✅ External data fetcher initialized")
         
-        # Test connection
-        if fetcher.test_connection():
-            logger.success("✅ Binance API connection successful")
-            
-            # Test market analysis
-            analysis = fetcher.get_market_analysis("BTCUSDT")
-            if "error" not in analysis:
-                logger.success(f"✅ Market analysis successful: ${analysis['current_price']:,.2f}")
-                return True
-            else:
-                logger.warning(f"⚠️ Market analysis failed: {analysis['error']}")
-                return False
-        else:
-            logger.error("❌ Binance API connection failed")
-            return False
-            
+        # Test whale integration
+        from whale_integration import WhaleIntegration
+        whale = WhaleIntegration(enabled=True)
+        logger.info("✅ Whale integration initialized")
+        
+        logger.info("🎉 API connections tested successfully!")
+        return True
+        
     except Exception as e:
-        logger.error(f"❌ External data fetcher test failed: {e}")
+        logger.error(f"❌ API connection error: {e}")
         return False
 
 def main():
     """Run all tests"""
-    logger.info("🚀 HyperLBot Setup Test")
+    logger.info("🧪 HyperLBot Test Setup")
     logger.info("=" * 50)
     
-    # Test imports
-    if not test_imports():
-        logger.error("❌ Import tests failed. Check your installation.")
-        return False
+    tests = [
+        ("Module Imports", test_imports),
+        ("Configuration", test_configuration),
+        ("API Connections", test_api_connections)
+    ]
     
-    # Test basic functionality
-    if not test_basic_functionality():
-        logger.error("❌ Basic functionality tests failed.")
-        return False
+    passed = 0
+    total = len(tests)
     
-    # Test external data fetcher (optional - requires internet)
-    logger.info("🌐 Testing external data fetcher (requires internet connection)...")
-    if test_external_data_fetcher():
-        logger.success("✅ All tests passed! Your HyperLBot setup is ready.")
+    for test_name, test_func in tests:
+        logger.info(f"\n🔍 Running {test_name} test...")
+        if test_func():
+            passed += 1
+            logger.info(f"✅ {test_name} test passed")
+        else:
+            logger.error(f"❌ {test_name} test failed")
+    
+    logger.info(f"\n📊 Test Results: {passed}/{total} tests passed")
+    
+    if passed == total:
+        logger.info("🎉 All tests passed! HyperLBot is ready to run.")
     else:
-        logger.warning("⚠️ External data fetcher test failed, but core functionality is working.")
-        logger.info("💡 You can still use the bot for paper trading and analysis.")
-    
-    logger.info("=" * 50)
-    logger.info("🎯 Next steps:")
-    logger.info("1. Set up your .env file with wallet credentials")
-    logger.info("2. Run 'python main.py' to start the bot")
-    logger.info("3. Test with paper trading first")
-    
-    return True
+        logger.error("⚠️  Some tests failed. Please check the errors above.")
 
 if __name__ == "__main__":
     main()

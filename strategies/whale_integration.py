@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Whale Integration Wrapper
-Easy integration of whale analytics into existing trading bot
+Whale Integration for Trading Bot
+Integrates whale analytics from BlockCypher
 """
 
-import sys
-import os
-from typing import Dict, Any, Optional
+import time
+import json
+from typing import Dict, Any, List, Optional
 from loguru import logger
 
-# Add paths for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-sys.path.insert(0, os.path.join(project_root, 'data'))
+# Import core module to setup paths
+import core
+
+from config import TradingConfig
 
 try:
     from blockcypher_analyzer import BlockCypherAnalyzer

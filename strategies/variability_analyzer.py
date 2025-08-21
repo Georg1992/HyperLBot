@@ -434,14 +434,33 @@ class VariabilityAnalyzer:
         
         variability_score = analysis["current_variability_score"]
         market_condition = analysis["market_condition"]
+        trading_recommendation = analysis.get("trading_recommendation", "UNKNOWN")
+        confidence_score = analysis.get("confidence_score", 0.0)
         
-        should_trade = variability_score >= min_variability_score
+        # Check multiple conditions for trading decision
+        score_ok = variability_score >= min_variability_score
+        recommendation_ok = trading_recommendation in ["OPTIMAL_TRADING_CONDITIONS", "GOOD_TRADING_CONDITIONS"]
+        confidence_ok = confidence_score >= 0.3  # Minimum 30% confidence
+        
+        should_trade = score_ok and recommendation_ok and confidence_ok
+        
+        # Determine reason for decision
+        if not score_ok:
+            reason = f"Variability score too low: {variability_score:.3f} < {min_variability_score}"
+        elif not recommendation_ok:
+            reason = f"Poor trading conditions: {trading_recommendation}"
+        elif not confidence_ok:
+            reason = f"Low confidence: {confidence_score:.3f} < 0.3"
+        else:
+            reason = f"Good conditions: score={variability_score:.3f}, recommendation={trading_recommendation}, confidence={confidence_score:.3f}"
         
         return {
             "should_trade": should_trade,
             "variability_score": variability_score,
             "market_condition": market_condition,
-            "reason": f"Variability score: {variability_score:.3f} (threshold: {min_variability_score})",
+            "trading_recommendation": trading_recommendation,
+            "confidence_score": confidence_score,
+            "reason": reason,
             "analysis": analysis
         }
 

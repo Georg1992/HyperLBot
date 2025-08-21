@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
-Fee Management System for Hyperliquid Trading Bot
-Handles trading fees, slippage, and cost calculations
+Fee Manager for Trading Bot
+Handles fee calculations and profitability analysis
 """
 
-import time
-from typing import Dict, Any, Optional, Tuple
+import math
+from typing import Dict, Any
 from loguru import logger
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'core'))
-from hyperliquid_api import HyperliquidAPI
+
+# Import core module to setup paths
+import core
+
 from config import TradingConfig
 
 class FeeManager:
@@ -42,7 +42,7 @@ class FeeManager:
     def connect(self) -> bool:
         """Connect to Hyperliquid API"""
         try:
-            self.api = HyperliquidAPI(self.config.WALLET_ADDRESS, self.config.WALLET_PRIVATE_KEY)
+            self.api = core.HyperliquidAPI(self.config.WALLET_ADDRESS, self.config.WALLET_PRIVATE_KEY)
             return True
         except Exception as e:
             logger.error(f"❌ Failed to connect for fee management: {e}")

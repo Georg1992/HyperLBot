@@ -1,20 +1,17 @@
 #!/usr/bin/env python3
 """
-Advanced Trade Management System
-Handles intelligent trade placement and dynamic stop loss adjustments
+Trade Manager for Trading Bot
+Manages trade execution and position tracking
 """
 
 import time
 import json
 from typing import Dict, Any, List, Optional
 from loguru import logger
-import sys
-import os
+from collections import deque
 
-# Add paths for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-sys.path.insert(0, os.path.join(project_root, 'core'))
+# Import core module to setup paths
+import core
 
 from config import TradingConfig
 
