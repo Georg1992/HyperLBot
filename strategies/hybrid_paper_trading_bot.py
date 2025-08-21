@@ -90,15 +90,25 @@ class YahooHyperliquidPaperTradingBot:
         self.candle_update_interval = 300   # Update 5m candles every 5 minutes (300 seconds) for rolling analysis
         self.hourly_analysis_interval = 3600  # Update 1h candles every hour
         
-        # Enhanced candle management - OPTIMAL configuration
+        # Enhanced candle management - COMPLETE multi-timeframe configuration
         self.candles_1m_buffer = []   # Rolling buffer of 120 most recent 1m candles (2h)
         self.candles_5m_buffer = []   # Rolling buffer of 60 most recent 5m candles (5h) 
         self.candles_1h_buffer = []   # Rolling buffer of 84 most recent 1h candles (3.5d)
+        self.candles_1d_buffer = []   # Rolling buffer of 45 most recent 1d candles (6w)
         self.last_candle_1m_time = 0
         self.last_candle_5m_time = 0
         self.last_candle_1h_time = 0
+        self.last_candle_1d_time = 0
         self.initial_analysis_complete = False
         self.market_structure = {}  # Store analyzed market structure
+        
+        # Multi-timeframe analysis configuration
+        self.OPTIMAL_CANDLE_COUNTS = {
+            "1m": 120,  # 2 hours - immediate momentum
+            "5m": 60,   # 5 hours - core prediction analysis
+            "1h": 84,   # 3.5 days - daily trend context
+            "1d": 45    # 6 weeks - weekly/monthly trend context
+        }
         
         self.last_price_update = 0
         self.last_market_analysis = 0

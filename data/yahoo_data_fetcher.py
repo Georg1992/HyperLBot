@@ -249,13 +249,14 @@ class YahooDataFetcher:
         NOTE: hyperliquid_price parameter should be provided for current price context
         """
         try:
-            # Get different timeframe data - OPTIMAL configuration for comprehensive analysis
+            # Get different timeframe data - COMPLETE optimal multi-timeframe configuration
             candles_1m = self.get_1m_klines(symbol, 120)  # 2 hours of 1m data for immediate momentum
             candles_5m = self.get_5m_klines(symbol, 60)   # 5 hours of 5m data (core prediction analysis)
-            candles_1h = self.get_1h_klines(symbol, 84)   # 3.5 days of 1h data (weekly trend context)
+            candles_1h = self.get_1h_klines(symbol, 84)   # 3.5 days of 1h data (daily trend context)
+            candles_1d = self.get_klines(symbol, "1d", 45) # 6 weeks of 1d data (weekly/monthly trend context)
             ticker = self.get_ticker_data(symbol)
             
-            if not candles_5m or not candles_1h:
+            if not candles_5m or not candles_1h or not candles_1d:
                 return {"error": "Could not fetch candlestick data from Yahoo Finance"}
             
             # Get Yahoo Finance historical close price for comparison
@@ -283,11 +284,18 @@ class YahooDataFetcher:
             support_resistance_5m = self.calculate_support_resistance(candles_5m)
             support_resistance_1h = self.calculate_support_resistance(candles_1h)
             
-            trend_5m = self.calculate_trend(candles_5m)
-            trend_1h = self.calculate_trend(candles_1h)
+            # Multi-timeframe trend analysis - COMPLETE coverage
+            trend_5m = self.calculate_trend(candles_5m)   # Short-term trend (5 hours)
+            trend_1h = self.calculate_trend(candles_1h)   # Daily trend (3.5 days)
+            trend_1d = self.calculate_trend(candles_1d)   # Weekly/monthly trend (6 weeks)
             
+            # Multi-timeframe volatility analysis
             volatility_5m = self.calculate_volatility(candles_5m)
             volatility_1h = self.calculate_volatility(candles_1h)
+            volatility_1d = self.calculate_volatility(candles_1d)
+            
+            # Daily support/resistance for major levels
+            support_resistance_1d = self.calculate_support_resistance(candles_1d)
             
             analysis = {
                 "timestamp": time.time(),
@@ -296,15 +304,19 @@ class YahooDataFetcher:
                 "yahoo_last_close": yahoo_last_close,  # Yahoo Finance historical close
                 "price_difference": price_difference,  # Absolute difference
                 "price_difference_pct": price_difference_pct,  # Percentage difference
-                "candles_1m": candles_1m[-10:] if candles_1m else [],  # Last 10 1-min candles
-                "candles_5m": candles_5m[-20:] if candles_5m else [],  # Last 20 5-min candles
-                "candles_1h": candles_1h[-10:] if candles_1h else [],  # Last 10 1-hour candles
+                "candles_1m": candles_1m,  # Full 120 1-min candles (2 hours)
+                "candles_5m": candles_5m,  # Full 60 5-min candles (5 hours)
+                "candles_1h": candles_1h,  # Full 84 1-hour candles (3.5 days)
+                "candles_1d": candles_1d,  # Full 45 daily candles (6 weeks)
                 "support_resistance_5m": support_resistance_5m,
                 "support_resistance_1h": support_resistance_1h,
-                "trend_5m": trend_5m,
-                "trend_1h": trend_1h,
+                "support_resistance_1d": support_resistance_1d,  # Major weekly/monthly levels
+                "trend_5m": trend_5m,     # Short-term trend (5h)
+                "trend_1h": trend_1h,     # Daily trend (3.5d)
+                "trend_1d": trend_1d,     # Weekly/monthly trend (6w)
                 "volatility_5m": volatility_5m,
                 "volatility_1h": volatility_1h,
+                "volatility_1d": volatility_1d,
                 "ticker": ticker,
                 "market_condition": self._determine_market_condition(trend_5m, trend_1h, volatility_5m),
                 "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"

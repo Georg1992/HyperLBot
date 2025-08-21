@@ -257,11 +257,14 @@ class PredictionEngine:
     def _build_predictive_prediction(self, binance_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """Build predictive prediction for standard/low volatility markets - technical analysis based"""
         try:
-            # Extract data from Binance analysis
-            candles_5m = binance_analysis.get("candles_5m", [])
-            candles_1h = binance_analysis.get("candles_1h", [])
-            trend_5m = binance_analysis.get("trend_5m", {})
-            trend_1h = binance_analysis.get("trend_1h", {})
+            # Extract data from enhanced multi-timeframe analysis
+            candles_1m = binance_analysis.get("candles_1m", [])  # 2h immediate momentum
+            candles_5m = binance_analysis.get("candles_5m", [])  # 5h core analysis
+            candles_1h = binance_analysis.get("candles_1h", [])  # 3.5d daily context
+            candles_1d = binance_analysis.get("candles_1d", [])  # 6w weekly/monthly context
+            trend_5m = binance_analysis.get("trend_5m", {})      # Short-term trend
+            trend_1h = binance_analysis.get("trend_1h", {})      # Daily trend
+            trend_1d = binance_analysis.get("trend_1d", {})      # Weekly/monthly trend
             support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
             
             # Extract real-time Hyperliquid data for enhanced predictions
@@ -277,10 +280,11 @@ class PredictionEngine:
             total_depth = liquidity_metrics.get("total_depth", 0)
             depth_imbalance = liquidity_metrics.get("depth_imbalance", 0)
             
-            logger.info(f"📊 Real-time Market Context: RSI={current_rsi:.1f}, Depth={total_depth:.1f}BTC, Imbalance={depth_imbalance*100:+.1f}%")
+            logger.info(f"📊 Multi-timeframe Context: RSI={current_rsi:.1f}, 5m={trend_5m.get('trend','?')}, 1h={trend_1h.get('trend','?')}, 1d={trend_1d.get('trend','?')}, Depth={total_depth:.1f}BTC")
             
-            if len(candles_5m) < 10 or len(candles_1h) < 10:
-                return {"has_prediction": False, "reason": "Insufficient candlestick data"}
+            # Enhanced data validation for multi-timeframe analysis
+            if len(candles_5m) < 30 or len(candles_1h) < 24 or len(candles_1d) < 15:
+                return {"has_prediction": False, "reason": f"Insufficient candlestick data - need 30+ 5m ({len(candles_5m)}), 24+ 1h ({len(candles_1h)}), 15+ 1d ({len(candles_1d)}) candles"}
             
             support_5m = support_resistance_5m.get("support", 0)
             resistance_5m = support_resistance_5m.get("resistance", 0)
@@ -310,7 +314,7 @@ class PredictionEngine:
                         "type": "BREAKOUT_ABOVE",
                         "entry_price": support_5m * 1.001,  # Enter near support level, below current price
                         "side": "BUY",
-                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
+                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
                         "reason": f"High probability breakout above ${resistance_5m:,.2f} - enter at support ${support_5m:,.2f}",
                         "support": support_5m,
@@ -327,7 +331,7 @@ class PredictionEngine:
                         "type": "REVERSION_FROM_RESISTANCE",
                         "entry_price": current_price,  # Enter at resistance level for immediate reversal
                         "side": "SELL",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"High probability reversion from ${resistance_5m:,.2f} - enter at resistance",
                         "support": support_5m,
@@ -347,7 +351,7 @@ class PredictionEngine:
                         "type": "BREAKOUT_BELOW",
                         "entry_price": resistance_5m * 0.999,  # Enter near resistance level, above current price
                         "side": "SELL",
-                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
+                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
                         "reason": f"High probability breakdown below ${support_5m:,.2f} - enter at resistance ${resistance_5m:,.2f}",
                         "support": support_5m,
@@ -362,7 +366,7 @@ class PredictionEngine:
                         "type": "REVERSION_FROM_SUPPORT",
                         "entry_price": support_5m * 1.0005,  # Slightly above support
                         "side": "BUY",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"High probability bounce from ${support_5m:,.2f} - enter at support",
                         "support": support_5m,
@@ -396,7 +400,7 @@ class PredictionEngine:
                         "type": "MOMENTUM_REVERSION",
                         "entry_price": current_price,  # Enter at current price for reversal
                         "side": "SELL",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"Weak upward momentum (strength: {momentum_strength:.2f}) - expect reversal",
                         "support": support_5m,
@@ -429,7 +433,7 @@ class PredictionEngine:
                         "type": "MOMENTUM_REVERSION",
                         "entry_price": current_price,  # Enter at current price for reversal
                         "side": "BUY",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
+                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
                         "timeframe": self._calculate_reversion_timeframe(volatility_5m),
                         "reason": f"Weak downward momentum (strength: {momentum_strength:.2f}) - expect reversal",
                         "support": support_5m,
@@ -998,13 +1002,30 @@ class PredictionEngine:
             logger.error(f"Error calculating 1h volatility: {e}")
             return 0.005
     
-    def _calculate_breakout_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0) -> float:
-        """Calculate confidence for breakout predictions with RSI and volume integration"""
+    def _calculate_breakout_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0, trend_1d: Dict = {}) -> float:
+        """Calculate confidence for breakout predictions with multi-timeframe RSI and volume integration"""
         base_confidence = 0.5
         
-        # Trend alignment bonus
-        if trend_1h.get("trend") == trend_5m.get("trend"):
+        # Multi-timeframe trend alignment analysis
+        trend_5m_dir = trend_5m.get("trend", "UNKNOWN")
+        trend_1h_dir = trend_1h.get("trend", "UNKNOWN")
+        trend_1d_dir = trend_1d.get("trend", "UNKNOWN")
+        
+        # Short-term trend alignment bonus
+        if trend_1h_dir == trend_5m_dir:
             base_confidence += 0.2
+            
+        # Daily trend support for breakouts (powerful confirmation)
+        if trend_1d_dir != "UNKNOWN":
+            if trend_1d_dir == trend_5m_dir == trend_1h_dir:
+                # All timeframes aligned = very strong breakout potential
+                base_confidence += 0.25
+            elif trend_1d_dir == trend_5m_dir:
+                # Daily supports short-term direction = good breakout potential
+                base_confidence += 0.15
+            elif trend_1d_dir != trend_5m_dir:
+                # Daily contradicts short-term = breakout may fail
+                base_confidence -= 0.1
         
         # Trend strength bonus
         trend_strength = trend_1h.get("strength", 0.5)
@@ -1036,13 +1057,29 @@ class PredictionEngine:
         
         return min(0.95, max(0.15, base_confidence))
     
-    def _calculate_reversion_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0) -> float:
-        """Calculate confidence for reversion predictions with RSI and volume integration"""
+    def _calculate_reversion_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0, trend_1d: Dict = {}) -> float:
+        """Calculate confidence for reversion predictions with multi-timeframe RSI and volume integration"""
         base_confidence = 0.4  # Lower base for reversions
         
+        # Multi-timeframe trend analysis for reversions
+        trend_5m_dir = trend_5m.get("trend", "UNKNOWN")
+        trend_1h_dir = trend_1h.get("trend", "UNKNOWN") 
+        trend_1d_dir = trend_1d.get("trend", "UNKNOWN")
+        
         # Trend divergence bonus (reversion more likely when trends diverge)
-        if trend_1h.get("trend") != trend_5m.get("trend"):
+        if trend_1h_dir != trend_5m_dir:
             base_confidence += 0.15
+            
+        # Daily trend context (powerful for reversion predictions)
+        if trend_1d_dir == "DOWN" and trend_5m_dir == "UP":
+            # Daily downtrend with short-term up = high reversion probability
+            base_confidence += 0.18
+        elif trend_1d_dir == "UP" and trend_5m_dir == "DOWN":
+            # Daily uptrend with short-term down = high reversion probability  
+            base_confidence += 0.18
+        elif trend_1d_dir != "UNKNOWN" and trend_1d_dir == trend_5m_dir:
+            # Daily trend aligned with short-term = lower reversion probability
+            base_confidence -= 0.05
         
         # Volatility adjustment
         if volatility < 0.002:  # Low volatility = more predictable reversions
