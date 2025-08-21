@@ -209,6 +209,21 @@ class PredictionEngine:
             trend_1h = binance_analysis.get("trend_1h", {})
             support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
             
+            # Extract real-time Hyperliquid data for enhanced predictions
+            hyperliquid_volume = binance_analysis.get("hyperliquid_volume", {})
+            hyperliquid_rsi = binance_analysis.get("hyperliquid_rsi", {})
+            
+            # Get current market conditions from Hyperliquid
+            current_rsi = hyperliquid_rsi.get("rsi_estimate", 50.0)
+            is_oversold = hyperliquid_rsi.get("is_oversold", False)
+            is_overbought = hyperliquid_rsi.get("is_overbought", False)
+            
+            liquidity_metrics = hyperliquid_volume.get("liquidity_metrics", {})
+            total_depth = liquidity_metrics.get("total_depth", 0)
+            depth_imbalance = liquidity_metrics.get("depth_imbalance", 0)
+            
+            logger.info(f"📊 Real-time Market Context: RSI={current_rsi:.1f}, Depth={total_depth:.1f}BTC, Imbalance={depth_imbalance*100:+.1f}%")
+            
             if len(candles_5m) < 10 or len(candles_1h) < 10:
                 return {"has_prediction": False, "reason": "Insufficient candlestick data"}
             
