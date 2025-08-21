@@ -454,9 +454,9 @@
                          </p>
                      </div>
                      
-                     <!-- Volume - Fixed Display -->
+                     <!-- Volume - Fixed Display (5m Volume) -->
                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 Volume Depth:</strong> <span class="volume-value">${volumeValue} BTC</span></p>
+                         <p><strong>📈 5m Volume:</strong> <span class="volume-value">${volumeValue}M</span></p>
                          <p><strong>📊 Order Flow:</strong> 
                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
