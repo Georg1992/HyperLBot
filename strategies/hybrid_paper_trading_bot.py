@@ -147,6 +147,10 @@ class HybridPaperTradingBot:
         except Exception as e:
             logger.warning(f"⚠️ Could not save positions: {e}")
     
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        """Get list of open positions for trade manager"""
+        return self.open_positions
+    
     def connect(self) -> bool:
         """Connect to both Hyperliquid and Binance APIs"""
         try:
