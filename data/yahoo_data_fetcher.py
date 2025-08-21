@@ -249,10 +249,10 @@ class YahooDataFetcher:
         NOTE: hyperliquid_price parameter should be provided for current price context
         """
         try:
-            # Get different timeframe data - Enhanced strategy for better analysis
-            candles_1m = self.get_1m_klines(symbol, 120)  # 2 hours of 1m data for fine-grained analysis
-            candles_5m = self.get_5m_klines(symbol, 24)   # 2 hours of 5m data (focused recent session)
-            candles_1h = self.get_1h_klines(symbol, 24)   # 24 hours of 1h data (daily trend context)
+            # Get different timeframe data - OPTIMAL configuration for comprehensive analysis
+            candles_1m = self.get_1m_klines(symbol, 120)  # 2 hours of 1m data for immediate momentum
+            candles_5m = self.get_5m_klines(symbol, 60)   # 5 hours of 5m data (core prediction analysis)
+            candles_1h = self.get_1h_klines(symbol, 84)   # 3.5 days of 1h data (weekly trend context)
             ticker = self.get_ticker_data(symbol)
             
             if not candles_5m or not candles_1h:
