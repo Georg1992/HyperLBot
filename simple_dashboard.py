@@ -6,6 +6,7 @@ Updates data on demand instead of background threads
 
 import os
 import json
+import time
 from datetime import datetime
 from flask import Flask, render_template, jsonify
 from loguru import logger
@@ -242,6 +243,67 @@ class SimpleBotDashboard:
         except Exception as e:
             logger.error(f"Error reading predictions: {e}")
             return []
+    
+    def get_orderbook_data(self):
+        """Get current orderbook data for display"""
+        try:
+            # We need to import the trading bot to access Hyperliquid API
+            from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
+            from core.config import TradingConfig
+            
+            config = TradingConfig()
+            from core.hyperliquid_api import HyperliquidAPI
+            api = HyperliquidAPI(config.WALLET_ADDRESS, config.WALLET_PRIVATE_KEY)
+            
+            market_data = api.get_market_data("BTC")
+            
+            if market_data and 'levels' in market_data:
+                bids = market_data['levels'][0][:15]  # Top 15 bid levels
+                asks = market_data['levels'][1][:15]  # Top 15 ask levels
+                
+                # Calculate running totals
+                bid_total = 0
+                ask_total = 0
+                
+                processed_bids = []
+                for bid in bids:
+                    bid_total += float(bid['sz'])
+                    processed_bids.append({
+                        'price': float(bid['px']),
+                        'size': float(bid['sz']),
+                        'total': bid_total
+                    })
+                
+                processed_asks = []
+                for ask in asks:
+                    ask_total += float(ask['sz'])
+                    processed_asks.append({
+                        'price': float(ask['px']),
+                        'size': float(ask['sz']),
+                        'total': ask_total
+                    })
+                
+                # Calculate spread
+                best_bid = float(bids[0]['px']) if bids else 0
+                best_ask = float(asks[0]['px']) if asks else 0
+                spread = best_ask - best_bid
+                spread_pct = (spread / best_ask * 100) if best_ask > 0 else 0
+                
+                return {
+                    "bids": processed_bids,
+                    "asks": processed_asks,
+                    "spread": spread,
+                    "spread_pct": spread_pct,
+                    "best_bid": best_bid,
+                    "best_ask": best_ask,
+                    "timestamp": time.time()
+                }
+            else:
+                return {"error": "No orderbook data available"}
+                
+        except Exception as e:
+            logger.error(f"Error getting orderbook data: {e}")
+            return {"error": str(e)}
 
 # Global dashboard instance
 dashboard = SimpleBotDashboard()
@@ -273,6 +335,7 @@ def get_status():
         latest_logs = dashboard.get_latest_logs()
         trade_summary = dashboard.get_trade_summary()
         latest_predictions = dashboard.get_latest_predictions()
+        orderbook_data = dashboard.get_orderbook_data()
         
         return jsonify({
             "session": session_data,
@@ -280,6 +343,7 @@ def get_status():
             "logs": latest_logs,
             "summary": trade_summary,
             "predictions": latest_predictions,
+            "orderbook": orderbook_data,
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
@@ -548,6 +612,80 @@ def create_template():
             color: #2196F3;
             font-weight: bold;
         }
+        
+        /* Orderbook Panel Styles */
+        .orderbook-container {
+            font-family: 'Consolas', 'Monaco', monospace;
+            font-size: 11px;
+            background: #1a1a1a;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        
+        .orderbook-header {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            background: #2d2d2d;
+            padding: 8px;
+            font-weight: bold;
+            color: #4CAF50;
+            text-align: center;
+            border-bottom: 1px solid #333;
+        }
+        
+        .orderbook-table {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .orderbook-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            padding: 3px 8px;
+            text-align: right;
+            border-bottom: 1px solid #333333;
+        }
+        
+        .orderbook-row:hover {
+            background: rgba(76, 175, 80, 0.1);
+        }
+        
+        .bid-row {
+            background: rgba(76, 175, 80, 0.05);
+        }
+        
+        .ask-row {
+            background: rgba(244, 67, 54, 0.05);
+        }
+        
+        .bid-price {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        
+        .ask-price {
+            color: #f44336;
+            font-weight: bold;
+        }
+        
+        .orderbook-size {
+            color: #ffffff;
+        }
+        
+        .orderbook-total {
+            color: #cccccc;
+            font-size: 10px;
+        }
+        
+        .spread-info {
+            background: #2d2d2d;
+            padding: 8px;
+            text-align: center;
+            border-top: 1px solid #333;
+            border-bottom: 1px solid #333;
+            color: #FF9800;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -582,10 +720,20 @@ def create_template():
             </div>
         </div>
         
-        <div class="card">
-            <h3>🎯 Live Trading Predictions</h3>
-            <div id="predictions-panel">
-                <p>Loading predictions...</p>
+        <!-- Main Content Area with Predictions and Orderbook Side by Side -->
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px;">
+            <div class="card">
+                <h3>🎯 Live Trading Predictions</h3>
+                <div id="predictions-panel">
+                    <p>Loading predictions...</p>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>📊 Live Orderbook</h3>
+                <div id="orderbook-panel">
+                    <p>Loading orderbook...</p>
+                </div>
             </div>
         </div>
         
@@ -618,6 +766,7 @@ def create_template():
                     updateTradingSummary(data.summary);
                     updateLatestLogs(data.logs);
                     updatePredictionsPanel(data.predictions);
+                    updateOrderbook(data.orderbook);
                     
                     // Show last update time
                     if (indicator) {
@@ -757,6 +906,61 @@ def create_template():
                 div.innerHTML = html;
             } else {
                 div.innerHTML = '<p>No active predictions</p>';
+            }
+        }
+        
+        function updateOrderbook(orderbook) {
+            const div = document.getElementById('orderbook-panel');
+            if (orderbook && !orderbook.error && orderbook.asks && orderbook.bids) {
+                let html = `
+                    <div class="orderbook-container">
+                        <div class="orderbook-header">
+                            <div>Price</div>
+                            <div>Size (BTC)</div>
+                            <div>Total (BTC)</div>
+                        </div>
+                        <div class="orderbook-table">
+                `;
+                
+                // Show asks (sells) in reverse order (highest first)
+                const asksToShow = orderbook.asks.slice(0, 8).reverse();
+                asksToShow.forEach(ask => {
+                    html += `
+                        <div class="orderbook-row ask-row">
+                            <div class="ask-price">${ask.price.toLocaleString()}</div>
+                            <div class="orderbook-size">${ask.size.toFixed(4)}</div>
+                            <div class="orderbook-total">${ask.total.toFixed(2)}</div>
+                        </div>
+                    `;
+                });
+                
+                // Spread information
+                html += `
+                    <div class="spread-info">
+                        Spread: $${orderbook.spread.toFixed(2)} (${orderbook.spread_pct.toFixed(3)}%)
+                    </div>
+                `;
+                
+                // Show bids (buys) in normal order (highest first)
+                const bidsToShow = orderbook.bids.slice(0, 8);
+                bidsToShow.forEach(bid => {
+                    html += `
+                        <div class="orderbook-row bid-row">
+                            <div class="bid-price">${bid.price.toLocaleString()}</div>
+                            <div class="orderbook-size">${bid.size.toFixed(4)}</div>
+                            <div class="orderbook-total">${bid.total.toFixed(2)}</div>
+                        </div>
+                    `;
+                });
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+                
+                div.innerHTML = html;
+            } else {
+                div.innerHTML = '<p>No orderbook data available</p>';
             }
         }
         
