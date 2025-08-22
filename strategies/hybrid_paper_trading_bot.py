@@ -696,15 +696,15 @@ class YahooHyperliquidPaperTradingBot:
             range_size = support_resistance_5m.get("range", 0)
             range_percentage = (range_size / current_price) if current_price > 0 else 0
             
-            # Strategy selection logic
-            if market_condition == "LOW_VOLATILITY" or volatility_5m < 0.001 or range_percentage < 0.003:
-                # Low volatility conditions
+            # Enhanced strategy selection logic with crypto-appropriate thresholds
+            if market_condition == "LOW_VOLATILITY" or volatility_5m < 0.0015 or range_percentage < 0.002:
+                # Low volatility conditions (tightened thresholds)
                 logger.info(f"📊 Low volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%")
                 return "low_volatility"
             
-            elif market_condition == "HIGH_VOLATILITY" or volatility_5m > 0.005 or volatility_1h > 0.01 or range_percentage > 0.01:
-                # High volatility conditions
-                logger.info(f"📊 High volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%")
+            elif market_condition in ["HIGH_VOLATILITY", "ELEVATED_VOLATILITY"] or volatility_5m > 0.003 or volatility_1h > 0.006 or range_percentage > 0.008:
+                # High volatility conditions (much more sensitive)
+                logger.info(f"📊 High volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%, condition={market_condition}")
                 return "high_volatility"
             
             else:
@@ -717,37 +717,84 @@ class YahooHyperliquidPaperTradingBot:
             return self.strategy_name  # Keep current strategy on error
     
     def _get_volatility_5m(self, binance_analysis: Dict[str, Any]) -> float:
-        """Extract 5-minute volatility from analysis"""
+        """Extract 5-minute volatility from analysis with enhanced recent sensitivity"""
         try:
+            # Use the enhanced volatility from Yahoo analysis if available
+            if "volatility_5m" in binance_analysis:
+                return binance_analysis["volatility_5m"]
+            
+            # Fallback to manual calculation with enhanced sensitivity
             candles_5m = binance_analysis.get("candles_5m", [])
             if len(candles_5m) < 10:
                 return 0.0
             
-            prices_5m = [candle["close"] for candle in candles_5m[-20:]]
+            # Use shorter lookback for more responsive volatility
+            lookback_periods = min(15, len(candles_5m))
+            prices_5m = [candle["close"] for candle in candles_5m[-lookback_periods:]]
             returns_5m = []
+            
             for i in range(1, len(prices_5m)):
                 ret = abs((prices_5m[i] - prices_5m[i-1]) / prices_5m[i-1])
                 returns_5m.append(ret)
             
-            return statistics.mean(returns_5m) if returns_5m else 0.0
-        except:
+            if not returns_5m:
+                return 0.0
+            
+            # Enhanced calculation with recent bias
+            baseline_vol = statistics.mean(returns_5m)
+            recent_vol = statistics.mean(returns_5m[-5:]) if len(returns_5m) >= 5 else baseline_vol
+            
+            # Boost if recent volatility is higher (catch volatility spikes)
+            if recent_vol > baseline_vol * 1.3:
+                enhanced_vol = baseline_vol * 0.6 + recent_vol * 0.4
+                logger.info(f"📈 Enhanced volatility: baseline={baseline_vol*100:.3f}%, recent={recent_vol*100:.3f}%, final={enhanced_vol*100:.3f}%")
+            else:
+                enhanced_vol = baseline_vol * 0.8 + recent_vol * 0.2
+            
+            return enhanced_vol
+            
+        except Exception as e:
+            logger.error(f"Error calculating enhanced 5m volatility: {e}")
             return 0.0
     
     def _get_volatility_1h(self, binance_analysis: Dict[str, Any]) -> float:
-        """Extract 1-hour volatility from analysis"""
+        """Extract 1-hour volatility from analysis with enhanced recent sensitivity"""
         try:
+            # Use the enhanced volatility from Yahoo analysis if available
+            if "volatility_1h" in binance_analysis:
+                return binance_analysis["volatility_1h"]
+            
+            # Fallback to manual calculation with enhanced sensitivity
             candles_1h = binance_analysis.get("candles_1h", [])
             if len(candles_1h) < 10:
                 return 0.0
             
-            prices_1h = [candle["close"] for candle in candles_1h[-24:]]
+            # Use shorter lookback for more responsive volatility
+            lookback_periods = min(18, len(candles_1h))
+            prices_1h = [candle["close"] for candle in candles_1h[-lookback_periods:]]
             returns_1h = []
+            
             for i in range(1, len(prices_1h)):
                 ret = abs((prices_1h[i] - prices_1h[i-1]) / prices_1h[i-1])
                 returns_1h.append(ret)
             
-            return statistics.mean(returns_1h) if returns_1h else 0.0
-        except:
+            if not returns_1h:
+                return 0.0
+            
+            # Enhanced calculation with recent bias 
+            baseline_vol = statistics.mean(returns_1h)
+            recent_vol = statistics.mean(returns_1h[-4:]) if len(returns_1h) >= 4 else baseline_vol
+            
+            # Weight recent volatility for spike detection
+            if recent_vol > baseline_vol * 1.3:
+                enhanced_vol = baseline_vol * 0.6 + recent_vol * 0.4
+            else:
+                enhanced_vol = baseline_vol * 0.8 + recent_vol * 0.2
+            
+            return enhanced_vol
+            
+        except Exception as e:
+            logger.error(f"Error calculating enhanced 1h volatility: {e}")
             return 0.0
     
     def _get_range_percentage(self, binance_analysis: Dict[str, Any], current_price: float) -> float:

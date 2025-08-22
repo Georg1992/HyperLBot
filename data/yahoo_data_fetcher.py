@@ -262,7 +262,7 @@ class YahooDataFetcher:
         }
     
     def calculate_volatility(self, candles: List[Dict[str, Any]], periods: int = 20) -> float:
-        """Calculate price volatility"""
+        """Calculate price volatility with enhanced recent market sensitivity"""
         if len(candles) < periods:
             return 0
         
@@ -275,7 +275,27 @@ class YahooDataFetcher:
             ret = abs((curr_close - prev_close) / prev_close)
             returns.append(ret)
         
-        return statistics.mean(returns) if returns else 0
+        if not returns:
+            return 0
+        
+        # Calculate traditional volatility (baseline)
+        baseline_volatility = statistics.mean(returns)
+        
+        # Calculate recent volatility (last 25% of periods) for spike detection
+        recent_period_count = max(3, periods // 4)  # At least 3 periods, max 25% of total
+        recent_returns = returns[-recent_period_count:]
+        recent_volatility = statistics.mean(recent_returns) if recent_returns else baseline_volatility
+        
+        # Weight recent volatility more heavily to catch spikes
+        # If recent volatility is significantly higher, boost overall volatility
+        if recent_volatility > baseline_volatility * 1.5:  # Recent vol 50% higher than average
+            # Boost overall volatility to reflect current market conditions
+            enhanced_volatility = baseline_volatility * 0.7 + recent_volatility * 0.3
+        else:
+            # Use mostly baseline with slight recent bias
+            enhanced_volatility = baseline_volatility * 0.8 + recent_volatility * 0.2
+        
+        return enhanced_volatility
     
     def get_market_analysis(self, symbol: str = "BTC", hyperliquid_price: float = None) -> Dict[str, Any]:
         """
@@ -364,10 +384,12 @@ class YahooDataFetcher:
             return {"error": str(e)}
     
     def _determine_market_condition(self, trend_5m: Dict, trend_1h: Dict, volatility: float) -> str:
-        """Determine overall market condition"""
-        # High volatility
-        if volatility > 0.02:  # 2% volatility
+        """Determine overall market condition with crypto-appropriate thresholds"""
+        # Enhanced volatility thresholds for crypto markets
+        if volatility > 0.008:  # 0.8% volatility (reduced from 2.0%)
             return "HIGH_VOLATILITY"
+        elif volatility > 0.006:  # 0.6% volatility  
+            return "ELEVATED_VOLATILITY"
         
         # Strong trends
         if trend_5m["strength"] > 0.01 and trend_1h["strength"] > 0.005:
@@ -376,8 +398,12 @@ class YahooDataFetcher:
             else:
                 return "MIXED_SIGNALS"
         
-        # Low volatility
-        if volatility < 0.005:  # 0.5% volatility
+        # Medium volatility (was missing this range)
+        if volatility > 0.003:  # 0.3% volatility
+            return "MEDIUM_VOLATILITY"
+        
+        # Low volatility  
+        if volatility < 0.002:  # 0.2% volatility (reduced from 0.5%)
             return "LOW_VOLATILITY"
         
         return "NORMAL"
