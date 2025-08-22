@@ -2589,27 +2589,13 @@ class YahooHyperliquidPaperTradingBot:
                                 
                                 # Update real-time data manager with REAL calculated values
                                 if self.trading_data_manager:
-                                    # Get REAL RSI using HYPERLIQUID's TRADE HISTORY (closest to their 5m RSI)  
-                                    real_rsi = 50.0  # Default
-                                    try:
-                                        # Use Hyperliquid trade history to build 5m price samples
-                                        trade_history = self.hyperliquid_api.get_trade_history("BTC", limit=200)
-                                        if trade_history and len(trade_history) >= 50:
-                                            # Build 5-minute price approximations from actual trades
-                                            price_samples = self._build_5m_prices_from_hyperliquid_trades(trade_history)
-                                            if len(price_samples) >= 14:
-                                                real_rsi = self._calculate_rsi_from_price_samples(price_samples, periods=14)
-                                                logger.info(f"🎯 Using Hyperliquid trade-based RSI: {real_rsi:.1f} (from {len(trade_history)} trades)")
-                                            else:
-                                                logger.warning(f"Not enough price samples: {len(price_samples) if 'price_samples' in locals() else 0}")
-                                                real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
-                                        else:
-                                            logger.warning(f"Insufficient Hyperliquid trade history: {len(trade_history) if trade_history else 0}")
-                                            # Fallback to cached Yahoo-based RSI
-                                            real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
-                                    except Exception as e:
-                                        logger.debug(f"Hyperliquid trade-based RSI failed: {e}")
-                                        real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
+                                    # Get REAL RSI using ACTUAL calculated RSI data
+                                    real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
+                                    
+                                    # If we have a calculation method, trust it
+                                    if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data:
+                                        calc_method = self.cached_rsi_data.get("calculation_method", "unknown")
+                                        logger.info(f"📊 Using RSI: {real_rsi:.1f} (method: {calc_method})")
                                     
                                     # Get REAL volume from enhanced analysis
                                     real_volume = enhanced_analysis.get("volume_data", {}).get("current_volume", 0.0)

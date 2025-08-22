@@ -38,6 +38,11 @@ class OptimizedTradingDashboard:
         self._api = None  # Hyperliquid API instance
         self._rtm_available = None  # Cache availability check
         
+        # Real-time price sampling for RSI (builds over time)
+        self._price_samples = []  # Rolling buffer of recent prices
+        self._last_price_sample_time = 0  # Timestamp of last price sample
+        self._price_sample_interval = 60  # Sample price every 60 seconds
+        
         logger.info("🚀 Optimized Trading Dashboard initialized")
     
     def _get_realtime_manager(self):
@@ -149,21 +154,15 @@ class OptimizedTradingDashboard:
                     orderbook_imbalance = 0.0
                     
                     try:
-                        # Use HYPERLIQUID's TRADE HISTORY for RSI (closest to their 5m scale)
-                        trade_history = api.get_trade_history("BTC", limit=200)  # Recent trades
+                        # Use REAL-TIME PRICE SAMPLING for accurate RSI (closest to Hyperliquid's RSI)
+                        price_samples = self._get_recent_price_samples(api, 20)  # Last 20 price points
                         
-                        if trade_history and len(trade_history) >= 50:
-                            # Build 5-minute price samples from recent trades
-                            price_samples = self._build_5m_prices_from_trades(trade_history)
-                            
-                            if len(price_samples) >= 14:
-                                # Calculate RSI using trade-based price samples (matches Hyperliquid timeframe)
-                                real_rsi = self._calculate_rsi_from_trades(price_samples, periods=14)
-                                logger.info(f"🎯 Calculated trade-based RSI: {real_rsi:.1f} (using Hyperliquid trades)")
-                            else:
-                                logger.warning(f"Insufficient price samples: {len(price_samples) if 'price_samples' in locals() else 0}")
+                        if len(price_samples) >= 14:
+                            # Calculate RSI using real-time Hyperliquid price samples
+                            real_rsi = self._calculate_rsi_from_trades(price_samples, periods=14)
+                            logger.info(f"🎯 Calculated real-time RSI: {real_rsi:.1f} (using Hyperliquid price sampling)")
                         else:
-                            logger.warning(f"Insufficient trade history: {len(trade_history) if trade_history else 0}")
+                            logger.warning(f"Insufficient price samples for RSI: {len(price_samples)}")
                         
                         # Get REAL volume data  
                         volume_result = api.get_current_5m_volume("BTC")
@@ -335,71 +334,41 @@ class OptimizedTradingDashboard:
             "balance_source": "session_data"
         }
     
-    def _build_5m_prices_from_trades(self, trade_history: List[Dict[str, Any]]) -> List[float]:
-        """Build price series using Hyperliquid trades + current price (hybrid approach)"""
+    def _get_recent_price_samples(self, api, min_samples: int = 20) -> List[float]:
+        """Get recent price samples for RSI - builds over time with each dashboard update"""
         try:
-            if not trade_history:
-                return []
+            current_time = time.time()
+            current_price = api.get_current_price("BTC")
             
-            import time
+            if not current_price or current_price <= 0:
+                return self._price_samples[-min_samples:] if len(self._price_samples) >= min_samples else []
             
-            # Get current price for the most recent data point
-            api = self._get_hyperliquid_api()
-            current_price = api.get_current_price("BTC") if api else None
+            # Sample price every 30 seconds (builds accurate price series)
+            if current_time - self._last_price_sample_time >= 30:  # 30 second intervals
+                self._price_samples.append(current_price)
+                self._last_price_sample_time = current_time
+                
+                # Keep only last 30 samples (30 minutes of data at 30s intervals)
+                if len(self._price_samples) > 30:
+                    self._price_samples = self._price_samples[-30:]
+                
+                logger.debug(f"🔄 Price sampled: ${current_price:,.2f} (total samples: {len(self._price_samples)})")
             
-            # Extract all trade prices with timestamps
-            trade_prices = []
-            for trade in trade_history:
-                try:
-                    trade_time = float(trade.get('time', 0))
-                    trade_price = float(trade.get('px', 0))
-                    if trade_time > 0 and trade_price > 0:
-                        trade_prices.append((trade_time, trade_price))
-                except (ValueError, TypeError):
-                    continue
-            
-            if not trade_prices:
-                return []
-            
-            # Sort by time (oldest first)
-            trade_prices.sort(key=lambda x: x[0])
-            
-            # Build 14 price points using available data
-            current_time_ms = time.time() * 1000
-            price_samples = []
-            
-            # Strategy: Use the last 14 distinct trade prices (or interpolated prices)
-            if len(trade_prices) >= 14:
-                # Use the last 14 trade prices directly
-                price_samples = [price for _, price in trade_prices[-14:]]
-                logger.debug(f"🎯 Using last 14 trade prices directly")
+            # Return available samples (builds up over time)
+            available_samples = len(self._price_samples)
+            if available_samples >= min_samples:
+                logger.debug(f"📊 Using {available_samples} price samples for RSI")
+                return self._price_samples[-min_samples:]  # Last N samples
+            elif available_samples >= 5:
+                # Use what we have if insufficient but some data available
+                logger.warning(f"⚠️ Using {available_samples} samples (less than optimal {min_samples})")
+                return self._price_samples
             else:
-                # Use all available trades + current price interpolation
-                base_prices = [price for _, price in trade_prices[-10:]]  # Last 10 trades
+                logger.warning(f"❌ Insufficient price samples: {available_samples} < 5 minimum")
+                return []
                 
-                # Add current price if available
-                if current_price and current_price > 0:
-                    base_prices.append(current_price)
-                
-                # If still not enough, interpolate between first and last prices
-                while len(base_prices) < 14:
-                    if len(base_prices) >= 2:
-                        # Add interpolated price between first and last
-                        first_price = base_prices[0]
-                        last_price = base_prices[-1]
-                        interpolated = (first_price + last_price) / 2
-                        base_prices.append(interpolated)
-                    else:
-                        # Use current price or trade price
-                        base_prices.append(base_prices[-1] if base_prices else 117000.0)
-                
-                price_samples = base_prices[-14:]  # Take last 14
-                logger.debug(f"🔧 Built {len(price_samples)} hybrid price samples (trades + interpolation)")
-            
-            return price_samples
-            
         except Exception as e:
-            logger.error(f"❌ Error building price samples: {e}")
+            logger.error(f"❌ Price sampling error: {e}")
             return []
     
     def _calculate_rsi_from_trades(self, price_samples: List[float], periods: int = 14) -> float:
