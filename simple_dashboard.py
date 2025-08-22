@@ -38,10 +38,7 @@ class OptimizedTradingDashboard:
         self._api = None  # Hyperliquid API instance
         self._rtm_available = None  # Cache availability check
         
-        # Real-time price sampling for RSI (builds over time)
-        self._price_samples = []  # Rolling buffer of recent prices
-        self._last_price_sample_time = 0  # Timestamp of last price sample
-        self._price_sample_interval = 60  # Sample price every 60 seconds
+
         
         logger.info("🚀 Optimized Trading Dashboard initialized")
     
@@ -154,24 +151,7 @@ class OptimizedTradingDashboard:
                     orderbook_imbalance = 0.0
                     
                     try:
-                        # Use REAL-TIME PRICE SAMPLING for accurate RSI (closest to Hyperliquid's RSI)
-                        price_samples = self._get_recent_price_samples(api, 20)  # Last 20 price points
-                        
-                        if len(price_samples) >= 14:
-                            # Calculate RSI using real-time Hyperliquid price samples
-                            real_rsi = self._calculate_rsi_from_trades(price_samples, periods=14)
-                            logger.info(f"🎯 Calculated real-time RSI: {real_rsi:.1f} (using Hyperliquid price sampling)")
-                        else:
-                            logger.warning(f"Insufficient price samples for RSI: {len(price_samples)}")
-                        
-                        # Get REAL volume data  
-                        volume_result = api.get_current_5m_volume("BTC")
-                        if volume_result and not volume_result.get("error"):
-                            real_volume = volume_result.get("current_volume", 0.0)
-                            volume_category = volume_result.get("volume_category", "UNKNOWN")
-                            logger.info(f"📈 Calculated real volume: {real_volume:.1f} BTC ({volume_category})")
-                        
-                        # Get REAL orderbook imbalance
+                        # Get REAL orderbook imbalance (avoid duplicate price calls)
                         market_data = api.get_market_data("BTC")
                         if market_data and "levels" in market_data:
                             # Calculate imbalance from orderbook
@@ -184,6 +164,13 @@ class OptimizedTradingDashboard:
                             if total_bid_volume + total_ask_volume > 0:
                                 orderbook_imbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume)
                                 logger.info(f"📊 Calculated real orderbook imbalance: {orderbook_imbalance:.3f}")
+                        
+                        # Get REAL volume data  
+                        volume_result = api.get_current_5m_volume("BTC")
+                        if volume_result and not volume_result.get("error"):
+                            real_volume = volume_result.get("current_volume", 0.0)
+                            volume_category = volume_result.get("volume_category", "UNKNOWN")
+                            logger.info(f"📈 Calculated real volume: {real_volume:.1f} BTC ({volume_category})")
                         
                     except Exception as e:
                         logger.debug(f"Real data calculation failed: {e}")
