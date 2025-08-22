@@ -573,23 +573,26 @@ class YahooDataFetcher:
             recent_volumes = volumes[-5:]  # Last 5 candles
             avg_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
             
-            # Scale volume to match Hyperliquid ranges (0-4000)
-            scale_factor = 0.00001  # Scale down by 100000x to get reasonable ranges
-            scaled_current_volume = current_volume * scale_factor
-            scaled_avg_volume = avg_volume * scale_factor
+            # Use actual Yahoo volume (no scaling to match Hyperliquid)
+            current_volume = current_volume
+            avg_volume = avg_volume
             
-            # Categorize volume
-            if scaled_current_volume >= 4000:
-                volume_category = "CRAZY_HIGH"
-            elif scaled_current_volume >= 1000:
+            # Categorize volume based on actual Yahoo Finance ranges (more realistic for BTC)
+            if current_volume >= 500000:  # 500K+
+                volume_category = "EXTREMELY_HIGH"
+            elif current_volume >= 200000:  # 200K+
                 volume_category = "VERY_HIGH"
-            elif scaled_current_volume >= 500:
+            elif current_volume >= 100000:  # 100K+
                 volume_category = "HIGH"
-            elif scaled_current_volume >= 100:
+            elif current_volume >= 50000:  # 50K+
+                volume_category = "ABOVE_AVERAGE"
+            elif current_volume >= 20000:  # 20K+
                 volume_category = "NORMAL"
-            elif scaled_current_volume >= 50:
+            elif current_volume >= 10000:  # 10K+
+                volume_category = "BELOW_AVERAGE"
+            elif current_volume >= 5000:  # 5K+
                 volume_category = "LOW"
-            elif scaled_current_volume >= 10:
+            elif current_volume >= 2000:  # 2K+
                 volume_category = "VERY_LOW"
             else:
                 volume_category = "EXTREMELY_LOW"
@@ -609,14 +612,18 @@ class YahooDataFetcher:
                 volume_trend = "UNKNOWN"
             
             return {
-                "current_volume": scaled_current_volume,
+                "current_volume": current_volume,
                 "volume_category": volume_category,
-                "avg_volume": scaled_avg_volume,
+                "avg_volume": avg_volume,
                 "volume_trend": volume_trend,
-                "recent_volumes": [v * scale_factor for v in recent_volumes],
+                "recent_volumes": recent_volumes,
                 "data_source": "yahoo_finance",
-                "raw_volume": current_volume,
-                "scale_factor": scale_factor
+                # Add basic spike detection fields for dashboard compatibility
+                "has_spike": False,
+                "spike_severity": "NORMAL",
+                "is_immediate_spike": False,
+                "spike_reason": "",
+                "volume_source": "yahoo_finance_basic"
             }
             
         except Exception as e:

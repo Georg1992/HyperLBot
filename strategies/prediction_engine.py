@@ -56,6 +56,10 @@ class PredictionEngine:
         # Add RSI context for dashboard display
         prediction["rsi_context"] = current_rsi
         
+        # Add volume data for dashboard display
+        if volume_data:
+            prediction["volume_data"] = volume_data
+        
         # Add other context data if available
         if support_5m > 0:
             prediction["support"] = support_5m
