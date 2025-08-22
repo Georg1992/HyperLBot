@@ -2501,19 +2501,34 @@ class YahooHyperliquidPaperTradingBot:
                                 self.binance_analysis = yahoo_analysis
                                 self.last_market_update = current_time
                                 
-                                # Update real-time data manager
+                                # Update real-time data manager with REAL calculated values
                                 if self.trading_data_manager:
+                                    # Get REAL RSI from cached data
+                                    real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
+                                    
+                                    # Get REAL volume from enhanced analysis
+                                    real_volume = enhanced_analysis.get("volume_data", {}).get("current_volume", 0.0)
+                                    volume_category = enhanced_analysis.get("volume_data", {}).get("volume_category", "UNKNOWN")
+                                    
+                                    # Get REAL orderbook imbalance
+                                    real_imbalance = enhanced_analysis.get("orderbook_imbalance", 0.0)
+                                    
+                                    logger.info(f"📊 Updating dashboard: RSI={real_rsi:.1f}, Volume={real_volume:.1f} BTC ({volume_category}), Imbalance={real_imbalance:.3f}")
+                                    
                                     self.trading_data_manager.update_market_data({
                                         "current_price": hyperliquid_price,
                                         "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "UNKNOWN"),
                                         "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
-                                        "rsi": 50.0,  # Will be updated with real RSI
-                                        "volume_depth": 125.7,  # Will be updated with real volume
+                                        "rsi": real_rsi,  # REAL RSI from calculations
+                                        "volume_depth": real_volume,  # REAL volume from analysis
+                                        "orderbook_imbalance": real_imbalance,  # REAL imbalance
                                         "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
                                         "volatility_1h": yahoo_analysis.get("volatility_1h", 0.0),
                                         "support": yahoo_analysis.get("support_resistance_5m", {}).get("support", 0),
                                         "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
-                                        "data_source": "smart_cache"
+                                        "volume_category": volume_category,
+                                        "volume_trend": enhanced_analysis.get("volume_data", {}).get("volume_trend", "UNKNOWN"),
+                                        "data_source": "smart_cache_real_values"
                                     })
                                 
                                 logger.info(f"💾 Smart cache update: {cache_update.get('api_calls_saved', 0)} API calls saved")

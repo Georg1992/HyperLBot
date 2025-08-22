@@ -137,27 +137,69 @@ class OptimizedTradingDashboard:
                 if market_data.get("last_update"):
                     return market_data
             
-            # Try live price fetch
+            # Try live price fetch with REAL RSI and volume calculations
             api = self._get_hyperliquid_api()
             if api:
                 current_price = api.get_current_price("BTC")
                 if current_price > 0:
+                    # Calculate REAL RSI from Yahoo Finance data
+                    real_rsi = 50.0  # Default fallback
+                    real_volume = 0.0
+                    volume_category = "OFFLINE"
+                    orderbook_imbalance = 0.0
+                    
+                    try:
+                        # Fetch candles for RSI calculation
+                        from data.yahoo_data_fetcher import YahooDataFetcher
+                        yahoo_fetcher = YahooDataFetcher()
+                        candles_5m = yahoo_fetcher.get_klines("BTC", "5m", 30)
+                        
+                        if candles_5m and len(candles_5m) >= 25:
+                            # Calculate REAL RSI
+                            rsi_result = api.calculate_rsi_from_yahoo_data(candles_5m, periods=20)
+                            real_rsi = rsi_result.get("rsi", 50.0)
+                            logger.info(f"📊 Calculated real RSI: {real_rsi:.1f}")
+                        
+                        # Get REAL volume data  
+                        volume_result = api.get_current_5m_volume("BTC")
+                        if volume_result and not volume_result.get("error"):
+                            real_volume = volume_result.get("current_volume", 0.0)
+                            volume_category = volume_result.get("volume_category", "UNKNOWN")
+                            logger.info(f"📈 Calculated real volume: {real_volume:.1f} BTC ({volume_category})")
+                        
+                        # Get REAL orderbook imbalance
+                        market_data = api.get_market_data("BTC")
+                        if market_data and "levels" in market_data:
+                            # Calculate imbalance from orderbook
+                            bids = market_data['levels'][0][:10] if market_data['levels'][0] else []
+                            asks = market_data['levels'][1][:10] if market_data['levels'][1] else []
+                            
+                            total_bid_volume = sum(float(bid['sz']) for bid in bids)
+                            total_ask_volume = sum(float(ask['sz']) for ask in asks)
+                            
+                            if total_bid_volume + total_ask_volume > 0:
+                                orderbook_imbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume)
+                                logger.info(f"📊 Calculated real orderbook imbalance: {orderbook_imbalance:.3f}")
+                        
+                    except Exception as e:
+                        logger.debug(f"Real data calculation failed: {e}")
+                    
                     return {
                         "current_price": current_price,
                         "hyperliquid_price": current_price,
                         "trend": "LIVE_FETCH",
                         "market_condition": "BOT_OFFLINE",
                         "last_update": datetime.now().isoformat(),
-                        "rsi": 50.0,
-                        "volume_depth": 0.0,
-                        "orderbook_imbalance": 0.0,
+                        "rsi": real_rsi,  # REAL RSI calculation
+                        "volume_depth": real_volume,  # REAL volume
+                        "orderbook_imbalance": orderbook_imbalance,  # REAL imbalance
                         "volatility_5m": 0.0,
                         "volatility_1h": 0.0,
                         "support": 0.0,
                         "resistance": 0.0,
-                        "volume_category": "OFFLINE",
+                        "volume_category": volume_category,
                         "volume_trend": "OFFLINE",
-                        "data_source": "live_fetch_offline"
+                        "data_source": "live_fetch_with_calculations"
                     }
             
             # Try analysis files
@@ -186,13 +228,13 @@ class OptimizedTradingDashboard:
     
     def get_orderbook_data(self) -> Dict[str, Any]:
         """Get orderbook with caching"""
-                 def _fetch_orderbook():
-             api = self._get_hyperliquid_api()
-             if api:
-                 orderbook = api.get_orderbook("BTC")  # Only takes symbol parameter
-                 if orderbook and not orderbook.get("error"):
-                     return orderbook
-             return {"error": "Orderbook unavailable"}
+        def _fetch_orderbook():
+            api = self._get_hyperliquid_api()
+            if api:
+                orderbook = api.get_orderbook("BTC")  # Only takes symbol parameter
+                if orderbook and not orderbook.get("error"):
+                    return orderbook
+            return {"error": "Orderbook unavailable"}
         
         return self._get_cached_or_fetch("orderbook", _fetch_orderbook) or {"error": "API unavailable"}
     
