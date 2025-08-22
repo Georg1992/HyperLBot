@@ -364,11 +364,96 @@ class YahooDataFetcher:
             return False
 
     def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
-        """Get current 5-minute volume statistics from Yahoo Finance"""
+        """Get current 5-minute volume statistics with real-time spike detection"""
         try:
             symbol = symbol or "BTC-USD"
             
-            # Get 5-minute candles
+            # Import volume spike detector
+            try:
+                from data.volume_spike_detector import VolumeSpikeDetector
+                spike_detector = VolumeSpikeDetector()
+                
+                # Get comprehensive volume analysis including spike detection
+                volume_analysis = spike_detector.get_comprehensive_volume_analysis(symbol)
+                
+                if "error" not in volume_analysis:
+                    # Extract data from comprehensive analysis
+                    realtime_volume = volume_analysis.get("realtime_volume", {})
+                    spike_analysis = volume_analysis.get("spike_analysis", {})
+                    trend_analysis = volume_analysis.get("trend_analysis", {})
+                    
+                    # Get current volume and scale it
+                    current_volume = realtime_volume.get("estimated_current_volume", 0)
+                    scale_factor = 0.00001  # Scale down to match Hyperliquid ranges
+                    scaled_current_volume = current_volume * scale_factor
+                    
+                    # Get baseline for average calculation
+                    baseline = spike_detector.get_volume_baseline(symbol)
+                    if "error" not in baseline:
+                        scaled_avg_volume = baseline.get("mean_volume", 0) * scale_factor
+                    else:
+                        scaled_avg_volume = 0
+                    
+                    # Determine volume category based on spike severity
+                    spike_severity = spike_analysis.get("spike_severity", "NORMAL")
+                    if spike_severity == "EXTREME":
+                        volume_category = "CRAZY_HIGH"
+                    elif spike_severity == "HIGH":
+                        volume_category = "VERY_HIGH"
+                    elif spike_severity == "MODERATE":
+                        volume_category = "HIGH"
+                    elif spike_severity == "MILD":
+                        volume_category = "NORMAL"
+                    else:
+                        # Fallback to traditional categorization
+                        if scaled_current_volume >= 4000:
+                            volume_category = "CRAZY_HIGH"
+                        elif scaled_current_volume >= 1000:
+                            volume_category = "VERY_HIGH"
+                        elif scaled_current_volume >= 500:
+                            volume_category = "HIGH"
+                        elif scaled_current_volume >= 100:
+                            volume_category = "NORMAL"
+                        elif scaled_current_volume >= 50:
+                            volume_category = "LOW"
+                        elif scaled_current_volume >= 10:
+                            volume_category = "VERY_LOW"
+                        else:
+                            volume_category = "EXTREMELY_LOW"
+                    
+                    # Get volume trend from trend analysis
+                    short_term_trend = trend_analysis.get("trend_analysis", {}).get("short_term", {})
+                    volume_trend = short_term_trend.get("trend_direction", "UNKNOWN")
+                    
+                    # Enhanced volume data with spike information
+                    enhanced_volume_data = {
+                        "current_volume": scaled_current_volume,
+                        "volume_category": volume_category,
+                        "avg_volume": scaled_avg_volume,
+                        "volume_trend": volume_trend,
+                        "data_source": "yahoo_finance_1m_spike_detection",
+                        "raw_volume": current_volume,
+                        "scale_factor": scale_factor,
+                        # Spike detection data
+                        "has_spike": spike_analysis.get("is_spike", False),
+                        "spike_severity": spike_severity,
+                        "spike_ratio": spike_analysis.get("spike_ratio_mean", 0),
+                        "spike_description": spike_analysis.get("spike_description", ""),
+                        "percentile_alerts": spike_analysis.get("percentile_alerts", []),
+                        "volume_acceleration": spike_analysis.get("volume_acceleration", 0),
+                        # Real-time volume data
+                        "period_progress": realtime_volume.get("period_progress", 0),
+                        "current_5m_period": realtime_volume.get("current_5m_period", ""),
+                        "completed_volume": realtime_volume.get("completed_volume", 0),
+                        "current_minute_volume": realtime_volume.get("current_minute_volume", 0)
+                    }
+                    
+                    return enhanced_volume_data
+                    
+            except ImportError:
+                logger.warning("Volume spike detector not available, falling back to basic volume analysis")
+            
+            # Fallback to original method if spike detector is not available
             candles_5m = self.get_5m_klines(symbol, limit=10)
             if not candles_5m:
                 logger.warning(f"No 5m candle data available for {symbol}")
@@ -385,7 +470,6 @@ class YahooDataFetcher:
             volumes = [candle.get("volume", 0) for candle in candles_5m]
             
             # Use most recent completed candle (not the current incomplete one)
-            # If the last candle has 0 volume, it's incomplete, use the previous one
             if len(volumes) >= 2 and volumes[-1] == 0:
                 current_volume = volumes[-2]  # Use previous completed candle
                 logger.info("Using previous completed candle for volume (current candle incomplete)")
@@ -397,8 +481,6 @@ class YahooDataFetcher:
             avg_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
             
             # Scale volume to match Hyperliquid ranges (0-4000)
-            # Yahoo volume is typically much larger, so we scale it down
-            # Typical Yahoo 5m volume for BTC is 1000-50000, we want 10-4000
             scale_factor = 0.00001  # Scale down by 100000x to get reasonable ranges
             scaled_current_volume = current_volume * scale_factor
             scaled_avg_volume = avg_volume * scale_factor
@@ -517,6 +599,99 @@ class YahooDataFetcher:
             
         except Exception as e:
             logger.error(f"Failed to get market summary: {e}")
+            return {
+                "error": str(e),
+                "data_source": "yahoo_finance"
+            }
+    
+    def get_realtime_volume(self, symbol: str = "BTC") -> Dict[str, Any]:
+        """Get real-time volume by aggregating 1-minute candles for the current 5-minute period"""
+        try:
+            cache_key = f"realtime_volume_{symbol}"
+            cached_data = self._get_cached_data(cache_key)
+            if cached_data:
+                return cached_data
+            
+            # Get 1-minute candles for the last hour (to cover current 5m period)
+            candles_1m = self.get_klines(symbol, "1m", 60)
+            if not candles_1m:
+                return {
+                    "error": "No 1-minute data available",
+                    "data_source": "yahoo_finance"
+                }
+            
+            # Get current 5-minute candle for reference
+            candles_5m = self.get_klines(symbol, "5m", 10)
+            current_5m = candles_5m[-1] if candles_5m else None
+            
+            # Calculate current 5-minute period boundaries
+            now = datetime.now()
+            current_minute = now.minute
+            period_start_minute = (current_minute // 5) * 5  # Round down to nearest 5-minute mark
+            
+            # Create period boundaries
+            period_start = now.replace(minute=period_start_minute, second=0, microsecond=0)
+            period_end = period_start + timedelta(minutes=5)
+            
+            # Filter 1-minute candles for current 5-minute period
+            period_candles = []
+            total_volume = 0
+            completed_volume = 0
+            
+            for candle in candles_1m:
+                candle_time = datetime.fromtimestamp(candle["open_time"] / 1000)
+                
+                # Check if candle is within current 5-minute period
+                if period_start <= candle_time < period_end:
+                    period_candles.append(candle)
+                    total_volume += candle["volume"]
+                    
+                    # If candle is completed (not current minute), add to completed volume
+                    if candle_time < now.replace(second=0, microsecond=0):
+                        completed_volume += candle["volume"]
+            
+            # Calculate volume metrics
+            current_minute_volume = 0
+            if period_candles:
+                # Get current minute's volume (if available)
+                current_minute_candles = [c for c in period_candles 
+                                        if datetime.fromtimestamp(c["open_time"] / 1000).minute == current_minute]
+                if current_minute_candles:
+                    current_minute_volume = current_minute_candles[0]["volume"]
+            
+            # Calculate time progress in current 5-minute period
+            time_elapsed = (now - period_start).total_seconds()
+            period_progress = min(time_elapsed / 300, 1.0)  # 300 seconds = 5 minutes
+            
+            # Estimate current volume based on completed volume and time progress
+            estimated_current_volume = completed_volume
+            if period_progress > 0:
+                # If we're in the current minute, add partial volume estimate
+                estimated_current_volume += current_minute_volume
+            
+            volume_data = {
+                "current_5m_period": period_start.strftime("%H:%M"),
+                "period_start": period_start.isoformat(),
+                "period_end": period_end.isoformat(),
+                "period_progress": round(period_progress * 100, 1),  # Percentage
+                "total_volume": total_volume,
+                "completed_volume": completed_volume,
+                "current_minute_volume": current_minute_volume,
+                "estimated_current_volume": estimated_current_volume,
+                "candles_in_period": len(period_candles),
+                "yahoo_5m_volume": current_5m["volume"] if current_5m else 0,
+                "data_source": "yahoo_finance_1m_aggregation",
+                "update_frequency": "5_seconds"
+            }
+            
+            # Cache for 5 seconds
+            self._cache_data(cache_key, volume_data)
+            
+            logger.info(f"📊 Real-time volume: {estimated_current_volume:.0f} (progress: {volume_data['period_progress']}%)")
+            return volume_data
+            
+        except Exception as e:
+            logger.error(f"Failed to get real-time volume: {e}")
             return {
                 "error": str(e),
                 "data_source": "yahoo_finance"
