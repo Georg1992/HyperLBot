@@ -172,24 +172,60 @@ class HyperliquidAPI:
             raise
     
     def get_orderbook(self, symbol: str = None) -> Dict[str, Any]:
-        """Get order book for a symbol"""
+        """Get order book for a symbol (uses l2Book data)"""
         try:
-            symbol = symbol or self.config.SYMBOL
-            endpoint = "/info"
-            payload = {
-                "type": "orderBook",
-                "coin": symbol
-            }
+            # Use the working l2Book endpoint (same as get_market_data)
+            market_data = self.get_market_data(symbol)
             
-            response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
-            response.raise_for_status()
-            
-            data = response.json()
-            return data
+            if market_data and 'levels' in market_data:
+                # Process into standard orderbook format
+                bids = market_data['levels'][0] if len(market_data['levels']) > 0 else []
+                asks = market_data['levels'][1] if len(market_data['levels']) > 1 else []
+                
+                # Calculate running totals and format
+                processed_bids = []
+                processed_asks = []
+                bid_total = 0
+                ask_total = 0
+                
+                for bid in bids[:15]:  # Top 15 levels
+                    bid_total += float(bid['sz'])
+                    processed_bids.append({
+                        'price': float(bid['px']),
+                        'size': float(bid['sz']),
+                        'total': bid_total
+                    })
+                
+                for ask in asks[:15]:  # Top 15 levels
+                    ask_total += float(ask['sz'])
+                    processed_asks.append({
+                        'price': float(ask['px']),
+                        'size': float(ask['sz']),
+                        'total': ask_total
+                    })
+                
+                # Calculate spread
+                best_bid = float(bids[0]['px']) if bids else 0
+                best_ask = float(asks[0]['px']) if asks else 0
+                spread = best_ask - best_bid
+                spread_pct = (spread / best_ask * 100) if best_ask > 0 else 0
+                
+                return {
+                    "bids": processed_bids,
+                    "asks": processed_asks,
+                    "spread": spread,
+                    "spread_pct": spread_pct,
+                    "best_bid": best_bid,
+                    "best_ask": best_ask,
+                    "timestamp": time.time(),
+                    "data_source": "hyperliquid_l2book"
+                }
+            else:
+                return {"error": "No orderbook levels in market data"}
             
         except Exception as e:
             logger.error(f"Failed to get orderbook: {e}")
-            raise
+            return {"error": str(e)}
     
     def set_leverage(self, symbol: str = None, leverage: int = None) -> Dict[str, Any]:
         """Set leverage for a symbol"""
