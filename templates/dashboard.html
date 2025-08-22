@@ -722,6 +722,96 @@
         
         // Initial load
         refreshData();
+        
+        // New functions for enhanced dashboard
+        function updateGlobalVolume(globalVolume) {
+            const div = document.getElementById('global-volume-display');
+            if (globalVolume && globalVolume.global_volume_per_second) {
+                const volumePerSec = globalVolume.global_volume_per_second;
+                const coverageRatio = globalVolume.coverage_ratio * 100;
+                const usdPerSec = volumePerSec * 116000;
+                const status = globalVolume.status;
+                const statusIcon = status === 'live' ? '🔴' : status === 'estimated' ? '📊' : '🎮';
+                
+                div.innerHTML = `
+                    <div class="market-indicator" style="background: rgba(33, 150, 243, 0.1); border-left: 3px solid #2196F3;">
+                        <p><strong>🌍 Global BTC Volume:</strong> 
+                        <span style="font-weight: bold; color: #2196F3;">${volumePerSec.toFixed(1)} BTC/sec</span>
+                        <span style="color: #4CAF50;">(~$${(usdPerSec/1000000).toFixed(1)}M/sec)</span>
+                        ${statusIcon}
+                        </p>
+                        <p><strong>📊 Coverage:</strong> ${coverageRatio.toFixed(1)}% (${globalVolume.successful_exchanges}/${globalVolume.total_exchanges} exchanges)</p>
+                    </div>
+                `;
+            } else {
+                div.innerHTML = '<p style="color: #666;">🌍 Global volume unavailable</p>';
+            }
+        }
+        
+        function updateRecentTrades(trades) {
+            const div = document.getElementById('recent-trades');
+            if (trades && trades.length > 0) {
+                let html = '';
+                trades.slice(-6).reverse().forEach(trade => {
+                    const demoIcon = trade.demo_mode ? '🎮 ' : '';
+                    html += `
+                        <div style="background: rgba(40, 40, 40, 0.8); border-radius: 6px; padding: 12px; margin: 8px 0; border-left: 4px solid ${trade.status_class === 'profit' ? '#4CAF50' : '#f44336'}; font-family: monospace; font-size: 11px;">
+                            <div style="font-weight: bold; margin-bottom: 6px; color: #fff;">${demoIcon}${trade.trade_summary}</div>
+                            <div style="font-size: 12px; font-weight: bold; margin: 4px 0; color: ${trade.status_class === 'profit' ? '#4CAF50' : '#f44336'};">${trade.formatted_pnl}</div>
+                            <div style="font-size: 10px; color: #ccc; margin-top: 4px;">
+                                ${trade.trade_details} | ${trade.holding_duration}
+                                <br><small>${trade.formatted_time}</small>
+                            </div>
+                        </div>
+                    `;
+                });
+                div.innerHTML = html;
+            } else {
+                div.innerHTML = '<p>No recent trades</p>';
+            }
+        }
+        
+        function updateTradingSignals(signals) {
+            const div = document.getElementById('trading-signals');
+            if (signals && signals.length > 0) {
+                let html = '';
+                signals.slice(-6).reverse().forEach(signal => {
+                    const demoIcon = signal.demo_mode ? '🎮 ' : '';
+                    const borderColor = signal.confidence_class === 'very-high' ? '#ff5722' : 
+                                      signal.confidence_class === 'high' ? '#4CAF50' : 
+                                      signal.confidence_class === 'medium' ? '#ff9800' : '#9e9e9e';
+                    html += `
+                        <div style="background: rgba(40, 40, 40, 0.8); border-radius: 6px; padding: 10px; margin: 6px 0; border-left: 4px solid ${borderColor}; font-family: monospace; font-size: 11px;">
+                            <div style="font-weight: bold; margin-bottom: 6px; color: #fff;">${demoIcon}${signal.signal_status}</div>
+                            <div style="font-size: 12px; margin: 4px 0; color: #fff;">${signal.signal_summary}</div>
+                            <div style="font-size: 10px; color: #ccc; margin-top: 4px;">
+                                ${signal.signal_details}
+                                <br><small>${signal.formatted_time}</small>
+                            </div>
+                        </div>
+                    `;
+                });
+                div.innerHTML = html;
+            } else {
+                div.innerHTML = '<p>No recent signals</p>';
+            }
+        }
+        
+        // Update fetchData function to include new endpoints
+        function fetchData() {
+            fetch('/api/status').then(r => r.json()).then(data => {
+                updateSessionStatus(data.session);
+                updateMarketStatus(data.market);
+                updateTradingSummary(data.summary);
+                updateLatestLogs(data.logs);
+                updatePredictionsPanel(data.predictions);
+                updateOrderbook(data.orderbook);
+                updateGlobalVolume(data.global_volume);
+            });
+            
+            fetch('/api/trades').then(r => r.json()).then(updateRecentTrades);
+            fetch('/api/signals').then(r => r.json()).then(updateTradingSignals);
+        }
     </script>
 </body>
 </html>
