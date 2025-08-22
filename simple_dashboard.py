@@ -760,10 +760,15 @@ def create_template():
             color: white;
         }
         
-        .spike-indicator.mild {
-            background-color: #f1c40f;
-            color: #2c3e50;
-        }
+                 .spike-indicator.mild {
+             background-color: #f1c40f;
+             color: #2c3e50;
+         }
+         
+         .spike-indicator.normal {
+             background-color: #27ae60;
+             color: white;
+         }
         
         .immediate-spike {
             background-color: #e67e22;
@@ -1039,15 +1044,15 @@ def create_template():
                          </p>
                      </div>
                      
-                     <!-- Volume - Enhanced Display with Spike Detection -->
-                     <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 5m Volume:</strong> 
-                         <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}">${volumeValue}</span>
-                         <span class="volume-category">(${volumeCategory})</span>
-                         ${hasVolumeSpike ? `<span class="spike-indicator ${spikeSeverity.toLowerCase()}">🚨 ${spikeSeverity} SPIKE</span>` : ''}
-                         ${isImmediateSpike ? `<span class="immediate-spike">⚡ IMMEDIATE</span>` : ''}
-                         </p>
-                         ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
+                                           <!-- Volume - Enhanced Display with Spike Detection -->
+                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
+                          <p><strong>📈 5m Volume:</strong> 
+                          <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}">${volumeValue}</span>
+                          <span class="volume-category">(${volumeCategory})</span>
+                          <span class="spike-indicator ${hasVolumeSpike ? spikeSeverity.toLowerCase() : 'normal'}">${hasVolumeSpike ? `🚨 ${spikeSeverity} SPIKE` : '📊 NORMAL'}</span>
+                          ${isImmediateSpike ? `<span class="immediate-spike">⚡ IMMEDIATE</span>` : ''}
+                          </p>
+                          ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
                          <p><strong>📊 Order Flow:</strong> 
                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
