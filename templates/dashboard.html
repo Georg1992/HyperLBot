@@ -797,21 +797,26 @@
             }
         }
         
-        // Update fetchData function to include new endpoints
-        function fetchData() {
-            fetch('/api/status').then(r => r.json()).then(data => {
-                updateSessionStatus(data.session);
-                updateMarketStatus(data.market);
-                updateTradingSummary(data.summary);
-                updateLatestLogs(data.logs);
-                updatePredictionsPanel(data.predictions);
-                updateOrderbook(data.orderbook);
-                updateGlobalVolume(data.global_volume);
-            });
-            
-            fetch('/api/trades').then(r => r.json()).then(updateRecentTrades);
-            fetch('/api/signals').then(r => r.json()).then(updateTradingSignals);
-        }
+                 // Update main refresh function 
+         function refreshData() {
+             Promise.all([
+                 fetch('/api/status').then(r => r.json()),
+                 fetch('/api/trades').then(r => r.json()).catch(() => []),
+                 fetch('/api/signals').then(r => r.json()).catch(() => [])
+             ]).then(([statusData, tradesData, signalsData]) => {
+                 updateSessionStatus(statusData.session);
+                 updateMarketStatus(statusData.market);
+                 updateTradingSummary(statusData.summary);
+                 updateLatestLogs(statusData.logs);
+                 updatePredictionsPanel(statusData.predictions);
+                 updateOrderbook(statusData.orderbook);
+                 updateGlobalVolume(statusData.global_volume);
+                 updateRecentTrades(tradesData);
+                 updateTradingSignals(signalsData);
+             }).catch(error => {
+                 console.error('Dashboard update error:', error);
+             });
+         }
     </script>
 </body>
 </html>
