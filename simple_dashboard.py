@@ -136,8 +136,15 @@ class OptimizedTradingDashboard:
             rtm = self._get_realtime_manager()
             if rtm:
                 market_data = rtm.get_market_data()
-                if market_data.get("last_update"):
+                # Check if data is REAL (not placeholder defaults)
+                if (market_data.get("last_update") and 
+                    market_data.get("data_source") != "none" and
+                    market_data.get("current_price", 0) > 0 and
+                    market_data.get("rsi", 50) != 50.0):
+                    logger.info("🔴 Using real-time trading data (verified as fresh)")
                     return market_data
+                else:
+                    logger.info("⚠️ RTM data is stale/placeholder - using live API calculation")
             
             # Try live price fetch with REAL RSI and volume calculations
             api = self._get_hyperliquid_api()
