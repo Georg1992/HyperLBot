@@ -128,8 +128,8 @@ class SimpleBotDashboard:
                                 logger.warning(f"Could not get real-time price: {price_error}")
                                 # Fallback to log price
                             
-                            # Get RSI and volume from bot's cached data (updated every 15 seconds)
-                            # This is more efficient than fetching Yahoo data every 2 seconds
+                                                       # Get RSI and volume from bot's cached data (updated every 5 seconds)
+                           # This is more efficient than fetching Yahoo data every 2 seconds
                             if latest_prediction and latest_prediction.get("best_prediction"):
                                 best_pred = latest_prediction["best_prediction"]
                                 rsi_data = best_pred.get("rsi_context", 0)

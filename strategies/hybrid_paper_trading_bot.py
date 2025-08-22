@@ -90,11 +90,11 @@ class YahooHyperliquidPaperTradingBot:
         self.price_update_interval = 2  # Update price every 2 seconds for ultra-fast reaction
         self.market_analysis_interval = 10  # Market analysis every 10 seconds
         self.signal_check_interval = 5  # Check for signals every 5 seconds for faster reaction
-        self.candle_update_interval = 60   # Update 5m candles every 1 minute (60 seconds) for more frequent analysis
+        self.candle_update_interval = 5   # Update 5m candles every 5 seconds for ultra-frequent analysis
         self.hourly_analysis_interval = 3600  # Update 1h candles every hour
         
         # RSI update optimization - Update more frequently for better accuracy
-        self.rsi_update_interval = 15  # Update RSI every 15 seconds for better accuracy
+        self.rsi_update_interval = 5  # Update RSI every 5 seconds for ultra-frequent accuracy
         self.last_rsi_update = 0
         self.cached_rsi_data = None
         self.cached_rsi_timestamp = 0

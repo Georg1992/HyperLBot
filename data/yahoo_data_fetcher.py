@@ -27,7 +27,7 @@ class YahooDataFetcher:
     def __init__(self):
         self.symbol = "BTC-USD"
         self.cache = {}
-        self.cache_duration = 15  # 15 seconds cache for more frequent updates
+        self.cache_duration = 5  # 5 seconds cache for ultra-frequent updates
         
         logger.info("🔗 Yahoo Finance Data Fetcher initialized for BTC-USD (HISTORICAL DATA ONLY)")
         logger.info("📊 Real-time pricing should come from Hyperliquid API")
@@ -451,6 +451,73 @@ class YahooDataFetcher:
                 "volume_category": "ERROR",
                 "avg_volume": 0,
                 "volume_trend": "ERROR",
+                "error": str(e),
+                "data_source": "yahoo_finance"
+            }
+    
+    def get_market_summary(self, symbol: str = "BTC") -> Dict[str, Any]:
+        """Get market summary including day high/low, averages, and trends"""
+        try:
+            cache_key = f"summary_{symbol}"
+            cached_data = self._get_cached_data(cache_key)
+            if cached_data:
+                return cached_data
+            
+            # Get daily data for summary
+            daily_candles = self.get_klines(symbol, "1d", 30)
+            if not daily_candles:
+                return {
+                    "error": "No daily data available",
+                    "data_source": "yahoo_finance"
+                }
+            
+            # Get 5m data for intraday analysis
+            intraday_candles = self.get_klines(symbol, "5m", 30)
+            
+            # Calculate daily statistics
+            today_candle = daily_candles[-1] if daily_candles else None
+            yesterday_candle = daily_candles[-2] if len(daily_candles) > 1 else None
+            
+            # Calculate moving averages
+            closes = [c["close"] for c in daily_candles]
+            ma_20 = sum(closes[-20:]) / min(20, len(closes)) if closes else 0
+            ma_50 = sum(closes[-50:]) / min(50, len(closes)) if closes else 0
+            
+            # Calculate intraday range
+            if intraday_candles:
+                intraday_high = max(c["high"] for c in intraday_candles)
+                intraday_low = min(c["low"] for c in intraday_candles)
+                intraday_range = intraday_high - intraday_low
+                intraday_range_pct = (intraday_range / intraday_low) * 100 if intraday_low > 0 else 0
+            else:
+                intraday_high = intraday_low = intraday_range = intraday_range_pct = 0
+            
+            summary = {
+                "current_price": today_candle["close"] if today_candle else 0,
+                "day_open": today_candle["open"] if today_candle else 0,
+                "day_high": today_candle["high"] if today_candle else 0,
+                "day_low": today_candle["low"] if today_candle else 0,
+                "previous_close": yesterday_candle["close"] if yesterday_candle else 0,
+                "day_change": (today_candle["close"] - yesterday_candle["close"]) if today_candle and yesterday_candle else 0,
+                "day_change_pct": ((today_candle["close"] - yesterday_candle["close"]) / yesterday_candle["close"] * 100) if today_candle and yesterday_candle and yesterday_candle["close"] > 0 else 0,
+                "ma_20": ma_20,
+                "ma_50": ma_50,
+                "intraday_high": intraday_high,
+                "intraday_low": intraday_low,
+                "intraday_range": intraday_range,
+                "intraday_range_pct": intraday_range_pct,
+                "data_source": "yahoo_finance",
+                "update_frequency": "5_seconds"
+            }
+            
+            # Cache the summary
+            self._cache_data(cache_key, summary)
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Failed to get market summary: {e}")
+            return {
                 "error": str(e),
                 "data_source": "yahoo_finance"
             }
