@@ -295,6 +295,7 @@ class PredictionEngine:
             
             # Extract real-time Hyperliquid data for enhanced predictions
             hyperliquid_volume = binance_analysis.get("hyperliquid_volume", {})
+            hyperliquid_5m_volume = binance_analysis.get("hyperliquid_5m_volume", {})
             hyperliquid_rsi = binance_analysis.get("hyperliquid_rsi", {})
             
             # Get current market conditions from Hyperliquid (corrected RSI)
@@ -336,9 +337,9 @@ class PredictionEngine:
             
             # Create volume data structure for metadata
             volume_data = {
-                "current_volume": hyperliquid_volume.get("current_volume", 0),
-                "volume_category": hyperliquid_volume.get("volume_category", "UNKNOWN"),
-                "volume_trend": hyperliquid_volume.get("volume_trend", "UNKNOWN")
+                "current_volume": hyperliquid_5m_volume.get("current_volume", 0),
+                "volume_category": hyperliquid_5m_volume.get("volume_category", "UNKNOWN"),
+                "volume_trend": hyperliquid_5m_volume.get("volume_trend", "UNKNOWN")
             }
             
             # Build predictions based on market conditions

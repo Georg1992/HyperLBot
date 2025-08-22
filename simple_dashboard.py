@@ -76,15 +76,22 @@ class SimpleBotDashboard:
                     latest_market = None
                     latest_prediction = None
                     
-                    for entry in reversed(analysis_data):
-                        if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis"):
-                            if not latest_market:
-                                latest_market = entry
-                            # Prioritize entries with volume_data
-                            elif entry.get("volume_data") and not latest_market.get("volume_data"):
-                                latest_market = entry
-                        if entry.get("analysis_type") == "prediction_analysis" and entry.get("has_prediction") and not latest_prediction:
-                            latest_prediction = entry
+                                         for entry in reversed(analysis_data):
+                         if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis"):
+                             if not latest_market:
+                                 latest_market = entry
+                             # Prioritize entries with volume_data
+                             elif entry.get("volume_data") and not latest_market.get("volume_data"):
+                                 latest_market = entry
+                         if entry.get("analysis_type") == "prediction_analysis" and entry.get("has_prediction") and not latest_prediction:
+                             latest_prediction = entry
+                     
+                     # Also look for entries with volume_data specifically
+                     latest_volume_entry = None
+                     for entry in reversed(analysis_data):
+                         if entry.get("volume_data"):
+                             latest_volume_entry = entry
+                             break
                     
                     # Use market data entry for basic info, prediction entry for RSI/volume
                     base_entry = latest_market or latest_prediction
@@ -166,19 +173,30 @@ class SimpleBotDashboard:
                                 orderbook_imbalance = best_pred.get("orderbook_imbalance", 0)
                                 
                                 logger.info(f"📊 Using cached data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
-                            else:
-                                # Check if volume data is available in hybrid_analysis_update entries
-                                if latest_market and latest_market.get("volume_data"):
-                                    volume_info = latest_market.get("volume_data", {})
-                                    volume_data = volume_info.get("current_volume", 0)
-                                    volume_category = volume_info.get("volume_category", "UNKNOWN")
-                                    has_spike = volume_info.get("has_spike", False)
-                                    spike_severity = volume_info.get("spike_severity", "NORMAL")
-                                    is_immediate_spike = volume_info.get("is_immediate_spike", False)
-                                    spike_reason = volume_info.get("spike_reason", "")
-                                    volume_source = volume_info.get("volume_source", "hybrid_analysis")
-                                    
-                                    logger.info(f"📊 Using hybrid analysis data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
+                                                         else:
+                                 # Check if volume data is available in any entry
+                                 if latest_volume_entry and latest_volume_entry.get("volume_data"):
+                                     volume_info = latest_volume_entry.get("volume_data", {})
+                                     volume_data = volume_info.get("current_volume", 0)
+                                     volume_category = volume_info.get("volume_category", "UNKNOWN")
+                                     has_spike = volume_info.get("has_spike", False)
+                                     spike_severity = volume_info.get("spike_severity", "NORMAL")
+                                     is_immediate_spike = volume_info.get("is_immediate_spike", False)
+                                     spike_reason = volume_info.get("spike_reason", "")
+                                     volume_source = volume_info.get("volume_source", "hybrid_analysis")
+                                     
+                                     logger.info(f"📊 Using volume data from {latest_volume_entry.get('analysis_type', 'unknown')} - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
+                                 elif latest_market and latest_market.get("volume_data"):
+                                     volume_info = latest_market.get("volume_data", {})
+                                     volume_data = volume_info.get("current_volume", 0)
+                                     volume_category = volume_info.get("volume_category", "UNKNOWN")
+                                     has_spike = volume_info.get("has_spike", False)
+                                     spike_severity = volume_info.get("spike_severity", "NORMAL")
+                                     is_immediate_spike = volume_info.get("is_immediate_spike", False)
+                                     spike_reason = volume_info.get("spike_reason", "")
+                                     volume_source = volume_info.get("volume_source", "hybrid_analysis")
+                                     
+                                     logger.info(f"📊 Using hybrid analysis data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
                                 else:
                                     # Fallback to Yahoo data if no cached data available
                                     from data.yahoo_data_fetcher import YahooDataFetcher
