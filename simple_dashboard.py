@@ -149,16 +149,15 @@ class OptimizedTradingDashboard:
                     orderbook_imbalance = 0.0
                     
                     try:
-                        # Fetch candles for RSI calculation
-                        from data.yahoo_data_fetcher import YahooDataFetcher
-                        yahoo_fetcher = YahooDataFetcher()
-                        candles_5m = yahoo_fetcher.get_klines("BTC", "5m", 30)
+                        # Use HYPERLIQUID's own 5-minute candles for RSI (matches their scale exactly)
+                        hl_candles_5m = api.get_klines("BTC", "5m", 20)  # Last 20 x 5m candles from Hyperliquid
                         
-                        if candles_5m and len(candles_5m) >= 25:
-                            # Calculate REAL RSI
-                            rsi_result = api.calculate_rsi_from_yahoo_data(candles_5m, periods=20)
-                            real_rsi = rsi_result.get("rsi", 50.0)
-                            logger.info(f"📊 Calculated real RSI: {real_rsi:.1f}")
+                        if hl_candles_5m and len(hl_candles_5m) >= 15:
+                            # Calculate RSI using HYPERLIQUID's own price data (matches their RSI exactly)
+                            real_rsi = self._calculate_hyperliquid_rsi(hl_candles_5m, periods=14)  # 14-period standard
+                            logger.info(f"📊 Calculated Hyperliquid-based RSI: {real_rsi:.1f} (using their own 5m candles)")
+                        else:
+                            logger.warning(f"Insufficient Hyperliquid candles: {len(hl_candles_5m) if hl_candles_5m else 0}")
                         
                         # Get REAL volume data  
                         volume_result = api.get_current_5m_volume("BTC")
@@ -330,6 +329,58 @@ class OptimizedTradingDashboard:
             "balance_source": "session_data"
         }
     
+    def _calculate_hyperliquid_rsi(self, hl_candles: List[Dict[str, Any]], periods: int = 14) -> float:
+        """Calculate RSI using Hyperliquid's own candlestick data (matches their RSI exactly)"""
+        try:
+            if len(hl_candles) < periods + 1:
+                return 50.0
+                
+            # Extract close prices from Hyperliquid candles
+            closes = []
+            for candle in hl_candles[-periods-1:]:  # Get last period+1 candles
+                # Hyperliquid candle format: [time, open, high, low, close, volume]
+                if isinstance(candle, list) and len(candle) >= 5:
+                    closes.append(float(candle[4]))  # Close price is index 4
+                elif isinstance(candle, dict):
+                    closes.append(float(candle.get('close', candle.get('c', 0))))
+                    
+            if len(closes) < periods + 1:
+                logger.warning(f"Insufficient close prices: {len(closes)} < {periods + 1}")
+                return 50.0
+                
+            # Calculate RSI using standard formula
+            gains = []
+            losses = []
+            
+            for i in range(1, len(closes)):
+                change = closes[i] - closes[i-1]
+                if change > 0:
+                    gains.append(change)
+                    losses.append(0)
+                else:
+                    gains.append(0)
+                    losses.append(-change)
+            
+            if len(gains) < periods:
+                return 50.0
+                
+            # Calculate average gains and losses
+            avg_gain = sum(gains[-periods:]) / periods
+            avg_loss = sum(losses[-periods:]) / periods
+            
+            if avg_loss == 0:
+                return 100.0  # All gains, no losses
+                
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            
+            logger.debug(f"🎯 Hyperliquid RSI calculation: {len(closes)} closes, {periods} periods, RSI={rsi:.1f}")
+            return max(0.0, min(100.0, rsi))  # Clamp to 0-100
+            
+        except Exception as e:
+            logger.error(f"❌ Hyperliquid RSI calculation error: {e}")
+            return 50.0
+
     def clear_cache(self):
         """Clear all cached data"""
         self._cache.clear()

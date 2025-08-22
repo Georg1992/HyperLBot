@@ -2503,8 +2503,19 @@ class YahooHyperliquidPaperTradingBot:
                                 
                                 # Update real-time data manager with REAL calculated values
                                 if self.trading_data_manager:
-                                    # Get REAL RSI from cached data
-                                    real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
+                                    # Get REAL RSI using HYPERLIQUID's own 5m candles (matches their RSI exactly)
+                                    real_rsi = 50.0  # Default
+                                    try:
+                                        hl_candles_5m = self.hyperliquid_api.get_klines("BTC", "5m", 20)
+                                        if hl_candles_5m and len(hl_candles_5m) >= 15:
+                                            real_rsi = self._calculate_hyperliquid_rsi(hl_candles_5m, periods=14)
+                                            logger.info(f"🎯 Using Hyperliquid RSI: {real_rsi:.1f} (from their 5m candles)")
+                                        else:
+                                            # Fallback to cached Yahoo-based RSI
+                                            real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
+                                    except Exception as e:
+                                        logger.debug(f"Hyperliquid RSI calculation failed: {e}")
+                                        real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
                                     
                                     # Get REAL volume from enhanced analysis
                                     real_volume = enhanced_analysis.get("volume_data", {}).get("current_volume", 0.0)
