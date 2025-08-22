@@ -441,91 +441,29 @@
             </div>
         </div>
         
-        <!-- Enhanced Trade and Signal Display -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <div class="card">
-                <h3>💰 Recent Trades</h3>
-                <div id="recent-trades">
-                    <p>Loading trades...</p>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>🎯 Trading Signals</h3>
-                <div id="trading-signals">
-                    <p>Loading signals...</p>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>📝 Activity Logs</h3>
-                <div id="latest-logs">
-                    <p>Loading logs...</p>
-                </div>
+        <div class="card">
+            <h3>📝 Latest Activity</h3>
+            <div id="latest-logs">
+                <p>Loading...</p>
             </div>
         </div>
     </div>
 
     <script>
         function refreshData() {
-            // Show updating indicator
-            const indicator = document.getElementById('update-indicator');
-            if (indicator) {
-                indicator.innerHTML = '⏳ Updating...';
-                indicator.style.color = '#ff9800';
-            }
-            
-            console.log('🔄 Starting dashboard refresh...');
-            
-            Promise.all([
-                fetch('/api/status').then(r => {
-                    console.log('📊 Status API response:', r.status);
-                    return r.json();
-                }),
-                fetch('/api/trades').then(r => r.json()).catch(e => {
-                    console.log('💰 Trades API not available:', e);
-                    return [];
-                }),
-                fetch('/api/signals').then(r => r.json()).catch(e => {
-                    console.log('🎯 Signals API not available:', e);
-                    return [];
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    updateSessionStatus(data.session);
+                    updateMarketStatus(data.market);
+                    updateTradingSummary(data.summary);
+                    updateLatestLogs(data.logs);
+                    updatePredictionsPanel(data.predictions);
+                    updateOrderbook(data.orderbook);
                 })
-            ])
-            .then(([statusData, tradesData, signalsData]) => {
-                console.log('📋 Data received:', {statusData: !!statusData, trades: tradesData.length, signals: signalsData.length});
-                
-                if (statusData.error) {
-                    console.error('❌ API Error:', statusData.error);
-                    return;
-                }
-                
-                // Update all panels with error handling
-                try { updateSessionStatus(statusData.session); } catch(e) { console.error('Session update error:', e); }
-                try { updateMarketStatus(statusData.market); } catch(e) { console.error('Market update error:', e); }
-                try { updateTradingSummary(statusData.summary); } catch(e) { console.error('Summary update error:', e); }
-                try { updateLatestLogs(statusData.logs); } catch(e) { console.error('Logs update error:', e); }
-                try { updatePredictionsPanel(statusData.predictions); } catch(e) { console.error('Predictions update error:', e); }
-                try { updateOrderbook(statusData.orderbook); } catch(e) { console.error('Orderbook update error:', e); }
-                try { updateGlobalVolume(statusData.global_volume); } catch(e) { console.error('Global volume update error:', e); }
-                try { updateRecentTrades(tradesData); } catch(e) { console.error('Trades update error:', e); }
-                try { updateTradingSignals(signalsData); } catch(e) { console.error('Signals update error:', e); }
-                
-                // Show last update time
-                if (indicator) {
-                    const now = new Date().toLocaleTimeString();
-                    indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 2s)`;
-                    indicator.style.color = '#4CAF50';
-                }
-                
-                console.log('✅ Dashboard refresh completed');
-            })
-            .catch(error => {
-                console.error('❌ Dashboard refresh error:', error);
-                if (indicator) {
-                    indicator.innerHTML = '❌ Update failed';
-                    indicator.style.color = '#f44336';
-                }
-            });
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                });
         }
         
         function updateSessionStatus(session) {
@@ -645,10 +583,7 @@
                          </p>
                      </div>
                     
-                    <!-- Global Real-Time Volume Display -->
-                    <div id="global-volume-display" style="margin: 15px 0;">
-                        <p>🌍 Loading global volume...</p>
-                    </div>
+                    
                      
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
                  `;
@@ -784,98 +719,9 @@
             }
         }
         
-        // Make sure all required functions exist (basic fallbacks)
-        if (typeof updateGlobalVolume === 'undefined') {
-            window.updateGlobalVolume = function(data) { console.log('Global volume function not loaded yet'); };
-        }
-        if (typeof updateRecentTrades === 'undefined') {
-            window.updateRecentTrades = function(data) { console.log('Recent trades function not loaded yet'); };
-        }
-        if (typeof updateTradingSignals === 'undefined') {
-            window.updateTradingSignals = function(data) { console.log('Trading signals function not loaded yet'); };
-        }
-        
-        console.log('🚀 Dashboard JavaScript loaded - starting auto-refresh');
-        
-        // Initial load
-        refreshData();
-        
-        // Auto-refresh every 2 seconds
+        // Auto-refresh setup
         setInterval(refreshData, 2000);
-        
-        // New functions for enhanced dashboard
-        function updateGlobalVolume(globalVolume) {
-            const div = document.getElementById('global-volume-display');
-            if (globalVolume && globalVolume.global_volume_per_second) {
-                const volumePerSec = globalVolume.global_volume_per_second;
-                const coverageRatio = globalVolume.coverage_ratio * 100;
-                const usdPerSec = volumePerSec * 116000;
-                const status = globalVolume.status;
-                const statusIcon = status === 'live' ? '🔴' : status === 'estimated' ? '📊' : '🎮';
-                
-                div.innerHTML = `
-                    <div class="market-indicator" style="background: rgba(33, 150, 243, 0.1); border-left: 3px solid #2196F3;">
-                        <p><strong>🌍 Global BTC Volume:</strong> 
-                        <span style="font-weight: bold; color: #2196F3;">${volumePerSec.toFixed(1)} BTC/sec</span>
-                        <span style="color: #4CAF50;">(~$${(usdPerSec/1000000).toFixed(1)}M/sec)</span>
-                        ${statusIcon}
-                        </p>
-                        <p><strong>📊 Coverage:</strong> ${coverageRatio.toFixed(1)}% (${globalVolume.successful_exchanges}/${globalVolume.total_exchanges} exchanges)</p>
-                    </div>
-                `;
-            } else {
-                div.innerHTML = '<p style="color: #666;">🌍 Global volume unavailable</p>';
-            }
-        }
-        
-        function updateRecentTrades(trades) {
-            const div = document.getElementById('recent-trades');
-            if (trades && trades.length > 0) {
-                let html = '';
-                trades.slice(-6).reverse().forEach(trade => {
-                    const demoIcon = trade.demo_mode ? '🎮 ' : '';
-                    html += `
-                        <div style="background: rgba(40, 40, 40, 0.8); border-radius: 6px; padding: 12px; margin: 8px 0; border-left: 4px solid ${trade.status_class === 'profit' ? '#4CAF50' : '#f44336'}; font-family: monospace; font-size: 11px;">
-                            <div style="font-weight: bold; margin-bottom: 6px; color: #fff;">${demoIcon}${trade.trade_summary}</div>
-                            <div style="font-size: 12px; font-weight: bold; margin: 4px 0; color: ${trade.status_class === 'profit' ? '#4CAF50' : '#f44336'};">${trade.formatted_pnl}</div>
-                            <div style="font-size: 10px; color: #ccc; margin-top: 4px;">
-                                ${trade.trade_details} | ${trade.holding_duration}
-                                <br><small>${trade.formatted_time}</small>
-                            </div>
-                        </div>
-                    `;
-                });
-                div.innerHTML = html;
-            } else {
-                div.innerHTML = '<p>No recent trades</p>';
-            }
-        }
-        
-        function updateTradingSignals(signals) {
-            const div = document.getElementById('trading-signals');
-            if (signals && signals.length > 0) {
-                let html = '';
-                signals.slice(-6).reverse().forEach(signal => {
-                    const demoIcon = signal.demo_mode ? '🎮 ' : '';
-                    const borderColor = signal.confidence_class === 'very-high' ? '#ff5722' : 
-                                      signal.confidence_class === 'high' ? '#4CAF50' : 
-                                      signal.confidence_class === 'medium' ? '#ff9800' : '#9e9e9e';
-                    html += `
-                        <div style="background: rgba(40, 40, 40, 0.8); border-radius: 6px; padding: 10px; margin: 6px 0; border-left: 4px solid ${borderColor}; font-family: monospace; font-size: 11px;">
-                            <div style="font-weight: bold; margin-bottom: 6px; color: #fff;">${demoIcon}${signal.signal_status}</div>
-                            <div style="font-size: 12px; margin: 4px 0; color: #fff;">${signal.signal_summary}</div>
-                            <div style="font-size: 10px; color: #ccc; margin-top: 4px;">
-                                ${signal.signal_details}
-                                <br><small>${signal.formatted_time}</small>
-                            </div>
-                        </div>
-                    `;
-                });
-                div.innerHTML = html;
-            } else {
-                div.innerHTML = '<p>No recent signals</p>';
-            }
-        }
+        refreshData(); // Initial load
         
         
     </script>
