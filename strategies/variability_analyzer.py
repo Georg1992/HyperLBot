@@ -32,11 +32,11 @@ class VariabilityAnalyzer:
             "extreme_volatility": 0.015  # 1.5% - extreme volatility
         }
         
-        # Trading condition scores
+        # Trading condition scores (adjusted for crypto markets)
         self.condition_scores = {
-            "optimal_trading": 0.8,      # 80% score for optimal conditions
-            "good_trading": 0.6,         # 60% score for good conditions
-            "poor_trading": 0.3          # 30% score for poor conditions
+            "optimal_trading": 0.7,      # 70% score for optimal conditions (lowered)
+            "good_trading": 0.5,         # 50% score for good conditions (lowered)
+            "poor_trading": 0.2          # 20% score for poor conditions (lowered)
         }
         
     def add_price_data(self, price: float, volume: float = None, timestamp: float = None):

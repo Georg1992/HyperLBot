@@ -10,6 +10,10 @@ from typing import Dict, Any, List, Optional
 from loguru import logger
 import threading
 from collections import deque
+import urllib3
+
+# Disable SSL warnings for exchanges with certificate issues
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class DynamicStopManager:
     """Manages dynamic stop losses with Bitcoin volatility awareness"""
