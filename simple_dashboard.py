@@ -76,7 +76,7 @@ class SimpleBotDashboard:
                     latest_market = None
                     latest_prediction = None
                     
-                                         for entry in reversed(analysis_data):
+                     for entry in reversed(analysis_data):
                          if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis"):
                              if not latest_market:
                                  latest_market = entry
