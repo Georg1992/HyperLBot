@@ -128,36 +128,41 @@ class SimpleBotDashboard:
                                 logger.warning(f"Could not get real-time price: {price_error}")
                                 # Fallback to log price
                             
-                            # Get proper RSI from Yahoo data (updated every 2 seconds)
-                            from data.yahoo_data_fetcher import YahooDataFetcher
-                            fetcher = YahooDataFetcher()
-                            logger.debug("📊 Fetching fresh Yahoo candlestick data for RSI and volume...")
-                            candles = fetcher.get_klines("BTC", "5m", 30)  # Get 30 for reliable 20-period RSI
-                            
-                            if candles and len(candles) >= 25:  # Need more candles for 20-period RSI
-                                # Calculate proper RSI (20-period for better crypto accuracy)
-                                rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
-                                rsi_data = rsi_result.get("rsi")
+                            # Get RSI and volume from bot's cached data (updated every 15 seconds)
+                            # This is more efficient than fetching Yahoo data every 2 seconds
+                            if latest_prediction and latest_prediction.get("best_prediction"):
+                                best_pred = latest_prediction["best_prediction"]
+                                rsi_data = best_pred.get("rsi_context", 0)
+                                volume_data = best_pred.get("volume_data", {}).get("current_volume", 0)
+                                orderbook_imbalance = best_pred.get("orderbook_imbalance", 0)
                                 
-                                # Use simplified Yahoo Finance volume
-                                volume_result = api.get_current_5m_volume("BTC")
-                                volume_data = volume_result.get("current_volume", 0)  # Already scaled to Hyperliquid ranges
-                                
-                                # Get orderbook imbalance for order flow
-                                indicators = api.get_current_market_indicators("BTC")
-                                if indicators and "liquidity_metrics" in indicators:
-                                    liquidity = indicators["liquidity_metrics"]
-                                    orderbook_imbalance = liquidity.get("depth_imbalance")
-                                    
-                                logger.info(f"📊 Volume: {volume_data:.1f} ({volume_result.get('volume_category', 'UNKNOWN')}), RSI: {rsi_data:.1f} (20-period)")
-                                
-                                # Add RSI validation against Hyperliquid reference
-                                rsi_difference = abs(rsi_data - 50.40) if rsi_data else 0  # Assuming 50.40 as reference
-                                if rsi_difference > 10:
-                                    logger.warning(f"⚠️ RSI drift detected: Our={rsi_data:.1f}, Expected=~50.40, Diff={rsi_difference:.1f}")
-                                    
+                                logger.info(f"📊 Using cached data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}")
                             else:
-                                logger.warning("Insufficient candle data for RSI calculation")
+                                # Fallback to Yahoo data if no cached data available
+                                from data.yahoo_data_fetcher import YahooDataFetcher
+                                fetcher = YahooDataFetcher()
+                                logger.debug("📊 Fetching Yahoo data as fallback...")
+                                candles = fetcher.get_klines("BTC", "5m", 30)
+                                
+                                if candles and len(candles) >= 25:
+                                    rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
+                                    rsi_data = rsi_result.get("rsi", 0)
+                                    
+                                    volume_result = api.get_current_5m_volume("BTC")
+                                    volume_data = volume_result.get("current_volume", 0)
+                                    
+                                    indicators = api.get_current_market_indicators("BTC")
+                                    orderbook_imbalance = 0
+                                    if indicators and "liquidity_metrics" in indicators:
+                                        liquidity = indicators["liquidity_metrics"]
+                                        orderbook_imbalance = liquidity.get("depth_imbalance", 0)
+                                    
+                                    logger.info(f"📊 Fallback data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}")
+                                else:
+                                    rsi_data = 0
+                                    volume_data = 0
+                                    orderbook_imbalance = 0
+                                    logger.warning("Insufficient candle data for fallback calculation")
                                     
                         except Exception as e:
                             logger.warning(f"Could not get live market data: {e}")

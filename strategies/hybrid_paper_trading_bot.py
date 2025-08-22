@@ -90,8 +90,14 @@ class YahooHyperliquidPaperTradingBot:
         self.price_update_interval = 2  # Update price every 2 seconds for ultra-fast reaction
         self.market_analysis_interval = 10  # Market analysis every 10 seconds
         self.signal_check_interval = 5  # Check for signals every 5 seconds for faster reaction
-        self.candle_update_interval = 300   # Update 5m candles every 5 minutes (300 seconds) for rolling analysis
+        self.candle_update_interval = 60   # Update 5m candles every 1 minute (60 seconds) for more frequent analysis
         self.hourly_analysis_interval = 3600  # Update 1h candles every hour
+        
+        # RSI update optimization - Update more frequently for better accuracy
+        self.rsi_update_interval = 15  # Update RSI every 15 seconds for better accuracy
+        self.last_rsi_update = 0
+        self.cached_rsi_data = None
+        self.cached_rsi_timestamp = 0
         
         # Enhanced candle management - COMPLETE multi-timeframe configuration
         self.candles_1m_buffer = []   # Rolling buffer of 120 most recent 1m candles (2h)
@@ -309,6 +315,49 @@ class YahooHyperliquidPaperTradingBot:
         except Exception as e:
             logger.error(f"❌ Failed to get weekly trend analysis: {e}")
             return {"error": str(e)}
+    
+    def get_optimized_rsi_data(self, hyperliquid_price: float) -> Dict[str, Any]:
+        """Get optimized RSI data with smart caching and frequent updates"""
+        current_time = time.time()
+        
+        # Check if we need to update RSI (every 30 seconds)
+        if (current_time - self.last_rsi_update >= self.rsi_update_interval or 
+            self.cached_rsi_data is None):
+            
+            try:
+                logger.debug("🔄 Updating RSI data (30-second interval)")
+                
+                # Get fresh Yahoo data for RSI calculation
+                candles_5m = self.yahoo_fetcher.get_klines("BTC", "5m", 30)
+                
+                if candles_5m and len(candles_5m) >= 25:
+                    # Calculate RSI using our optimized method
+                    rsi_result = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=20)
+                    
+                    # Cache the result with timestamp
+                    self.cached_rsi_data = rsi_result
+                    self.cached_rsi_timestamp = current_time
+                    self.last_rsi_update = current_time
+                    
+                    logger.debug(f"📊 RSI updated: {rsi_result.get('rsi', 50):.1f} (20-period)")
+                    
+                else:
+                    logger.warning("⚠️ Insufficient candle data for RSI calculation")
+                    # Use cached data if available, otherwise return default
+                    if self.cached_rsi_data:
+                        logger.info(f"📊 Using cached RSI: {self.cached_rsi_data.get('rsi', 50):.1f}")
+                    else:
+                        self.cached_rsi_data = {"rsi": 50.0, "calculation_method": "default"}
+                        
+            except Exception as e:
+                logger.error(f"❌ Error updating RSI data: {e}")
+                # Use cached data if available, otherwise return default
+                if self.cached_rsi_data:
+                    logger.info(f"📊 Using cached RSI due to error: {self.cached_rsi_data.get('rsi', 50):.1f}")
+                else:
+                    self.cached_rsi_data = {"rsi": 50.0, "calculation_method": "error_fallback"}
+        
+        return self.cached_rsi_data or {"rsi": 50.0, "calculation_method": "fallback"}
     
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get comprehensive market analysis from Yahoo Finance (HISTORICAL DATA ONLY)"""

@@ -27,7 +27,7 @@ class YahooDataFetcher:
     def __init__(self):
         self.symbol = "BTC-USD"
         self.cache = {}
-        self.cache_duration = 30  # 30 seconds cache
+        self.cache_duration = 15  # 15 seconds cache for more frequent updates
         
         logger.info("🔗 Yahoo Finance Data Fetcher initialized for BTC-USD (HISTORICAL DATA ONLY)")
         logger.info("📊 Real-time pricing should come from Hyperliquid API")
