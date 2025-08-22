@@ -85,39 +85,39 @@ class SmartDataCache:
                 # Fetch initial datasets for all timeframes
                 logger.info("   📊 Fetching 1-minute candles (120 candles, 2 hours)...")
                 candles_1m = self.yahoo_fetcher.get_1m_klines(symbol, 120)
-                if candles_1m and len(candles_1m) >= 100:
-                    self.candle_buffers["1m"].extend(candles_1m)
-                    self.last_candle_time["1m"] = candles_1m[-1]["timestamp"]
-                    logger.success(f"      ✅ 1m candles: {len(candles_1m)} loaded")
-                else:
-                    logger.warning("      ⚠️ Insufficient 1m candle data")
-                
-                logger.info("   📈 Fetching 5-minute candles (144 candles, 12 hours)...")
-                candles_5m = self.yahoo_fetcher.get_klines(symbol, "5m", 144)
-                if candles_5m and len(candles_5m) >= 100:
-                    self.candle_buffers["5m"].extend(candles_5m)
-                    self.last_candle_time["5m"] = candles_5m[-1]["timestamp"]
-                    logger.success(f"      ✅ 5m candles: {len(candles_5m)} loaded")
-                else:
-                    logger.warning("      ⚠️ Insufficient 5m candle data")
-                
-                logger.info("   📊 Fetching 1-hour candles (168 candles, 7 days)...")
-                candles_1h = self.yahoo_fetcher.get_klines(symbol, "1h", 168)
-                if candles_1h and len(candles_1h) >= 100:
-                    self.candle_buffers["1h"].extend(candles_1h)
-                    self.last_candle_time["1h"] = candles_1h[-1]["timestamp"]
-                    logger.success(f"      ✅ 1h candles: {len(candles_1h)} loaded")
-                else:
-                    logger.warning("      ⚠️ Insufficient 1h candle data")
-                
-                logger.info("   📅 Fetching daily candles (60 candles, 2 months)...")
-                candles_1d = self.yahoo_fetcher.get_klines(symbol, "1d", 60)
-                if candles_1d and len(candles_1d) >= 50:
-                    self.candle_buffers["1d"].extend(candles_1d)
-                    self.last_candle_time["1d"] = candles_1d[-1]["timestamp"]
-                    logger.success(f"      ✅ 1d candles: {len(candles_1d)} loaded")
-                else:
-                    logger.warning("      ⚠️ Insufficient 1d candle data")
+                                 if candles_1m and len(candles_1m) >= 100:
+                     self.candle_buffers["1m"].extend(candles_1m)
+                     self.last_candle_time["1m"] = candles_1m[-1]["open_time"]
+                     logger.success(f"      ✅ 1m candles: {len(candles_1m)} loaded")
+                 else:
+                     logger.warning("      ⚠️ Insufficient 1m candle data")
+                 
+                 logger.info("   📈 Fetching 5-minute candles (144 candles, 12 hours)...")
+                 candles_5m = self.yahoo_fetcher.get_klines(symbol, "5m", 144)
+                 if candles_5m and len(candles_5m) >= 100:
+                     self.candle_buffers["5m"].extend(candles_5m)
+                     self.last_candle_time["5m"] = candles_5m[-1]["open_time"]
+                     logger.success(f"      ✅ 5m candles: {len(candles_5m)} loaded")
+                 else:
+                     logger.warning("      ⚠️ Insufficient 5m candle data")
+                 
+                 logger.info("   📊 Fetching 1-hour candles (168 candles, 7 days)...")
+                 candles_1h = self.yahoo_fetcher.get_klines(symbol, "1h", 168)
+                 if candles_1h and len(candles_1h) >= 100:
+                     self.candle_buffers["1h"].extend(candles_1h)
+                     self.last_candle_time["1h"] = candles_1h[-1]["open_time"]
+                     logger.success(f"      ✅ 1h candles: {len(candles_1h)} loaded")
+                 else:
+                     logger.warning("      ⚠️ Insufficient 1h candle data")
+                 
+                 logger.info("   📅 Fetching daily candles (60 candles, 2 months)...")
+                 candles_1d = self.yahoo_fetcher.get_klines(symbol, "1d", 60)
+                 if candles_1d and len(candles_1d) >= 50:
+                     self.candle_buffers["1d"].extend(candles_1d)
+                     self.last_candle_time["1d"] = candles_1d[-1]["open_time"]
+                     logger.success(f"      ✅ 1d candles: {len(candles_1d)} loaded")
+                 else:
+                     logger.warning("      ⚠️ Insufficient 1d candle data")
                 
                 # Run initial analysis
                 self._update_analysis_cache()
@@ -178,19 +178,19 @@ class SmartDataCache:
                             new_candles = self.yahoo_fetcher.get_klines(symbol, timeframe, 3)  # Last 3 candles
                         
                         if new_candles:
-                            # Filter out candles we already have
-                            truly_new_candles = [
-                                candle for candle in new_candles 
-                                if candle["timestamp"] > last_time
-                            ]
-                            
-                            if truly_new_candles:
-                                # Add only new candles to buffer
-                                for candle in truly_new_candles:
-                                    self.candle_buffers[timeframe].append(candle)
-                                
-                                # Update last timestamp
-                                self.last_candle_time[timeframe] = truly_new_candles[-1]["timestamp"]
+                                                         # Filter out candles we already have
+                             truly_new_candles = [
+                                 candle for candle in new_candles 
+                                 if candle["open_time"] > last_time
+                             ]
+                             
+                             if truly_new_candles:
+                                 # Add only new candles to buffer
+                                 for candle in truly_new_candles:
+                                     self.candle_buffers[timeframe].append(candle)
+                                 
+                                 # Update last timestamp
+                                 self.last_candle_time[timeframe] = truly_new_candles[-1]["open_time"]
                                 
                                 updates_made[timeframe] = len(truly_new_candles)
                                 self.performance_stats["api_calls_made"] += 1
