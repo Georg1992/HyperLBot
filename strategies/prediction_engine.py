@@ -47,11 +47,25 @@ class PredictionEngine:
         
         logger.info("🎯 Enhanced Prediction Engine initialized with conservative confidence system")
     
-    def _add_prediction_metadata(self, prediction: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Add standard metadata to all predictions"""
+    def _add_prediction_metadata(self, prediction: Dict[str, Any], current_price: float, support_5m: float = 0, resistance_5m: float = 0, candles_5m: List = None, market_condition: str = "UNKNOWN", trend_1h: Dict = None, trend_5m: Dict = None, volatility_5m: float = 0, current_rsi: float = 50.0, total_depth: float = 0, depth_imbalance: float = 0, trend_1d: Dict = None, volume_data: Dict = None) -> Dict[str, Any]:
+        """Add standard metadata to all predictions including RSI context"""
         prediction["current_price"] = current_price
         prediction["prediction_timestamp"] = time.time()
         prediction["prediction_datetime"] = time.strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Add RSI context for dashboard display
+        prediction["rsi_context"] = current_rsi
+        
+        # Add other context data if available
+        if support_5m > 0:
+            prediction["support"] = support_5m
+        if resistance_5m > 0:
+            prediction["resistance"] = resistance_5m
+        if total_depth > 0:
+            prediction["orderbook_depth"] = total_depth
+        if depth_imbalance != 0:
+            prediction["orderbook_imbalance"] = depth_imbalance
+            
         return prediction
     
     def build_price_prediction(self, binance_analysis: Dict[str, Any], current_price: float, strategy_name: str = "standard") -> Dict[str, Any]:
@@ -237,7 +251,7 @@ class PredictionEngine:
                 for i, signal in enumerate(reactive_signals):
                     signal = self._validate_entry_price(signal, current_price, support_5m, resistance_5m, candles_5m)
                     # Add prediction metadata to all signals
-                    reactive_signals[i] = self._add_prediction_metadata(signal, current_price)
+                    reactive_signals[i] = self._add_prediction_metadata(signal, current_price, support_5m, resistance_5m, candles_5m, "HIGH_VOLATILITY", trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, None, None)
                 
                 best_signal = max(reactive_signals, key=lambda x: x["confidence"])
                 
@@ -490,8 +504,8 @@ class PredictionEngine:
                 # Validate and fix entry prices to ensure they're logical
                 for i, prediction in enumerate(predictions):
                     prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m, candles_5m)
-                    # Add prediction metadata (RSI and volume data only for internal use, not display)
-                    predictions[i] = self._add_prediction_metadata(prediction, current_price)
+                    # Add prediction metadata with RSI context
+                    predictions[i] = self._add_prediction_metadata(prediction, current_price, support_5m, resistance_5m, candles_5m, market_condition, trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d, volume_data)
                 
                 best_prediction = max(predictions, key=lambda x: x["confidence"])
                 
@@ -502,7 +516,7 @@ class PredictionEngine:
                 
                 # Ensure best prediction has metadata (safety check)
                 if "current_price" not in best_prediction:
-                    best_prediction = self._add_prediction_metadata(best_prediction, current_price)
+                    best_prediction = self._add_prediction_metadata(best_prediction, current_price, support_5m, resistance_5m, candles_5m, market_condition, trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d, volume_data)
                 
                 return {
                     "has_prediction": True,
@@ -517,13 +531,13 @@ class PredictionEngine:
                 }
             else:
                 # Generate basic predictions even with small ranges
-                basic_predictions = self._generate_basic_predictions(current_price, support_5m, resistance_5m, trend_5m, trend_1h, volatility_5m)
+                basic_predictions = self._generate_basic_predictions(current_price, support_5m, resistance_5m, trend_5m, trend_1h, volatility_5m, current_rsi, total_depth, depth_imbalance)
                 if basic_predictions:
                     # Validate and fix entry prices to ensure they're logical
                     for i, prediction in enumerate(basic_predictions):
                         prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m, candles_5m)
-                        # Add prediction metadata
-                        basic_predictions[i] = self._add_prediction_metadata(prediction, current_price)
+                        # Add prediction metadata with RSI context
+                        basic_predictions[i] = self._add_prediction_metadata(prediction, current_price, support_5m, resistance_5m, candles_5m, market_condition, trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d, volume_data)
                     
                     # Select the prediction with highest confidence
                     best_basic = max(basic_predictions, key=lambda x: x["confidence"])
@@ -535,7 +549,7 @@ class PredictionEngine:
                     
                     # Ensure best prediction has metadata (safety check)
                     if "current_price" not in best_basic:
-                        best_basic = self._add_prediction_metadata(best_basic, current_price)
+                        best_basic = self._add_prediction_metadata(best_basic, current_price, support_5m, resistance_5m, candles_5m, market_condition, trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d, volume_data)
                     
                     return {
                         "has_prediction": True,
@@ -555,7 +569,7 @@ class PredictionEngine:
             logger.error(f"Error building predictive prediction: {e}")
             return {"has_prediction": False, "reason": f"Predictive prediction error: {str(e)}"}
     
-    def _generate_basic_predictions(self, current_price: float, support: float, resistance: float, trend_5m: Dict, trend_1h: Dict, volatility: float) -> List[Dict]:
+    def _generate_basic_predictions(self, current_price: float, support: float, resistance: float, trend_5m: Dict, trend_1h: Dict, volatility: float, current_rsi: float = 50.0, total_depth: float = 0, depth_imbalance: float = 0) -> List[Dict]:
         """Generate basic predictions even with small ranges - focus on current price action"""
         try:
             predictions = []
@@ -727,7 +741,7 @@ class PredictionEngine:
              
             # Add metadata to all predictions before returning
             for i, prediction in enumerate(predictions):
-                predictions[i] = self._add_prediction_metadata(prediction, current_price)
+                predictions[i] = self._add_prediction_metadata(prediction, current_price, support, resistance, None, "BASIC", trend_1h, trend_5m, volatility, current_rsi, total_depth, depth_imbalance, None, None)
              
             return predictions
              

@@ -431,7 +431,8 @@ class YahooHyperliquidPaperTradingBot:
             "range_size": prediction_analysis.get("range_size", 0),
             "support": prediction_analysis.get("support", 0),
             "resistance": prediction_analysis.get("resistance", 0),
-            "volume_data": volume_data
+            "volume_data": volume_data,
+            "rsi_data": proper_rsi.get("rsi", 50.0)  # Add RSI data for dashboard
         })
         
         if not prediction_analysis["has_prediction"]:

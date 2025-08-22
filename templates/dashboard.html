@@ -321,7 +321,7 @@
             <h1>🤖 Yahoo + Hyperliquid Trading Bot Dashboard</h1>
             <p>Real-time trading bot monitoring (Hyperliquid Price + Yahoo Analysis)</p>
                          <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
-             <div id="update-indicator" style="margin-top: 10px; font-size: 12px; color: #4CAF50;">🔄 Auto-updating every 500ms</div>
+             <div id="update-indicator" style="margin-top: 10px; font-size: 12px; color: #4CAF50;">🔄 Auto-updating every 2 seconds (Yahoo candlestick data)</div>
         </div>
         
         <div class="grid">
@@ -349,12 +349,12 @@
         
         <!-- Main Content Area with Predictions and Trading Summary Side by Side -->
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <div class="card">
-                <h3>🎯 Live Trading Predictions</h3>
-                <div id="predictions-panel">
-                    <p>Loading predictions...</p>
-                </div>
-            </div>
+                         <div class="card">
+                 <h3>🎯 Best Trading Prediction (Highest Confidence)</h3>
+                 <div id="predictions-panel">
+                     <p>Loading best prediction...</p>
+                 </div>
+             </div>
             
             <div class="card">
                 <h3>📈 Trading Summary</h3>
@@ -398,7 +398,7 @@
                     // Show last update time
                     if (indicator) {
                         const now = new Date().toLocaleTimeString();
-                                                 indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 500ms)`;
+                                                 indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 2s)`;
                         indicator.style.color = '#4CAF50';
                     }
                 })
@@ -454,14 +454,14 @@
                          </p>
                      </div>
                      
-                                           <!-- Volume - Simple Yahoo Finance Display -->
-                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                          <p><strong>📈 5m Volume:</strong> <span class="volume-value">${volumeValue}</span></p>
-                          <p><strong>📊 Order Flow:</strong> 
-                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
-                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
-                          </p>
-                      </div>
+                     <!-- Volume - Fixed Display (5m Volume) -->
+                     <div class="market-indicator volume-indicator" style="margin: 15px 0;">
+                         <p><strong>📈 5m Volume:</strong> <span class="volume-value">${volumeValue}</span></p>
+                         <p><strong>📊 Order Flow:</strong> 
+                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
+                         ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
+                         </p>
+                     </div>
                      
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
                  `;
@@ -503,41 +503,43 @@
             }
         }
         
-        function updatePredictionsPanel(predictions) {
-            const div = document.getElementById('predictions-panel');
-            if (predictions && predictions.length > 0) {
-                let html = '<div class="predictions-container">';
-                
-                predictions.forEach((pred, index) => {
+                 function updatePredictionsPanel(predictions) {
+             const div = document.getElementById('predictions-panel');
+             if (predictions && predictions.length > 0) {
+                 let html = '<div class="predictions-container">';
+                 
+                 // Show only the best prediction (should be only one now)
+                 const pred = predictions[0];
+                 if (pred) {
                     const sideClass = pred.side === 'BUY' ? 'prediction-buy' : 'prediction-sell';
                     const confidenceClass = pred.confidence > 0.7 ? 'high-confidence' : 
                                           pred.confidence > 0.5 ? 'medium-confidence' : 'low-confidence';
                     
-                    html += `
-                        <div class="prediction-card ${sideClass} ${confidenceClass}">
-                            <div class="prediction-header">
-                                <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
-                                <span class="prediction-side">${pred.side}</span>
-                            </div>
-                            <div class="prediction-details">
-                                <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
-                                <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
-                                <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
-                                <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
-                                <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
-                                ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
-                                ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
-                                ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
-                            </div>
-                        </div>
-                    `;
-                });
-                
-                html += '</div>';
-                div.innerHTML = html;
-            } else {
-                div.innerHTML = '<p>No active predictions</p>';
-            }
+                                         html += `
+                         <div class="prediction-card ${sideClass} ${confidenceClass}">
+                             <div class="prediction-header">
+                                 <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
+                                 <span class="prediction-side">${pred.side}</span>
+                             </div>
+                             <div class="prediction-details">
+                                 <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
+                                 <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
+                                 <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
+                                 <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
+                                 <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
+                                 ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
+                                 ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
+                                 ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
+                             </div>
+                         </div>
+                     `;
+                 }
+                 
+                 html += '</div>';
+                 div.innerHTML = html;
+             } else {
+                 div.innerHTML = '<p>No active predictions</p>';
+             }
         }
         
         function updateOrderbook(orderbook) {
@@ -595,8 +597,8 @@
             }
         }
         
-                 // Auto-refresh every 500ms for faster real-time updates
-         setInterval(refreshData, 500);
+        // Auto-refresh every 2 seconds for frequent Yahoo candlestick updates
+        setInterval(refreshData, 2000);
         
         // Initial load
         refreshData();
