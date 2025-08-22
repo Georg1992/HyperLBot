@@ -232,6 +232,28 @@ class SimpleBotDashboard:
                                 volume_source = volume_info.get("volume_source", "log_fallback")
                                 
                                 orderbook_imbalance = best_pred.get("orderbook_imbalance")
+                            elif latest_market and latest_market.get("volume_data"):
+                                # Fallback to volume data from hybrid_analysis_update entries
+                                volume_info = latest_market.get("volume_data", {})
+                                volume_data = volume_info.get("current_volume", 0)
+                                volume_category = volume_info.get("volume_category", "UNKNOWN")
+                                has_spike = volume_info.get("has_spike", False)
+                                spike_severity = volume_info.get("spike_severity", "NORMAL")
+                                is_immediate_spike = volume_info.get("is_immediate_spike", False)
+                                spike_reason = volume_info.get("spike_reason", "")
+                                volume_source = volume_info.get("volume_source", "hybrid_analysis_fallback")
+                                
+                                logger.info(f"📊 Using hybrid analysis fallback - Volume: {volume_data:.1f}, Source: {volume_source}")
+                            else:
+                                # Final fallback - no volume data available
+                                volume_data = 0
+                                volume_category = "UNKNOWN"
+                                has_spike = False
+                                spike_severity = "NORMAL"
+                                is_immediate_spike = False
+                                spike_reason = ""
+                                volume_source = "no_data"
+                                logger.warning("No volume data available in any log entries")
                         
                         # Update last_update to reflect real-time data
                         last_update = datetime.now().isoformat()
