@@ -186,13 +186,13 @@ class OptimizedTradingDashboard:
     
     def get_orderbook_data(self) -> Dict[str, Any]:
         """Get orderbook with caching"""
-        def _fetch_orderbook():
-            api = self._get_hyperliquid_api()
-            if api:
-                orderbook = api.get_orderbook("BTC", 15)
-                if orderbook and not orderbook.get("error"):
-                    return orderbook
-            return {"error": "Orderbook unavailable"}
+                 def _fetch_orderbook():
+             api = self._get_hyperliquid_api()
+             if api:
+                 orderbook = api.get_orderbook("BTC")  # Only takes symbol parameter
+                 if orderbook and not orderbook.get("error"):
+                     return orderbook
+             return {"error": "Orderbook unavailable"}
         
         return self._get_cached_or_fetch("orderbook", _fetch_orderbook) or {"error": "API unavailable"}
     
