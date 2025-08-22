@@ -1020,11 +1020,11 @@ class SimpleBotDashboard:
     
     def _get_estimated_global_volume(self):
         """Estimate global volume from available sources as fallback"""
-                 try:
-             import requests
-             
-             # Quick estimate using Binance (largest exchange)
-             response = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", timeout=3, verify=False)
+        try:
+            import requests
+            
+            # Quick estimate using Binance (largest exchange)
+            response = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", timeout=3, verify=False)
             if response.status_code == 200:
                 data = response.json()
                 binance_24h_volume = float(data.get("volume", 0))
