@@ -207,13 +207,17 @@ class SimpleBotDashboard:
                             if latest_prediction and latest_prediction.get("best_prediction"):
                                 best_pred = latest_prediction["best_prediction"]
                                 rsi_data = best_pred.get("rsi_context")
-                                volume_data = best_pred.get("orderbook_depth")
-                                volume_category = "UNKNOWN"
-                                has_spike = False
-                                spike_severity = "NORMAL"
-                                is_immediate_spike = False
-                                spike_reason = ""
-                                volume_source = "log_fallback"
+                                
+                                # Get volume data from prediction's volume_data field
+                                volume_info = best_pred.get("volume_data", {})
+                                volume_data = volume_info.get("current_volume", 0)
+                                volume_category = volume_info.get("volume_category", "UNKNOWN")
+                                has_spike = volume_info.get("has_spike", False)
+                                spike_severity = volume_info.get("spike_severity", "NORMAL")
+                                is_immediate_spike = volume_info.get("is_immediate_spike", False)
+                                spike_reason = volume_info.get("spike_reason", "")
+                                volume_source = volume_info.get("volume_source", "log_fallback")
+                                
                                 orderbook_imbalance = best_pred.get("orderbook_imbalance")
                         
                         # Update last_update to reflect real-time data
