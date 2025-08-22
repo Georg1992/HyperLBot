@@ -2116,13 +2116,13 @@ class YahooHyperliquidPaperTradingBot:
             # Net P&L for partial close
             net_pnl = pnl_amount - exit_fees["total_cost"]
             
-                    # Update balance
-        self.paper_balance += net_pnl
-        
-        # Update current balance in session metadata for dashboard
-        self.trading_logger.update_current_balance(self.paper_balance)
-        
-        # Update position size
+            # Update balance
+            self.paper_balance += net_pnl
+            
+            # Update current balance in session metadata for dashboard
+            self.trading_logger.update_current_balance(self.paper_balance)
+            
+            # Update position size
             position["size"] -= close_size
             
             # Record partial close
