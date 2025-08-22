@@ -569,14 +569,19 @@
                           </p>
                           <p><strong>📊 5m Cumulative:</strong> <span class="cumulative-volume">${cumulativeVolume}</span> BTC</p>
                           <p><strong>🔄 Trend:</strong> <span class="volume-trend">${volumeTrend}</span></p>
-                          <p><strong>🌐 Sources:</strong> <span class="volume-sources">${volumeSources}</span></p>
-                          ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
-                         <p><strong>📊 Order Flow:</strong> 
-                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
-                         ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
-                         </p>
-                         <p class="volume-source"><small>Source: ${volumeSource}</small></p>
-                     </div>
+                                               <p><strong>🌐 Sources:</strong> <span class="volume-sources">${volumeSources}</span></p>
+                         ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
+                        <p><strong>📊 Order Flow:</strong> 
+                        <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
+                        ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
+                        </p>
+                        <p class="volume-source"><small>Source: ${volumeSource}</small></p>
+                    </div>
+                    
+                    <!-- Global Real-Time Volume Display -->
+                    <div id="global-volume-display" style="margin: 15px 0;">
+                        <p>🌍 Loading global volume...</p>
+                    </div>
                      
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
                  `;

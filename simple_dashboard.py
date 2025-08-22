@@ -11,6 +11,7 @@ from datetime import datetime
 from flask import Flask, render_template, jsonify
 from loguru import logger
 from typing import Dict, Any
+import requests
 
 app = Flask(__name__)
 
@@ -984,6 +985,101 @@ class SimpleBotDashboard:
             }
         ]
 
+    def get_global_volume_data(self):
+        """Get real-time global BTC volume data"""
+        try:
+            # Try to get global volume from running bot instance
+            try:
+                from strategies.dynamic_stop_manager import GlobalVolumeAggregator
+                global_aggregator = GlobalVolumeAggregator()
+                volume_data = global_aggregator.get_realtime_global_volume()
+                
+                if volume_data.get("status") == "success":
+                    logger.info(f"🌍 Live global volume: {volume_data['global_volume_per_second']:.1f} BTC/sec")
+                    return {
+                        "global_volume_per_second": volume_data["global_volume_per_second"],
+                        "volume_by_exchange": volume_data["volume_by_exchange"],
+                        "coverage_ratio": volume_data.get("coverage_ratio", 0),
+                        "successful_exchanges": volume_data.get("successful_exchanges", 0),
+                        "total_exchanges": volume_data.get("total_exchanges", 6),
+                        "last_update": volume_data["last_update"],
+                        "status": "live",
+                        "data_source": "global_aggregator"
+                    }
+                else:
+                    raise Exception("Global aggregator not available")
+            
+            except Exception as e:
+                logger.debug(f"Global volume aggregator not available: {e}")
+                # Fallback to individual exchange estimates
+                return self._get_estimated_global_volume()
+                
+        except Exception as e:
+            logger.error(f"Error getting global volume: {e}")
+            return self._get_demo_global_volume()
+    
+    def _get_estimated_global_volume(self):
+        """Estimate global volume from available sources as fallback"""
+        try:
+            import requests
+            
+            # Quick estimate using Binance (largest exchange)
+            response = requests.get("https://api.binance.com/api/v3/ticker/24hr?symbol=BTCUSDT", timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                binance_24h_volume = float(data.get("volume", 0))
+                
+                # Binance is ~35% of global volume
+                estimated_global_24h = binance_24h_volume / 0.35
+                estimated_per_second = estimated_global_24h / (24 * 60 * 60)
+                
+                logger.info(f"📊 Estimated global volume: {estimated_per_second:.1f} BTC/sec (via Binance)")
+                
+                return {
+                    "global_volume_per_second": estimated_per_second,
+                    "volume_by_exchange": {
+                        "binance": {
+                            "volume_24h": binance_24h_volume,
+                            "volume_per_second": binance_24h_volume / (24 * 60 * 60),
+                            "weight": 0.35,
+                            "status": "success"
+                        }
+                    },
+                    "coverage_ratio": 0.35,
+                    "successful_exchanges": 1,
+                    "total_exchanges": 1,
+                    "last_update": time.time(),
+                    "status": "estimated",
+                    "data_source": "binance_estimate"
+                }
+            
+            raise Exception("Binance API unavailable")
+            
+        except Exception as e:
+            logger.debug(f"Volume estimation failed: {e}")
+            return self._get_demo_global_volume()
+    
+    def _get_demo_global_volume(self):
+        """Provide demo global volume data"""
+        return {
+            "global_volume_per_second": 847.3,
+            "volume_by_exchange": {
+                "binance": {"volume_per_second": 296.6, "weight": 0.35, "status": "demo"},
+                "okx": {"volume_per_second": 169.5, "weight": 0.20, "status": "demo"},
+                "coinbase": {"volume_per_second": 127.1, "weight": 0.15, "status": "demo"},
+                "bybit": {"volume_per_second": 101.7, "weight": 0.12, "status": "demo"},
+                "kraken": {"volume_per_second": 84.7, "weight": 0.10, "status": "demo"},
+                "bitfinex": {"volume_per_second": 67.8, "weight": 0.08, "status": "demo"}
+            },
+            "coverage_ratio": 1.0,
+            "successful_exchanges": 6,
+            "total_exchanges": 6,
+            "last_update": time.time(),
+            "status": "demo",
+            "data_source": "demo_mode",
+            "demo_note": "Demo volume data - configure bot to run for live data"
+        }
+
 # Global dashboard instance
 dashboard = SimpleBotDashboard()
 
@@ -1016,6 +1112,9 @@ def get_status():
         latest_predictions = dashboard.get_latest_predictions()
         orderbook_data = dashboard.get_orderbook_data()
         
+        # Get real-time global volume data
+        global_volume_data = dashboard.get_global_volume_data()
+        
         return jsonify({
             "session": session_data,
             "market": market_status,
@@ -1023,6 +1122,7 @@ def get_status():
             "summary": trade_summary,
             "predictions": latest_predictions,
             "orderbook": orderbook_data,
+            "global_volume": global_volume_data,
             "timestamp": datetime.now().isoformat()
         })
     except Exception as e:
