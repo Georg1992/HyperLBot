@@ -125,8 +125,12 @@ class DynamicStopManager:
         if len(self.price_history) < 10:
             return 0.003  # Default volatility
         
-        # Get prices from last 5 minutes (100 data points at 3-second intervals)
-        recent_prices = [p["price"] for p in self.price_history[-20:]]  # Last minute
+        # Get prices from last 5 minutes (100 data points at 3-second intervals)  
+        try:
+            recent_prices = [p["price"] for p in list(self.price_history)[-20:]]  # Last minute
+        except (TypeError, KeyError) as e:
+            logger.debug(f"Price history access error: {e}")
+            return 0.003
         
         if len(recent_prices) < 5:
             return 0.003

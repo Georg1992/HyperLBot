@@ -513,7 +513,10 @@
                     <p><strong>Session:</strong> ${session.session_id}</p>
                     <p><strong>Started:</strong> ${new Date(session.start_time).toLocaleString()}</p>
                     <p><strong>Strategy:</strong> ${session.strategy}</p>
-                    <p><strong>Balance:</strong> $${session.initial_balance}</p>
+                    <div style="background: rgba(76, 175, 80, 0.1); border-radius: 6px; padding: 10px; margin: 8px 0; border-left: 3px solid #4CAF50;">
+                        <p style="margin: 0; font-size: 14px;"><strong>💰 Balance:</strong> <span style="font-size: 16px; font-weight: bold; color: #4CAF50;">$${session.current_balance ? session.current_balance.toFixed(2) : session.initial_balance}</span></p>
+                        ${session.current_balance && session.initial_balance ? `<p style="margin: 4px 0 0 0; font-size: 12px;"><strong>P&L:</strong> <span style="font-weight: bold; color: ${session.current_balance >= session.initial_balance ? '#4CAF50' : '#f44336'};">${session.current_balance >= session.initial_balance ? '📈 +' : '📉 '}$${(session.current_balance - session.initial_balance).toFixed(2)} (${((session.current_balance - session.initial_balance) / session.initial_balance * 100).toFixed(2)}%)</span></p>` : ''}
+                    </div>
                 `;
             } else {
                 div.innerHTML = '<p><span class="status-indicator status-stopped"></span>No active session</p>';
