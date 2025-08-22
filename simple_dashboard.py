@@ -76,11 +76,15 @@ class SimpleBotDashboard:
                     latest_market = None
                     latest_prediction = None
                     
-                    for entry in reversed(analysis_data):
-                        if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis") and not latest_market:
-                            latest_market = entry
-                        if entry.get("analysis_type") == "prediction_analysis" and entry.get("has_prediction") and not latest_prediction:
-                            latest_prediction = entry
+                                         for entry in reversed(analysis_data):
+                         if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis"):
+                             if not latest_market:
+                                 latest_market = entry
+                             # Prioritize entries with volume_data
+                             elif entry.get("volume_data") and not latest_market.get("volume_data"):
+                                 latest_market = entry
+                         if entry.get("analysis_type") == "prediction_analysis" and entry.get("has_prediction") and not latest_prediction:
+                             latest_prediction = entry
                     
                     # Use market data entry for basic info, prediction entry for RSI/volume
                     base_entry = latest_market or latest_prediction
