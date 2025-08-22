@@ -756,11 +756,53 @@ class YahooDataFetcher:
             time_elapsed = (now - period_start).total_seconds()
             period_progress = min(time_elapsed / 300, 1.0)  # 300 seconds = 5 minutes
             
-            # Estimate current volume based on completed volume and time progress
+            # ENHANCED: Real-time volume estimation for immediate spike detection
             estimated_current_volume = completed_volume
-            if period_progress > 0:
-                # If we're in the current minute, add partial volume estimate
+            
+            # Strategy 1: Use current minute volume if available (most recent data)
+            if current_minute_volume > 0:
                 estimated_current_volume += current_minute_volume
+                volume_source = "current_minute"
+            # Strategy 2: Use previous 5-minute volume as baseline if current is 0
+            elif completed_volume == 0 and len(candles_5m) >= 2:
+                previous_5m_volume = candles_5m[-2]["volume"] if candles_5m[-2]["volume"] > 0 else 0
+                # Estimate based on time progress and previous volume
+                estimated_current_volume = previous_5m_volume * (period_progress / 1.0)
+                volume_source = "previous_5m_estimate"
+            # Strategy 3: Use recent 1-minute candles average as baseline
+            elif completed_volume == 0 and len(candles_1m) >= 5:
+                recent_volumes = [c["volume"] for c in candles_1m[-5:] if c["volume"] > 0]
+                if recent_volumes:
+                    avg_recent_volume = sum(recent_volumes) / len(recent_volumes)
+                    estimated_current_volume = avg_recent_volume * period_progress
+                    volume_source = "recent_1m_average"
+                else:
+                    volume_source = "no_data"
+            else:
+                volume_source = "no_data"
+            
+            # ENHANCED: Volume acceleration detection for immediate spike alerts
+            volume_acceleration = 0
+            if len(candles_1m) >= 10:
+                # Compare last 3 minutes vs previous 3 minutes
+                recent_3m_volume = sum([c["volume"] for c in candles_1m[-3:] if c["volume"] > 0])
+                previous_3m_volume = sum([c["volume"] for c in candles_1m[-6:-3] if c["volume"] > 0])
+                
+                if previous_3m_volume > 0:
+                    volume_acceleration = (recent_3m_volume - previous_3m_volume) / previous_3m_volume
+            
+            # ENHANCED: Immediate spike detection based on acceleration
+            is_immediate_spike = False
+            spike_reason = ""
+            if volume_acceleration > 2.0:  # 200% increase
+                is_immediate_spike = True
+                spike_reason = f"VOLUME ACCELERATION: {volume_acceleration*100:.0f}% increase in last 3 minutes"
+            elif estimated_current_volume > 0 and len(candles_1m) >= 20:
+                # Compare against recent average
+                recent_avg = sum([c["volume"] for c in candles_1m[-20:] if c["volume"] > 0]) / 20
+                if recent_avg > 0 and estimated_current_volume > recent_avg * 3:  # 300% of average
+                    is_immediate_spike = True
+                    spike_reason = f"VOLUME SPIKE: {estimated_current_volume:.0f} vs avg {recent_avg:.0f}"
             
             volume_data = {
                 "current_5m_period": period_start.strftime("%H:%M"),
@@ -774,13 +816,25 @@ class YahooDataFetcher:
                 "candles_in_period": len(period_candles),
                 "yahoo_5m_volume": current_5m["volume"] if current_5m else 0,
                 "data_source": "yahoo_finance_1m_aggregation",
-                "update_frequency": "5_seconds"
+                "update_frequency": "5_seconds",
+                # ENHANCED: Real-time spike detection data
+                "volume_source": volume_source,
+                "volume_acceleration": volume_acceleration,
+                "is_immediate_spike": is_immediate_spike,
+                "spike_reason": spike_reason,
+                "recent_3m_volume": sum([c["volume"] for c in candles_1m[-3:] if c["volume"] > 0]),
+                "previous_3m_volume": sum([c["volume"] for c in candles_1m[-6:-3] if c["volume"] > 0]) if len(candles_1m) >= 6 else 0
             }
             
             # Cache for 5 seconds
             self._cache_data(cache_key, volume_data)
             
-            logger.info(f"📊 Real-time volume: {estimated_current_volume:.0f} (progress: {volume_data['period_progress']}%)")
+            # Log immediate spike detection
+            if is_immediate_spike:
+                logger.warning(f"🚨 IMMEDIATE VOLUME SPIKE DETECTED: {spike_reason}")
+                logger.warning(f"   Current: {estimated_current_volume:.0f}, Source: {volume_source}")
+            
+            logger.info(f"📊 Real-time volume: {estimated_current_volume:.0f} (progress: {volume_data['period_progress']}%, source: {volume_source})")
             return volume_data
             
         except Exception as e:

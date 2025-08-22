@@ -868,13 +868,13 @@ class PredictionEngine:
                 recent_prices = [candle["close"] for candle in candles_5m[-3:]]
                 price_direction = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
                 
-                if side == "BUY" and entry_price >= current_price:
+            if side == "BUY" and entry_price >= current_price:
                     # For BUY orders: price should be moving DOWN toward entry level
                     if price_direction < -0.0005:  # Price dropping by at least 0.05%
                         price_moving_toward_entry = True
                         logger.info(f"✅ BUY order: Price moving DOWN toward entry ${entry_price:,.2f} (direction: {price_direction:.4f})")
                 
-                elif side == "SELL" and entry_price <= current_price:
+            elif side == "SELL" and entry_price <= current_price:
                     # For SELL orders: price should be moving UP toward entry level
                     if price_direction > 0.0005:  # Price rising by at least 0.05%
                         price_moving_toward_entry = True

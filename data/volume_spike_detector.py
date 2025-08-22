@@ -104,89 +104,114 @@ class VolumeSpikeDetector:
             current_volume = realtime_volume.get("estimated_current_volume", 0)
             period_progress = realtime_volume.get("period_progress", 0)
             
-            # Normalize current volume to 1-minute equivalent for comparison
-            if period_progress > 0:
-                normalized_current_volume = current_volume / (period_progress / 100 * 5)  # Convert to 1-min equivalent
-            else:
-                normalized_current_volume = current_volume
+            # ENHANCED: Check for immediate spike detection first
+            is_immediate_spike = realtime_volume.get("is_immediate_spike", False)
+            spike_reason = realtime_volume.get("spike_reason", "")
+            volume_acceleration = realtime_volume.get("volume_acceleration", 0)
+            volume_source = realtime_volume.get("volume_source", "unknown")
             
-            # Calculate spike ratios
-            mean_volume = baseline["mean_volume"]
-            median_volume = baseline["median_volume"]
-            
-            if mean_volume > 0:
-                spike_ratio_mean = normalized_current_volume / mean_volume
-            else:
-                spike_ratio_mean = 0
+            # ENHANCED: Immediate spike detection takes priority
+            if is_immediate_spike:
+                spike_severity = "HIGH"  # Immediate spikes are treated as high priority
+                spike_description = f"IMMEDIATE SPIKE: {spike_reason}"
+                spike_ratio_mean = 3.0  # Assume 3x for immediate spikes
+                is_spike = True
                 
-            if median_volume > 0:
-                spike_ratio_median = normalized_current_volume / median_volume
+                # Log immediate spike detection
+                logger.warning(f"🚨 IMMEDIATE VOLUME SPIKE DETECTED!")
+                logger.warning(f"   Reason: {spike_reason}")
+                logger.warning(f"   Volume: {current_volume:.0f}, Source: {volume_source}")
+                logger.warning(f"   Acceleration: {volume_acceleration*100:.0f}%")
+                
             else:
-                spike_ratio_median = 0
-            
-            # Determine spike severity
-            spike_severity = "NORMAL"
-            spike_description = "Normal volume activity"
-            
-            if spike_ratio_mean >= self.spike_thresholds["extreme_spike"]:
-                spike_severity = "EXTREME"
-                spike_description = "Extreme volume spike detected!"
-            elif spike_ratio_mean >= self.spike_thresholds["high_spike"]:
-                spike_severity = "HIGH"
-                spike_description = "High volume spike detected"
-            elif spike_ratio_mean >= self.spike_thresholds["moderate_spike"]:
-                spike_severity = "MODERATE"
-                spike_description = "Moderate volume spike detected"
-            elif spike_ratio_mean >= self.spike_thresholds["mild_spike"]:
-                spike_severity = "MILD"
-                spike_description = "Mild volume spike detected"
+                # Normal spike detection logic
+                # Normalize current volume to 1-minute equivalent for comparison
+                if period_progress > 0:
+                    normalized_current_volume = current_volume / (period_progress / 100 * 5)  # Convert to 1-min equivalent
+                else:
+                    normalized_current_volume = current_volume
+                
+                # Calculate spike ratios
+                mean_volume = baseline["mean_volume"]
+                median_volume = baseline["median_volume"]
+                
+                if mean_volume > 0:
+                    spike_ratio_mean = normalized_current_volume / mean_volume
+                else:
+                    spike_ratio_mean = 0
+                    
+                if median_volume > 0:
+                    spike_ratio_median = normalized_current_volume / median_volume
+                else:
+                    spike_ratio_median = 0
+                
+                # Determine spike severity
+                spike_severity = "NORMAL"
+                spike_description = "Normal volume activity"
+                
+                if spike_ratio_mean >= self.spike_thresholds["extreme_spike"]:
+                    spike_severity = "EXTREME"
+                    spike_description = "Extreme volume spike detected!"
+                elif spike_ratio_mean >= self.spike_thresholds["high_spike"]:
+                    spike_severity = "HIGH"
+                    spike_description = "High volume spike detected"
+                elif spike_ratio_mean >= self.spike_thresholds["moderate_spike"]:
+                    spike_severity = "MODERATE"
+                    spike_description = "Moderate volume spike detected"
+                elif spike_ratio_mean >= self.spike_thresholds["mild_spike"]:
+                    spike_severity = "MILD"
+                    spike_description = "Mild volume spike detected"
+                
+                is_spike = spike_severity != "NORMAL"
             
             # Check against percentile thresholds
             percentile_alerts = []
-            if normalized_current_volume >= baseline["p99_volume"]:
-                percentile_alerts.append("99th percentile")
-            elif normalized_current_volume >= baseline["p95_volume"]:
-                percentile_alerts.append("95th percentile")
-            elif normalized_current_volume >= baseline["p90_volume"]:
-                percentile_alerts.append("90th percentile")
-            elif normalized_current_volume >= baseline["p75_volume"]:
-                percentile_alerts.append("75th percentile")
-            
-            # Calculate volume acceleration (rate of change)
-            volume_acceleration = 0
-            if len(self.volume_history) >= 2:
-                recent_volumes = self.volume_history[-5:]  # Last 5 data points
-                if len(recent_volumes) >= 2:
-                    volume_acceleration = (recent_volumes[-1] - recent_volumes[0]) / len(recent_volumes)
+            if not is_immediate_spike:  # Only check percentiles for non-immediate spikes
+                normalized_current_volume = current_volume / (period_progress / 100 * 5) if period_progress > 0 else current_volume
+                if normalized_current_volume >= baseline["p99_volume"]:
+                    percentile_alerts.append("99th percentile")
+                elif normalized_current_volume >= baseline["p95_volume"]:
+                    percentile_alerts.append("95th percentile")
+                elif normalized_current_volume >= baseline["p90_volume"]:
+                    percentile_alerts.append("90th percentile")
+                elif normalized_current_volume >= baseline["p75_volume"]:
+                    percentile_alerts.append("75th percentile")
             
             # Update volume history
-            self.volume_history.append(normalized_current_volume)
+            self.volume_history.append(current_volume)
             if len(self.volume_history) > 20:  # Keep last 20 data points
                 self.volume_history.pop(0)
             
             spike_analysis = {
                 "timestamp": time.time(),
                 "current_volume": current_volume,
-                "normalized_current_volume": normalized_current_volume,
+                "normalized_current_volume": normalized_current_volume if not is_immediate_spike else current_volume,
                 "period_progress": period_progress,
                 "spike_ratio_mean": spike_ratio_mean,
-                "spike_ratio_median": spike_ratio_median,
+                "spike_ratio_median": spike_ratio_median if not is_immediate_spike else 0,
                 "spike_severity": spike_severity,
                 "spike_description": spike_description,
                 "percentile_alerts": percentile_alerts,
                 "volume_acceleration": volume_acceleration,
-                "baseline_mean": mean_volume,
-                "baseline_median": median_volume,
+                "baseline_mean": baseline["mean_volume"],
+                "baseline_median": baseline["median_volume"],
                 "baseline_std": baseline["std_volume"],
-                "is_spike": spike_severity != "NORMAL",
+                "is_spike": is_spike,
                 "data_source": "yahoo_finance_1m_spike_detection",
-                "update_frequency": "5_seconds"
+                "update_frequency": "5_seconds",
+                # ENHANCED: Immediate spike detection data
+                "is_immediate_spike": is_immediate_spike,
+                "immediate_spike_reason": spike_reason,
+                "volume_source": volume_source,
+                "detection_method": "immediate" if is_immediate_spike else "baseline_comparison"
             }
             
             # Log significant spikes
-            if spike_severity in ["HIGH", "EXTREME"]:
+            if spike_severity in ["HIGH", "EXTREME"] or is_immediate_spike:
                 logger.warning(f"🚨 {spike_severity} VOLUME SPIKE: {spike_ratio_mean:.1f}x average volume!")
-                logger.warning(f"   Current: {normalized_current_volume:.0f}, Average: {mean_volume:.0f}")
+                logger.warning(f"   Current: {current_volume:.0f}, Average: {baseline['mean_volume']:.0f}")
+                if is_immediate_spike:
+                    logger.warning(f"   IMMEDIATE DETECTION: {spike_reason}")
             
             return spike_analysis
             
