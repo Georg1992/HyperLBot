@@ -2589,13 +2589,29 @@ class YahooHyperliquidPaperTradingBot:
                                 
                                 # Update real-time data manager with REAL calculated values
                                 if self.trading_data_manager:
-                                    # Get REAL RSI using ACTUAL calculated RSI data
-                                    real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
-                                    
-                                    # If we have a calculation method, trust it
-                                    if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data:
-                                        calc_method = self.cached_rsi_data.get("calculation_method", "unknown")
-                                        logger.info(f"📊 Using RSI: {real_rsi:.1f} (method: {calc_method})")
+                                    # Calculate IMMEDIATE accurate RSI using Smart Cache + Hyperliquid current price
+                                    real_rsi = 50.0  # Default
+                                    try:
+                                        if self.smart_data_cache and self.smart_data_cache.cache_initialized:
+                                            # Get recent historical candles from Smart Cache (no API call)
+                                            cached_candles = self.smart_data_cache.get_candles("5m", 15)
+                                            if cached_candles and len(cached_candles) >= 14:
+                                                # Extract closes + add current Hyperliquid price
+                                                closes = [float(candle["close"]) for candle in cached_candles[-14:]]
+                                                closes.append(hyperliquid_price)  # Add current price as latest data point
+                                                
+                                                # Calculate RSI immediately (Yahoo historical + Hyperliquid current)
+                                                real_rsi = self._calculate_rsi_from_price_samples(closes, periods=14)
+                                                logger.info(f"🎯 IMMEDIATE RSI: {real_rsi:.1f} (Smart Cache + Hyperliquid current)")
+                                            else:
+                                                logger.warning(f"Insufficient cached candles: {len(cached_candles) if cached_candles else 0}")
+                                        else:
+                                            # Fallback to cached calculation
+                                            real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
+                                            logger.info(f"📊 Fallback RSI: {real_rsi:.1f}")
+                                    except Exception as e:
+                                        logger.debug(f"Immediate RSI calculation failed: {e}")
+                                        real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
                                     
                                     # Get REAL volume from enhanced analysis
                                     real_volume = enhanced_analysis.get("volume_data", {}).get("current_volume", 0.0)

@@ -92,9 +92,7 @@ class RealTimeTradingDataManager:
         self.recent_activity = deque(maxlen=50)  # Last 50 activities
         self.open_positions = []
         
-        # Price sampling for RSI calculation (avoids duplicate API calls)
-        self.price_samples = deque(maxlen=20)  # Last 20 price samples for RSI
-        self.last_price_sample_time = 0
+
         
         # Performance metrics
         self.performance_metrics = {
@@ -245,29 +243,14 @@ class RealTimeTradingDataManager:
     
     # MARKET DATA MANAGEMENT
     def update_market_data(self, market_data: Dict[str, Any]):
-        """Update real-time market data and sample prices for RSI"""
+        """Update real-time market data"""
         with self.data_lock:
-            current_price = market_data.get("current_price", 0)
-            current_time = time.time()
-            
-            # Sample price for RSI calculation (every 60 seconds to avoid over-sampling)
-            if current_price > 0 and current_time - self.last_price_sample_time >= 60:
-                self.price_samples.append(current_price)
-                self.last_price_sample_time = current_time
-                logger.debug(f"📊 Price sampled for RSI: ${current_price:,.2f} (total samples: {len(self.price_samples)})")
-            
-            # Calculate real-time RSI if we have enough samples
-            calculated_rsi = market_data.get("rsi", 50.0)
-            if len(self.price_samples) >= 14:
-                calculated_rsi = self._calculate_rsi_from_prices(list(self.price_samples), periods=14)
-                logger.debug(f"📊 Real-time RSI calculated: {calculated_rsi:.1f} (from {len(self.price_samples)} samples)")
-            
             self.current_state["market"].update({
-                "current_price": current_price,
+                "current_price": market_data.get("current_price", 0),
                 "trend": market_data.get("trend", "UNKNOWN"),
                 "market_condition": market_data.get("market_condition", "UNKNOWN"),
                 "last_update": datetime.now().isoformat(),
-                "rsi": calculated_rsi,  # Use calculated RSI from price samples
+                "rsi": market_data.get("rsi", 50.0),  # Use RSI calculated by bot
                 "volume_depth": market_data.get("volume_depth", 0.0),
                 "orderbook_imbalance": market_data.get("orderbook_imbalance", 0.0),
                 "volatility_5m": market_data.get("volatility_5m", 0.0),
@@ -606,43 +589,7 @@ class RealTimeTradingDataManager:
             logger.error(f"Performance analysis error: {e}")
             return {"period_days": days, "total_trades": 0, "error": str(e)}
     
-    def _calculate_rsi_from_prices(self, prices: List[float], periods: int = 14) -> float:
-        """Calculate RSI from price samples using standard formula"""
-        try:
-            if len(prices) < periods + 1:
-                return 50.0
-                
-            # Calculate price changes
-            gains = []
-            losses = []
-            
-            for i in range(1, len(prices)):
-                change = prices[i] - prices[i-1]
-                if change > 0:
-                    gains.append(change)
-                    losses.append(0)
-                else:
-                    gains.append(0)
-                    losses.append(-change)
-            
-            if len(gains) < periods:
-                return 50.0
-                
-            # Calculate RSI using standard formula
-            avg_gain = sum(gains[-periods:]) / periods
-            avg_loss = sum(losses[-periods:]) / periods
-            
-            if avg_loss == 0:
-                return 100.0  # All gains, no losses
-                
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-            
-            return max(0.0, min(100.0, rsi))  # Clamp to 0-100
-            
-        except Exception as e:
-            logger.error(f"❌ RSI calculation error: {e}")
-            return 50.0
+
 
     # UTILITY METHODS
     def clear_all_data(self):

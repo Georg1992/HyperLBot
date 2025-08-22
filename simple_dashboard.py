@@ -151,10 +151,24 @@ class OptimizedTradingDashboard:
                     orderbook_imbalance = 0.0
                     
                     try:
-                        # Get REAL orderbook imbalance (avoid duplicate price calls)
+                        # Calculate IMMEDIATE accurate RSI using Yahoo historical + Hyperliquid current
+                        from data.yahoo_data_fetcher import YahooDataFetcher
+                        yahoo_fetcher = YahooDataFetcher()
+                        
+                        # Get recent 20 candles from Yahoo Finance
+                        yahoo_candles = yahoo_fetcher.get_klines("BTC", "5m", 20)
+                        if yahoo_candles and len(yahoo_candles) >= 15:
+                            # Extract historical closes + add current Hyperliquid price
+                            closes = [float(candle["close"]) for candle in yahoo_candles[-14:]]  # Last 14 historical
+                            closes.append(current_price)  # Add current Hyperliquid price as latest
+                            
+                            # Calculate immediate accurate RSI
+                            real_rsi = self._calculate_rsi_from_trades(closes, periods=14)
+                            logger.info(f"🎯 IMMEDIATE accurate RSI: {real_rsi:.1f} (Yahoo historical + Hyperliquid current)")
+                        
+                        # Get REAL orderbook imbalance
                         market_data = api.get_market_data("BTC")
                         if market_data and "levels" in market_data:
-                            # Calculate imbalance from orderbook
                             bids = market_data['levels'][0][:10] if market_data['levels'][0] else []
                             asks = market_data['levels'][1][:10] if market_data['levels'][1] else []
                             
@@ -321,42 +335,7 @@ class OptimizedTradingDashboard:
             "balance_source": "session_data"
         }
     
-    def _get_recent_price_samples(self, api, min_samples: int = 20) -> List[float]:
-        """Get recent price samples for RSI - builds over time with each dashboard update"""
-        try:
-            current_time = time.time()
-            current_price = api.get_current_price("BTC")
-            
-            if not current_price or current_price <= 0:
-                return self._price_samples[-min_samples:] if len(self._price_samples) >= min_samples else []
-            
-            # Sample price every 30 seconds (builds accurate price series)
-            if current_time - self._last_price_sample_time >= 30:  # 30 second intervals
-                self._price_samples.append(current_price)
-                self._last_price_sample_time = current_time
-                
-                # Keep only last 30 samples (30 minutes of data at 30s intervals)
-                if len(self._price_samples) > 30:
-                    self._price_samples = self._price_samples[-30:]
-                
-                logger.debug(f"🔄 Price sampled: ${current_price:,.2f} (total samples: {len(self._price_samples)})")
-            
-            # Return available samples (builds up over time)
-            available_samples = len(self._price_samples)
-            if available_samples >= min_samples:
-                logger.debug(f"📊 Using {available_samples} price samples for RSI")
-                return self._price_samples[-min_samples:]  # Last N samples
-            elif available_samples >= 5:
-                # Use what we have if insufficient but some data available
-                logger.warning(f"⚠️ Using {available_samples} samples (less than optimal {min_samples})")
-                return self._price_samples
-            else:
-                logger.warning(f"❌ Insufficient price samples: {available_samples} < 5 minimum")
-                return []
-                
-        except Exception as e:
-            logger.error(f"❌ Price sampling error: {e}")
-            return []
+
     
     def _calculate_rsi_from_trades(self, price_samples: List[float], periods: int = 14) -> float:
         """Calculate RSI from Hyperliquid trade-based price samples"""
