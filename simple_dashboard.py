@@ -133,10 +133,35 @@ class SimpleBotDashboard:
                             if latest_prediction and latest_prediction.get("best_prediction"):
                                 best_pred = latest_prediction["best_prediction"]
                                 rsi_data = best_pred.get("rsi_context", 0)
-                                volume_data = best_pred.get("volume_data", {}).get("current_volume", 0)
+                                
+                                # ENHANCED: Get volume data with spike detection
+                                volume_data_obj = best_pred.get("volume_data", {})
+                                volume_data = volume_data_obj.get("current_volume", 0)
+                                volume_category = volume_data_obj.get("volume_category", "UNKNOWN")
+                                has_spike = volume_data_obj.get("has_spike", False)
+                                spike_severity = volume_data_obj.get("spike_severity", "NORMAL")
+                                is_immediate_spike = volume_data_obj.get("is_immediate_spike", False)
+                                spike_reason = volume_data_obj.get("spike_reason", "")
+                                volume_source = volume_data_obj.get("volume_source", "unknown")
+                                
+                                # ENHANCED: Handle volume display with fallback
+                                if volume_data == 0 and volume_source == "no_data":
+                                    # Try to get volume from other sources
+                                    try:
+                                        from data.yahoo_data_fetcher import YahooDataFetcher
+                                        fetcher = YahooDataFetcher()
+                                        realtime_volume = fetcher.get_realtime_volume("BTC")
+                                        if "error" not in realtime_volume:
+                                            volume_data = realtime_volume.get("estimated_current_volume", 0)
+                                            volume_source = realtime_volume.get("volume_source", "fallback")
+                                            has_spike = realtime_volume.get("is_immediate_spike", False)
+                                            spike_reason = realtime_volume.get("spike_reason", "")
+                                    except Exception as e:
+                                        logger.warning(f"Volume fallback failed: {e}")
+                                
                                 orderbook_imbalance = best_pred.get("orderbook_imbalance", 0)
                                 
-                                logger.info(f"📊 Using cached data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}")
+                                logger.info(f"📊 Using cached data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
                             else:
                                 # Fallback to Yahoo data if no cached data available
                                 from data.yahoo_data_fetcher import YahooDataFetcher
@@ -150,6 +175,12 @@ class SimpleBotDashboard:
                                     
                                     volume_result = api.get_current_5m_volume("BTC")
                                     volume_data = volume_result.get("current_volume", 0)
+                                    volume_category = volume_result.get("volume_category", "UNKNOWN")
+                                    has_spike = volume_result.get("has_spike", False)
+                                    spike_severity = volume_result.get("spike_severity", "NORMAL")
+                                    is_immediate_spike = volume_result.get("is_immediate_spike", False)
+                                    spike_reason = volume_result.get("spike_reason", "")
+                                    volume_source = volume_result.get("volume_source", "fallback")
                                     
                                     indicators = api.get_current_market_indicators("BTC")
                                     orderbook_imbalance = 0
@@ -161,6 +192,12 @@ class SimpleBotDashboard:
                                 else:
                                     rsi_data = 0
                                     volume_data = 0
+                                    volume_category = "UNKNOWN"
+                                    has_spike = False
+                                    spike_severity = "NORMAL"
+                                    is_immediate_spike = False
+                                    spike_reason = ""
+                                    volume_source = "no_data"
                                     orderbook_imbalance = 0
                                     logger.warning("Insufficient candle data for fallback calculation")
                                     
@@ -171,6 +208,12 @@ class SimpleBotDashboard:
                                 best_pred = latest_prediction["best_prediction"]
                                 rsi_data = best_pred.get("rsi_context")
                                 volume_data = best_pred.get("orderbook_depth")
+                                volume_category = "UNKNOWN"
+                                has_spike = False
+                                spike_severity = "NORMAL"
+                                is_immediate_spike = False
+                                spike_reason = ""
+                                volume_source = "log_fallback"
                                 orderbook_imbalance = best_pred.get("orderbook_imbalance")
                         
                         # Update last_update to reflect real-time data
@@ -190,7 +233,14 @@ class SimpleBotDashboard:
                             "data_source": data_source,
                             "rsi": rsi_data,
                             "volume_depth": volume_data,
-                            "orderbook_imbalance": orderbook_imbalance
+                            "orderbook_imbalance": orderbook_imbalance,
+                            # ENHANCED: Volume spike detection data
+                            "volume_category": volume_category,
+                            "has_volume_spike": has_spike,
+                            "spike_severity": spike_severity,
+                            "is_immediate_spike": is_immediate_spike,
+                            "spike_reason": spike_reason,
+                            "volume_source": volume_source
                         }
                     else:
                         logger.warning("No valid market data found in analysis")
@@ -663,6 +713,78 @@ def create_template():
             font-size: 14px;
         }
         
+        /* Volume Spike Indicators */
+        .volume-value.volume-spike {
+            color: #e74c3c;
+            animation: pulse 1s infinite;
+        }
+        
+        .spike-indicator {
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 8px;
+            font-size: 0.8em;
+        }
+        
+        .spike-indicator.high {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .spike-indicator.extreme {
+            background-color: #8e44ad;
+            color: white;
+            animation: pulse 0.5s infinite;
+        }
+        
+        .spike-indicator.moderate {
+            background-color: #f39c12;
+            color: white;
+        }
+        
+        .spike-indicator.mild {
+            background-color: #f1c40f;
+            color: #2c3e50;
+        }
+        
+        .immediate-spike {
+            background-color: #e67e22;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin-left: 4px;
+            font-size: 0.7em;
+            font-weight: bold;
+        }
+        
+        .spike-reason {
+            background-color: #ecf0f1;
+            padding: 8px;
+            border-radius: 4px;
+            margin: 5px 0;
+            font-size: 0.9em;
+            border-left: 3px solid #e74c3c;
+        }
+        
+        .volume-category {
+            color: #7f8c8d;
+            font-size: 0.8em;
+            margin-left: 8px;
+        }
+        
+        .volume-source {
+            color: #95a5a6;
+            font-size: 0.7em;
+            margin-top: 5px;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        
         .order-flow.bullish {
             color: #4CAF50;
             font-weight: bold;
@@ -879,6 +1001,14 @@ def create_template():
                 const volumeValue = market.volume_depth !== undefined && market.volume_depth !== null ? market.volume_depth.toFixed(1) : 'N/A';
                 const flowValue = market.orderbook_imbalance !== undefined && market.orderbook_imbalance !== null ? (market.orderbook_imbalance * 100).toFixed(1) : 'N/A';
                 
+                // ENHANCED: Volume spike detection
+                const hasVolumeSpike = market.has_volume_spike || false;
+                const spikeSeverity = market.spike_severity || 'NORMAL';
+                const isImmediateSpike = market.is_immediate_spike || false;
+                const spikeReason = market.spike_reason || '';
+                const volumeSource = market.volume_source || 'unknown';
+                const volumeCategory = market.volume_category || 'UNKNOWN';
+                
                 div.innerHTML = `
                      <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
                      <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
@@ -892,13 +1022,20 @@ def create_template():
                          </p>
                      </div>
                      
-                     <!-- Volume - Fixed Display (5m Volume) -->
+                     <!-- Volume - Enhanced Display with Spike Detection -->
                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 5m Volume:</strong> <span class="volume-value">${volumeValue}</span></p>
+                         <p><strong>📈 5m Volume:</strong> 
+                         <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}">${volumeValue}</span>
+                         <span class="volume-category">(${volumeCategory})</span>
+                         ${hasVolumeSpike ? `<span class="spike-indicator ${spikeSeverity.toLowerCase()}">🚨 ${spikeSeverity} SPIKE</span>` : ''}
+                         ${isImmediateSpike ? `<span class="immediate-spike">⚡ IMMEDIATE</span>` : ''}
+                         </p>
+                         ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
                          <p><strong>📊 Order Flow:</strong> 
                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
                          </p>
+                         <p class="volume-source"><small>Source: ${volumeSource}</small></p>
                      </div>
                      
                      <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
