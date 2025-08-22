@@ -576,7 +576,11 @@
                     <p><strong>Last Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
                 `;
             } else {
-                div.innerHTML = '<p>No market data available</p>';
+                div.innerHTML = `
+                    <p style="color: #ff9800;">⚠️ Bot Offline</p>
+                    <p>Start the trading bot to see live market data</p>
+                    <p style="font-size: 11px; color: #888;">Dashboard running in monitoring mode</p>
+                `;
             }
         }
         
