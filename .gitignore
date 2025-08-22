@@ -84,3 +84,10 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+# Database files (contain runtime data)
+*.db
+trading_data.db
+
+# Log files
+*.log
+trading_logs/
