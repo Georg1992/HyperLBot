@@ -307,7 +307,12 @@ class PredictionEngine:
             total_depth = liquidity_metrics.get("total_depth", 0)
             depth_imbalance = liquidity_metrics.get("depth_imbalance", 0)
             
-            logger.info(f"📊 Multi-timeframe Context: RSI={current_rsi:.1f}, 5m={trend_5m.get('trend','?')}, 1h={trend_1h.get('trend','?')}, 1d={trend_1d.get('trend','?')}, Depth={total_depth:.1f}BTC")
+            # Enhanced trend logging with strength and quality indicators
+            trend_5m_info = f"{trend_5m.get('trend','?')}({trend_5m.get('strength',0)*100:.1f}%,{trend_5m.get('trend_quality','?')})"
+            trend_1h_info = f"{trend_1h.get('trend','?')}({trend_1h.get('strength',0)*100:.1f}%,{trend_1h.get('trend_quality','?')})"
+            trend_1d_info = f"{trend_1d.get('trend','?')}({trend_1d.get('strength',0)*100:.1f}%,{trend_1d.get('trend_quality','?')})"
+            
+            logger.info(f"📊 Multi-timeframe Context: RSI={current_rsi:.1f}, 5m={trend_5m_info}, 1h={trend_1h_info}, 1d={trend_1d_info}, Depth={total_depth:.1f}BTC")
             
             # Enhanced data validation for multi-timeframe analysis (increased for 20-period RSI)
             if len(candles_5m) < 45 or len(candles_1h) < 30 or len(candles_1d) < 20:
@@ -418,8 +423,18 @@ class PredictionEngine:
                     }
                     predictions.append(reversion_prediction)
             
-            # 2. MOMENTUM PREDICTIONS - Smart direction analysis
-            if trend_1h.get("trend") == "UP" and trend_5m.get("trend") == "UP":
+            # 2. MOMENTUM PREDICTIONS - Enhanced direction analysis with weak trends
+            trend_5m_type = trend_5m.get("trend", "UNKNOWN")
+            trend_1h_type = trend_1h.get("trend", "UNKNOWN")
+            
+            # Enhanced bull momentum detection - include weak trends
+            is_bullish_5m = trend_5m_type in ["UP", "STRONG_UP", "WEAK_UP"]
+            is_bullish_1h = trend_1h_type in ["UP", "STRONG_UP", "WEAK_UP"] 
+            is_bearish_5m = trend_5m_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+            is_bearish_1h = trend_1h_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+            
+            # Check for any bullish alignment (including weak trends)
+            if is_bullish_1h and is_bullish_5m:
                 # Strong upward momentum - analyze if it's sustainable
                 momentum_strength = self._analyze_momentum_strength(trend_1h, trend_5m, volatility_5m)
                 
@@ -452,7 +467,7 @@ class PredictionEngine:
                 }
                 predictions.append(momentum_prediction)
             
-            elif trend_1h.get("trend") == "DOWN" and trend_5m.get("trend") == "DOWN":
+            elif is_bearish_1h and is_bearish_5m:
                 # Strong downward momentum - analyze if it's sustainable
                 momentum_strength = self._analyze_momentum_strength(trend_1h, trend_5m, volatility_5m)
                 
@@ -484,6 +499,84 @@ class PredictionEngine:
                         "momentum_strength": momentum_strength
                 }
                 predictions.append(momentum_prediction)
+            
+            # 2b. WEAK BULL/BEAR MOMENTUM - Handle gradual trends and mixed signals
+            elif is_bullish_1h or is_bullish_5m:  # At least one timeframe is bullish
+                # Weak bullish momentum - could be gradual bull market
+                combined_strength = (trend_1h.get("strength", 0) + trend_5m.get("strength", 0)) / 2
+                
+                if combined_strength > 0.01:  # Even weak momentum is significant
+                    momentum_prediction = {
+                        "type": "WEAK_MOMENTUM_UP",
+                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),
+                        "side": "BUY",
+                        "confidence": 0.45 + combined_strength * 5,  # Lower confidence but still actionable
+                        "timeframe": 20,  # Longer timeframe for weak momentum
+                        "reason": f"Gradual bull momentum detected (1h:{trend_1h_type}, 5m:{trend_5m_type}, strength:{combined_strength:.3f})",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "momentum_type": "GRADUAL_BULL"
+                    }
+                    predictions.append(momentum_prediction)
+                    
+            elif is_bearish_1h or is_bearish_5m:  # At least one timeframe is bearish
+                # Weak bearish momentum
+                combined_strength = (trend_1h.get("strength", 0) + trend_5m.get("strength", 0)) / 2
+                
+                if combined_strength > 0.01:
+                    momentum_prediction = {
+                        "type": "WEAK_MOMENTUM_DOWN", 
+                        "entry_price": resistance_5m * 0.999,
+                        "side": "SELL",
+                        "confidence": 0.45 + combined_strength * 5,
+                        "timeframe": 20,
+                        "reason": f"Gradual bear momentum detected (1h:{trend_1h_type}, 5m:{trend_5m_type}, strength:{combined_strength:.3f})",
+                        "support": support_5m,
+                        "resistance": resistance_5m,
+                        "prediction_mode": "TECHNICAL_ANALYSIS",
+                        "momentum_type": "GRADUAL_BEAR"
+                    }
+                    predictions.append(momentum_prediction)
+            
+            # 2c. SIDEWAYS MARKET WITH DIRECTIONAL BIAS
+            elif trend_5m_type == "SIDEWAYS" or trend_1h_type == "SIDEWAYS":
+                # Look for subtle directional bias in sideways markets
+                recent_candles_5m = candles_5m[-10:] if candles_5m and len(candles_5m) >= 10 else []
+                if recent_candles_5m:
+                    # Calculate cumulative price movement over longer period
+                    first_price = recent_candles_5m[0]["close"]
+                    last_price = recent_candles_5m[-1]["close"]
+                    cumulative_change = (last_price - first_price) / first_price
+                    
+                    if abs(cumulative_change) > 0.002:  # 0.2% cumulative change
+                        if cumulative_change > 0:
+                            sideways_prediction = {
+                                "type": "SIDEWAYS_BIAS_UP",
+                                "entry_price": current_price * 0.998,
+                                "side": "BUY", 
+                                "confidence": 0.35 + abs(cumulative_change) * 10,
+                                "timeframe": 25,
+                                "reason": f"Sideways market with bull bias (cumulative: {cumulative_change*100:.2f}%)",
+                                "support": support_5m,
+                                "resistance": resistance_5m,
+                                "prediction_mode": "TECHNICAL_ANALYSIS",
+                                "momentum_type": "SIDEWAYS_BULL_BIAS"
+                            }
+                        else:
+                            sideways_prediction = {
+                                "type": "SIDEWAYS_BIAS_DOWN",
+                                "entry_price": current_price * 1.002,
+                                "side": "SELL",
+                                "confidence": 0.35 + abs(cumulative_change) * 10,
+                                "timeframe": 25,
+                                "reason": f"Sideways market with bear bias (cumulative: {cumulative_change*100:.2f}%)",
+                                "support": support_5m,
+                                "resistance": resistance_5m,
+                                "prediction_mode": "TECHNICAL_ANALYSIS",
+                                "momentum_type": "SIDEWAYS_BEAR_BIAS"
+                            }
+                        predictions.append(sideways_prediction)
             
             # 3. RANGE-BOUND ANALYSIS - When price is in the middle of range
             if support_5m < current_price < resistance_5m and range_size_5m > current_price * 0.01:
@@ -634,36 +727,80 @@ class PredictionEngine:
                         }
                         predictions.append(prediction)
              
-            # 2. PRICE MOMENTUM ANALYSIS (even with small ranges)
-            if trend_5m.get("trend") == "UP" and trend_1h.get("trend") == "UP":
-                # Both timeframes showing upward momentum
+            # 2. PRICE MOMENTUM ANALYSIS (enhanced with weak trends)
+            trend_5m_type = trend_5m.get("trend", "UNKNOWN")
+            trend_1h_type = trend_1h.get("trend", "UNKNOWN")
+            
+            # Enhanced bull momentum detection
+            is_bullish_5m = trend_5m_type in ["UP", "STRONG_UP", "WEAK_UP"]
+            is_bullish_1h = trend_1h_type in ["UP", "STRONG_UP", "WEAK_UP"]
+            is_bearish_5m = trend_5m_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+            is_bearish_1h = trend_1h_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+            
+            if is_bullish_5m and is_bullish_1h:
+                # Both timeframes showing upward momentum (including weak)
+                combined_strength = (trend_5m.get("strength", 0) + trend_1h.get("strength", 0)) / 2
                 prediction = {
                     "type": "MOMENTUM_CONTINUATION",
                     "entry_price": current_price * 0.998,  # Enter slightly below current
                     "side": "BUY",
-                    "confidence": 0.6 + (trend_5m.get("strength", 0.5) * 0.2),
+                    "confidence": 0.5 + (combined_strength * 10),  # Scale strength appropriately
                     "timeframe": 10,
-                    "reason": f"Strong upward momentum on both 5m and 1h timeframes",
+                    "reason": f"Bull momentum detected: 1h:{trend_1h_type}, 5m:{trend_5m_type} (strength:{combined_strength:.3f})",
                     "support": support,
                     "resistance": resistance,
                     "prediction_mode": "MOMENTUM_ANALYSIS"
                 }
                 predictions.append(prediction)
                  
-            elif trend_5m.get("trend") == "DOWN" and trend_1h.get("trend") == "DOWN":
-                # Both timeframes showing downward momentum
+            elif is_bearish_5m and is_bearish_1h:
+                # Both timeframes showing downward momentum (including weak)
+                combined_strength = (trend_5m.get("strength", 0) + trend_1h.get("strength", 0)) / 2
                 prediction = {
                     "type": "MOMENTUM_CONTINUATION",
                     "entry_price": current_price * 1.002,  # Enter slightly above current
                     "side": "SELL",
-                    "confidence": 0.6 + (trend_5m.get("strength", 0.5) * 0.2),
+                    "confidence": 0.5 + (combined_strength * 10),  # Scale strength appropriately
                     "timeframe": 10,
-                    "reason": f"Strong downward momentum on both 5m and 1h timeframes",
+                    "reason": f"Bear momentum detected: 1h:{trend_1h_type}, 5m:{trend_5m_type} (strength:{combined_strength:.3f})",
                     "support": support,
                     "resistance": resistance,
                     "prediction_mode": "MOMENTUM_ANALYSIS"
                 }
                 predictions.append(prediction)
+                
+            # Single timeframe momentum for gradual moves
+            elif is_bullish_5m or is_bullish_1h:  # At least one bullish timeframe
+                timeframe_strength = trend_5m.get("strength", 0) if is_bullish_5m else trend_1h.get("strength", 0)
+                if timeframe_strength > 0.005:  # Even very weak momentum
+                    prediction = {
+                        "type": "SINGLE_TIMEFRAME_BULL",
+                        "entry_price": current_price * 0.999,
+                        "side": "BUY",
+                        "confidence": 0.35 + (timeframe_strength * 8),
+                        "timeframe": 15,
+                        "reason": f"Single timeframe bull: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "MOMENTUM_ANALYSIS"
+                    }
+                    predictions.append(prediction)
+                    
+            elif is_bearish_5m or is_bearish_1h:  # At least one bearish timeframe
+                timeframe_strength = trend_5m.get("strength", 0) if is_bearish_5m else trend_1h.get("strength", 0)
+                if timeframe_strength > 0.005:
+                    prediction = {
+                        "type": "SINGLE_TIMEFRAME_BEAR",
+                        "entry_price": current_price * 1.001,
+                        "side": "SELL",
+                        "confidence": 0.35 + (timeframe_strength * 8),
+                        "timeframe": 15,
+                        "reason": f"Single timeframe bear: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "MOMENTUM_ANALYSIS"
+                    }
+                    predictions.append(prediction)
              
             # 3. RANGE POSITION ANALYSIS
             if support > 0 and resistance > 0:
@@ -700,30 +837,48 @@ class PredictionEngine:
                     }
                     predictions.append(prediction)
              
-            # 4. VOLATILITY-BASED PREDICTIONS
+            # 4. VOLATILITY-BASED PREDICTIONS (enhanced with new trend types)
             if volatility > 0.002:  # Lower threshold for volatility predictions
                 # In high volatility, look for reversal opportunities
-                if trend_5m.get("trend") == "UP":
+                trend_5m_type = trend_5m.get("trend", "UNKNOWN")
+                is_bullish_5m = trend_5m_type in ["UP", "STRONG_UP", "WEAK_UP"]
+                is_bearish_5m = trend_5m_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+                
+                if is_bullish_5m:
                     prediction = {
                         "type": "VOLATILITY_REVERSAL",
                         "entry_price": current_price * 1.001,
                         "side": "SELL",
                         "confidence": 0.5,
                         "timeframe": 8,
-                        "reason": f"High volatility ({volatility:.3f}) - expect reversal from upward move",
+                        "reason": f"High volatility ({volatility:.3f}) - expect reversal from upward move ({trend_5m_type})",
                         "support": support,
                         "resistance": resistance,
                         "prediction_mode": "VOLATILITY_ANALYSIS"
                     }
                     predictions.append(prediction)
-                else:
+                elif is_bearish_5m:
                     prediction = {
                         "type": "VOLATILITY_REVERSAL",
                         "entry_price": current_price * 0.999,
                         "side": "BUY",
                         "confidence": 0.5,
                         "timeframe": 8,
-                        "reason": f"High volatility ({volatility:.3f}) - expect reversal from downward move",
+                        "reason": f"High volatility ({volatility:.3f}) - expect reversal from downward move ({trend_5m_type})",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "VOLATILITY_ANALYSIS"
+                    }
+                    predictions.append(prediction)
+                else:
+                    # Sideways + high volatility = breakout opportunity
+                    prediction = {
+                        "type": "VOLATILITY_BREAKOUT",
+                        "entry_price": current_price * 0.999,  # Slight bias toward BUY in sideways
+                        "side": "BUY",
+                        "confidence": 0.4,
+                        "timeframe": 10,
+                        "reason": f"High volatility ({volatility:.3f}) in sideways market - expect breakout",
                         "support": support,
                         "resistance": resistance,
                         "prediction_mode": "VOLATILITY_ANALYSIS"
@@ -732,31 +887,64 @@ class PredictionEngine:
              
             # 5. FALLBACK PREDICTION - Always provide at least one prediction
             if not predictions:
-                # Generate a simple prediction based on current trend
-                if trend_5m.get("trend") == "UP":
+                # Generate a simple prediction based on current trend (enhanced)
+                trend_5m_type = trend_5m.get("trend", "UNKNOWN")
+                trend_1h_type = trend_1h.get("trend", "UNKNOWN")
+                
+                # Check for any bullish signals
+                is_any_bullish = trend_5m_type in ["UP", "STRONG_UP", "WEAK_UP"] or trend_1h_type in ["UP", "STRONG_UP", "WEAK_UP"]
+                is_any_bearish = trend_5m_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"] or trend_1h_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+                
+                if is_any_bullish:
                     prediction = {
                         "type": "TREND_FOLLOWING",
                         "entry_price": current_price * 0.999,
                         "side": "BUY",
-                        "confidence": 0.4,
+                        "confidence": 0.3,
                         "timeframe": 15,
-                        "reason": f"Following 5m uptrend - enter below current price",
+                        "reason": f"Following bull trend: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
+                        "support": support,
+                        "resistance": resistance,
+                        "prediction_mode": "TREND_FOLLOWING"
+                    }
+                elif is_any_bearish:
+                    prediction = {
+                        "type": "TREND_FOLLOWING",
+                        "entry_price": current_price * 1.001,
+                        "side": "SELL",
+                        "confidence": 0.3,
+                        "timeframe": 15,
+                        "reason": f"Following bear trend: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
                         "support": support,
                         "resistance": resistance,
                         "prediction_mode": "TREND_FOLLOWING"
                     }
                 else:
-                    prediction = {
-                        "type": "TREND_FOLLOWING",
-                        "entry_price": current_price * 1.001,
-                        "side": "SELL",
-                        "confidence": 0.4,
-                        "timeframe": 15,
-                        "reason": f"Following 5m downtrend - enter above current price",
-                        "support": support,
-                        "resistance": resistance,
-                        "prediction_mode": "TREND_FOLLOWING"
-                    }
+                    # Truly sideways/unknown - use RSI for direction
+                    if current_rsi < 45:  # Slightly oversold
+                        prediction = {
+                            "type": "RSI_BASED_BUY",
+                            "entry_price": current_price * 0.999,
+                            "side": "BUY",
+                            "confidence": 0.25,
+                            "timeframe": 20,
+                            "reason": f"Sideways market, RSI-based buy signal (RSI:{current_rsi:.1f})",
+                            "support": support,
+                            "resistance": resistance,
+                            "prediction_mode": "RSI_FALLBACK"
+                        }
+                    else:  # RSI >= 45
+                        prediction = {
+                            "type": "RSI_BASED_SELL",
+                            "entry_price": current_price * 1.001,
+                            "side": "SELL", 
+                            "confidence": 0.25,
+                            "timeframe": 20,
+                            "reason": f"Sideways market, RSI-based sell signal (RSI:{current_rsi:.1f})",
+                            "support": support,
+                            "resistance": resistance,
+                            "prediction_mode": "RSI_FALLBACK"
+                        }
                 predictions.append(prediction)
              
             # Add metadata to all predictions before returning
@@ -1144,24 +1332,42 @@ class PredictionEngine:
         """Calculate confidence for breakout predictions with multi-timeframe RSI and volume integration"""
         base_confidence = 0.5
         
-        # Multi-timeframe trend alignment analysis
+        # Multi-timeframe trend alignment analysis with enhanced trend types
         trend_5m_dir = trend_5m.get("trend", "UNKNOWN")
         trend_1h_dir = trend_1h.get("trend", "UNKNOWN")
         trend_1d_dir = trend_1d.get("trend", "UNKNOWN")
         
-        # Short-term trend alignment bonus
-        if trend_1h_dir == trend_5m_dir:
-            base_confidence += 0.2
+        # Enhanced trend classification for alignment
+        def get_trend_direction(trend_type):
+            if trend_type in ["UP", "STRONG_UP", "WEAK_UP"]:
+                return "BULLISH"
+            elif trend_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]:
+                return "BEARISH"
+            elif trend_type == "SIDEWAYS":
+                return "NEUTRAL"
+            else:
+                return "UNKNOWN"
+        
+        trend_5m_direction = get_trend_direction(trend_5m_dir)
+        trend_1h_direction = get_trend_direction(trend_1h_dir)
+        trend_1d_direction = get_trend_direction(trend_1d_dir)
+        
+        # Short-term trend alignment bonus (enhanced)
+        if trend_1h_direction == trend_5m_direction and trend_1h_direction != "UNKNOWN":
+            if trend_1h_direction == "BULLISH" or trend_1h_direction == "BEARISH":
+                base_confidence += 0.25  # Strong alignment bonus
+            else:  # NEUTRAL alignment
+                base_confidence += 0.1   # Smaller bonus for neutral alignment
             
-        # Daily trend support for breakouts (powerful confirmation)
-        if trend_1d_dir != "UNKNOWN":
-            if trend_1d_dir == trend_5m_dir == trend_1h_dir:
-                # All timeframes aligned = very strong breakout potential
-                base_confidence += 0.25
-            elif trend_1d_dir == trend_5m_dir:
+        # Daily trend support for breakouts (powerful confirmation with enhanced trend types)
+        if trend_1d_direction != "UNKNOWN":
+            if trend_1d_direction == trend_5m_direction == trend_1h_direction and trend_1d_direction != "NEUTRAL":
+                # All timeframes aligned in same direction = very strong breakout potential
+                base_confidence += 0.3
+            elif trend_1d_direction == trend_5m_direction and trend_1d_direction != "NEUTRAL":
                 # Daily supports short-term direction = good breakout potential
-                base_confidence += 0.15
-            elif trend_1d_dir != trend_5m_dir:
+                base_confidence += 0.2
+            elif trend_1d_direction != trend_5m_direction and trend_1d_direction != "NEUTRAL" and trend_5m_direction != "NEUTRAL":
                 # Daily contradicts short-term = breakout may fail
                 base_confidence -= 0.1
         
@@ -1200,23 +1406,38 @@ class PredictionEngine:
         """Calculate confidence for reversion predictions with conservative multi-timeframe analysis"""
         base_confidence = 0.35  # More conservative base for reversions (reduced from 0.4)
         
-        # Multi-timeframe trend analysis for reversions
+        # Multi-timeframe trend analysis for reversions (enhanced)
         trend_5m_dir = trend_5m.get("trend", "UNKNOWN")
         trend_1h_dir = trend_1h.get("trend", "UNKNOWN") 
         trend_1d_dir = trend_1d.get("trend", "UNKNOWN")
         
+        # Enhanced trend classification for reversions
+        def get_trend_direction(trend_type):
+            if trend_type in ["UP", "STRONG_UP", "WEAK_UP"]:
+                return "BULLISH"
+            elif trend_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]:
+                return "BEARISH"
+            elif trend_type == "SIDEWAYS":
+                return "NEUTRAL"
+            else:
+                return "UNKNOWN"
+        
+        trend_5m_direction = get_trend_direction(trend_5m_dir)
+        trend_1h_direction = get_trend_direction(trend_1h_dir)
+        trend_1d_direction = get_trend_direction(trend_1d_dir)
+        
         # Conservative trend divergence analysis
-        if trend_1h_dir != trend_5m_dir:
+        if trend_1h_direction != trend_5m_direction and trend_1h_direction != "UNKNOWN" and trend_5m_direction != "UNKNOWN":
             base_confidence += 0.08  # Reduced from 0.15 - more conservative
             
         # Daily trend context - much more conservative
-        if trend_1d_dir == "DOWN" and trend_5m_dir == "UP":
+        if trend_1d_direction == "BEARISH" and trend_5m_direction == "BULLISH":
             # Daily downtrend with short-term up = moderate reversion probability
             base_confidence += 0.10  # Reduced from 0.18
-        elif trend_1d_dir == "UP" and trend_5m_dir == "DOWN":
+        elif trend_1d_direction == "BULLISH" and trend_5m_direction == "BEARISH":
             # Daily uptrend with short-term down = moderate reversion probability  
             base_confidence += 0.10  # Reduced from 0.18
-        elif trend_1d_dir != "UNKNOWN" and trend_1d_dir == trend_5m_dir:
+        elif trend_1d_direction != "UNKNOWN" and trend_1d_direction == trend_5m_direction and trend_1d_direction != "NEUTRAL":
             # Daily trend aligned with short-term = much lower reversion probability
             base_confidence -= 0.12  # Increased penalty from -0.05
             
@@ -1253,13 +1474,13 @@ class PredictionEngine:
         elif abs(depth_imbalance) > 0.4:  # Moderate imbalance
             base_confidence += 0.04
             
-        # Risk penalty for counter-trend trades (your key concern!)
-        if trend_5m_dir != "UNKNOWN" and trend_1h_dir != "UNKNOWN":
+        # Risk penalty for counter-trend trades (enhanced with new trend types)
+        if trend_5m_direction != "UNKNOWN" and trend_1h_direction != "UNKNOWN":
             # If betting against recent momentum, reduce confidence
-            if trend_5m_dir == "UP" and trend_1h_dir == "UP":
+            if trend_5m_direction == "BULLISH" and trend_1h_direction == "BULLISH":
                 # Betting on downward reversion while trends are up = risky
                 base_confidence -= 0.10
-            elif trend_5m_dir == "DOWN" and trend_1h_dir == "DOWN":
+            elif trend_5m_direction == "BEARISH" and trend_1h_direction == "BEARISH":
                 # Betting on upward reversion while trends are down = risky
                 base_confidence -= 0.10
         

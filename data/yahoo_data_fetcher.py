@@ -210,29 +210,29 @@ class YahooDataFetcher:
         last_close = closes[-1]
         price_change = (last_close - first_close) / first_close
         
-        # Enhanced trend detection with multiple thresholds
-        if price_change > 0.003:  # 0.3% strong uptrend
+        # Enhanced trend detection with more sensitive thresholds for gradual bull markets
+        if price_change > 0.002:  # 0.2% strong uptrend (reduced from 0.3%)
             trend = "STRONG_UP"
             strength = min(abs(price_change), 0.1)  # Cap at 10%
-        elif price_change > 0.001:  # 0.1% uptrend
+        elif price_change > 0.0005:  # 0.05% uptrend (reduced from 0.1%)
             trend = "UP"
             strength = min(abs(price_change), 0.1)
-        elif price_change > 0.0002:  # 0.02% weak uptrend
+        elif price_change > 0.0001:  # 0.01% weak uptrend (reduced from 0.02%)
             trend = "WEAK_UP"  # Still bullish but very weak
-            strength = min(abs(price_change), 0.1)
-        elif price_change < -0.003:  # 0.3% strong downtrend
+            strength = min(abs(price_change) * 2, 0.1)  # Amplify weak strength
+        elif price_change < -0.002:  # 0.2% strong downtrend (reduced from 0.3%)
             trend = "STRONG_DOWN"
             strength = min(abs(price_change), 0.1)
-        elif price_change < -0.001:  # 0.1% downtrend
+        elif price_change < -0.0005:  # 0.05% downtrend (reduced from 0.1%)
             trend = "DOWN"
             strength = min(abs(price_change), 0.1)
-        elif price_change < -0.0002:  # 0.02% weak downtrend
+        elif price_change < -0.0001:  # 0.01% weak downtrend (reduced from 0.02%)
             trend = "WEAK_DOWN"  # Still bearish but very weak
-            strength = min(abs(price_change), 0.1)
+            strength = min(abs(price_change) * 2, 0.1)  # Amplify weak strength
         else:
             # True sideways market - very small movement
             trend = "SIDEWAYS"
-            strength = 0.01  # Give small strength to indicate market is active
+            strength = 0.02  # Give small but meaningful strength
         
         # Calculate additional trend confidence metrics
         highs = [candle["high"] for candle in recent_candles]
