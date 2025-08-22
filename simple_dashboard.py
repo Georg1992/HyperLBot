@@ -149,15 +149,21 @@ class OptimizedTradingDashboard:
                     orderbook_imbalance = 0.0
                     
                     try:
-                        # Use HYPERLIQUID's own 5-minute candles for RSI (matches their scale exactly)
-                        hl_candles_5m = api.get_klines("BTC", "5m", 20)  # Last 20 x 5m candles from Hyperliquid
+                        # Use HYPERLIQUID's TRADE HISTORY for RSI (closest to their 5m scale)
+                        trade_history = api.get_trade_history("BTC", limit=200)  # Recent trades
                         
-                        if hl_candles_5m and len(hl_candles_5m) >= 15:
-                            # Calculate RSI using HYPERLIQUID's own price data (matches their RSI exactly)
-                            real_rsi = self._calculate_hyperliquid_rsi(hl_candles_5m, periods=14)  # 14-period standard
-                            logger.info(f"📊 Calculated Hyperliquid-based RSI: {real_rsi:.1f} (using their own 5m candles)")
+                        if trade_history and len(trade_history) >= 50:
+                            # Build 5-minute price samples from recent trades
+                            price_samples = self._build_5m_prices_from_trades(trade_history)
+                            
+                            if len(price_samples) >= 14:
+                                # Calculate RSI using trade-based price samples (matches Hyperliquid timeframe)
+                                real_rsi = self._calculate_rsi_from_trades(price_samples, periods=14)
+                                logger.info(f"🎯 Calculated trade-based RSI: {real_rsi:.1f} (using Hyperliquid trades)")
+                            else:
+                                logger.warning(f"Insufficient price samples: {len(price_samples) if 'price_samples' in locals() else 0}")
                         else:
-                            logger.warning(f"Insufficient Hyperliquid candles: {len(hl_candles_5m) if hl_candles_5m else 0}")
+                            logger.warning(f"Insufficient trade history: {len(trade_history) if trade_history else 0}")
                         
                         # Get REAL volume data  
                         volume_result = api.get_current_5m_volume("BTC")
@@ -329,31 +335,63 @@ class OptimizedTradingDashboard:
             "balance_source": "session_data"
         }
     
-    def _calculate_hyperliquid_rsi(self, hl_candles: List[Dict[str, Any]], periods: int = 14) -> float:
-        """Calculate RSI using Hyperliquid's own candlestick data (matches their RSI exactly)"""
+    def _build_5m_prices_from_trades(self, trade_history: List[Dict[str, Any]]) -> List[float]:
+        """Build 5-minute price samples from Hyperliquid trade history"""
         try:
-            if len(hl_candles) < periods + 1:
+            if not trade_history:
+                return []
+            
+            import time
+            from collections import defaultdict
+            
+            # Group trades by 5-minute intervals
+            current_time = time.time()
+            price_samples = []
+            
+            # Create 5-minute buckets for the last 70 minutes (14 periods)
+            for i in range(14):
+                bucket_end = current_time - (i * 300)  # 300 seconds = 5 minutes
+                bucket_start = bucket_end - 300
+                
+                # Find trades in this 5-minute window
+                bucket_trades = []
+                for trade in trade_history:
+                    try:
+                        # Trade time format depends on Hyperliquid API response
+                        trade_time = float(trade.get('time', trade.get('timestamp', 0)))
+                        if bucket_start <= trade_time <= bucket_end:
+                            bucket_trades.append(float(trade.get('px', trade.get('price', 0))))
+                    except (ValueError, TypeError):
+                        continue
+                
+                # Use average price of trades in this bucket (approximates 5m close)
+                if bucket_trades:
+                    avg_price = sum(bucket_trades) / len(bucket_trades)
+                    price_samples.append(avg_price)
+                elif price_samples:  # Use last known price if no trades in bucket
+                    price_samples.append(price_samples[-1])
+            
+            # Reverse to get chronological order (oldest first)
+            price_samples.reverse()
+            logger.debug(f"🔧 Built {len(price_samples)} price samples from {len(trade_history)} trades")
+            return price_samples
+            
+        except Exception as e:
+            logger.error(f"❌ Error building price samples: {e}")
+            return []
+    
+    def _calculate_rsi_from_trades(self, price_samples: List[float], periods: int = 14) -> float:
+        """Calculate RSI from Hyperliquid trade-based price samples"""
+        try:
+            if len(price_samples) < periods + 1:
                 return 50.0
                 
-            # Extract close prices from Hyperliquid candles
-            closes = []
-            for candle in hl_candles[-periods-1:]:  # Get last period+1 candles
-                # Hyperliquid candle format: [time, open, high, low, close, volume]
-                if isinstance(candle, list) and len(candle) >= 5:
-                    closes.append(float(candle[4]))  # Close price is index 4
-                elif isinstance(candle, dict):
-                    closes.append(float(candle.get('close', candle.get('c', 0))))
-                    
-            if len(closes) < periods + 1:
-                logger.warning(f"Insufficient close prices: {len(closes)} < {periods + 1}")
-                return 50.0
-                
-            # Calculate RSI using standard formula
+            # Calculate price changes
             gains = []
             losses = []
             
-            for i in range(1, len(closes)):
-                change = closes[i] - closes[i-1]
+            for i in range(1, len(price_samples)):
+                change = price_samples[i] - price_samples[i-1]
                 if change > 0:
                     gains.append(change)
                     losses.append(0)
@@ -364,7 +402,7 @@ class OptimizedTradingDashboard:
             if len(gains) < periods:
                 return 50.0
                 
-            # Calculate average gains and losses
+            # Calculate RSI using standard formula
             avg_gain = sum(gains[-periods:]) / periods
             avg_loss = sum(losses[-periods:]) / periods
             
@@ -374,11 +412,11 @@ class OptimizedTradingDashboard:
             rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))
             
-            logger.debug(f"🎯 Hyperliquid RSI calculation: {len(closes)} closes, {periods} periods, RSI={rsi:.1f}")
+            logger.debug(f"🎯 Trade-based RSI: {periods}-period, RSI={rsi:.1f}")
             return max(0.0, min(100.0, rsi))  # Clamp to 0-100
             
         except Exception as e:
-            logger.error(f"❌ Hyperliquid RSI calculation error: {e}")
+            logger.error(f"❌ Trade-based RSI calculation error: {e}")
             return 50.0
 
     def clear_cache(self):

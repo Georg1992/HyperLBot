@@ -391,6 +391,89 @@ class YahooHyperliquidPaperTradingBot:
         
         return self.cached_rsi_data or {"rsi": 50.0, "calculation_method": "fallback"}
     
+    def _build_5m_prices_from_hyperliquid_trades(self, trade_history: List[Dict[str, Any]]) -> List[float]:
+        """Build 5-minute price samples from Hyperliquid trade history"""
+        try:
+            if not trade_history:
+                return []
+            
+            import time
+            
+            # Group trades by 5-minute intervals
+            current_time = time.time()
+            price_samples = []
+            
+            # Create 5-minute buckets for the last 70 minutes (14 periods)
+            for i in range(14):
+                bucket_end = current_time - (i * 300)  # 300 seconds = 5 minutes
+                bucket_start = bucket_end - 300
+                
+                # Find trades in this 5-minute window
+                bucket_trades = []
+                for trade in trade_history:
+                    try:
+                        # Hyperliquid trade time format
+                        trade_time = float(trade.get('time', trade.get('timestamp', 0)))
+                        if bucket_start <= trade_time <= bucket_end:
+                            bucket_trades.append(float(trade.get('px', trade.get('price', 0))))
+                    except (ValueError, TypeError):
+                        continue
+                
+                # Use average price of trades in this bucket (approximates 5m close)
+                if bucket_trades:
+                    avg_price = sum(bucket_trades) / len(bucket_trades)
+                    price_samples.append(avg_price)
+                elif price_samples:  # Use last known price if no trades in bucket
+                    price_samples.append(price_samples[-1])
+            
+            # Reverse to get chronological order (oldest first)
+            price_samples.reverse()
+            logger.debug(f"🔧 Built {len(price_samples)} price samples from {len(trade_history)} trades")
+            return price_samples
+            
+        except Exception as e:
+            logger.error(f"❌ Error building Hyperliquid price samples: {e}")
+            return []
+    
+    def _calculate_rsi_from_price_samples(self, price_samples: List[float], periods: int = 14) -> float:
+        """Calculate RSI from price samples (standard RSI formula)"""
+        try:
+            if len(price_samples) < periods + 1:
+                return 50.0
+                
+            # Calculate price changes
+            gains = []
+            losses = []
+            
+            for i in range(1, len(price_samples)):
+                change = price_samples[i] - price_samples[i-1]
+                if change > 0:
+                    gains.append(change)
+                    losses.append(0)
+                else:
+                    gains.append(0)
+                    losses.append(-change)
+            
+            if len(gains) < periods:
+                return 50.0
+                
+            # Calculate RSI using standard formula
+            avg_gain = sum(gains[-periods:]) / periods
+            avg_loss = sum(losses[-periods:]) / periods
+            
+            if avg_loss == 0:
+                return 100.0  # All gains, no losses
+                
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            
+            logger.debug(f"🎯 RSI calculation: {periods}-period, {len(price_samples)} samples, RSI={rsi:.1f}")
+            return max(0.0, min(100.0, rsi))  # Clamp to 0-100
+            
+        except Exception as e:
+            logger.error(f"❌ RSI calculation error: {e}")
+            return 50.0
+    
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get comprehensive market analysis from Yahoo Finance (HISTORICAL DATA ONLY)"""
         try:
@@ -2503,18 +2586,26 @@ class YahooHyperliquidPaperTradingBot:
                                 
                                 # Update real-time data manager with REAL calculated values
                                 if self.trading_data_manager:
-                                    # Get REAL RSI using HYPERLIQUID's own 5m candles (matches their RSI exactly)
+                                    # Get REAL RSI using HYPERLIQUID's TRADE HISTORY (closest to their 5m RSI)  
                                     real_rsi = 50.0  # Default
                                     try:
-                                        hl_candles_5m = self.hyperliquid_api.get_klines("BTC", "5m", 20)
-                                        if hl_candles_5m and len(hl_candles_5m) >= 15:
-                                            real_rsi = self._calculate_hyperliquid_rsi(hl_candles_5m, periods=14)
-                                            logger.info(f"🎯 Using Hyperliquid RSI: {real_rsi:.1f} (from their 5m candles)")
+                                        # Use Hyperliquid trade history to build 5m price samples
+                                        trade_history = self.hyperliquid_api.get_trade_history("BTC", limit=200)
+                                        if trade_history and len(trade_history) >= 50:
+                                            # Build 5-minute price approximations from actual trades
+                                            price_samples = self._build_5m_prices_from_hyperliquid_trades(trade_history)
+                                            if len(price_samples) >= 14:
+                                                real_rsi = self._calculate_rsi_from_price_samples(price_samples, periods=14)
+                                                logger.info(f"🎯 Using Hyperliquid trade-based RSI: {real_rsi:.1f} (from {len(trade_history)} trades)")
+                                            else:
+                                                logger.warning(f"Not enough price samples: {len(price_samples) if 'price_samples' in locals() else 0}")
+                                                real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
                                         else:
+                                            logger.warning(f"Insufficient Hyperliquid trade history: {len(trade_history) if trade_history else 0}")
                                             # Fallback to cached Yahoo-based RSI
                                             real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
                                     except Exception as e:
-                                        logger.debug(f"Hyperliquid RSI calculation failed: {e}")
+                                        logger.debug(f"Hyperliquid trade-based RSI failed: {e}")
                                         real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
                                     
                                     # Get REAL volume from enhanced analysis
