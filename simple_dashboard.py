@@ -76,22 +76,22 @@ class SimpleBotDashboard:
                     latest_market = None
                     latest_prediction = None
                     
-                                         for entry in reversed(analysis_data):
-                         if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis"):
-                             if not latest_market:
-                                 latest_market = entry
-                             # Prioritize entries with volume_data
-                             elif entry.get("volume_data") and not latest_market.get("volume_data"):
-                                 latest_market = entry
-                         if entry.get("analysis_type") == "prediction_analysis" and entry.get("has_prediction") and not latest_prediction:
-                             latest_prediction = entry
+                    for entry in reversed(analysis_data):
+                        if entry.get("analysis_type") == "hybrid_analysis_update" and entry.get("trend_analysis"):
+                            if not latest_market:
+                                latest_market = entry
+                            # Prioritize entries with volume_data
+                            elif entry.get("volume_data") and not latest_market.get("volume_data"):
+                                latest_market = entry
+                        if entry.get("analysis_type") == "prediction_analysis" and entry.get("has_prediction") and not latest_prediction:
+                            latest_prediction = entry
                      
-                     # Also look for entries with volume_data specifically
-                     latest_volume_entry = None
-                     for entry in reversed(analysis_data):
-                         if entry.get("volume_data"):
-                             latest_volume_entry = entry
-                             break
+                    # Also look for entries with volume_data specifically
+                    latest_volume_entry = None
+                    for entry in reversed(analysis_data):
+                        if entry.get("volume_data"):
+                            latest_volume_entry = entry
+                            break
                     
                     # Use market data entry for basic info, prediction entry for RSI/volume
                     base_entry = latest_market or latest_prediction
@@ -173,7 +173,7 @@ class SimpleBotDashboard:
                                 orderbook_imbalance = best_pred.get("orderbook_imbalance", 0)
                                 
                                 logger.info(f"📊 Using cached data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
-                                                         else:
+                            else:
                                  # Check if volume data is available in any entry
                                  if latest_volume_entry and latest_volume_entry.get("volume_data"):
                                      volume_info = latest_volume_entry.get("volume_data", {})
@@ -197,7 +197,7 @@ class SimpleBotDashboard:
                                      volume_source = volume_info.get("volume_source", "hybrid_analysis")
                                      
                                      logger.info(f"📊 Using hybrid analysis data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
-                                else:
+                                 else:
                                     # Fallback to Yahoo data if no cached data available
                                     from data.yahoo_data_fetcher import YahooDataFetcher
                                     fetcher = YahooDataFetcher()
@@ -252,6 +252,10 @@ class SimpleBotDashboard:
                                 is_immediate_spike = volume_info.get("is_immediate_spike", False)
                                 spike_reason = volume_info.get("spike_reason", "")
                                 volume_source = volume_info.get("volume_source", "log_fallback")
+                                # NEW: Real-time volume data fields (fallback)
+                                cumulative_5m_volume = volume_info.get("cumulative_5m_volume", 0)
+                                volume_trend = volume_info.get("volume_trend", "UNKNOWN")
+                                sources_used = volume_info.get("sources_used", [])
                                 
                                 orderbook_imbalance = best_pred.get("orderbook_imbalance")
                             elif latest_market and latest_market.get("volume_data"):
@@ -264,6 +268,10 @@ class SimpleBotDashboard:
                                 is_immediate_spike = volume_info.get("is_immediate_spike", False)
                                 spike_reason = volume_info.get("spike_reason", "")
                                 volume_source = volume_info.get("volume_source", "hybrid_analysis_fallback")
+                                # NEW: Real-time volume data fields (fallback)
+                                cumulative_5m_volume = volume_info.get("cumulative_5m_volume", 0)
+                                volume_trend = volume_info.get("volume_trend", "UNKNOWN")
+                                sources_used = volume_info.get("sources_used", [])
                                 
                                 logger.info(f"📊 Using hybrid analysis fallback - Volume: {volume_data:.1f}, Source: {volume_source}")
                             else:
@@ -275,6 +283,10 @@ class SimpleBotDashboard:
                                 is_immediate_spike = False
                                 spike_reason = ""
                                 volume_source = "no_data"
+                                # NEW: Real-time volume data fields (final fallback)
+                                cumulative_5m_volume = 0
+                                volume_trend = "UNKNOWN"
+                                sources_used = []
                                 logger.warning("No volume data available in any log entries")
                         
                         # Update last_update to reflect real-time data
@@ -301,7 +313,11 @@ class SimpleBotDashboard:
                             "spike_severity": spike_severity,
                             "is_immediate_spike": is_immediate_spike,
                             "spike_reason": spike_reason,
-                            "volume_source": volume_source
+                            "volume_source": volume_source,
+                            # NEW: Real-time volume data fields
+                            "cumulative_5m_volume": cumulative_5m_volume if 'cumulative_5m_volume' in locals() else 0,
+                            "volume_trend": volume_trend if 'volume_trend' in locals() else "UNKNOWN",
+                            "sources_used": sources_used if 'sources_used' in locals() else []
                         }
                     else:
                         logger.warning("No valid market data found in analysis")
@@ -1074,6 +1090,9 @@ def create_template():
                 const spikeReason = market.spike_reason || '';
                 const volumeSource = market.volume_source || 'unknown';
                 const volumeCategory = market.volume_category || 'UNKNOWN';
+                const cumulativeVolume = market.cumulative_5m_volume !== undefined ? market.cumulative_5m_volume.toFixed(1) : 'N/A';
+                const volumeTrend = market.volume_trend || 'UNKNOWN';
+                const volumeSources = market.sources_used ? market.sources_used.join(', ') : 'unknown';
                 
                 div.innerHTML = `
                      <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
@@ -1088,14 +1107,17 @@ def create_template():
                          </p>
                      </div>
                      
-                                           <!-- Volume - Enhanced Display with Spike Detection -->
+                                           <!-- Volume - Enhanced Display with Real-Time Data -->
                       <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                          <p><strong>📈 5m Volume:</strong> 
+                          <p><strong>📈 Real-Time Volume:</strong> 
                           <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}">${volumeValue}</span>
                           <span class="volume-category">(${volumeCategory})</span>
                           <span class="spike-indicator ${hasVolumeSpike ? spikeSeverity.toLowerCase() : 'normal'}">${hasVolumeSpike ? `🚨 ${spikeSeverity} SPIKE` : '📊 NORMAL'}</span>
                           ${isImmediateSpike ? `<span class="immediate-spike">⚡ IMMEDIATE</span>` : ''}
                           </p>
+                          <p><strong>📊 5m Cumulative:</strong> <span class="cumulative-volume">${cumulativeVolume}</span> BTC</p>
+                          <p><strong>🔄 Trend:</strong> <span class="volume-trend">${volumeTrend}</span></p>
+                          <p><strong>🌐 Sources:</strong> <span class="volume-sources">${volumeSources}</span></p>
                           ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
                          <p><strong>📊 Order Flow:</strong> 
                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>

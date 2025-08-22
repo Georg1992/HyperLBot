@@ -462,17 +462,17 @@ class HyperliquidAPI:
             return []
     
     def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
-        """Get current 5-minute volume statistics from Yahoo Finance"""
+        """Get current 5-minute volume statistics from real-time sources"""
         try:
             symbol = symbol or self.config.SYMBOL
             
-            # Use Yahoo Finance for volume data since Hyperliquid API doesn't support candlestick volume
-            from data.yahoo_data_fetcher import YahooDataFetcher
+            # Use real-time volume fetcher for actual trading volume data
+            from data.realtime_volume_fetcher import RealtimeVolumeFetcher
             
-            yahoo_fetcher = YahooDataFetcher()
-            volume_data = yahoo_fetcher.get_current_5m_volume(symbol)
+            volume_fetcher = RealtimeVolumeFetcher()
+            volume_data = volume_fetcher.get_current_5m_volume()
             
-            logger.info(f"Retrieved volume data from Yahoo Finance for {symbol}: {volume_data.get('volume_category', 'UNKNOWN')}")
+            logger.info(f"Retrieved real-time volume data for {symbol}: {volume_data.get('volume_category', 'UNKNOWN')}")
             return volume_data
             
         except Exception as e:
@@ -483,7 +483,7 @@ class HyperliquidAPI:
                 "avg_volume": 0,
                 "volume_trend": "ERROR",
                 "error": str(e),
-                "data_source": "yahoo_finance"
+                "data_source": "realtime_sources"
             }
     
 
