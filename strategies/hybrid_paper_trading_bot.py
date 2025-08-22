@@ -2684,12 +2684,37 @@ class YahooHyperliquidPaperTradingBot:
                                         logger.debug(f"Immediate RSI calculation failed: {e}")
                                         real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
                                     
-                                    # Get REAL volume from enhanced analysis
-                                    real_volume = enhanced_analysis.get("volume_data", {}).get("current_volume", 0.0)
-                                    volume_category = enhanced_analysis.get("volume_data", {}).get("volume_category", "UNKNOWN")
+                                    # Get REAL volume from direct API call
+                                    try:
+                                        volume_result = self.hyperliquid_api.get_current_5m_volume("BTC")
+                                        real_volume = volume_result.get("current_volume", 0.0)
+                                        volume_category = volume_result.get("volume_category", "UNKNOWN")
+                                        logger.debug(f"📊 Direct volume fetch: {real_volume:.1f} BTC ({volume_category})")
+                                    except Exception as e:
+                                        logger.debug(f"Volume fetch failed: {e}")
+                                        real_volume = 0.0
+                                        volume_category = "FETCH_ERROR"
                                     
-                                    # Get REAL orderbook imbalance
-                                    real_imbalance = enhanced_analysis.get("orderbook_imbalance", 0.0)
+                                    # Get REAL orderbook imbalance from market data
+                                    try:
+                                        market_data = self.hyperliquid_api.get_market_data("BTC")
+                                        if market_data and "levels" in market_data:
+                                            bids = market_data['levels'][0][:10] if market_data['levels'][0] else []
+                                            asks = market_data['levels'][1][:10] if market_data['levels'][1] else []
+                                            
+                                            total_bid_volume = sum(float(bid['sz']) for bid in bids)
+                                            total_ask_volume = sum(float(ask['sz']) for ask in asks)
+                                            
+                                            if total_bid_volume + total_ask_volume > 0:
+                                                real_imbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume) * 100
+                                            else:
+                                                real_imbalance = 0.0
+                                            logger.debug(f"📊 Direct orderbook imbalance: {real_imbalance:.1f}%")
+                                        else:
+                                            real_imbalance = 0.0
+                                    except Exception as e:
+                                        logger.debug(f"Orderbook imbalance calc failed: {e}")
+                                        real_imbalance = 0.0
                                     
                                     logger.info(f"📊 Updating dashboard: RSI={real_rsi:.1f}, Volume={real_volume:.1f} BTC ({volume_category}), Imbalance={real_imbalance:.3f}")
                                     
