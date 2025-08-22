@@ -887,24 +887,52 @@ class PredictionEngine:
             
             # Apply validation based on price movement
             if side == "BUY" and entry_price >= current_price and not price_moving_toward_entry:
-                # Price not moving toward entry - adjust to safe level
-                safe_entry = current_price * 0.997
-                if support > 0 and support < current_price:
-                    safe_entry = min(safe_entry, support * 1.001)
-                
-                prediction["entry_price"] = safe_entry
-                prediction["reason"] += f" (ADJUSTED: price not moving toward entry, set to ${safe_entry:,.2f})"
-                logger.warning(f"⚠️ BUY order adjusted: entry ${entry_price:,.2f} >= current ${current_price:,.2f}, price not moving down")
+                # For REVERSION_FROM_SUPPORT: only allow entry if price is actually at support
+                if pred_type == "REVERSION_FROM_SUPPORT":
+                    if current_price > support * 1.002:  # Price not at support (more than 0.2% above)
+                        prediction["entry_price"] = support * 0.999  # Set entry below support
+                        prediction["reason"] += f" (WAIT: price ${current_price:,.2f} not at support ${support:,.2f})"
+                        prediction["execution_timing"] = "WAIT_FOR_SUPPORT"
+                        logger.warning(f"⚠️ REVERSION_FROM_SUPPORT: Price ${current_price:,.2f} not at support ${support:,.2f} - waiting")
+                    else:
+                        # Price is at support - allow entry
+                        prediction["entry_price"] = current_price
+                        prediction["reason"] += f" (AT_SUPPORT: price ${current_price:,.2f} at support ${support:,.2f})"
+                        prediction["execution_timing"] = "IMMEDIATE"
+                        logger.info(f"✅ REVERSION_FROM_SUPPORT: Price ${current_price:,.2f} at support ${support:,.2f} - ready to enter")
+                else:
+                    # For other BUY types: adjust to safe level
+                    safe_entry = current_price * 0.997
+                    if support > 0 and support < current_price:
+                        safe_entry = min(safe_entry, support * 1.001)
+                    
+                    prediction["entry_price"] = safe_entry
+                    prediction["reason"] += f" (ADJUSTED: price not moving toward entry, set to ${safe_entry:,.2f})"
+                    logger.warning(f"⚠️ BUY order adjusted: entry ${entry_price:,.2f} >= current ${current_price:,.2f}, price not moving down")
             
             elif side == "SELL" and entry_price <= current_price and not price_moving_toward_entry:
-                # Price not moving toward entry - adjust to safe level
-                safe_entry = current_price * 1.003
-                if resistance > 0 and resistance > current_price:
-                    safe_entry = max(safe_entry, resistance * 0.999)
-                
-                prediction["entry_price"] = safe_entry
-                prediction["reason"] += f" (ADJUSTED: price not moving toward entry, set to ${safe_entry:,.2f})"
-                logger.warning(f"⚠️ SELL order adjusted: entry ${entry_price:,.2f} <= current ${current_price:,.2f}, price not moving up")
+                # For REVERSION_FROM_RESISTANCE: only allow entry if price is actually at resistance
+                if pred_type == "REVERSION_FROM_RESISTANCE":
+                    if current_price < resistance * 0.998:  # Price not at resistance (more than 0.2% below)
+                        prediction["entry_price"] = resistance * 1.001  # Set entry above resistance
+                        prediction["reason"] += f" (WAIT: price ${current_price:,.2f} not at resistance ${resistance:,.2f})"
+                        prediction["execution_timing"] = "WAIT_FOR_RESISTANCE"
+                        logger.warning(f"⚠️ REVERSION_FROM_RESISTANCE: Price ${current_price:,.2f} not at resistance ${resistance:,.2f} - waiting")
+                    else:
+                        # Price is at resistance - allow entry
+                        prediction["entry_price"] = current_price
+                        prediction["reason"] += f" (AT_RESISTANCE: price ${current_price:,.2f} at resistance ${resistance:,.2f})"
+                        prediction["execution_timing"] = "IMMEDIATE"
+                        logger.info(f"✅ REVERSION_FROM_RESISTANCE: Price ${current_price:,.2f} at resistance ${resistance:,.2f} - ready to enter")
+                else:
+                    # For other SELL types: adjust to safe level
+                    safe_entry = current_price * 1.003
+                    if resistance > 0 and resistance > current_price:
+                        safe_entry = max(safe_entry, resistance * 0.999)
+                    
+                    prediction["entry_price"] = safe_entry
+                    prediction["reason"] += f" (ADJUSTED: price not moving toward entry, set to ${safe_entry:,.2f})"
+                    logger.warning(f"⚠️ SELL order adjusted: entry ${entry_price:,.2f} <= current ${current_price:,.2f}, price not moving up")
             
             # Add execution timing metadata for equal-price scenarios
             if price_moving_toward_entry:

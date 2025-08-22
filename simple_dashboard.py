@@ -203,38 +203,38 @@ class SimpleBotDashboard:
                                     fetcher = YahooDataFetcher()
                                     logger.debug("📊 Fetching Yahoo data as fallback...")
                                     candles = fetcher.get_klines("BTC", "5m", 30)
-                                
-                                if candles and len(candles) >= 25:
-                                    rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
-                                    rsi_data = rsi_result.get("rsi", 0)
                                     
-                                    volume_result = api.get_current_5m_volume("BTC")
-                                    volume_data = volume_result.get("current_volume", 0)
-                                    volume_category = volume_result.get("volume_category", "UNKNOWN")
-                                    has_spike = volume_result.get("has_spike", False)
-                                    spike_severity = volume_result.get("spike_severity", "NORMAL")
-                                    is_immediate_spike = volume_result.get("is_immediate_spike", False)
-                                    spike_reason = volume_result.get("spike_reason", "")
-                                    volume_source = volume_result.get("volume_source", "fallback")
-                                    
-                                    indicators = api.get_current_market_indicators("BTC")
-                                    orderbook_imbalance = 0
-                                    if indicators and "liquidity_metrics" in indicators:
-                                        liquidity = indicators["liquidity_metrics"]
-                                        orderbook_imbalance = liquidity.get("depth_imbalance", 0)
-                                    
-                                    logger.info(f"📊 Fallback data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}")
-                                else:
-                                    rsi_data = 0
-                                    volume_data = 0
-                                    volume_category = "UNKNOWN"
-                                    has_spike = False
-                                    spike_severity = "NORMAL"
-                                    is_immediate_spike = False
-                                    spike_reason = ""
-                                    volume_source = "no_data"
-                                    orderbook_imbalance = 0
-                                    logger.warning("Insufficient candle data for fallback calculation")
+                                    if candles and len(candles) >= 25:
+                                        rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
+                                        rsi_data = rsi_result.get("rsi", 0)
+                                        
+                                        volume_result = api.get_current_5m_volume("BTC")
+                                        volume_data = volume_result.get("current_volume", 0)
+                                        volume_category = volume_result.get("volume_category", "UNKNOWN")
+                                        has_spike = volume_result.get("has_spike", False)
+                                        spike_severity = volume_result.get("spike_severity", "NORMAL")
+                                        is_immediate_spike = volume_result.get("is_immediate_spike", False)
+                                        spike_reason = volume_result.get("spike_reason", "")
+                                        volume_source = volume_result.get("volume_source", "fallback")
+                                        
+                                        indicators = api.get_current_market_indicators("BTC")
+                                        orderbook_imbalance = 0
+                                        if indicators and "liquidity_metrics" in indicators:
+                                            liquidity = indicators["liquidity_metrics"]
+                                            orderbook_imbalance = liquidity.get("depth_imbalance", 0)
+                                        
+                                        logger.info(f"📊 Fallback data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}")
+                                    else:
+                                        rsi_data = 0
+                                        volume_data = 0
+                                        volume_category = "UNKNOWN"
+                                        has_spike = False
+                                        spike_severity = "NORMAL"
+                                        is_immediate_spike = False
+                                        spike_reason = ""
+                                        volume_source = "no_data"
+                                        orderbook_imbalance = 0
+                                        logger.warning("Insufficient candle data for fallback calculation")
                                     
                         except Exception as e:
                             logger.warning(f"Could not get live market data: {e}")

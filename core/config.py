@@ -29,8 +29,8 @@ class TradingConfig:
             "confidence_threshold": 0.3,
             "min_interval": 30,  # seconds between trades
             "max_leverage": 40,
-            "profit_target": 0.01,  # 1% profit target
-            "stop_loss": 0.005,  # 0.5% stop loss
+            "profit_target": 0.008,  # 0.8% profit target (reduced for more realistic targets)
+            "stop_loss": 0.004,  # 0.4% stop loss (reduced for better risk/reward)
             "position_size": 0.1  # 10% of balance
         },
         "low_volatility": {
@@ -39,8 +39,8 @@ class TradingConfig:
             "confidence_threshold": 0.05,  # Very low confidence requirement for active predictions
             "min_interval": 60,  # 1 minute between trades (much faster)
             "max_leverage": 30,  # Slightly lower leverage for safety
-            "profit_target": 0.003,  # 0.3% profit target (even smaller moves)
-            "stop_loss": 0.002,  # 0.2% stop loss (very tight)
+            "profit_target": 0.005,  # 0.5% profit target (increased for profitability)
+            "stop_loss": 0.002,  # 0.2% stop loss (kept tight)
             "position_size": 0.2  # 20% of balance (larger positions for smaller moves)
         },
         "high_volatility": {

@@ -140,7 +140,7 @@ class FeeManager:
         }
     
     def calculate_profit_after_fees(self, entry_price: float, exit_price: float, 
-                                  position_size: float, leverage: int = 30) -> Dict[str, float]:
+                                  position_size: float, leverage: int = 30, side: str = "BUY") -> Dict[str, float]:
         """
         Calculate actual profit after all fees and costs
         
@@ -149,12 +149,19 @@ class FeeManager:
             exit_price: Exit price per BTC
             position_size: Size of position in BTC
             leverage: Leverage used
+            side: "BUY" or "SELL" to determine profit calculation direction
         
         Returns:
             Dictionary with profit breakdown
         """
-        # Calculate raw profit/loss
-        price_change = exit_price - entry_price
+        # Calculate raw profit/loss based on trade side
+        if side == "BUY":
+            # For BUY: profit when exit_price > entry_price
+            price_change = exit_price - entry_price
+        else:  # SELL
+            # For SELL: profit when entry_price > exit_price (price goes down)
+            price_change = entry_price - exit_price
+            
         raw_pnl = price_change * position_size * leverage
         
         # Calculate fees for entry and exit
@@ -185,7 +192,7 @@ class FeeManager:
         }
     
     def is_trade_profitable(self, entry_price: float, target_price: float, 
-                           position_size: float, leverage: int = 30) -> Dict[str, Any]:
+                           position_size: float, leverage: int = 30, side: str = "BUY") -> Dict[str, Any]:
         """
         Determine if a trade is profitable after fees
         
@@ -194,11 +201,12 @@ class FeeManager:
             target_price: Target exit price
             position_size: Position size
             leverage: Leverage used
+            side: "BUY" or "SELL" to determine profit calculation direction
         
         Returns:
             Dictionary with profitability analysis
         """
-        profit_analysis = self.calculate_profit_after_fees(entry_price, target_price, position_size, leverage)
+        profit_analysis = self.calculate_profit_after_fees(entry_price, target_price, position_size, leverage, side)
         
         is_profitable = profit_analysis["net_pnl"] > 0
         min_profit_margin = 0.1  # 0.1% minimum profit margin

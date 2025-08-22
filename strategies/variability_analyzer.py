@@ -426,11 +426,30 @@ class VariabilityAnalyzer:
         analysis = self.get_variability_analysis()
         
         if analysis.get("insufficient_data", False):
-            return {
-                "should_trade": False,
-                "reason": "Insufficient data for variability analysis",
-                "analysis": analysis
+            # For new bot instances, allow trading even with insufficient data
+            # This prevents the bot from being stuck waiting for data
+            # Add optimal trading parameters
+            optimal_trading_params = {
+                "leverage": 30,
+                "position_size": 0.001,
+                "stop_distance": 0.002,
+                "target_distance": 0.005
             }
+            
+            if len(self.price_history) >= 1:  # At least 1 data point (very lenient)
+                return {
+                    "should_trade": True,
+                    "reason": "Insufficient data but allowing trade (new bot instance)",
+                    "analysis": analysis,
+                    "optimal_trading_params": optimal_trading_params
+                }
+            else:
+                return {
+                    "should_trade": False,
+                    "reason": "Insufficient data for variability analysis",
+                    "analysis": analysis,
+                    "optimal_trading_params": optimal_trading_params
+                }
         
         variability_score = analysis["current_variability_score"]
         market_condition = analysis["market_condition"]
@@ -440,7 +459,7 @@ class VariabilityAnalyzer:
         # Check multiple conditions for trading decision
         score_ok = variability_score >= min_variability_score
         recommendation_ok = trading_recommendation in ["OPTIMAL_TRADING_CONDITIONS", "GOOD_TRADING_CONDITIONS"]
-        confidence_ok = confidence_score >= 0.3  # Minimum 30% confidence
+        confidence_ok = confidence_score >= 0.1  # Reduced to 10% confidence for more trades
         
         should_trade = score_ok and recommendation_ok and confidence_ok
         
@@ -454,6 +473,14 @@ class VariabilityAnalyzer:
         else:
             reason = f"Good conditions: score={variability_score:.3f}, recommendation={trading_recommendation}, confidence={confidence_score:.3f}"
         
+        # Add optimal trading parameters
+        optimal_trading_params = {
+            "leverage": 30,
+            "position_size": 0.001,
+            "stop_distance": 0.002,
+            "target_distance": 0.005
+        }
+        
         return {
             "should_trade": should_trade,
             "variability_score": variability_score,
@@ -461,7 +488,8 @@ class VariabilityAnalyzer:
             "trading_recommendation": trading_recommendation,
             "confidence_score": confidence_score,
             "reason": reason,
-            "analysis": analysis
+            "analysis": analysis,
+            "optimal_trading_params": optimal_trading_params
         }
 
 def main():

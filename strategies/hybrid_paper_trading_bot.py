@@ -452,6 +452,10 @@ class YahooHyperliquidPaperTradingBot:
         candles_5m = binance_analysis.get("candles_5m", [])
         proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=20)
         
+        # Add price data to variability analyzer for analysis
+        real_volume = volume_data.get("current_volume", 100)
+        self.variability_analyzer.add_price_data(hyperliquid_price, volume=real_volume)
+        
         logger.info(f"📊 Enhanced RSI: {proper_rsi.get('rsi', 50):.1f} (20-period for crypto accuracy - closer to Hyperliquid)")
         logger.info(f"📊 Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')}) - Trend: {volume_data.get('volume_trend', 'UNKNOWN')}")
         
@@ -510,7 +514,7 @@ class YahooHyperliquidPaperTradingBot:
         
         # Get optimal trading parameters
         variability_analysis = variability_decision["analysis"]
-        optimal_params = variability_analysis["optimal_trading_params"]
+        optimal_params = variability_decision["optimal_trading_params"]
         
         # Calculate dynamic position sizing
         position_size_pct = self._calculate_dynamic_position_size(
@@ -1059,8 +1063,22 @@ class YahooHyperliquidPaperTradingBot:
                         # Wait for breakout confirmation - entry at Hyperliquid price
                         entry_price = hyperliquid_price
                     elif prediction["type"] == "REVERSION_FROM_SUPPORT":
-                        # Buy near support - entry at Hyperliquid price or slightly below
-                        entry_price = min(hyperliquid_price, prediction["support"] * 1.001)
+                        # Buy near support - wait for price to reach support level
+                        # Check execution timing from prediction engine
+                        execution_timing = prediction.get("execution_timing", "IMMEDIATE")
+                        
+                        if execution_timing == "WAIT_FOR_SUPPORT":
+                            # Price not at support yet - skip this opportunity
+                            logger.info(f"⏳ REVERSION_FROM_SUPPORT: Waiting for price to reach support ${prediction['support']:,.2f} (current: ${hyperliquid_price:,.2f})")
+                            continue
+                        elif execution_timing == "IMMEDIATE" or hyperliquid_price <= prediction["support"] * 1.002:
+                            # Price is at support or within 0.2% - proceed with entry
+                            entry_price = hyperliquid_price
+                            logger.info(f"✅ REVERSION_FROM_SUPPORT: Price ${hyperliquid_price:,.2f} at support ${prediction['support']:,.2f} - proceeding with entry")
+                        else:
+                            # Price not at support yet - skip this opportunity
+                            logger.info(f"⏳ REVERSION_FROM_SUPPORT: Price ${hyperliquid_price:,.2f} not at support ${prediction['support']:,.2f} - waiting")
+                            continue
                     elif prediction["type"] == "MOMENTUM_UP":
                         # Buy on momentum - entry at Hyperliquid price
                         entry_price = hyperliquid_price
@@ -1069,8 +1087,8 @@ class YahooHyperliquidPaperTradingBot:
                         entry_price = hyperliquid_price
                     
                     # Calculate realistic targets using Hyperliquid price for accuracy
-                    target_distance = min(0.002, self.strategy_config["profit_target"])  # Max 0.2% target
-                    stop_distance = min(0.001, self.strategy_config["stop_loss"])  # Max 0.1% stop
+                    target_distance = min(0.005, self.strategy_config["profit_target"])  # Max 0.5% target (increased from 0.2%)
+                    stop_distance = min(0.002, self.strategy_config["stop_loss"])  # Max 0.2% stop (increased from 0.1%)
                     
                     target_price = entry_price * (1 + target_distance)
                     stop_price = entry_price * (1 - stop_distance)
@@ -1089,8 +1107,22 @@ class YahooHyperliquidPaperTradingBot:
                         # Wait for breakdown confirmation - entry at Hyperliquid price
                         entry_price = hyperliquid_price
                     elif prediction["type"] == "REVERSION_FROM_RESISTANCE":
-                        # Sell near resistance - entry at Hyperliquid price or slightly above
-                        entry_price = max(hyperliquid_price, prediction["resistance"] * 0.999)
+                        # Sell near resistance - wait for price to reach resistance level
+                        # Check execution timing from prediction engine
+                        execution_timing = prediction.get("execution_timing", "IMMEDIATE")
+                        
+                        if execution_timing == "WAIT_FOR_RESISTANCE":
+                            # Price not at resistance yet - skip this opportunity
+                            logger.info(f"⏳ REVERSION_FROM_RESISTANCE: Waiting for price to reach resistance ${prediction['resistance']:,.2f} (current: ${hyperliquid_price:,.2f})")
+                            continue
+                        elif execution_timing == "IMMEDIATE" or hyperliquid_price >= prediction["resistance"] * 0.998:
+                            # Price is at resistance or within 0.2% - proceed with entry
+                            entry_price = hyperliquid_price
+                            logger.info(f"✅ REVERSION_FROM_RESISTANCE: Price ${hyperliquid_price:,.2f} at resistance ${prediction['resistance']:,.2f} - proceeding with entry")
+                        else:
+                            # Price not at resistance yet - skip this opportunity
+                            logger.info(f"⏳ REVERSION_FROM_RESISTANCE: Price ${hyperliquid_price:,.2f} not at resistance ${prediction['resistance']:,.2f} - waiting")
+                            continue
                     elif prediction["type"] == "MOMENTUM_DOWN":
                         # Sell on momentum - entry at Hyperliquid price
                         entry_price = hyperliquid_price
@@ -1099,8 +1131,8 @@ class YahooHyperliquidPaperTradingBot:
                         entry_price = hyperliquid_price
                     
                     # Calculate realistic targets using Hyperliquid price for accuracy
-                    target_distance = min(0.002, self.strategy_config["profit_target"])  # Max 0.2% target
-                    stop_distance = min(0.001, self.strategy_config["stop_loss"])  # Max 0.1% stop
+                    target_distance = min(0.005, self.strategy_config["profit_target"])  # Max 0.5% target (increased from 0.2%)
+                    stop_distance = min(0.002, self.strategy_config["stop_loss"])  # Max 0.2% stop (increased from 0.1%)
                     
                     target_price = entry_price * (1 - target_distance)
                     stop_price = entry_price * (1 + stop_distance)
@@ -1124,7 +1156,7 @@ class YahooHyperliquidPaperTradingBot:
                 win_probability = self._calculate_prediction_win_probability(prediction, prediction_analysis)
                 
                 # Check minimum confidence - made more lenient for better prediction acceptance
-                min_confidence = 0.45  # Reduced from 0.6 to 0.45 (45%)
+                min_confidence = 0.35  # Reduced from 0.45 to 0.35 (35%) for more trades
                 if prediction["confidence"] < min_confidence:
                     continue
                 
@@ -1133,7 +1165,8 @@ class YahooHyperliquidPaperTradingBot:
                     opportunity["entry_price"], 
                     opportunity["target_price"], 
                     0.001, 
-                    30
+                    30,
+                    prediction["side"]
                 )
                 
                 if not profitability["is_profitable"]:
@@ -1172,7 +1205,8 @@ class YahooHyperliquidPaperTradingBot:
                 best_opportunity["entry_price"], 
                 best_opportunity["target_price"], 
                 0.001, 
-                30
+                30,
+                prediction["side"]
             )
             
             # Log the entry analysis with price comparison
@@ -1191,7 +1225,7 @@ class YahooHyperliquidPaperTradingBot:
             logger.info(f"   Stop Price: ${best_opportunity['stop_price']:,.2f}")
             logger.info(f"   Risk/Reward: {best_opportunity['risk_reward']:.2f}:1")
             logger.info(f"   Win Probability: {win_probability:.1f}%")
-            logger.info(f"   Confidence: {prediction['confidence']:.1f}%")
+            logger.info(f"   Confidence: {prediction['confidence']*100:.1f}%")
             logger.info(f"   Profitability: {profitability['profit_margin']:.2f}% margin")
             
             return {
@@ -1332,7 +1366,10 @@ class YahooHyperliquidPaperTradingBot:
     
     def _calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
         """Calculate win probability for a prediction"""
+        # Ensure confidence is in decimal format (0.0 to 1.0)
         base_probability = prediction["confidence"]
+        if base_probability > 1.0:  # If it's already a percentage, convert to decimal
+            base_probability = base_probability / 100.0
         
         # Adjust based on volatility
         volatility_5m = prediction_analysis.get("volatility_5m", 0.003)

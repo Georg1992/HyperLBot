@@ -255,10 +255,15 @@
             color: white;
         }
         
-        .spike-indicator.mild {
-            background-color: #f1c40f;
-            color: #2c3e50;
-        }
+                 .spike-indicator.mild {
+             background-color: #f1c40f;
+             color: #2c3e50;
+         }
+         
+         .spike-indicator.normal {
+             background-color: #27ae60;
+             color: white;
+         }
         
         .immediate-spike {
             background-color: #e67e22;
@@ -520,6 +525,9 @@
                 const spikeReason = market.spike_reason || '';
                 const volumeSource = market.volume_source || 'unknown';
                 const volumeCategory = market.volume_category || 'UNKNOWN';
+                const cumulativeVolume = market.cumulative_5m_volume !== undefined ? market.cumulative_5m_volume.toFixed(1) : 'N/A';
+                const volumeTrend = market.volume_trend || 'UNKNOWN';
+                const volumeSources = market.sources_used ? market.sources_used.join(', ') : 'unknown';
                 
                 div.innerHTML = `
                      <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
@@ -534,15 +542,18 @@
                          </p>
                      </div>
                      
-                     <!-- Volume - Enhanced Display with Spike Detection -->
-                     <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                         <p><strong>📈 5m Volume:</strong> 
-                         <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}">${volumeValue}</span>
-                         <span class="volume-category">(${volumeCategory})</span>
-                         ${hasVolumeSpike ? `<span class="spike-indicator ${spikeSeverity.toLowerCase()}">🚨 ${spikeSeverity} SPIKE</span>` : ''}
-                         ${isImmediateSpike ? `<span class="immediate-spike">⚡ IMMEDIATE</span>` : ''}
-                         </p>
-                         ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
+                                           <!-- Volume - Enhanced Display with Real-Time Data -->
+                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
+                          <p><strong>📈 Real-Time Volume:</strong> 
+                          <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}">${volumeValue}</span>
+                          <span class="volume-category">(${volumeCategory})</span>
+                          <span class="spike-indicator ${hasVolumeSpike ? spikeSeverity.toLowerCase() : 'normal'}">${hasVolumeSpike ? `🚨 ${spikeSeverity} SPIKE` : '📊 NORMAL'}</span>
+                          ${isImmediateSpike ? `<span class="immediate-spike">⚡ IMMEDIATE</span>` : ''}
+                          </p>
+                          <p><strong>📊 5m Cumulative:</strong> <span class="cumulative-volume">${cumulativeVolume}</span> BTC</p>
+                          <p><strong>🔄 Trend:</strong> <span class="volume-trend">${volumeTrend}</span></p>
+                          <p><strong>🌐 Sources:</strong> <span class="volume-sources">${volumeSources}</span></p>
+                          ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
                          <p><strong>📊 Order Flow:</strong> 
                          <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
                          ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
