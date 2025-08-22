@@ -1522,6 +1522,9 @@ class YahooHyperliquidPaperTradingBot:
             # Deduct fees from balance
             self.paper_balance -= fees["total_cost"]
             
+            # Update current balance in session metadata for dashboard
+            self.trading_logger.update_current_balance(self.paper_balance)
+            
             # Calculate time to execution
             time_to_execution = execution_time - order_placement_time if execution_time else 0
             
@@ -1590,6 +1593,9 @@ class YahooHyperliquidPaperTradingBot:
             
             # Deduct fees from balance
             self.paper_balance -= fees["total_cost"]
+            
+            # Update current balance in session metadata for dashboard
+            self.trading_logger.update_current_balance(self.paper_balance)
             
             return {
                 "success": True,
@@ -1752,6 +1758,9 @@ class YahooHyperliquidPaperTradingBot:
         
         # Deduct fees from balance
         self.paper_balance -= fees["total_cost"]
+        
+        # Update current balance in session metadata for dashboard
+        self.trading_logger.update_current_balance(self.paper_balance)
         
         return {
             "success": True,
@@ -2060,10 +2069,13 @@ class YahooHyperliquidPaperTradingBot:
             # Net P&L for partial close
             net_pnl = pnl_amount - exit_fees["total_cost"]
             
-            # Update balance
-            self.paper_balance += net_pnl
-            
-            # Update position size
+                    # Update balance
+        self.paper_balance += net_pnl
+        
+        # Update current balance in session metadata for dashboard
+        self.trading_logger.update_current_balance(self.paper_balance)
+        
+        # Update position size
             position["size"] -= close_size
             
             # Record partial close
@@ -2123,6 +2135,9 @@ class YahooHyperliquidPaperTradingBot:
             
             # Deduct fees from balance
             self.paper_balance -= fees["total_cost"]
+            
+            # Update current balance in session metadata for dashboard
+            self.trading_logger.update_current_balance(self.paper_balance)
             
             # Update position with scaled-in size
             original_size = position["size"]
@@ -2200,6 +2215,9 @@ class YahooHyperliquidPaperTradingBot:
         
         # Update balance
         self.paper_balance += net_pnl
+        
+        # Update current balance in session metadata for dashboard
+        self.trading_logger.update_current_balance(self.paper_balance)
         
         # Update position
         position.update({

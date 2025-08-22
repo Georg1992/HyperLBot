@@ -95,6 +95,22 @@ class TradingLogger:
         self._save_session_metadata()
         logger.info(f"💰 Updated initial balance: ${balance:.2f}")
     
+    def update_current_balance(self, balance: float):
+        """Update current balance in session metadata for real-time dashboard updates"""
+        self.session_metadata["current_balance"] = balance
+        self.session_metadata["last_balance_update"] = datetime.now().isoformat()
+        
+        # Calculate P&L from initial balance
+        initial_balance = self.session_metadata.get("initial_balance", balance)
+        balance_change = balance - initial_balance
+        balance_change_pct = (balance_change / initial_balance * 100) if initial_balance > 0 else 0
+        
+        self.session_metadata["balance_change"] = balance_change
+        self.session_metadata["balance_change_pct"] = balance_change_pct
+        
+        self._save_session_metadata()
+        logger.debug(f"💰 Updated current balance: ${balance:.2f} (P&L: {balance_change:+.2f}, {balance_change_pct:+.2f}%)")
+    
     def log_trade(self, trade_data: Dict[str, Any]):
         """Log a completed trade with comprehensive details"""
         trade_record = {

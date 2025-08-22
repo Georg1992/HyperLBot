@@ -368,20 +368,80 @@ class SimpleBotDashboard:
             return []
     
     def get_trade_summary(self):
-        """Get trading summary"""
+        """Get trading summary with real current balance calculation"""
         try:
-            # Get session data to show actual balance
+            # Get session data
             session_data = self.get_session_data()
             initial_balance = session_data.get("initial_balance", 1000.0)
             
-            # For now, return default values with actual balance
-            # This could be enhanced to calculate from actual trade data
+            # Check if we have real-time balance from session metadata (preferred)
+            if session_data.get("current_balance") is not None:
+                current_balance = session_data.get("current_balance")
+                balance_change = session_data.get("balance_change", 0.0)
+                balance_change_pct = session_data.get("balance_change_pct", 0.0)
+                total_pnl = balance_change
+                logger.info(f"💰 Using real-time balance from session: ${current_balance:.2f}")
+            else:
+                # Fallback: Calculate from trade data if no real-time balance available
+                current_balance = initial_balance
+                total_pnl = 0.0
+                logger.info("💰 Calculating balance from trade history (fallback)")
+            
+            total_trades = 0
+            winning_trades = 0
+            losing_trades = 0
+            
+            # Read trade data from logs for trade statistics
+            trades_dir = os.path.join(self.log_dir, "trades")
+            if os.path.exists(trades_dir):
+                trade_files = [f for f in os.listdir(trades_dir) if f.endswith('.json')]
+                if trade_files:
+                    latest_trades_file = max(trade_files)
+                    trades_path = os.path.join(trades_dir, latest_trades_file)
+                    
+                    with open(trades_path, 'r') as f:
+                        trades_data = json.load(f)
+                        
+                        if trades_data and isinstance(trades_data, list):
+                            total_trades = len(trades_data)
+                            
+                            for trade in trades_data:
+                                # Count wins/losses
+                                if trade.get("was_profitable", False):
+                                    winning_trades += 1
+                                else:
+                                    losing_trades += 1
+                                
+                                # Only calculate P&L if we don't have real-time balance
+                                if session_data.get("current_balance") is None:
+                                    trade_pnl = trade.get("net_pnl", 0.0)
+                                    if trade_pnl is None:
+                                        trade_pnl = 0.0
+                                    total_pnl += trade_pnl
+                            
+                            # Only update balance if we don't have real-time balance
+                            if session_data.get("current_balance") is None:
+                                current_balance = initial_balance + total_pnl
+                            
+            # Use session metadata balance info if available, otherwise calculate
+            if session_data.get("current_balance") is not None:
+                balance_change = session_data.get("balance_change", total_pnl)
+                balance_change_pct = session_data.get("balance_change_pct", 0.0)
+            else:
+                balance_change = total_pnl
+                balance_change_pct = (total_pnl / initial_balance * 100) if initial_balance > 0 else 0
+            
             return {
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "total_pnl": 0.0,
-                "current_balance": initial_balance
+                "total_trades": total_trades,
+                "winning_trades": winning_trades,
+                "losing_trades": losing_trades,
+                "total_pnl": total_pnl,
+                "current_balance": current_balance,
+                "initial_balance": initial_balance,
+                "balance_change": balance_change,
+                "balance_change_pct": balance_change_pct,
+                "last_balance_update": session_data.get("last_balance_update", "Never"),
+                "balance_source": "real_time" if session_data.get("current_balance") is not None else "calculated"
             }
         except Exception as e:
             logger.error(f"Error getting trade summary: {e}")
@@ -390,7 +450,10 @@ class SimpleBotDashboard:
                 "winning_trades": 0,
                 "losing_trades": 0,
                 "total_pnl": 0.0,
-                "current_balance": 1000.0
+                "current_balance": 1000.0,
+                "initial_balance": 1000.0,
+                "balance_change": 0.0,
+                "balance_change_pct": 0.0
             }
     
     def get_latest_predictions(self):
@@ -1135,12 +1198,28 @@ def create_template():
         
         function updateTradingSummary(summary) {
             const div = document.getElementById('trading-summary');
+            
+            // Calculate win rate
+            const winRate = summary.total_trades > 0 ? ((summary.winning_trades / summary.total_trades) * 100).toFixed(1) : '0.0';
+            
+            // Color code the balance change
+            const balanceChangeClass = summary.balance_change > 0 ? 'trend-up' : 
+                                     summary.balance_change < 0 ? 'trend-down' : 'trend-neutral';
+            
+            const balanceChangeIcon = summary.balance_change > 0 ? '📈' : 
+                                    summary.balance_change < 0 ? '📉' : '➡️';
+            
+            // Balance update indicator
+            const balanceSourceIcon = summary.balance_source === 'real_time' ? '🔴' : '📊';
+            const balanceSourceText = summary.balance_source === 'real_time' ? 'Live' : 'Calculated';
+            
             div.innerHTML = `
                 <p><strong>Total Trades:</strong> ${summary.total_trades}</p>
-                <p><strong>Winning:</strong> ${summary.winning_trades}</p>
-                <p><strong>Losing:</strong> ${summary.losing_trades}</p>
-                <p><strong>Total P&L:</strong> $${summary.total_pnl.toFixed(2)}</p>
-                <p><strong>Current Balance:</strong> $${summary.current_balance.toFixed(2)}</p>
+                <p><strong>Win Rate:</strong> <span class="${summary.winning_trades > summary.losing_trades ? 'trend-up' : 'trend-down'}">${winRate}%</span> (${summary.winning_trades}W/${summary.losing_trades}L)</p>
+                <p><strong>Initial Balance:</strong> $${summary.initial_balance?.toFixed(2) || 'N/A'}</p>
+                <p><strong>Current Balance:</strong> <span class="price ${balanceChangeClass}">$${summary.current_balance.toFixed(2)}</span> ${balanceSourceIcon}</p>
+                <p><strong>P&L:</strong> <span class="${balanceChangeClass}">${balanceChangeIcon} $${summary.balance_change?.toFixed(2) || summary.total_pnl.toFixed(2)} (${summary.balance_change_pct?.toFixed(2) || '0.00'}%)</span></p>
+                <p style="font-size: 11px; color: #888;"><strong>Balance Source:</strong> ${balanceSourceText} ${summary.last_balance_update !== 'Never' ? '| Updated: ' + new Date(summary.last_balance_update).toLocaleTimeString() : ''}</p>
             `;
         }
         
