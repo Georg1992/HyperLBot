@@ -10,6 +10,7 @@ import time
 from datetime import datetime
 from flask import Flask, render_template, jsonify
 from loguru import logger
+from typing import Dict, Any
 
 app = Flask(__name__)
 
@@ -396,12 +397,12 @@ class SimpleBotDashboard:
             "sources_used": ["yahoo_finance", "binance", "coinbase"]
         }
     
-    def get_latest_logs(self):
-        """Get latest logs from all log files with demo fallback"""
+    def get_latest_trades(self):
+        """Get latest trades with enhanced display information"""
         try:
-            logs = []
+            trades = []
             
-            # Check trades
+            # Check trades directory
             trades_dir = os.path.join(self.log_dir, "trades")
             if os.path.exists(trades_dir):
                 trade_files = [f for f in os.listdir(trades_dir) if f.endswith('.json')]
@@ -409,30 +410,89 @@ class SimpleBotDashboard:
                     latest_trades = max(trade_files)
                     trades_path = os.path.join(trades_dir, latest_trades)
                     with open(trades_path, 'r') as f:
-                        trades = json.load(f)
-                        if trades:
-                            logs.extend(trades[-5:])  # Last 5 trades
+                        trades_data = json.load(f)
+                        if trades_data:
+                            # Get last 10 trades and enhance display
+                            recent_trades = trades_data[-10:]
+                            for trade in recent_trades:
+                                enhanced_trade = self._enhance_trade_display(trade)
+                                trades.append(enhanced_trade)
             
-            # Check signals
-            signals_dir = os.path.join(self.log_dir, "signals")
-            if os.path.exists(signals_dir):
-                signal_files = [f for f in os.listdir(signals_dir) if f.endswith('.json')]
-                if signal_files:
-                    latest_signals = max(signal_files)
-                    signals_path = os.path.join(signals_dir, latest_signals)
-                    with open(signals_path, 'r') as f:
-                        signals = json.load(f)
-                        if signals:
-                            logs.extend(signals[-3:])  # Last 3 signals
-            
-            # Return demo data if no real logs found
-            if not logs:
-                return self._get_demo_activity_logs()
+            # Return demo trades if no real trades found
+            if not trades:
+                return self._get_demo_trades()
                             
-            return logs
+            return trades
                             
         except Exception as e:
-            logger.error(f"Error reading logs: {e}")
+            logger.error(f"Error reading trades: {e}")
+            return self._get_demo_trades()
+    
+    def get_latest_signals(self):
+        """Get latest trading signals separately from trades"""
+        try:
+            signals = []
+            
+            # Check predictions/analysis logs
+            analysis_files = []
+            if os.path.exists(self.log_dir):
+                all_files = [f for f in os.listdir(self.log_dir) if f.endswith('.json')]
+                for file in all_files:
+                    file_path = os.path.join(self.log_dir, file)
+                    try:
+                        with open(file_path, 'r') as f:
+                            data = json.load(f)
+                            # Look for prediction analysis entries
+                            for entry in data:
+                                if (isinstance(entry, dict) and 
+                                    entry.get("type") in ["prediction_analysis", "signal_generated", "trade_signal"]):
+                                    enhanced_signal = self._enhance_signal_display(entry)
+                                    signals.append(enhanced_signal)
+                    except:
+                        continue
+            
+            # Sort by timestamp and get latest 8
+            signals.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+            
+            if not signals:
+                return self._get_demo_signals()
+            
+            return signals[:8]  # Latest 8 signals
+                            
+        except Exception as e:
+            logger.error(f"Error reading signals: {e}")
+            return self._get_demo_signals()
+    
+    def get_latest_logs(self):
+        """Get latest general activity logs (non-trade, non-signal)"""
+        try:
+            logs = []
+            
+            # Check analysis logs for general activity
+            if os.path.exists(self.log_dir):
+                all_files = [f for f in os.listdir(self.log_dir) if f.endswith('.json')]
+                for file in all_files:
+                    file_path = os.path.join(self.log_dir, file)
+                    try:
+                        with open(file_path, 'r') as f:
+                            data = json.load(f)
+                            for entry in data:
+                                if (isinstance(entry, dict) and 
+                                    entry.get("type") in ["hybrid_analysis_update", "strategy_switch", "market_update"]):
+                                    logs.append(entry)
+                    except:
+                        continue
+            
+            # Sort by timestamp and get latest 5
+            logs.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+            
+            if not logs:
+                return self._get_demo_activity_logs()
+            
+            return logs[:5]  # Latest 5 activity logs
+                            
+        except Exception as e:
+            logger.error(f"Error reading activity logs: {e}")
             return self._get_demo_activity_logs()
     
     def _get_demo_activity_logs(self):
@@ -724,6 +784,206 @@ class SimpleBotDashboard:
             "demo_note": "Demo orderbook - configure API credentials for live data"
         }
 
+    def _enhance_trade_display(self, trade: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhance trade data for better dashboard display"""
+        enhanced = trade.copy()
+        
+        # Format trade type and status
+        if trade.get("was_profitable"):
+            enhanced["trade_status"] = "✅ PROFIT"
+            enhanced["status_class"] = "profit"
+        else:
+            enhanced["trade_status"] = "❌ LOSS" 
+            enhanced["status_class"] = "loss"
+        
+        # Format P&L
+        net_pnl = trade.get("net_profit_loss", 0)
+        pnl_pct = trade.get("profit_loss_pct", 0)
+        enhanced["formatted_pnl"] = f"{pnl_pct*100:+.2f}% (${net_pnl:+.2f})"
+        
+        # Format trade details
+        side = trade.get("side", "UNKNOWN")
+        size = trade.get("size", 0)
+        entry_price = trade.get("entry_price", 0)
+        exit_price = trade.get("exit_price", 0)
+        
+        enhanced["trade_summary"] = f"{side} {size:.4f} BTC @ ${entry_price:,.2f} → ${exit_price:,.2f}"
+        
+        # Win-back indicator
+        if trade.get("is_winback_trade", False):
+            winback_data = trade.get("winback_data", {})
+            attempt_num = winback_data.get("attempt_number", 1)
+            enhanced["trade_status"] = f"🔥 WIN-BACK #{attempt_num} " + enhanced["trade_status"]
+            enhanced["status_class"] += " winback"
+        
+        # Confidence and leverage info
+        confidence = trade.get("prediction_confidence", 0)
+        leverage = trade.get("leverage", 1)
+        enhanced["trade_details"] = f"Confidence: {confidence:.1%} | Leverage: {leverage}x"
+        
+        # Holding time
+        holding_time = trade.get("holding_time", 0)
+        if holding_time > 3600:
+            enhanced["holding_duration"] = f"{holding_time/3600:.1f}h"
+        elif holding_time > 60:
+            enhanced["holding_duration"] = f"{holding_time/60:.0f}m"
+        else:
+            enhanced["holding_duration"] = f"{holding_time:.0f}s"
+        
+        # Format datetime
+        trade_time = trade.get("entry_datetime", trade.get("datetime", ""))
+        if trade_time:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(trade_time.replace('Z', '+00:00'))
+                enhanced["formatted_time"] = dt.strftime("%H:%M:%S")
+                enhanced["formatted_date"] = dt.strftime("%m/%d")
+            except:
+                enhanced["formatted_time"] = trade_time[-8:]  # Last 8 chars
+                enhanced["formatted_date"] = trade_time[:10]
+        
+        return enhanced
+    
+    def _enhance_signal_display(self, signal: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhance signal data for better dashboard display"""
+        enhanced = signal.copy()
+        
+        # Determine signal type and formatting
+        signal_type = signal.get("type", "UNKNOWN")
+        has_prediction = signal.get("has_prediction", False)
+        
+        if has_prediction:
+            best_pred = signal.get("best_prediction", {})
+            pred_type = best_pred.get("type", "UNKNOWN")
+            pred_side = best_pred.get("side", "UNKNOWN")
+            confidence = best_pred.get("confidence", 0)
+            entry_price = best_pred.get("entry_price", 0)
+            
+            enhanced["signal_summary"] = f"{pred_type} - {pred_side}"
+            enhanced["signal_details"] = f"Entry: ${entry_price:,.2f} | Confidence: {confidence:.1%}"
+            
+            # Confidence styling
+            if confidence >= 0.85:
+                enhanced["confidence_class"] = "very-high"
+                enhanced["confidence_icon"] = "🔥"
+            elif confidence >= 0.70:
+                enhanced["confidence_class"] = "high"
+                enhanced["confidence_icon"] = "⭐"
+            elif confidence >= 0.50:
+                enhanced["confidence_class"] = "medium"
+                enhanced["confidence_icon"] = "📊"
+            else:
+                enhanced["confidence_class"] = "low"
+                enhanced["confidence_icon"] = "⚠️"
+            
+            enhanced["signal_status"] = f"{enhanced['confidence_icon']} SIGNAL"
+            
+            # Win-back indicator
+            if best_pred.get("is_winback_trade", False):
+                winback_data = best_pred.get("winback_data", {})
+                attempt = winback_data.get("attempt_number", 1)
+                target = winback_data.get("target_recovery", 0)
+                enhanced["signal_summary"] = f"🔥 WIN-BACK #{attempt} - " + enhanced["signal_summary"]
+                enhanced["signal_details"] += f" | Target: ${target:.2f}"
+                enhanced["confidence_class"] += " winback"
+        else:
+            enhanced["signal_summary"] = "No Prediction"
+            enhanced["signal_details"] = signal.get("reason", "Waiting for setup")
+            enhanced["signal_status"] = "⏳ WAITING"
+            enhanced["confidence_class"] = "neutral"
+            enhanced["confidence_icon"] = "⏳"
+        
+        # Format timestamp
+        signal_time = signal.get("datetime", "")
+        if signal_time:
+            try:
+                from datetime import datetime
+                dt = datetime.fromisoformat(signal_time.replace('Z', '+00:00'))
+                enhanced["formatted_time"] = dt.strftime("%H:%M:%S")
+            except:
+                enhanced["formatted_time"] = signal_time[-8:]
+        
+        return enhanced
+    
+    def _get_demo_trades(self):
+        """Provide demo trade data when no real trades exist"""
+        from datetime import datetime, timedelta
+        current_time = datetime.now()
+        
+        return [
+            {
+                "trade_id": "demo_trade_1",
+                "trade_summary": "BUY 0.0087 BTC @ $116,450 → $117,120",
+                "trade_status": "✅ PROFIT",
+                "status_class": "profit",
+                "formatted_pnl": "+0.57% (+$5.83)",
+                "trade_details": "Confidence: 78.5% | Leverage: 35x",
+                "holding_duration": "12m",
+                "formatted_time": (current_time - timedelta(minutes=15)).strftime("%H:%M:%S"),
+                "formatted_date": current_time.strftime("%m/%d"),
+                "demo_mode": True
+            },
+            {
+                "trade_id": "demo_trade_2", 
+                "trade_summary": "🔥 WIN-BACK #1 - SELL 0.0156 BTC @ $117,200 → $116,890",
+                "trade_status": "🔥 WIN-BACK #1 ✅ PROFIT",
+                "status_class": "profit winback",
+                "formatted_pnl": "+0.26% (+$4.84)",
+                "trade_details": "Confidence: 82.1% | Leverage: 40x",
+                "holding_duration": "8m",
+                "formatted_time": (current_time - timedelta(minutes=28)).strftime("%H:%M:%S"),
+                "formatted_date": current_time.strftime("%m/%d"),
+                "demo_mode": True
+            },
+            {
+                "trade_id": "demo_trade_3",
+                "trade_summary": "BUY 0.0092 BTC @ $116,780 → $116,620", 
+                "trade_status": "❌ LOSS",
+                "status_class": "loss",
+                "formatted_pnl": "-0.14% (-$1.47)",
+                "trade_details": "Confidence: 65.3% | Leverage: 30x",
+                "holding_duration": "22m",
+                "formatted_time": (current_time - timedelta(minutes=45)).strftime("%H:%M:%S"),
+                "formatted_date": current_time.strftime("%m/%d"),
+                "demo_mode": True
+            }
+        ]
+    
+    def _get_demo_signals(self):
+        """Provide demo signal data when no real signals exist"""
+        from datetime import datetime, timedelta
+        current_time = datetime.now()
+        
+        return [
+            {
+                "signal_summary": "BREAKOUT_ABOVE - BUY",
+                "signal_details": "Entry: $116,890 | Confidence: 84.2%",
+                "signal_status": "🔥 SIGNAL",
+                "confidence_class": "very-high",
+                "confidence_icon": "🔥",
+                "formatted_time": (current_time - timedelta(minutes=2)).strftime("%H:%M:%S"),
+                "demo_mode": True
+            },
+            {
+                "signal_summary": "🔥 WIN-BACK #1 - MOMENTUM_SURGE - SELL",
+                "signal_details": "Entry: $117,150 | Confidence: 89.1% | Target: $12.45",
+                "signal_status": "🔥 SIGNAL",
+                "confidence_class": "very-high winback",
+                "confidence_icon": "🔥",
+                "formatted_time": (current_time - timedelta(minutes=8)).strftime("%H:%M:%S"),
+                "demo_mode": True
+            },
+            {
+                "signal_summary": "No Prediction",
+                "signal_details": "Insufficient volatility for reactive mode",
+                "signal_status": "⏳ WAITING",
+                "confidence_class": "neutral",
+                "confidence_icon": "⏳",
+                "formatted_time": (current_time - timedelta(minutes=12)).strftime("%H:%M:%S"),
+                "demo_mode": True
+            }
+        ]
+
 # Global dashboard instance
 dashboard = SimpleBotDashboard()
 
@@ -774,9 +1034,27 @@ def get_data():
     """API endpoint for dashboard data (alias for status)"""
     return get_status()
 
+@app.route('/api/trades')
+def get_trades():
+    """API endpoint for latest trades"""
+    try:
+        return jsonify(dashboard.get_latest_trades())
+    except Exception as e:
+        logger.error(f"Error in trades API: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/signals')
+def get_signals():
+    """API endpoint for latest trading signals"""
+    try:
+        return jsonify(dashboard.get_latest_signals())
+    except Exception as e:
+        logger.error(f"Error in signals API: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/logs')
 def get_logs():
-    """API endpoint for latest logs"""
+    """API endpoint for latest activity logs (general activity only)"""
     try:
         return jsonify(dashboard.get_latest_logs())
     except Exception as e:
