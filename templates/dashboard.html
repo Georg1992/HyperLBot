@@ -491,9 +491,9 @@
         function updateSessionStatus(session) {
             const div = document.getElementById('session-status');
             if (session && session.session_id) {
-                const statusClass = session.status === 'DEMO' ? 'status-warning' : 'status-running';
-                const statusIcon = session.status === 'DEMO' ? '🎮' : '🔴';
-                const statusText = session.status === 'DEMO' ? 'Demo Mode' : 'Live Trading';
+                const statusClass = (session.status === 'OFFLINE' || session.session_id.includes('dashboard_monitoring') || session.session_id.includes('offline')) ? 'status-warning' : 'status-running';
+                const statusIcon = (session.status === 'OFFLINE' || session.session_id.includes('dashboard_monitoring') || session.session_id.includes('offline')) ? '⏸️' : '🔴';
+                const statusText = (session.status === 'OFFLINE' || session.session_id.includes('dashboard_monitoring') || session.session_id.includes('offline')) ? 'Bot Offline' : 'Live Trading';
                 
                 div.innerHTML = `
                     <p><span class="status-indicator ${statusClass}"></span>${statusText} ${statusIcon}</p>
@@ -502,7 +502,7 @@
                     <p><strong>Strategy:</strong> ${session.strategy}</p>
                     <p><strong>Initial Balance:</strong> $${session.initial_balance}</p>
                     ${session.current_balance !== undefined ? `<p><strong>Current Balance:</strong> <span class="price">$${session.current_balance.toFixed(2)}</span></p>` : ''}
-                    ${session.status === 'DEMO' ? '<p style="color: #ff9800; font-size: 11px;">⚠️ Demo mode - configure bot to see live data</p>' : ''}
+                    ${(session.status === 'OFFLINE' || session.session_id.includes('dashboard_monitoring') || session.session_id.includes('offline')) ? '<p style="color: #ff9800; font-size: 11px;">⏸️ Start trading bot to see live session data</p>' : ''}
                 `;
             } else {
                 div.innerHTML = '<p><span class="status-indicator status-stopped"></span>No active session</p>';
@@ -511,7 +511,7 @@
         
         function updateMarketStatus(market) {
             const div = document.getElementById('market-status');
-            if (market && market.current_price) {
+            if (market && (market.current_price > 0 || market.hyperliquid_price > 0)) {
                 const trendClass = market.trend === 'UP' ? 'trend-up' : 
                                  market.trend === 'DOWN' ? 'trend-down' : 'trend-neutral';
                 

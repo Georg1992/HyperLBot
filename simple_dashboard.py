@@ -1221,10 +1221,15 @@ def get_status():
                     "data_source": "live_fetch_offline"
                 }
                 
-                # Create offline session
+                # Create PERSISTENT offline session (don't update time each call)
+                dashboard_start_time = getattr(get_status, 'dashboard_start_time', None)
+                if dashboard_start_time is None:
+                    dashboard_start_time = datetime.now().isoformat()
+                    get_status.dashboard_start_time = dashboard_start_time
+                
                 offline_session = {
-                    "session_id": "dashboard_monitoring",
-                    "start_time": datetime.now().isoformat(),
+                    "session_id": "dashboard_monitoring_persistent",
+                    "start_time": dashboard_start_time,  # Keep the same start time
                     "status": "OFFLINE",
                     "strategy": "Dashboard Only",
                     "initial_balance": 120.0,
