@@ -298,7 +298,7 @@ class VolumeSpikeDetector:
             # Get trend analysis
             trend_analysis = self.get_volume_trend_analysis(symbol)
             
-            # Combine all analyses
+            # Combine all analyses and flatten relevant fields for dashboard compatibility
             comprehensive_analysis = {
                 "timestamp": time.time(),
                 "realtime_volume": realtime_volume,
@@ -313,6 +313,72 @@ class VolumeSpikeDetector:
                 },
                 "data_source": "yahoo_finance_comprehensive_volume_analysis"
             }
+            
+            # Flatten key fields for dashboard compatibility
+            if "error" not in realtime_volume:
+                comprehensive_analysis.update({
+                    "current_volume": realtime_volume.get("estimated_current_volume", 0),
+                    "period_progress": realtime_volume.get("period_progress", 0),
+                    "current_5m_period": realtime_volume.get("current_5m_period", ""),
+                    "completed_volume": realtime_volume.get("completed_volume", 0),
+                    "current_minute_volume": realtime_volume.get("current_minute_volume", 0),
+                    "volume_source": realtime_volume.get("volume_source", "yahoo_finance"),
+                    "is_immediate_spike": realtime_volume.get("is_immediate_spike", False),
+                    "spike_reason": realtime_volume.get("spike_reason", ""),
+                    "volume_acceleration": realtime_volume.get("volume_acceleration", 0)
+                })
+            
+            if "error" not in spike_analysis:
+                comprehensive_analysis.update({
+                    "has_spike": spike_analysis.get("is_spike", False),
+                    "spike_severity": spike_analysis.get("spike_severity", "NORMAL"),
+                    "spike_ratio_mean": spike_analysis.get("spike_ratio_mean", 0),
+                    "spike_description": spike_analysis.get("spike_description", ""),
+                    "percentile_alerts": spike_analysis.get("percentile_alerts", []),
+                    "baseline_mean": spike_analysis.get("baseline_mean", 0)
+                })
+            
+            if "error" not in trend_analysis:
+                short_term_trend = trend_analysis.get("trend_analysis", {}).get("short_term", {})
+                comprehensive_analysis.update({
+                    "volume_trend": short_term_trend.get("trend_direction", "UNKNOWN")
+                })
+            
+            # Determine volume category based on current volume and spike severity
+            current_volume = comprehensive_analysis.get("current_volume", 0)
+            spike_severity = comprehensive_analysis.get("spike_severity", "NORMAL")
+            
+            if current_volume >= 500000:  # 500K+
+                volume_category = "EXTREMELY_HIGH"
+            elif current_volume >= 200000:  # 200K+
+                volume_category = "VERY_HIGH"
+            elif current_volume >= 100000:  # 100K+
+                volume_category = "HIGH"
+            elif current_volume >= 50000:  # 50K+
+                volume_category = "ABOVE_AVERAGE"
+            elif current_volume >= 20000:  # 20K+
+                volume_category = "NORMAL"
+            elif current_volume >= 10000:  # 10K+
+                volume_category = "BELOW_AVERAGE"
+            elif current_volume >= 5000:  # 5K+
+                volume_category = "LOW"
+            elif current_volume >= 2000:  # 2K+
+                volume_category = "VERY_LOW"
+            else:
+                volume_category = "EXTREMELY_LOW"
+            
+            # Override with spike-based categorization if spike is detected
+            if comprehensive_analysis.get("has_spike", False):
+                if spike_severity == "EXTREME":
+                    volume_category = "EXTREMELY_HIGH"
+                elif spike_severity == "HIGH":
+                    volume_category = "VERY_HIGH"
+                elif spike_severity == "MODERATE":
+                    volume_category = "HIGH"
+                elif spike_severity == "MILD":
+                    volume_category = "ABOVE_AVERAGE"
+            
+            comprehensive_analysis["volume_category"] = volume_category
             
             return comprehensive_analysis
             

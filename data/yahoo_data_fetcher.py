@@ -377,24 +377,21 @@ class YahooDataFetcher:
                 enhanced_analysis = multi_source_detector.get_enhanced_volume_analysis()
                 
                 if "error" not in enhanced_analysis:
-                    # Extract data from enhanced analysis
+                    # Extract data from enhanced analysis - yahoo_analysis is already flattened
                     yahoo_analysis = enhanced_analysis.get("yahoo_analysis", {})
-                    realtime_volume = yahoo_analysis.get("realtime_volume", {})
-                    spike_analysis = yahoo_analysis.get("spike_analysis", {})
-                    trend_analysis = yahoo_analysis.get("trend_analysis", {})
                     multi_source_summary = enhanced_analysis.get("multi_source_summary", {})
                     
                     # Get current volume and scale it
-                    current_volume = realtime_volume.get("estimated_current_volume", 0)
+                    current_volume = yahoo_analysis.get("current_volume", 0)
                     scale_factor = 0.00001  # Scale down to match Hyperliquid ranges
                     scaled_current_volume = current_volume * scale_factor
                     
                     # Get baseline for average calculation
-                    baseline = spike_analysis.get("baseline_mean", 0)
+                    baseline = yahoo_analysis.get("baseline_mean", 0)
                     scaled_avg_volume = baseline * scale_factor if baseline else 0
                     
                     # Determine volume category based on spike severity and multi-source validation
-                    spike_severity = spike_analysis.get("spike_severity", "NORMAL")
+                    spike_severity = yahoo_analysis.get("spike_severity", "NORMAL")
                     enhanced_confidence = enhanced_analysis.get("enhanced_confidence", 0)
                     
                     if spike_severity == "EXTREME" and enhanced_confidence > 0.7:
@@ -423,8 +420,7 @@ class YahooDataFetcher:
                             volume_category = "EXTREMELY_LOW"
                     
                     # Get volume trend from trend analysis
-                    short_term_trend = trend_analysis.get("trend_analysis", {}).get("short_term", {})
-                    volume_trend = short_term_trend.get("trend_direction", "UNKNOWN")
+                    volume_trend = yahoo_analysis.get("volume_trend", "UNKNOWN")
                     
                     # Enhanced volume data with multi-source validation
                     enhanced_volume_data = {
@@ -435,18 +431,21 @@ class YahooDataFetcher:
                         "data_source": "multi_source_validation",
                         "raw_volume": current_volume,
                         "scale_factor": scale_factor,
-                        # Spike detection data
-                        "has_spike": spike_analysis.get("is_spike", False),
+                        # Spike detection data - extract from flattened yahoo_analysis
+                        "has_spike": yahoo_analysis.get("has_spike", False),
                         "spike_severity": spike_severity,
-                        "spike_ratio": spike_analysis.get("spike_ratio_mean", 0),
-                        "spike_description": spike_analysis.get("spike_description", ""),
-                        "percentile_alerts": spike_analysis.get("percentile_alerts", []),
-                        "volume_acceleration": spike_analysis.get("volume_acceleration", 0),
-                        # Real-time volume data
-                        "period_progress": realtime_volume.get("period_progress", 0),
-                        "current_5m_period": realtime_volume.get("current_5m_period", ""),
-                        "completed_volume": realtime_volume.get("completed_volume", 0),
-                        "current_minute_volume": realtime_volume.get("current_minute_volume", 0),
+                        "is_immediate_spike": yahoo_analysis.get("is_immediate_spike", False),
+                        "spike_reason": yahoo_analysis.get("spike_reason", ""),
+                        "spike_ratio": yahoo_analysis.get("spike_ratio_mean", 0),
+                        "spike_description": yahoo_analysis.get("spike_description", ""),
+                        "percentile_alerts": yahoo_analysis.get("percentile_alerts", []),
+                        "volume_acceleration": yahoo_analysis.get("volume_acceleration", 0),
+                        # Real-time volume data - extract from flattened yahoo_analysis
+                        "period_progress": yahoo_analysis.get("period_progress", 0),
+                        "current_5m_period": yahoo_analysis.get("current_5m_period", ""),
+                        "completed_volume": yahoo_analysis.get("completed_volume", 0),
+                        "current_minute_volume": yahoo_analysis.get("current_minute_volume", 0),
+                        "volume_source": yahoo_analysis.get("volume_source", "multi_source"),
                         # Multi-source validation data
                         "enhanced_confidence": enhanced_confidence,
                         "validation_sources": enhanced_analysis.get("validation_sources", 0),
@@ -470,13 +469,8 @@ class YahooDataFetcher:
                     volume_analysis = spike_detector.get_comprehensive_volume_analysis(symbol)
                     
                     if "error" not in volume_analysis:
-                        # Extract data from comprehensive analysis
-                        realtime_volume = volume_analysis.get("realtime_volume", {})
-                        spike_analysis = volume_analysis.get("spike_analysis", {})
-                        trend_analysis = volume_analysis.get("trend_analysis", {})
-                        
-                        # Get current volume and scale it
-                        current_volume = realtime_volume.get("estimated_current_volume", 0)
+                        # Extract data from comprehensive analysis - volume_analysis is already flattened
+                        current_volume = volume_analysis.get("current_volume", 0)
                         scale_factor = 0.00001  # Scale down to match Hyperliquid ranges
                         scaled_current_volume = current_volume * scale_factor
                         
@@ -488,7 +482,7 @@ class YahooDataFetcher:
                             scaled_avg_volume = 0
                         
                         # Determine volume category based on spike severity
-                        spike_severity = spike_analysis.get("spike_severity", "NORMAL")
+                        spike_severity = volume_analysis.get("spike_severity", "NORMAL")
                         if spike_severity == "EXTREME":
                             volume_category = "CRAZY_HIGH"
                         elif spike_severity == "HIGH":
@@ -515,8 +509,7 @@ class YahooDataFetcher:
                                 volume_category = "EXTREMELY_LOW"
                         
                         # Get volume trend from trend analysis
-                        short_term_trend = trend_analysis.get("trend_analysis", {}).get("short_term", {})
-                        volume_trend = short_term_trend.get("trend_direction", "UNKNOWN")
+                        volume_trend = volume_analysis.get("volume_trend", "UNKNOWN")
                         
                         # Enhanced volume data with spike information
                         enhanced_volume_data = {
@@ -527,18 +520,21 @@ class YahooDataFetcher:
                             "data_source": "yahoo_finance_1m_spike_detection",
                             "raw_volume": current_volume,
                             "scale_factor": scale_factor,
-                            # Spike detection data
-                            "has_spike": spike_analysis.get("is_spike", False),
+                            # Spike detection data - extract from flattened volume_analysis
+                            "has_spike": volume_analysis.get("has_spike", False),
                             "spike_severity": spike_severity,
-                            "spike_ratio": spike_analysis.get("spike_ratio_mean", 0),
-                            "spike_description": spike_analysis.get("spike_description", ""),
-                            "percentile_alerts": spike_analysis.get("percentile_alerts", []),
-                            "volume_acceleration": spike_analysis.get("volume_acceleration", 0),
-                            # Real-time volume data
-                            "period_progress": realtime_volume.get("period_progress", 0),
-                            "current_5m_period": realtime_volume.get("current_5m_period", ""),
-                            "completed_volume": realtime_volume.get("completed_volume", 0),
-                            "current_minute_volume": realtime_volume.get("current_minute_volume", 0)
+                            "is_immediate_spike": volume_analysis.get("is_immediate_spike", False),
+                            "spike_reason": volume_analysis.get("spike_reason", ""),
+                            "spike_ratio": volume_analysis.get("spike_ratio_mean", 0),
+                            "spike_description": volume_analysis.get("spike_description", ""),
+                            "percentile_alerts": volume_analysis.get("percentile_alerts", []),
+                            "volume_acceleration": volume_analysis.get("volume_acceleration", 0),
+                            # Real-time volume data - extract from flattened volume_analysis
+                            "period_progress": volume_analysis.get("period_progress", 0),
+                            "current_5m_period": volume_analysis.get("current_5m_period", ""),
+                            "completed_volume": volume_analysis.get("completed_volume", 0),
+                            "current_minute_volume": volume_analysis.get("current_minute_volume", 0),
+                            "volume_source": volume_analysis.get("volume_source", "yahoo_finance")
                         }
                         
                         return enhanced_volume_data
