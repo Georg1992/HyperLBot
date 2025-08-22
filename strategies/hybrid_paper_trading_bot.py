@@ -42,6 +42,15 @@ class YahooHyperliquidPaperTradingBot:
         self.yahoo_fetcher = YahooDataFetcher()
         self.connected = False
         
+        # Initialize advanced system attributes (will be set to proper instances or None)
+        self.smart_data_cache = None
+        self.trading_data_manager = None
+        self.dynamic_stop_manager = None
+        self.global_volume_aggregator = None
+        self.blockchain_analyzer = None
+        self.win_back_engine = None
+        self.loss_pattern_analyzer = None
+        
         # Paper trading state
         self.paper_balance = initial_balance
         self.initial_balance = initial_balance
@@ -102,9 +111,9 @@ class YahooHyperliquidPaperTradingBot:
             
             # Professional data management
             self.trading_data_manager = trading_data_manager
-            self.smart_data_cache = SmartDataCache(self.yahoo_fetcher, self.hyperliquid_api)
+            # Note: SmartDataCache will be initialized AFTER API connection test
             
-            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Smart cache + Real-time data")
+            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Real-time data")
         except ImportError as e:
             logger.warning(f"Advanced systems not available: {e}")
             self.dynamic_stop_manager = None
@@ -113,7 +122,10 @@ class YahooHyperliquidPaperTradingBot:
             self.win_back_engine = None
             self.loss_pattern_analyzer = None
             self.trading_data_manager = None
-            self.smart_data_cache = None
+            self.smart_data_cache = None  # Ensure attribute exists
+        
+        # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
+        self._test_api_connections()
         
         # Override trade manager's get_open_positions method
         self.trade_manager.get_open_positions = self.get_open_positions
@@ -175,6 +187,65 @@ class YahooHyperliquidPaperTradingBot:
             logger.info("🐋 Whale analytics integration enabled")
         else:
             logger.info("🐋 Whale analytics integration disabled")
+    
+    def _test_api_connections(self):
+        """Test API connections and set connected status"""
+        try:
+            logger.info("🔗 Testing API connections...")
+            
+            # Initialize Hyperliquid API
+            self.hyperliquid_api = HyperliquidAPI()
+            
+            # Test Hyperliquid connection
+            current_price = self.hyperliquid_api.get_current_price("BTC")
+            if current_price and current_price > 0:
+                logger.success(f"✅ Hyperliquid API connected - BTC: ${current_price:,.2f}")
+                hyperliquid_ok = True
+            else:
+                logger.error("❌ Hyperliquid API connection failed")
+                hyperliquid_ok = False
+            
+            # Test Yahoo Finance connection
+            try:
+                test_candles = self.yahoo_fetcher.get_klines("BTC", "5m", 5)
+                if test_candles and len(test_candles) > 0:
+                    logger.success(f"✅ Yahoo Finance API connected - {len(test_candles)} candles")
+                    yahoo_ok = True
+                else:
+                    logger.error("❌ Yahoo Finance API connection failed")
+                    yahoo_ok = False
+            except Exception as e:
+                logger.error(f"❌ Yahoo Finance API error: {e}")
+                yahoo_ok = False
+            
+            # Set connection status
+            if hyperliquid_ok and yahoo_ok:
+                self.connected = True
+                logger.success("🚀 ALL APIs CONNECTED - Bot ready to trade!")
+                
+                # Initialize SmartDataCache now that APIs are connected
+                if hasattr(self, 'smart_data_cache'):  # Only if advanced systems are available
+                    try:
+                        from core.smart_data_cache import SmartDataCache
+                        self.smart_data_cache = SmartDataCache(self.yahoo_fetcher, self.hyperliquid_api)
+                        logger.success("✅ SmartDataCache initialized with connected APIs")
+                    except Exception as e:
+                        logger.error(f"SmartDataCache initialization failed: {e}")
+                        self.smart_data_cache = None
+                else:
+                    logger.info("🔧 Advanced systems disabled - SmartDataCache not available")
+                
+            else:
+                self.connected = False
+                logger.error("❌ API connection failed - Bot cannot trade")
+                if not hyperliquid_ok:
+                    logger.error("   • Hyperliquid API: Failed")
+                if not yahoo_ok:
+                    logger.error("   • Yahoo Finance API: Failed")
+            
+        except Exception as e:
+            logger.error(f"❌ Connection test failed: {e}")
+            self.connected = False
     
     def _load_existing_positions(self):
         """Load existing open positions from previous sessions"""
@@ -2634,7 +2705,7 @@ class YahooHyperliquidPaperTradingBot:
                                         "support": yahoo_analysis.get("support_resistance_5m", {}).get("support", 0),
                                         "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
                                         "volume_category": volume_category,
-                                        "volume_trend": enhanced_analysis.get("volume_data", {}).get("volume_trend", "UNKNOWN"),
+                                        "volume_trend": "CALCULATED",  # Using smart cache data
                                         "data_source": "smart_cache_real_values"
                                     })
                                 
