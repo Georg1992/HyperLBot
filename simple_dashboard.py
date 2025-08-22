@@ -1224,8 +1224,19 @@ def get_data():
 
 @app.route('/api/trades')
 def get_trades():
-    """API endpoint for latest trades"""
+    """API endpoint for latest trades - real-time when available"""
     try:
+        # Try real-time data first
+        try:
+            from core.realtime_data_manager import trading_data_manager
+            trades = trading_data_manager.get_recent_trades(10)
+            if trades:
+                logger.info(f"🔴 Returning {len(trades)} real-time trades")
+                return jsonify(trades)
+        except ImportError:
+            pass
+        
+        # Fallback to log-based trades
         return jsonify(dashboard.get_latest_trades())
     except Exception as e:
         logger.error(f"Error in trades API: {e}")
@@ -1233,8 +1244,19 @@ def get_trades():
 
 @app.route('/api/signals')
 def get_signals():
-    """API endpoint for latest trading signals"""
+    """API endpoint for latest trading signals - real-time when available"""
     try:
+        # Try real-time data first
+        try:
+            from core.realtime_data_manager import trading_data_manager
+            signals = trading_data_manager.get_recent_signals(8)
+            if signals:
+                logger.info(f"🔴 Returning {len(signals)} real-time signals")
+                return jsonify(signals)
+        except ImportError:
+            pass
+        
+        # Fallback to log-based signals
         return jsonify(dashboard.get_latest_signals())
     except Exception as e:
         logger.error(f"Error in signals API: {e}")

@@ -499,6 +499,13 @@ class YahooHyperliquidPaperTradingBot:
         
         prediction_analysis = self.prediction_engine.build_price_prediction(enhanced_analysis, hyperliquid_price, self.strategy_name)
         
+        # Record signals in real-time data manager
+        if self.trading_data_manager and prediction_analysis.get("has_prediction", False):
+            best_prediction = prediction_analysis.get("best_prediction", {})
+            if best_prediction:
+                self.trading_data_manager.add_trading_signal(best_prediction)
+                self.trading_data_manager.update_predictions([best_prediction])
+        
         # 2.5. APPLY WIN-BACK ENHANCEMENTS (if active)
         if self.win_back_engine and prediction_analysis.get("has_prediction", False):
             # Check if win-back is active and enhance signal accordingly
@@ -2370,6 +2377,12 @@ class YahooHyperliquidPaperTradingBot:
             elif trade_result.get("is_winback_trade", False):  # This was a win-back trade
                 self.win_back_engine.register_winback_result(trade_result)
         
+        # Register with real-time data manager for instant dashboard updates
+        if self.trading_data_manager:
+            self.trading_data_manager.add_trade(trade_result)
+            # Update balance in real-time
+            self.trading_data_manager.update_balance(self.paper_balance, f"Trade closed: {exit_reason}")
+        
         # Calculate position value in USD
         position_value_usd = size * entry_price
         
@@ -2642,6 +2655,19 @@ class YahooHyperliquidPaperTradingBot:
         if self.dynamic_stop_manager:
             self.dynamic_stop_manager.stop_monitoring()
             logger.info("🛡️ Dynamic stop monitoring stopped")
+        
+        # End real-time session
+        if self.trading_data_manager:
+            self.trading_data_manager.end_session()
+            logger.info("📊 Real-time data session ended")
+        
+        # Show smart cache performance
+        if self.smart_data_cache:
+            cache_perf = self.smart_data_cache.get_cache_performance()
+            logger.info(f"💾 Smart Cache Performance:")
+            logger.info(f"   API calls saved: {cache_perf['total_api_calls_saved']}")
+            logger.info(f"   Cache hit ratio: {cache_perf['cache_hit_ratio']:.1%}")
+            logger.info(f"   Initialization time: {cache_perf['initialization_time']:.2f}s")
         
         # Show win-back performance
         if self.win_back_engine:
