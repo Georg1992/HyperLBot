@@ -19,16 +19,16 @@ class SimpleBotDashboard:
         self.log_dir = "trading_logs"
         
     def get_session_data(self):
-        """Get session data from logs"""
+        """Get session data from logs with fallback for demo mode"""
         try:
             if not os.path.exists(self.log_dir):
-                logger.warning("Log directory does not exist")
-                return {}
+                logger.warning("Log directory does not exist - using demo data")
+                return self._get_demo_session_data()
                 
             session_files = [f for f in os.listdir(self.log_dir) if f.startswith("session_metadata_")]
             if not session_files:
-                logger.warning("No session metadata files found")
-                return {}
+                logger.warning("No session metadata files found - using demo data")
+                return self._get_demo_session_data()
                 
             latest_session = max(session_files)
             session_path = os.path.join(self.log_dir, latest_session)
@@ -40,7 +40,22 @@ class SimpleBotDashboard:
                 
         except Exception as e:
             logger.error(f"Error reading session data: {e}")
-            return {}
+            return self._get_demo_session_data()
+    
+    def _get_demo_session_data(self):
+        """Provide demo session data when no real session exists"""
+        return {
+            "session_id": "demo_session",
+            "start_time": datetime.now().isoformat(),
+            "strategy": "Demo Mode",
+            "initial_balance": 120.0,
+            "current_balance": 120.0,
+            "balance_change": 0.0,
+            "balance_change_pct": 0.0,
+            "last_balance_update": datetime.now().isoformat(),
+            "bot_version": "Enhanced Trend Detection v3.0",
+            "status": "DEMO"
+        }
     
     def get_market_status(self):
         """Get market status from analysis logs"""
@@ -325,15 +340,37 @@ class SimpleBotDashboard:
         except Exception as e:
             logger.error(f"Error reading market status: {e}")
             
+        # Fallback to demo market data when no logs available
+        return self._get_demo_market_data()
+    
+    def _get_demo_market_data(self):
+        """Provide demo market data when no real analysis exists"""
         return {
-            "current_price": 0.0,
-            "trend": "UNKNOWN",
-            "market_condition": "UNKNOWN",
-            "last_update": "Never"
+            "current_price": 113250.0,
+            "trend": "HIGH_VOLATILITY_DEMO",
+            "market_condition": "ELEVATED_VOLATILITY",
+            "last_update": datetime.now().isoformat(),
+            "hyperliquid_price": 113250.0,
+            "yahoo_last_close": 113200.0,
+            "price_difference_pct": 0.044,
+            "price_difference_amount": 50.0,
+            "data_source": "Demo Mode",
+            "rsi": 52.5,
+            "volume_depth": 85.3,
+            "orderbook_imbalance": 0.15,
+            "volume_category": "HIGH",
+            "has_volume_spike": True,
+            "spike_severity": "MODERATE",
+            "is_immediate_spike": False,
+            "spike_reason": "Demo high volatility simulation",
+            "volume_source": "demo_data",
+            "cumulative_5m_volume": 128.7,
+            "volume_trend": "INCREASING",
+            "sources_used": ["demo_yahoo", "demo_binance"]
         }
     
     def get_latest_logs(self):
-        """Get latest logs from all log files"""
+        """Get latest logs from all log files with demo fallback"""
         try:
             logs = []
             
@@ -360,12 +397,40 @@ class SimpleBotDashboard:
                         signals = json.load(f)
                         if signals:
                             logs.extend(signals[-3:])  # Last 3 signals
+            
+            # Return demo data if no real logs found
+            if not logs:
+                return self._get_demo_activity_logs()
                             
             return logs
                             
         except Exception as e:
             logger.error(f"Error reading logs: {e}")
-            return []
+            return self._get_demo_activity_logs()
+    
+    def _get_demo_activity_logs(self):
+        """Provide demo activity logs when no real logs exist"""
+        current_time = datetime.now()
+        return [
+            {
+                "datetime": (current_time).isoformat(),
+                "reason": "Enhanced trend detection active - monitoring for gradual bull signals",
+                "analysis_type": "trend_monitoring",
+                "demo_mode": True
+            },
+            {
+                "datetime": (current_time).isoformat(),
+                "reason": "High volatility detected (0.67%) - elevated volatility strategy enabled",
+                "analysis_type": "volatility_detection",
+                "demo_mode": True
+            },
+            {
+                "datetime": (current_time).isoformat(),
+                "reason": "Volume spike detected - moderate severity from multi-source validation",
+                "analysis_type": "volume_monitoring",
+                "demo_mode": True
+            }
+        ]
     
     def get_trade_summary(self):
         """Get trading summary with real current balance calculation"""
@@ -457,16 +522,16 @@ class SimpleBotDashboard:
             }
     
     def get_latest_predictions(self):
-        """Get latest predictions from analysis logs"""
+        """Get latest predictions from analysis logs with demo fallback"""
         try:
             analysis_dir = os.path.join(self.log_dir, "analysis")
             
             if not os.path.exists(analysis_dir):
-                return []
+                return self._get_demo_predictions()
             
             analysis_files = [f for f in os.listdir(analysis_dir) if f.endswith('.json')]
             if not analysis_files:
-                return []
+                return self._get_demo_predictions()
             
             latest_analysis = max(analysis_files)
             analysis_path = os.path.join(analysis_dir, latest_analysis)
@@ -493,14 +558,33 @@ class SimpleBotDashboard:
                                 best_prediction = max(all_predictions, key=lambda x: x.get("confidence", 0))
                                 return [best_prediction]
             
-            return []
+            return self._get_demo_predictions()
             
         except Exception as e:
             logger.error(f"Error reading predictions: {e}")
-            return []
+            return self._get_demo_predictions()
+    
+    def _get_demo_predictions(self):
+        """Provide demo prediction data when no real predictions exist"""
+        return [{
+            "type": "WEAK_MOMENTUM_UP",
+            "side": "BUY", 
+            "entry_price": 113180.0,
+            "current_price": 113250.0,
+            "confidence": 0.67,
+            "timeframe": 18,
+            "reason": "Enhanced trend detection: gradual bull momentum detected (1h:WEAK_UP, 5m:UP, strength:0.024)",
+            "support": 112950.0,
+            "resistance": 113650.0,
+            "prediction_mode": "TECHNICAL_ANALYSIS",
+            "momentum_type": "GRADUAL_BULL",
+            "prediction_datetime": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "rsi_context": 52.5,
+            "demo_mode": True
+        }]
     
     def get_orderbook_data(self):
-        """Get current orderbook data for display"""
+        """Get current orderbook data for display with demo fallback"""
         try:
             # We need to import the trading bot to access Hyperliquid API
             from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
@@ -551,14 +635,61 @@ class SimpleBotDashboard:
                     "spread_pct": spread_pct,
                     "best_bid": best_bid,
                     "best_ask": best_ask,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
+                    "data_source": "live_hyperliquid"
                 }
             else:
-                return {"error": "No orderbook data available"}
+                logger.warning("No Hyperliquid orderbook data - using demo data")
+                return self._get_demo_orderbook()
                 
         except Exception as e:
-            logger.error(f"Error getting orderbook data: {e}")
-            return {"error": str(e)}
+            logger.warning(f"Hyperliquid API unavailable: {e} - using demo data")
+            return self._get_demo_orderbook()
+    
+    def _get_demo_orderbook(self):
+        """Provide demo orderbook data when API is unavailable"""
+        base_price = 113250
+        
+        # Generate realistic bid/ask levels
+        demo_bids = []
+        demo_asks = []
+        
+        bid_total = 0
+        ask_total = 0
+        
+        # Generate bids (below market price)
+        for i in range(10):
+            price = base_price - (i + 1) * 10 - (i * 5)  # Decreasing prices
+            size = 0.5 + (i * 0.3)  # Increasing size as price gets lower
+            bid_total += size
+            demo_bids.append({
+                'price': price,
+                'size': size,
+                'total': bid_total
+            })
+        
+        # Generate asks (above market price)
+        for i in range(10):
+            price = base_price + (i + 1) * 10 + (i * 5)  # Increasing prices
+            size = 0.4 + (i * 0.25)  # Increasing size as price gets higher
+            ask_total += size
+            demo_asks.append({
+                'price': price,
+                'size': size,
+                'total': ask_total
+            })
+        
+        return {
+            "bids": demo_bids,
+            "asks": demo_asks,
+            "spread": 20.0,
+            "spread_pct": 0.018,
+            "best_bid": base_price - 15,
+            "best_ask": base_price + 15,
+            "timestamp": time.time(),
+            "data_source": "demo_mode",
+            "demo_note": "Demo orderbook - configure API credentials for live data"
+        }
 
 # Global dashboard instance
 dashboard = SimpleBotDashboard()
@@ -1119,12 +1250,18 @@ def create_template():
         function updateSessionStatus(session) {
             const div = document.getElementById('session-status');
             if (session && session.session_id) {
+                const statusClass = session.status === 'DEMO' ? 'status-warning' : 'status-running';
+                const statusIcon = session.status === 'DEMO' ? '🎮' : '🔴';
+                const statusText = session.status === 'DEMO' ? 'Demo Mode' : 'Live Trading';
+                
                 div.innerHTML = `
-                    <p><span class="status-indicator status-running"></span>Running</p>
+                    <p><span class="status-indicator ${statusClass}"></span>${statusText} ${statusIcon}</p>
                     <p><strong>Session:</strong> ${session.session_id}</p>
                     <p><strong>Started:</strong> ${new Date(session.start_time).toLocaleString()}</p>
                     <p><strong>Strategy:</strong> ${session.strategy}</p>
-                    <p><strong>Balance:</strong> $${session.initial_balance}</p>
+                    <p><strong>Initial Balance:</strong> $${session.initial_balance}</p>
+                    ${session.current_balance !== undefined ? `<p><strong>Current Balance:</strong> <span class="price">$${session.current_balance.toFixed(2)}</span></p>` : ''}
+                    ${session.status === 'DEMO' ? '<p style="color: #ff9800; font-size: 11px;">⚠️ Demo mode - configure bot to see live data</p>' : ''}
                 `;
             } else {
                 div.innerHTML = '<p><span class="status-indicator status-stopped"></span>No active session</p>';
@@ -1157,10 +1294,16 @@ def create_template():
                 const volumeTrend = market.volume_trend || 'UNKNOWN';
                 const volumeSources = market.sources_used ? market.sources_used.join(', ') : 'unknown';
                 
+                // Data source indicator
+                const dataSourceIcon = market.data_source === 'Demo Mode' ? '🎮' : '🔴';
+                const dataSourceText = market.data_source === 'Demo Mode' ? 'DEMO' : 'LIVE';
+                const dataSourceClass = market.data_source === 'Demo Mode' ? 'warning' : '';
+                
                 div.innerHTML = `
-                     <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
+                     <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span> ${dataSourceIcon}</p>
                      <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
                      <p><strong>Condition:</strong> ${market.market_condition}</p>
+                     <p style="font-size: 11px; color: #888;"><strong>Data Source:</strong> <span class="${dataSourceClass}">${dataSourceText}</span> | ${market.data_source}</p>
                      
                      <!-- RSI - Fixed Display -->
                      <div class="market-indicator rsi-indicator" style="margin: 15px 0;">
@@ -1230,13 +1373,15 @@ def create_template():
                 logs.slice(-10).reverse().forEach(log => {
                     const timestamp = log.datetime ? new Date(log.datetime).toLocaleString() : 'Unknown';
                     const type = log.trade_id ? 'trade-entry' : 'signal-entry';
+                    const demoIndicator = log.demo_mode ? '🎮 ' : '';
                     const content = log.trade_id ? 
-                        `Trade ${log.trade_id}: ${log.side} $${log.price?.toLocaleString() || 'N/A'}` :
-                        `Signal: ${log.reason || 'N/A'}`;
+                        `${demoIndicator}Trade ${log.trade_id}: ${log.side} $${log.price?.toLocaleString() || 'N/A'}` :
+                        `${demoIndicator}${log.reason || 'N/A'}`;
                     
                     html += `<div class="log-entry ${type}">
                         <strong>${timestamp}</strong><br>
                         ${content}
+                        ${log.demo_mode ? '<div style="color: #ff9800; font-size: 10px; margin-top: 4px;">Demo Mode</div>' : ''}
                     </div>`;
                 });
                 div.innerHTML = html;
@@ -1257,24 +1402,29 @@ def create_template():
                     const confidenceClass = pred.confidence > 0.7 ? 'high-confidence' : 
                                           pred.confidence > 0.5 ? 'medium-confidence' : 'low-confidence';
                     
-                                         html += `
-                         <div class="prediction-card ${sideClass} ${confidenceClass}">
-                             <div class="prediction-header">
-                                 <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
-                                 <span class="prediction-side">${pred.side}</span>
-                             </div>
-                             <div class="prediction-details">
-                                 <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
-                                 <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
-                                 <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
-                                 <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
-                                 <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
-                                 ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
-                                 ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
-                                 ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
-                             </div>
-                         </div>
-                     `;
+                                                                                  // Demo mode indicator
+                    const demoIndicator = pred.demo_mode ? `<div style="background: #ff9800; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; text-align: center; margin-bottom: 10px;">🎮 DEMO PREDICTION</div>` : '';
+                    
+                    html += `
+                        <div class="prediction-card ${sideClass} ${confidenceClass}">
+                            <div class="prediction-header">
+                                <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
+                                <span class="prediction-side">${pred.side}</span>
+                            </div>
+                            ${demoIndicator}
+                            <div class="prediction-details">
+                                <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
+                                <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
+                                <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
+                                <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
+                                <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
+                                ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
+                                ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
+                                ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
+                                ${pred.demo_mode ? '<p style="color: #ff9800; font-size: 10px; margin-top: 8px;">Demo prediction - run bot for live signals</p>' : ''}
+                            </div>
+                        </div>
+                    `;
                  }
                  
                  html += '</div>';
@@ -1332,6 +1482,21 @@ def create_template():
                         </div>
                     </div>
                 `;
+                
+                // Add data source indicator to orderbook
+                if (orderbook.data_source === 'demo_mode') {
+                    html += `
+                        <div style="background: #2d2d2d; padding: 8px; text-align: center; border-top: 1px solid #333; color: #ff9800; font-size: 11px;">
+                            🎮 Demo Orderbook - Configure API for live data
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div style="background: #2d2d2d; padding: 8px; text-align: center; border-top: 1px solid #333; color: #4CAF50; font-size: 11px;">
+                            🔴 Live Hyperliquid Data
+                        </div>
+                    `;
+                }
                 
                 div.innerHTML = html;
             } else {
