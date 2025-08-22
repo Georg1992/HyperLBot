@@ -364,23 +364,25 @@ class YahooDataFetcher:
             return False
 
     def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
-        """Get current 5-minute volume statistics with real-time spike detection"""
+        """Get current 5-minute volume statistics with multi-source spike detection"""
         try:
             symbol = symbol or "BTC-USD"
             
-            # Import volume spike detector
+            # Import multi-source volume detector
             try:
-                from data.volume_spike_detector import VolumeSpikeDetector
-                spike_detector = VolumeSpikeDetector()
+                from data.multi_source_volume_detector import MultiSourceVolumeDetector
+                multi_source_detector = MultiSourceVolumeDetector()
                 
-                # Get comprehensive volume analysis including spike detection
-                volume_analysis = spike_detector.get_comprehensive_volume_analysis(symbol)
+                # Get enhanced volume analysis with multi-source validation
+                enhanced_analysis = multi_source_detector.get_enhanced_volume_analysis()
                 
-                if "error" not in volume_analysis:
-                    # Extract data from comprehensive analysis
-                    realtime_volume = volume_analysis.get("realtime_volume", {})
-                    spike_analysis = volume_analysis.get("spike_analysis", {})
-                    trend_analysis = volume_analysis.get("trend_analysis", {})
+                if "error" not in enhanced_analysis:
+                    # Extract data from enhanced analysis
+                    yahoo_analysis = enhanced_analysis.get("yahoo_analysis", {})
+                    realtime_volume = yahoo_analysis.get("realtime_volume", {})
+                    spike_analysis = yahoo_analysis.get("spike_analysis", {})
+                    trend_analysis = yahoo_analysis.get("trend_analysis", {})
+                    multi_source_summary = enhanced_analysis.get("multi_source_summary", {})
                     
                     # Get current volume and scale it
                     current_volume = realtime_volume.get("estimated_current_volume", 0)
@@ -388,21 +390,20 @@ class YahooDataFetcher:
                     scaled_current_volume = current_volume * scale_factor
                     
                     # Get baseline for average calculation
-                    baseline = spike_detector.get_volume_baseline(symbol)
-                    if "error" not in baseline:
-                        scaled_avg_volume = baseline.get("mean_volume", 0) * scale_factor
-                    else:
-                        scaled_avg_volume = 0
+                    baseline = spike_analysis.get("baseline_mean", 0)
+                    scaled_avg_volume = baseline * scale_factor if baseline else 0
                     
-                    # Determine volume category based on spike severity
+                    # Determine volume category based on spike severity and multi-source validation
                     spike_severity = spike_analysis.get("spike_severity", "NORMAL")
-                    if spike_severity == "EXTREME":
+                    enhanced_confidence = enhanced_analysis.get("enhanced_confidence", 0)
+                    
+                    if spike_severity == "EXTREME" and enhanced_confidence > 0.7:
                         volume_category = "CRAZY_HIGH"
-                    elif spike_severity == "HIGH":
+                    elif spike_severity == "HIGH" and enhanced_confidence > 0.6:
                         volume_category = "VERY_HIGH"
-                    elif spike_severity == "MODERATE":
+                    elif spike_severity == "MODERATE" and enhanced_confidence > 0.5:
                         volume_category = "HIGH"
-                    elif spike_severity == "MILD":
+                    elif spike_severity == "MILD" and enhanced_confidence > 0.4:
                         volume_category = "NORMAL"
                     else:
                         # Fallback to traditional categorization
@@ -425,13 +426,13 @@ class YahooDataFetcher:
                     short_term_trend = trend_analysis.get("trend_analysis", {}).get("short_term", {})
                     volume_trend = short_term_trend.get("trend_direction", "UNKNOWN")
                     
-                    # Enhanced volume data with spike information
+                    # Enhanced volume data with multi-source validation
                     enhanced_volume_data = {
                         "current_volume": scaled_current_volume,
                         "volume_category": volume_category,
                         "avg_volume": scaled_avg_volume,
                         "volume_trend": volume_trend,
-                        "data_source": "yahoo_finance_1m_spike_detection",
+                        "data_source": "multi_source_validation",
                         "raw_volume": current_volume,
                         "scale_factor": scale_factor,
                         # Spike detection data
@@ -445,13 +446,105 @@ class YahooDataFetcher:
                         "period_progress": realtime_volume.get("period_progress", 0),
                         "current_5m_period": realtime_volume.get("current_5m_period", ""),
                         "completed_volume": realtime_volume.get("completed_volume", 0),
-                        "current_minute_volume": realtime_volume.get("current_minute_volume", 0)
+                        "current_minute_volume": realtime_volume.get("current_minute_volume", 0),
+                        # Multi-source validation data
+                        "enhanced_confidence": enhanced_confidence,
+                        "validation_sources": enhanced_analysis.get("validation_sources", 0),
+                        "data_quality": multi_source_summary.get("data_quality", "UNKNOWN"),
+                        "volume_consensus": multi_source_summary.get("volume_consensus", "UNKNOWN"),
+                        "successful_sources": multi_source_summary.get("successful_sources", 0),
+                        "total_sources": multi_source_summary.get("total_sources", 0)
                     }
                     
                     return enhanced_volume_data
                     
             except ImportError:
-                logger.warning("Volume spike detector not available, falling back to basic volume analysis")
+                logger.warning("Multi-source volume detector not available, falling back to single-source analysis")
+                
+                # Fallback to single-source volume spike detector
+                try:
+                    from data.volume_spike_detector import VolumeSpikeDetector
+                    spike_detector = VolumeSpikeDetector()
+                    
+                    # Get comprehensive volume analysis including spike detection
+                    volume_analysis = spike_detector.get_comprehensive_volume_analysis(symbol)
+                    
+                    if "error" not in volume_analysis:
+                        # Extract data from comprehensive analysis
+                        realtime_volume = volume_analysis.get("realtime_volume", {})
+                        spike_analysis = volume_analysis.get("spike_analysis", {})
+                        trend_analysis = volume_analysis.get("trend_analysis", {})
+                        
+                        # Get current volume and scale it
+                        current_volume = realtime_volume.get("estimated_current_volume", 0)
+                        scale_factor = 0.00001  # Scale down to match Hyperliquid ranges
+                        scaled_current_volume = current_volume * scale_factor
+                        
+                        # Get baseline for average calculation
+                        baseline = spike_detector.get_volume_baseline(symbol)
+                        if "error" not in baseline:
+                            scaled_avg_volume = baseline.get("mean_volume", 0) * scale_factor
+                        else:
+                            scaled_avg_volume = 0
+                        
+                        # Determine volume category based on spike severity
+                        spike_severity = spike_analysis.get("spike_severity", "NORMAL")
+                        if spike_severity == "EXTREME":
+                            volume_category = "CRAZY_HIGH"
+                        elif spike_severity == "HIGH":
+                            volume_category = "VERY_HIGH"
+                        elif spike_severity == "MODERATE":
+                            volume_category = "HIGH"
+                        elif spike_severity == "MILD":
+                            volume_category = "NORMAL"
+                        else:
+                            # Fallback to traditional categorization
+                            if scaled_current_volume >= 4000:
+                                volume_category = "CRAZY_HIGH"
+                            elif scaled_current_volume >= 1000:
+                                volume_category = "VERY_HIGH"
+                            elif scaled_current_volume >= 500:
+                                volume_category = "HIGH"
+                            elif scaled_current_volume >= 100:
+                                volume_category = "NORMAL"
+                            elif scaled_current_volume >= 50:
+                                volume_category = "LOW"
+                            elif scaled_current_volume >= 10:
+                                volume_category = "VERY_LOW"
+                            else:
+                                volume_category = "EXTREMELY_LOW"
+                        
+                        # Get volume trend from trend analysis
+                        short_term_trend = trend_analysis.get("trend_analysis", {}).get("short_term", {})
+                        volume_trend = short_term_trend.get("trend_direction", "UNKNOWN")
+                        
+                        # Enhanced volume data with spike information
+                        enhanced_volume_data = {
+                            "current_volume": scaled_current_volume,
+                            "volume_category": volume_category,
+                            "avg_volume": scaled_avg_volume,
+                            "volume_trend": volume_trend,
+                            "data_source": "yahoo_finance_1m_spike_detection",
+                            "raw_volume": current_volume,
+                            "scale_factor": scale_factor,
+                            # Spike detection data
+                            "has_spike": spike_analysis.get("is_spike", False),
+                            "spike_severity": spike_severity,
+                            "spike_ratio": spike_analysis.get("spike_ratio_mean", 0),
+                            "spike_description": spike_analysis.get("spike_description", ""),
+                            "percentile_alerts": spike_analysis.get("percentile_alerts", []),
+                            "volume_acceleration": spike_analysis.get("volume_acceleration", 0),
+                            # Real-time volume data
+                            "period_progress": realtime_volume.get("period_progress", 0),
+                            "current_5m_period": realtime_volume.get("current_5m_period", ""),
+                            "completed_volume": realtime_volume.get("completed_volume", 0),
+                            "current_minute_volume": realtime_volume.get("current_minute_volume", 0)
+                        }
+                        
+                        return enhanced_volume_data
+                        
+                except ImportError:
+                    logger.warning("Volume spike detector not available, falling back to basic volume analysis")
             
             # Fallback to original method if spike detector is not available
             candles_5m = self.get_5m_klines(symbol, limit=10)
