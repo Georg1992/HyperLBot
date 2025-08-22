@@ -474,7 +474,7 @@ class YahooDataFetcher:
                             volume_category = "NORMAL"
                         elif scaled_current_volume >= 50:
                             volume_category = "LOW"
-                        elif scaled_current_volume >= 10:
+                        elif scaled_current_volume >= 5:    # Lowered threshold
                             volume_category = "VERY_LOW"
                         else:
                             volume_category = "EXTREMELY_LOW"

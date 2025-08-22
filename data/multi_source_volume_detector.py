@@ -13,6 +13,10 @@ from loguru import logger
 from datetime import datetime, timedelta
 import sys
 import os
+import urllib3
+
+# Disable SSL warnings
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

@@ -12,6 +12,10 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 import sys
 import os
+import urllib3
+
+# Disable SSL warnings globally
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 
