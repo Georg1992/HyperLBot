@@ -562,24 +562,51 @@
                          </p>
                      </div>
                      
-                                           <!-- Volume - Enhanced Display with Real-Time Data -->
-                      <div class="market-indicator volume-indicator" style="margin: 15px 0;">
-                          <p><strong>📈 Real-Time Volume:</strong> 
-                          <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}">${volumeValue}</span>
-                          <span class="volume-category">(${volumeCategory})</span>
-                          <span class="spike-indicator ${hasVolumeSpike ? spikeSeverity.toLowerCase() : 'normal'}">${hasVolumeSpike ? `🚨 ${spikeSeverity} SPIKE` : '📊 NORMAL'}</span>
-                          ${isImmediateSpike ? `<span class="immediate-spike">⚡ IMMEDIATE</span>` : ''}
-                          </p>
-                          <p><strong>📊 5m Cumulative:</strong> <span class="cumulative-volume">${cumulativeVolume}</span> BTC</p>
-                          <p><strong>🔄 Trend:</strong> <span class="volume-trend">${volumeTrend}</span></p>
-                                               <p><strong>🌐 Sources:</strong> <span class="volume-sources">${volumeSources}</span></p>
-                         ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
-                        <p><strong>📊 Order Flow:</strong> 
-                        <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
-                        ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
-                        </p>
-                        <p class="volume-source"><small>Source: ${volumeSource}</small></p>
-                    </div>
+                                                                <!-- Enhanced Volume Display with Better Data -->
+                     <div class="market-indicator volume-indicator" style="margin: 15px 0; background: linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(255, 152, 0, 0.05) 100%); border-left: 4px solid #FF9800; border-radius: 8px; padding: 12px;">
+                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                             <span style="font-weight: bold; color: #FF9800; font-size: 13px;">📈 TRADING VOLUME</span>
+                             <span class="spike-indicator ${hasVolumeSpike ? spikeSeverity.toLowerCase() : 'normal'}" style="padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">
+                                 ${hasVolumeSpike ? `🚨 ${spikeSeverity} SPIKE` : '📊 NORMAL'}
+                             </span>
+                         </div>
+                         
+                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
+                             <div>
+                                 <p style="margin: 4px 0; font-size: 12px;"><strong>💹 Current:</strong> 
+                                 <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}" style="font-weight: bold; color: ${volumeCategory === 'HIGH' ? '#4CAF50' : volumeCategory === 'MODERATE' ? '#FF9800' : '#f44336'};">${volumeValue}</span> BTC/min
+                                 </p>
+                                 <p style="margin: 4px 0; font-size: 11px; color: #ccc;"><strong>📊 Category:</strong> ${volumeCategory}</p>
+                             </div>
+                             <div>
+                                 <p style="margin: 4px 0; font-size: 12px;"><strong>📈 5m Total:</strong> 
+                                 <span class="cumulative-volume" style="font-weight: bold; color: #2196F3;">${cumulativeVolume}</span> BTC
+                                 </p>
+                                 <p style="margin: 4px 0; font-size: 11px; color: #ccc;"><strong>🔄 Trend:</strong> 
+                                 <span class="volume-trend" style="color: ${volumeTrend === 'INCREASING' ? '#4CAF50' : volumeTrend === 'DECREASING' ? '#f44336' : '#FF9800'};">${volumeTrend}</span>
+                                 </p>
+                             </div>
+                         </div>
+                         
+                         <div style="border-top: 1px solid rgba(255, 152, 0, 0.3); padding-top: 8px;">
+                             <p style="margin: 4px 0; font-size: 11px;"><strong>🌐 Sources:</strong> 
+                             <span class="volume-sources" style="color: #4CAF50;">${volumeSources || 'yahoo_finance, binance'}</span>
+                             </p>
+                             <p style="margin: 4px 0; font-size: 10px; color: #888;"><strong>📡 Data:</strong> ${volumeSource}</p>
+                         </div>
+                         
+                         ${hasVolumeSpike ? `<div style="background: rgba(255, 87, 34, 0.2); border-radius: 4px; padding: 6px; margin-top: 8px;"><p class="spike-reason" style="margin: 0; font-size: 10px; color: #ff5722;"><strong>⚡ Spike:</strong> ${spikeReason}</p></div>` : ''}
+                     </div>
+                     
+                     <!-- Order Flow Display -->
+                     <div class="market-indicator" style="margin: 10px 0; background: rgba(33, 150, 243, 0.1); border-left: 4px solid #2196F3; border-radius: 6px; padding: 10px;">
+                         <p style="margin: 0; font-size: 12px;"><strong>📊 Order Flow:</strong> 
+                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}" style="font-weight: bold; font-size: 14px;">${flowValue}%</span>
+                         <span style="margin-left: 8px; font-size: 11px;">
+                             ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
+                         </span>
+                         </p>
+                     </div>
                     
                     <!-- Global Real-Time Volume Display -->
                     <div id="global-volume-display" style="margin: 15px 0;">
