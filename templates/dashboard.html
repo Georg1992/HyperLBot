@@ -451,33 +451,58 @@
 
     <script>
         function refreshData() {
+            // Show updating indicator
+            const indicator = document.getElementById('update-indicator');
+            if (indicator) {
+                indicator.innerHTML = '⏳ Updating...';
+                indicator.style.color = '#ff9800';
+            }
+            
             fetch('/api/status')
                 .then(response => response.json())
                 .then(data => {
+                    if (data.error) {
+                        console.error('API Error:', data.error);
+                        return;
+                    }
                     updateSessionStatus(data.session);
                     updateMarketStatus(data.market);
                     updateTradingSummary(data.summary);
                     updateLatestLogs(data.logs);
                     updatePredictionsPanel(data.predictions);
                     updateOrderbook(data.orderbook);
+                    
+                    // Show last update time
+                    if (indicator) {
+                        const now = new Date().toLocaleTimeString();
+                                                 indicator.innerHTML = `✅ Last updated: ${now} (Auto-refresh every 2s)`;
+                        indicator.style.color = '#4CAF50';
+                    }
                 })
                 .catch(error => {
                     console.error('Error fetching data:', error);
+                    if (indicator) {
+                        indicator.innerHTML = '❌ Update failed';
+                        indicator.style.color = '#f44336';
+                    }
                 });
         }
         
         function updateSessionStatus(session) {
             const div = document.getElementById('session-status');
             if (session && session.session_id) {
+                const statusClass = session.status === 'DEMO' ? 'status-warning' : 'status-running';
+                const statusIcon = session.status === 'DEMO' ? '🎮' : '🔴';
+                const statusText = session.status === 'DEMO' ? 'Demo Mode' : 'Live Trading';
+                
                 div.innerHTML = `
-                    <p><span class="status-indicator status-running"></span>Running</p>
+                    <p><span class="status-indicator ${statusClass}"></span>${statusText} ${statusIcon}</p>
                     <p><strong>Session:</strong> ${session.session_id}</p>
                     <p><strong>Started:</strong> ${new Date(session.start_time).toLocaleString()}</p>
                     <p><strong>Strategy:</strong> ${session.strategy}</p>
-                    <div style="background: rgba(76, 175, 80, 0.1); border-radius: 6px; padding: 10px; margin: 8px 0; border-left: 3px solid #4CAF50;">
-                        <p style="margin: 0; font-size: 14px;"><strong>💰 Balance:</strong> <span style="font-size: 16px; font-weight: bold; color: #4CAF50;">$${session.current_balance ? session.current_balance.toFixed(2) : session.initial_balance}</span></p>
-                        ${session.current_balance && session.initial_balance ? `<p style="margin: 4px 0 0 0; font-size: 12px;"><strong>P&L:</strong> <span style="font-weight: bold; color: ${session.current_balance >= session.initial_balance ? '#4CAF50' : '#f44336'};">${session.current_balance >= session.initial_balance ? '📈 +' : '📉 '}$${(session.current_balance - session.initial_balance).toFixed(2)} (${((session.current_balance - session.initial_balance) / session.initial_balance * 100).toFixed(2)}%)</span></p>` : ''}
-                    </div>
+                    <p><strong>Initial Balance:</strong> $${session.initial_balance}</p>
+                    ${session.current_balance !== undefined ? `<p><strong>Current Balance:</strong> <span class="price">$${session.current_balance.toFixed(2)}</span></p>` : ''}
+                    ${session.status === 'DEMO' ? '<p style="color: #ff9800; font-size: 11px;">⚠️ Demo mode - configure bot to see live data</p>' : ''}
                 `;
             } else {
                 div.innerHTML = '<p><span class="status-indicator status-stopped"></span>No active session</p>';
@@ -496,10 +521,7 @@
                 console.log('Volume value:', market.volume_depth, 'Type:', typeof market.volume_depth);
                 
                 const rsiValue = market.rsi !== undefined && market.rsi !== null ? market.rsi.toFixed(1) : 'N/A';
-                // Fix unrealistic volume values
-                let volumeRaw = market.volume_depth !== undefined && market.volume_depth !== null ? market.volume_depth : 125.7;
-                if (volumeRaw < 10) volumeRaw = 125.7; // Fix very low values
-                const volumeValue = volumeRaw.toFixed(1);
+                const volumeValue = market.volume_depth !== undefined && market.volume_depth !== null ? market.volume_depth.toFixed(1) : 'N/A';
                 const flowValue = market.orderbook_imbalance !== undefined && market.orderbook_imbalance !== null ? (market.orderbook_imbalance * 100).toFixed(1) : 'N/A';
                 
                 // ENHANCED: Volume spike detection
@@ -509,84 +531,50 @@
                 const spikeReason = market.spike_reason || '';
                 const volumeSource = market.volume_source || 'unknown';
                 const volumeCategory = market.volume_category || 'UNKNOWN';
-                // Fix cumulative volume and trend
-                let cumulativeRaw = market.cumulative_5m_volume !== undefined ? market.cumulative_5m_volume : (volumeRaw * 5);
-                if (cumulativeRaw < 50) cumulativeRaw = volumeRaw * 5; // Fix zero/low values
-                const cumulativeVolume = cumulativeRaw.toFixed(1);
+                const cumulativeVolume = market.cumulative_5m_volume !== undefined ? market.cumulative_5m_volume.toFixed(1) : 'N/A';
+                const volumeTrend = market.volume_trend || 'UNKNOWN';
+                const volumeSources = market.sources_used ? market.sources_used.join(', ') : 'unknown';
                 
-                let volumeTrend = market.volume_trend || 'STABLE';
-                if (volumeTrend === 'UNKNOWN') volumeTrend = 'STABLE';
+                // Data source indicator
+                const dataSourceIcon = market.data_source === 'Demo Mode' ? '🎮' : '🔴';
+                const dataSourceText = market.data_source === 'Demo Mode' ? 'DEMO' : 'LIVE';
+                const dataSourceClass = market.data_source === 'Demo Mode' ? 'warning' : '';
                 
-                let volumeSources = market.sources_used ? market.sources_used.join(', ') : 'yahoo_finance, binance';
-                if (volumeSources === '' || volumeSources === 'unknown') volumeSources = 'yahoo_finance, binance';
-                
-                // Fix volume category
-                let volumeCategory = market.volume_category || 'MODERATE';
-                if (volumeCategory === 'VERY_LOW' && volumeRaw > 50) volumeCategory = 'MODERATE';
-                
-                div.innerHTML = `
-                     <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span></p>
-                     <p><strong>Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
-                     <p><strong>Condition:</strong> ${market.market_condition}</p>
+                                div.innerHTML = `
+                     <p><strong>Current Price:</strong> <span class="price ${trendClass}">$${market.hyperliquid_price ? market.hyperliquid_price.toLocaleString() : 'N/A'}</span> ${dataSourceIcon}</p>
+                     <p><strong>Price Trend:</strong> <span class="${trendClass}">${market.trend}</span></p>
+                     <p><strong>Market Condition:</strong> ${market.market_condition}</p>
+                     <p style="font-size: 11px; color: #888;"><strong>Data Source:</strong> <span class="${dataSourceClass}">${dataSourceText}</span> | ${market.data_source}</p>
                      
                      <!-- RSI - Fixed Display -->
                      <div class="market-indicator rsi-indicator" style="margin: 15px 0;">
-                         <p><strong>📊 RSI:</strong> 
+                         <p><strong>📊 RSI (20-period):</strong> 
                          <span class="rsi-value ${market.rsi > 70 ? 'overbought' : market.rsi < 30 ? 'oversold' : 'neutral'}">${rsiValue}</span>
                          ${market.rsi > 70 ? '<span class="rsi-status overbought">🔴 OVERBOUGHT</span>' : market.rsi < 30 ? '<span class="rsi-status oversold">🟢 OVERSOLD</span>' : '<span class="rsi-status neutral">⚪ NEUTRAL</span>'}
                          </p>
                      </div>
                      
-                                                                <!-- Enhanced Volume Display with Better Data -->
-                     <div class="market-indicator volume-indicator" style="margin: 15px 0; background: linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(255, 152, 0, 0.05) 100%); border-left: 4px solid #FF9800; border-radius: 8px; padding: 12px;">
-                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                             <span style="font-weight: bold; color: #FF9800; font-size: 13px;">📈 TRADING VOLUME</span>
-                             <span class="spike-indicator ${hasVolumeSpike ? spikeSeverity.toLowerCase() : 'normal'}" style="padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: bold;">
-                                 ${hasVolumeSpike ? `🚨 ${spikeSeverity} SPIKE` : '📊 NORMAL'}
-                             </span>
-                         </div>
-                         
-                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px;">
-                             <div>
-                                 <p style="margin: 4px 0; font-size: 12px;"><strong>💹 Current:</strong> 
-                                 <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}" style="font-weight: bold; color: ${volumeCategory === 'HIGH' ? '#4CAF50' : volumeCategory === 'MODERATE' ? '#FF9800' : '#f44336'};">${volumeValue}</span> BTC/min
-                                 </p>
-                                 <p style="margin: 4px 0; font-size: 11px; color: #ccc;"><strong>📊 Category:</strong> ${volumeCategory}</p>
-                             </div>
-                             <div>
-                                 <p style="margin: 4px 0; font-size: 12px;"><strong>📈 5m Total:</strong> 
-                                 <span class="cumulative-volume" style="font-weight: bold; color: #2196F3;">${cumulativeVolume}</span> BTC
-                                 </p>
-                                 <p style="margin: 4px 0; font-size: 11px; color: #ccc;"><strong>🔄 Trend:</strong> 
-                                 <span class="volume-trend" style="color: ${volumeTrend === 'INCREASING' ? '#4CAF50' : volumeTrend === 'DECREASING' ? '#f44336' : '#FF9800'};">${volumeTrend}</span>
-                                 </p>
-                             </div>
-                         </div>
-                         
-                         <div style="border-top: 1px solid rgba(255, 152, 0, 0.3); padding-top: 8px;">
-                             <p style="margin: 4px 0; font-size: 11px;"><strong>🌐 Sources:</strong> 
-                             <span class="volume-sources" style="color: #4CAF50;">${volumeSources || 'yahoo_finance, binance'}</span>
-                             </p>
-                             <p style="margin: 4px 0; font-size: 10px; color: #888;"><strong>📡 Data:</strong> ${volumeSource}</p>
-                         </div>
-                         
-                         ${hasVolumeSpike ? `<div style="background: rgba(255, 87, 34, 0.2); border-radius: 4px; padding: 6px; margin-top: 8px;"><p class="spike-reason" style="margin: 0; font-size: 10px; color: #ff5722;"><strong>⚡ Spike:</strong> ${spikeReason}</p></div>` : ''}
-                     </div>
-                     
-                     <!-- Order Flow Display -->
-                     <div class="market-indicator" style="margin: 10px 0; background: rgba(33, 150, 243, 0.1); border-left: 4px solid #2196F3; border-radius: 6px; padding: 10px;">
-                         <p style="margin: 0; font-size: 12px;"><strong>📊 Order Flow:</strong> 
-                         <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}" style="font-weight: bold; font-size: 14px;">${flowValue}%</span>
-                         <span style="margin-left: 8px; font-size: 11px;">
-                             ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
-                         </span>
+                     <!-- Volume - Enhanced Display with Real-Time Data -->
+                     <div class="market-indicator volume-indicator" style="margin: 15px 0;">
+                         <p><strong>📈 Trading Volume:</strong> 
+                         <span class="volume-value ${hasVolumeSpike ? 'volume-spike' : ''}">${volumeValue}</span> BTC
+                         <span class="volume-category">(${volumeCategory})</span>
+                         <span class="spike-indicator ${hasVolumeSpike ? spikeSeverity.toLowerCase() : 'normal'}">${hasVolumeSpike ? `🚨 ${spikeSeverity} SPIKE` : '📊 NORMAL'}</span>
+                         ${isImmediateSpike ? `<span class="immediate-spike">⚡ IMMEDIATE</span>` : ''}
                          </p>
-                     </div>
+                         <p><strong>📊 5m Period Volume:</strong> <span class="cumulative-volume">${cumulativeVolume}</span> BTC</p>
+                         <p><strong>🔄 Volume Direction:</strong> <span class="volume-trend">${volumeTrend}</span></p>
+                         <p><strong>🌐 Volume Sources:</strong> <span class="volume-sources">${volumeSources}</span></p>
+                         ${hasVolumeSpike ? `<p class="spike-reason"><strong>Spike Reason:</strong> ${spikeReason}</p>` : ''}
+                        <p><strong>📊 Order Flow:</strong> 
+                        <span class="order-flow ${market.orderbook_imbalance > 0.1 ? 'bullish' : market.orderbook_imbalance < -0.1 ? 'bearish' : 'neutral'}">${flowValue}%</span>
+                        ${market.orderbook_imbalance > 0.1 ? '🟢 BUY PRESSURE' : market.orderbook_imbalance < -0.1 ? '🔴 SELL PRESSURE' : '⚪ BALANCED'}
+                        </p>
+                        <p class="volume-source"><small>Volume Source: ${volumeSource}</small></p>
+                    </div>
                     
-                    
-                     
-                     <p><strong>Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
-                 `;
+                    <p><strong>Last Updated:</strong> ${new Date(market.last_update).toLocaleString()}</p>
+                `;
             } else {
                 div.innerHTML = '<p>No market data available</p>';
             }
@@ -594,12 +582,28 @@
         
         function updateTradingSummary(summary) {
             const div = document.getElementById('trading-summary');
+            
+            // Calculate win rate
+            const winRate = summary.total_trades > 0 ? ((summary.winning_trades / summary.total_trades) * 100).toFixed(1) : '0.0';
+            
+            // Color code the balance change
+            const balanceChangeClass = summary.balance_change > 0 ? 'trend-up' : 
+                                     summary.balance_change < 0 ? 'trend-down' : 'trend-neutral';
+            
+            const balanceChangeIcon = summary.balance_change > 0 ? '📈' : 
+                                    summary.balance_change < 0 ? '📉' : '➡️';
+            
+            // Balance update indicator
+            const balanceSourceIcon = summary.balance_source === 'real_time' ? '🔴' : '📊';
+            const balanceSourceText = summary.balance_source === 'real_time' ? 'Live' : 'Calculated';
+            
             div.innerHTML = `
                 <p><strong>Total Trades:</strong> ${summary.total_trades}</p>
-                <p><strong>Winning:</strong> ${summary.winning_trades}</p>
-                <p><strong>Losing:</strong> ${summary.losing_trades}</p>
-                <p><strong>Total P&L:</strong> $${summary.total_pnl.toFixed(2)}</p>
-                <p><strong>Current Balance:</strong> $${summary.current_balance.toFixed(2)}</p>
+                <p><strong>Win Rate:</strong> <span class="${summary.winning_trades > summary.losing_trades ? 'trend-up' : 'trend-down'}">${winRate}%</span> (${summary.winning_trades}W/${summary.losing_trades}L)</p>
+                <p><strong>Initial Balance:</strong> $${summary.initial_balance?.toFixed(2) || 'N/A'}</p>
+                <p><strong>Current Balance:</strong> <span class="price ${balanceChangeClass}">$${summary.current_balance.toFixed(2)}</span> ${balanceSourceIcon}</p>
+                <p><strong>P&L:</strong> <span class="${balanceChangeClass}">${balanceChangeIcon} $${summary.balance_change?.toFixed(2) || summary.total_pnl.toFixed(2)} (${summary.balance_change_pct?.toFixed(2) || '0.00'}%)</span></p>
+                <p style="font-size: 11px; color: #888;"><strong>Balance Source:</strong> ${balanceSourceText} ${summary.last_balance_update !== 'Never' ? '| Updated: ' + new Date(summary.last_balance_update).toLocaleTimeString() : ''}</p>
             `;
         }
         
@@ -610,13 +614,15 @@
                 logs.slice(-10).reverse().forEach(log => {
                     const timestamp = log.datetime ? new Date(log.datetime).toLocaleString() : 'Unknown';
                     const type = log.trade_id ? 'trade-entry' : 'signal-entry';
+                    const demoIndicator = log.demo_mode ? '🎮 ' : '';
                     const content = log.trade_id ? 
-                        `Trade ${log.trade_id}: ${log.side} $${log.price?.toLocaleString() || 'N/A'}` :
-                        `Signal: ${log.reason || 'N/A'}`;
+                        `${demoIndicator}Trade ${log.trade_id}: ${log.side} $${log.price?.toLocaleString() || 'N/A'}` :
+                        `${demoIndicator}${log.reason || 'N/A'}`;
                     
                     html += `<div class="log-entry ${type}">
                         <strong>${timestamp}</strong><br>
                         ${content}
+                        ${log.demo_mode ? '<div style="color: #ff9800; font-size: 10px; margin-top: 4px;">Demo Mode</div>' : ''}
                     </div>`;
                 });
                 div.innerHTML = html;
@@ -637,24 +643,29 @@
                     const confidenceClass = pred.confidence > 0.7 ? 'high-confidence' : 
                                           pred.confidence > 0.5 ? 'medium-confidence' : 'low-confidence';
                     
-                                         html += `
-                         <div class="prediction-card ${sideClass} ${confidenceClass}">
-                             <div class="prediction-header">
-                                 <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
-                                 <span class="prediction-side">${pred.side}</span>
-                             </div>
-                             <div class="prediction-details">
-                                 <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
-                                 <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
-                                 <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
-                                 <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
-                                 <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
-                                 ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
-                                 ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
-                                 ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
-                             </div>
-                         </div>
-                     `;
+                                                                                  // Demo mode indicator
+                    const demoIndicator = pred.demo_mode ? `<div style="background: #ff9800; color: white; padding: 4px 8px; border-radius: 4px; font-size: 10px; text-align: center; margin-bottom: 10px;">🎮 DEMO PREDICTION</div>` : '';
+                    
+                    html += `
+                        <div class="prediction-card ${sideClass} ${confidenceClass}">
+                            <div class="prediction-header">
+                                <span class="prediction-type">${pred.type || 'UNKNOWN'}</span>
+                                <span class="prediction-side">${pred.side}</span>
+                            </div>
+                            ${demoIndicator}
+                            <div class="prediction-details">
+                                <p><strong>Entry Price:</strong> $${pred.entry_price?.toLocaleString() || 'N/A'}</p>
+                                <p><strong>Current Price:</strong> $${pred.current_price?.toLocaleString() || 'N/A'}</p>
+                                <p><strong>Confidence:</strong> ${(pred.confidence * 100).toFixed(1)}%</p>
+                                <p><strong>Timeframe:</strong> ${pred.timeframe || 'N/A'} min</p>
+                                <p><strong>Reason:</strong> ${pred.reason || 'N/A'}</p>
+                                ${pred.support ? `<p><strong>Support:</strong> $${pred.support.toLocaleString()}</p>` : ''}
+                                ${pred.resistance ? `<p><strong>Resistance:</strong> $${pred.resistance.toLocaleString()}</p>` : ''}
+                                ${pred.prediction_datetime ? `<p><strong>Generated:</strong> ${pred.prediction_datetime}</p>` : ''}
+                                ${pred.demo_mode ? '<p style="color: #ff9800; font-size: 10px; margin-top: 8px;">Demo prediction - run bot for live signals</p>' : ''}
+                            </div>
+                        </div>
+                    `;
                  }
                  
                  html += '</div>';
@@ -713,17 +724,32 @@
                     </div>
                 `;
                 
+                // Add data source indicator to orderbook
+                if (orderbook.data_source === 'demo_mode') {
+                    html += `
+                        <div style="background: #2d2d2d; padding: 8px; text-align: center; border-top: 1px solid #333; color: #ff9800; font-size: 11px;">
+                            🎮 Demo Orderbook - Configure API for live data
+                        </div>
+                    `;
+                } else {
+                    html += `
+                        <div style="background: #2d2d2d; padding: 8px; text-align: center; border-top: 1px solid #333; color: #4CAF50; font-size: 11px;">
+                            🔴 Live Hyperliquid Data
+                        </div>
+                    `;
+                }
+                
                 div.innerHTML = html;
             } else {
                 div.innerHTML = '<p>No orderbook data available</p>';
             }
         }
         
-        // Auto-refresh setup
+        // Auto-refresh every 2 seconds for frequent Yahoo candlestick updates
         setInterval(refreshData, 2000);
-        refreshData(); // Initial load
         
-        
+        // Initial load
+        refreshData();
     </script>
 </body>
 </html>
