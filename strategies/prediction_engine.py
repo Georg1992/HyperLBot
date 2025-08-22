@@ -322,6 +322,21 @@ class PredictionEngine:
             volatility_5m = self._get_volatility_5m(binance_analysis)
             volatility_1h = self._get_volatility_1h(binance_analysis)
             
+            # Determine market condition based on volatility
+            if volatility_5m < 0.002:
+                market_condition = "LOW_VOLATILITY"
+            elif volatility_5m > 0.005:
+                market_condition = "HIGH_VOLATILITY"
+            else:
+                market_condition = "NORMAL"
+            
+            # Create volume data structure for metadata
+            volume_data = {
+                "current_volume": hyperliquid_volume.get("current_volume", 0),
+                "volume_category": hyperliquid_volume.get("volume_category", "UNKNOWN"),
+                "volume_trend": hyperliquid_volume.get("volume_trend", "UNKNOWN")
+            }
+            
             # Build predictions based on market conditions
             predictions = []
             
