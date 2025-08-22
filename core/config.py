@@ -52,6 +52,19 @@ class TradingConfig:
             "profit_target": 0.02,  # 2% profit target
             "stop_loss": 0.01,  # 1% stop loss
             "position_size": 0.08  # 8% of balance
+        },
+        "spike_hunting": {
+            "min_range_percentage": 0.008,  # 0.8% minimum range - only big moves
+            "volatility_threshold": "extreme",
+            "confidence_threshold": 0.75,  # Very high confidence requirement
+            "min_interval": 1800,  # 30 minutes between trades - selective
+            "max_leverage": 40,
+            "profit_target": 0.035,  # 3.5% profit target - aim for big wins
+            "stop_loss": 0.015,  # 1.5% stop loss - tight but realistic
+            "position_size": 0.40,  # 40% of balance - 4x larger positions
+            "volume_spike_required": True,  # Only trade on confirmed volume spikes
+            "min_spike_severity": "HIGH",  # Require HIGH or EXTREME volume spikes
+            "require_momentum_alignment": True  # Multi-timeframe confirmation needed
         }
     }
     
