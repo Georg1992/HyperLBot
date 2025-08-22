@@ -163,11 +163,24 @@ class SimpleBotDashboard:
                                 
                                 logger.info(f"📊 Using cached data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
                             else:
-                                # Fallback to Yahoo data if no cached data available
-                                from data.yahoo_data_fetcher import YahooDataFetcher
-                                fetcher = YahooDataFetcher()
-                                logger.debug("📊 Fetching Yahoo data as fallback...")
-                                candles = fetcher.get_klines("BTC", "5m", 30)
+                                # Check if volume data is available in hybrid_analysis_update entries
+                                if latest_market and latest_market.get("volume_data"):
+                                    volume_info = latest_market.get("volume_data", {})
+                                    volume_data = volume_info.get("current_volume", 0)
+                                    volume_category = volume_info.get("volume_category", "UNKNOWN")
+                                    has_spike = volume_info.get("has_spike", False)
+                                    spike_severity = volume_info.get("spike_severity", "NORMAL")
+                                    is_immediate_spike = volume_info.get("is_immediate_spike", False)
+                                    spike_reason = volume_info.get("spike_reason", "")
+                                    volume_source = volume_info.get("volume_source", "hybrid_analysis")
+                                    
+                                    logger.info(f"📊 Using hybrid analysis data - Volume: {volume_data:.1f}, RSI: {rsi_data:.1f}, Source: {volume_source}")
+                                else:
+                                    # Fallback to Yahoo data if no cached data available
+                                    from data.yahoo_data_fetcher import YahooDataFetcher
+                                    fetcher = YahooDataFetcher()
+                                    logger.debug("📊 Fetching Yahoo data as fallback...")
+                                    candles = fetcher.get_klines("BTC", "5m", 30)
                                 
                                 if candles and len(candles) >= 25:
                                     rsi_result = api.calculate_rsi_from_yahoo_data(candles, periods=20)
