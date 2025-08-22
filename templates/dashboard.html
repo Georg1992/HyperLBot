@@ -491,9 +491,21 @@
         function updateSessionStatus(session) {
             const div = document.getElementById('session-status');
             if (session && session.session_id) {
-                const statusClass = (session.status === 'OFFLINE' || session.session_id.includes('dashboard_monitoring') || session.session_id.includes('offline')) ? 'status-warning' : 'status-running';
-                const statusIcon = (session.status === 'OFFLINE' || session.session_id.includes('dashboard_monitoring') || session.session_id.includes('offline')) ? '⏸️' : '🔴';
-                const statusText = (session.status === 'OFFLINE' || session.session_id.includes('dashboard_monitoring') || session.session_id.includes('offline')) ? 'Bot Offline' : 'Live Trading';
+                // Session status logic: ACTIVE = running, STOPPED = bot was running but stopped, WAITING = never started
+                let statusClass, statusIcon, statusText;
+                if (session.status === 'ACTIVE') {
+                    statusClass = 'status-running';
+                    statusIcon = '🔴';
+                    statusText = 'Live Trading';
+                } else if (session.status === 'STOPPED' || session.status === 'COMPLETED') {
+                    statusClass = 'status-warning';
+                    statusIcon = '⏸️';
+                    statusText = 'Bot Stopped';
+                } else {
+                    statusClass = 'status-stopped';
+                    statusIcon = '⚪';
+                    statusText = 'No Session';
+                }
                 
                 div.innerHTML = `
                     <p><span class="status-indicator ${statusClass}"></span>${statusText} ${statusIcon}</p>
@@ -502,7 +514,8 @@
                     <p><strong>Strategy:</strong> ${session.strategy}</p>
                     <p><strong>Initial Balance:</strong> $${session.initial_balance}</p>
                     ${session.current_balance !== undefined ? `<p><strong>Current Balance:</strong> <span class="price">$${session.current_balance.toFixed(2)}</span></p>` : ''}
-                    ${(session.status === 'OFFLINE' || session.session_id.includes('dashboard_monitoring') || session.session_id.includes('offline')) ? '<p style="color: #ff9800; font-size: 11px;">⏸️ Start trading bot to see live session data</p>' : ''}
+                    ${session.status === 'STOPPED' || session.status === 'COMPLETED' ? '<p style="color: #ff9800; font-size: 11px;">⏸️ Last trading session - Start bot for new session</p>' : 
+                      session.status === 'WAITING' ? '<p style="color: #888; font-size: 11px;">⚪ No trading sessions yet - Start bot to begin</p>' : ''}
                 `;
             } else {
                 div.innerHTML = '<p><span class="status-indicator status-stopped"></span>No active session</p>';

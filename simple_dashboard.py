@@ -1193,7 +1193,7 @@ def get_status():
         except ImportError:
             logger.debug("Real-time data manager not available - fetching live data directly")
         
-        # When bot is offline, fetch LIVE market data directly (not demo)
+        # When bot is offline, get LAST BOT SESSION (not create fake monitoring session)
         try:
             from core.hyperliquid_api import HyperliquidAPI
             api = HyperliquidAPI()
@@ -1221,42 +1221,45 @@ def get_status():
                     "data_source": "live_fetch_offline"
                 }
                 
-                # Create PERSISTENT offline session (don't update time each call)
-                dashboard_start_time = getattr(get_status, 'dashboard_start_time', None)
-                if dashboard_start_time is None:
-                    dashboard_start_time = datetime.now().isoformat()
-                    get_status.dashboard_start_time = dashboard_start_time
-                
-                offline_session = {
-                    "session_id": "dashboard_monitoring_persistent",
-                    "start_time": dashboard_start_time,  # Keep the same start time
-                    "status": "OFFLINE",
-                    "strategy": "Dashboard Only",
-                    "initial_balance": 120.0,
-                    "current_balance": 120.0,
-                    "balance_change": 0.0,
-                    "balance_change_pct": 0.0,
-                    "last_balance_update": datetime.now().isoformat(),
-                    "bot_version": "Monitoring Mode",
-                    "open_positions_count": 0,
-                    "total_trades": 0,
-                    "winning_trades": 0,
-                    "losing_trades": 0
-                }
+                # Get LAST BOT SESSION from logs (not create fake session)
+                session_data = dashboard.get_session_data()
+                if session_data and session_data.get("session_id") != "demo_session":
+                    # Use last real bot session but mark as STOPPED
+                    session_data["status"] = "STOPPED"
+                    session_data["bot_version"] = session_data.get("bot_version", "Trading Bot") + " (Stopped)"
+                    logger.info(f"📄 Using last bot session: {session_data['session_id']}")
+                else:
+                    # No previous bot sessions - show waiting state
+                    session_data = {
+                        "session_id": "no_session_yet",
+                        "start_time": datetime.now().isoformat(),
+                        "status": "WAITING",
+                        "strategy": "No bot started yet",
+                        "initial_balance": 120.0,
+                        "current_balance": 120.0,
+                        "balance_change": 0.0,
+                        "balance_change_pct": 0.0,
+                        "last_balance_update": "Never",
+                        "bot_version": "Not Started",
+                        "open_positions_count": 0,
+                        "total_trades": 0,
+                        "winning_trades": 0,
+                        "losing_trades": 0
+                    }
                 
                 return jsonify({
-                    "session": offline_session,
+                    "session": session_data,
                     "market": live_market_data,
                     "logs": [{"datetime": datetime.now().isoformat(), "reason": "Dashboard monitoring - Start bot for live trading"}],
                     "summary": {
-                        "total_trades": 0,
-                        "winning_trades": 0,
-                        "losing_trades": 0,
-                        "current_balance": 120.0,
-                        "initial_balance": 120.0,
-                        "balance_change": 0.0,
-                        "balance_change_pct": 0.0,
-                        "balance_source": "offline"
+                        "total_trades": session_data["total_trades"],
+                        "winning_trades": session_data["winning_trades"],
+                        "losing_trades": session_data["losing_trades"],
+                        "current_balance": session_data["current_balance"],
+                        "initial_balance": session_data["initial_balance"],
+                        "balance_change": session_data["balance_change"],
+                        "balance_change_pct": session_data["balance_change_pct"],
+                        "balance_source": "last_session"
                     },
                     "predictions": [{"type": "NO_BOT", "side": "MONITOR", "entry_price": current_price, "current_price": current_price, "confidence": 0.0, "timeframe": 0, "reason": "Start trading bot for live predictions"}],
                     "orderbook": dashboard.get_orderbook_data(),
