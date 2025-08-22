@@ -2664,16 +2664,22 @@ class YahooHyperliquidPaperTradingBot:
                                     real_rsi = 50.0  # Default
                                     try:
                                         if self.smart_data_cache and self.smart_data_cache.cache_initialized:
-                                            # Get recent historical candles from Smart Cache (no API call)
-                                            cached_candles = self.smart_data_cache.get_candles("5m", 15)
-                                            if cached_candles and len(cached_candles) >= 14:
+                                            # Get MORE historical candles for BETTER initial accuracy
+                                            cached_candles = self.smart_data_cache.get_candles("5m", 50)  # 50 candles for stability
+                                            if cached_candles and len(cached_candles) >= 30:
                                                 # Extract closes + add current Hyperliquid price
-                                                closes = [float(candle["close"]) for candle in cached_candles[-14:]]
+                                                closes = [float(candle["close"]) for candle in cached_candles[-30:]]  # Use 30 historical points
                                                 closes.append(hyperliquid_price)  # Add current price as latest data point
                                                 
-                                                # Calculate RSI immediately (Yahoo historical + Hyperliquid current)
+                                                # Calculate CRYPTO-OPTIMIZED RSI (21-period for better crypto accuracy)
+                                                real_rsi = self._calculate_rsi_from_price_samples(closes, periods=21)
+                                                logger.info(f"🎯 ENHANCED RSI: {real_rsi:.1f} (21-period, 31 data points for crypto accuracy)")
+                                            elif cached_candles and len(cached_candles) >= 14:
+                                                # Fallback to standard 14-period if insufficient data
+                                                closes = [float(candle["close"]) for candle in cached_candles[-14:]]
+                                                closes.append(hyperliquid_price)
                                                 real_rsi = self._calculate_rsi_from_price_samples(closes, periods=14)
-                                                logger.info(f"🎯 IMMEDIATE RSI: {real_rsi:.1f} (Smart Cache + Hyperliquid current)")
+                                                logger.info(f"📊 STANDARD RSI: {real_rsi:.1f} (14-period fallback)")
                                             else:
                                                 logger.warning(f"Insufficient cached candles: {len(cached_candles) if cached_candles else 0}")
                                         else:

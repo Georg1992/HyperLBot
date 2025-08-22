@@ -204,23 +204,59 @@ class RealtimeVolumeFetcher:
             current_volume = 0
             volume_sources = []
             
-            if binance_data.get("status") == "success":
-                # Estimate current 5-minute volume from 24h volume
-                volume_24h = binance_data.get("volume_24h", 0)
-                estimated_5m_volume = (volume_24h / 24 / 60 / 12)  # 24h / 24 hours / 60 minutes / 12 (5-min intervals)
-                current_volume = estimated_5m_volume
-                volume_sources.append(("binance", estimated_5m_volume))
+            # PRIMARY: Use CoinGecko (most reliable BTC volume) 
+            if coingecko_data.get("status") == "success":
+                volume_24h_usd = coingecko_data.get("volume_24h", 0)
+                
+                if volume_24h_usd > 0:
+                    # Get current BTC price for USD→BTC conversion
+                    try:
+                        price_response = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", timeout=3)
+                        if price_response.status_code == 200:
+                            price_data = price_response.json()
+                            btc_price_usd = price_data.get("bitcoin", {}).get("usd", 117000)
+                        else:
+                            btc_price_usd = 117000  # Fallback price
+                    except:
+                        btc_price_usd = 117000
+                    
+                    # Convert USD volume to BTC volume
+                    volume_24h_btc = volume_24h_usd / btc_price_usd
+                    # CORRECT 5-minute calculation: 24h / 288 intervals (not 17,280!)
+                    estimated_5m_volume = volume_24h_btc / 288  # 288 = 24 hours * 12 (5-min intervals per hour)
+                    current_volume = estimated_5m_volume
+                    volume_sources.append(("coingecko", estimated_5m_volume))
+                    logger.debug(f"🦎 CoinGecko: {volume_24h_btc:,.0f} BTC/24h → {estimated_5m_volume:.1f} BTC/5m")
             
-            if cryptocompare_data.get("status") == "success":
+            # SECONDARY: Use CryptoCompare (only if CoinGecko fails)
+            if current_volume == 0 and cryptocompare_data.get("status") == "success":
                 cryptocompare_volume = cryptocompare_data.get("current_volume", 0)
                 if cryptocompare_volume > 0:
-                    current_volume = cryptocompare_volume  # Use CryptoCompare as primary source
-                    volume_sources.append(("cryptocompare", cryptocompare_volume))
+                    # Convert USD to BTC if needed (assuming USD volume)
+                    try:
+                        # Get current BTC price for conversion
+                        btc_price_response = requests.get("https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd", timeout=3)
+                        if btc_price_response.status_code == 200:
+                            price_data = btc_price_response.json()
+                            btc_price = price_data.get("bitcoin", {}).get("usd", 117000)  # Fallback price
+                            current_volume = cryptocompare_volume / btc_price  # Convert to BTC
+                        else:
+                            current_volume = cryptocompare_volume / 117000  # Fallback conversion
+                    except:
+                        current_volume = cryptocompare_volume / 117000
+                    
+                    volume_sources.append(("cryptocompare", current_volume))
+                    logger.debug(f"📈 CryptoCompare: {cryptocompare_volume:,.0f} USD → {current_volume:.1f} BTC")
             
-            if coingecko_data.get("status") == "success":
-                coingecko_volume = coingecko_data.get("volume_24h", 0)
-                estimated_5m_volume = (coingecko_volume / 24 / 60 / 12)
-                volume_sources.append(("coingecko", estimated_5m_volume))
+            # FALLBACK: Use Binance (only if others fail) 
+            if current_volume == 0 and binance_data.get("status") == "success":
+                volume_24h = binance_data.get("volume_24h", 0)
+                if volume_24h > 0:
+                    # CORRECT calculation: 24h / 288 (not 17,280!)
+                    estimated_5m_volume = volume_24h / 288
+                    current_volume = estimated_5m_volume
+                    volume_sources.append(("binance", estimated_5m_volume))
+                    logger.debug(f"📊 Binance: {volume_24h:,.0f} BTC/24h → {estimated_5m_volume:.1f} BTC/5m")
             
             # Add to history for tracking
             if current_volume > 0:
