@@ -140,10 +140,19 @@ class SimpleBotDashboard:
                         price_diff_amount = base_entry.get("price_difference_amount", 0.0)
                         data_source = base_entry.get("data_source", "Unknown")
                         
-                        # Get live RSI and volume data using our new integration
+                        # Initialize all variables to prevent scope issues
                         rsi_data = None
                         volume_data = None
                         orderbook_imbalance = None
+                        volume_category = "UNKNOWN"
+                        has_spike = False
+                        spike_severity = "NORMAL"
+                        is_immediate_spike = False
+                        spike_reason = ""
+                        volume_source = "unknown"
+                        cumulative_5m_volume = 0
+                        volume_trend = "UNKNOWN"
+                        sources_used = []
                         
                         try:
                             # Import and get live data
@@ -262,6 +271,9 @@ class SimpleBotDashboard:
                                         is_immediate_spike = False
                                         spike_reason = ""
                                         volume_source = "no_data"
+                                        cumulative_5m_volume = 0
+                                        volume_trend = "UNKNOWN"
+                                        sources_used = []
                                         orderbook_imbalance = 0
                                         logger.warning("Insufficient candle data for fallback calculation")
                                     
@@ -345,9 +357,9 @@ class SimpleBotDashboard:
                             "spike_reason": spike_reason,
                             "volume_source": volume_source,
                             # NEW: Real-time volume data fields
-                            "cumulative_5m_volume": cumulative_5m_volume if 'cumulative_5m_volume' in locals() else 0,
-                            "volume_trend": volume_trend if 'volume_trend' in locals() else "UNKNOWN",
-                            "sources_used": sources_used if 'sources_used' in locals() else []
+                            "cumulative_5m_volume": cumulative_5m_volume,
+                            "volume_trend": volume_trend,
+                            "sources_used": sources_used
                         }
                     else:
                         logger.warning("No valid market data found in analysis")
