@@ -198,9 +198,9 @@ class YahooDataFetcher:
         }
     
     def calculate_trend(self, candles: List[Dict[str, Any]], periods: int = 5) -> Dict[str, Any]:
-        """Calculate trend direction and strength"""
+        """Calculate trend direction and strength with enhanced neutral market handling"""
         if len(candles) < periods:
-            return {"trend": "NEUTRAL", "strength": 0, "direction": 0}
+            return {"trend": "INSUFFICIENT_DATA", "strength": 0, "direction": 0, "raw_change": 0}
         
         recent_candles = candles[-periods:]
         closes = [candle["close"] for candle in recent_candles]
@@ -210,21 +210,55 @@ class YahooDataFetcher:
         last_close = closes[-1]
         price_change = (last_close - first_close) / first_close
         
-        # Determine trend
-        if price_change > 0.001:  # 0.1% uptrend
-            trend = "UP"
+        # Enhanced trend detection with multiple thresholds
+        if price_change > 0.003:  # 0.3% strong uptrend
+            trend = "STRONG_UP"
             strength = min(abs(price_change), 0.1)  # Cap at 10%
+        elif price_change > 0.001:  # 0.1% uptrend
+            trend = "UP"
+            strength = min(abs(price_change), 0.1)
+        elif price_change > 0.0002:  # 0.02% weak uptrend
+            trend = "WEAK_UP"  # Still bullish but very weak
+            strength = min(abs(price_change), 0.1)
+        elif price_change < -0.003:  # 0.3% strong downtrend
+            trend = "STRONG_DOWN"
+            strength = min(abs(price_change), 0.1)
         elif price_change < -0.001:  # 0.1% downtrend
             trend = "DOWN"
-            strength = min(abs(price_change), 0.1)  # Cap at 10%
+            strength = min(abs(price_change), 0.1)
+        elif price_change < -0.0002:  # 0.02% weak downtrend
+            trend = "WEAK_DOWN"  # Still bearish but very weak
+            strength = min(abs(price_change), 0.1)
         else:
-            trend = "NEUTRAL"
-            strength = 0
+            # True sideways market - very small movement
+            trend = "SIDEWAYS"
+            strength = 0.01  # Give small strength to indicate market is active
+        
+        # Calculate additional trend confidence metrics
+        highs = [candle["high"] for candle in recent_candles]
+        lows = [candle["low"] for candle in recent_candles]
+        
+        # Check for consistent direction (higher highs/higher lows for uptrend)
+        direction_consistency = 0
+        if len(closes) >= 3:
+            ups = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
+            downs = sum(1 for i in range(1, len(closes)) if closes[i] < closes[i-1])
+            total_moves = ups + downs
+            if total_moves > 0:
+                direction_consistency = max(ups, downs) / total_moves
+        
+        # Enhanced strength calculation considering consistency
+        if direction_consistency > 0.7:  # 70%+ moves in same direction
+            strength = min(strength * 1.3, 0.1)  # Boost strength for consistent trends
         
         return {
             "trend": trend,
             "strength": strength,
-            "direction": price_change
+            "direction": price_change,
+            "raw_change": price_change,
+            "direction_consistency": direction_consistency,
+            "periods_analyzed": periods,
+            "trend_quality": "HIGH" if direction_consistency > 0.7 else "MEDIUM" if direction_consistency > 0.5 else "LOW"
         }
     
     def calculate_volatility(self, candles: List[Dict[str, Any]], periods: int = 20) -> float:
