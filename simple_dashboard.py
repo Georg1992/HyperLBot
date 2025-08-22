@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Simple Trading Bot Dashboard - REAL DATA ONLY
-No demo mode - always shows real trading data or proper offline status
+Optimized Trading Bot Dashboard - Professional & Clean
+High-performance real-time trading dashboard with intelligent caching
 """
 
 import os
@@ -9,7 +9,6 @@ import json
 import time
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-import requests
 import urllib3
 from flask import Flask, render_template, jsonify
 from loguru import logger
@@ -17,36 +16,103 @@ from loguru import logger
 # Suppress SSL warnings
 urllib3.disable_warnings()
 
-class SimpleBotDashboard:
-    """Dashboard for monitoring trading bot - REAL DATA ONLY"""
+class OptimizedTradingDashboard:
+    """Optimized dashboard with intelligent caching and clean architecture"""
     
     def __init__(self):
         self.log_dir = "trading_logs"
-        self.latest_data_cache = {}
-        self.cache_timeout = 5  # Cache for 5 seconds
-        logger.info("🖥️ Dashboard initialized - Real data only, no demo mode")
+        
+        # Professional caching system
+        self._cache = {}
+        self._cache_timeout = {
+            "session": 10,     # Session data: 10 seconds
+            "market": 5,       # Market data: 5 seconds  
+            "orderbook": 2,    # Orderbook: 2 seconds (fast updates)
+            "logs": 15,        # Logs: 15 seconds
+            "predictions": 8,  # Predictions: 8 seconds
+            "global_volume": 12 # Global volume: 12 seconds
+        }
+        
+        # Connection management
+        self._rtm = None  # Real-time data manager instance
+        self._api = None  # Hyperliquid API instance
+        self._rtm_available = None  # Cache availability check
+        
+        logger.info("🚀 Optimized Trading Dashboard initialized")
     
-    def get_session_data(self):
-        """Get session data from logs or real-time manager"""
-        try:
-            # Try real-time data manager first
+    def _get_realtime_manager(self):
+        """Get real-time data manager with connection caching"""
+        if self._rtm_available is False:
+            return None
+            
+        if self._rtm is None:
             try:
                 from core.realtime_data_manager import trading_data_manager
-                session_data = trading_data_manager.get_session_data()
-                if session_data["status"] == "ACTIVE":
-                    logger.info(f"🔴 Using real-time session: {session_data['session_id']}")
-                    return session_data
+                self._rtm = trading_data_manager
+                self._rtm_available = True
+                logger.debug("✅ Real-time data manager connected")
             except ImportError:
-                logger.debug("Real-time data manager not available")
+                self._rtm_available = False
+                logger.debug("❌ Real-time data manager not available")
+                return None
+        
+        return self._rtm
+    
+    def _get_hyperliquid_api(self):
+        """Get Hyperliquid API with connection caching"""
+        if self._api is None:
+            try:
+                from core.hyperliquid_api import HyperliquidAPI
+                self._api = HyperliquidAPI()
+                logger.debug("✅ Hyperliquid API connected")
+            except Exception as e:
+                logger.debug(f"❌ Hyperliquid API connection failed: {e}")
+                return None
+        return self._api
+    
+    def _get_cached_or_fetch(self, cache_key: str, fetch_function) -> Any:
+        """Intelligent caching system"""
+        current_time = time.time()
+        timeout = self._cache_timeout.get(cache_key, 10)
+        
+        # Check cache
+        if cache_key in self._cache:
+            cached_data, cache_time = self._cache[cache_key]
+            if current_time - cache_time < timeout:
+                logger.debug(f"💾 Using cached {cache_key} data")
+                return cached_data
+        
+        # Fetch new data
+        try:
+            fresh_data = fetch_function()
+            self._cache[cache_key] = (fresh_data, current_time)
+            logger.debug(f"🔄 Cached fresh {cache_key} data")
+            return fresh_data
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch {cache_key}: {e}")
+            # Return cached data if available, even if stale
+            if cache_key in self._cache:
+                cached_data, _ = self._cache[cache_key]
+                logger.warning(f"⚠️ Using stale {cache_key} data due to fetch error")
+                return cached_data
+            return None
+    
+    def get_session_data(self) -> Dict[str, Any]:
+        """Get session data with caching"""
+        def _fetch_session():
+            # Try real-time manager first
+            rtm = self._get_realtime_manager()
+            if rtm:
+                session_data = rtm.get_session_data()
+                if session_data["status"] == "ACTIVE":
+                    return session_data
             
-            # Check for log files
+            # Try log files
             if not os.path.exists(self.log_dir):
-                logger.info("No log directory - bot never started")
                 return {"session_id": "no_sessions_yet", "status": "WAITING", "strategy": "No bot started yet"}
                 
             session_files = [f for f in os.listdir(self.log_dir) if f.startswith("session_metadata_")]
             if not session_files:
-                logger.info("No session files found - bot never started")
                 return {"session_id": "no_sessions_yet", "status": "WAITING", "strategy": "No bot started yet"}
                 
             latest_session = max(session_files)
@@ -55,34 +121,27 @@ class SimpleBotDashboard:
             with open(session_path, 'r') as f:
                 session_data = json.load(f)
                 session_data["status"] = "STOPPED"  # Mark as stopped since bot isn't running
-                logger.info(f"📄 Using last bot session: {session_data['session_id']}")
                 return session_data
-                
-        except Exception as e:
-            logger.error(f"Error reading session data: {e}")
-            return {"session_id": "error_session", "status": "ERROR", "strategy": "Error loading session"}
+        
+        return self._get_cached_or_fetch("session", _fetch_session) or {
+            "session_id": "error_session", "status": "ERROR", "strategy": "Error loading session"
+        }
     
-    def get_market_status(self):
-        """Get real market data - never demo"""
-        try:
-            # Try real-time data manager first
-            try:
-                from core.realtime_data_manager import trading_data_manager
-                market_data = trading_data_manager.get_market_data()
-                if market_data["last_update"]:
-                    logger.info(f"🔴 Using real-time market data")
+    def get_market_data(self) -> Dict[str, Any]:
+        """Get market data with caching"""
+        def _fetch_market():
+            # Try real-time manager first
+            rtm = self._get_realtime_manager()
+            if rtm:
+                market_data = rtm.get_market_data()
+                if market_data.get("last_update"):
                     return market_data
-            except ImportError:
-                logger.debug("Real-time data manager not available")
             
-            # Try to get live market data directly
-            try:
-                from core.hyperliquid_api import HyperliquidAPI
-                api = HyperliquidAPI()
+            # Try live price fetch
+            api = self._get_hyperliquid_api()
+            if api:
                 current_price = api.get_current_price("BTC")
-                
                 if current_price > 0:
-                    logger.info(f"💰 Fetched live BTC price: ${current_price:,.2f}")
                     return {
                         "current_price": current_price,
                         "hyperliquid_price": current_price,
@@ -100,10 +159,8 @@ class SimpleBotDashboard:
                         "volume_trend": "OFFLINE",
                         "data_source": "live_fetch_offline"
                     }
-            except Exception as e:
-                logger.debug(f"Live price fetch failed: {e}")
             
-            # Check for analysis files in logs
+            # Try analysis files
             if os.path.exists(self.log_dir):
                 analysis_files = [f for f in os.listdir(self.log_dir) if f.startswith("analysis_")]
                 if analysis_files:
@@ -111,12 +168,9 @@ class SimpleBotDashboard:
                     analysis_path = os.path.join(self.log_dir, latest_analysis)
                     
                     with open(analysis_path, 'r') as f:
-                        market_data = json.load(f)
-                        logger.info("📄 Using last session market data")
-                        return market_data
+                        return json.load(f)
             
-            # Final fallback - offline status (not demo)
-            logger.warning("No market data available - bot offline")
+            # Final fallback
             return {
                 "current_price": 0.0,
                 "hyperliquid_price": 0.0,
@@ -125,151 +179,34 @@ class SimpleBotDashboard:
                 "last_update": datetime.now().isoformat(),
                 "data_source": "offline_status"
             }
-            
-        except Exception as e:
-            logger.error(f"Error reading market status: {e}")
-            return {
-                "current_price": 0.0,
-                "trend": "ERROR",
-                "market_condition": "ERROR",
-                "data_source": "error_fallback"
-            }
+        
+        return self._get_cached_or_fetch("market", _fetch_market) or {
+            "current_price": 0.0, "trend": "ERROR", "market_condition": "ERROR", "data_source": "error_fallback"
+        }
     
-    def get_latest_logs(self):
-        """Get recent activity logs"""
-        try:
-            # Try real-time data manager
-            try:
-                from core.realtime_data_manager import trading_data_manager
-                activity = trading_data_manager.get_recent_activity(10)
-                if activity:
-                    logger.info(f"🔴 Using real-time activity logs")
-                    return activity
-            except ImportError:
-                pass
-            
-            # Check log files
-            if not os.path.exists(self.log_dir):
-                return [{"datetime": datetime.now().isoformat(), "reason": "No logs - bot never started"}]
-            
-            log_files = [f for f in os.listdir(self.log_dir) if f.endswith('.log')]
-            if not log_files:
-                return [{"datetime": datetime.now().isoformat(), "reason": "No activity logs found"}]
-            
-            # Get latest log file
-            latest_log = max(log_files, key=lambda f: os.path.getmtime(os.path.join(self.log_dir, f)))
-            log_path = os.path.join(self.log_dir, latest_log)
-            
-            logs = []
-            with open(log_path, 'r') as f:
-                lines = f.readlines()[-20:]  # Last 20 lines
-                for line in lines:
-                    if line.strip():
-                        logs.append({"datetime": datetime.now().isoformat(), "reason": line.strip()})
-            
-            return logs[-10:] if logs else [{"datetime": datetime.now().isoformat(), "reason": "No recent activity"}]
-            
-        except Exception as e:
-            logger.error(f"Error reading logs: {e}")
-            return [{"datetime": datetime.now().isoformat(), "reason": f"Error loading logs: {e}"}]
+    def get_orderbook_data(self) -> Dict[str, Any]:
+        """Get orderbook with caching"""
+        def _fetch_orderbook():
+            api = self._get_hyperliquid_api()
+            if api:
+                orderbook = api.get_orderbook("BTC", 15)
+                if orderbook and not orderbook.get("error"):
+                    return orderbook
+            return {"error": "Orderbook unavailable"}
+        
+        return self._get_cached_or_fetch("orderbook", _fetch_orderbook) or {"error": "API unavailable"}
     
-    def get_trade_summary(self):
-        """Get trading summary"""
-        try:
-            # Try real-time data manager
-            try:
-                from core.realtime_data_manager import trading_data_manager
-                session = trading_data_manager.get_session_data()
-                if session["status"] == "ACTIVE":
-                    return {
-                        "total_trades": session["total_trades"],
-                        "winning_trades": session["winning_trades"],
-                        "losing_trades": session["losing_trades"],
-                        "current_balance": session["current_balance"],
-                        "initial_balance": session["initial_balance"],
-                        "balance_change": session["balance_change"],
-                        "balance_change_pct": session["balance_change_pct"],
-                        "balance_source": "real_time"
-                    }
-            except ImportError:
-                pass
-            
-            # Get from session data
-            session_data = self.get_session_data()
-            return {
-                "total_trades": session_data.get("total_trades", 0),
-                "winning_trades": session_data.get("winning_trades", 0),
-                "losing_trades": session_data.get("losing_trades", 0),
-                "current_balance": session_data.get("current_balance", 120.0),
-                "initial_balance": session_data.get("initial_balance", 120.0),
-                "balance_change": session_data.get("balance_change", 0.0),
-                "balance_change_pct": session_data.get("balance_change_pct", 0.0),
-                "balance_source": "session_data"
-            }
-            
-        except Exception as e:
-            logger.error(f"Error getting trade summary: {e}")
-            return {
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "current_balance": 120.0,
-                "initial_balance": 120.0,
-                "balance_change": 0.0,
-                "balance_change_pct": 0.0,
-                "balance_source": "error"
-            }
-    
-    def get_latest_predictions(self):
-        """Get latest predictions"""
-        try:
-            # Try real-time data manager
-            try:
-                from core.realtime_data_manager import trading_data_manager
-                predictions = trading_data_manager.get_current_state()["predictions"]
-                if predictions:
-                    return predictions
-            except ImportError:
-                pass
-            
-            # No real predictions available
-            return []
-            
-        except Exception as e:
-            logger.error(f"Error getting predictions: {e}")
-            return []
-    
-    def get_orderbook_data(self):
-        """Get orderbook data from Hyperliquid"""
-        try:
-            from core.hyperliquid_api import HyperliquidAPI
-            api = HyperliquidAPI()
-            orderbook = api.get_orderbook("BTC", 15)
-            
-            if orderbook and not orderbook.get("error"):
-                logger.info("🔴 Retrieved live Hyperliquid orderbook")
-                return orderbook
-            else:
-                logger.warning("No Hyperliquid orderbook data available")
-                return {"error": "Orderbook unavailable"}
-                
-        except Exception as e:
-            logger.warning(f"Hyperliquid API unavailable: {e}")
-            return {"error": "API unavailable"}
-    
-    def get_global_volume_data(self):
-        """Get global volume data"""
-        try:
-            # Try real-time data manager
-            try:
-                from core.realtime_data_manager import trading_data_manager
-                volume_data = trading_data_manager.get_current_state()["global_volume"]
+    def get_global_volume_data(self) -> Dict[str, Any]:
+        """Get global volume with caching"""
+        def _fetch_volume():
+            # Try real-time manager first
+            rtm = self._get_realtime_manager()
+            if rtm:
+                volume_data = rtm.get_current_state()["global_volume"]
                 if volume_data["status"] != "unavailable":
                     return volume_data
-            except ImportError:
-                pass
             
-            # Try to get live global volume
+            # Try live global volume
             try:
                 from strategies.dynamic_stop_manager import GlobalVolumeAggregator
                 aggregator = GlobalVolumeAggregator()
@@ -291,16 +228,83 @@ class SimpleBotDashboard:
                 "data_source": "offline",
                 "note": "Start trading bot for live global volume data"
             }
+        
+        return self._get_cached_or_fetch("global_volume", _fetch_volume) or {"error": "Volume fetch failed"}
+    
+    def get_predictions_data(self) -> List[Dict[str, Any]]:
+        """Get predictions with caching"""
+        def _fetch_predictions():
+            rtm = self._get_realtime_manager()
+            if rtm:
+                predictions = rtm.get_current_state()["predictions"]
+                if predictions:
+                    return predictions
+            return []
+        
+        return self._get_cached_or_fetch("predictions", _fetch_predictions) or []
+    
+    def get_activity_logs(self) -> List[Dict[str, Any]]:
+        """Get activity logs with caching"""
+        def _fetch_logs():
+            rtm = self._get_realtime_manager()
+            if rtm:
+                activity = rtm.get_recent_activity(10)
+                if activity:
+                    return activity
             
-        except Exception as e:
-            logger.error(f"Error getting global volume: {e}")
-            return {"error": str(e)}
+            # Try log files
+            if not os.path.exists(self.log_dir):
+                return [{"datetime": datetime.now().isoformat(), "reason": "No logs - bot never started"}]
+            
+            log_files = [f for f in os.listdir(self.log_dir) if f.endswith('.log')]
+            if not log_files:
+                return [{"datetime": datetime.now().isoformat(), "reason": "No activity logs found"}]
+            
+            latest_log = max(log_files, key=lambda f: os.path.getmtime(os.path.join(self.log_dir, f)))
+            log_path = os.path.join(self.log_dir, latest_log)
+            
+            logs = []
+            with open(log_path, 'r') as f:
+                lines = f.readlines()[-20:]
+                for line in lines:
+                    if line.strip():
+                        logs.append({"datetime": datetime.now().isoformat(), "reason": line.strip()})
+            
+            return logs[-10:] if logs else [{"datetime": datetime.now().isoformat(), "reason": "No recent activity"}]
+        
+        return self._get_cached_or_fetch("logs", _fetch_logs) or [{"datetime": datetime.now().isoformat(), "reason": "Error loading logs"}]
+    
+    def get_trade_summary(self) -> Dict[str, Any]:
+        """Get trading summary (from session data)"""
+        session_data = self.get_session_data()
+        return {
+            "total_trades": session_data.get("total_trades", 0),
+            "winning_trades": session_data.get("winning_trades", 0),
+            "losing_trades": session_data.get("losing_trades", 0),
+            "current_balance": session_data.get("current_balance", 120.0),
+            "initial_balance": session_data.get("initial_balance", 120.0),
+            "balance_change": session_data.get("balance_change", 0.0),
+            "balance_change_pct": session_data.get("balance_change_pct", 0.0),
+            "balance_source": "session_data"
+        }
+    
+    def clear_cache(self):
+        """Clear all cached data"""
+        self._cache.clear()
+        logger.info("🧹 Dashboard cache cleared")
 
 # Global dashboard instance
-dashboard = SimpleBotDashboard()
+dashboard = OptimizedTradingDashboard()
 
-# Flask app
+# Flask app with error handling
 app = Flask(__name__)
+app.config['JSON_SORT_KEYS'] = False  # Preserve JSON key order
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Global error handler"""
+    logger.error(f"Dashboard error: {e}")
+    return jsonify({"error": f"Dashboard error: {str(e)}"}), 500
 
 @app.route('/')
 def index():
@@ -309,14 +313,12 @@ def index():
 
 @app.route('/api/status')
 def get_status():
-    """API endpoint for dashboard data - REAL DATA ONLY, NO DEMO"""
+    """Optimized status API - single comprehensive endpoint"""
     try:
-        # Try real-time data first
-        try:
-            from core.realtime_data_manager import trading_data_manager
-            current_state = trading_data_manager.get_current_state()
-            
-            # If bot is active, use real-time data
+        # Try real-time data first (most efficient)
+        rtm = dashboard._get_realtime_manager()
+        if rtm:
+            current_state = rtm.get_current_state()
             if current_state["session"]["status"] == "ACTIVE":
                 logger.info("🔴 Using real-time trading data")
                 return jsonify({
@@ -341,133 +343,78 @@ def get_status():
                     "timestamp": datetime.now().isoformat(),
                     "data_source": "real_time"
                 })
-        except ImportError:
-            logger.debug("Real-time data manager not available")
         
-        # Bot is offline - get last session data with live market price
-        try:
-            from core.hyperliquid_api import HyperliquidAPI
-            api = HyperliquidAPI()
-            current_price = api.get_current_price("BTC")
-            
-            if current_price > 0:
-                logger.info(f"💰 Fetching live market data for offline dashboard: ${current_price:,.2f}")
-                
-                live_market_data = {
-                    "current_price": current_price,
-                    "hyperliquid_price": current_price,
-                    "trend": "LIVE_FETCH",
-                    "market_condition": "BOT_OFFLINE",
-                    "last_update": datetime.now().isoformat(),
-                    "rsi": 50.0,
-                    "volume_depth": 0.0,
-                    "orderbook_imbalance": 0.0,
-                    "volatility_5m": 0.0,
-                    "volatility_1h": 0.0,
-                    "support": 0.0,
-                    "resistance": 0.0,
-                    "volume_category": "OFFLINE",
-                    "volume_trend": "OFFLINE",
-                    "data_source": "live_fetch_offline"
-                }
-                
-                # Get last bot session
-                session_data = dashboard.get_session_data()
-                if session_data.get("session_id") not in ["no_sessions_yet", "error_session"]:
-                    session_data["status"] = "STOPPED"
-                    session_data["bot_version"] = session_data.get("bot_version", "Trading Bot") + " (Stopped)"
-                    logger.info(f"📄 Using last bot session: {session_data['session_id']}")
-                
-                return jsonify({
-                    "session": session_data,
-                    "market": live_market_data,
-                    "logs": dashboard.get_latest_logs(),
-                    "summary": dashboard.get_trade_summary(),
-                    "predictions": dashboard.get_latest_predictions(),
-                    "orderbook": dashboard.get_orderbook_data(),
-                    "global_volume": dashboard.get_global_volume_data(),
-                    "timestamp": datetime.now().isoformat(),
-                    "data_source": "live_fetch_offline"
-                })
-                
-        except Exception as e:
-            logger.warning(f"Live data fetch failed: {e}")
-        
-        # Final fallback - use log data
+        # Bot offline - optimized data gathering
         session_data = dashboard.get_session_data()
-        market_status = dashboard.get_market_status()
-        latest_logs = dashboard.get_latest_logs()
-        trade_summary = dashboard.get_trade_summary()
-        latest_predictions = dashboard.get_latest_predictions()
-        orderbook_data = dashboard.get_orderbook_data()
-        global_volume_data = dashboard.get_global_volume_data()
+        market_data = dashboard.get_market_data()
         
         return jsonify({
             "session": session_data,
-            "market": market_status,
-            "logs": latest_logs,
-            "summary": trade_summary,
-            "predictions": latest_predictions,
-            "orderbook": orderbook_data,
-            "global_volume": global_volume_data,
+            "market": market_data,
+            "logs": dashboard.get_activity_logs(),
+            "summary": dashboard.get_trade_summary(),
+            "predictions": dashboard.get_predictions_data(),
+            "orderbook": dashboard.get_orderbook_data(),
+            "global_volume": dashboard.get_global_volume_data(),
             "timestamp": datetime.now().isoformat(),
-            "data_source": "offline_fallback"
+            "data_source": "offline_optimized"
         })
+        
     except Exception as e:
-        logger.error(f"Error in status API: {e}")
+        logger.error(f"❌ Status API error: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/trades')
 def get_trades():
-    """API endpoint for latest trades - real-time when available"""
+    """Latest trades API"""
     try:
-        # Try real-time data first
-        try:
-            from core.realtime_data_manager import trading_data_manager
-            trades = trading_data_manager.get_recent_trades(10)
+        rtm = dashboard._get_realtime_manager()
+        if rtm:
+            trades = rtm.get_recent_trades(10)
             if trades:
-                logger.info(f"🔴 Returning {len(trades)} real-time trades")
                 return jsonify(trades)
-        except ImportError:
-            pass
-        
-        # No real trades available
         return jsonify([])
     except Exception as e:
-        logger.error(f"Error in trades API: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/signals')
 def get_signals():
-    """API endpoint for latest trading signals - real-time when available"""
+    """Latest signals API"""
     try:
-        # Try real-time data first
-        try:
-            from core.realtime_data_manager import trading_data_manager
-            signals = trading_data_manager.get_recent_signals(8)
+        rtm = dashboard._get_realtime_manager()
+        if rtm:
+            signals = rtm.get_recent_signals(8)
             if signals:
-                logger.info(f"🔴 Returning {len(signals)} real-time signals")
                 return jsonify(signals)
-        except ImportError:
-            pass
-        
-        # No real signals available
         return jsonify([])
     except Exception as e:
-        logger.error(f"Error in signals API: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/logs')
-def get_logs():
-    """API endpoint for latest activity logs"""
-    try:
-        return jsonify(dashboard.get_latest_logs())
-    except Exception as e:
-        logger.error(f"Error in logs API: {e}")
-        return jsonify({"error": str(e)}), 500
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint"""
+    rtm = dashboard._get_realtime_manager()
+    api = dashboard._get_hyperliquid_api()
+    
+    return jsonify({
+        "status": "healthy",
+        "realtime_manager": "connected" if rtm else "unavailable",
+        "hyperliquid_api": "connected" if api else "unavailable",
+        "cache_entries": len(dashboard._cache),
+        "uptime": time.time(),
+        "version": "Optimized Dashboard v1.0"
+    })
+
+@app.route('/api/cache/clear')
+def clear_cache():
+    """Clear dashboard cache"""
+    dashboard.clear_cache()
+    return jsonify({"message": "Cache cleared successfully"})
 
 if __name__ == '__main__':
-    logger.info("🚀 Starting Trading Bot Dashboard - Real Data Only")
-    logger.info("🌐 Dashboard will be available at: http://localhost:5000")
-    logger.info("📊 Shows live data when bot running, last session when stopped")
+    logger.info("🚀 Starting Optimized Trading Bot Dashboard")
+    logger.info("🌐 Available at: http://localhost:5000")
+    logger.info("🎯 Endpoints: /api/status, /api/trades, /api/signals, /api/health")
+    logger.info("💾 Intelligent caching: session(10s), market(5s), orderbook(2s)")
+    
     app.run(debug=False, host='0.0.0.0', port=5000)
