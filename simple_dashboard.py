@@ -1158,16 +1158,48 @@ def index():
 
 @app.route('/api/status')
 def get_status():
-    """API endpoint for dashboard data"""
+    """API endpoint for dashboard data - uses real-time data when available"""
     try:
+        # Try to get real-time data from trading data manager
+        try:
+            from core.realtime_data_manager import trading_data_manager
+            current_state = trading_data_manager.get_current_state()
+            
+            # If we have an active session, use real-time data
+            if current_state["session"]["status"] == "ACTIVE":
+                logger.info("🔴 Using real-time trading data")
+                return jsonify({
+                    "session": current_state["session"],
+                    "market": current_state["market"],
+                    "logs": current_state["recent_activity"],
+                    "summary": {
+                        "total_trades": current_state["session"]["total_trades"],
+                        "winning_trades": current_state["session"]["winning_trades"],
+                        "losing_trades": current_state["session"]["losing_trades"],
+                        "current_balance": current_state["session"]["current_balance"],
+                        "initial_balance": current_state["session"]["initial_balance"],
+                        "balance_change": current_state["session"]["balance_change"],
+                        "balance_change_pct": current_state["session"]["balance_change_pct"],
+                        "balance_source": "real_time"
+                    },
+                    "predictions": current_state["predictions"],
+                    "orderbook": dashboard.get_orderbook_data(),
+                    "global_volume": current_state["global_volume"],
+                    "recent_trades": current_state["recent_trades"],
+                    "recent_signals": current_state["recent_signals"],
+                    "timestamp": datetime.now().isoformat(),
+                    "data_source": "real_time"
+                })
+        except ImportError:
+            logger.debug("Real-time data manager not available - using fallback")
+        
+        # Fallback to log-based data
         session_data = dashboard.get_session_data()
         market_status = dashboard.get_market_status()
         latest_logs = dashboard.get_latest_logs()
         trade_summary = dashboard.get_trade_summary()
         latest_predictions = dashboard.get_latest_predictions()
         orderbook_data = dashboard.get_orderbook_data()
-        
-        # Get real-time global volume data
         global_volume_data = dashboard.get_global_volume_data()
         
         return jsonify({
@@ -1178,7 +1210,8 @@ def get_status():
             "predictions": latest_predictions,
             "orderbook": orderbook_data,
             "global_volume": global_volume_data,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "data_source": "fallback"
         })
     except Exception as e:
         logger.error(f"Error in status API: {e}")

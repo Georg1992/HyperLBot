@@ -91,6 +91,8 @@ class YahooHyperliquidPaperTradingBot:
         try:
             from strategies.dynamic_stop_manager import DynamicStopManager, GlobalVolumeAggregator, BlockchainDataAnalyzer
             from strategies.win_back_engine import WinBackEngine, LossPatternAnalyzer
+            from core.realtime_data_manager import trading_data_manager
+            from core.smart_data_cache import SmartDataCache
             
             self.dynamic_stop_manager = DynamicStopManager(self.strategy_config)
             self.global_volume_aggregator = GlobalVolumeAggregator()
@@ -98,7 +100,11 @@ class YahooHyperliquidPaperTradingBot:
             self.win_back_engine = WinBackEngine(self.strategy_config)
             self.loss_pattern_analyzer = LossPatternAnalyzer()
             
-            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back engine")
+            # Professional data management
+            self.trading_data_manager = trading_data_manager
+            self.smart_data_cache = SmartDataCache(self.yahoo_fetcher, self.hyperliquid_api)
+            
+            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Smart cache + Real-time data")
         except ImportError as e:
             logger.warning(f"Advanced systems not available: {e}")
             self.dynamic_stop_manager = None
@@ -106,6 +112,8 @@ class YahooHyperliquidPaperTradingBot:
             self.blockchain_analyzer = None
             self.win_back_engine = None
             self.loss_pattern_analyzer = None
+            self.trading_data_manager = None
+            self.smart_data_cache = None
         
         # Override trade manager's get_open_positions method
         self.trade_manager.get_open_positions = self.get_open_positions
@@ -2401,7 +2409,23 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"   Whale Analytics: {'Enabled' if self.whale_integration.is_available() else 'Disabled'}")
         logger.info(f"   Logging: Comprehensive Yahoo + Hyperliquid paper trading logs enabled")
         
-        # Start advanced systems
+        # Initialize professional data systems
+        if self.smart_data_cache:
+            logger.info("📚 INITIALIZING SMART DATA CACHE - This happens once per session...")
+            if self.smart_data_cache.initialize_historical_data("BTC"):
+                logger.success("✅ Historical data loaded - Ready for incremental updates")
+            else:
+                logger.error("❌ Failed to initialize data cache")
+        
+        if self.trading_data_manager:
+            self.trading_data_manager.start_session(
+                strategy=self.strategy_name,
+                initial_balance=self.initial_balance,
+                bot_version="Advanced Trading Bot v4.0"
+            )
+            logger.success("🔥 Real-time data manager active")
+        
+        # Start advanced monitoring systems
         if self.dynamic_stop_manager:
             self.dynamic_stop_manager.start_monitoring(self)
             logger.info(f"🛡️ Dynamic stop monitoring: Every 3 seconds with volatility awareness")
@@ -2453,10 +2477,39 @@ class YahooHyperliquidPaperTradingBot:
                 
                 # Update market data for dashboard (every 10 seconds)
                 if current_time - self.last_market_update >= 10:
-                    yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price=hyperliquid_price)
-                    if yahoo_analysis:
-                        self.binance_analysis = yahoo_analysis  # Keep variable name for compatibility
-                        self.last_market_update = current_time
+                    # Use smart cache for efficient data updates
+                    if self.smart_data_cache:
+                        # Only fetch NEW candles (usually 0-1 new candles)
+                        cache_update = self.smart_data_cache.update_latest_candles("BTC")
+                        if cache_update["success"]:
+                            # Get analysis from cached data (no API calls)
+                            yahoo_analysis = self.smart_data_cache.get_market_analysis("BTC", hyperliquid_price)
+                            if yahoo_analysis:
+                                self.binance_analysis = yahoo_analysis
+                                self.last_market_update = current_time
+                                
+                                # Update real-time data manager
+                                if self.trading_data_manager:
+                                    self.trading_data_manager.update_market_data({
+                                        "current_price": hyperliquid_price,
+                                        "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "UNKNOWN"),
+                                        "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
+                                        "rsi": 50.0,  # Will be updated with real RSI
+                                        "volume_depth": 125.7,  # Will be updated with real volume
+                                        "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                                        "volatility_1h": yahoo_analysis.get("volatility_1h", 0.0),
+                                        "support": yahoo_analysis.get("support_resistance_5m", {}).get("support", 0),
+                                        "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
+                                        "data_source": "smart_cache"
+                                    })
+                                
+                                logger.info(f"💾 Smart cache update: {cache_update.get('api_calls_saved', 0)} API calls saved")
+                    else:
+                        # Fallback to old method if smart cache not available
+                        yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price=hyperliquid_price)
+                        if yahoo_analysis:
+                            self.binance_analysis = yahoo_analysis
+                            self.last_market_update = current_time
                         
                         # Log market data for dashboard (Hyperliquid price + Yahoo historical comparison)
                         self.trading_logger.log_analysis({
