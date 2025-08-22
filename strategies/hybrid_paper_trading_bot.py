@@ -83,18 +83,25 @@ class YahooHyperliquidPaperTradingBot:
         # Advanced trade manager
         self.trade_manager = TradeManager(self.strategy_config)
         
-        # Initialize dynamic stop manager for volatility-aware trailing stops
+        # Initialize advanced trading systems
         try:
             from strategies.dynamic_stop_manager import DynamicStopManager, GlobalVolumeAggregator, BlockchainDataAnalyzer
+            from strategies.win_back_engine import WinBackEngine, LossPatternAnalyzer
+            
             self.dynamic_stop_manager = DynamicStopManager(self.strategy_config)
             self.global_volume_aggregator = GlobalVolumeAggregator()
             self.blockchain_analyzer = BlockchainDataAnalyzer()
-            logger.success("🔥 Advanced systems initialized: Dynamic stops + Global volume + Blockchain data")
+            self.win_back_engine = WinBackEngine(self.strategy_config)
+            self.loss_pattern_analyzer = LossPatternAnalyzer()
+            
+            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back engine")
         except ImportError as e:
             logger.warning(f"Advanced systems not available: {e}")
             self.dynamic_stop_manager = None
             self.global_volume_aggregator = None
             self.blockchain_analyzer = None
+            self.win_back_engine = None
+            self.loss_pattern_analyzer = None
         
         # Override trade manager's get_open_positions method
         self.trade_manager.get_open_positions = self.get_open_positions
@@ -479,6 +486,28 @@ class YahooHyperliquidPaperTradingBot:
         enhanced_analysis["hyperliquid_5m_volume"] = volume_data
         
         prediction_analysis = self.prediction_engine.build_price_prediction(enhanced_analysis, hyperliquid_price, self.strategy_name)
+        
+        # 2.5. APPLY WIN-BACK ENHANCEMENTS (if active)
+        if self.win_back_engine and prediction_analysis.get("has_prediction", False):
+            # Check if win-back is active and enhance signal accordingly
+            winback_requirements = self.win_back_engine.get_winback_signal_requirements()
+            if winback_requirements.get("active", False):
+                logger.info(f"🎯 Win-back active - evaluating signal enhancement...")
+                prediction_analysis = self.win_back_engine.apply_winback_enhancements(
+                    prediction_analysis, enhanced_analysis
+                )
+            
+            # Check for defensive mode
+            defensive_check = self.win_back_engine.should_enter_defensive_mode()
+            if defensive_check["should_defend"]:
+                logger.warning(f"🛡️ DEFENSIVE MODE ACTIVATED: {defensive_check['reason']}")
+                # Reduce position sizes in defensive mode
+                if prediction_analysis.get("has_prediction", False):
+                    current_position = prediction_analysis.get("position_size", 0.10)
+                    defensive_position = current_position * 0.6  # 40% reduction
+                    prediction_analysis["position_size"] = defensive_position
+                    prediction_analysis["defensive_mode"] = True
+                    prediction_analysis["defensive_reason"] = defensive_check["reason"]
         
         # Log prediction analysis for dashboard
         self.trading_logger.log_analysis({
@@ -1931,7 +1960,11 @@ class YahooHyperliquidPaperTradingBot:
                 "quality_evaluation": signal_data.get("quality_evaluation", {}),
                 "stop_adjustment_count": 0,
                 "partial_closes": [],
-                "current_pnl_pct": 0.0
+                "current_pnl_pct": 0.0,
+                # Win-back metadata
+                "is_winback_trade": signal_data.get("is_winback_trade", False),
+                "winback_data": signal_data.get("winback_data", {}),
+                "defensive_mode": signal_data.get("defensive_mode", False)
             }
             
             # Add to open positions
@@ -2301,7 +2334,8 @@ class YahooHyperliquidPaperTradingBot:
         self._save_positions()
         
         # Update trade result in logger
-        self.trading_logger.update_trade_result(position["trade_id"], {
+        trade_result = {
+            "trade_id": position["trade_id"],
             "exit_price": exit_price,
             "profit_loss": pnl_amount,
             "profit_loss_pct": pnl_pct,
@@ -2309,8 +2343,20 @@ class YahooHyperliquidPaperTradingBot:
             "net_profit_loss": net_pnl,
             "holding_time": position["exit_time"] - position["entry_time"],
             "exit_reason": exit_reason,
-            "was_profitable": net_pnl > 0
-        })
+            "was_profitable": net_pnl > 0,
+            "balance_after": self.paper_balance,
+            "is_winback_trade": position.get("is_winback_trade", False),
+            "winback_data": position.get("winback_data", {})
+        }
+        
+        self.trading_logger.update_trade_result(position["trade_id"], trade_result)
+        
+        # Register with win-back engine
+        if self.win_back_engine:
+            if net_pnl < 0:  # This was a loss
+                self.win_back_engine.register_loss(trade_result)
+            elif trade_result.get("is_winback_trade", False):  # This was a win-back trade
+                self.win_back_engine.register_winback_result(trade_result)
         
         # Calculate position value in USD
         position_value_usd = size * entry_price
@@ -2361,6 +2407,9 @@ class YahooHyperliquidPaperTradingBot:
         
         if self.blockchain_analyzer:
             logger.info(f"⛓️ Blockchain analytics: On-chain sentiment and network activity")
+        
+        if self.win_back_engine:
+            logger.info(f"🔥 Win-back engine: Smart revenge trading after losses (1.8x position boost)")
         
         logger.info("=" * 50)
         
@@ -2536,6 +2585,18 @@ class YahooHyperliquidPaperTradingBot:
         if self.dynamic_stop_manager:
             self.dynamic_stop_manager.stop_monitoring()
             logger.info("🛡️ Dynamic stop monitoring stopped")
+        
+        # Show win-back performance
+        if self.win_back_engine:
+            winback_stats = self.win_back_engine.get_winback_status()
+            if winback_stats["stats"]["attempts"] > 0:
+                success_rate = winback_stats["stats"]["success_rate"] * 100
+                total_recovered = winback_stats["stats"]["total_recovered"]
+                logger.info(f"🔥 Win-Back Performance: {success_rate:.1f}% success rate")
+                logger.info(f"   Total Recovered: ${total_recovered:.2f}")
+                logger.info(f"   Attempts: {winback_stats['stats']['attempts']}")
+            else:
+                logger.info("🔥 Win-Back Engine: No recovery attempts needed this session")
         
         logger.success(f"🎯 Yahoo + Hyperliquid Paper Trading session completed!")
         logger.info(f"   Total trades placed: {trades_placed}")
