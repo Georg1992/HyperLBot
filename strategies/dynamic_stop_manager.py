@@ -372,12 +372,12 @@ class GlobalVolumeAggregator:
             exchange_volumes = {}
             successful_exchanges = 0
             
-                         # Get volume from all exchanges
-             for exchange_name, exchange_config in self.exchanges.items():
-                 try:
-                     # Add SSL verification fix for problematic exchanges
-                     response = requests.get(exchange_config["rest_api"], timeout=3, verify=False)
-                     if response.status_code == 200:
+            # Get volume from all exchanges
+            for exchange_name, exchange_config in self.exchanges.items():
+                try:
+                    # Add SSL verification fix for problematic exchanges
+                    response = requests.get(exchange_config["rest_api"], timeout=3, verify=False)
+                    if response.status_code == 200:
                         volume = self._parse_exchange_volume(exchange_name, response.json())
                         if volume > 0:
                             # Convert 24h volume to per-second
@@ -394,16 +394,16 @@ class GlobalVolumeAggregator:
                             }
                             successful_exchanges += 1
                 
-                                 except Exception as e:
-                     exchange_volumes[exchange_name] = {
-                         "status": "error",
-                         "error": str(e)[:50]  # Truncate long error messages
-                     }
-                     # Only log SSL errors as debug, not warnings
-                     if "SSL" in str(e) or "ssl" in str(e).lower():
-                         logger.debug(f"Exchange {exchange_name} SSL issue (ignoring): {str(e)[:50]}...")
-                     else:
-                         logger.debug(f"Exchange {exchange_name} volume fetch failed: {e}")
+                except Exception as e:
+                    exchange_volumes[exchange_name] = {
+                        "status": "error",
+                        "error": str(e)[:50]  # Truncate long error messages
+                    }
+                    # Only log SSL errors as debug, not warnings
+                    if "SSL" in str(e) or "ssl" in str(e).lower():
+                        logger.debug(f"Exchange {exchange_name} SSL issue (ignoring): {str(e)[:50]}...")
+                    else:
+                        logger.debug(f"Exchange {exchange_name} volume fetch failed: {e}")
             
             # Extrapolate total global volume
             if successful_exchanges > 0:
