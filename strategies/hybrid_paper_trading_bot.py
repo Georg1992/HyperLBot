@@ -400,19 +400,22 @@ class YahooHyperliquidPaperTradingBot:
             import time
             
             # Group trades by 5-minute intervals
-            current_time = time.time()
+            current_time = time.time() * 1000  # Convert to milliseconds for comparison
             price_samples = []
             
-            # Create 5-minute buckets for the last 70 minutes (14 periods)
+            # Create buckets for the last 6 hours (14 periods, expanded for low trade frequency)
+            available_trades_timespan = 6 * 60  # 6 hours in minutes
+            bucket_size_minutes = available_trades_timespan // 14  # ~25 minutes per period
+            
             for i in range(14):
-                bucket_end = current_time - (i * 300)  # 300 seconds = 5 minutes
-                bucket_start = bucket_end - 300
+                bucket_end = current_time - (i * bucket_size_minutes * 60 * 1000)  # Convert to ms
+                bucket_start = bucket_end - (bucket_size_minutes * 60 * 1000)
                 
                 # Find trades in this 5-minute window
                 bucket_trades = []
                 for trade in trade_history:
                     try:
-                        # Hyperliquid trade time format
+                        # Hyperliquid timestamps are in milliseconds
                         trade_time = float(trade.get('time', trade.get('timestamp', 0)))
                         if bucket_start <= trade_time <= bucket_end:
                             bucket_trades.append(float(trade.get('px', trade.get('price', 0))))

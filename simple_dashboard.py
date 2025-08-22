@@ -336,44 +336,66 @@ class OptimizedTradingDashboard:
         }
     
     def _build_5m_prices_from_trades(self, trade_history: List[Dict[str, Any]]) -> List[float]:
-        """Build 5-minute price samples from Hyperliquid trade history"""
+        """Build price series using Hyperliquid trades + current price (hybrid approach)"""
         try:
             if not trade_history:
                 return []
             
             import time
-            from collections import defaultdict
             
-            # Group trades by 5-minute intervals
-            current_time = time.time()
+            # Get current price for the most recent data point
+            api = self._get_hyperliquid_api()
+            current_price = api.get_current_price("BTC") if api else None
+            
+            # Extract all trade prices with timestamps
+            trade_prices = []
+            for trade in trade_history:
+                try:
+                    trade_time = float(trade.get('time', 0))
+                    trade_price = float(trade.get('px', 0))
+                    if trade_time > 0 and trade_price > 0:
+                        trade_prices.append((trade_time, trade_price))
+                except (ValueError, TypeError):
+                    continue
+            
+            if not trade_prices:
+                return []
+            
+            # Sort by time (oldest first)
+            trade_prices.sort(key=lambda x: x[0])
+            
+            # Build 14 price points using available data
+            current_time_ms = time.time() * 1000
             price_samples = []
             
-            # Create 5-minute buckets for the last 70 minutes (14 periods)
-            for i in range(14):
-                bucket_end = current_time - (i * 300)  # 300 seconds = 5 minutes
-                bucket_start = bucket_end - 300
+            # Strategy: Use the last 14 distinct trade prices (or interpolated prices)
+            if len(trade_prices) >= 14:
+                # Use the last 14 trade prices directly
+                price_samples = [price for _, price in trade_prices[-14:]]
+                logger.debug(f"🎯 Using last 14 trade prices directly")
+            else:
+                # Use all available trades + current price interpolation
+                base_prices = [price for _, price in trade_prices[-10:]]  # Last 10 trades
                 
-                # Find trades in this 5-minute window
-                bucket_trades = []
-                for trade in trade_history:
-                    try:
-                        # Trade time format depends on Hyperliquid API response
-                        trade_time = float(trade.get('time', trade.get('timestamp', 0)))
-                        if bucket_start <= trade_time <= bucket_end:
-                            bucket_trades.append(float(trade.get('px', trade.get('price', 0))))
-                    except (ValueError, TypeError):
-                        continue
+                # Add current price if available
+                if current_price and current_price > 0:
+                    base_prices.append(current_price)
                 
-                # Use average price of trades in this bucket (approximates 5m close)
-                if bucket_trades:
-                    avg_price = sum(bucket_trades) / len(bucket_trades)
-                    price_samples.append(avg_price)
-                elif price_samples:  # Use last known price if no trades in bucket
-                    price_samples.append(price_samples[-1])
+                # If still not enough, interpolate between first and last prices
+                while len(base_prices) < 14:
+                    if len(base_prices) >= 2:
+                        # Add interpolated price between first and last
+                        first_price = base_prices[0]
+                        last_price = base_prices[-1]
+                        interpolated = (first_price + last_price) / 2
+                        base_prices.append(interpolated)
+                    else:
+                        # Use current price or trade price
+                        base_prices.append(base_prices[-1] if base_prices else 117000.0)
+                
+                price_samples = base_prices[-14:]  # Take last 14
+                logger.debug(f"🔧 Built {len(price_samples)} hybrid price samples (trades + interpolation)")
             
-            # Reverse to get chronological order (oldest first)
-            price_samples.reverse()
-            logger.debug(f"🔧 Built {len(price_samples)} price samples from {len(trade_history)} trades")
             return price_samples
             
         except Exception as e:
