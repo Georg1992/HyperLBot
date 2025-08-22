@@ -83,6 +83,19 @@ class YahooHyperliquidPaperTradingBot:
         # Advanced trade manager
         self.trade_manager = TradeManager(self.strategy_config)
         
+        # Initialize dynamic stop manager for volatility-aware trailing stops
+        try:
+            from strategies.dynamic_stop_manager import DynamicStopManager, GlobalVolumeAggregator, BlockchainDataAnalyzer
+            self.dynamic_stop_manager = DynamicStopManager(self.strategy_config)
+            self.global_volume_aggregator = GlobalVolumeAggregator()
+            self.blockchain_analyzer = BlockchainDataAnalyzer()
+            logger.success("🔥 Advanced systems initialized: Dynamic stops + Global volume + Blockchain data")
+        except ImportError as e:
+            logger.warning(f"Advanced systems not available: {e}")
+            self.dynamic_stop_manager = None
+            self.global_volume_aggregator = None
+            self.blockchain_analyzer = None
+        
         # Override trade manager's get_open_positions method
         self.trade_manager.get_open_positions = self.get_open_positions
         
@@ -2337,6 +2350,18 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
         logger.info(f"   Whale Analytics: {'Enabled' if self.whale_integration.is_available() else 'Disabled'}")
         logger.info(f"   Logging: Comprehensive Yahoo + Hyperliquid paper trading logs enabled")
+        
+        # Start advanced systems
+        if self.dynamic_stop_manager:
+            self.dynamic_stop_manager.start_monitoring(self)
+            logger.info(f"🛡️ Dynamic stop monitoring: Every 3 seconds with volatility awareness")
+        
+        if self.global_volume_aggregator:
+            logger.info(f"🌍 Global volume tracking: Real-time aggregation from 6 exchanges")
+        
+        if self.blockchain_analyzer:
+            logger.info(f"⛓️ Blockchain analytics: On-chain sentiment and network activity")
+        
         logger.info("=" * 50)
         
         trades_placed = 0
@@ -2422,8 +2447,26 @@ class YahooHyperliquidPaperTradingBot:
                         time.sleep(check_interval)
                         continue
                     
-                    # Analyze market using Yahoo historical data + Hyperliquid real-time price
-                    signal = self.should_trade(hyperliquid_price, self.binance_analysis)
+                    # Enhanced analysis with global volume and blockchain data
+                    enhanced_analysis = self.binance_analysis.copy()
+                    
+                    # Add global volume data
+                    if self.global_volume_aggregator:
+                        global_volume_data = self.global_volume_aggregator.get_realtime_global_volume()
+                        enhanced_analysis["global_volume"] = global_volume_data
+                        if global_volume_data.get("status") == "success":
+                            logger.info(f"🌍 Global Volume: {global_volume_data['global_volume_per_second']:.1f} BTC/sec")
+                    
+                    # Add blockchain sentiment
+                    if self.blockchain_analyzer:
+                        blockchain_data = self.blockchain_analyzer.get_onchain_sentiment()
+                        enhanced_analysis["blockchain_sentiment"] = blockchain_data
+                        if blockchain_data.get("confidence", 0) > 0.5:
+                            sentiment = blockchain_data["overall_sentiment"]
+                            logger.info(f"⛓️ On-chain Sentiment: {sentiment}")
+                    
+                    # Analyze market using enhanced data (Yahoo historical + Hyperliquid real-time + Global volume + Blockchain)
+                    signal = self.should_trade(hyperliquid_price, enhanced_analysis)
                     
                     if signal["should_trade"]:
                         # Calculate position value from signal data
@@ -2489,6 +2532,11 @@ class YahooHyperliquidPaperTradingBot:
                 self.close_paper_position(position, "SESSION_END", hyperliquid_price)
         
         logger.info("=" * 50)
+        # Stop advanced monitoring systems
+        if self.dynamic_stop_manager:
+            self.dynamic_stop_manager.stop_monitoring()
+            logger.info("🛡️ Dynamic stop monitoring stopped")
+        
         logger.success(f"🎯 Yahoo + Hyperliquid Paper Trading session completed!")
         logger.info(f"   Total trades placed: {trades_placed}")
         logger.info(f"   Final Balance: ${self.paper_balance:.2f}")
