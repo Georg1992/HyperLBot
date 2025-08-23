@@ -17,10 +17,6 @@ class TradingConfig:
     # API Configuration
     HYPERLIQUID_API_URL = os.getenv("HYPERLIQUID_API_URL", "https://api.hyperliquid.xyz")
     
-    # Testing Configuration
-    TEST_MODE = os.getenv("TEST_MODE", "true").lower() == "true"  # True = simulation, False = real orders
-    MIN_TEST_SIZE = float(os.getenv("MIN_TEST_SIZE", "0.0001"))  # Minimum BTC size for real tests
-    
     # Logging Configuration
     LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
     LOG_FILE = os.getenv("LOG_FILE", "trading.log")

@@ -298,24 +298,6 @@ class HyperliquidAPI:
             symbol = symbol or self.config.SYMBOL
             leverage = leverage or self.config.LEVERAGE
             
-            # Check if in TEST_MODE (simulation)
-            if self.config.TEST_MODE:
-                logger.warning(f"🎮 TEST_MODE: Simulating {side} order for {size} {symbol} at ${price}")
-                return {
-                    "status": "simulated",
-                    "message": f"TEST_MODE: Would place {side} {size} {symbol} at ${price}",
-                    "side": side,
-                    "size": size,
-                    "price": price,
-                    "symbol": symbol,
-                    "order_type": order_type,
-                    "leverage": leverage,
-                    "timestamp": time.time()
-                }
-            
-            # REAL ORDER EXECUTION (TEST_MODE = False)
-            logger.warning(f"🚨 REAL ORDER: Placing {side} order for {size} {symbol} at ${price}")
-            
             # Create base order data
             order_data = {
                 "type": "order",
