@@ -581,6 +581,31 @@ class RealTimeTradingDataManager:
             self._notify_subscribers("simulated_balance_update", {"balance": new_balance, "change": change})
             self._save_to_json_file()
     
+    def force_balance_mode(self, mode: str, balance_value: float = None):
+        """Force RTM to use specific balance mode"""
+        with self.data_lock:
+            if mode == "real":
+                # Force use real balance
+                self.current_state["balance"]["balance_source"] = "real"
+                real_balance = self.current_state["balance"].get("real_account_value", 0.0)
+                if real_balance > 0:
+                    self.current_state["session"]["current_balance"] = real_balance
+                    self.current_state["session"]["initial_balance"] = real_balance
+                    self.current_state["session"]["balance_change"] = self.current_state["balance"].get("real_unrealized_pnl", 0.0)
+                    logger.success(f"💰 Forced RTM to REAL balance mode: ${real_balance:.2f}")
+            elif mode == "simulated":
+                # Force use simulated balance
+                self.current_state["balance"]["balance_source"] = "simulated"
+                if balance_value:
+                    self.current_state["balance"]["simulated_balance"] = balance_value
+                    self.current_state["session"]["current_balance"] = balance_value
+                    self.current_state["session"]["initial_balance"] = balance_value
+                    self.current_state["session"]["balance_change"] = 0.0
+                    logger.success(f"🎮 Forced RTM to SIMULATED balance mode: ${balance_value:.2f}")
+            
+            self.current_state["balance"]["last_update"] = time.time()
+            self._save_to_json_file()
+    
     def update_global_volume(self, volume_data: Dict[str, Any]):
         """Update global volume data"""
         with self.data_lock:

@@ -215,6 +215,7 @@ def run_paper_trading():
         # 🚀 FETCH REAL BALANCE FROM HYPERLIQUID
         logger.info("🔍 Fetching your real Hyperliquid balance for realistic simulation...")
         
+        real_balance = None
         try:
             config = TradingConfig()
             if config.WALLET_ADDRESS and config.WALLET_PRIVATE_KEY:
@@ -226,23 +227,48 @@ def run_paper_trading():
                     logger.success(f"💰 Found real balance: ${real_balance:.2f} USD")
                     logger.info(f"📊 Available margin: ${balance_data.get('available_margin', 0):.2f}")
                     logger.info(f"💹 Current unrealized PnL: ${balance_data.get('total_unrealized_pnl', 0):.2f}")
-                    initial_balance = real_balance
-                    logger.success(f"🎯 Using REAL balance ${initial_balance:.2f} for paper trading simulation")
                 else:
-                    logger.warning("⚠️ Could not get real balance, using default")
-                    initial_balance = 120.0
+                    logger.warning("⚠️ Could not get real balance")
+                    real_balance = None
             else:
-                logger.warning("⚠️ No wallet credentials found, using default balance")
-                initial_balance = 120.0
+                logger.warning("⚠️ No wallet credentials found")
+                real_balance = None
                 
         except Exception as e:
             logger.error(f"❌ Failed to fetch real balance: {e}")
-            logger.info("🔄 Falling back to default balance")
-            initial_balance = 120.0
+            real_balance = None
+        
+        # 🎯 BALANCE SELECTION
+        print(f"\n💰 Balance Configuration:")
+        print("Choose your starting balance:")
+        
+        if real_balance and real_balance > 0:
+            print(f"1. Use REAL balance: ${real_balance:.2f} (from your Hyperliquid account)")
+            print("2. Use SIMULATED balance: Custom amount")
+            
+            while True:
+                balance_choice = input("Enter choice (1-2): ").strip()
+                if balance_choice == "1":
+                    initial_balance = real_balance
+                    balance_type = "real"
+                    logger.success(f"🎯 Using REAL balance: ${initial_balance:.2f}")
+                    break
+                elif balance_choice == "2":
+                    initial_balance = float(input("Enter simulated balance (default 120.0): ") or "120.0")
+                    balance_type = "simulated"
+                    logger.info(f"🎮 Using SIMULATED balance: ${initial_balance:.2f}")
+                    break
+                else:
+                    print("Please enter 1 or 2")
+        else:
+            print("Real balance not available - using simulated balance")
+            initial_balance = float(input("Enter simulated balance (default 120.0): ") or "120.0")
+            balance_type = "simulated"
+            logger.info(f"🎮 Using SIMULATED balance: ${initial_balance:.2f}")
         
         # Get user input for other parameters
         print(f"\nPaper Trading Configuration:")
-        print(f"💰 Balance: ${initial_balance:.2f} (from your Hyperliquid account)")
+        print(f"💰 Balance: ${initial_balance:.2f} ({balance_type})")
         max_trades = int(input("Enter max trades (default 10): ") or "10")
         check_interval = 5  # Fixed at 5 seconds for ultra-fast responsiveness
         
@@ -259,7 +285,8 @@ def run_paper_trading():
         # Initialize and run the bot
         bot = YahooHyperliquidPaperTradingBot(
             initial_balance=initial_balance,
-            strategy_name=selected_strategy
+            strategy_name=selected_strategy,
+            balance_mode=balance_type
         )
         
         # Set global bot instance for graceful shutdown

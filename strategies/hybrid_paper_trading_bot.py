@@ -34,13 +34,14 @@ from strategies.prediction_engine import PredictionEngine
 from strategies.trade_manager import TradeManager
 
 class YahooHyperliquidPaperTradingBot:
-    def __init__(self, initial_balance: float = 120.0, strategy_name: str = "standard"):
+    def __init__(self, initial_balance: float = 120.0, strategy_name: str = "standard", balance_mode: str = "simulated"):
         self.config = TradingConfig()
         self.strategy_name = strategy_name
         self.strategy_config = self.config.STRATEGY_CONFIGS.get(strategy_name, self.config.STRATEGY_CONFIGS["standard"])
         self.hyperliquid_api = None
         self.yahoo_fetcher = YahooDataFetcher()
         self.connected = False
+        self.balance_mode = balance_mode  # "real" or "simulated"
         
         # Initialize advanced system attributes (will be set to proper instances or None)
         self.smart_data_cache = None
@@ -383,6 +384,16 @@ class YahooHyperliquidPaperTradingBot:
             real_balance_data = self.hyperliquid_api.get_account_balance()
             if self.trading_data_manager:
                 self.trading_data_manager.update_real_balance(real_balance_data)
+                
+                # Set balance mode in RTM based on user choice
+                if self.balance_mode == "real":
+                    # Force RTM to use real balance
+                    logger.info("🎯 Forcing RTM to use REAL balance mode")
+                    self.trading_data_manager.force_balance_mode("real")
+                elif self.balance_mode == "simulated":
+                    # Keep simulated balance in RTM
+                    logger.info("🎮 Forcing RTM to use SIMULATED balance mode")
+                    self.trading_data_manager.force_balance_mode("simulated", self.paper_balance)
             
             # Get real open positions
             real_positions = self.hyperliquid_api.get_open_positions()
