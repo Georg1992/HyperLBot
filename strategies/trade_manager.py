@@ -22,12 +22,12 @@ class TradeManager:
         self.strategy_config = strategy_config
         self.config = TradingConfig()
         
-        # Trade quality thresholds
+        # Trade quality thresholds (ADJUSTED FOR REAL TRADING)
         self.QUALITY_THRESHOLDS = {
-            "excellent": 0.85,
-            "good": 0.70,
-            "acceptable": 0.60,
-            "poor": 0.50
+            "excellent": 0.80,  # Lowered from 85% to 80%
+            "good": 0.65,       # Lowered from 70% to 65%
+            "acceptable": 0.45, # Lowered from 60% to 45% ← KEY FIX!
+            "poor": 0.30        # Lowered from 50% to 30%
         }
         
         # Stop adjustment parameters
