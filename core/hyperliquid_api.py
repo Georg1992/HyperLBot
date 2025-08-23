@@ -6,7 +6,7 @@ import hashlib
 import eth_account
 from typing import Dict, Any, Optional, List
 from loguru import logger
-from config import TradingConfig
+from .config import TradingConfig
 
 class HyperliquidAPI:
     """Hyperliquid API client for trading operations"""

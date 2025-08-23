@@ -12,7 +12,7 @@ from loguru import logger
 # Import core module to setup paths
 import core
 
-from config import TradingConfig
+from core.config import TradingConfig
 
 try:
     from blockcypher_analyzer import BlockCypherAnalyzer

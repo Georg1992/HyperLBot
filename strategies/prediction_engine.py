@@ -13,7 +13,7 @@ from collections import deque
 # Import core module to setup paths
 import core
 
-from config import TradingConfig
+from core.config import TradingConfig
 
 class PredictionEngine:
     """Advanced prediction engine with reactive and predictive modes"""
