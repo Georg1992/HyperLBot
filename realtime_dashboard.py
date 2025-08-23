@@ -120,26 +120,39 @@ class EventDrivenTradingDashboard:
             }
     
     def _get_realtime_manager(self):
-        """Get real-time data manager with connection caching"""
-        if self._rtm_available is False:
-            logger.error("🚨 DASHBOARD DEBUG: RTM marked as unavailable")
-            return None
+        """Get real-time data manager with fresh connection attempts"""
+        # ALWAYS try fresh connection - don't cache failures!
+        try:
+            logger.error("🚨 DASHBOARD DEBUG: Trying to import trading_data_manager...")
+            from core.realtime_data_manager import trading_data_manager
             
-        if self._rtm is None:
-            try:
-                logger.error("🚨 DASHBOARD DEBUG: Trying to import trading_data_manager...")
-                from core.realtime_data_manager import trading_data_manager
-                self._rtm = trading_data_manager
-                self._rtm_available = True
-                logger.error(f"🚨 DASHBOARD DEBUG: RTM imported successfully! RTM = {type(self._rtm)}")
-                logger.success("✅ Real-time data manager connected")
-            except Exception as e:
-                logger.error(f"🚨 DASHBOARD DEBUG: RTM import failed: {e}")
-                logger.error(f"❌ Real-time data manager connection failed: {e}")
-                import traceback
-                traceback.print_exc()
-                self._rtm_available = False
+            # Check if trading_data_manager is properly initialized
+            if trading_data_manager is None:
+                logger.error("🚨 DASHBOARD DEBUG: trading_data_manager is None!")
                 return None
+                
+            # Check if RTM has active session
+            try:
+                current_state = trading_data_manager.get_current_state()
+                session_status = current_state["session"]["status"]
+                logger.error(f"🚨 DASHBOARD DEBUG: RTM status check = {session_status}")
+                logger.error(f"🚨 DASHBOARD DEBUG: RTM session ID = {current_state['session'].get('session_id', 'N/A')}")
+            except Exception as check_e:
+                logger.error(f"🚨 DASHBOARD DEBUG: RTM status check failed: {check_e}")
+                return None
+            
+            self._rtm = trading_data_manager
+            self._rtm_available = True
+            logger.error(f"🚨 DASHBOARD DEBUG: RTM imported successfully! RTM = {type(self._rtm)}")
+            logger.success("✅ Real-time data manager connected")
+            return self._rtm
+            
+        except Exception as e:
+            logger.error(f"🚨 DASHBOARD DEBUG: RTM import failed: {e}")
+            logger.error(f"❌ Real-time data manager connection failed: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
         
         return self._rtm
     
