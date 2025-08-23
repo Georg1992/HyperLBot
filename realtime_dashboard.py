@@ -137,9 +137,16 @@ class EventDrivenTradingDashboard:
                 session_status = current_state["session"]["status"]
                 logger.error(f"🚨 DASHBOARD DEBUG: RTM status check = {session_status}")
                 logger.error(f"🚨 DASHBOARD DEBUG: RTM session ID = {current_state['session'].get('session_id', 'N/A')}")
+                
+                # CRITICAL: Don't return None even if status check fails!
+                # RTM exists and we should use it regardless of current status
+                logger.error(f"🚨 DASHBOARD DEBUG: RTM status check passed - proceeding!")
+                
             except Exception as check_e:
                 logger.error(f"🚨 DASHBOARD DEBUG: RTM status check failed: {check_e}")
-                return None
+                logger.error(f"🚨 DASHBOARD DEBUG: But RTM exists, so proceeding anyway!")
+                import traceback
+                traceback.print_exc()
             
             self._rtm = trading_data_manager
             self._rtm_available = True
