@@ -293,6 +293,18 @@ class EventDrivenTradingDashboard:
                             "total_simulated_positions": len(current_state.get("positions", {}).get("simulated_positions", [])),
                             "last_update": current_state.get("positions", {}).get("last_update", 0)
                         },
+                        "balance": {
+                            "real_account_value": current_state.get("balance", {}).get("real_account_value", 0.0),
+                            "real_available_margin": current_state.get("balance", {}).get("real_available_margin", 0.0),
+                            "real_total_margin_used": current_state.get("balance", {}).get("real_total_margin_used", 0.0),
+                            "real_unrealized_pnl": current_state.get("balance", {}).get("real_unrealized_pnl", 0.0),
+                            "real_withdrawal_balance": current_state.get("balance", {}).get("real_withdrawal_balance", 0.0),
+                            "real_margin_usage_pct": current_state.get("balance", {}).get("real_margin_usage_pct", 0.0),
+                            "simulated_balance": current_state.get("balance", {}).get("simulated_balance", 120.0),
+                            "simulated_balance_change": current_state.get("balance", {}).get("simulated_balance_change", 0.0),
+                            "balance_source": current_state.get("balance", {}).get("balance_source", "simulated"),
+                            "last_update": current_state.get("balance", {}).get("last_update", 0)
+                        },
                         "global_volume": current_state["global_volume"],
                         "trades": recent_trades,
                         "recent_trades": recent_trades,

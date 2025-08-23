@@ -379,6 +379,11 @@ class YahooHyperliquidPaperTradingBot:
             # 🚀 FETCH REAL POSITIONS AND ORDERS FOR REALISTIC SIMULATION
             logger.info("🔍 Fetching real account state for simulation base...")
             
+            # Get real account balance
+            real_balance_data = self.hyperliquid_api.get_account_balance()
+            if self.trading_data_manager:
+                self.trading_data_manager.update_real_balance(real_balance_data)
+            
             # Get real open positions
             real_positions = self.hyperliquid_api.get_open_positions()
             if self.trading_data_manager:
@@ -389,7 +394,15 @@ class YahooHyperliquidPaperTradingBot:
             if self.trading_data_manager:
                 self.trading_data_manager.update_real_orders(real_orders)
             
-            # Log summary
+            # Log comprehensive summary
+            real_account_value = real_balance_data.get("account_value", 0)
+            real_pnl = real_balance_data.get("total_unrealized_pnl", 0)
+            
+            logger.success(f"💰 REAL BALANCE: ${real_account_value:.2f} USD")
+            logger.info(f"💹 Real Unrealized PnL: ${real_pnl:.2f}")
+            logger.info(f"📊 Available Margin: ${real_balance_data.get('available_margin', 0):.2f}")
+            logger.info(f"📈 Margin Usage: {real_balance_data.get('margin_usage_pct', 0):.1f}%")
+            
             if real_positions:
                 logger.success(f"📊 Found {len(real_positions)} real positions - will factor into simulation")
                 total_real_pnl = sum(pos.get('unrealized_pnl', 0) for pos in real_positions)
@@ -401,6 +414,13 @@ class YahooHyperliquidPaperTradingBot:
                 logger.success(f"📋 Found {len(real_orders)} real orders - will track alongside simulation")
             else:
                 logger.info("📋 No real orders found")
+                
+            # Set paper trading balance to use real balance as base
+            if real_account_value > 0:
+                self.paper_balance = real_account_value
+                logger.success(f"🔄 Paper trading now uses REAL balance: ${self.paper_balance:.2f}")
+            else:
+                logger.warning(f"⚠️ Could not get real balance, using default: ${self.paper_balance:.2f}")
             
             self.connected = True
             return True

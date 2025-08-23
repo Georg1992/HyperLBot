@@ -104,6 +104,58 @@ class HyperliquidAPI:
             logger.error(f"Failed to get account info: {e}")
             raise
     
+    def get_account_balance(self) -> Dict[str, Any]:
+        """Get real account balance and margin info"""
+        try:
+            account_info = self.get_account_info()
+            
+            balance_data = {
+                "account_value": 0.0,
+                "total_margin_used": 0.0,
+                "available_margin": 0.0,
+                "total_unrealized_pnl": 0.0,
+                "withdrawal_balance": 0.0,
+                "timestamp": time.time(),
+                "source": "hyperliquid_real"
+            }
+            
+            # Extract balance information from marginSummary
+            if account_info and 'marginSummary' in account_info:
+                margin = account_info['marginSummary']
+                balance_data.update({
+                    "account_value": float(margin.get('accountValue', '0')),
+                    "total_margin_used": float(margin.get('totalMarginUsed', '0')),
+                    "available_margin": float(margin.get('availableMargin', '0')),
+                    "total_unrealized_pnl": float(margin.get('totalUnrealizedPnl', '0')),
+                    "withdrawal_balance": float(margin.get('withdrawable', '0'))
+                })
+            
+            # Calculate additional metrics
+            balance_data["margin_usage_pct"] = (
+                (balance_data["total_margin_used"] / balance_data["account_value"] * 100) 
+                if balance_data["account_value"] > 0 else 0
+            )
+            
+            logger.info(f"💰 Real Account Balance: ${balance_data['account_value']:.2f}")
+            logger.info(f"📊 Available Margin: ${balance_data['available_margin']:.2f}")
+            logger.info(f"💹 Unrealized PnL: ${balance_data['total_unrealized_pnl']:.2f}")
+            
+            return balance_data
+            
+        except Exception as e:
+            logger.error(f"Failed to get account balance: {e}")
+            return {
+                "account_value": 0.0,
+                "total_margin_used": 0.0,
+                "available_margin": 0.0,
+                "total_unrealized_pnl": 0.0,
+                "withdrawal_balance": 0.0,
+                "margin_usage_pct": 0.0,
+                "timestamp": time.time(),
+                "source": "error",
+                "error": str(e)
+            }
+    
     def get_open_positions(self) -> List[Dict[str, Any]]:
         """Get all open positions from account"""
         try:

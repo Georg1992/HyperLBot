@@ -84,6 +84,18 @@ class RealTimeTradingDataManager:
                 "simulated_orders": [],  # Bot's simulated orders
                 "last_update": 0
             },
+            "balance": {
+                "real_account_value": 0.0,
+                "real_available_margin": 0.0,
+                "real_total_margin_used": 0.0,
+                "real_unrealized_pnl": 0.0,
+                "real_withdrawal_balance": 0.0,
+                "real_margin_usage_pct": 0.0,
+                "simulated_balance": 120.0,  # Starting simulation balance
+                "simulated_balance_change": 0.0,
+                "balance_source": "mixed",  # "real", "simulated", or "mixed"
+                "last_update": 0
+            },
             "global_volume": {
                 "global_volume_per_second": 0.0,
                 "status": "unavailable",
@@ -514,6 +526,61 @@ class RealTimeTradingDataManager:
             
             self._save_to_json_file()
     
+    def update_real_balance(self, balance_data: Dict[str, Any]):
+        """Update real account balance from Hyperliquid"""
+        with self.data_lock:
+            # Update real balance data
+            self.current_state["balance"].update({
+                "real_account_value": balance_data.get("account_value", 0.0),
+                "real_available_margin": balance_data.get("available_margin", 0.0),
+                "real_total_margin_used": balance_data.get("total_margin_used", 0.0),
+                "real_unrealized_pnl": balance_data.get("total_unrealized_pnl", 0.0),
+                "real_withdrawal_balance": balance_data.get("withdrawal_balance", 0.0),
+                "real_margin_usage_pct": balance_data.get("margin_usage_pct", 0.0),
+                "last_update": balance_data.get("timestamp", time.time())
+            })
+            
+            # Update session balance to use real balance as base
+            real_balance = balance_data.get("account_value", 0.0)
+            if real_balance > 0:
+                # Use real balance as the current balance
+                self.current_state["session"]["current_balance"] = real_balance
+                self.current_state["session"]["initial_balance"] = real_balance
+                self.current_state["balance"]["balance_source"] = "real"
+                
+                # Calculate balance change based on real unrealized PnL
+                real_pnl = balance_data.get("total_unrealized_pnl", 0.0)
+                self.current_state["session"]["balance_change"] = real_pnl
+                self.current_state["session"]["balance_change_pct"] = (
+                    (real_pnl / real_balance * 100) if real_balance > 0 else 0
+                )
+            
+            logger.info(f"💰 Updated real balance: ${real_balance:.2f} (PnL: ${balance_data.get('total_unrealized_pnl', 0):.2f})")
+            self._notify_subscribers("balance_update", balance_data)
+            self._save_to_json_file()
+    
+    def update_simulated_balance(self, new_balance: float, change: float):
+        """Update simulated balance from bot trading"""
+        with self.data_lock:
+            old_balance = self.current_state["balance"]["simulated_balance"]
+            self.current_state["balance"]["simulated_balance"] = new_balance
+            self.current_state["balance"]["simulated_balance_change"] = change
+            self.current_state["balance"]["last_update"] = time.time()
+            
+            # If not using real balance, update session balance with simulated
+            if self.current_state["balance"]["balance_source"] != "real":
+                self.current_state["session"]["current_balance"] = new_balance
+                self.current_state["session"]["balance_change"] = change
+                self.current_state["session"]["balance_change_pct"] = (
+                    (change / self.current_state["session"]["initial_balance"] * 100)
+                    if self.current_state["session"]["initial_balance"] > 0 else 0
+                )
+                self.current_state["balance"]["balance_source"] = "simulated"
+            
+            logger.info(f"🎮 Updated simulated balance: ${new_balance:.2f} (Change: ${change:.2f})")
+            self._notify_subscribers("simulated_balance_update", {"balance": new_balance, "change": change})
+            self._save_to_json_file()
+    
     def update_global_volume(self, volume_data: Dict[str, Any]):
         """Update global volume data"""
         with self.data_lock:
@@ -916,6 +983,7 @@ class RealTimeTradingDataManager:
                 "simulated_positions": self.current_state["positions"]["simulated_positions"],
                 "real_orders": self.current_state["orders"]["open_orders"],
                 "simulated_orders": self.current_state["orders"]["simulated_orders"],
+                "balance_data": self.current_state["balance"],
                 "last_update": self.current_state["positions"]["last_update"]
             }
 
