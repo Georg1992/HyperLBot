@@ -130,11 +130,11 @@ def start_dashboard():
     """Start the real-time dashboard in a background thread"""
     try:
         # Import real-time dashboard here to avoid circular imports
-        from realtime_dashboard import EventDrivenTradingDashboard
+        from realtime_dashboard import create_dashboard
         
         def run_dashboard():
             try:
-                dashboard = EventDrivenTradingDashboard()
+                dashboard = create_dashboard()
                 dashboard.run(host='0.0.0.0', port=5002, debug=False)
             except Exception as e:
                 logger.error(f"Dashboard error: {e}")

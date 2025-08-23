@@ -881,10 +881,10 @@ class EventDrivenTradingDashboard:
             allow_unsafe_werkzeug=True
         )
 
-# Create dashboard instance
-dashboard = EventDrivenTradingDashboard()
-app = dashboard.app
-socketio = dashboard.socketio
+def create_dashboard():
+    """Factory function to create dashboard instance"""
+    return EventDrivenTradingDashboard()
 
 if __name__ == '__main__':
+    dashboard = create_dashboard()
     dashboard.run(debug=True)
