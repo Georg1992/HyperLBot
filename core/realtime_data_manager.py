@@ -296,6 +296,10 @@ class RealTimeTradingDataManager:
             "data_source": "rtm_initialization"
         })
         
+        # CRITICAL: Clear any phantom trades from previous sessions
+        self.recent_trades.clear()
+        logger.info(f"🧹 Cleared {len(self.recent_trades)} phantom trades from previous sessions")
+        
         # Force save the new clean state to file  
         self._save_to_json_file()
         
