@@ -16,6 +16,9 @@ from flask import Flask, render_template, request, make_response
 from flask_socketio import SocketIO, emit
 from loguru import logger
 
+# Import constants
+from core.constants import constants, ui_constants
+
 # Suppress SSL warnings
 urllib3.disable_warnings()
 
@@ -23,7 +26,7 @@ class EventDrivenTradingDashboard:
     """Event-driven dashboard with WebSocket real-time updates"""
     
     def __init__(self):
-        self.log_dir = "trading_logs"
+        self.log_dir = constants.LOG_DIR
         
         # Flask app with SocketIO
         self.app = Flask(__name__)
@@ -130,7 +133,7 @@ class EventDrivenTradingDashboard:
     def _load_rtm_state_from_file(self) -> Dict[str, Any]:
         """Load RTM state from JSON file as fallback"""
         try:
-            rtm_file_path = "rtm_state.json"
+            rtm_file_path = constants.RTM_STATE_FILE
             if os.path.exists(rtm_file_path):
                 with open(rtm_file_path, 'r') as f:
                     rtm_data = json.load(f)
@@ -162,7 +165,7 @@ class EventDrivenTradingDashboard:
                     # Always update data every 2 seconds when connections exist
                     # Force update every 10 seconds regardless of connections
                     self.force_update_counter += 1
-                    force_update = self.force_update_counter >= 5  # Every 10 seconds
+                    force_update = self.force_update_counter >= (constants.FORCE_UPDATE_INTERVAL // constants.DASHBOARD_UPDATE_INTERVAL)
                     
                     if self.active_connections or force_update:
                         # Get current data
@@ -176,7 +179,7 @@ class EventDrivenTradingDashboard:
                             self.force_update_counter = 0
                     
                     # Sleep interval
-                    sleep_time = 2 if self.active_connections else 5
+                    sleep_time = constants.DASHBOARD_UPDATE_INTERVAL if self.active_connections else constants.DASHBOARD_UPDATE_INTERVAL * 2.5
                     time.sleep(sleep_time)
                     
                 except Exception as e:
@@ -579,10 +582,10 @@ class EventDrivenTradingDashboard:
             
             # Fallback when API not available
             return {
-                "current_price": 97500.0,  # Reasonable BTC price
+                "current_price": constants.DEFAULT_BTC_PRICE,  # Reasonable BTC price
                 "trend": "API_OFFLINE",
                 "market_condition": "DASHBOARD_ONLY",
-                "rsi": 50.0,
+                "rsi": constants.DEFAULT_RSI,
                 "volume_depth": 20.0,
                 "volume_category": "UNKNOWN",
                 "orderbook_imbalance": 0.0,
@@ -604,10 +607,10 @@ class EventDrivenTradingDashboard:
             logger.error(f"Market data error: {e}")
             # Return reasonable fallback data even on error
             return {
-                "current_price": 97500.0,
+                "current_price": constants.DEFAULT_BTC_PRICE,
                 "trend": "ERROR",
                 "market_condition": "DATA_ERROR",
-                "rsi": 50.0,
+                "rsi": constants.DEFAULT_RSI,
                 "volume_depth": 0.0,
                 "volume_category": "ERROR",
                 "orderbook_imbalance": 0.0,

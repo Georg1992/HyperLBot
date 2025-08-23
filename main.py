@@ -18,6 +18,8 @@ from loguru import logger
 # Import core module to setup paths
 import core
 from core.config import config
+from core.constants import constants
+from core.instance_manager import instance_manager, check_single_instance
 
 # Global variable to track active bot instance for graceful shutdown
 active_bot_instance = None
@@ -115,8 +117,8 @@ def start_dashboard():
             try:
                 dashboard = create_dashboard()
                 dashboard.run(
-                    host=config.DASHBOARD_HOST, 
-                    port=config.DASHBOARD_PORT, 
+                    host=constants.DEFAULT_DASHBOARD_HOST, 
+                    port=constants.DEFAULT_DASHBOARD_PORT, 
                     debug=False
                 )
             except Exception as e:
@@ -131,11 +133,11 @@ def start_dashboard():
         
         # Open browser automatically
         try:
-            webbrowser.open(f'http://localhost:{config.DASHBOARD_PORT}')
+            webbrowser.open(f'http://localhost:{constants.DEFAULT_DASHBOARD_PORT}')
             logger.info("🌐 Real-time dashboard opened automatically in browser")
         except Exception as e:
             logger.warning(f"Could not open browser automatically: {e}")
-            logger.info(f"💡 Please open http://localhost:{config.DASHBOARD_PORT} manually")
+            logger.info(f"💡 Please open http://localhost:{constants.DEFAULT_DASHBOARD_PORT} manually")
         
         return True
         
@@ -147,6 +149,10 @@ def main():
     """Main entry point with simplified menu"""
     logger.info("HyperLBot - Hybrid Trading Bot")
     logger.info("=" * 50)
+    
+    # Check for existing instance first
+    if not check_single_instance():
+        return
     
     # Validate configuration
     config_errors = config.validate_config()
@@ -180,7 +186,7 @@ def main():
             if start_dashboard():
                 logger.info("✅ Real-time dashboard started successfully!")
                 logger.info("💡 Keep this terminal open to run the dashboard")
-                logger.info(f"🌐 Real-time dashboard is available at: http://localhost:{config.DASHBOARD_PORT}")
+                logger.info(f"🌐 Real-time dashboard is available at: http://localhost:{constants.DEFAULT_DASHBOARD_PORT}")
                 input("Press Enter to stop the dashboard...")
             else:
                 logger.error("❌ Failed to start dashboard")
@@ -194,12 +200,14 @@ def run_paper_trading():
     """Run the Hyperliquid paper trading bot for testing"""
     global active_bot_instance
     
-    try:
-        from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
-        from core.account_manager import account_manager
-        
-        logger.info("Starting Paper Trading Bot (Testing Mode)...")
-        logger.info("This mode uses simulated trading - no real money involved")
+    # Acquire instance lock
+    with instance_manager:
+        try:
+            from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
+            from core.account_manager import account_manager
+            
+            logger.info("Starting Paper Trading Bot (Testing Mode)...")
+            logger.info("This mode uses simulated trading - no real money involved")
         
         # Simulated Account Management
         print(f"\n🎮 Simulated Account Management:")
@@ -231,7 +239,7 @@ def run_paper_trading():
                     elif choice == "2":
                         if account_manager.reset_account():
                             # Create new account
-                            new_balance = float(input(f"Enter initial balance for new account (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
+                            new_balance = float(input(f"Enter initial balance for new account (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
                             account_data = account_manager.create_account(new_balance)
                             initial_balance = new_balance
                             logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
@@ -247,7 +255,7 @@ def run_paper_trading():
         else:
             # Create new account
             print("📝 No existing account found. Creating new simulated account...")
-            new_balance = float(input(f"Enter initial balance (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
+            new_balance = float(input(f"Enter initial balance (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
             account_data = account_manager.create_account(new_balance)
             initial_balance = new_balance
             logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
@@ -256,10 +264,13 @@ def run_paper_trading():
         print(f"\nPaper Trading Configuration:")
         print(f"💰 Balance: ${initial_balance:.2f} (simulated)")
         max_trades = int(input(f"Enter max trades (default {config.DEFAULT_MAX_TRADES}): ") or str(config.DEFAULT_MAX_TRADES))
-        check_interval = config.DEFAULT_CHECK_INTERVAL  # Fixed for responsiveness
+        check_interval = constants.DEFAULT_CHECK_INTERVAL  # Fixed for responsiveness
         
         # Use default strategy
-        selected_strategy = config.DEFAULT_STRATEGY
+        selected_strategy = constants.DEFAULT_STRATEGY
+        
+        # Update instance lock with strategy info
+        instance_manager.update_lock_info(selected_strategy, initial_balance)
         
         logger.info(f"Configuration: Balance=${initial_balance:.2f}, Max Trades={max_trades}, Strategy={selected_strategy}")
         
@@ -288,17 +299,17 @@ def run_paper_trading():
             return
         logger.success("✅ Connected to Hyperliquid API (market data only)")
         
-        bot.run_yahoo_hyperliquid_paper_trading(
-            max_trades=max_trades,
-            check_interval=check_interval
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in paper trading: {e}")
-        input("Press Enter to continue...")
-    finally:
-        # Clear global bot instance
-        active_bot_instance = None
+            bot.run_yahoo_hyperliquid_paper_trading(
+                max_trades=max_trades,
+                check_interval=check_interval
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in paper trading: {e}")
+            input("Press Enter to continue...")
+        finally:
+            # Clear global bot instance
+            active_bot_instance = None
 
 def run_real_trading():
     """Run the Hyperliquid real trading bot for production"""
