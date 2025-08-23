@@ -4416,7 +4416,7 @@
     "target_price": 117455.4767055,
     "stop_price": 116637.37885780001,
     "current_stop_loss": 116637.37885780001,
-    "status": "OPEN",
+    "status": "CLOSED",
     "order_type": "PREDICTIVE_LIMIT",
     "prediction_type": "UNKNOWN",
     "prediction_confidence": 0.85,
@@ -8556,9 +8556,18 @@
     },
     "stop_adjustment_count": 0,
     "partial_closes": [],
-    "current_pnl_pct": 0.0,
+    "current_pnl_pct": 8.024993609816639e-05,
     "is_winback_trade": false,
     "winback_data": {},
-    "defensive_mode": false
+    "defensive_mode": false,
+    "exit_price": 116880.5,
+    "exit_time": 1755909986.7679617,
+    "exit_datetime": "2025-08-23 00:46:26",
+    "exit_reason": "TIME_EXIT",
+    "pnl_pct": 0.0024074980829449917,
+    "pnl_amount": 5.822755646038422,
+    "total_fees": 0.0322491875150303,
+    "net_pnl": 5.790506458523391,
+    "was_profitable": true
   }
 ]
