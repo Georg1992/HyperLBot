@@ -225,8 +225,8 @@ Your bot now has **institutional-grade data management** that:
 
 ### **Enhanced Existing Files:**
 - `strategies/hybrid_paper_trading_bot.py` - Integrated smart systems
-- `simple_dashboard.py` - Real-time data prioritization
-- `templates/dashboard.html` - Professional display with live data
+- `realtime_dashboard.py` - Unified WebSocket real-time dashboard
+- `templates/realtime_dashboard.html` - Professional display with live data
 
 **Latest commit**: `f0ff761` 🚀
 

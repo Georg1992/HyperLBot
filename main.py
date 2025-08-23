@@ -16,14 +16,15 @@ from loguru import logger
 import core
 
 def start_dashboard():
-    """Start the dashboard in a background thread"""
+    """Start the real-time dashboard in a background thread"""
     try:
-        # Import dashboard here to avoid circular imports
-        from simple_dashboard import app
+        # Import real-time dashboard here to avoid circular imports
+        from realtime_dashboard import EventDrivenTradingDashboard
         
         def run_dashboard():
             try:
-                app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
+                dashboard = EventDrivenTradingDashboard()
+                dashboard.run(host='0.0.0.0', port=5002, debug=False)
             except Exception as e:
                 logger.error(f"Dashboard error: {e}")
         
@@ -36,11 +37,11 @@ def start_dashboard():
         
         # Open browser automatically
         try:
-            webbrowser.open('http://localhost:5001')
-            logger.info("🌐 Dashboard opened automatically in browser")
+            webbrowser.open('http://localhost:5002')
+            logger.info("🌐 Real-time dashboard opened automatically in browser")
         except Exception as e:
             logger.warning(f"Could not open browser automatically: {e}")
-            logger.info("💡 Please open http://localhost:5001 manually")
+            logger.info("💡 Please open http://localhost:5002 manually")
         
         return True
         
@@ -70,9 +71,9 @@ def main():
         elif choice == "3":
             logger.info("Starting Dashboard Only...")
             if start_dashboard():
-                logger.info("✅ Dashboard started successfully!")
+                logger.info("✅ Real-time dashboard started successfully!")
                 logger.info("💡 Keep this terminal open to run the dashboard")
-                logger.info("🌐 Dashboard is available at: http://localhost:5001")
+                logger.info("🌐 Real-time dashboard is available at: http://localhost:5002")
                 input("Press Enter to stop the dashboard...")
             else:
                 logger.error("❌ Failed to start dashboard")

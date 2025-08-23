@@ -11,9 +11,9 @@
 - **Layout**: Professional two-column design (Session + Performance)
 
 #### **2. "Enhanced P&L display not visible"** 
-**✅ FIXED**: You were viewing `simple_dashboard.py` not `realtime_dashboard.py`
-- **Problem**: Updates were made to wrong template file
-- **Solution**: Fixed `dashboard.html` template used by `simple_dashboard.py`
+**✅ FIXED**: Enhanced P&L display properly implemented in unified real-time dashboard
+- **Problem**: Multiple dashboard files causing confusion
+- **Solution**: Consolidated to single `realtime_dashboard.py` with WebSocket real-time updates
 - **Enhanced**: Added Realized P&L, Unrealized P&L, visual indicators
 
 #### **3. "Bot should monitor open trades actively"**
@@ -136,8 +136,8 @@ risk_params = {
 ```
 
 ### **Backend Data Flow**
-- **simple_dashboard.py**: Enhanced with `realized_pnl`, `unrealized_pnl`
-- **dashboard.html**: Updated JavaScript for real-time P&L
+- **realtime_dashboard.py**: Unified WebSocket-based dashboard with enhanced P&L
+- **realtime_dashboard.html**: Real-time JavaScript for live P&L updates
 - **Position Manager**: Continuous monitoring and action recommendations
 
 ---
@@ -166,7 +166,7 @@ risk_params = {
 
 ## 🎯 **NEXT STEPS**
 
-1. **Test Dashboard**: Refresh `simple_dashboard.py` to see unified panel
+1. **Test Dashboard**: Access unified real-time dashboard at `http://localhost:5002`
 2. **Monitor Trades**: Active Position Manager watches all open positions
 3. **Review Actions**: Check logs for position management decisions
 4. **Customize Risks**: Adjust parameters if needed
