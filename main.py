@@ -206,20 +206,50 @@ def run_paper_trading():
     
     try:
         from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
+        from core.hyperliquid_api import HyperliquidAPI
+        from core.config import TradingConfig
         
         logger.info("Starting Paper Trading Bot (Testing Mode)...")
         logger.info("This mode uses simulated trading - no real money involved")
         
-        # Get user input for key parameters
-        print("\nPaper Trading Configuration:")
-        initial_balance = float(input("Enter initial balance (default 120.0): ") or "120.0")
+        # 🚀 FETCH REAL BALANCE FROM HYPERLIQUID
+        logger.info("🔍 Fetching your real Hyperliquid balance for realistic simulation...")
+        
+        try:
+            config = TradingConfig()
+            if config.WALLET_ADDRESS and config.WALLET_PRIVATE_KEY:
+                api = HyperliquidAPI(config.WALLET_ADDRESS, config.WALLET_PRIVATE_KEY)
+                balance_data = api.get_account_balance()
+                real_balance = balance_data.get("account_value", 0.0)
+                
+                if real_balance > 0:
+                    logger.success(f"💰 Found real balance: ${real_balance:.2f} USD")
+                    logger.info(f"📊 Available margin: ${balance_data.get('available_margin', 0):.2f}")
+                    logger.info(f"💹 Current unrealized PnL: ${balance_data.get('total_unrealized_pnl', 0):.2f}")
+                    initial_balance = real_balance
+                    logger.success(f"🎯 Using REAL balance ${initial_balance:.2f} for paper trading simulation")
+                else:
+                    logger.warning("⚠️ Could not get real balance, using default")
+                    initial_balance = 120.0
+            else:
+                logger.warning("⚠️ No wallet credentials found, using default balance")
+                initial_balance = 120.0
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch real balance: {e}")
+            logger.info("🔄 Falling back to default balance")
+            initial_balance = 120.0
+        
+        # Get user input for other parameters
+        print(f"\nPaper Trading Configuration:")
+        print(f"💰 Balance: ${initial_balance:.2f} (from your Hyperliquid account)")
         max_trades = int(input("Enter max trades (default 10): ") or "10")
         check_interval = 5  # Fixed at 5 seconds for ultra-fast responsiveness
         
         # Auto-strategy detection enabled
         selected_strategy = "standard"  # Starting strategy, will auto-switch based on market conditions
         
-        logger.info(f"Configuration: Balance=${initial_balance}, Max Trades={max_trades}, Strategy={selected_strategy}")
+        logger.info(f"Configuration: Balance=${initial_balance:.2f}, Max Trades={max_trades}, Strategy={selected_strategy}")
         
         # Start the bot with dashboard
         logger.info("Starting dashboard...")
