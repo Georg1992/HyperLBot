@@ -152,35 +152,38 @@ The bot includes comprehensive logging and analysis:
 
 ```
 HyperLBot/
-├── main.py                          # Main entry point
-├── requirements.txt                 # Python dependencies
-├── env_example.txt                  # Environment template
-├── README.md                        # This file
-├── test_setup.py                    # Setup verification script
+├── main.py                          # Main entry point with simplified interface
+├── requirements.txt                 # Optimized Python dependencies
+├── env_example.txt                  # Configuration template
+├── README.md                        # Project documentation
+├── realtime_dashboard.py            # Web-based trading dashboard
 ├── core/                           # Core functionality
 │   ├── __init__.py
-│   ├── config.py                   # Configuration management
+│   ├── config.py                   # Centralized configuration management
 │   ├── hyperliquid_api.py          # Hyperliquid API client
+│   ├── account_manager.py          # Simulated account management
+│   ├── realtime_data_manager.py    # Real-time data handling
+│   ├── smart_data_cache.py         # Intelligent data caching
 │   └── trading_logger.py           # Comprehensive logging
-├── data/                           # Data handling
+├── data/                           # Data sources and analysis
 │   ├── __init__.py
-│   ├── blockcypher_analyzer.py     # Blockchain whale analytics
-│   └── external_data_fetcher.py    # Binance data fetcher
-├── strategies/                     # Trading strategies
+│   ├── yahoo_data_fetcher.py       # Yahoo Finance data integration
+│   ├── volume_spike_detector.py    # Volume analysis
+│   ├── ultimate_pressure_indicator.py # Market pressure analysis
+│   └── whale analytics modules     # Blockchain whale detection
+├── strategies/                     # Clean trading strategies
 │   ├── __init__.py
-│   ├── hybrid_paper_trading_bot.py # Main trading bot
-│   ├── fee_manager.py              # Fee calculations
-│   ├── prediction_engine.py        # Market prediction algorithms
-│   ├── trade_manager.py            # Advanced trade management
+│   ├── hybrid_paper_trading_bot.py # Main simplified trading bot
+│   ├── prediction_engine.py        # Core prediction algorithms
+│   ├── fee_manager.py              # Trading fee calculations
+│   ├── trade_manager.py            # Trade execution management
 │   ├── variability_analyzer.py     # Market variability analysis
-│   └── whale_integration.py        # Whale analytics integration
-└── docs/                          # Documentation
-    ├── ADVANCED_TRADE_MANAGEMENT.md        # Trade management docs
-    ├── ENHANCED_PREDICTION_ENGINE.md       # Prediction engine docs
-    ├── PREDICTION_ENGINE_REFACTORING.md    # Refactoring summary
-    ├── VARIABILITY_THRESHOLD_ADJUSTMENT.md # Variability analysis
-    ├── WHALE_INTEGRATION.md                # Whale analytics guide
-    └── WHALE_INTEGRATION_SUMMARY.md        # Integration summary
+│   ├── whale_integration.py        # Whale analytics integration
+│   └── active_position_manager.py  # Position monitoring
+└── docs/                          # Essential documentation
+    ├── README.md                   # Core documentation
+    ├── ADVANCED_TRADE_MANAGEMENT.md # Trade management guide
+    └── WHALE_INTEGRATION.md        # Whale analytics guide
 ```
 
 ## ⚠️ Important Warnings
