@@ -305,80 +305,101 @@ class EventDrivenTradingDashboard:
             rtm = self._get_realtime_manager()
             logger.error(f"🚨 DASHBOARD: _get_realtime_manager() returned: {rtm}")
             if rtm:
-                current_state = rtm.get_current_state()
-                session_status = current_state["session"]["status"]
-                logger.debug(f"🔍 Real-time manager status: {session_status}")
-                logger.debug(f"🔍 Recent activity count: {len(current_state.get('recent_activity', []))}")
-                
-                # Use real-time data from RTM
-                session_data = current_state["session"]
-                
-                # FORCED DEBUG LOGGING
-                logger.error(f"🚨 DASHBOARD DEBUG: Session from RTM:")
-                logger.error(f"   Session ID: {session_data.get('session_id', 'N/A')}")
-                logger.error(f"   Status: {session_data.get('status', 'N/A')}")
-                logger.error(f"   Start Time: {session_data.get('start_time', 'N/A')}")
-                
-                enhanced_balance = self._calculate_enhanced_balance(session_data)
-                
-                # Calculate session duration properly
                 try:
-                    if session_data.get("start_time"):
-                        start_time = datetime.fromisoformat(session_data["start_time"])
-                        session_duration = datetime.now() - start_time
-                        session_minutes = int(session_duration.total_seconds() / 60)
-                        session_data["session_time"] = f"{session_minutes}m"
-                        
-                        # Ensure start_time is in ISO format for JavaScript
-                        if isinstance(session_data["start_time"], str):
-                            session_data["start_time"] = session_data["start_time"]
-                        else:
-                            session_data["start_time"] = session_data["start_time"].isoformat()
-                except Exception as e:
-                    logger.debug(f"Session time calculation error: {e}")
-                    session_data["session_time"] = "0m"
-                
-                activity_logs = current_state.get("recent_activity", [])
-                logger.debug(f"📊 Sending {len(activity_logs)} activity logs to dashboard")
-                if activity_logs:
-                    logger.debug(f"📊 Latest activity: {activity_logs[-1].get('message', 'No message')}")
-                
-                # Get actual trade data from real-time manager
-                recent_trades = list(current_state.get("recent_trades", []))
-                if not recent_trades:
-                    # Try to get from database if not in memory
+                    logger.error("🚨 DASHBOARD: RTM found - processing RTM data...")
+                    current_state = rtm.get_current_state()
+                    logger.error(f"🚨 DASHBOARD: RTM current_state retrieved successfully")
+                    
+                    session_status = current_state["session"]["status"]
+                    logger.debug(f"🔍 Real-time manager status: {session_status}")
+                    logger.debug(f"🔍 Recent activity count: {len(current_state.get('recent_activity', []))}")
+                    
+                    # Use real-time data from RTM
+                    session_data = current_state["session"]
+                    logger.error("🚨 DASHBOARD: Session data extracted from RTM")
+                    
+                    # FORCED DEBUG LOGGING
+                    logger.error(f"🚨 DASHBOARD DEBUG: Session from RTM:")
+                    logger.error(f"   Session ID: {session_data.get('session_id', 'N/A')}")
+                    logger.error(f"   Status: {session_data.get('status', 'N/A')}")
+                    logger.error(f"   Start Time: {session_data.get('start_time', 'N/A')}")
+                    
+                    enhanced_balance = self._calculate_enhanced_balance(session_data)
+                    logger.error("🚨 DASHBOARD: Enhanced balance calculated")
+                    
+                    # Calculate session duration properly
                     try:
-                        recent_trades = rtm.get_historical_trades(10)
-                    except:
-                        recent_trades = []
-                
-                return {
-                    "session": {**session_data, **enhanced_balance},
-                    "market": current_state["market"],
-                    "logs": activity_logs,
-                    "summary": {
-                        "total_trades": session_data["total_trades"],
-                        "winning_trades": session_data["winning_trades"],
-                        "losing_trades": session_data["losing_trades"],
-                        "current_balance": enhanced_balance["current_balance"],
-                        "initial_balance": enhanced_balance["initial_balance"],
-                        "balance_change": enhanced_balance["balance_change"],
-                        "balance_change_pct": enhanced_balance.get("balance_change_pct", 0),
-                        "realized_pnl": enhanced_balance.get("realized_pnl", 0),
-                        "unrealized_pnl": enhanced_balance.get("unrealized_pnl", 0),
-                        "open_positions_value": enhanced_balance.get("open_positions_value", 0),
-                        "balance_source": enhanced_balance["balance_source"]
-                    },
-                    "predictions": current_state["predictions"],
-                    "orderbook": self._get_orderbook_data(),
-                    "global_volume": current_state["global_volume"],
-                    "trades": recent_trades,
-                    "recent_trades": recent_trades,
-                    "recent_signals": current_state["recent_signals"],
-                    "timestamp": datetime.now().isoformat(),
-                    "data_source": "real_time_active" if session_status == "ACTIVE" else "real_time_inactive",
-                    "connection_status": "🔴 Live Trading" if session_status == "ACTIVE" else "🟡 Ready for Trading"
-                }
+                        if session_data.get("start_time"):
+                            start_time = datetime.fromisoformat(session_data["start_time"])
+                            session_duration = datetime.now() - start_time
+                            session_minutes = int(session_duration.total_seconds() / 60)
+                            session_data["session_time"] = f"{session_minutes}m"
+                            
+                            # Ensure start_time is in ISO format for JavaScript
+                            if isinstance(session_data["start_time"], str):
+                                session_data["start_time"] = session_data["start_time"]
+                            else:
+                                session_data["start_time"] = session_data["start_time"].isoformat()
+                        logger.error("🚨 DASHBOARD: Session time calculated")
+                    except Exception as e:
+                        logger.error(f"🚨 DASHBOARD: Session time calculation error: {e}")
+                        session_data["session_time"] = "0m"
+                    
+                    activity_logs = current_state.get("recent_activity", [])
+                    logger.debug(f"📊 Sending {len(activity_logs)} activity logs to dashboard")
+                    if activity_logs:
+                        logger.debug(f"📊 Latest activity: {activity_logs[-1].get('message', 'No message')}")
+                    
+                    logger.error("🚨 DASHBOARD: Activity logs extracted")
+                    
+                    # Get actual trade data from real-time manager
+                    recent_trades = list(current_state.get("recent_trades", []))
+                    if not recent_trades:
+                        # Try to get from database if not in memory
+                        try:
+                            recent_trades = rtm.get_historical_trades(10)
+                        except:
+                            recent_trades = []
+                    
+                    logger.error("🚨 DASHBOARD: Recent trades extracted")
+                    
+                    # Build final data structure
+                    rtm_data = {
+                        "session": {**session_data, **enhanced_balance},
+                        "market": current_state["market"],
+                        "logs": activity_logs,
+                        "summary": {
+                            "total_trades": session_data["total_trades"],
+                            "winning_trades": session_data["winning_trades"],
+                            "losing_trades": session_data["losing_trades"],
+                            "current_balance": enhanced_balance["current_balance"],
+                            "initial_balance": enhanced_balance["initial_balance"],
+                            "balance_change": enhanced_balance["balance_change"],
+                            "balance_change_pct": enhanced_balance.get("balance_change_pct", 0),
+                            "realized_pnl": enhanced_balance.get("realized_pnl", 0),
+                            "unrealized_pnl": enhanced_balance.get("unrealized_pnl", 0),
+                            "open_positions_value": enhanced_balance.get("open_positions_value", 0),
+                            "balance_source": enhanced_balance["balance_source"]
+                        },
+                        "predictions": current_state["predictions"],
+                        "orderbook": self._get_orderbook_data(),
+                        "global_volume": current_state["global_volume"],
+                        "trades": recent_trades,
+                        "recent_trades": recent_trades,
+                        "recent_signals": current_state["recent_signals"],
+                        "timestamp": datetime.now().isoformat(),
+                        "data_source": "real_time_active" if session_status == "ACTIVE" else "real_time_inactive",
+                        "connection_status": "🔴 Live Trading" if session_status == "ACTIVE" else "🟡 Ready for Trading"
+                    }
+                    
+                    logger.error("🚨 DASHBOARD: RTM data structure built successfully - RETURNING RTM DATA!")
+                    return rtm_data
+                    
+                except Exception as rtm_error:
+                    logger.error(f"🚨 DASHBOARD: CRITICAL ERROR in RTM data processing: {rtm_error}")
+                    import traceback
+                    logger.error(f"🚨 DASHBOARD: RTM error traceback: {traceback.format_exc()}")
+                    # Continue to fallback
             
             # Fallback to offline data
             logger.error("🚨 DASHBOARD: Falling back to offline data - RTM not available!")
