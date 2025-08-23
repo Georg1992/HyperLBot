@@ -250,6 +250,27 @@ class RealTimeTradingDataManager:
                 "total_volume": 0.0,
                 "total_fees": 0.0
             },
+            "market": {
+                "current_price": 0.0,
+                "trend": "UNKNOWN",
+                "market_condition": "UNKNOWN",
+                "last_update": datetime.now().isoformat(),
+                "rsi": 50.0,
+                "volume": 0.0,
+                "volume_depth": 0.0,
+                "orderbook_imbalance": 0.0,
+                "liquidity_score": 0.0
+            },
+            "global_volume": {
+                "btc_per_second": 0.0,
+                "coverage_percentage": 0.0,
+                "last_update": datetime.now().isoformat()
+            },
+            "blockchain_sentiment": {
+                "sentiment": "NEUTRAL",
+                "confidence": 0.0,
+                "last_update": datetime.now().isoformat()
+            },
             "recent_activity": [],  # CLEAR old activities
             "predictions": [],      # CLEAR old predictions
             "trades": [],          # CLEAR old trades  
