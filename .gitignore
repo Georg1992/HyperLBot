@@ -84,9 +84,13 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
 # Database files (contain runtime data)
 *.db
 trading_data.db
+
+# Runtime trading files (contain bot state - cause merge conflicts)
+open_positions.json
 
 # Log files
 *.log
