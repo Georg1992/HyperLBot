@@ -190,7 +190,14 @@ class EventDrivenTradingDashboard:
                     
                     # CRITICAL FIX: Always update data, don't rely on active_connections tracking
                     # The WebSocket connection tracking seems broken, so force updates
+                    
+                    # DEADLOCK FIX: Increment force_update_counter OUTSIDE the if block!
+                    if not self.active_connections:
+                        self.force_update_counter = getattr(self, 'force_update_counter', 0) + 1
+                        logger.error(f"🚨 FORCE UPDATE COUNTER: {self.force_update_counter}/5")
+                    
                     force_update = getattr(self, 'force_update_counter', 0) >= 5
+                    
                     if self.active_connections or force_update:
                         # Check for data changes
                         logger.error("🚨 DASHBOARD MONITOR: Calling _get_dashboard_data()")
@@ -216,9 +223,6 @@ class EventDrivenTradingDashboard:
                         # Reset force update counter if we had connections
                         if self.active_connections:
                             self.force_update_counter = 0
-                        else:
-                            # Increment force update counter when no connections detected
-                            self.force_update_counter = getattr(self, 'force_update_counter', 0) + 1
                     
                     # Smart monitoring interval - faster when active connections
                     sleep_time = 2 if self.active_connections else 10
