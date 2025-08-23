@@ -776,9 +776,18 @@ class RealTimeTradingDataManager:
                 with open(json_file_path, 'r') as f:
                     file_state = json.load(f)
                 
-                # Update current state with file data
+                # Update current state with file data, but preserve active session data
                 if file_state.get("session"):
-                    self.current_state["session"].update(file_state["session"])
+                    # Only update session data if current session is not ACTIVE
+                    current_status = self.current_state["session"].get("status")
+                    if current_status != "ACTIVE":
+                        self.current_state["session"].update(file_state["session"])
+                    else:
+                        # For active sessions, only update non-critical fields like trade counts
+                        safe_fields = ["total_trades", "winning_trades", "losing_trades", "open_positions_count"]
+                        for field in safe_fields:
+                            if field in file_state["session"]:
+                                self.current_state["session"][field] = file_state["session"][field]
                 
                 # Load predictions
                 if file_state.get("predictions"):
