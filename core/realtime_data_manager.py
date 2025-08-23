@@ -44,7 +44,7 @@ class RealTimeTradingDataManager:
             "session": {
                 "session_id": f"session_{int(time.time())}",
                 "start_time": datetime.now().isoformat(),
-                "status": "INACTIVE",
+                "status": "ACTIVE",  # CHANGED: Default to ACTIVE instead of INACTIVE
                 "strategy": "standard",
                 "initial_balance": 120.0,
                 "current_balance": 120.0,
