@@ -117,9 +117,8 @@ class RealTimeTradingDataManager:
         # WebSocket subscribers for real-time updates
         self.subscribers = []
         
-        # COMPLETELY DISABLE loading any old data - always start 100% fresh!
-        # self._load_from_json_file()  # DISABLED - causes dashboard confusion
-        logger.info("🔥 RTM starting with COMPLETELY FRESH state - no old data loaded")
+        # Load existing data from file if available
+        self._load_from_json_file()
         
         logger.success("🔥 Real-Time Trading Data Manager initialized")
     
@@ -828,10 +827,28 @@ class RealTimeTradingDataManager:
             logger.debug(f"Error saving to JSON file: {e}")
     
     def _load_from_json_file(self):
-        """DISABLED: Always work with in-memory data only
-        Dashboard should show ONLY current session data"""
-        logger.debug("🔥 _load_from_json_file() DISABLED - RTM uses only in-memory current session data")
-        return
+        """Load state from JSON file if available"""
+        try:
+            json_file_path = os.path.join(os.path.dirname(__file__), "..", "rtm_state.json")
+            if os.path.exists(json_file_path):
+                with open(json_file_path, 'r') as f:
+                    loaded_state = json.load(f)
+                
+                # Update current_state with loaded data
+                self.current_state["session"] = loaded_state["session"]
+                self.current_state["predictions"] = loaded_state["predictions"]
+                self.recent_activity = deque(loaded_state["recent_activity"], maxlen=self.MAX_ACTIVITY)
+                self.recent_signals = deque(loaded_state["recent_signals"], maxlen=self.MAX_SIGNALS)
+                self.recent_trades = deque(loaded_state["recent_trades"], maxlen=self.MAX_TRADES)
+                
+                # Re-initialize performance metrics from loaded trades
+                self._update_performance_metrics()
+                
+                logger.info(f"✅ Loaded state from {json_file_path}")
+            else:
+                logger.warning(f"⚠️ No existing state file found at {json_file_path}. Starting with fresh state.")
+        except Exception as e:
+            logger.error(f"Error loading state from JSON file: {e}")
 
     # UTILITY METHODS
     def clear_all_data(self):
