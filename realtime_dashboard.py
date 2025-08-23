@@ -254,6 +254,13 @@ class EventDrivenTradingDashboard:
                 
                 # Use real-time data from RTM
                 session_data = current_state["session"]
+                
+                # FORCED DEBUG LOGGING
+                logger.error(f"🚨 DASHBOARD DEBUG: Session from RTM:")
+                logger.error(f"   Session ID: {session_data.get('session_id', 'N/A')}")
+                logger.error(f"   Status: {session_data.get('status', 'N/A')}")
+                logger.error(f"   Start Time: {session_data.get('start_time', 'N/A')}")
+                
                 enhanced_balance = self._calculate_enhanced_balance(session_data)
                 
                 # Calculate session duration properly

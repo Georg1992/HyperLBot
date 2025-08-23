@@ -117,8 +117,9 @@ class RealTimeTradingDataManager:
         # WebSocket subscribers for real-time updates
         self.subscribers = []
         
-        # Load any existing state from previous session (but only on startup!)
-        self._load_from_json_file()
+        # COMPLETELY DISABLE loading any old data - always start 100% fresh!
+        # self._load_from_json_file()  # DISABLED - causes dashboard confusion
+        logger.info("🔥 RTM starting with COMPLETELY FRESH state - no old data loaded")
         
         logger.success("🔥 Real-Time Trading Data Manager initialized")
     
@@ -251,6 +252,8 @@ class RealTimeTradingDataManager:
             })
             
             logger.success(f"🚀 Trading session started: {session_id}")
+            logger.error(f"🚨 FORCED DEBUG: Session status = {self.current_state['session']['status']}")
+            logger.error(f"🚨 FORCED DEBUG: Session ID = {self.current_state['session']['session_id']}")
             self._notify_subscribers("session_started", self.current_state["session"])
     
     def _close_existing_session(self):
