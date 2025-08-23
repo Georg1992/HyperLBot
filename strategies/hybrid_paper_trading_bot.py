@@ -143,6 +143,15 @@ class YahooHyperliquidPaperTradingBot:
                 self.ml_engine = None
                 self.btc_pattern_engine = None
                 self.master_fusion_engine = None
+                
+            # Initialize Real-Time P&L Tracker
+            try:
+                from strategies.realtime_pnl_tracker import RealTimePnLTracker
+                self.pnl_tracker = RealTimePnLTracker(initial_balance=self.paper_balance)
+                logger.success("💰 Real-Time P&L Tracker activated")
+            except ImportError as e:
+                logger.warning(f"Real-Time P&L Tracker not available: {e}")
+                self.pnl_tracker = None
             
             logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Real-time data + ULTIMATE INTELLIGENCE")
         except ImportError as e:
@@ -157,6 +166,7 @@ class YahooHyperliquidPaperTradingBot:
             self.ml_engine = None
             self.btc_pattern_engine = None
             self.master_fusion_engine = None
+            self.pnl_tracker = None
         
         # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
         self._test_api_connections()

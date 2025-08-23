@@ -383,8 +383,16 @@
                             <span class="data-value trend-down" id="losing-trades">0</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">P&L:</span>
+                            <span class="data-label">Total P&L:</span>
                             <span class="data-value" id="balance-change">+$0.00</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Realized P&L:</span>
+                            <span class="data-value" id="realized-pnl">+$0.00</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Unrealized P&L:</span>
+                            <span class="data-value" id="unrealized-pnl">+$0.00</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Win Rate:</span>
@@ -681,11 +689,32 @@
                 document.getElementById('winning-trades').textContent = summary.winning_trades || 0;
                 document.getElementById('losing-trades').textContent = summary.losing_trades || 0;
                 
+                // Total P&L (balance change)
                 const balanceChange = parseFloat(summary.balance_change || 0);
                 const balanceChangeElement = document.getElementById('balance-change');
                 balanceChangeElement.textContent = 
                     `${balanceChange >= 0 ? '+' : ''}$${balanceChange.toFixed(2)}`;
                 balanceChangeElement.className = 'data-value ' + (balanceChange >= 0 ? 'trend-up' : 'trend-down');
+                
+                // Realized P&L
+                const realizedPnl = parseFloat(summary.realized_pnl || 0);
+                const realizedPnlElement = document.getElementById('realized-pnl');
+                realizedPnlElement.textContent = 
+                    `${realizedPnl >= 0 ? '+' : ''}$${realizedPnl.toFixed(2)}`;
+                realizedPnlElement.className = 'data-value ' + (realizedPnl >= 0 ? 'trend-up' : 'trend-down');
+                
+                // Unrealized P&L
+                const unrealizedPnl = parseFloat(summary.unrealized_pnl || 0);
+                const unrealizedPnlElement = document.getElementById('unrealized-pnl');
+                unrealizedPnlElement.textContent = 
+                    `${unrealizedPnl >= 0 ? '+' : ''}$${unrealizedPnl.toFixed(2)}`;
+                unrealizedPnlElement.className = 'data-value ' + (unrealizedPnl >= 0 ? 'trend-up' : 'trend-down');
+                
+                // Add visual indicator for unrealized P&L
+                if (Math.abs(unrealizedPnl) > 1.0) {
+                    unrealizedPnlElement.style.fontWeight = 'bold';
+                    unrealizedPnlElement.style.textShadow = unrealizedPnl >= 0 ? '0 0 5px rgba(76, 175, 80, 0.5)' : '0 0 5px rgba(244, 67, 54, 0.5)';
+                }
                 
                 // Calculate and update win rate
                 const totalTrades = summary.total_trades || 0;

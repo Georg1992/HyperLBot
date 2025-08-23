@@ -44,22 +44,36 @@ class MasterFusionEngine:
         self.trade_manager = None
         self.whale_integration = None
         
-        # Signal weighting system (based on historical performance)
-        self.signal_weights = {
-            # Core technical analysis
-            "ml_prediction": 0.25,           # ML models
-            "btc_patterns": 0.20,            # Bitcoin-specific patterns
-            "traditional_prediction": 0.15,  # Classic TA prediction
-            "ultimate_pressure": 0.15,       # Real-time pressure indicator
-            
-            # Market intelligence
-            "whale_analytics": 0.10,          # Whale movements
-            "blockchain_data": 0.05,          # On-chain metrics
-            "global_volume": 0.05,            # Cross-exchange volume
-            
-            # Risk management
-            "variability_analysis": 0.05     # Market conditions
-        }
+        # Initialize Signal Weight Optimizer for statistical weight management
+        try:
+            from strategies.signal_weight_optimizer import SignalWeightOptimizer
+            self.weight_optimizer = SignalWeightOptimizer()
+            self.weight_optimizer.load_performance_data()  # Load historical performance
+            logger.info("📊 Signal Weight Optimizer connected - using statistical weights")
+        except ImportError:
+            self.weight_optimizer = None
+            logger.warning("⚠️ Signal Weight Optimizer not available - using improved static weights")
+        
+        # Get current optimized weights or use improved defaults
+        if self.weight_optimizer:
+            self.signal_weights = self.weight_optimizer.get_optimized_weights()
+        else:
+            # Improved base weights (more balanced based on your analysis)
+            self.signal_weights = {
+                # Core technical analysis (better balanced)
+                "ml_prediction": 0.20,           # Reduced - needs validation
+                "btc_patterns": 0.25,            # Increased - Bitcoin-specific crucial
+                "traditional_prediction": 0.20,  # Increased - proven methods
+                "ultimate_pressure": 0.20,       # Increased - real-time valuable
+                
+                # Market intelligence (rebalanced)
+                "whale_analytics": 0.08,          # Slightly reduced but important
+                "blockchain_data": 0.03,          # Reduced - less immediate impact
+                "global_volume": 0.02,            # Reduced - often redundant
+                
+                # Risk management
+                "variability_analysis": 0.02     # Reduced - more filter than signal
+            }
         
         # Confidence thresholds for different signal strength
         self.confidence_thresholds = {
@@ -89,6 +103,46 @@ class MasterFusionEngine:
         }
         
         logger.info("🧠 Master Fusion Engine initialized - Ultimate trading intelligence active")
+        self._log_current_weights()
+    
+    def _log_current_weights(self):
+        """Log current signal weights"""
+        logger.info("🎯 Current Signal Weights:")
+        for signal, weight in sorted(self.signal_weights.items(), key=lambda x: x[1], reverse=True):
+            logger.info(f"   {signal}: {weight:.1%}")
+    
+    def record_signal_outcome(self, prediction_data: Dict[str, Any], actual_outcome: Dict[str, Any]):
+        """Record signal performance for weight optimization"""
+        if not self.weight_optimizer:
+            return
+        
+        try:
+            # Extract individual signal predictions from fusion data
+            if "all_signals" in prediction_data:
+                for signal_name, signal_data in prediction_data["all_signals"].items():
+                    self.weight_optimizer.record_signal_performance(
+                        signal_name=signal_name,
+                        prediction=signal_data,
+                        actual_outcome=actual_outcome
+                    )
+            
+            # Save performance data periodically
+            if len(self.weight_optimizer.signal_history) % 20 == 0:
+                self.weight_optimizer.save_performance_data()
+                # Update our weights
+                self.signal_weights = self.weight_optimizer.get_optimized_weights()
+                logger.info("🔄 Signal weights updated based on performance")
+                self._log_current_weights()
+                
+        except Exception as e:
+            logger.error(f"Error recording signal outcome: {e}")
+    
+    def get_weight_performance_report(self) -> Dict[str, Any]:
+        """Get performance report for signal weights"""
+        if not self.weight_optimizer:
+            return {"error": "Weight optimizer not available"}
+        
+        return self.weight_optimizer.get_performance_report()
     
     def initialize_engines(self, engines: Dict[str, Any]):
         """Initialize all analysis engines"""
