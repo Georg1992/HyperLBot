@@ -186,7 +186,12 @@ class EventDrivenTradingDashboard:
             while True:
                 try:
                     logger.error(f"🚨 DASHBOARD MONITOR: Active connections = {len(self.active_connections)}")
-                    if self.active_connections:
+                    logger.error(f"🚨 DASHBOARD MONITOR: Force update every 5 cycles regardless of connections")
+                    
+                    # CRITICAL FIX: Always update data, don't rely on active_connections tracking
+                    # The WebSocket connection tracking seems broken, so force updates
+                    force_update = getattr(self, 'force_update_counter', 0) >= 5
+                    if self.active_connections or force_update:
                         # Check for data changes
                         logger.error("🚨 DASHBOARD MONITOR: Calling _get_dashboard_data()")
                         current_data = self._get_dashboard_data()
@@ -198,6 +203,7 @@ class EventDrivenTradingDashboard:
                             self._emit_data_update(current_data)
                             self.last_data_hash['all_data'] = current_hash
                             self.last_update_cycle = 0
+                            self.force_update_counter = 0
                         else:
                             # Force update every 10 cycles (20 seconds) to ensure WebSocket connectivity
                             self.last_update_cycle = getattr(self, 'last_update_cycle', 0) + 1
@@ -205,6 +211,14 @@ class EventDrivenTradingDashboard:
                                 logger.info("📊 Forcing WebSocket update to ensure connectivity")
                                 self._emit_data_update(current_data)
                                 self.last_update_cycle = 0
+                                self.force_update_counter = 0
+                        
+                        # Reset force update counter if we had connections
+                        if self.active_connections:
+                            self.force_update_counter = 0
+                        else:
+                            # Increment force update counter when no connections detected
+                            self.force_update_counter = getattr(self, 'force_update_counter', 0) + 1
                     
                     # Smart monitoring interval - faster when active connections
                     sleep_time = 2 if self.active_connections else 10
