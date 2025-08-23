@@ -354,8 +354,16 @@ class EventDrivenTradingDashboard:
                     
                     activity_logs = current_state.get("recent_activity", [])
                     logger.debug(f"📊 Sending {len(activity_logs)} activity logs to dashboard")
+                    logger.error(f"🚨 DASHBOARD DEBUG: activity_logs type = {type(activity_logs)}")
+                    logger.error(f"🚨 DASHBOARD DEBUG: activity_logs length = {len(activity_logs)}")
+                    logger.error(f"🚨 DASHBOARD DEBUG: activity_logs content = {activity_logs}")
                     if activity_logs:
                         logger.debug(f"📊 Latest activity: {activity_logs[-1].get('message', 'No message')}")
+                        logger.error(f"🚨 DASHBOARD DEBUG: Latest activity full = {activity_logs[-1]}")
+                    else:
+                        logger.error(f"🚨 DASHBOARD DEBUG: activity_logs is EMPTY!")
+                        logger.error(f"🚨 DASHBOARD DEBUG: current_state.keys() = {list(current_state.keys())}")
+                        logger.error(f"🚨 DASHBOARD DEBUG: current_state['recent_activity'] exists = {'recent_activity' in current_state}")
                     
                     logger.error("🚨 DASHBOARD: Activity logs extracted")
                     
@@ -405,6 +413,8 @@ class EventDrivenTradingDashboard:
                     logger.error(f"🚨 FINAL CHECK: Returning session_id = {rtm_data['session']['session_id']}")
                     logger.error(f"🚨 FINAL CHECK: Returning status = {rtm_data['session']['status']}")
                     logger.error(f"🚨 FINAL CHECK: Returning data_source = {rtm_data['data_source']}")
+                    logger.error(f"🚨 FINAL CHECK: Returning logs count = {len(rtm_data['logs'])}")
+                    logger.error(f"🚨 FINAL CHECK: Returning logs = {rtm_data['logs']}")
                     
                     return rtm_data
                     
