@@ -263,8 +263,10 @@ class EventDrivenTradingDashboard:
     def _get_dashboard_data(self) -> Dict[str, Any]:
         """Get comprehensive dashboard data with real-time updates"""
         try:
+            logger.error("🚨 DASHBOARD: _get_dashboard_data() called")
             # Try real-time data first
             rtm = self._get_realtime_manager()
+            logger.error(f"🚨 DASHBOARD: _get_realtime_manager() returned: {rtm}")
             if rtm:
                 current_state = rtm.get_current_state()
                 session_status = current_state["session"]["status"]
@@ -342,6 +344,7 @@ class EventDrivenTradingDashboard:
                 }
             
             # Fallback to offline data
+            logger.error("🚨 DASHBOARD: Falling back to offline data - RTM not available!")
             return {
                 "session": self._get_session_data(),
                 "market": self._get_market_data(),
@@ -357,6 +360,9 @@ class EventDrivenTradingDashboard:
             }
             
         except Exception as e:
+            logger.error(f"🚨 DASHBOARD: Exception in _get_dashboard_data: {e}")
+            import traceback
+            traceback.print_exc()
             logger.error(f"❌ Failed to get dashboard data: {e}")
             return {
                 "error": str(e),
