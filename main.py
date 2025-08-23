@@ -295,6 +295,13 @@ def run_paper_trading():
         logger.info("🚀 Starting paper trading bot...")
         logger.info("💡 Press Ctrl+C to stop the bot gracefully")
         
+        # 🔧 CRITICAL: Connect to Hyperliquid to load real balance/positions/orders
+        logger.info("🔗 Connecting to Hyperliquid API...")
+        if not bot.connect():
+            logger.error("❌ Failed to connect to Hyperliquid API")
+            return
+        logger.success("✅ Connected to Hyperliquid API")
+        
         bot.run_yahoo_hyperliquid_paper_trading(
             max_trades=max_trades,
             check_interval=check_interval
