@@ -650,11 +650,18 @@
                 document.getElementById('session-balance').textContent = 
                     session.current_balance ? `$${parseFloat(session.current_balance).toFixed(2)}` : 'Loading...';
                 
-                if (session.started_at) {
-                    const startTime = new Date(session.started_at);
+                if (session.start_time || session.started_at) {
+                    const startTime = new Date(session.start_time || session.started_at);
                     const elapsed = new Date() - startTime;
                     const minutes = Math.floor(elapsed / 60000);
-                    document.getElementById('session-time').textContent = `${minutes} minutes`;
+                    const hours = Math.floor(minutes / 60);
+                    const remainingMinutes = minutes % 60;
+                    
+                    if (hours > 0) {
+                        document.getElementById('session-time').textContent = `${hours}h ${remainingMinutes}m`;
+                    } else {
+                        document.getElementById('session-time').textContent = `${minutes} minutes`;
+                    }
                 } else {
                     document.getElementById('session-time').textContent = 'Not started';
                 }
