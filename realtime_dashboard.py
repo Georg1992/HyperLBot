@@ -980,7 +980,7 @@ class EventDrivenTradingDashboard:
                 "initial_balance": initial_balance,
                 "balance_change": balance_change,
                 "balance_change_pct": balance_change_pct,
-                "realized_pnl": balance_change,  # For now, assume all P&L is realized
+                "realized_pnl": 0.0,  # Start with 0, will be calculated if trades exist
                 "unrealized_pnl": 0.0,
                 "open_positions_value": 0.0,
                 "current_btc_price": current_btc_price,
@@ -991,12 +991,19 @@ class EventDrivenTradingDashboard:
             rtm = self._get_realtime_manager()
             if rtm:
                 try:
-                    # Get recent trades to calculate realized P&L
-                    recent_trades = list(rtm.get_current_state().get("recent_trades", []))
-                    if recent_trades:
-                        realized_pnl = sum(trade.get("pnl", 0) for trade in recent_trades if trade.get("pnl") is not None)
-                        enhanced["realized_pnl"] = realized_pnl
-                        enhanced["unrealized_pnl"] = balance_change - realized_pnl
+                    # Only calculate P&L if there are actual trades
+                    total_trades = session_data.get("total_trades", 0)
+                    if total_trades > 0:
+                        # Get recent trades to calculate realized P&L
+                        recent_trades = list(rtm.get_current_state().get("recent_trades", []))
+                        if recent_trades:
+                            realized_pnl = sum(trade.get("pnl", 0) for trade in recent_trades if trade.get("pnl") is not None)
+                            enhanced["realized_pnl"] = realized_pnl
+                            enhanced["unrealized_pnl"] = balance_change - realized_pnl
+                    else:
+                        # No trades = no P&L
+                        enhanced["realized_pnl"] = 0.0
+                        enhanced["unrealized_pnl"] = 0.0
                 except Exception as e:
                     logger.debug(f"Could not calculate detailed P&L: {e}")
             
