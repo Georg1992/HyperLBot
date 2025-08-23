@@ -989,11 +989,33 @@ class EventDrivenTradingDashboard:
             api = self._get_hyperliquid_api()
             current_btc_price = api.get_current_price("BTC") if api else 97500.0
             
-            # Base balance data from session
-            current_balance = session_data.get("current_balance", 120.0)
-            initial_balance = session_data.get("initial_balance", 120.0)
-            balance_change = session_data.get("balance_change", 0.0)
-            balance_change_pct = session_data.get("balance_change_pct", 0.0)
+            # Get RTM for real balance data
+            rtm = self._get_realtime_manager()
+            real_balance_data = None
+            if rtm:
+                try:
+                    current_state = rtm.get_current_state()
+                    real_balance_data = current_state.get("balance", {})
+                except:
+                    pass
+            
+            # Determine which balance to use
+            if real_balance_data and real_balance_data.get("balance_source") == "real":
+                # Use real Hyperliquid balance
+                current_balance = real_balance_data.get("real_account_value", 120.0)
+                initial_balance = real_balance_data.get("real_account_value", 120.0)  # Real balance as base
+                balance_change = real_balance_data.get("real_unrealized_pnl", 0.0)
+                balance_change_pct = (balance_change / current_balance * 100) if current_balance > 0 else 0
+                balance_source = "real_hyperliquid"
+                logger.debug(f"💰 Using REAL balance: ${current_balance:.2f} (PnL: ${balance_change:.2f})")
+            else:
+                # Use session/simulated balance
+                current_balance = session_data.get("current_balance", 120.0)
+                initial_balance = session_data.get("initial_balance", 120.0)
+                balance_change = session_data.get("balance_change", 0.0)
+                balance_change_pct = session_data.get("balance_change_pct", 0.0)
+                balance_source = "simulated"
+                logger.debug(f"🎮 Using SIMULATED balance: ${current_balance:.2f} (Change: ${balance_change:.2f})")
             
             # Enhanced balance structure
             enhanced = {
@@ -1005,11 +1027,10 @@ class EventDrivenTradingDashboard:
                 "unrealized_pnl": 0.0,
                 "open_positions_value": 0.0,
                 "current_btc_price": current_btc_price,
-                "balance_source": "enhanced_real_time"
+                "balance_source": balance_source
             }
             
             # If we have a real-time manager, try to get more accurate P&L data
-            rtm = self._get_realtime_manager()
             if rtm:
                 try:
                     # Only calculate P&L if there are actual trades
@@ -1020,11 +1041,19 @@ class EventDrivenTradingDashboard:
                         if recent_trades:
                             realized_pnl = sum(trade.get("pnl", 0) for trade in recent_trades if trade.get("pnl") is not None)
                             enhanced["realized_pnl"] = realized_pnl
-                            enhanced["unrealized_pnl"] = balance_change - realized_pnl
+                            
+                            # For real balance, unrealized PnL comes from Hyperliquid
+                            if balance_source == "real_hyperliquid" and real_balance_data:
+                                enhanced["unrealized_pnl"] = real_balance_data.get("real_unrealized_pnl", 0.0)
+                            else:
+                                enhanced["unrealized_pnl"] = balance_change - realized_pnl
                     else:
-                        # No trades = no P&L
+                        # No trades = no simulated P&L, but keep real unrealized PnL
                         enhanced["realized_pnl"] = 0.0
-                        enhanced["unrealized_pnl"] = 0.0
+                        if balance_source == "real_hyperliquid" and real_balance_data:
+                            enhanced["unrealized_pnl"] = real_balance_data.get("real_unrealized_pnl", 0.0)
+                        else:
+                            enhanced["unrealized_pnl"] = 0.0
                 except Exception as e:
                     logger.debug(f"Could not calculate detailed P&L: {e}")
             
@@ -1038,8 +1067,10 @@ class EventDrivenTradingDashboard:
                 "initial_balance": session_data.get("initial_balance", 120.0),
                 "balance_change": session_data.get("balance_change", 0.0),
                 "balance_change_pct": session_data.get("balance_change_pct", 0.0),
-                "realized_pnl": session_data.get("balance_change", 0.0),
+                "realized_pnl": 0.0,
                 "unrealized_pnl": 0.0,
+                "open_positions_value": 0.0,
+                "current_btc_price": 97500.0,
                 "balance_source": "fallback"
             }
     
