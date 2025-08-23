@@ -397,6 +397,12 @@ class EventDrivenTradingDashboard:
                     }
                     
                     logger.error("🚨 DASHBOARD: RTM data structure built successfully - RETURNING RTM DATA!")
+                    
+                    # CRITICAL DEBUG: Log what we're actually returning to browser
+                    logger.error(f"🚨 FINAL CHECK: Returning session_id = {rtm_data['session']['session_id']}")
+                    logger.error(f"🚨 FINAL CHECK: Returning status = {rtm_data['session']['status']}")
+                    logger.error(f"🚨 FINAL CHECK: Returning data_source = {rtm_data['data_source']}")
+                    
                     return rtm_data
                     
                 except Exception as rtm_error:
