@@ -132,7 +132,7 @@ class EventDrivenTradingDashboard:
             }
     
     def _get_realtime_manager(self):
-        """Get real-time data manager with fresh connection attempts"""
+        """Get real-time data manager with fallback handling"""
         # ALWAYS try fresh connection - don't cache failures!
         try:
             logger.error("🚨 DASHBOARD DEBUG: Trying to import trading_data_manager...")
@@ -142,38 +142,43 @@ class EventDrivenTradingDashboard:
             if trading_data_manager is None:
                 logger.error("🚨 DASHBOARD DEBUG: trading_data_manager is None!")
                 return None
-                
-            # Check if RTM has active session
+            
+            # CRITICAL FIX: Force RTM to reload current state from file
+            # This ensures we get the latest session data, not cached old data
+            logger.error("🚨 DASHBOARD DEBUG: Forcing RTM state reload...")
+            try:
+                # Force reload the current state from file to get latest session
+                trading_data_manager._load_from_json_file()
+                logger.success("✅ RTM state reloaded from file")
+            except Exception as reload_error:
+                logger.warning(f"⚠️ RTM state reload failed: {reload_error}")
+            
+            # Test basic functionality
             try:
                 current_state = trading_data_manager.get_current_state()
-                session_status = current_state["session"]["status"]
-                logger.error(f"🚨 DASHBOARD DEBUG: RTM status check = {session_status}")
-                logger.error(f"🚨 DASHBOARD DEBUG: RTM session ID = {current_state['session'].get('session_id', 'N/A')}")
+                logger.error(f"🚨 DASHBOARD DEBUG: RTM current_state retrieved successfully")
                 
-                # CRITICAL: Don't return None even if status check fails!
-                # RTM exists and we should use it regardless of current status
-                logger.error(f"🚨 DASHBOARD DEBUG: RTM status check passed - proceeding!")
+                # CRITICAL DEBUG: Log the session info we're actually getting
+                session_info = current_state.get("session", {})
+                logger.error(f"🚨 DASHBOARD DEBUG: Current session ID from RTM: {session_info.get('session_id')}")
+                logger.error(f"🚨 DASHBOARD DEBUG: Current session status from RTM: {session_info.get('status')}")
+                logger.error(f"🚨 DASHBOARD DEBUG: Current session start_time from RTM: {session_info.get('start_time')}")
                 
-            except Exception as check_e:
-                logger.error(f"🚨 DASHBOARD DEBUG: RTM status check failed: {check_e}")
-                logger.error(f"🚨 DASHBOARD DEBUG: But RTM exists, so proceeding anyway!")
-                import traceback
-                traceback.print_exc()
+            except Exception as e:
+                logger.error(f"🚨 DASHBOARD DEBUG: RTM status check failed: {e}")
+                logger.error("🚨 DASHBOARD DEBUG: But RTM exists, so proceeding anyway!")
+                # Don't return None - proceed with RTM even if status check fails
             
-            self._rtm = trading_data_manager
-            self._rtm_available = True
-            logger.error(f"🚨 DASHBOARD DEBUG: RTM imported successfully! RTM = {type(self._rtm)}")
+            logger.error(f"🚨 DASHBOARD DEBUG: RTM imported successfully! RTM = {type(trading_data_manager)}")
             logger.success("✅ Real-time data manager connected")
-            return self._rtm
+            return trading_data_manager
             
-        except Exception as e:
-            logger.error(f"🚨 DASHBOARD DEBUG: RTM import failed: {e}")
-            logger.error(f"❌ Real-time data manager connection failed: {e}")
-            import traceback
-            traceback.print_exc()
+        except ImportError as e:
+            logger.error(f"❌ Failed to import trading_data_manager: {e}")
             return None
-        
-        return self._rtm
+        except Exception as e:
+            logger.error(f"❌ Error connecting to real-time data manager: {e}")
+            return None
     
     def _get_hyperliquid_api(self):
         """Get Hyperliquid API with connection caching"""
