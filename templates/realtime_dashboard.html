@@ -313,8 +313,16 @@
             grid-column: span 2;
         }
 
+        .wide-card {
+            grid-column: span 3;
+        }
+
+        .medium-card {
+            grid-column: span 2;
+        }
+
         @media (max-width: 768px) {
-            .large-card {
+            .large-card, .wide-card, .medium-card {
                 grid-column: span 1;
             }
             
@@ -432,7 +440,7 @@
         </div>
 
         <!-- Trade History Card (NEW) -->
-        <div class="card large-card">
+        <div class="card wide-card">
             <h2>📋 Trade History & Status</h2>
             <div class="trade-tabs" style="display: flex; gap: 10px; margin-bottom: 15px;">
                 <button class="trade-tab active" onclick="switchTradeTab('all')" id="tab-all">All Trades</button>
@@ -482,7 +490,7 @@
 
 
         <!-- Activity Logs Card -->
-        <div class="card large-card">
+        <div class="card medium-card">
             <h2>📝 Real-Time Activity</h2>
             <div class="log-container" id="activity-logs">
                 <div class="log-entry">Connecting to real-time data stream...</div>
