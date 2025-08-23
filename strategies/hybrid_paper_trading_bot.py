@@ -137,6 +137,7 @@ class YahooHyperliquidPaperTradingBot:
                 logger.success("   🤖 ML Prediction Engine - Advanced machine learning models")
                 logger.success("   🏗️ Bitcoin Pattern Engine - BTC-specific pattern recognition")
                 logger.success("   🧠 Master Fusion Engine - Ultimate trading intelligence")
+                logger.info(f"   DEBUG: Fusion Engine initialized: {self.master_fusion_engine is not None}")
                 
             except ImportError as e:
                 logger.warning(f"Ultimate intelligence systems not available: {e}")
@@ -724,6 +725,7 @@ class YahooHyperliquidPaperTradingBot:
         # Get traditional prediction for fallback
         prediction_analysis = self.prediction_engine.build_price_prediction(enhanced_analysis, hyperliquid_price, self.strategy_name)
         enhanced_analysis["prediction_analysis"] = prediction_analysis
+        logger.info(f"🔮 PREDICTION ENGINE: Generated analysis with keys: {list(prediction_analysis.keys()) if prediction_analysis else 'None'}")
         
         # 5. 🧠 MASTER FUSION ENGINE - ULTIMATE INTELLIGENCE ANALYSIS
         if self.master_fusion_engine:
@@ -734,6 +736,10 @@ class YahooHyperliquidPaperTradingBot:
                 fusion_signal = self.master_fusion_engine.generate_ultimate_signal(
                     binance_analysis, hyperliquid_price, enhanced_analysis
                 )
+                
+                logger.info(f"🔬 FUSION ENGINE RESULT: Signal={fusion_signal is not None}")
+                if fusion_signal:
+                    logger.info(f"   Signal: {fusion_signal.signal} | Confidence: {fusion_signal.confidence:.1%}")
                 
                 if fusion_signal:
                     # Convert fusion signal to bot format
@@ -816,8 +822,11 @@ class YahooHyperliquidPaperTradingBot:
             except Exception as e:
                 logger.error(f"Master Fusion Engine error: {e}")
                 logger.info("⚠️ Falling back to traditional prediction system")
+        else:
+            logger.info("⚠️ Master Fusion Engine not available - using traditional prediction system")
         
         # 6. FALLBACK TO TRADITIONAL SYSTEM (if fusion not available or no signal)
+        logger.info(f"🔍 TRADITIONAL SYSTEM: Checking prediction analysis - has_prediction: {prediction_analysis.get('has_prediction', False)}")
         if not prediction_analysis.get("has_prediction", False):
             return {
                 "should_trade": False,
@@ -2857,10 +2866,12 @@ class YahooHyperliquidPaperTradingBot:
                 
                 # Check for signals periodically
                 if current_time - self.last_signal_check >= self.signal_check_interval:
-                    if not self.binance_analysis:
+                    if not self.binance_analysis or not self.binance_analysis.get("market_condition"):
                         logger.warning("⚠️ Could not get Yahoo analysis, retrying...")
                         time.sleep(check_interval)
                         continue
+                    
+                    logger.info(f"🔍 SIGNAL CHECK: Starting signal analysis at ${hyperliquid_price:.2f}")
                     
                     # Enhanced analysis with global volume and blockchain data
                     enhanced_analysis = self.binance_analysis.copy()
@@ -2882,6 +2893,8 @@ class YahooHyperliquidPaperTradingBot:
                     
                     # Analyze market using enhanced data (Yahoo historical + Hyperliquid real-time + Global volume + Blockchain)
                     signal = self.should_trade(hyperliquid_price, enhanced_analysis)
+                    
+                    logger.info(f"🎯 SIGNAL RESULT: {signal.get('should_trade', False)} | Reason: {signal.get('reason', 'Unknown')}")
                     
                     if signal["should_trade"]:
                         # Calculate position value from signal data
