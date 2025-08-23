@@ -67,6 +67,10 @@ class EventDrivenTradingDashboard:
             self.last_data_hash.clear()
             logger.error("🚨 CRITICAL FIX: Cleared all cached data hash on new connection")
             
+            # ADDITIONAL FIX: Clear any RTM connection cache to force fresh RTM import
+            self._rtm = None
+            logger.error("🚨 ADDITIONAL FIX: Cleared RTM connection cache to force fresh import")
+            
             # Force fresh data retrieval and send to new connection
             logger.info("🔄 Forcing fresh data retrieval for new connection")
             fresh_data = self._get_dashboard_data()
