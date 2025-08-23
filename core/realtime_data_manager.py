@@ -811,47 +811,10 @@ class RealTimeTradingDataManager:
             logger.debug(f"Error saving to JSON file: {e}")
     
     def _load_from_json_file(self):
-        """Load state from JSON file for cross-process communication
-        CRITICAL: Only load data from CURRENT active session"""
-        try:
-            if not os.path.exists(self.JSON_FILE):
-                logger.debug("No JSON state file found - starting fresh")
-                return
-                
-            with open(self.JSON_FILE, 'r') as f:
-                file_state = json.load(f)
-                
-            # CRITICAL FIX: Only load data if it's from the CURRENT active session
-            file_session_id = file_state.get("session", {}).get("session_id")
-            current_session_id = self.current_state["session"]["session_id"]
-            
-            if file_session_id != current_session_id:
-                logger.debug(f"Found old session in file: {file_session_id} vs current: {current_session_id} - IGNORING old data")
-                return
-                
-            # Load data ONLY from current active session
-            logger.debug(f"Loading data from CURRENT session: {current_session_id}")
-            
-            # Load predictions from current session
-            if file_state.get("predictions"):
-                self.current_state["predictions"] = file_state["predictions"]
-            
-            # Load activity from current session
-            if file_state.get("recent_activity"):
-                self.recent_activity = deque(file_state["recent_activity"], maxlen=self.MAX_ACTIVITY)
-            
-            # Load signals from current session
-            if file_state.get("recent_signals"):
-                self.recent_signals = deque(file_state["recent_signals"], maxlen=self.MAX_SIGNALS)
-            
-            # Load recent trades from current session
-            if file_state.get("recent_trades"):
-                self.recent_trades = deque(file_state["recent_trades"], maxlen=self.MAX_TRADES)
-                
-            logger.debug(f"Loaded CURRENT session data: {len(file_state.get('predictions', []))} predictions, {len(file_state.get('recent_activity', []))} activities")
-                
-        except Exception as e:
-            logger.debug(f"Error loading from JSON file: {e}")
+        """DISABLED: Always work with in-memory data only
+        Dashboard should show ONLY current session data"""
+        logger.debug("🔥 _load_from_json_file() DISABLED - RTM uses only in-memory current session data")
+        return
 
     # UTILITY METHODS
     def clear_all_data(self):
