@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 HyperLBot - Main Entry Point
-Hybrid trading bot combining Binance analysis with Hyperliquid execution
+Hybrid trading bot combining market analysis with Hyperliquid execution
 """
 
 import sys
@@ -13,11 +13,11 @@ import webbrowser
 import subprocess
 import signal
 import atexit
-import traceback
 from loguru import logger
 
 # Import core module to setup paths
 import core
+from core.config import config
 
 # Global variable to track active bot instance for graceful shutdown
 active_bot_instance = None
@@ -25,7 +25,6 @@ active_bot_instance = None
 def signal_handler(signum, frame):
     """Handle Ctrl+C and other termination signals"""
     logger.warning(f"🛑 Received signal {signum} - Initiating graceful shutdown...")
-    logger.info(f"🔍 Debug: active_bot_instance = {active_bot_instance}")
     
     if active_bot_instance:
         try:
@@ -34,22 +33,16 @@ def signal_handler(signum, frame):
             logger.success("✅ Trading session closed gracefully")
         except Exception as e:
             logger.error(f"Error during graceful shutdown: {e}")
-            import traceback
-            logger.error(f"Traceback: {traceback.format_exc()}")
-    else:
-        logger.warning("⚠️ No active bot instance found")
     
     # Also close any active sessions in the real-time data manager
     try:
         from core.realtime_data_manager import trading_data_manager
-        logger.info(f"🔍 Debug: RTM session status = {trading_data_manager.current_state['session'].get('status')}")
         if trading_data_manager.current_state["session"].get("status") == "ACTIVE":
             logger.info("🔄 Closing real-time data manager session...")
             trading_data_manager.end_session()
             logger.success("✅ Real-time data manager session closed")
     except Exception as e:
         logger.error(f"Error closing real-time data manager session: {e}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
     
     logger.info("👋 Goodbye!")
     sys.exit(0)
@@ -72,18 +65,8 @@ atexit.register(cleanup_on_exit)
 def check_and_install_dependencies():
     """Check and automatically install missing dependencies"""
     required_modules = [
-        'flask',
-        'flask_socketio',
-        'yfinance',
-        'requests',
-        'pandas',
-        'numpy',
-        'loguru',
-        'python-dotenv',
-        'httpx',
-        'aiohttp',
-        'scikit-learn',
-        'joblib'
+        'flask', 'flask_socketio', 'yfinance', 'requests', 'pandas', 
+        'numpy', 'loguru', 'python-dotenv', 'httpx', 'aiohttp'
     ]
     
     missing_modules = []
@@ -95,11 +78,8 @@ def check_and_install_dependencies():
                 import flask_socketio
             elif module == 'python-dotenv':
                 import dotenv
-            elif module == 'scikit-learn':
-                import sklearn
             else:
                 __import__(module)
-            logger.debug(f"✅ {module} - Available")
         except ImportError:
             missing_modules.append(module)
             logger.warning(f"❌ {module} - Missing")
@@ -129,13 +109,16 @@ def check_and_install_dependencies():
 def start_dashboard():
     """Start the real-time dashboard in a background thread"""
     try:
-        # Import real-time dashboard here to avoid circular imports
         from realtime_dashboard import create_dashboard
         
         def run_dashboard():
             try:
                 dashboard = create_dashboard()
-                dashboard.run(host='0.0.0.0', port=5002, debug=False)
+                dashboard.run(
+                    host=config.DASHBOARD_HOST, 
+                    port=config.DASHBOARD_PORT, 
+                    debug=False
+                )
             except Exception as e:
                 logger.error(f"Dashboard error: {e}")
         
@@ -148,11 +131,11 @@ def start_dashboard():
         
         # Open browser automatically
         try:
-            webbrowser.open('http://localhost:5002')
+            webbrowser.open(f'http://localhost:{config.DASHBOARD_PORT}')
             logger.info("🌐 Real-time dashboard opened automatically in browser")
         except Exception as e:
             logger.warning(f"Could not open browser automatically: {e}")
-            logger.info("💡 Please open http://localhost:5002 manually")
+            logger.info(f"💡 Please open http://localhost:{config.DASHBOARD_PORT} manually")
         
         return True
         
@@ -164,6 +147,13 @@ def main():
     """Main entry point with simplified menu"""
     logger.info("HyperLBot - Hybrid Trading Bot")
     logger.info("=" * 50)
+    
+    # Validate configuration
+    config_errors = config.validate_config()
+    if config_errors:
+        logger.warning("Configuration warnings:")
+        for error in config_errors:
+            logger.warning(f"  - {error}")
     
     # Check and install dependencies first
     logger.info("🔍 Checking dependencies...")
@@ -190,7 +180,7 @@ def main():
             if start_dashboard():
                 logger.info("✅ Real-time dashboard started successfully!")
                 logger.info("💡 Keep this terminal open to run the dashboard")
-                logger.info("🌐 Real-time dashboard is available at: http://localhost:5002")
+                logger.info(f"🌐 Real-time dashboard is available at: http://localhost:{config.DASHBOARD_PORT}")
                 input("Press Enter to stop the dashboard...")
             else:
                 logger.error("❌ Failed to start dashboard")
@@ -206,22 +196,15 @@ def run_paper_trading():
     
     try:
         from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
-        from core.hyperliquid_api import HyperliquidAPI
-        from core.config import TradingConfig
         from core.account_manager import account_manager
         
         logger.info("Starting Paper Trading Bot (Testing Mode)...")
         logger.info("This mode uses simulated trading - no real money involved")
         
-        # 🚀 REAL BALANCE FEATURE DISABLED
-        logger.info("🔒 Real balance feature is disabled for safety")
-        real_balance = None
-        
-        # 🎯 SIMULATED ACCOUNT MANAGEMENT
+        # Simulated Account Management
         print(f"\n🎮 Simulated Account Management:")
         
         initial_balance = None
-        balance_type = "simulated"
         
         # Check if account exists
         if account_manager.account_exists():
@@ -248,7 +231,7 @@ def run_paper_trading():
                     elif choice == "2":
                         if account_manager.reset_account():
                             # Create new account
-                            new_balance = float(input("Enter initial balance for new account (default 120.0): ") or "120.0")
+                            new_balance = float(input(f"Enter initial balance for new account (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
                             account_data = account_manager.create_account(new_balance)
                             initial_balance = new_balance
                             logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
@@ -264,19 +247,19 @@ def run_paper_trading():
         else:
             # Create new account
             print("📝 No existing account found. Creating new simulated account...")
-            new_balance = float(input("Enter initial balance (default 120.0): ") or "120.0")
+            new_balance = float(input(f"Enter initial balance (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
             account_data = account_manager.create_account(new_balance)
             initial_balance = new_balance
             logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
         
-        # Get user input for other parameters
+        # Get user input for trading parameters
         print(f"\nPaper Trading Configuration:")
-        print(f"💰 Balance: ${initial_balance:.2f} ({balance_type})")
-        max_trades = int(input("Enter max trades (default 10): ") or "10")
-        check_interval = 5  # Fixed at 5 seconds for ultra-fast responsiveness
+        print(f"💰 Balance: ${initial_balance:.2f} (simulated)")
+        max_trades = int(input(f"Enter max trades (default {config.DEFAULT_MAX_TRADES}): ") or str(config.DEFAULT_MAX_TRADES))
+        check_interval = config.DEFAULT_CHECK_INTERVAL  # Fixed for responsiveness
         
-        # Auto-strategy detection enabled
-        selected_strategy = "standard"  # Starting strategy, will auto-switch based on market conditions
+        # Use default strategy
+        selected_strategy = config.DEFAULT_STRATEGY
         
         logger.info(f"Configuration: Balance=${initial_balance:.2f}, Max Trades={max_trades}, Strategy={selected_strategy}")
         
@@ -289,7 +272,7 @@ def run_paper_trading():
         bot = YahooHyperliquidPaperTradingBot(
             initial_balance=initial_balance,
             strategy_name=selected_strategy,
-            balance_mode=balance_type
+            balance_mode="simulated"
         )
         
         # Set global bot instance for graceful shutdown
@@ -298,7 +281,7 @@ def run_paper_trading():
         logger.info("🚀 Starting paper trading bot...")
         logger.info("💡 Press Ctrl+C to stop the bot gracefully")
         
-        # 🔧 CRITICAL: Connect to Hyperliquid for market data only
+        # Connect to Hyperliquid for market data only
         logger.info("🔗 Connecting to Hyperliquid API for market data...")
         if not bot.connect():
             logger.error("❌ Failed to connect to Hyperliquid API")
