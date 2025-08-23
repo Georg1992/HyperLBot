@@ -373,8 +373,10 @@ class EventDrivenTradingDashboard:
     def _get_session_data(self) -> Dict[str, Any]:
         """Get session data from real-time manager, not from logs"""
         try:
+            logger.error("🚨 DASHBOARD: _get_session_data() called")
             # Try to get data from real-time manager first
             rtm = self._get_realtime_manager()
+            logger.error(f"🚨 DASHBOARD: _get_session_data() got RTM: {rtm}")
             if rtm:
                 current_state = rtm.get_current_state()
                 session_data = current_state["session"]
@@ -402,9 +404,13 @@ class EventDrivenTradingDashboard:
                 }
             
             # Only fallback to logs if real-time manager is not available
+            logger.error("🚨 DASHBOARD: _get_session_data() falling back to logs - RTM not available!")
             return self._get_session_data_from_logs()
             
         except Exception as e:
+            logger.error(f"🚨 DASHBOARD: _get_session_data() exception: {e}")
+            import traceback
+            traceback.print_exc()
             logger.error(f"Session data error: {e}")
             return self._get_session_data_from_logs()
     
