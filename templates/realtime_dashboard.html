@@ -907,7 +907,9 @@
                     const logEntry = document.createElement('div');
                     logEntry.className = 'log-entry';
                     
-                    const timestamp = log.timestamp ? new Date(log.timestamp * 1000).toLocaleTimeString() : 'Unknown';
+                    // Simple timestamp handling - we send ISO format from Python
+                    const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Unknown';
+                    
                     logEntry.innerHTML = `<strong>[${timestamp}]</strong> ${log.message || 'No message'}`;
                     
                     container.appendChild(logEntry);
@@ -1069,12 +1071,20 @@
                     </div>
                     <div class="trade-details">
                         <div class="trade-detail">
-                            <span>Price:</span>
+                            <span>Entry:</span>
                             <span>$${trade.price ? parseFloat(trade.price).toLocaleString() : 'N/A'}</span>
                         </div>
+                        ${trade.exit_price ? `<div class="trade-detail">
+                            <span>Exit:</span>
+                            <span>$${parseFloat(trade.exit_price).toLocaleString()}</span>
+                        </div>` : ''}
                         <div class="trade-detail">
                             <span>Size:</span>
                             <span>${trade.size ? parseFloat(trade.size).toFixed(4) : 'N/A'} BTC</span>
+                        </div>
+                        <div class="trade-detail">
+                            <span>Leverage:</span>
+                            <span>${trade.leverage || 1}x</span>
                         </div>
                         <div class="trade-detail">
                             <span>P&L:</span>
@@ -1084,10 +1094,10 @@
                             <span>Time:</span>
                             <span>${timeDisplay}</span>
                         </div>
-                        <div class="trade-detail">
-                            <span>Type:</span>
-                            <span>${trade.type || 'MARKET'}</span>
-                        </div>
+                        ${trade.exit_reason ? `<div class="trade-detail">
+                            <span>Reason:</span>
+                            <span>${trade.exit_reason}</span>
+                        </div>` : ''}
                         <div class="trade-detail">
                             <span>Confidence:</span>
                             <span>${trade.confidence ? trade.confidence + '%' : 'N/A'}</span>

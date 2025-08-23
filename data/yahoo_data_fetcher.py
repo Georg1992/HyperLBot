@@ -219,7 +219,7 @@ class YahooDataFetcher:
             pattern_start = len(recent_candles) - consecutive_green
             price_change = (recent_candles[-1]["close"] - recent_candles[pattern_start]["open"]) / recent_candles[pattern_start]["open"]
             
-            if price_change > 0.001:  # 0.1% gain over consecutive greens
+            if price_change > 0.002:  # 0.2% gain over consecutive greens
                 return {
                     "trend": "UP",
                     "strength": min(abs(price_change), 0.1),
@@ -228,7 +228,7 @@ class YahooDataFetcher:
                     "pattern_type": f"consecutive_green_{consecutive_green}",
                     "pattern_override": True
                 }
-            else:
+            elif price_change > 0.0005:  # 0.05% gain - weak up
                 return {
                     "trend": "WEAK_UP",
                     "strength": min(abs(price_change) * 2, 0.1),
@@ -237,13 +237,23 @@ class YahooDataFetcher:
                     "pattern_type": f"consecutive_green_{consecutive_green}_weak",
                     "pattern_override": True
                 }
+            else:
+                # Price barely moved despite consecutive greens = sideways
+                return {
+                    "trend": "SIDEWAYS",
+                    "strength": 0.01,
+                    "direction": 0,
+                    "raw_change": price_change,
+                    "pattern_type": f"consecutive_green_{consecutive_green}_sideways",
+                    "pattern_override": True
+                }
         
         elif consecutive_red >= 3:
             # 3+ consecutive red candles = immediate downtrend
             pattern_start = len(recent_candles) - consecutive_red
             price_change = (recent_candles[-1]["close"] - recent_candles[pattern_start]["open"]) / recent_candles[pattern_start]["open"]
             
-            if price_change < -0.001:  # 0.1% loss over consecutive reds
+            if price_change < -0.002:  # 0.2% loss over consecutive reds
                 return {
                     "trend": "DOWN", 
                     "strength": min(abs(price_change), 0.1),
@@ -252,13 +262,23 @@ class YahooDataFetcher:
                     "pattern_type": f"consecutive_red_{consecutive_red}",
                     "pattern_override": True
                 }
-            else:
+            elif price_change < -0.0005:  # 0.05% loss - weak down
                 return {
                     "trend": "WEAK_DOWN",
                     "strength": min(abs(price_change) * 2, 0.1),
                     "direction": -1,
                     "raw_change": price_change,
                     "pattern_type": f"consecutive_red_{consecutive_red}_weak", 
+                    "pattern_override": True
+                }
+            else:
+                # Price barely moved despite consecutive reds = sideways
+                return {
+                    "trend": "SIDEWAYS",
+                    "strength": 0.01,
+                    "direction": 0,
+                    "raw_change": price_change,
+                    "pattern_type": f"consecutive_red_{consecutive_red}_sideways",
                     "pattern_override": True
                 }
         
@@ -302,27 +322,27 @@ class YahooDataFetcher:
         last_close = closes[-1]
         price_change = (last_close - first_close) / first_close
         
-        # Enhanced trend detection with more sensitive thresholds for gradual bull markets
-        if price_change > 0.002:  # 0.2% strong uptrend (reduced from 0.3%)
+        # More realistic trend detection thresholds for crypto markets
+        if price_change > 0.005:  # 0.5% strong uptrend 
             trend = "STRONG_UP"
             strength = min(abs(price_change), 0.1)  # Cap at 10%
-        elif price_change > 0.0005:  # 0.05% uptrend (reduced from 0.1%)
+        elif price_change > 0.002:  # 0.2% uptrend 
             trend = "UP"
             strength = min(abs(price_change), 0.1)
-        elif price_change > 0.0001:  # 0.01% weak uptrend (reduced from 0.02%)
-            trend = "WEAK_UP"  # Still bullish but very weak
+        elif price_change > 0.001:  # 0.1% weak uptrend 
+            trend = "WEAK_UP"  
             strength = min(abs(price_change) * 2, 0.1)  # Amplify weak strength
-        elif price_change < -0.002:  # 0.2% strong downtrend (reduced from 0.3%)
+        elif price_change < -0.005:  # 0.5% strong downtrend 
             trend = "STRONG_DOWN"
             strength = min(abs(price_change), 0.1)
-        elif price_change < -0.0005:  # 0.05% downtrend (reduced from 0.1%)
+        elif price_change < -0.002:  # 0.2% downtrend 
             trend = "DOWN"
             strength = min(abs(price_change), 0.1)
-        elif price_change < -0.0001:  # 0.01% weak downtrend (reduced from 0.02%)
-            trend = "WEAK_DOWN"  # Still bearish but very weak
+        elif price_change < -0.001:  # 0.1% weak downtrend 
+            trend = "WEAK_DOWN"  
             strength = min(abs(price_change) * 2, 0.1)  # Amplify weak strength
         else:
-            # True sideways market - very small movement
+            # True sideways market - movement less than 0.1% in either direction
             trend = "SIDEWAYS"
             strength = 0.02  # Give small but meaningful strength
         

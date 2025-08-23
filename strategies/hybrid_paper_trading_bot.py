@@ -103,6 +103,7 @@ class YahooHyperliquidPaperTradingBot:
             from strategies.win_back_engine import WinBackEngine, LossPatternAnalyzer
             from core.realtime_data_manager import trading_data_manager
             from core.smart_data_cache import SmartDataCache
+            from core.account_manager import account_manager
             
             self.dynamic_stop_manager = DynamicStopManager(self.strategy_config)
             self.global_volume_aggregator = GlobalVolumeAggregator()
@@ -112,6 +113,7 @@ class YahooHyperliquidPaperTradingBot:
             
             # Professional data management
             self.trading_data_manager = trading_data_manager
+            self.account_manager = account_manager
             # Note: SmartDataCache will be initialized AFTER API connection test
             
             # INITIALIZE ULTIMATE INTELLIGENCE SYSTEMS
@@ -171,7 +173,7 @@ class YahooHyperliquidPaperTradingBot:
                 logger.warning(f"Active Position Manager not available: {e}")
                 self.active_position_manager = None
             
-            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Real-time data + ULTIMATE INTELLIGENCE")
+            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Real-time data + Account Manager + ULTIMATE INTELLIGENCE")
         except ImportError as e:
             logger.warning(f"Advanced systems not available: {e}")
             self.dynamic_stop_manager = None
@@ -180,6 +182,13 @@ class YahooHyperliquidPaperTradingBot:
             self.win_back_engine = None
             self.loss_pattern_analyzer = None
             self.trading_data_manager = None
+            # Keep account manager available even if other systems fail
+            if not hasattr(self, 'account_manager') or self.account_manager is None:
+                try:
+                    from core.account_manager import account_manager
+                    self.account_manager = account_manager
+                except ImportError:
+                    self.account_manager = None
             self.smart_data_cache = None  # Ensure attribute exists
             self.ml_engine = None
             self.btc_pattern_engine = None
@@ -250,6 +259,20 @@ class YahooHyperliquidPaperTradingBot:
             logger.info("🐋 Whale analytics integration enabled")
         else:
             logger.info("🐋 Whale analytics integration disabled")
+        
+        # Ensure account manager is available
+        self._ensure_account_manager()
+    
+    def _ensure_account_manager(self):
+        """Ensure account manager is properly initialized"""
+        if not hasattr(self, 'account_manager') or self.account_manager is None:
+            try:
+                from core.account_manager import account_manager
+                self.account_manager = account_manager
+                logger.debug("✅ Account manager initialized")
+            except ImportError as e:
+                logger.warning(f"⚠️ Account manager not available: {e}")
+                self.account_manager = None
     
     def _test_api_connections(self):
         """Test API connections and set connected status"""
@@ -377,68 +400,47 @@ class YahooHyperliquidPaperTradingBot:
                 logger.info(f"💰 Real Account Value: ${account_value:.2f} USD")
                 logger.info(f"📊 Paper Trading Balance: ${self.paper_balance:.2f} USD")
             
-            # 🚀 FETCH REAL POSITIONS AND ORDERS FOR REALISTIC SIMULATION
-            logger.info("🔍 Fetching real account state for simulation base...")
+            # 🚀 REAL BALANCE FEATURE DISABLED - USING SIMULATED MODE ONLY
+            logger.info("🔒 Real balance feature disabled - using simulated mode only")
             
-            # Get real account balance
-            real_balance_data = self.hyperliquid_api.get_account_balance()
+            # Load account data if available
+            if self.account_manager and self.account_manager.account_data:
+                account_data = self.account_manager.account_data
+                # Update paper balance with account data
+                old_balance = self.paper_balance
+                self.paper_balance = account_data["current_balance"]
+                self.initial_balance = account_data["initial_balance"]
+                logger.info(f"📊 Loaded account data: Balance ${old_balance:.2f} → ${self.paper_balance:.2f}, {account_data['total_trades']} total trades")
+            else:
+                logger.warning(f"⚠️ No account manager data available. Using initial balance: ${self.paper_balance:.2f}")
+                # Try to load account data directly
+                try:
+                    from core.account_manager import account_manager
+                    if account_manager.account_exists():
+                        account_data = account_manager.load_account()
+                        if account_data:
+                            old_balance = self.paper_balance
+                            self.paper_balance = account_data["current_balance"]
+                            self.initial_balance = account_data["initial_balance"]
+                            logger.info(f"📊 Direct account load: Balance ${old_balance:.2f} → ${self.paper_balance:.2f}, {account_data['total_trades']} total trades")
+                except Exception as e:
+                    logger.error(f"❌ Failed to load account data directly: {e}")
+            
+            # Force simulated balance mode
             if self.trading_data_manager:
-                self.trading_data_manager.update_real_balance(real_balance_data)
-                
-                # Set balance mode in RTM based on user choice
-                logger.info(f"🔍 DEBUG: balance_mode = {self.balance_mode}")
-                logger.info(f"🔍 DEBUG: trading_data_manager exists = {self.trading_data_manager is not None}")
-                
-                if self.balance_mode == "real":
-                    # Force RTM to use real balance
-                    logger.info("🎯 Forcing RTM to use REAL balance mode")
-                    self.trading_data_manager.force_balance_mode("real")
-                    logger.success("✅ RTM forced to REAL balance mode")
-                elif self.balance_mode == "simulated":
-                    # Keep simulated balance in RTM
-                    logger.info("🎮 Forcing RTM to use SIMULATED balance mode")
-                    self.trading_data_manager.force_balance_mode("simulated", self.paper_balance)
-                    logger.success("✅ RTM forced to SIMULATED balance mode")
+                logger.info("🎮 Forcing RTM to use SIMULATED balance mode")
+                self.trading_data_manager.force_balance_mode("simulated", self.paper_balance)
+                logger.success("✅ RTM forced to SIMULATED balance mode")
             else:
                 logger.error("❌ trading_data_manager is None - cannot set balance mode!")
-                
-            # Get real open positions
-            real_positions = self.hyperliquid_api.get_open_positions()
+            
+            # Clear any real positions/orders data
             if self.trading_data_manager:
-                self.trading_data_manager.update_real_positions(real_positions)
+                self.trading_data_manager.update_real_positions([])
+                self.trading_data_manager.update_real_orders([])
             
-            # Get real open orders
-            real_orders = self.hyperliquid_api.get_open_orders()
-            if self.trading_data_manager:
-                self.trading_data_manager.update_real_orders(real_orders)
-            
-            # Log comprehensive summary
-            real_account_value = real_balance_data.get("account_value", 0)
-            real_pnl = real_balance_data.get("total_unrealized_pnl", 0)
-            
-            logger.success(f"💰 REAL BALANCE: ${real_account_value:.2f} USD")
-            logger.info(f"💹 Real Unrealized PnL: ${real_pnl:.2f}")
-            logger.info(f"📊 Available Margin: ${real_balance_data.get('available_margin', 0):.2f}")
-            logger.info(f"📈 Margin Usage: {real_balance_data.get('margin_usage_pct', 0):.1f}%")
-            
-            if real_positions:
-                logger.success(f"📊 Found {len(real_positions)} real positions - will factor into simulation")
-                total_real_pnl = sum(pos.get('unrealized_pnl', 0) for pos in real_positions)
-                logger.info(f"💹 Total real position PnL: ${total_real_pnl:.2f}")
-            else:
-                logger.info("📊 No real positions found - clean slate for simulation")
-            
-            if real_orders:
-                logger.success(f"📋 Found {len(real_orders)} real orders - will track alongside simulation")
-            else:
-                logger.info("📋 No real orders found")
-                
-            # Set paper trading balance to use real balance as base
-            if real_account_value > 0:
-                self.paper_balance = real_account_value
-                logger.success(f"🔄 Paper trading now uses REAL balance: ${self.paper_balance:.2f}")
-            else:
-                logger.warning(f"⚠️ Could not get real balance, using default: ${self.paper_balance:.2f}")
+            logger.info("📊 No real positions/orders loaded - clean simulated environment")
+            logger.info(f"🎮 Using simulated balance: ${self.paper_balance:.2f}")
             
             self.connected = True
             return True
@@ -1964,6 +1966,13 @@ class YahooHyperliquidPaperTradingBot:
             # Deduct fees from balance
             self.paper_balance -= fees["total_cost"]
             
+            # Update account manager if available (balance already updated above)
+            try:
+                from core.account_manager import account_manager
+                account_manager.update_balance(self.paper_balance, 0)  # No additional PnL change
+            except Exception as e:
+                logger.debug(f"Account manager update failed: {e}")
+            
             # Update current balance in session metadata for dashboard
             self.trading_logger.update_current_balance(self.paper_balance)
             
@@ -2035,6 +2044,13 @@ class YahooHyperliquidPaperTradingBot:
             
             # Deduct fees from balance
             self.paper_balance -= fees["total_cost"]
+            
+            # Update account manager if available (balance already updated above)
+            try:
+                from core.account_manager import account_manager
+                account_manager.update_balance(self.paper_balance, 0)  # No additional PnL change
+            except Exception as e:
+                logger.debug(f"Account manager update failed: {e}")
             
             # Update current balance in session metadata for dashboard
             self.trading_logger.update_current_balance(self.paper_balance)
@@ -2201,6 +2217,10 @@ class YahooHyperliquidPaperTradingBot:
         # Deduct fees from balance
         self.paper_balance -= fees["total_cost"]
         
+        # Update account manager if available
+        if self.account_manager and self.account_manager.account_data:
+            self.account_manager.update_balance(self.paper_balance, -fees["total_cost"])
+        
         # Update current balance in session metadata for dashboard
         self.trading_logger.update_current_balance(self.paper_balance)
         
@@ -2322,6 +2342,14 @@ class YahooHyperliquidPaperTradingBot:
             
             # Add to open positions
             self.open_positions.append(position)
+            
+            # Update account manager with open positions
+            try:
+                from core.account_manager import account_manager
+                account_manager.update_open_positions(self.open_positions)
+                logger.debug(f"✅ Updated account manager with {len(self.open_positions)} open positions")
+            except Exception as e:
+                logger.error(f"❌ Failed to update account manager: {e}")
             
             # Save positions to file
             self._save_positions()
@@ -2518,6 +2546,13 @@ class YahooHyperliquidPaperTradingBot:
             # Update balance
             self.paper_balance += net_pnl
             
+            # Update account manager if available
+            try:
+                from core.account_manager import account_manager
+                account_manager.update_balance(self.paper_balance, net_pnl)
+            except Exception as e:
+                logger.debug(f"Account manager update failed: {e}")
+            
             # Update current balance in session metadata for dashboard
             self.trading_logger.update_current_balance(self.paper_balance)
             
@@ -2581,6 +2616,13 @@ class YahooHyperliquidPaperTradingBot:
             
             # Deduct fees from balance
             self.paper_balance -= fees["total_cost"]
+            
+            # Update account manager if available (balance already updated above)
+            try:
+                from core.account_manager import account_manager
+                account_manager.update_balance(self.paper_balance, 0)  # No additional PnL change
+            except Exception as e:
+                logger.debug(f"Account manager update failed: {e}")
             
             # Update current balance in session metadata for dashboard
             self.trading_logger.update_current_balance(self.paper_balance)
@@ -2662,6 +2704,10 @@ class YahooHyperliquidPaperTradingBot:
         # Update balance
         self.paper_balance += net_pnl
         
+        # Update account manager if available
+        if self.account_manager and self.account_manager.account_data:
+            self.account_manager.update_balance(self.paper_balance, net_pnl)
+        
         # Update current balance in session metadata for dashboard
         self.trading_logger.update_current_balance(self.paper_balance)
         
@@ -2683,23 +2729,42 @@ class YahooHyperliquidPaperTradingBot:
         self.open_positions.remove(position)
         self.closed_positions.append(position)
         
+        # Update account manager with open positions
+        try:
+            from core.account_manager import account_manager
+            account_manager.update_open_positions(self.open_positions)
+            account_manager.add_trade(trade_result)
+            logger.debug(f"✅ Updated account manager: position closed, {len(self.open_positions)} positions remaining")
+        except Exception as e:
+            logger.error(f"❌ Failed to update account manager on position close: {e}")
+        
         # Save updated positions
         self._save_positions()
         
         # Update trade result in logger
         trade_result = {
             "trade_id": position["trade_id"],
+            "side": position["side"],
+            "entry_price": position["entry_price"],
             "exit_price": exit_price,
+            "size": position["size"],
+            "leverage": position["leverage"],
+            "confidence": position.get("confidence", 0),
             "profit_loss": pnl_amount,
             "profit_loss_pct": pnl_pct,
             "fees_paid": total_fees,
             "net_profit_loss": net_pnl,
+            "pnl": net_pnl,
+            "pnl_pct": pnl_pct,
+            "entry_time": position["entry_time"],
+            "exit_time": position["exit_time"],
             "holding_time": position["exit_time"] - position["entry_time"],
             "exit_reason": exit_reason,
             "was_profitable": net_pnl > 0,
             "balance_after": self.paper_balance,
             "is_winback_trade": position.get("is_winback_trade", False),
-            "winback_data": position.get("winback_data", {})
+            "winback_data": position.get("winback_data", {}),
+            "timestamp": time.time()
         }
         
         self.trading_logger.update_trade_result(position["trade_id"], trade_result)
