@@ -92,6 +92,7 @@ historical_trading_data.db
 
 # Runtime trading files (contain bot state - cause merge conflicts)
 open_positions.json
+rtm_state.json
 
 # Log files
 *.log
