@@ -233,9 +233,11 @@ class EventDrivenTradingDashboard:
         try:
             # Try real-time data first
             rtm = self._get_realtime_manager()
+            logger.debug(f"🔍 RTM available: {rtm is not None}")
             if rtm:
                 try:
                     current_state = rtm.get_current_state()
+                    logger.debug(f"🔍 RTM market data: {current_state.get('market', {}).get('trend', 'NOT_FOUND')}")
                     
                     # Use real-time data from RTM
                     session_data = current_state["session"]
@@ -513,11 +515,11 @@ class EventDrivenTradingDashboard:
                 # Enhanced market data with analytics
                 return {
                     "current_price": current_price if current_price else 97500.0,
-                    "trend": "LIVE_DATA" if current_price else "FETCHING",
-                    "market_condition": "ACTIVE_MONITORING",
-                    "rsi": 52.3,  # Live RSI calculation
-                    "volume_depth": 28.5,  # Live volume analysis
-                    "volume_category": "MEDIUM",
+                    "trend": "UNKNOWN" if current_price else "FETCHING",
+                    "market_condition": "MONITORING",
+                    "rsi": 50.0,  # Neutral RSI fallback
+                    "volume_depth": 0.0,  # No volume data
+                    "volume_category": "UNKNOWN",
                     "orderbook_imbalance": orderbook_imbalance,
                     "volatility_5m": 0.008,  # Live volatility calculation
                     "volatility_1h": 0.012,
