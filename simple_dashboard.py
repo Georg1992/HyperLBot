@@ -183,8 +183,9 @@ class OptimizedTradingDashboard:
                             total_ask_volume = sum(float(ask['sz']) for ask in asks)
                             
                             if total_bid_volume + total_ask_volume > 0:
-                                orderbook_imbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume)
-                                logger.info(f"📊 Calculated real orderbook imbalance: {orderbook_imbalance:.3f}")
+                                # FIX: Multiply by 100 for percentage (consistent with bot calculation)
+                                orderbook_imbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume) * 100
+                                logger.info(f"📊 Calculated real orderbook imbalance: {orderbook_imbalance:.1f}%")
                         
                         # Get REAL volume data  
                         volume_result = api.get_current_5m_volume("BTC")

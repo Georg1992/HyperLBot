@@ -343,7 +343,8 @@
                 
                 const rsiValue = market.rsi !== undefined && market.rsi !== null ? market.rsi.toFixed(1) : 'N/A';
                 const volumeValue = market.volume_depth !== undefined && market.volume_depth !== null ? market.volume_depth.toFixed(1) : 'N/A';
-                const flowValue = market.orderbook_imbalance !== undefined && market.orderbook_imbalance !== null ? (market.orderbook_imbalance * 100).toFixed(1) : 'N/A';
+                // FIX: Remove * 100 - bot already sends as percentage!
+                const flowValue = market.orderbook_imbalance !== undefined && market.orderbook_imbalance !== null ? market.orderbook_imbalance.toFixed(1) : 'N/A';
                 
                 const dataSourceIcon = market.data_source === 'offline_status' ? '⏸️' : '🔴';
                 const dataSourceText = market.data_source === 'offline_status' ? 'OFFLINE' : 'LIVE';
