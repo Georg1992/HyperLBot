@@ -2701,10 +2701,8 @@ class YahooHyperliquidPaperTradingBot:
                 logger.error("❌ Failed to initialize data cache")
         
         if self.trading_data_manager:
-            self.trading_data_manager.start_session(
-                strategy=self.strategy_name,
-                initial_balance=self.initial_balance,
-                bot_version="Advanced Trading Bot v4.0"
+            session_id = self.trading_data_manager.start_session(
+                strategy=self.strategy_name
             )
             logger.success("🔥 Real-time data manager active - Dashboard connection established")
             logger.info(f"   📊 Dashboard will receive live predictions and market data")

@@ -217,44 +217,54 @@ class RealTimeTradingDataManager:
             logger.error(f"Database initialization error: {e}")
     
     # SESSION MANAGEMENT
-    def start_session(self, strategy: str, initial_balance: float, bot_version: str = "Advanced Bot"):
+    def start_session(self, session_id: str = None, strategy: str = "standard"):
         """Start a new trading session"""
-        with self.data_lock:
-            # Check if there's an existing active session and close it properly
-            if self.current_state["session"].get("status") == "ACTIVE":
-                logger.warning(f"🔄 Found existing active session: {self.current_state['session'].get('session_id', 'unknown')}")
-                logger.info("🔄 Closing previous session before starting new one...")
-                self._close_existing_session()
-            
-            # Also check for orphaned sessions in the database and close them
-            self._close_orphaned_sessions()
-            
-            # Clear any old activity/predictions when starting fresh session
-            self.recent_activity.clear()
-            self.current_state["predictions"] = []
-            
+        if session_id is None:
             session_id = f"session_{int(time.time())}"
-            self.current_state["session"].update({
+        
+        # CRITICAL FIX: Force clear ALL old session data to prevent dashboard confusion
+        self.current_state = {
+            "session": {
                 "session_id": session_id,
                 "start_time": datetime.now().isoformat(),
                 "status": "ACTIVE",
                 "strategy": strategy,
-                "initial_balance": initial_balance,
-                "current_balance": initial_balance,
+                "initial_balance": self.initial_balance,
+                "current_balance": self.initial_balance,
                 "balance_change": 0.0,
                 "balance_change_pct": 0.0,
                 "last_balance_update": datetime.now().isoformat(),
-                "bot_version": bot_version,
-                "open_positions_count": 0,
+                "bot_version": "Advanced Trading Bot v4.0",
                 "total_trades": 0,
                 "winning_trades": 0,
-                "losing_trades": 0
-            })
-            
-            logger.success(f"🚀 Trading session started: {session_id}")
-            logger.error(f"🚨 FORCED DEBUG: Session status = {self.current_state['session']['status']}")
-            logger.error(f"🚨 FORCED DEBUG: Session ID = {self.current_state['session']['session_id']}")
-            self._notify_subscribers("session_started", self.current_state["session"])
+                "losing_trades": 0,
+                "total_pnl": 0.0,
+                "realized_pnl": 0.0,
+                "unrealized_pnl": 0.0,
+                "max_drawdown": 0.0,
+                "win_rate": 0.0,
+                "avg_win": 0.0,
+                "avg_loss": 0.0,
+                "sharpe_ratio": 0.0,
+                "total_volume": 0.0,
+                "total_fees": 0.0
+            },
+            "recent_activity": [],  # CLEAR old activities
+            "predictions": [],      # CLEAR old predictions
+            "trades": [],          # CLEAR old trades  
+            "trading_signals": [], # CLEAR old signals
+            "balance_history": [(datetime.now().isoformat(), self.initial_balance)]
+        }
+        
+        logger.success(f"🚀 Trading session started: {session_id}")
+        self._notify_subscribers("session_started", self.current_state["session"])
+        logger.error(f"🚨 FORCED DEBUG: Session status = {self.current_state['session']['status']}")
+        logger.error(f"🚨 FORCED DEBUG: Session ID = {self.current_state['session']['session_id']}")
+        
+        # Force save the new clean state to file  
+        self._save_to_json_file()
+        
+        return session_id
     
     def _close_existing_session(self):
         """Close existing session properly"""
