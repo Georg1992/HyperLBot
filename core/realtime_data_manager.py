@@ -117,6 +117,9 @@ class RealTimeTradingDataManager:
         # WebSocket subscribers for real-time updates
         self.subscribers = []
         
+        # Load any existing state from previous session (but only on startup!)
+        self._load_from_json_file()
+        
         logger.success("🔥 Real-Time Trading Data Manager initialized")
     
     def _init_database(self):
@@ -224,6 +227,10 @@ class RealTimeTradingDataManager:
             
             # Also check for orphaned sessions in the database and close them
             self._close_orphaned_sessions()
+            
+            # Clear any old activity/predictions when starting fresh session
+            self.recent_activity.clear()
+            self.current_state["predictions"] = []
             
             session_id = f"session_{int(time.time())}"
             self.current_state["session"].update({
@@ -588,8 +595,8 @@ class RealTimeTradingDataManager:
             # Calculate performance metrics
             self._update_performance_metrics()
             
-            # Try to load from file for cross-process sharing
-            self._load_from_json_file()
+            # REMOVED: _load_from_json_file() call - this method should ONLY READ state, not modify it!
+            # Loading from file should only happen on RTM initialization, not every dashboard request
             
             return {
                 "session": self.current_state["session"].copy(),

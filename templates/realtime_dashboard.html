@@ -822,6 +822,7 @@
                 if (orderbook && !orderbook.error) {
                     // Update asks
                     const asksContainer = document.getElementById('orderbook-asks');
+                    if (!asksContainer) return; // Element not found, skip orderbook update
                     asksContainer.innerHTML = '';
                     (orderbook.asks || []).slice(0, 5).forEach(ask => {
                         const row = document.createElement('tr');
