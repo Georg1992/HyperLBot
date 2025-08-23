@@ -811,36 +811,30 @@ class RealTimeTradingDataManager:
             logger.debug(f"Error saving to JSON file: {e}")
     
     def _load_from_json_file(self):
-        """Load state from JSON file for cross-process sharing"""
+        """Load state from JSON file for cross-process communication
+        CRITICAL: DO NOT load any data - RTM always starts fresh"""
         try:
-            json_file_path = os.path.join(os.path.dirname(__file__), "..", "rtm_state.json")
-            if os.path.exists(json_file_path):
-                with open(json_file_path, 'r') as f:
-                    file_state = json.load(f)
+            if not os.path.exists(self.JSON_FILE):
+                logger.debug("No JSON state file found - starting fresh")
+                return
                 
-                # CRITICAL FIX: NEVER load session data from file during RTM startup!
-                # Sessions should ALWAYS start fresh - old session data belongs in logs/database only
-                # Loading old sessions confuses the dashboard about current vs historical data
-                if file_state.get("session"):
-                    logger.debug(f"Found old session in file: {file_state['session'].get('session_id')} - IGNORING (sessions start fresh)")
+            with open(self.JSON_FILE, 'r') as f:
+                file_state = json.load(f)
                 
-                # Load predictions
-                if file_state.get("predictions"):
-                    self.current_state["predictions"] = file_state["predictions"]
-                
-                # Load activity
-                if file_state.get("recent_activity"):
-                    self.recent_activity = deque(file_state["recent_activity"], maxlen=self.MAX_ACTIVITY)
-                
-                # Load signals
-                if file_state.get("recent_signals"):
-                    self.recent_signals = deque(file_state["recent_signals"], maxlen=self.MAX_SIGNALS)
-                
-                # Load recent trades
-                if file_state.get("recent_trades"):
-                    self.recent_trades = deque(file_state["recent_trades"], maxlen=self.MAX_TRADES)
-                    
-                logger.debug(f"Loaded state from JSON file: {len(file_state.get('predictions', []))} predictions, {len(file_state.get('recent_activity', []))} activities")
+            # CRITICAL FIX: NEVER load ANY data from file during RTM startup!
+            # Sessions should ALWAYS start fresh - old data belongs in logs/database only
+            # Loading old data confuses the dashboard about current vs historical data
+            if file_state.get("session"):
+                logger.debug(f"Found old session in file: {file_state['session'].get('session_id')} - IGNORING (sessions start fresh)")
+            
+            # COMPLETELY DISABLED: Do not load any old data
+            # - No predictions from old sessions
+            # - No activities from old sessions  
+            # - No signals from old sessions
+            # - No trades from old sessions
+            # RTM starts 100% fresh every time
+            
+            logger.debug("RTM starting completely fresh - no old data loaded")
                 
         except Exception as e:
             logger.debug(f"Error loading from JSON file: {e}")
