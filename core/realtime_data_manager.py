@@ -957,17 +957,23 @@ class RealTimeTradingDataManager:
                 with open(json_file_path, 'r') as f:
                     loaded_state = json.load(f)
                 
-                # Update current_state with loaded data
+                # Update current_state with loaded data (BUT NOT TRADES!)
                 self.current_state["session"] = loaded_state["session"]
                 self.current_state["predictions"] = loaded_state["predictions"]
                 self.recent_activity = deque(loaded_state["recent_activity"], maxlen=self.MAX_ACTIVITY)
                 self.recent_signals = deque(loaded_state["recent_signals"], maxlen=self.MAX_SIGNALS)
-                self.recent_trades = deque(loaded_state["recent_trades"], maxlen=self.MAX_TRADES)
                 
-                # Re-initialize performance metrics from loaded trades
+                # 🚨 DO NOT LOAD recent_trades - prevents phantom trades!
+                # self.recent_trades = deque(loaded_state["recent_trades"], maxlen=self.MAX_TRADES)
+                logger.info("🧹 Skipped loading recent_trades to prevent phantom trades")
+                
+                # Keep recent_trades empty for fresh start
+                self.recent_trades = deque(maxlen=self.MAX_TRADES)
+                
+                # Re-initialize performance metrics from loaded trades (will be empty)
                 self._update_performance_metrics()
                 
-                logger.info(f"✅ Loaded state from {json_file_path}")
+                logger.info(f"✅ Loaded state from {json_file_path} (without trades)")
             else:
                 logger.warning(f"⚠️ No existing state file found at {json_file_path}. Starting with fresh state.")
         except Exception as e:
