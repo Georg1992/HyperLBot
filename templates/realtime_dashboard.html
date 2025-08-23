@@ -568,6 +568,23 @@
                 // Data event handlers
                 this.socket.on('initial_data', (data) => {
                     console.log('📤 Received initial data:', data);
+                    
+                    // Clear any cached/stale data first
+                    console.log('🧹 Clearing any stale dashboard data');
+                    document.getElementById('session-time').textContent = 'Loading...';
+                    document.getElementById('activity-logs').innerHTML = '<div class="log-entry">🔄 Loading fresh data...</div>';
+                    
+                    // Debug initial data
+                    if (data.session) {
+                        console.log('📊 Initial session data:', {
+                            session_id: data.session.session_id,
+                            status: data.session.status,
+                            session_time: data.session.session_time,
+                            start_time: data.session.start_time,
+                            data_source: data.data_source
+                        });
+                    }
+                    
                     this.updateAllData(data);
                     this.updateIndicator('✅ Initial data loaded', 'connected');
                 });

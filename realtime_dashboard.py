@@ -12,7 +12,7 @@ import re
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import urllib3
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, make_response
 from flask_socketio import SocketIO, emit
 from loguru import logger
 
@@ -61,8 +61,27 @@ class EventDrivenTradingDashboard:
             logger.info(f"🌐 Dashboard client connected from {request.remote_addr}")
             self.active_connections.add(request.sid)
             
-            # Send initial data to new connection
-            self._send_initial_data(request.sid)
+            # Force fresh data retrieval and send to new connection
+            logger.info("🔄 Forcing fresh data retrieval for new connection")
+            fresh_data = self._get_dashboard_data()
+            
+            # Log what we're sending to the new connection
+            session_info = fresh_data.get("session", {})
+            logs_count = len(fresh_data.get("logs", []))
+            
+            logger.info(f"📊 Sending to new client:")
+            logger.info(f"   Session: {session_info.get('session_id', 'N/A')} - Status: {session_info.get('status', 'N/A')}")
+            logger.info(f"   Session Time: {session_info.get('session_time', 'N/A')}")
+            logger.info(f"   Activity Logs: {logs_count} entries")
+            logger.info(f"   Data Source: {fresh_data.get('data_source', 'N/A')}")
+            
+            if logs_count > 0:
+                latest_log = fresh_data.get("logs", [])[-1]
+                logger.info(f"   Latest Activity: {latest_log.get('message', 'No message')}")
+            
+            # Send fresh data to new connection
+            self.socketio.emit('initial_data', fresh_data, room=request.sid)
+            logger.info("📤 Fresh initial data sent to new connection")
         
         @self.socketio.on('disconnect')
         def handle_disconnect():
@@ -81,8 +100,15 @@ class EventDrivenTradingDashboard:
         
         @self.app.route('/')
         def dashboard():
-            """Main dashboard page"""
-            return render_template('realtime_dashboard.html')
+            """Main dashboard page with cache-busting"""
+            response = make_response(render_template('realtime_dashboard.html'))
+            
+            # Prevent browser caching to ensure fresh dashboard loads
+            response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response.headers['Pragma'] = 'no-cache'
+            response.headers['Expires'] = '0'
+            
+            return response
         
         @self.app.route('/health')
         def health():
@@ -134,11 +160,19 @@ class EventDrivenTradingDashboard:
                         current_data = self._get_dashboard_data()
                         current_hash = self._calculate_data_hash(current_data)
                         
-                        # Only emit if data actually changed
+                        # Only emit if data actually changed OR every 10 cycles to ensure connectivity
                         if current_hash != self.last_data_hash.get('all_data'):
                             logger.info("📊 Data changed - pushing to dashboard clients")
                             self._emit_data_update(current_data)
                             self.last_data_hash['all_data'] = current_hash
+                            self.last_update_cycle = 0
+                        else:
+                            # Force update every 10 cycles (20 seconds) to ensure WebSocket connectivity
+                            self.last_update_cycle = getattr(self, 'last_update_cycle', 0) + 1
+                            if self.last_update_cycle >= 10:
+                                logger.info("📊 Forcing WebSocket update to ensure connectivity")
+                                self._emit_data_update(current_data)
+                                self.last_update_cycle = 0
                     
                     # Smart monitoring interval - faster when active connections
                     sleep_time = 2 if self.active_connections else 10
