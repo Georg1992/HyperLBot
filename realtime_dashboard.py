@@ -252,9 +252,11 @@ class EventDrivenTradingDashboard:
                 logger.debug(f"🔍 Real-time manager status: {session_status}")
                 logger.debug(f"🔍 Recent activity count: {len(current_state.get('recent_activity', []))}")
                 
-                # Always use real-time data if available, regardless of bot status
-                session_data = current_state["session"]
-                enhanced_balance = self._calculate_enhanced_balance(session_data)
+                # CRITICAL: Only use real-time data if session is ACTIVE
+                # Don't show COMPLETED/INACTIVE sessions as "live" data
+                if session_status == "ACTIVE":
+                    session_data = current_state["session"]
+                    enhanced_balance = self._calculate_enhanced_balance(session_data)
                 
                 # Calculate session duration properly
                 try:
