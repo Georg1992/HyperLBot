@@ -875,6 +875,22 @@ class YahooHyperliquidPaperTradingBot:
         
         # Log traditional signal
         self.trading_logger.log_signal(signal_data)
+        
+        # Update real-time data manager with traditional prediction
+        if self.trading_data_manager:
+            traditional_prediction = {
+                "type": "TRADITIONAL",
+                "side": signal_data["side"],
+                "confidence": signal_data.get("prediction_confidence", 0),
+                "reason": signal_data["reason"],
+                "entry_price": signal_data.get("entry_price", hyperliquid_price),
+                "target": signal_data.get("target", hyperliquid_price),
+                "timestamp": time.time()
+            }
+            self.trading_data_manager.add_trading_signal(traditional_prediction)
+            self.trading_data_manager.update_predictions([traditional_prediction])
+            logger.info(f"📊 TRADITIONAL PREDICTION sent to dashboard: {signal_data['side']} - {signal_data.get('prediction_confidence', 0):.1%} confidence")
+        
         self.last_signal_reason = signal_data["reason"]
         self.last_signal_price = hyperliquid_price
         self.last_signal_time = current_time
@@ -2674,7 +2690,10 @@ class YahooHyperliquidPaperTradingBot:
                 initial_balance=self.initial_balance,
                 bot_version="Advanced Trading Bot v4.0"
             )
-            logger.success("🔥 Real-time data manager active")
+            logger.success("🔥 Real-time data manager active - Dashboard connection established")
+            logger.info(f"   📊 Dashboard will receive live predictions and market data")
+        else:
+            logger.warning("⚠️ Real-time data manager not available - Dashboard will show offline data only")
         
         # Start advanced monitoring systems
         if self.dynamic_stop_manager:
@@ -2873,6 +2892,15 @@ class YahooHyperliquidPaperTradingBot:
                     
                     logger.info(f"🔍 SIGNAL CHECK: Starting signal analysis at ${hyperliquid_price:.2f}")
                     
+                    # Update dashboard with analysis activity
+                    if self.trading_data_manager:
+                        self.trading_data_manager.add_activity_log({
+                            "timestamp": current_time,
+                            "message": f"🔍 Analyzing market conditions at ${hyperliquid_price:.2f}",
+                            "type": "analysis",
+                            "level": "INFO"
+                        })
+                    
                     # Enhanced analysis with global volume and blockchain data
                     enhanced_analysis = self.binance_analysis.copy()
                     
@@ -2896,6 +2924,21 @@ class YahooHyperliquidPaperTradingBot:
                     
                     logger.info(f"🎯 SIGNAL RESULT: {signal.get('should_trade', False)} | Reason: {signal.get('reason', 'Unknown')}")
                     
+                    # Always update dashboard with prediction status, even if no trade signal
+                    if self.trading_data_manager and not signal["should_trade"]:
+                        no_signal_prediction = {
+                            "type": "ANALYSIS",
+                            "side": "HOLD",
+                            "confidence": 0,
+                            "reason": signal.get("reason", "No clear signal"),
+                            "entry_price": hyperliquid_price,
+                            "timestamp": time.time(),
+                            "market_condition": enhanced_analysis.get("market_condition", "UNKNOWN"),
+                            "analysis_active": True
+                        }
+                        self.trading_data_manager.update_predictions([no_signal_prediction])
+                        logger.debug(f"📊 NO-SIGNAL status sent to dashboard: {signal.get('reason', 'Unknown')}")
+                    
                     if signal["should_trade"]:
                         # Calculate position value from signal data
                         signal_size = signal.get("optimal_params", {}).get("position_size", 0.00035)
@@ -2912,6 +2955,16 @@ class YahooHyperliquidPaperTradingBot:
                         if quality_eval:
                             logger.info(f"   Quality: {quality_eval.get('quality_rating', 'UNKNOWN')} ({quality_eval.get('quality_score', 0):.2f})")
                             logger.info(f"   Confidence: {quality_eval.get('confidence_level', 'UNKNOWN')}")
+                        
+                        # Update dashboard with signal activity
+                        if self.trading_data_manager:
+                            confidence_pct = quality_eval.get('confidence_level', 'Unknown') if quality_eval else 'Unknown'
+                            self.trading_data_manager.add_activity_log({
+                                "timestamp": current_time,
+                                "message": f"🚀 {signal['side']} signal: {signal['reason'][:50]}{'...' if len(signal['reason']) > 50 else ''}",
+                                "type": "signal",
+                                "level": "SUCCESS"
+                            })
                         
                         # Place the paper trade
                         if self.place_paper_trade(signal['side'], signal_data=signal):
