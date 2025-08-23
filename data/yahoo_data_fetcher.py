@@ -178,6 +178,93 @@ class YahooDataFetcher:
             logger.error(f"❌ Failed to get ticker data from Yahoo Finance: {e}")
             return None
     
+    def _analyze_consecutive_candles(self, recent_candles: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Analyze recent consecutive candle patterns to detect immediate trend changes
+        Returns trend override if 3+ consecutive candles show clear direction
+        """
+        if len(recent_candles) < 3:
+            return None
+        
+        # Check candle colors (red vs green)
+        candle_colors = []
+        for candle in recent_candles:
+            if candle["close"] > candle["open"]:
+                candle_colors.append("green")
+            elif candle["close"] < candle["open"]:
+                candle_colors.append("red")
+            else:
+                candle_colors.append("neutral")  # Doji
+        
+        # Count consecutive patterns
+        consecutive_green = 0
+        consecutive_red = 0
+        
+        # Count from the end (most recent)
+        for color in reversed(candle_colors):
+            if color == "green":
+                consecutive_green += 1
+                if consecutive_red > 0:
+                    break
+            elif color == "red":
+                consecutive_red += 1
+                if consecutive_green > 0:
+                    break
+            else:
+                break  # Neutral candle breaks the pattern
+        
+        # Calculate price change over the consecutive pattern
+        if consecutive_green >= 3:
+            # 3+ consecutive green candles = immediate uptrend
+            pattern_start = len(recent_candles) - consecutive_green
+            price_change = (recent_candles[-1]["close"] - recent_candles[pattern_start]["open"]) / recent_candles[pattern_start]["open"]
+            
+            if price_change > 0.001:  # 0.1% gain over consecutive greens
+                return {
+                    "trend": "UP",
+                    "strength": min(abs(price_change), 0.1),
+                    "direction": 1,
+                    "raw_change": price_change,
+                    "pattern_type": f"consecutive_green_{consecutive_green}",
+                    "pattern_override": True
+                }
+            else:
+                return {
+                    "trend": "WEAK_UP",
+                    "strength": min(abs(price_change) * 2, 0.1),
+                    "direction": 1,
+                    "raw_change": price_change,
+                    "pattern_type": f"consecutive_green_{consecutive_green}_weak",
+                    "pattern_override": True
+                }
+        
+        elif consecutive_red >= 3:
+            # 3+ consecutive red candles = immediate downtrend
+            pattern_start = len(recent_candles) - consecutive_red
+            price_change = (recent_candles[-1]["close"] - recent_candles[pattern_start]["open"]) / recent_candles[pattern_start]["open"]
+            
+            if price_change < -0.001:  # 0.1% loss over consecutive reds
+                return {
+                    "trend": "DOWN", 
+                    "strength": min(abs(price_change), 0.1),
+                    "direction": -1,
+                    "raw_change": price_change,
+                    "pattern_type": f"consecutive_red_{consecutive_red}",
+                    "pattern_override": True
+                }
+            else:
+                return {
+                    "trend": "WEAK_DOWN",
+                    "strength": min(abs(price_change) * 2, 0.1),
+                    "direction": -1,
+                    "raw_change": price_change,
+                    "pattern_type": f"consecutive_red_{consecutive_red}_weak", 
+                    "pattern_override": True
+                }
+        
+        # No significant consecutive pattern found
+        return None
+    
     def calculate_support_resistance(self, candles: List[Dict[str, Any]], lookback: int = 20) -> Dict[str, float]:
         """Calculate support and resistance levels from candlestick data"""
         if len(candles) < lookback:
@@ -205,7 +292,12 @@ class YahooDataFetcher:
         recent_candles = candles[-periods:]
         closes = [candle["close"] for candle in recent_candles]
         
-        # Calculate trend direction
+        # PRIORITY 1: Check for recent consecutive candle patterns (recent trend override)
+        consecutive_pattern = self._analyze_consecutive_candles(recent_candles[-4:])  # Last 4 candles (20 minutes)
+        if consecutive_pattern:
+            return consecutive_pattern
+        
+        # PRIORITY 2: Calculate overall trend direction (25-minute comparison)
         first_close = closes[0]
         last_close = closes[-1]
         price_change = (last_close - first_close) / first_close
