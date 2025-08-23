@@ -443,8 +443,15 @@
             
             <div class="trade-container" style="max-height: 300px; overflow-y: auto;">
                 <div id="trade-content">
-                    <div class="trade-entry">
-                        <div class="log-entry">📊 Loading trade history...</div>
+                    <div class="trade-entry no-trades-message">
+                        <div class="log-entry" style="text-align: center; color: #888; padding: 20px;">
+                            <div style="font-size: 24px; margin-bottom: 10px;">📈</div>
+                            <div><strong>No trades yet</strong></div>
+                            <div style="font-size: 12px; margin-top: 8px;">
+                                Start the trading bot to see live trades appear here.<br>
+                                This panel will show all your trading activity, open positions, and trade history.
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -472,31 +479,7 @@
             </div>
         </div>
 
-        <!-- Orderbook Card -->
-        <div class="card">
-            <h2>📋 Order Book</h2>
-            <div id="orderbook-container">
-                <table class="orderbook-table">
-                    <thead>
-                        <tr>
-                            <th>Price</th>
-                            <th>Size</th>
-                            <th>Total</th>
-                        </tr>
-                    </thead>
-                    <tbody id="orderbook-asks">
-                        <tr><td colspan="3">Loading asks...</td></tr>
-                    </tbody>
-                    <tbody id="orderbook-bids">
-                        <tr><td colspan="3">Loading bids...</td></tr>
-                    </tbody>
-                </table>
-                <div class="data-item">
-                    <span class="data-label">Spread:</span>
-                    <span class="data-value" id="orderbook-spread">Loading...</span>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Activity Logs Card -->
         <div class="card large-card">
@@ -508,11 +491,28 @@
 
         <!-- Predictions Card -->
         <div class="card">
-            <h2>🔮 Predictions</h2>
+            <h2>🔮 Trading Predictions</h2>
             <div id="predictions-container">
-                <div class="data-item">
-                    <span class="data-label">Latest Prediction:</span>
-                    <span class="data-value">Loading...</span>
+                <div class="prediction-status">
+                    <div class="data-item">
+                        <span class="data-label">Status:</span>
+                        <span class="data-value" id="prediction-status">Waiting for bot...</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Latest Signal:</span>
+                        <span class="data-value" id="latest-signal">None yet</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Confidence:</span>
+                        <span class="data-value" id="signal-confidence">N/A</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Direction:</span>
+                        <span class="data-value" id="signal-direction">-</span>
+                    </div>
+                </div>
+                <div class="prediction-info" style="margin-top: 10px; padding: 10px; background: rgba(255,165,0,0.1); border-left: 3px solid #FFA500; font-size: 12px;">
+                    💡 <strong>Tip:</strong> Start the trading bot to see live prediction signals from ML engines, pattern recognition, and technical analysis.
                 </div>
             </div>
         </div>
@@ -584,6 +584,13 @@
                 const indicator = document.getElementById('update-indicator');
                 indicator.textContent = message;
                 indicator.className = `update-indicator update-${status}`;
+            }
+            
+            updateElement(elementId, content) {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    element.innerHTML = content;
+                }
             }
             
             updateAllData(data) {
@@ -661,15 +668,46 @@
                 document.getElementById('market-rsi').textContent = 
                     market.rsi ? `${parseFloat(market.rsi).toFixed(1)}` : 'Loading...';
                 
-                // Update Volume
-                document.getElementById('market-volume').textContent = 
-                    market.volume_depth ? 
-                    `${parseFloat(market.volume_depth).toFixed(1)} BTC (${market.volume_category || 'UNKNOWN'})` : 
-                    'Loading...';
+                // Update Volume with enhanced display and timestamps
+                const volumeElement = document.getElementById('market-volume');
+                if (market.volume_depth !== undefined) {
+                    const volume = parseFloat(market.volume_depth);
+                    const category = market.volume_category || 'UNKNOWN';
+                    const timestamp = new Date().toLocaleTimeString();
+                    
+                    volumeElement.innerHTML = `${volume.toFixed(1)} BTC (${category}) <span style="font-size: 10px; color: #888;">[${timestamp}]</span>`;
+                    
+                    // Color code volume based on category
+                    if (category === 'HIGH') {
+                        volumeElement.className = 'data-value trend-up';
+                    } else if (category === 'LOW') {
+                        volumeElement.className = 'data-value trend-down';
+                    } else {
+                        volumeElement.className = 'data-value';
+                    }
+                } else {
+                    volumeElement.textContent = 'Loading...';
+                }
                 
-                // Update Volatility
-                document.getElementById('market-volatility').textContent = 
-                    market.volatility_5m ? `${(parseFloat(market.volatility_5m) * 100).toFixed(2)}%` : 'Loading...';
+                // Update Volatility with enhanced display and timestamps
+                const volatilityElement = document.getElementById('market-volatility');
+                if (market.volatility_5m !== undefined) {
+                    const volatility = parseFloat(market.volatility_5m) * 100;
+                    const timestamp = new Date().toLocaleTimeString();
+                    
+                    volatilityElement.innerHTML = `${volatility.toFixed(2)}% <span style="font-size: 10px; color: #888;">[${timestamp}]</span>`;
+                    
+                    // Color code volatility
+                    if (volatility > 1.0) {
+                        volatilityElement.className = 'data-value trend-down'; // High volatility = red
+                    } else if (volatility > 0.5) {
+                        volatilityElement.className = 'data-value';
+                    } else {
+                        volatilityElement.className = 'data-value trend-up'; // Low volatility = green
+                    }
+                } else {
+                    volatilityElement.textContent = 'Loading...';
+                }
                 
                 // Update Ultimate Pressure
                 const pressureElement = document.getElementById('market-pressure');
@@ -783,21 +821,45 @@
             }
             
             updatePredictions(predictions) {
-                const container = document.getElementById('predictions-container');
                 if (predictions && predictions.length > 0) {
                     const latest = predictions[0];
-                    container.innerHTML = `
-                        <div class="data-item">
-                            <span class="data-label">Type:</span>
-                            <span class="data-value">${latest.prediction_type || 'Unknown'}</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Confidence:</span>
-                            <span class="data-value">${latest.confidence || 0}%</span>
-                        </div>
-                    `;
+                    // Update prediction status elements
+                    this.updateElement('prediction-status', '🔴 Active Predictions');
+                    this.updateElement('latest-signal', latest.prediction_type || latest.signal_type || 'Unknown');
+                    this.updateElement('signal-confidence', `${latest.confidence || 0}%`);
+                    this.updateElement('signal-direction', latest.direction || latest.signal || 'Unknown');
+                    
+                    // Update confidence color
+                    const confidenceElement = document.getElementById('signal-confidence');
+                    if (confidenceElement) {
+                        const confidence = parseFloat(latest.confidence || 0);
+                        if (confidence > 80) {
+                            confidenceElement.className = 'data-value trend-up';
+                        } else if (confidence > 60) {
+                            confidenceElement.className = 'data-value';
+                        } else {
+                            confidenceElement.className = 'data-value trend-down';
+                        }
+                    }
+                    
+                    // Update direction color
+                    const directionElement = document.getElementById('signal-direction');
+                    if (directionElement) {
+                        const direction = (latest.direction || latest.signal || '').toUpperCase();
+                        if (direction.includes('BUY') || direction.includes('BULLISH') || direction.includes('UP')) {
+                            directionElement.className = 'data-value trend-up';
+                        } else if (direction.includes('SELL') || direction.includes('BEARISH') || direction.includes('DOWN')) {
+                            directionElement.className = 'data-value trend-down';
+                        } else {
+                            directionElement.className = 'data-value';
+                        }
+                    }
                 } else {
-                    container.innerHTML = '<div class="data-item"><span class="data-label">Status:</span><span class="data-value">No predictions</span></div>';
+                    // No predictions available
+                    this.updateElement('prediction-status', '⚪ Waiting for signals');
+                    this.updateElement('latest-signal', 'None yet');
+                    this.updateElement('signal-confidence', 'N/A');
+                    this.updateElement('signal-direction', '-');
                 }
             }
             
