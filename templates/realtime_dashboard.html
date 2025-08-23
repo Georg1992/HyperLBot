@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HyperLBot - Real-Time Event-Driven Dashboard</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            text-align: center;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .connection-status {
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            display: inline-block;
+            margin-top: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        .status-connected {
+            background: linear-gradient(45deg, #28a745, #20c997);
+        }
+
+        .status-disconnected {
+            background: linear-gradient(45deg, #dc3545, #fd7e14);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            padding: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 20px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .card h2 {
+            color: #FFD700;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .data-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+        }
+
+        .data-label {
+            font-weight: 600;
+            color: #E0E0E0;
+        }
+
+        .data-value {
+            font-weight: bold;
+            color: #fff;
+        }
+
+        .price-big {
+            font-size: 2rem;
+            color: #4CAF50;
+            text-align: center;
+            margin: 10px 0;
+            text-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+
+        .trend-up {
+            color: #4CAF50;
+        }
+
+        .trend-down {
+            color: #f44336;
+        }
+
+        .trend-neutral {
+            color: #FF9800;
+        }
+
+        .log-container {
+            max-height: 300px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            padding: 10px;
+        }
+
+        .log-entry {
+            padding: 5px;
+            margin: 2px 0;
+            border-left: 3px solid #4CAF50;
+            background: rgba(255, 255, 255, 0.05);
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+        }
+
+        .orderbook-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .orderbook-table th,
+        .orderbook-table td {
+            padding: 5px 8px;
+            text-align: right;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .orderbook-table th {
+            background: rgba(255, 255, 255, 0.1);
+            color: #FFD700;
+        }
+
+        .bid-row {
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        .ask-row {
+            background: rgba(244, 67, 54, 0.1);
+        }
+
+        .update-indicator {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            z-index: 1000;
+            transition: all 0.3s ease;
+        }
+
+        .update-connected {
+            background: linear-gradient(45deg, #28a745, #20c997);
+        }
+
+        .update-updating {
+            background: linear-gradient(45deg, #ff9800, #ffc107);
+        }
+
+        .update-error {
+            background: linear-gradient(45deg, #dc3545, #fd7e14);
+        }
+
+        .manual-refresh {
+            background: linear-gradient(45deg, #007bff, #0056b3);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: transform 0.2s ease;
+        }
+
+        .manual-refresh:hover {
+            transform: scale(1.05);
+        }
+
+        .large-card {
+            grid-column: span 2;
+        }
+
+        @media (max-width: 768px) {
+            .large-card {
+                grid-column: span 1;
+            }
+            
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 HyperLBot Event-Driven Dashboard</h1>
+        <div id="connection-status" class="connection-status status-disconnected">
+            🔌 Connecting to real-time data...
+        </div>
+        <button class="manual-refresh" onclick="requestRefresh()">🔄 Manual Refresh</button>
+    </div>
+
+    <div id="update-indicator" class="update-indicator update-error">
+        ⏳ Initializing WebSocket connection...
+    </div>
+
+    <div class="dashboard-grid">
+        <!-- Session Status Card -->
+        <div class="card">
+            <h2>📊 Session Status</h2>
+            <div id="session-data">
+                <div class="data-item">
+                    <span class="data-label">Status:</span>
+                    <span class="data-value" id="session-status">Connecting...</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Strategy:</span>
+                    <span class="data-value" id="session-strategy">Loading...</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Session Time:</span>
+                    <span class="data-value" id="session-time">Loading...</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Balance:</span>
+                    <span class="data-value" id="session-balance">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Market Data Card -->
+        <div class="card">
+            <h2>📈 Market Data</h2>
+            <div class="price-big" id="current-price">Loading...</div>
+            <div id="market-data">
+                <div class="data-item">
+                    <span class="data-label">Trend:</span>
+                    <span class="data-value" id="market-trend">Loading...</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">RSI:</span>
+                    <span class="data-value" id="market-rsi">Loading...</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Volume:</span>
+                    <span class="data-value" id="market-volume">Loading...</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Volatility 5m:</span>
+                    <span class="data-value" id="market-volatility">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Trading Summary Card -->
+        <div class="card">
+            <h2>💰 Trading Summary</h2>
+            <div id="trading-summary">
+                <div class="data-item">
+                    <span class="data-label">Total Trades:</span>
+                    <span class="data-value" id="total-trades">0</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Winning Trades:</span>
+                    <span class="data-value trend-up" id="winning-trades">0</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Losing Trades:</span>
+                    <span class="data-value trend-down" id="losing-trades">0</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Balance Change:</span>
+                    <span class="data-value" id="balance-change">+$0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Orderbook Card -->
+        <div class="card">
+            <h2>📋 Order Book</h2>
+            <div id="orderbook-container">
+                <table class="orderbook-table">
+                    <thead>
+                        <tr>
+                            <th>Price</th>
+                            <th>Size</th>
+                            <th>Total</th>
+                        </tr>
+                    </thead>
+                    <tbody id="orderbook-asks">
+                        <tr><td colspan="3">Loading asks...</td></tr>
+                    </tbody>
+                    <tbody id="orderbook-bids">
+                        <tr><td colspan="3">Loading bids...</td></tr>
+                    </tbody>
+                </table>
+                <div class="data-item">
+                    <span class="data-label">Spread:</span>
+                    <span class="data-value" id="orderbook-spread">Loading...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Logs Card -->
+        <div class="card large-card">
+            <h2>📝 Real-Time Activity</h2>
+            <div class="log-container" id="activity-logs">
+                <div class="log-entry">Connecting to real-time data stream...</div>
+            </div>
+        </div>
+
+        <!-- Predictions Card -->
+        <div class="card">
+            <h2>🔮 Predictions</h2>
+            <div id="predictions-container">
+                <div class="data-item">
+                    <span class="data-label">Latest Prediction:</span>
+                    <span class="data-value">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket Real-Time Dashboard Manager
+        class RealTimeDashboard {
+            constructor() {
+                this.socket = null;
+                this.isConnected = false;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                this.lastUpdateTime = null;
+                
+                this.initializeWebSocket();
+            }
+            
+            initializeWebSocket() {
+                console.log('🔌 Initializing WebSocket connection...');
+                
+                // Initialize Socket.IO
+                this.socket = io();
+                
+                // Connection event handlers
+                this.socket.on('connect', () => {
+                    console.log('✅ WebSocket connected!');
+                    this.isConnected = true;
+                    this.reconnectAttempts = 0;
+                    this.updateConnectionStatus('🔴 Live Data Stream', 'connected');
+                    this.updateIndicator('✅ Real-time updates active', 'connected');
+                });
+                
+                this.socket.on('disconnect', () => {
+                    console.log('❌ WebSocket disconnected');
+                    this.isConnected = false;
+                    this.updateConnectionStatus('🔌 Reconnecting...', 'disconnected');
+                    this.updateIndicator('❌ Connection lost - reconnecting...', 'error');
+                });
+                
+                this.socket.on('connect_error', (error) => {
+                    console.error('❌ WebSocket connection error:', error);
+                    this.reconnectAttempts++;
+                    this.updateIndicator(`❌ Connection error (${this.reconnectAttempts}/${this.maxReconnectAttempts})`, 'error');
+                });
+                
+                // Data event handlers
+                this.socket.on('initial_data', (data) => {
+                    console.log('📤 Received initial data:', data);
+                    this.updateAllData(data);
+                    this.updateIndicator('✅ Initial data loaded', 'connected');
+                });
+                
+                this.socket.on('data_update', (data) => {
+                    console.log('🔄 Received data update:', data);
+                    this.updateAllData(data);
+                    this.lastUpdateTime = new Date();
+                    this.updateIndicator(`✅ Updated: ${this.lastUpdateTime.toLocaleTimeString()}`, 'connected');
+                });
+            }
+            
+            updateConnectionStatus(message, status) {
+                const statusElement = document.getElementById('connection-status');
+                statusElement.textContent = message;
+                statusElement.className = `connection-status status-${status}`;
+            }
+            
+            updateIndicator(message, status) {
+                const indicator = document.getElementById('update-indicator');
+                indicator.textContent = message;
+                indicator.className = `update-indicator update-${status}`;
+            }
+            
+            updateAllData(data) {
+                try {
+                    // Update session data
+                    if (data.session) {
+                        this.updateSessionData(data.session);
+                    }
+                    
+                    // Update market data
+                    if (data.market) {
+                        this.updateMarketData(data.market);
+                    }
+                    
+                    // Update trading summary
+                    if (data.summary) {
+                        this.updateTradingSummary(data.summary);
+                    }
+                    
+                    // Update orderbook
+                    if (data.orderbook) {
+                        this.updateOrderbook(data.orderbook);
+                    }
+                    
+                    // Update activity logs
+                    if (data.logs) {
+                        this.updateActivityLogs(data.logs);
+                    }
+                    
+                    // Update predictions
+                    if (data.predictions) {
+                        this.updatePredictions(data.predictions);
+                    }
+                    
+                } catch (error) {
+                    console.error('❌ Error updating dashboard data:', error);
+                    this.updateIndicator('❌ Data update error', 'error');
+                }
+            }
+            
+            updateSessionData(session) {
+                document.getElementById('session-status').textContent = session.status || 'UNKNOWN';
+                document.getElementById('session-strategy').textContent = session.strategy || 'Unknown';
+                document.getElementById('session-balance').textContent = 
+                    session.current_balance ? `$${parseFloat(session.current_balance).toFixed(2)}` : 'Loading...';
+                
+                if (session.started_at) {
+                    const startTime = new Date(session.started_at);
+                    const elapsed = new Date() - startTime;
+                    const minutes = Math.floor(elapsed / 60000);
+                    document.getElementById('session-time').textContent = `${minutes} minutes`;
+                } else {
+                    document.getElementById('session-time').textContent = 'Not started';
+                }
+            }
+            
+            updateMarketData(market) {
+                // Update price
+                if (market.current_price) {
+                    document.getElementById('current-price').textContent = 
+                        `$${parseFloat(market.current_price).toLocaleString()}`;
+                }
+                
+                // Update trend
+                const trendElement = document.getElementById('market-trend');
+                trendElement.textContent = market.trend || 'UNKNOWN';
+                trendElement.className = 'data-value ' + this.getTrendClass(market.trend);
+                
+                // Update RSI
+                document.getElementById('market-rsi').textContent = 
+                    market.rsi ? `${parseFloat(market.rsi).toFixed(1)}` : 'Loading...';
+                
+                // Update Volume
+                document.getElementById('market-volume').textContent = 
+                    market.volume_depth ? 
+                    `${parseFloat(market.volume_depth).toFixed(1)} BTC (${market.volume_category || 'UNKNOWN'})` : 
+                    'Loading...';
+                
+                // Update Volatility
+                document.getElementById('market-volatility').textContent = 
+                    market.volatility_5m ? `${(parseFloat(market.volatility_5m) * 100).toFixed(2)}%` : 'Loading...';
+            }
+            
+            updateTradingSummary(summary) {
+                document.getElementById('total-trades').textContent = summary.total_trades || 0;
+                document.getElementById('winning-trades').textContent = summary.winning_trades || 0;
+                document.getElementById('losing-trades').textContent = summary.losing_trades || 0;
+                
+                const balanceChange = parseFloat(summary.balance_change || 0);
+                const balanceChangeElement = document.getElementById('balance-change');
+                balanceChangeElement.textContent = 
+                    `${balanceChange >= 0 ? '+' : ''}$${balanceChange.toFixed(2)} (${(summary.balance_change_pct || 0).toFixed(2)}%)`;
+                balanceChangeElement.className = 'data-value ' + (balanceChange >= 0 ? 'trend-up' : 'trend-down');
+            }
+            
+            updateOrderbook(orderbook) {
+                if (orderbook && !orderbook.error) {
+                    // Update asks
+                    const asksContainer = document.getElementById('orderbook-asks');
+                    asksContainer.innerHTML = '';
+                    (orderbook.asks || []).slice(0, 5).forEach(ask => {
+                        const row = document.createElement('tr');
+                        row.className = 'ask-row';
+                        row.innerHTML = `
+                            <td>$${ask.price.toLocaleString()}</td>
+                            <td>${ask.size.toFixed(3)}</td>
+                            <td>${ask.total.toFixed(3)}</td>
+                        `;
+                        asksContainer.appendChild(row);
+                    });
+                    
+                    // Update bids
+                    const bidsContainer = document.getElementById('orderbook-bids');
+                    bidsContainer.innerHTML = '';
+                    (orderbook.bids || []).slice(0, 5).forEach(bid => {
+                        const row = document.createElement('tr');
+                        row.className = 'bid-row';
+                        row.innerHTML = `
+                            <td>$${bid.price.toLocaleString()}</td>
+                            <td>${bid.size.toFixed(3)}</td>
+                            <td>${bid.total.toFixed(3)}</td>
+                        `;
+                        bidsContainer.appendChild(row);
+                    });
+                    
+                    // Update spread
+                    document.getElementById('orderbook-spread').textContent = 
+                        orderbook.spread ? `$${orderbook.spread.toFixed(2)} (${orderbook.spread_pct.toFixed(3)}%)` : 'Loading...';
+                } else {
+                    document.getElementById('orderbook-asks').innerHTML = '<tr><td colspan="3">Error loading orderbook</td></tr>';
+                    document.getElementById('orderbook-bids').innerHTML = '<tr><td colspan="3">Error loading orderbook</td></tr>';
+                }
+            }
+            
+            updateActivityLogs(logs) {
+                const container = document.getElementById('activity-logs');
+                container.innerHTML = '';
+                
+                (logs || []).slice(-15).forEach(log => {
+                    const logEntry = document.createElement('div');
+                    logEntry.className = 'log-entry';
+                    
+                    const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Unknown';
+                    logEntry.innerHTML = `<strong>[${timestamp}]</strong> ${log.message || 'No message'}`;
+                    
+                    container.appendChild(logEntry);
+                });
+                
+                // Auto-scroll to bottom
+                container.scrollTop = container.scrollHeight;
+            }
+            
+            updatePredictions(predictions) {
+                const container = document.getElementById('predictions-container');
+                if (predictions && predictions.length > 0) {
+                    const latest = predictions[0];
+                    container.innerHTML = `
+                        <div class="data-item">
+                            <span class="data-label">Type:</span>
+                            <span class="data-value">${latest.prediction_type || 'Unknown'}</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Confidence:</span>
+                            <span class="data-value">${latest.confidence || 0}%</span>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = '<div class="data-item"><span class="data-label">Status:</span><span class="data-value">No predictions</span></div>';
+                }
+            }
+            
+            getTrendClass(trend) {
+                if (!trend) return 'trend-neutral';
+                const trendUpper = trend.toUpperCase();
+                if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY')) {
+                    return 'trend-up';
+                } else if (trendUpper.includes('DOWN') || trendUpper.includes('BEAR') || trendUpper.includes('SELL')) {
+                    return 'trend-down';
+                }
+                return 'trend-neutral';
+            }
+            
+            requestManualRefresh() {
+                if (this.socket && this.isConnected) {
+                    console.log('🔄 Requesting manual refresh...');
+                    this.socket.emit('request_manual_refresh');
+                    this.updateIndicator('🔄 Manual refresh requested...', 'updating');
+                } else {
+                    console.warn('❌ Cannot refresh - not connected');
+                    this.updateIndicator('❌ Cannot refresh - not connected', 'error');
+                }
+            }
+        }
+        
+        // Initialize dashboard when page loads
+        let dashboard;
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 Initializing Real-Time Dashboard...');
+            dashboard = new RealTimeDashboard();
+        });
+        
+        // Global function for manual refresh button
+        function requestRefresh() {
+            if (dashboard) {
+                dashboard.requestManualRefresh();
+            }
+        }
+    </script>
+</body>
+</html>
