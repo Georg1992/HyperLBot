@@ -58,8 +58,10 @@ class EventDrivenTradingDashboard:
         @self.socketio.on('connect')
         def handle_connect():
             """Handle new WebSocket connection"""
-            logger.info(f"🌐 Dashboard client connected from {request.remote_addr}")
+            logger.error(f"🚨 WEBSOCKET CONNECT: Client from {request.remote_addr}, SID = {request.sid}")
             self.active_connections.add(request.sid)
+            logger.error(f"🚨 WEBSOCKET CONNECT: Active connections now = {len(self.active_connections)}")
+            logger.info(f"🌐 Dashboard client connected from {request.remote_addr}")
             
             # Force fresh data retrieval and send to new connection
             logger.info("🔄 Forcing fresh data retrieval for new connection")
@@ -86,8 +88,10 @@ class EventDrivenTradingDashboard:
         @self.socketio.on('disconnect')
         def handle_disconnect():
             """Handle WebSocket disconnection"""
-            logger.info(f"📱 Dashboard client disconnected")
+            logger.error(f"🚨 WEBSOCKET DISCONNECT: SID = {request.sid}")
             self.active_connections.discard(request.sid)
+            logger.error(f"🚨 WEBSOCKET DISCONNECT: Active connections now = {len(self.active_connections)}")
+            logger.info(f"📱 Dashboard client disconnected")
         
         @self.socketio.on('request_manual_refresh')
         def handle_manual_refresh():
