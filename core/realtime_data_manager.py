@@ -87,9 +87,13 @@ class RealTimeTradingDataManager:
         }
         
         # Historical data (in-memory for speed)
-        self.recent_trades = deque(maxlen=100)  # Last 100 trades
-        self.recent_signals = deque(maxlen=50)   # Last 50 signals
-        self.recent_activity = deque(maxlen=50)  # Last 50 activities
+        self.MAX_TRADES = 100
+        self.MAX_SIGNALS = 50
+        self.MAX_ACTIVITY = 50
+        
+        self.recent_trades = deque(maxlen=self.MAX_TRADES)  # Last 100 trades
+        self.recent_signals = deque(maxlen=self.MAX_SIGNALS)   # Last 50 signals
+        self.recent_activity = deque(maxlen=self.MAX_ACTIVITY)  # Last 50 activities
         self.open_positions = []
         
 
@@ -404,6 +408,8 @@ class RealTimeTradingDataManager:
             
             logger.info(f"🎯 Signal recorded: {signal_record['signal_type']} {signal_record['side']} @ {signal_record['confidence']:.1%}")
             self._notify_subscribers("signal_added", signal_record)
+            # Save to file for cross-process sharing
+            self._save_to_json_file()
     
     def add_activity(self, activity_data: Dict[str, Any]):
         """Add general bot activity"""
@@ -419,12 +425,16 @@ class RealTimeTradingDataManager:
             self.recent_activity.append(activity_record)
             logger.debug(f"📊 RTM: Activity added - {activity_record['message']} (total: {len(self.recent_activity)})")
             self._notify_subscribers("activity_added", activity_record)
+            # Save to file for cross-process sharing
+            self._save_to_json_file()
     
     def update_predictions(self, predictions_data: List[Dict[str, Any]]):
         """Update current trading predictions"""
         with self.data_lock:
             self.current_state["predictions"] = predictions_data
             self._notify_subscribers("predictions_updated", predictions_data)
+            # Save to file for cross-process sharing
+            self._save_to_json_file()
     
     def update_open_positions(self, positions: List[Dict[str, Any]]):
         """Update open positions"""
@@ -439,6 +449,9 @@ class RealTimeTradingDataManager:
         with self.data_lock:
             # Calculate performance metrics
             self._update_performance_metrics()
+            
+            # Try to load from file for cross-process sharing
+            self._load_from_json_file()
             
             return {
                 "session": self.current_state["session"].copy(),
@@ -497,6 +510,9 @@ class RealTimeTradingDataManager:
         })
         
         # Calculate profit factor
+        
+        # Save to JSON file for cross-process sharing
+        self._save_to_json_file()
         total_wins = sum(t["pnl"] for t in profitable_trades)
         total_losses = abs(sum(t["pnl"] for t in losing_trades))
         self.performance_metrics["profit_factor"] = total_wins / total_losses if total_losses > 0 else float('inf')
@@ -591,6 +607,61 @@ class RealTimeTradingDataManager:
             return {"period_days": days, "total_trades": 0, "error": str(e)}
     
 
+
+    # FILE SHARING METHODS (for cross-process communication)
+    def _save_to_json_file(self):
+        """Save current state to JSON file for cross-process sharing"""
+        try:
+            # Create a simplified state for file sharing
+            file_state = {
+                "session": self.current_state["session"],
+                "predictions": self.current_state["predictions"],
+                "recent_activity": list(self.recent_activity),
+                "recent_signals": list(self.recent_signals),
+                "recent_trades": list(self.recent_trades),
+                "last_update": time.time()
+            }
+            
+            # Save to JSON file
+            json_file_path = os.path.join(os.path.dirname(__file__), "..", "rtm_state.json")
+            with open(json_file_path, 'w') as f:
+                json.dump(file_state, f, indent=2, default=str)
+                
+        except Exception as e:
+            logger.debug(f"Error saving to JSON file: {e}")
+    
+    def _load_from_json_file(self):
+        """Load state from JSON file for cross-process sharing"""
+        try:
+            json_file_path = os.path.join(os.path.dirname(__file__), "..", "rtm_state.json")
+            if os.path.exists(json_file_path):
+                with open(json_file_path, 'r') as f:
+                    file_state = json.load(f)
+                
+                # Update current state with file data
+                if file_state.get("session"):
+                    self.current_state["session"].update(file_state["session"])
+                
+                # Load predictions
+                if file_state.get("predictions"):
+                    self.current_state["predictions"] = file_state["predictions"]
+                
+                # Load activity
+                if file_state.get("recent_activity"):
+                    self.recent_activity = deque(file_state["recent_activity"], maxlen=self.MAX_ACTIVITY)
+                
+                # Load signals
+                if file_state.get("recent_signals"):
+                    self.recent_signals = deque(file_state["recent_signals"], maxlen=self.MAX_SIGNALS)
+                
+                # Load recent trades
+                if file_state.get("recent_trades"):
+                    self.recent_trades = deque(file_state["recent_trades"], maxlen=self.MAX_TRADES)
+                    
+                logger.debug(f"Loaded state from JSON file: {len(file_state.get('predictions', []))} predictions, {len(file_state.get('recent_activity', []))} activities")
+                
+        except Exception as e:
+            logger.debug(f"Error loading from JSON file: {e}")
 
     # UTILITY METHODS
     def clear_all_data(self):

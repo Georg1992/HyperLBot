@@ -1,0 +1,165 @@
+{
+  "session": {
+    "session_id": "session_1755947851",
+    "start_time": "2025-08-23T14:17:31.821211",
+    "status": "ACTIVE",
+    "strategy": "standard",
+    "initial_balance": 120.0,
+    "current_balance": 120.0,
+    "balance_change": 0.0,
+    "balance_change_pct": 0.0,
+    "last_balance_update": "2025-08-23T14:17:31.821211",
+    "bot_version": "Advanced Trading Bot v4.0",
+    "open_positions_count": 0,
+    "total_trades": 0,
+    "winning_trades": 0,
+    "losing_trades": 0
+  },
+  "predictions": [
+    {
+      "type": "ANALYSIS",
+      "side": "HOLD",
+      "confidence": 0,
+      "reason": "Variability analysis: Poor trading conditions: POOR_TRADING_CONDITIONS",
+      "entry_price": 115631.5,
+      "timestamp": 1755947952.7575865,
+      "market_condition": "LOW_VOLATILITY",
+      "analysis_active": true
+    }
+  ],
+  "recent_activity": [
+    {
+      "type": "startup",
+      "message": "\ud83d\ude80 Trading bot started - standard strategy with $120.00 initial balance",
+      "level": "SUCCESS",
+      "timestamp": 1755947851.8222778,
+      "datetime": "2025-08-23T14:17:31.822278"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udd0d Analyzing market conditions at $115631.50",
+      "level": "INFO",
+      "timestamp": 1755947857.7742913,
+      "datetime": "2025-08-23T14:17:37.774291"
+    },
+    {
+      "type": "prediction",
+      "message": "\ud83d\udd2e Traditional prediction: SELL signal with 50.4% confidence",
+      "level": "INFO",
+      "timestamp": 1755947863.272486,
+      "datetime": "2025-08-23T14:17:43.272486"
+    },
+    {
+      "type": "signal",
+      "message": "\ud83d\ude80 SELL signal: TRADITIONAL: WEAK_MOMENTUM_DOWN - Gradual bear mom...",
+      "level": "SUCCESS",
+      "timestamp": 1755947863.274896,
+      "datetime": "2025-08-23T14:17:43.274895"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udd0d Analyzing market conditions at $115631.50",
+      "level": "INFO",
+      "timestamp": 1755947875.2425797,
+      "datetime": "2025-08-23T14:17:55.242579"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udcca Analysis complete: Too soon since last trade (need 60s)",
+      "level": "INFO",
+      "timestamp": 1755947877.2650497,
+      "datetime": "2025-08-23T14:17:57.265049"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udd0d Analyzing market conditions at $115631.50",
+      "level": "INFO",
+      "timestamp": 1755947888.257708,
+      "datetime": "2025-08-23T14:18:08.257708"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udcca Analysis complete: Too soon since last trade (need 60s)",
+      "level": "INFO",
+      "timestamp": 1755947889.92608,
+      "datetime": "2025-08-23T14:18:09.926080"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udd0d Analyzing market conditions at $115631.50",
+      "level": "INFO",
+      "timestamp": 1755947901.7089407,
+      "datetime": "2025-08-23T14:18:21.708940"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udcca Analysis complete: Too soon since last trade (need 60s)",
+      "level": "INFO",
+      "timestamp": 1755947903.4003124,
+      "datetime": "2025-08-23T14:18:23.400312"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udd0d Analyzing market conditions at $115631.50",
+      "level": "INFO",
+      "timestamp": 1755947915.3948405,
+      "datetime": "2025-08-23T14:18:35.394840"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udcca Analysis complete: Too soon since last trade (need 60s)",
+      "level": "INFO",
+      "timestamp": 1755947917.6003652,
+      "datetime": "2025-08-23T14:18:37.600365"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udd0d Analyzing market conditions at $115631.50",
+      "level": "INFO",
+      "timestamp": 1755947928.99267,
+      "datetime": "2025-08-23T14:18:48.992670"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udcca Analysis complete: Variability analysis: Poor trading conditions: POOR_TRADING_CONDITIONS",
+      "level": "INFO",
+      "timestamp": 1755947935.4625978,
+      "datetime": "2025-08-23T14:18:55.462598"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udd0d Analyzing market conditions at $115631.50",
+      "level": "INFO",
+      "timestamp": 1755947947.3629408,
+      "datetime": "2025-08-23T14:19:07.362940"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udcca Analysis complete: Variability analysis: Poor trading conditions: POOR_TRADING_CONDITIONS",
+      "level": "INFO",
+      "timestamp": 1755947952.7575865,
+      "datetime": "2025-08-23T14:19:12.757586"
+    },
+    {
+      "type": "analysis",
+      "message": "\ud83d\udd0d Analyzing market conditions at $115631.50",
+      "level": "INFO",
+      "timestamp": 1755947963.8758852,
+      "datetime": "2025-08-23T14:19:23.875885"
+    }
+  ],
+  "recent_signals": [
+    {
+      "signal_type": "TRADITIONAL",
+      "side": "SELL",
+      "entry_price": 115631.5,
+      "confidence": 0.5041637477286961,
+      "timeframe": 0,
+      "reason": "TRADITIONAL: WEAK_MOMENTUM_DOWN - Gradual bear momentum detected (1h:DOWN, 5m:SIDEWAYS, strength:0.011) (ADJUSTED: price not moving toward entry, set to $115,978.39)",
+      "was_executed": false,
+      "timestamp": 1755947863.2688973
+    }
+  ],
+  "recent_trades": [],
+  "last_update": 1755947963.8768866
+}

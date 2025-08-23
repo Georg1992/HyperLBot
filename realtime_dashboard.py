@@ -100,10 +100,6 @@ class EventDrivenTradingDashboard:
             
         if self._rtm is None:
             try:
-                # Force reload of the singleton instance
-                import importlib
-                import core.realtime_data_manager
-                importlib.reload(core.realtime_data_manager)
                 from core.realtime_data_manager import trading_data_manager
                 self._rtm = trading_data_manager
                 self._rtm_available = True
@@ -279,7 +275,45 @@ class EventDrivenTradingDashboard:
             }
     
     def _get_session_data(self) -> Dict[str, Any]:
-        """Get session data from latest session metadata"""
+        """Get session data from real-time manager, not from logs"""
+        try:
+            # Try to get data from real-time manager first
+            rtm = self._get_realtime_manager()
+            if rtm:
+                current_state = rtm.get_current_state()
+                session_data = current_state["session"]
+                
+                # Calculate session duration from start time
+                start_time = datetime.fromisoformat(session_data["start_time"])
+                session_duration = datetime.now() - start_time
+                session_minutes = int(session_duration.total_seconds() / 60)
+                
+                return {
+                    "session_id": session_data["session_id"],
+                    "start_time": session_data["start_time"],
+                    "status": session_data["status"],
+                    "strategy": session_data["strategy"],
+                    "session_time": f"{session_minutes}m",
+                    "initial_balance": session_data["initial_balance"],
+                    "current_balance": session_data["current_balance"],
+                    "balance_change": session_data["current_balance"] - session_data["initial_balance"],
+                    "balance_change_pct": ((session_data["current_balance"] - session_data["initial_balance"]) / session_data["initial_balance"] * 100) if session_data["initial_balance"] > 0 else 0,
+                    "last_balance_update": session_data.get("last_balance_update", datetime.now().isoformat()),
+                    "bot_version": session_data["bot_version"],
+                    "total_trades": session_data["total_trades"],
+                    "winning_trades": session_data["winning_trades"],
+                    "losing_trades": session_data["losing_trades"]
+                }
+            
+            # Only fallback to logs if real-time manager is not available
+            return self._get_session_data_from_logs()
+            
+        except Exception as e:
+            logger.error(f"Session data error: {e}")
+            return self._get_session_data_from_logs()
+    
+    def _get_session_data_from_logs(self) -> Dict[str, Any]:
+        """Fallback: Get session data from logs (only when real-time manager unavailable)"""
         try:
             # Find the latest session metadata file
             session_files = [f for f in os.listdir(self.log_dir) if f.startswith("session_metadata_") and f.endswith(".json")]
@@ -298,14 +332,14 @@ class EventDrivenTradingDashboard:
                 return {
                     "session_id": session_data["session_id"],
                     "start_time": session_data["start_time"],
-                    "status": "ACTIVE",  # Assume active if we have recent metadata
+                    "status": "STOPPED",  # Mark as stopped if reading from logs
                     "strategy": session_data["strategy"],
                     "session_time": f"{session_minutes}m",
                     "initial_balance": session_data["initial_balance"],
-                    "current_balance": session_data["current_balance"],
-                    "balance_change": session_data["balance_change"],
-                    "balance_change_pct": session_data["balance_change_pct"],
-                    "last_balance_update": session_data["last_balance_update"],
+                    "current_balance": session_data.get("current_balance", session_data["initial_balance"]),
+                    "balance_change": session_data.get("balance_change", 0.0),
+                    "balance_change_pct": session_data.get("balance_change_pct", 0.0),
+                    "last_balance_update": session_data.get("last_balance_update", datetime.now().isoformat()),
                     "bot_version": session_data["bot_version"],
                     "total_trades": 0,  # Will be updated by real-time manager
                     "winning_trades": 0,
@@ -331,7 +365,7 @@ class EventDrivenTradingDashboard:
             }
             
         except Exception as e:
-            logger.error(f"Session data error: {e}")
+            logger.error(f"Session data from logs error: {e}")
             return {
                 "session_id": f"session_{int(time.time())}",
                 "start_time": datetime.now().isoformat(),
@@ -428,8 +462,29 @@ class EventDrivenTradingDashboard:
             }
     
     def _get_activity_logs(self) -> List[Dict]:
-        """Get recent activity logs"""
+        """Get recent activity logs from real-time manager"""
         try:
+            # Try to get activity logs from real-time manager first
+            rtm = self._get_realtime_manager()
+            if rtm:
+                current_state = rtm.get_current_state()
+                recent_activity = list(current_state.get("recent_activity", []))
+                
+                if recent_activity:
+                    # Convert real-time activity to dashboard format
+                    logs = []
+                    for activity in recent_activity[-20:]:  # Last 20 activities
+                        log_entry = {
+                            "timestamp": datetime.fromtimestamp(activity.get("timestamp", time.time())).isoformat(),
+                            "message": activity.get("message", "No message"),
+                            "source": activity.get("type", "real_time"),
+                            "level": activity.get("level", "INFO")
+                        }
+                        logs.append(log_entry)
+                    
+                    return logs
+            
+            # Fallback to log files only if real-time manager not available
             logs = []
             log_files = ["market_analysis.log", "trading_actions.log", "signals.log"]
             
@@ -502,9 +557,32 @@ class EventDrivenTradingDashboard:
         }
     
     def _get_predictions_data(self) -> List[Dict]:
-        """Get predictions data"""
+        """Get predictions data from real-time manager"""
         try:
-            # Check if bot is running and has predictions
+            # Try to get predictions from real-time manager first
+            rtm = self._get_realtime_manager()
+            if rtm:
+                current_state = rtm.get_current_state()
+                predictions = current_state.get("predictions", [])
+                
+                if predictions:
+                    # Convert real-time predictions to dashboard format
+                    dashboard_predictions = []
+                    for pred in predictions[-5:]:  # Last 5 predictions
+                        dashboard_pred = {
+                            "signal_type": pred.get("type", "UNKNOWN"),
+                            "direction": pred.get("side", "NEUTRAL"),
+                            "confidence": pred.get("confidence", 0) * 100 if pred.get("confidence") else 0,
+                            "prediction_type": pred.get("reason", "Live Signal"),
+                            "timestamp": datetime.fromtimestamp(pred.get("timestamp", time.time())).isoformat(),
+                            "message": pred.get("reason", "Live trading signal"),
+                            "data_source": "real_time_active"
+                        }
+                        dashboard_predictions.append(dashboard_pred)
+                    
+                    return dashboard_predictions
+            
+            # Fallback to log files only if real-time manager not available
             prediction_files = [f for f in os.listdir(self.log_dir) if "predictions" in f.lower() and f.endswith(".json")]
             
             if prediction_files:
@@ -541,8 +619,35 @@ class EventDrivenTradingDashboard:
             }]
     
     def _get_trades_data(self) -> List[Dict]:
-        """Get trade history data from latest trade logs"""
+        """Get trade history data from real-time manager"""
         try:
+            # Try to get trades from real-time manager first
+            rtm = self._get_realtime_manager()
+            if rtm:
+                current_state = rtm.get_current_state()
+                recent_trades = list(current_state.get("recent_trades", []))
+                
+                if recent_trades:
+                    # Convert real-time trades to dashboard format
+                    dashboard_trades = []
+                    for trade in recent_trades[-50:]:  # Last 50 trades
+                        dashboard_trade = {
+                            "id": trade.get("trade_id", "unknown"),
+                            "side": trade.get("side", "UNKNOWN"),
+                            "symbol": "BTC",
+                            "status": "CLOSED" if trade.get("exit_time") else "OPEN",
+                            "price": trade.get("entry_price", 0),
+                            "size": trade.get("size", 0),
+                            "timestamp": datetime.fromtimestamp(trade.get("entry_time", time.time())).isoformat(),
+                            "type": "MARKET",
+                            "pnl": trade.get("pnl", 0),
+                            "confidence": trade.get("confidence", 0) * 100 if trade.get("confidence") else 0
+                        }
+                        dashboard_trades.append(dashboard_trade)
+                    
+                    return dashboard_trades
+            
+            # Fallback to log files only if real-time manager not available
             trades = []
             
             # Try to get trades from the latest trade log file
@@ -585,7 +690,7 @@ class EventDrivenTradingDashboard:
                         "type": "INFO",
                         "pnl": 0,
                         "confidence": 0,
-                        "message": "No trades found in current session. Check if trading bot is running."
+                        "message": "No trades found. Start the trading bot to see live trades."
                     }
                 ]
             
