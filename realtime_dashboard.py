@@ -63,6 +63,10 @@ class EventDrivenTradingDashboard:
             logger.error(f"🚨 WEBSOCKET CONNECT: Active connections now = {len(self.active_connections)}")
             logger.info(f"🌐 Dashboard client connected from {request.remote_addr}")
             
+            # CRITICAL FIX: Clear any cached data hash to force fresh session retrieval
+            self.last_data_hash.clear()
+            logger.error("🚨 CRITICAL FIX: Cleared all cached data hash on new connection")
+            
             # Force fresh data retrieval and send to new connection
             logger.info("🔄 Forcing fresh data retrieval for new connection")
             fresh_data = self._get_dashboard_data()
