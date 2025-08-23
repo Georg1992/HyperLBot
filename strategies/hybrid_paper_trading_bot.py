@@ -116,37 +116,8 @@ class YahooHyperliquidPaperTradingBot:
             self.account_manager = account_manager
             # Note: SmartDataCache will be initialized AFTER API connection test
             
-            # INITIALIZE ULTIMATE INTELLIGENCE SYSTEMS
-            try:
-                from strategies.ml_prediction_engine import MLPredictionEngine
-                from strategies.bitcoin_pattern_engine import BitcoinPatternEngine
-                from strategies.master_fusion_engine import MasterFusionEngine
-                
-                self.ml_engine = MLPredictionEngine(self.strategy_config)
-                self.btc_pattern_engine = BitcoinPatternEngine(self.strategy_config)
-                self.master_fusion_engine = MasterFusionEngine(self.strategy_config)
-                
-                # Connect all engines to the master fusion engine
-                self.master_fusion_engine.initialize_engines({
-                    "ml_engine": self.ml_engine,
-                    "btc_pattern_engine": self.btc_pattern_engine,
-                    "prediction_engine": self.prediction_engine,
-                    "variability_analyzer": self.variability_analyzer,
-                    "trade_manager": self.trade_manager,
-                    "whale_integration": self.whale_integration
-                })
-                
-                logger.success("🧠 ULTIMATE INTELLIGENCE SYSTEMS ACTIVATED:")
-                logger.success("   🤖 ML Prediction Engine - Advanced machine learning models")
-                logger.success("   🏗️ Bitcoin Pattern Engine - BTC-specific pattern recognition")
-                logger.success("   🧠 Master Fusion Engine - Ultimate trading intelligence")
-                logger.info(f"   DEBUG: Fusion Engine initialized: {self.master_fusion_engine is not None}")
-                
-            except ImportError as e:
-                logger.warning(f"Ultimate intelligence systems not available: {e}")
-                self.ml_engine = None
-                self.btc_pattern_engine = None
-                self.master_fusion_engine = None
+            # Simplified intelligence systems - removed over-engineered components
+            logger.info("🧠 Core prediction systems initialized: Prediction Engine + Variability Analyzer + Trade Manager + Whale Integration")
                 
             # Initialize Real-Time P&L Tracker
             try:
@@ -164,8 +135,7 @@ class YahooHyperliquidPaperTradingBot:
                 # Inject dependencies
                 self.active_position_manager.inject_dependencies(
                     pnl_tracker=self.pnl_tracker,
-                    hyperliquid_api=self.hyperliquid_api,
-                    prediction_engines={"master_fusion": self.master_fusion_engine}
+                    hyperliquid_api=self.hyperliquid_api
                 )
                 self.active_position_manager.start_monitoring()
                 logger.success("🤖 Active Position Manager activated - Intelligent trade monitoring active")
@@ -190,9 +160,6 @@ class YahooHyperliquidPaperTradingBot:
                 except ImportError:
                     self.account_manager = None
             self.smart_data_cache = None  # Ensure attribute exists
-            self.ml_engine = None
-            self.btc_pattern_engine = None
-            self.master_fusion_engine = None
             self.pnl_tracker = None
             self.active_position_manager = None
         
@@ -269,7 +236,7 @@ class YahooHyperliquidPaperTradingBot:
             try:
                 from core.account_manager import account_manager
                 self.account_manager = account_manager
-                logger.debug("✅ Account manager initialized")
+
             except ImportError as e:
                 logger.warning(f"⚠️ Account manager not available: {e}")
                 self.account_manager = None
@@ -793,8 +760,8 @@ class YahooHyperliquidPaperTradingBot:
         enhanced_analysis["prediction_analysis"] = prediction_analysis
         logger.info(f"🔮 PREDICTION ENGINE: Generated analysis with keys: {list(prediction_analysis.keys()) if prediction_analysis else 'None'}")
         
-        # 5. 🧠 MASTER FUSION ENGINE - ULTIMATE INTELLIGENCE ANALYSIS
-        if self.master_fusion_engine:
+        # 5. 🧠 MASTER FUSION ENGINE - REMOVED FOR SIMPLIFICATION 
+        if False:  # self.master_fusion_engine - DISABLED
             logger.info("🧠 Activating Master Fusion Engine for ultimate trading intelligence...")
             
             try:
