@@ -122,16 +122,22 @@ class EventDrivenTradingDashboard:
     def _get_realtime_manager(self):
         """Get real-time data manager with connection caching"""
         if self._rtm_available is False:
+            logger.error("🚨 DASHBOARD DEBUG: RTM marked as unavailable")
             return None
             
         if self._rtm is None:
             try:
+                logger.error("🚨 DASHBOARD DEBUG: Trying to import trading_data_manager...")
                 from core.realtime_data_manager import trading_data_manager
                 self._rtm = trading_data_manager
                 self._rtm_available = True
+                logger.error(f"🚨 DASHBOARD DEBUG: RTM imported successfully! RTM = {type(self._rtm)}")
                 logger.success("✅ Real-time data manager connected")
             except Exception as e:
+                logger.error(f"🚨 DASHBOARD DEBUG: RTM import failed: {e}")
                 logger.error(f"❌ Real-time data manager connection failed: {e}")
+                import traceback
+                traceback.print_exc()
                 self._rtm_available = False
                 return None
         
