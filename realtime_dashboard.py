@@ -181,8 +181,10 @@ class EventDrivenTradingDashboard:
         def monitor_data_changes():
             while True:
                 try:
+                    logger.error(f"🚨 DASHBOARD MONITOR: Active connections = {len(self.active_connections)}")
                     if self.active_connections:
                         # Check for data changes
+                        logger.error("🚨 DASHBOARD MONITOR: Calling _get_dashboard_data()")
                         current_data = self._get_dashboard_data()
                         current_hash = self._calculate_data_hash(current_data)
                         
