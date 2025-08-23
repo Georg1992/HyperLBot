@@ -246,6 +246,8 @@ class EventDrivenTradingDashboard:
                 'volume': data.get('market', {}).get('volume_depth', 0),
                 'balance': data.get('session', {}).get('current_balance', 0),
                 'trades': data.get('session', {}).get('total_trades', 0),
+                'session_id': data.get('session', {}).get('session_id', ''),  # CRITICAL: Include session ID
+                'status': data.get('session', {}).get('status', ''),         # CRITICAL: Include status
                 'timestamp': data.get('timestamp', '')
             }
             return str(hash(json.dumps(hash_data, sort_keys=True)))
