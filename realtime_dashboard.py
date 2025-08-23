@@ -146,12 +146,10 @@ class EventDrivenTradingDashboard:
             # CRITICAL FIX: Force RTM to reload current state from file
             # This ensures we get the latest session data, not cached old data
             logger.error("🚨 DASHBOARD DEBUG: Forcing RTM state reload...")
-            try:
-                # Force reload the current state from file to get latest session
-                trading_data_manager._load_from_json_file()
-                logger.success("✅ RTM state reloaded from file")
-            except Exception as reload_error:
-                logger.warning(f"⚠️ RTM state reload failed: {reload_error}")
+            # REMOVED: Forced reload causes stale data mixing
+            # Don't force reload from file - RTM should manage its own state
+            # trading_data_manager._load_from_json_file()
+            logger.success("✅ RTM using current in-memory state")
             
             # Test basic functionality
             try:
