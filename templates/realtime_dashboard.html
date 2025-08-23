@@ -817,13 +817,20 @@
             
             updateActivityLogs(logs) {
                 const container = document.getElementById('activity-logs');
+                console.log('📊 Dashboard: Updating activity logs', logs ? logs.length : 0, 'entries');
+                
+                if (!logs || logs.length === 0) {
+                    container.innerHTML = '<div class="log-entry">🔍 Waiting for bot activity...</div>';
+                    return;
+                }
+                
                 container.innerHTML = '';
                 
-                (logs || []).slice(-15).forEach(log => {
+                logs.slice(-15).forEach(log => {
                     const logEntry = document.createElement('div');
                     logEntry.className = 'log-entry';
                     
-                    const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Unknown';
+                    const timestamp = log.timestamp ? new Date(log.timestamp * 1000).toLocaleTimeString() : 'Unknown';
                     logEntry.innerHTML = `<strong>[${timestamp}]</strong> ${log.message || 'No message'}`;
                     
                     container.appendChild(logEntry);

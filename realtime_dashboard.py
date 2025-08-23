@@ -203,16 +203,22 @@ class EventDrivenTradingDashboard:
                 current_state = rtm.get_current_state()
                 session_status = current_state["session"]["status"]
                 logger.debug(f"🔍 Real-time manager status: {session_status}")
+                logger.debug(f"🔍 Recent activity count: {len(current_state.get('recent_activity', []))}")
                 
                 if session_status == "ACTIVE":
                     # Bot is actively running - use live data
                     session_data = current_state["session"]
                     enhanced_balance = self._calculate_enhanced_balance(session_data)
                     
+                    activity_logs = current_state.get("recent_activity", [])
+                    logger.debug(f"📊 Sending {len(activity_logs)} activity logs to dashboard")
+                    if activity_logs:
+                        logger.debug(f"📊 Latest activity: {activity_logs[-1].get('message', 'No message')}")
+                    
                     return {
                         "session": {**session_data, **enhanced_balance},
                         "market": current_state["market"],
-                        "logs": current_state["recent_activity"],
+                        "logs": activity_logs,
                         "summary": {
                             "total_trades": session_data["total_trades"],
                             "winning_trades": session_data["winning_trades"],

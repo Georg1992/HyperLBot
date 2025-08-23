@@ -417,6 +417,7 @@ class RealTimeTradingDataManager:
             }
             
             self.recent_activity.append(activity_record)
+            logger.debug(f"📊 RTM: Activity added - {activity_record['message']} (total: {len(self.recent_activity)})")
             self._notify_subscribers("activity_added", activity_record)
     
     def update_predictions(self, predictions_data: List[Dict[str, Any]]):

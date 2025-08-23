@@ -790,6 +790,14 @@ class YahooHyperliquidPaperTradingBot:
                         }
                         self.trading_data_manager.add_trading_signal(fusion_prediction)
                         self.trading_data_manager.update_predictions([fusion_prediction])
+                        
+                        # Add fusion prediction activity
+                        self.trading_data_manager.add_activity({
+                            "timestamp": time.time(),
+                            "message": f"🧠 Fusion prediction: {fusion_signal.signal} signal with {fusion_signal.confidence*100:.1f}% confidence",
+                            "type": "fusion_prediction",
+                            "level": "INFO"
+                        })
                     
                     # Log fusion analysis
                     self.trading_logger.log_analysis({
@@ -889,7 +897,15 @@ class YahooHyperliquidPaperTradingBot:
             }
             self.trading_data_manager.add_trading_signal(traditional_prediction)
             self.trading_data_manager.update_predictions([traditional_prediction])
-            logger.info(f"📊 TRADITIONAL PREDICTION sent to dashboard: {signal_data['side']} - {signal_data.get('prediction_confidence', 0):.1%} confidence")
+            logger.info(f"📊 TRADITIONAL PREDICTION sent to dashboard: {signal_data['side']} - {signal_data.get('prediction_confidence', 0)*100:.1f}% confidence")
+            
+            # Also add prediction activity
+            self.trading_data_manager.add_activity({
+                "timestamp": time.time(),
+                "message": f"🔮 Traditional prediction: {signal_data['side']} signal with {signal_data.get('prediction_confidence', 0)*100:.1f}% confidence",
+                "type": "prediction",
+                "level": "INFO"
+            })
         
         self.last_signal_reason = signal_data["reason"]
         self.last_signal_price = hyperliquid_price
@@ -2692,6 +2708,14 @@ class YahooHyperliquidPaperTradingBot:
             )
             logger.success("🔥 Real-time data manager active - Dashboard connection established")
             logger.info(f"   📊 Dashboard will receive live predictions and market data")
+            
+            # Add initial activity log
+            self.trading_data_manager.add_activity({
+                "timestamp": time.time(),
+                "message": f"🚀 Trading bot started - {self.strategy_name} strategy with ${self.initial_balance:.2f} initial balance",
+                "type": "startup",
+                "level": "SUCCESS"
+            })
         else:
             logger.warning("⚠️ Real-time data manager not available - Dashboard will show offline data only")
         
@@ -2894,12 +2918,16 @@ class YahooHyperliquidPaperTradingBot:
                     
                     # Update dashboard with analysis activity
                     if self.trading_data_manager:
-                        self.trading_data_manager.add_activity({
+                        activity_data = {
                             "timestamp": current_time,
                             "message": f"🔍 Analyzing market conditions at ${hyperliquid_price:.2f}",
                             "type": "analysis",
                             "level": "INFO"
-                        })
+                        }
+                        self.trading_data_manager.add_activity(activity_data)
+                        logger.debug(f"📊 Activity logged to dashboard: {activity_data['message']}")
+                    else:
+                        logger.warning("⚠️ Trading data manager not available - activity not logged to dashboard")
                     
                     # Enhanced analysis with global volume and blockchain data
                     enhanced_analysis = self.binance_analysis.copy()
@@ -2937,6 +2965,14 @@ class YahooHyperliquidPaperTradingBot:
                             "analysis_active": True
                         }
                         self.trading_data_manager.update_predictions([no_signal_prediction])
+                        
+                        # Add analysis activity
+                        self.trading_data_manager.add_activity({
+                            "timestamp": time.time(),
+                            "message": f"📊 Analysis complete: {signal.get('reason', 'No clear signal')[:80]}{'...' if len(signal.get('reason', '')) > 80 else ''}",
+                            "type": "analysis",
+                            "level": "INFO"
+                        })
                         logger.debug(f"📊 NO-SIGNAL status sent to dashboard: {signal.get('reason', 'Unknown')}")
                     
                     if signal["should_trade"]:
