@@ -535,10 +535,29 @@ class EventDrivenTradingDashboard:
                     except:
                         orderbook_imbalance = 0.0
                 
+                # Get actual trend analysis from Yahoo Finance
+                trend_display = "NEUTRAL"
+                try:
+                    from data.yahoo_data_fetcher import YahooDataFetcher
+                    yahoo_fetcher = YahooDataFetcher()
+                    market_analysis = yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price=current_price)
+                    if "error" not in market_analysis:
+                        trend_5m = market_analysis.get("trend_5m", {}).get("trend", "SIDEWAYS")
+                        # Map Yahoo Finance trend to dashboard display
+                        if trend_5m in ["STRONG_UP", "UP", "WEAK_UP"]:
+                            trend_display = "BULLISH"
+                        elif trend_5m in ["STRONG_DOWN", "DOWN", "WEAK_DOWN"]:
+                            trend_display = "BEARISH"
+                        else:  # SIDEWAYS or unknown
+                            trend_display = "SIDEWAYS"
+                except Exception as e:
+                    logger.debug(f"Yahoo Finance trend analysis error: {e}")
+                    trend_display = "NEUTRAL"
+
                 # Enhanced market data with analytics
                 return {
                     "current_price": current_price if current_price else 97500.0,
-                    "trend": "UNKNOWN" if current_price else "FETCHING",
+                    "trend": trend_display,
                     "market_condition": "MONITORING",
                     "rsi": 50.0,  # Neutral RSI fallback
                     "volume_depth": 0.0,  # No volume data
@@ -550,9 +569,9 @@ class EventDrivenTradingDashboard:
                     "resistance": current_price * 1.015 if current_price else 99000,  # Dynamic resistance
                     "volume_trend": "INCREASING",
                     "ultimate_pressure": {
-                        "direction": "BULLISH",
-                        "confidence": "65%",
-                        "strength": 0.65
+                        "direction": "NEUTRAL",
+                        "confidence": "50%",
+                        "strength": 0.5
                     },
                     "data_source": "hyperliquid_api",
                     "last_update": datetime.now().isoformat()
