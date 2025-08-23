@@ -252,11 +252,17 @@ class EventDrivenTradingDashboard:
                 logger.debug(f"🔍 Real-time manager status: {session_status}")
                 logger.debug(f"🔍 Recent activity count: {len(current_state.get('recent_activity', []))}")
                 
-                # CRITICAL: Only use real-time data if session is ACTIVE
-                # Don't show COMPLETED/INACTIVE sessions as "live" data
-                if session_status == "ACTIVE":
-                    session_data = current_state["session"]
-                    enhanced_balance = self._calculate_enhanced_balance(session_data)
+                # Always use real-time data if available, regardless of bot status
+                session_data = current_state["session"]
+                enhanced_balance = self._calculate_enhanced_balance(session_data)
+                
+                # DEBUGGING: Log what we're getting from RTM
+                logger.error(f"🚨 DASHBOARD DEBUG - RTM Session Data:")
+                logger.error(f"   Session ID: {session_data.get('session_id', 'N/A')}")
+                logger.error(f"   Status: {session_data.get('status', 'N/A')}")
+                logger.error(f"   Start Time: {session_data.get('start_time', 'N/A')}")
+                logger.error(f"   Strategy: {session_data.get('strategy', 'N/A')}")
+                logger.error(f"🚨 WHY IS THIS STILL OLD DATA?!")
                 
                 # Calculate session duration properly
                 try:
