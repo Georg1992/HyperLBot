@@ -279,11 +279,8 @@ class RealTimeTradingDataManager:
         
         logger.success(f"🚀 Trading session started: {session_id}")
         self._notify_subscribers("session_started", self.current_state["session"])
-        logger.error(f"🚨 FORCED DEBUG: Session status = {self.current_state['session']['status']}")
-        logger.error(f"🚨 FORCED DEBUG: Session ID = {self.current_state['session']['session_id']}")
         
-        # CRITICAL: Immediately add startup activity and basic market data
-        # This ensures dashboard shows data immediately even if bot hasn't started main loop yet
+        # Add startup activity and basic market data immediately
         self.add_activity({
             "timestamp": time.time(),
             "message": f"🚀 RTM Session started - {strategy} strategy initialized",

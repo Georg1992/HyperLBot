@@ -62,31 +62,24 @@ class EventDrivenTradingDashboard:
         @self.socketio.on('connect')
         def handle_connect():
             """Handle new WebSocket connection"""
-            logger.info(f"🌐 Dashboard client connected from {request.remote_addr}")
+            logger.info(f"🌐 Client connected ({len(self.active_connections) + 1} active)")
             self.active_connections.add(request.sid)
-            logger.info(f"🌐 Active connections: {len(self.active_connections)}")
             
-            # Clear cached data to force fresh retrieval
+            # Clear cached data and send initial data
             self.last_data_hash.clear()
             self._rtm = None
-            
-            # Send initial data immediately
-            logger.info("🔄 Sending initial data to new connection")
             fresh_data = self._get_dashboard_data()
             self.socketio.emit('initial_data', fresh_data, room=request.sid)
-            logger.info("📤 Initial data sent successfully")
         
         @self.socketio.on('disconnect')
         def handle_disconnect():
             """Handle WebSocket disconnection"""
-            logger.info(f"📱 Dashboard client disconnected")
             self.active_connections.discard(request.sid)
-            logger.info(f"🌐 Active connections: {len(self.active_connections)}")
+            logger.info(f"📱 Client disconnected ({len(self.active_connections)} active)")
         
         @self.socketio.on('request_manual_refresh')
         def handle_manual_refresh():
             """Handle manual refresh request"""
-            logger.info("🔄 Manual refresh requested")
             self._send_all_data(request.sid)
     
     def _setup_routes(self):
@@ -119,20 +112,16 @@ class EventDrivenTradingDashboard:
             from core.realtime_data_manager import trading_data_manager
             
             if trading_data_manager is None:
-                logger.error("❌ trading_data_manager is None!")
                 return None
             
             # Test basic functionality
             try:
-                current_state = trading_data_manager.get_current_state()
-                logger.debug("✅ RTM connection successful")
+                trading_data_manager.get_current_state()
                 return trading_data_manager
-            except Exception as e:
-                logger.error(f"❌ RTM status check failed: {e}")
+            except Exception:
                 return None
             
-        except ImportError as e:
-            logger.error(f"❌ Failed to import trading_data_manager: {e}")
+        except ImportError:
             return None
         except Exception as e:
             logger.error(f"❌ Error connecting to real-time data manager: {e}")
@@ -145,10 +134,10 @@ class EventDrivenTradingDashboard:
             if os.path.exists(rtm_file_path):
                 with open(rtm_file_path, 'r') as f:
                     rtm_data = json.load(f)
-                logger.debug("✅ Loaded RTM state from file")
+
                 return rtm_data
             else:
-                logger.debug("⚠️ RTM state file not found")
+
                 return {}
         except Exception as e:
             logger.error(f"❌ Error loading RTM state from file: {e}")
@@ -160,9 +149,7 @@ class EventDrivenTradingDashboard:
             try:
                 from core.hyperliquid_api import HyperliquidAPI
                 self._api = HyperliquidAPI()
-                logger.debug("✅ Connected to Hyperliquid API")
-            except Exception as e:
-                logger.debug(f"⚠️ Hyperliquid API not available: {e}")
+            except Exception:
                 return None
         
         return self._api
@@ -184,7 +171,6 @@ class EventDrivenTradingDashboard:
                         
                         # Emit if data changed OR force update
                         if current_hash != self.last_data_hash.get('all_data') or force_update:
-                            logger.info("📊 Data changed - pushing to dashboard clients")
                             self._emit_data_update(current_data)
                             self.last_data_hash['all_data'] = current_hash
                             self.force_update_counter = 0
@@ -224,7 +210,6 @@ class EventDrivenTradingDashboard:
         try:
             data = self._get_dashboard_data()
             self.socketio.emit('initial_data', data, room=session_id)
-            logger.info("📤 Sent initial data to new connection")
         except Exception as e:
             logger.error(f"❌ Failed to send initial data: {e}")
     
@@ -233,30 +218,15 @@ class EventDrivenTradingDashboard:
         try:
             data = self._get_dashboard_data()
             self.socketio.emit('data_update', data, room=session_id)
-            logger.info("📤 Sent complete data update")
         except Exception as e:
             logger.error(f"❌ Failed to send data update: {e}")
     
     def _emit_data_update(self, data: Dict):
         """Emit data update to all connected clients"""
         try:
-            # Log activity logs count for debugging
-            activity_count = len(data.get("logs", []))
-            session_time = data.get("session", {}).get("session_time", "N/A")
-            session_status = data.get("session", {}).get("status", "N/A")
-            
             self.socketio.emit('data_update', data)
-            logger.info(f"📡 WebSocket update sent to {len(self.active_connections)} clients")
-            logger.debug(f"   Session: {session_status}, Time: {session_time}, Activities: {activity_count}")
-            
-            if activity_count > 0:
-                latest_activity = data.get("logs", [])[-1].get("message", "No message")
-                logger.debug(f"   Latest activity: {latest_activity}")
-                
         except Exception as e:
             logger.error(f"❌ Failed to emit data update: {e}")
-            import traceback
-            traceback.print_exc()
     
     def _get_dashboard_data(self) -> Dict[str, Any]:
         """Get comprehensive dashboard data with real-time updates"""
@@ -266,8 +236,6 @@ class EventDrivenTradingDashboard:
             if rtm:
                 try:
                     current_state = rtm.get_current_state()
-                    session_status = current_state["session"]["status"]
-                    logger.debug(f"🔍 Real-time manager status: {session_status}")
                     
                     # Use real-time data from RTM
                     session_data = current_state["session"]
@@ -285,7 +253,6 @@ class EventDrivenTradingDashboard:
                         session_data["session_time"] = "0m"
                     
                     activity_logs = current_state.get("recent_activity", [])
-                    logger.debug(f"📊 Sending {len(activity_logs)} activity logs to dashboard")
                     
                     # Get actual trade data from real-time manager
                     recent_trades = list(current_state.get("recent_trades", []))
@@ -386,7 +353,6 @@ class EventDrivenTradingDashboard:
                 return file_data
             
             # Final fallback to offline data
-            logger.debug("📊 Using final fallback offline data")
             return {
                 "session": self._get_session_data(),
                 "market": self._get_market_data(),
