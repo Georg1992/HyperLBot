@@ -223,14 +223,15 @@ class RealTimeTradingDataManager:
             session_id = f"session_{int(time.time())}"
         
         # CRITICAL FIX: Force clear ALL old session data to prevent dashboard confusion
+        initial_balance = self.current_state["session"]["initial_balance"]
         self.current_state = {
             "session": {
                 "session_id": session_id,
                 "start_time": datetime.now().isoformat(),
                 "status": "ACTIVE",
                 "strategy": strategy,
-                "initial_balance": self.initial_balance,
-                "current_balance": self.initial_balance,
+                "initial_balance": initial_balance,
+                "current_balance": initial_balance,
                 "balance_change": 0.0,
                 "balance_change_pct": 0.0,
                 "last_balance_update": datetime.now().isoformat(),
@@ -253,7 +254,7 @@ class RealTimeTradingDataManager:
             "predictions": [],      # CLEAR old predictions
             "trades": [],          # CLEAR old trades  
             "trading_signals": [], # CLEAR old signals
-            "balance_history": [(datetime.now().isoformat(), self.initial_balance)]
+            "balance_history": [(datetime.now().isoformat(), initial_balance)]
         }
         
         logger.success(f"🚀 Trading session started: {session_id}")
