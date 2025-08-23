@@ -539,21 +539,33 @@
             
             initializeWebSocket() {
                 console.log('🔌 Initializing WebSocket connection...');
+                console.log('🔌 Current URL:', window.location.href);
+                console.log('🔌 WebSocket URL will be:', window.location.origin);
                 
-                // Initialize Socket.IO
-                this.socket = io();
+                // Initialize Socket.IO with explicit configuration
+                try {
+                    this.socket = io(window.location.origin, {
+                        transports: ['websocket', 'polling'],
+                        timeout: 10000,
+                        forceNew: true
+                    });
+                    console.log('🔌 Socket.IO instance created successfully');
+                } catch (error) {
+                    console.error('❌ Failed to create Socket.IO instance:', error);
+                    return;
+                }
                 
                 // Connection event handlers
                 this.socket.on('connect', () => {
-                    console.log('✅ WebSocket connected!');
+                    console.log('✅ WebSocket connected! Socket ID:', this.socket.id);
                     this.isConnected = true;
                     this.reconnectAttempts = 0;
                     this.updateConnectionStatus('🔴 Live Data Stream', 'connected');
                     this.updateIndicator('✅ Real-time updates active', 'connected');
                 });
                 
-                this.socket.on('disconnect', () => {
-                    console.log('❌ WebSocket disconnected');
+                this.socket.on('disconnect', (reason) => {
+                    console.log('❌ WebSocket disconnected. Reason:', reason);
                     this.isConnected = false;
                     this.updateConnectionStatus('🔌 Reconnecting...', 'disconnected');
                     this.updateIndicator('❌ Connection lost - reconnecting...', 'error');
@@ -561,8 +573,26 @@
                 
                 this.socket.on('connect_error', (error) => {
                     console.error('❌ WebSocket connection error:', error);
+                    console.error('❌ Error details:', {
+                        description: error.description,
+                        context: error.context,
+                        type: error.type
+                    });
                     this.reconnectAttempts++;
                     this.updateIndicator(`❌ Connection error (${this.reconnectAttempts}/${this.maxReconnectAttempts})`, 'error');
+                });
+                
+                this.socket.on('reconnect', (attemptNumber) => {
+                    console.log('🔄 WebSocket reconnected after', attemptNumber, 'attempts');
+                });
+                
+                this.socket.on('reconnect_error', (error) => {
+                    console.error('❌ WebSocket reconnection error:', error);
+                });
+                
+                this.socket.on('reconnect_failed', () => {
+                    console.error('❌ WebSocket reconnection failed completely');
+                    this.updateIndicator('❌ Connection failed - refresh page', 'error');
                 });
                 
                 // Data event handlers
