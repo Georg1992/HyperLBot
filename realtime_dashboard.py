@@ -293,6 +293,7 @@ class EventDrivenTradingDashboard:
                         "connection_status": "🔴 Live Trading" if session_status == "ACTIVE" else "🟡 Ready for Trading"
                     }
                     
+                    logger.debug("✅ Using RTM real-time data")
                     return rtm_data
                     
                 except Exception as rtm_error:
@@ -355,6 +356,7 @@ class EventDrivenTradingDashboard:
                 return file_data
             
             # Final fallback to offline data
+            logger.debug("🚨 Using final fallback - no RTM or file data available!")
             return {
                 "session": self._get_session_data(),
                 "market": self._get_market_data(),
