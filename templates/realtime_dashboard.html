@@ -211,6 +211,104 @@
             transform: scale(1.05);
         }
 
+        /* Trade History Styles */
+        .trade-tab {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #E0E0E0;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+
+        .trade-tab:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-1px);
+        }
+
+        .trade-tab.active {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border-color: #4CAF50;
+            box-shadow: 0 2px 10px rgba(76, 175, 80, 0.4);
+        }
+
+        .trade-entry {
+            margin: 8px 0;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border-left: 4px solid #4CAF50;
+            transition: all 0.3s ease;
+        }
+
+        .trade-entry:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateX(5px);
+        }
+
+        .trade-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .trade-side-buy {
+            color: #4CAF50;
+        }
+
+        .trade-side-sell {
+            color: #f44336;
+        }
+
+        .trade-status-open {
+            color: #FF9800;
+        }
+
+        .trade-status-closed {
+            color: #4CAF50;
+        }
+
+        .trade-status-pending {
+            color: #2196F3;
+        }
+
+        .trade-status-cancelled {
+            color: #9E9E9E;
+        }
+
+        .trade-details {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            font-size: 0.85rem;
+        }
+
+        .trade-detail {
+            display: flex;
+            justify-content: space-between;
+            padding: 2px 0;
+        }
+
+        .trade-pnl-positive {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .trade-pnl-negative {
+            color: #f44336;
+            font-weight: bold;
+        }
+
+        .trade-pnl-neutral {
+            color: #9E9E9E;
+        }
+
         .large-card {
             grid-column: span 2;
         }
@@ -241,25 +339,58 @@
     </div>
 
     <div class="dashboard-grid">
-        <!-- Session Status Card -->
-        <div class="card">
-            <h2>📊 Session Status</h2>
-            <div id="session-data">
-                <div class="data-item">
-                    <span class="data-label">Status:</span>
-                    <span class="data-value" id="session-status">Connecting...</span>
+        <!-- Trading Overview Card (Combined Session + Summary) -->
+        <div class="card large-card">
+            <h2>🚀 Trading Overview</h2>
+            <div class="overview-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <!-- Session Status Section -->
+                <div>
+                    <h3 style="color: #FFD700; margin-bottom: 10px;">📊 Session Status</h3>
+                    <div id="session-data">
+                        <div class="data-item">
+                            <span class="data-label">Status:</span>
+                            <span class="data-value" id="session-status">Connecting...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Strategy:</span>
+                            <span class="data-value" id="session-strategy">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Session Time:</span>
+                            <span class="data-value" id="session-time">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Balance:</span>
+                            <span class="data-value" id="session-balance">Loading...</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="data-item">
-                    <span class="data-label">Strategy:</span>
-                    <span class="data-value" id="session-strategy">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Session Time:</span>
-                    <span class="data-value" id="session-time">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Balance:</span>
-                    <span class="data-value" id="session-balance">Loading...</span>
+                
+                <!-- Trading Performance Section -->
+                <div>
+                    <h3 style="color: #FFD700; margin-bottom: 10px;">💰 Performance</h3>
+                    <div id="trading-summary">
+                        <div class="data-item">
+                            <span class="data-label">Total Trades:</span>
+                            <span class="data-value" id="total-trades">0</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Winning Trades:</span>
+                            <span class="data-value trend-up" id="winning-trades">0</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Losing Trades:</span>
+                            <span class="data-value trend-down" id="losing-trades">0</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">P&L:</span>
+                            <span class="data-value" id="balance-change">+$0.00</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Win Rate:</span>
+                            <span class="data-value" id="win-rate">0%</span>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -285,28 +416,50 @@
                     <span class="data-label">Volatility 5m:</span>
                     <span class="data-value" id="market-volatility">Loading...</span>
                 </div>
+                <div class="data-item">
+                    <span class="data-label">Ultimate Pressure:</span>
+                    <span class="data-value" id="market-pressure">Loading...</span>
+                </div>
             </div>
         </div>
 
-        <!-- Trading Summary Card -->
-        <div class="card">
-            <h2>💰 Trading Summary</h2>
-            <div id="trading-summary">
-                <div class="data-item">
-                    <span class="data-label">Total Trades:</span>
-                    <span class="data-value" id="total-trades">0</span>
+        <!-- Trade History Card (NEW) -->
+        <div class="card large-card">
+            <h2>📋 Trade History & Status</h2>
+            <div class="trade-tabs" style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button class="trade-tab active" onclick="switchTradeTab('all')" id="tab-all">All Trades</button>
+                <button class="trade-tab" onclick="switchTradeTab('open')" id="tab-open">Open Positions</button>
+                <button class="trade-tab" onclick="switchTradeTab('pending')" id="tab-pending">Pending Orders</button>
+                <button class="trade-tab" onclick="switchTradeTab('closed')" id="tab-closed">Closed Trades</button>
+            </div>
+            
+            <div class="trade-container" style="max-height: 300px; overflow-y: auto;">
+                <div id="trade-content">
+                    <div class="trade-entry">
+                        <div class="log-entry">📊 Loading trade history...</div>
+                    </div>
                 </div>
-                <div class="data-item">
-                    <span class="data-label">Winning Trades:</span>
-                    <span class="data-value trend-up" id="winning-trades">0</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Losing Trades:</span>
-                    <span class="data-value trend-down" id="losing-trades">0</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Balance Change:</span>
-                    <span class="data-value" id="balance-change">+$0.00</span>
+            </div>
+            
+            <!-- Trade Statistics -->
+            <div class="trade-stats" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
+                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: center;">
+                    <div>
+                        <div class="data-label">Open Positions</div>
+                        <div class="data-value" id="open-positions-count">0</div>
+                    </div>
+                    <div>
+                        <div class="data-label">Pending Orders</div>
+                        <div class="data-value" id="pending-orders-count">0</div>
+                    </div>
+                    <div>
+                        <div class="data-label">Today's Trades</div>
+                        <div class="data-value" id="todays-trades-count">0</div>
+                    </div>
+                    <div>
+                        <div class="data-label">Avg Trade Time</div>
+                        <div class="data-value" id="avg-trade-time">0m</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -457,6 +610,11 @@
                         this.updatePredictions(data.predictions);
                     }
                     
+                    // Update trade history
+                    if (data.trades) {
+                        this.updateTradeHistory(data.trades);
+                    }
+                    
                 } catch (error) {
                     console.error('❌ Error updating dashboard data:', error);
                     this.updateIndicator('❌ Data update error', 'error');
@@ -504,6 +662,18 @@
                 // Update Volatility
                 document.getElementById('market-volatility').textContent = 
                     market.volatility_5m ? `${(parseFloat(market.volatility_5m) * 100).toFixed(2)}%` : 'Loading...';
+                
+                // Update Ultimate Pressure
+                const pressureElement = document.getElementById('market-pressure');
+                if (market.ultimate_pressure) {
+                    const direction = market.ultimate_pressure.direction || 'NEUTRAL';
+                    const confidence = market.ultimate_pressure.confidence || '0%';
+                    pressureElement.textContent = `${direction} (${confidence})`;
+                    pressureElement.className = 'data-value ' + this.getTrendClass(direction);
+                } else {
+                    pressureElement.textContent = 'Loading...';
+                    pressureElement.className = 'data-value trend-neutral';
+                }
             }
             
             updateTradingSummary(summary) {
@@ -514,8 +684,16 @@
                 const balanceChange = parseFloat(summary.balance_change || 0);
                 const balanceChangeElement = document.getElementById('balance-change');
                 balanceChangeElement.textContent = 
-                    `${balanceChange >= 0 ? '+' : ''}$${balanceChange.toFixed(2)} (${(summary.balance_change_pct || 0).toFixed(2)}%)`;
+                    `${balanceChange >= 0 ? '+' : ''}$${balanceChange.toFixed(2)}`;
                 balanceChangeElement.className = 'data-value ' + (balanceChange >= 0 ? 'trend-up' : 'trend-down');
+                
+                // Calculate and update win rate
+                const totalTrades = summary.total_trades || 0;
+                const winningTrades = summary.winning_trades || 0;
+                const winRate = totalTrades > 0 ? ((winningTrades / totalTrades) * 100).toFixed(1) : '0.0';
+                const winRateElement = document.getElementById('win-rate');
+                winRateElement.textContent = `${winRate}%`;
+                winRateElement.className = 'data-value ' + (parseFloat(winRate) >= 50 ? 'trend-up' : 'trend-down');
             }
             
             updateOrderbook(orderbook) {
@@ -594,6 +772,144 @@
                 }
             }
             
+            updateTradeHistory(trades) {
+                // Store trades data for filtering
+                this.allTrades = trades || [];
+                
+                // Update trade statistics
+                this.updateTradeStatistics(this.allTrades);
+                
+                // Update current tab content
+                const activeTab = document.querySelector('.trade-tab.active');
+                if (activeTab) {
+                    const tabType = activeTab.id.replace('tab-', '');
+                    this.filterAndDisplayTrades(tabType);
+                }
+            }
+            
+            updateTradeStatistics(trades) {
+                const openPositions = trades.filter(t => t.status === 'OPEN').length;
+                const pendingOrders = trades.filter(t => t.status === 'PENDING').length;
+                
+                // Calculate today's trades
+                const today = new Date().toDateString();
+                const todaysTrades = trades.filter(t => {
+                    const tradeDate = new Date(t.timestamp || t.created_at).toDateString();
+                    return tradeDate === today;
+                }).length;
+                
+                // Calculate average trade time for closed trades
+                const closedTrades = trades.filter(t => t.status === 'CLOSED' && t.duration);
+                const avgDuration = closedTrades.length > 0 ? 
+                    closedTrades.reduce((sum, t) => sum + (t.duration || 0), 0) / closedTrades.length : 0;
+                const avgMinutes = Math.round(avgDuration / 60); // Convert to minutes
+                
+                // Update statistics
+                document.getElementById('open-positions-count').textContent = openPositions;
+                document.getElementById('pending-orders-count').textContent = pendingOrders;
+                document.getElementById('todays-trades-count').textContent = todaysTrades;
+                document.getElementById('avg-trade-time').textContent = `${avgMinutes}m`;
+            }
+            
+            filterAndDisplayTrades(tabType) {
+                let filteredTrades = [];
+                
+                switch(tabType) {
+                    case 'all':
+                        filteredTrades = this.allTrades || [];
+                        break;
+                    case 'open':
+                        filteredTrades = (this.allTrades || []).filter(t => t.status === 'OPEN');
+                        break;
+                    case 'pending':
+                        filteredTrades = (this.allTrades || []).filter(t => t.status === 'PENDING');
+                        break;
+                    case 'closed':
+                        filteredTrades = (this.allTrades || []).filter(t => t.status === 'CLOSED');
+                        break;
+                }
+                
+                this.displayTrades(filteredTrades);
+            }
+            
+            displayTrades(trades) {
+                const container = document.getElementById('trade-content');
+                
+                if (!trades || trades.length === 0) {
+                    container.innerHTML = '<div class="trade-entry"><div class="log-entry">📭 No trades found</div></div>';
+                    return;
+                }
+                
+                // Sort trades by timestamp (newest first)
+                const sortedTrades = trades.sort((a, b) => 
+                    new Date(b.timestamp || b.created_at) - new Date(a.timestamp || a.created_at)
+                );
+                
+                container.innerHTML = '';
+                
+                sortedTrades.slice(0, 20).forEach(trade => { // Show latest 20 trades
+                    const tradeElement = this.createTradeElement(trade);
+                    container.appendChild(tradeElement);
+                });
+            }
+            
+            createTradeElement(trade) {
+                const tradeDiv = document.createElement('div');
+                tradeDiv.className = 'trade-entry';
+                
+                // Determine colors and classes
+                const sideClass = trade.side === 'BUY' ? 'trade-side-buy' : 'trade-side-sell';
+                const statusClass = `trade-status-${trade.status ? trade.status.toLowerCase() : 'unknown'}`;
+                
+                // Calculate P&L if available
+                let pnlDisplay = 'N/A';
+                let pnlClass = 'trade-pnl-neutral';
+                if (trade.pnl !== undefined && trade.pnl !== null) {
+                    const pnl = parseFloat(trade.pnl);
+                    pnlDisplay = `${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}`;
+                    pnlClass = pnl > 0 ? 'trade-pnl-positive' : pnl < 0 ? 'trade-pnl-negative' : 'trade-pnl-neutral';
+                }
+                
+                // Format timestamp
+                const timestamp = trade.timestamp || trade.created_at;
+                const timeDisplay = timestamp ? new Date(timestamp).toLocaleTimeString() : 'Unknown';
+                
+                tradeDiv.innerHTML = `
+                    <div class="trade-header">
+                        <span class="${sideClass}">${trade.side || 'UNKNOWN'} ${trade.symbol || 'BTC'}</span>
+                        <span class="${statusClass}">${trade.status || 'UNKNOWN'}</span>
+                    </div>
+                    <div class="trade-details">
+                        <div class="trade-detail">
+                            <span>Price:</span>
+                            <span>$${trade.price ? parseFloat(trade.price).toLocaleString() : 'N/A'}</span>
+                        </div>
+                        <div class="trade-detail">
+                            <span>Size:</span>
+                            <span>${trade.size ? parseFloat(trade.size).toFixed(4) : 'N/A'} BTC</span>
+                        </div>
+                        <div class="trade-detail">
+                            <span>P&L:</span>
+                            <span class="${pnlClass}">${pnlDisplay}</span>
+                        </div>
+                        <div class="trade-detail">
+                            <span>Time:</span>
+                            <span>${timeDisplay}</span>
+                        </div>
+                        <div class="trade-detail">
+                            <span>Type:</span>
+                            <span>${trade.type || 'MARKET'}</span>
+                        </div>
+                        <div class="trade-detail">
+                            <span>Confidence:</span>
+                            <span>${trade.confidence ? trade.confidence + '%' : 'N/A'}</span>
+                        </div>
+                    </div>
+                `;
+                
+                return tradeDiv;
+            }
+            
             getTrendClass(trend) {
                 if (!trend) return 'trend-neutral';
                 const trendUpper = trend.toUpperCase();
@@ -629,6 +945,20 @@
         function requestRefresh() {
             if (dashboard) {
                 dashboard.requestManualRefresh();
+            }
+        }
+        
+        // Global function for trade tab switching
+        function switchTradeTab(tabType) {
+            // Update tab appearance
+            document.querySelectorAll('.trade-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.getElementById(`tab-${tabType}`).classList.add('active');
+            
+            // Filter and display trades
+            if (dashboard) {
+                dashboard.filterAndDisplayTrades(tabType);
             }
         }
     </script>
