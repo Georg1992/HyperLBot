@@ -174,13 +174,14 @@ def run_paper_trading():
         # Initialize and run the bot
         bot = YahooHyperliquidPaperTradingBot(
             initial_balance=initial_balance,
-            max_trades=max_trades,
-            check_interval=check_interval,
-            strategy=selected_strategy
+            strategy_name=selected_strategy
         )
         
         logger.info("🚀 Starting paper trading bot...")
-        bot.run()
+        bot.run_yahoo_hyperliquid_paper_trading(
+            max_trades=max_trades,
+            check_interval=check_interval
+        )
         
     except Exception as e:
         logger.error(f"Error in paper trading: {e}")
@@ -217,15 +218,16 @@ def run_real_trading():
         # Initialize and run the bot (modify for real trading when implemented)
         bot = YahooHyperliquidPaperTradingBot(
             initial_balance=initial_balance,
-            max_trades=max_trades,
-            check_interval=check_interval,
-            strategy=selected_strategy
+            strategy_name=selected_strategy
         )
         
         logger.info("🚀 Starting real trading bot...")
         # Note: This would be modified to use real trading when implemented
         logger.warning("Note: Currently running in paper mode - real trading implementation pending")
-        bot.run()
+        bot.run_yahoo_hyperliquid_paper_trading(
+            max_trades=max_trades,
+            check_interval=check_interval
+        )
         
     except Exception as e:
         logger.error(f"Error in real trading: {e}")

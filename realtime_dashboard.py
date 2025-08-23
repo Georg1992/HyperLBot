@@ -100,10 +100,10 @@ class EventDrivenTradingDashboard:
             
         if self._rtm is None:
             try:
-                from core.realtime_data_manager import RealTimeTradingDataManager
-                self._rtm = RealTimeTradingDataManager()
+                from core.realtime_data_manager import trading_data_manager
+                self._rtm = trading_data_manager
                 self._rtm_available = True
-                logger.debug("✅ Connected to Real-Time Data Manager")
+                logger.debug("✅ Connected to Real-Time Data Manager (Global Instance)")
             except Exception as e:
                 logger.debug(f"⚠️ RTM not available: {e}")
                 self._rtm_available = False
@@ -201,8 +201,11 @@ class EventDrivenTradingDashboard:
             rtm = self._get_realtime_manager()
             if rtm:
                 current_state = rtm.get_current_state()
-                if current_state["session"]["status"] == "ACTIVE":
-                    # Enhanced balance calculation with real-time P&L
+                session_status = current_state["session"]["status"]
+                logger.debug(f"🔍 Real-time manager status: {session_status}")
+                
+                if session_status == "ACTIVE":
+                    # Bot is actively running - use live data
                     session_data = current_state["session"]
                     enhanced_balance = self._calculate_enhanced_balance(session_data)
                     
@@ -226,12 +229,45 @@ class EventDrivenTradingDashboard:
                         "predictions": current_state["predictions"],
                         "orderbook": self._get_orderbook_data(),
                         "global_volume": current_state["global_volume"],
-                        "trades": current_state["recent_trades"],  # Trade data for new Trade History panel
+                        "trades": current_state["recent_trades"],
                         "recent_trades": current_state["recent_trades"],
                         "recent_signals": current_state["recent_signals"],
                         "timestamp": datetime.now().isoformat(),
-                        "data_source": "real_time",
+                        "data_source": "real_time_active",
                         "connection_status": "🔴 Live Trading"
+                    }
+                else:
+                    # Real-time manager exists but bot is not active
+                    # Use real-time market data but show appropriate status
+                    return {
+                        "session": {
+                            **current_state["session"],
+                            "status": "REAL_TIME_READY"  # Show that we're connected but bot not running
+                        },
+                        "market": current_state["market"],
+                        "logs": current_state["recent_activity"],
+                        "summary": {
+                            "total_trades": current_state["session"]["total_trades"],
+                            "winning_trades": current_state["session"]["winning_trades"],
+                            "losing_trades": current_state["session"]["losing_trades"],
+                            "current_balance": current_state["session"]["current_balance"],
+                            "initial_balance": current_state["session"]["initial_balance"],
+                            "balance_change": current_state["session"]["current_balance"] - current_state["session"]["initial_balance"],
+                            "balance_change_pct": 0,
+                            "realized_pnl": 0,
+                            "unrealized_pnl": 0,
+                            "open_positions_value": 0,
+                            "balance_source": "real_time_inactive"
+                        },
+                        "predictions": current_state["predictions"],
+                        "orderbook": self._get_orderbook_data(),
+                        "global_volume": current_state["global_volume"],
+                        "trades": current_state["recent_trades"],
+                        "recent_trades": current_state["recent_trades"],
+                        "recent_signals": current_state["recent_signals"],
+                        "timestamp": datetime.now().isoformat(),
+                        "data_source": "real_time_inactive",
+                        "connection_status": "🟡 Ready for Trading"
                     }
             
             # Fallback to offline data
