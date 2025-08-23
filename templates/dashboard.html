@@ -40,6 +40,31 @@
             margin-top: 0;
             color: #4CAF50;
         }
+        .large-card {
+            grid-column: span 2;
+        }
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .data-row .label {
+            font-weight: 600;
+            color: #E0E0E0;
+        }
+        .data-row .value {
+            font-weight: bold;
+            color: #fff;
+        }
+        .trend-up {
+            color: #4CAF50;
+        }
+        .trend-down {
+            color: #f44336;
+        }
         .status-indicator {
             display: inline-block;
             width: 12px;
@@ -162,10 +187,39 @@
         </div>
         
         <div class="grid">
-            <div class="card">
-                <h3>📊 Session Status</h3>
-                <div id="session-status">
-                    <p><span class="status-indicator status-running"></span>Loading...</p>
+            <!-- Combined Trading Overview Card -->
+            <div class="card large-card">
+                <h3>🚀 Trading Overview</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 15px;">
+                    <!-- Session Status Section -->
+                    <div>
+                        <h4 style="color: #FFD700; margin-bottom: 15px; font-size: 16px;">📊 Session Status</h4>
+                        <div id="session-status">
+                            <div class="data-row">
+                                <span class="label">Status:</span> 
+                                <span id="session-status-value" class="value">
+                                    <span class="status-indicator status-running"></span>Loading...
+                                </span>
+                            </div>
+                            <div class="data-row"><span class="label">Strategy:</span> <span id="session-strategy" class="value">Loading...</span></div>
+                            <div class="data-row"><span class="label">Session Time:</span> <span id="session-time" class="value">Loading...</span></div>
+                            <div class="data-row"><span class="label">Balance:</span> <span id="session-balance" class="value">Loading...</span></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Trading Performance Section -->
+                    <div>
+                        <h4 style="color: #FFD700; margin-bottom: 15px; font-size: 16px;">💰 Performance</h4>
+                        <div id="trading-summary">
+                            <div class="data-row"><span class="label">Total Trades:</span> <span id="total-trades" class="value">0</span></div>
+                            <div class="data-row"><span class="label">Winning Trades:</span> <span id="winning-trades" class="value trend-up">0</span></div>
+                            <div class="data-row"><span class="label">Losing Trades:</span> <span id="losing-trades" class="value trend-down">0</span></div>
+                            <div class="data-row"><span class="label">Total P&L:</span> <span id="balance-change" class="value">+$0.00</span></div>
+                            <div class="data-row"><span class="label">Realized P&L:</span> <span id="realized-pnl" class="value">+$0.00</span></div>
+                            <div class="data-row"><span class="label">Unrealized P&L:</span> <span id="unrealized-pnl" class="value">+$0.00</span></div>
+                            <div class="data-row"><span class="label">Win Rate:</span> <span id="win-rate" class="value">0%</span></div>
+                        </div>
+                    </div>
                 </div>
             </div>
             
@@ -184,19 +238,10 @@
             </div>
         </div>
         
-        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; margin-bottom: 20px;">
-            <div class="card">
-                <h3>🎯 Trading Predictions</h3>
-                <div id="predictions-panel">
-                    <p>Loading predictions...</p>
-                </div>
-            </div>
-            
-            <div class="card">
-                <h3>📈 Trading Summary</h3>
-                <div id="trading-summary">
-                    <p>Loading...</p>
-                </div>
+        <div class="card">
+            <h3>🎯 Trading Predictions</h3>
+            <div id="predictions-panel">
+                <p>Loading predictions...</p>
             </div>
         </div>
         
@@ -284,10 +329,28 @@
                 }
             },
             
+            updateElement(elementId, content) {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    element.innerHTML = content;
+                }
+            },
+            
+            updateElementWithClass(elementId, content, className) {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    element.innerHTML = content;
+                    element.className = className;
+                }
+            },
+            
             updateSessionStatus(session) {
-                const div = document.getElementById('session-status');
                 if (!session || !session.session_id) {
-                    div.innerHTML = '<p><span class="status-indicator status-stopped"></span>No active session</p>';
+                    // Update individual fields for no session
+                    this.updateElement('session-status-value', '<span class="status-indicator status-stopped"></span>No Session');
+                    this.updateElement('session-strategy', 'N/A');
+                    this.updateElement('session-time', 'N/A');
+                    this.updateElement('session-balance', 'N/A');
                     return;
                 }
                 
@@ -311,19 +374,11 @@
                     statusText = 'Unknown Status';
                 }
                 
-                const statusMessage = session.status === 'STOPPED' || session.status === 'COMPLETED' ? 
-                    '<p style="color: #ff9800; font-size: 11px;">⏸️ Last trading session - Start bot for new session</p>' : 
-                    session.status === 'WAITING' ? '<p style="color: #888; font-size: 11px;">⚪ No trading sessions yet - Start bot to begin</p>' : '';
-                
-                div.innerHTML = `
-                    <p><span class="status-indicator ${statusClass}"></span>${statusText} ${statusIcon}</p>
-                    <p><strong>Session:</strong> ${session.session_id}</p>
-                    <p><strong>Started:</strong> ${new Date(session.start_time).toLocaleString()}</p>
-                    <p><strong>Strategy:</strong> ${session.strategy}</p>
-                    <p><strong>Initial Balance:</strong> $${session.initial_balance}</p>
-                    ${session.current_balance !== undefined ? `<p><strong>Current Balance:</strong> <span class="price">$${session.current_balance.toFixed(2)}</span></p>` : ''}
-                    ${statusMessage}
-                `;
+                // Update individual session fields
+                this.updateElement('session-status-value', `<span class="status-indicator ${statusClass}"></span>${statusText} ${statusIcon}`);
+                this.updateElement('session-strategy', session.strategy || 'Standard');
+                this.updateElement('session-time', new Date(session.start_time).toLocaleString());
+                this.updateElement('session-balance', `$${(session.current_balance || session.initial_balance || 120).toFixed(2)}`);
             },
             
             updateMarketStatus(market) {
@@ -376,20 +431,54 @@
             },
             
             updateTradingSummary(summary) {
-                const div = document.getElementById('trading-summary');
+                // Calculate display values
                 const winRate = summary.total_trades > 0 ? ((summary.winning_trades / summary.total_trades) * 100).toFixed(1) : '0.0';
-                const balanceChangeClass = summary.balance_change > 0 ? 'trend-up' : 
-                                         summary.balance_change < 0 ? 'trend-down' : 'trend-neutral';
-                const balanceChangeIcon = summary.balance_change > 0 ? '📈' : 
-                                        summary.balance_change < 0 ? '📉' : '➡️';
                 
-                div.innerHTML = `
-                    <p><strong>Total Trades:</strong> ${summary.total_trades}</p>
-                    <p><strong>Win Rate:</strong> <span class="${summary.winning_trades > summary.losing_trades ? 'trend-up' : 'trend-down'}">${winRate}%</span> (${summary.winning_trades}W/${summary.losing_trades}L)</p>
-                    <p><strong>Initial Balance:</strong> $${summary.initial_balance?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>Current Balance:</strong> <span class="price ${balanceChangeClass}">$${summary.current_balance.toFixed(2)}</span></p>
-                    <p><strong>P&L:</strong> <span class="${balanceChangeClass}">${balanceChangeIcon} $${summary.balance_change?.toFixed(2) || '0.00'} (${summary.balance_change_pct?.toFixed(2) || '0.00'}%)</span></p>
-                `;
+                // Total P&L (balance change)
+                const balanceChange = parseFloat(summary.balance_change || 0);
+                const balanceChangeClass = balanceChange >= 0 ? 'trend-up' : 'trend-down';
+                
+                // Realized P&L
+                const realizedPnl = parseFloat(summary.realized_pnl || 0);
+                const realizedPnlClass = realizedPnl >= 0 ? 'trend-up' : 'trend-down';
+                
+                // Unrealized P&L
+                const unrealizedPnl = parseFloat(summary.unrealized_pnl || 0);
+                const unrealizedPnlClass = unrealizedPnl >= 0 ? 'trend-up' : 'trend-down';
+                
+                // Win rate class
+                const winRateClass = parseFloat(winRate) >= 50 ? 'trend-up' : 'trend-down';
+                
+                // Update individual trading summary fields
+                this.updateElement('total-trades', summary.total_trades || 0);
+                this.updateElement('winning-trades', summary.winning_trades || 0);
+                this.updateElement('losing-trades', summary.losing_trades || 0);
+                
+                // Enhanced P&L display
+                this.updateElementWithClass('balance-change', 
+                    `${balanceChange >= 0 ? '+' : ''}$${balanceChange.toFixed(2)}`, 
+                    `value ${balanceChangeClass}`);
+                    
+                this.updateElementWithClass('realized-pnl', 
+                    `${realizedPnl >= 0 ? '+' : ''}$${realizedPnl.toFixed(2)}`, 
+                    `value ${realizedPnlClass}`);
+                    
+                this.updateElementWithClass('unrealized-pnl', 
+                    `${unrealizedPnl >= 0 ? '+' : ''}$${unrealizedPnl.toFixed(2)}`, 
+                    `value ${unrealizedPnlClass}`);
+                
+                // Add visual effect for significant unrealized P&L
+                const unrealizedElement = document.getElementById('unrealized-pnl');
+                if (unrealizedElement && Math.abs(unrealizedPnl) > 1.0) {
+                    unrealizedElement.style.fontWeight = 'bold';
+                    unrealizedElement.style.textShadow = unrealizedPnl >= 0 ? 
+                        '0 0 5px rgba(76, 175, 80, 0.5)' : '0 0 5px rgba(244, 67, 54, 0.5)';
+                } else if (unrealizedElement) {
+                    unrealizedElement.style.fontWeight = 'normal';
+                    unrealizedElement.style.textShadow = 'none';
+                }
+                
+                this.updateElementWithClass('win-rate', `${winRate}%`, `value ${winRateClass}`);
             },
             
             updateLatestLogs(logs) {

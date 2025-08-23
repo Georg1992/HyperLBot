@@ -330,7 +330,7 @@ class OptimizedTradingDashboard:
         return self._get_cached_or_fetch("logs", _fetch_logs) or [{"datetime": datetime.now().isoformat(), "reason": "Error loading logs"}]
     
     def get_trade_summary(self) -> Dict[str, Any]:
-        """Get trading summary (from session data)"""
+        """Get trading summary with enhanced P&L (from session data)"""
         session_data = self.get_session_data()
         return {
             "total_trades": session_data.get("total_trades", 0),
@@ -340,7 +340,10 @@ class OptimizedTradingDashboard:
             "initial_balance": session_data.get("initial_balance", 120.0),
             "balance_change": session_data.get("balance_change", 0.0),
             "balance_change_pct": session_data.get("balance_change_pct", 0.0),
-            "balance_source": "session_data"
+            "realized_pnl": session_data.get("realized_pnl", 0.0),
+            "unrealized_pnl": session_data.get("unrealized_pnl", 0.0),
+            "open_positions_value": session_data.get("open_positions_value", 0.0),
+            "balance_source": "session_data_enhanced"
         }
     
 
@@ -429,7 +432,10 @@ def get_status():
                         "initial_balance": current_state["session"]["initial_balance"],
                         "balance_change": current_state["session"]["balance_change"],
                         "balance_change_pct": current_state["session"]["balance_change_pct"],
-                        "balance_source": "real_time"
+                        "realized_pnl": current_state["session"].get("realized_pnl", 0),
+                        "unrealized_pnl": current_state["session"].get("unrealized_pnl", 0),
+                        "open_positions_value": current_state["session"].get("open_positions_value", 0),
+                        "balance_source": "real_time_enhanced"
                     },
                     "predictions": current_state["predictions"],
                     "orderbook": dashboard.get_orderbook_data(),

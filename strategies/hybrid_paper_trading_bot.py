@@ -152,6 +152,22 @@ class YahooHyperliquidPaperTradingBot:
             except ImportError as e:
                 logger.warning(f"Real-Time P&L Tracker not available: {e}")
                 self.pnl_tracker = None
+                
+            # Initialize Active Position Manager
+            try:
+                from strategies.active_position_manager import ActivePositionManager
+                self.active_position_manager = ActivePositionManager()
+                # Inject dependencies
+                self.active_position_manager.inject_dependencies(
+                    pnl_tracker=self.pnl_tracker,
+                    hyperliquid_api=self.hyperliquid_api,
+                    prediction_engines={"master_fusion": self.master_fusion_engine}
+                )
+                self.active_position_manager.start_monitoring()
+                logger.success("🤖 Active Position Manager activated - Intelligent trade monitoring active")
+            except ImportError as e:
+                logger.warning(f"Active Position Manager not available: {e}")
+                self.active_position_manager = None
             
             logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Real-time data + ULTIMATE INTELLIGENCE")
         except ImportError as e:
@@ -167,6 +183,7 @@ class YahooHyperliquidPaperTradingBot:
             self.btc_pattern_engine = None
             self.master_fusion_engine = None
             self.pnl_tracker = None
+            self.active_position_manager = None
         
         # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
         self._test_api_connections()
