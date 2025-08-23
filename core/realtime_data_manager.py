@@ -118,7 +118,13 @@ class RealTimeTradingDataManager:
         self.recent_activity = deque(maxlen=self.MAX_ACTIVITY)  # Last 50 activities
         self.open_positions = []
         
-
+        # Initialize account manager
+        try:
+            from .account_manager import account_manager
+            self.account_manager = account_manager
+        except ImportError:
+            self.account_manager = None
+            logger.warning("⚠️ Account manager not available")
         
         # Performance metrics
         self.performance_metrics = {
@@ -322,6 +328,16 @@ class RealTimeTradingDataManager:
         self.recent_trades.clear()
         logger.info(f"🧹 Cleared {len(self.recent_trades)} phantom trades from previous sessions")
         
+        # Update account manager if available
+        if self.account_manager and self.account_manager.account_data:
+            session_data = {
+                "session_id": session_id,
+                "strategy": strategy,
+                "initial_balance": initial_balance,
+                "start_time": datetime.now().isoformat()
+            }
+            self.account_manager.add_session(session_data)
+        
         # Force save the new clean state to file  
         self._save_to_json_file()
         
@@ -437,6 +453,21 @@ class RealTimeTradingDataManager:
         """End current trading session"""
         with self.data_lock:
             self.current_state["session"]["status"] = "COMPLETED"
+            self.current_state["session"]["end_time"] = datetime.now().isoformat()
+            
+            # Update account manager if available
+            if self.account_manager and self.account_manager.account_data:
+                # Update account with final session data
+                final_session_data = {
+                    "session_id": self.current_state["session"]["session_id"],
+                    "end_time": self.current_state["session"]["end_time"],
+                    "final_balance": self.current_state["session"]["current_balance"],
+                    "total_trades": self.current_state["session"]["total_trades"],
+                    "winning_trades": self.current_state["session"]["winning_trades"],
+                    "losing_trades": self.current_state["session"]["losing_trades"],
+                    "balance_change": self.current_state["session"]["balance_change"]
+                }
+                self.account_manager.add_session(final_session_data)
             
             logger.info("🏁 Trading session ended")
             self._notify_subscribers("session_ended", self.current_state["session"])
@@ -527,37 +558,9 @@ class RealTimeTradingDataManager:
             self._save_to_json_file()
     
     def update_real_balance(self, balance_data: Dict[str, Any]):
-        """Update real account balance from Hyperliquid"""
-        with self.data_lock:
-            # Update real balance data
-            self.current_state["balance"].update({
-                "real_account_value": balance_data.get("account_value", 0.0),
-                "real_available_margin": balance_data.get("available_margin", 0.0),
-                "real_total_margin_used": balance_data.get("total_margin_used", 0.0),
-                "real_unrealized_pnl": balance_data.get("total_unrealized_pnl", 0.0),
-                "real_withdrawal_balance": balance_data.get("withdrawal_balance", 0.0),
-                "real_margin_usage_pct": balance_data.get("margin_usage_pct", 0.0),
-                "last_update": balance_data.get("timestamp", time.time())
-            })
-            
-            # Update session balance to use real balance as base
-            real_balance = balance_data.get("account_value", 0.0)
-            if real_balance > 0:
-                # Use real balance as the current balance
-                self.current_state["session"]["current_balance"] = real_balance
-                self.current_state["session"]["initial_balance"] = real_balance
-                self.current_state["balance"]["balance_source"] = "real"
-                
-                # Calculate balance change based on real unrealized PnL
-                real_pnl = balance_data.get("total_unrealized_pnl", 0.0)
-                self.current_state["session"]["balance_change"] = real_pnl
-                self.current_state["session"]["balance_change_pct"] = (
-                    (real_pnl / real_balance * 100) if real_balance > 0 else 0
-                )
-            
-            logger.info(f"💰 Updated real balance: ${real_balance:.2f} (PnL: ${balance_data.get('total_unrealized_pnl', 0):.2f})")
-            self._notify_subscribers("balance_update", balance_data)
-            self._save_to_json_file()
+        """REAL BALANCE FEATURE DISABLED - This method is disabled for safety"""
+        logger.info("🔒 Real balance feature is disabled - using simulated mode only")
+        # Method intentionally disabled to prevent real balance usage
     
     def update_simulated_balance(self, new_balance: float, change: float):
         """Update simulated balance from bot trading"""
@@ -577,23 +580,23 @@ class RealTimeTradingDataManager:
                 )
                 self.current_state["balance"]["balance_source"] = "simulated"
             
+            # Update account manager if available
+            if self.account_manager and self.account_manager.account_data:
+                self.account_manager.update_balance(new_balance, change)
+            
             logger.info(f"🎮 Updated simulated balance: ${new_balance:.2f} (Change: ${change:.2f})")
             self._notify_subscribers("simulated_balance_update", {"balance": new_balance, "change": change})
             self._save_to_json_file()
     
     def force_balance_mode(self, mode: str, balance_value: float = None):
-        """Force RTM to use specific balance mode"""
+        """Force RTM to use specific balance mode (REAL BALANCE DISABLED)"""
         with self.data_lock:
             if mode == "real":
-                # Force use real balance
-                self.current_state["balance"]["balance_source"] = "real"
-                real_balance = self.current_state["balance"].get("real_account_value", 0.0)
-                if real_balance > 0:
-                    self.current_state["session"]["current_balance"] = real_balance
-                    self.current_state["session"]["initial_balance"] = real_balance
-                    self.current_state["session"]["balance_change"] = self.current_state["balance"].get("real_unrealized_pnl", 0.0)
-                    logger.success(f"💰 Forced RTM to REAL balance mode: ${real_balance:.2f}")
-            elif mode == "simulated":
+                # REAL BALANCE FEATURE DISABLED
+                logger.warning("🔒 Real balance mode is disabled - using simulated mode instead")
+                mode = "simulated"
+            
+            if mode == "simulated":
                 # Force use simulated balance
                 self.current_state["balance"]["balance_source"] = "simulated"
                 if balance_value:
@@ -602,6 +605,15 @@ class RealTimeTradingDataManager:
                     self.current_state["session"]["initial_balance"] = balance_value
                     self.current_state["session"]["balance_change"] = 0.0
                     logger.success(f"🎮 Forced RTM to SIMULATED balance mode: ${balance_value:.2f}")
+                
+                # Load account data if available
+                if self.account_manager and self.account_manager.account_data:
+                    account_data = self.account_manager.account_data
+                    # Update session with account data
+                    self.current_state["session"]["total_trades"] = account_data.get("total_trades", 0)
+                    self.current_state["session"]["winning_trades"] = account_data.get("winning_trades", 0)
+                    self.current_state["session"]["losing_trades"] = account_data.get("losing_trades", 0)
+                    logger.info(f"📊 Loaded account data: {account_data.get('total_trades', 0)} total trades")
             
             self.current_state["balance"]["last_update"] = time.time()
             self._save_to_json_file()
@@ -687,6 +699,10 @@ class RealTimeTradingDataManager:
                 conn.close()
             except Exception as e:
                 logger.error(f"Trade storage error: {e}")
+            
+            # Update account manager if available
+            if self.account_manager and self.account_manager.account_data:
+                self.account_manager.add_trade(trade_record)
             
             logger.success(f"📊 Trade recorded: {trade_record['side']} {trade_record['pnl']:+.2f} ({trade_record['pnl_pct']*100:+.1f}%)")
             self._notify_subscribers("trade_added", trade_record)

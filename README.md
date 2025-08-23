@@ -6,17 +6,19 @@ A sophisticated cryptocurrency trading bot that combines Binance candlestick ana
 
 - **Hybrid Analysis**: Combines Binance candlestick data with Hyperliquid market execution
 - **Advanced Strategy**: Multi-timeframe analysis with variability theory optimization
-- **Paper Trading**: Safe testing environment with realistic simulation
+- **Paper Trading**: Safe testing environment with realistic simulation (REAL BALANCE DISABLED)
 - **Comprehensive Logging**: Detailed trade analysis and performance tracking
 - **Fee Management**: Smart fee calculation and profitability analysis
 - **Risk Management**: Built-in position sizing and stop-loss mechanisms
 - **Weekly Trend Context**: Incorporates broader market trends for better decisions
+- **Real-time Dashboard**: WebSocket-based live trading dashboard
+- **Phantom Trade Prevention**: Advanced protection against false trade signals
 
 ## 📋 Prerequisites
 
 - Python 3.8 or higher
-- Hyperliquid account with wallet credentials
 - Internet connection for API access
+- **Note**: Real balance feature is disabled for safety - only paper trading mode available
 
 ## 🛠️ Installation
 
@@ -31,12 +33,12 @@ A sophisticated cryptocurrency trading bot that combines Binance candlestick ana
    pip install -r requirements.txt
    ```
 
-3. **Set up environment variables**:
+3. **Set up environment variables** (optional for paper trading):
    ```bash
    cp env_example.txt .env
    ```
    
-   Edit `.env` file with your credentials:
+   Edit `.env` file with your credentials (optional - only for market data access):
    ```env
    WALLET_ADDRESS=your_wallet_address_here
    WALLET_PRIVATE_KEY=your_private_key_here
@@ -44,6 +46,8 @@ A sophisticated cryptocurrency trading bot that combines Binance candlestick ana
    LEVERAGE=30
    LOG_LEVEL=INFO
    ```
+   
+   **Note**: Wallet credentials are optional and only used for market data access. Real trading is disabled.
 
 ## 🔧 Configuration
 
@@ -51,12 +55,14 @@ A sophisticated cryptocurrency trading bot that combines Binance candlestick ana
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `WALLET_ADDRESS` | Your Hyperliquid wallet address | Required |
-| `WALLET_PRIVATE_KEY` | Your wallet private key | Required |
+| `WALLET_ADDRESS` | Your Hyperliquid wallet address (optional) | Optional |
+| `WALLET_PRIVATE_KEY` | Your wallet private key (optional) | Optional |
 | `SYMBOL` | Trading symbol | BTC |
 | `LEVERAGE` | Default leverage | 30 |
 | `LOG_LEVEL` | Logging level | INFO |
 | `LOG_FILE` | Log file name | trading.log |
+
+**Note**: Wallet credentials are optional and only used for market data access. Real trading is disabled for safety.
 
 ### Trading Parameters
 
@@ -77,11 +83,10 @@ python main.py
 ```
 
 This provides a menu-driven interface to:
-1. Run Hybrid Paper Trading Bot
-2. Test External Data Fetcher
-3. Test Fee Manager
-4. Test Variability Analyzer
-5. Test Trading Logger
+1. **Paper Trading** (Testing Mode) - Safe simulated trading
+2. **Real Trading** (Production Mode) - Currently disabled
+3. **Dashboard Only** - Start real-time dashboard without trading
+4. **Exit** - Close the application
 
 ### Running Individual Components
 
