@@ -16,7 +16,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class DynamicStopManager:
-    """Manages dynamic stop losses with Bitcoin volatility awareness"""
+    """Advanced dynamic stop losses with Bitcoin volatility awareness"""
     
     def __init__(self, strategy_config: Dict[str, Any]):
         self.strategy_config = strategy_config
@@ -25,6 +25,9 @@ class DynamicStopManager:
         self.check_interval = 3  # Check every 3 seconds (2-5 sec range)
         self.is_monitoring = False
         self.monitor_thread = None
+        
+        # Integration with Active Position Manager
+        self.active_position_manager = None
         
         # Volatility-aware stop parameters
         self.VOLATILITY_STOPS = {
