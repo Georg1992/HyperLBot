@@ -113,7 +113,38 @@ class YahooHyperliquidPaperTradingBot:
             self.trading_data_manager = trading_data_manager
             # Note: SmartDataCache will be initialized AFTER API connection test
             
-            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Real-time data")
+            # INITIALIZE ULTIMATE INTELLIGENCE SYSTEMS
+            try:
+                from strategies.ml_prediction_engine import MLPredictionEngine
+                from strategies.bitcoin_pattern_engine import BitcoinPatternEngine
+                from strategies.master_fusion_engine import MasterFusionEngine
+                
+                self.ml_engine = MLPredictionEngine(self.strategy_config)
+                self.btc_pattern_engine = BitcoinPatternEngine(self.strategy_config)
+                self.master_fusion_engine = MasterFusionEngine(self.strategy_config)
+                
+                # Connect all engines to the master fusion engine
+                self.master_fusion_engine.initialize_engines({
+                    "ml_engine": self.ml_engine,
+                    "btc_pattern_engine": self.btc_pattern_engine,
+                    "prediction_engine": self.prediction_engine,
+                    "variability_analyzer": self.variability_analyzer,
+                    "trade_manager": self.trade_manager,
+                    "whale_integration": self.whale_integration
+                })
+                
+                logger.success("🧠 ULTIMATE INTELLIGENCE SYSTEMS ACTIVATED:")
+                logger.success("   🤖 ML Prediction Engine - Advanced machine learning models")
+                logger.success("   🏗️ Bitcoin Pattern Engine - BTC-specific pattern recognition")
+                logger.success("   🧠 Master Fusion Engine - Ultimate trading intelligence")
+                
+            except ImportError as e:
+                logger.warning(f"Ultimate intelligence systems not available: {e}")
+                self.ml_engine = None
+                self.btc_pattern_engine = None
+                self.master_fusion_engine = None
+            
+            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Real-time data + ULTIMATE INTELLIGENCE")
         except ImportError as e:
             logger.warning(f"Advanced systems not available: {e}")
             self.dynamic_stop_manager = None
@@ -123,6 +154,9 @@ class YahooHyperliquidPaperTradingBot:
             self.loss_pattern_analyzer = None
             self.trading_data_manager = None
             self.smart_data_cache = None  # Ensure attribute exists
+            self.ml_engine = None
+            self.btc_pattern_engine = None
+            self.master_fusion_engine = None
         
         # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
         self._test_api_connections()
@@ -589,186 +623,210 @@ class YahooHyperliquidPaperTradingBot:
             return None
     
     def should_trade(self, hyperliquid_price: float, binance_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """PREDICTIVE TRADING: Analyze market and predict entry points with timeframes"""
+        """ULTIMATE INTELLIGENT TRADING: Master Fusion Engine analyzes ALL available intelligence"""
         if not binance_analysis or "error" in binance_analysis:
-            return {"should_trade": False, "reason": "No Binance analysis available"}
+            return {"should_trade": False, "reason": "No market analysis available"}
         
         # 1. DETECT STRATEGY AND MARKET CONDITIONS
         current_strategy = self._auto_detect_strategy(binance_analysis, hyperliquid_price)
         if current_strategy != self.strategy_name:
-            # Determine threshold for new strategy
-            if current_strategy == "low_volatility":
-                new_threshold = 0.2
-            elif current_strategy == "high_volatility":
-                new_threshold = 0.6
-            else:
-                new_threshold = 0.5
-                
-            logger.info(f"🔄 Auto-switching strategy: {self.strategy_name} → {current_strategy} (variability threshold: {new_threshold})")
-            
-            # Log strategy switch to JSON files
-            self.trading_logger.log_analysis({
-                "type": "strategy_switch",
-                "timestamp": time.time(),
-                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "previous_strategy": self.strategy_name,
-                "new_strategy": current_strategy,
-                "reason": "auto_detection",
-                "market_condition": binance_analysis.get("market_condition", "UNKNOWN"),
-                "hyperliquid_price": hyperliquid_price,
-                "volatility_5m": self._get_volatility_5m(binance_analysis),
-                "volatility_1h": self._get_volatility_1h(binance_analysis),
-                "range_percentage": self._get_range_percentage(binance_analysis, hyperliquid_price)
-            })
-            
+            logger.info(f"🔄 Auto-switching strategy: {self.strategy_name} → {current_strategy}")
             self.strategy_name = current_strategy
             self.strategy_config = self.config.STRATEGY_CONFIGS.get(current_strategy, self.config.STRATEGY_CONFIGS["standard"])
         
-        # Check if enough time has passed since last trade
+        # 2. CHECK TIME INTERVAL
         current_time = time.time()
         min_interval = self.strategy_config["min_interval"]
         if current_time - self.last_trade_time < min_interval:
             return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
-        # 2. BUILD PRICE PREDICTION AND ENTRY POINT ANALYSIS
-        # Get real-time Hyperliquid market indicators (volume, liquidity)
+        # 3. GATHER ALL MARKET INTELLIGENCE
+        # Get real-time Hyperliquid data
         hyperliquid_indicators = self.hyperliquid_api.get_current_market_indicators("BTC")
-        
-        # Get real volume data from Hyperliquid 5m candles
         volume_data = self.hyperliquid_api.get_current_5m_volume("BTC")
         
-        # Calculate proper RSI using Yahoo Finance historical data (20-period for crypto accuracy)
+        # Calculate enhanced RSI
         candles_5m = binance_analysis.get("candles_5m", [])
-        proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=20)
+        proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=21)
         
-        # Add price data to variability analyzer for analysis
+        # Update variability analyzer
         real_volume = volume_data.get("current_volume", 100)
         self.variability_analyzer.add_price_data(hyperliquid_price, volume=real_volume)
         
-        logger.info(f"📊 Enhanced RSI: {proper_rsi.get('rsi', 50):.1f} (20-period for crypto accuracy - closer to Hyperliquid)")
-        logger.info(f"📊 Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')}) - Trend: {volume_data.get('volume_trend', 'UNKNOWN')}")
+        logger.info(f"📊 Enhanced RSI: {proper_rsi.get('rsi', 50):.1f} (21-period for crypto accuracy)")
+        logger.info(f"📊 Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
         
-        # Enhance binance_analysis with real-time Hyperliquid data and proper RSI
+        # 4. BUILD COMPREHENSIVE ENHANCED ANALYSIS
         enhanced_analysis = binance_analysis.copy()
         enhanced_analysis["hyperliquid_volume"] = hyperliquid_indicators
         enhanced_analysis["hyperliquid_rsi"] = proper_rsi
         enhanced_analysis["hyperliquid_5m_volume"] = volume_data
+        enhanced_analysis["timestamp"] = current_time
         
+        # Add Ultimate Pressure Indicator
+        try:
+            ultimate_pressure = self.hyperliquid_api.get_ultimate_pressure("BTC")
+            enhanced_analysis["ultimate_pressure"] = ultimate_pressure
+        except Exception as e:
+            logger.debug(f"Ultimate pressure error: {e}")
+        
+        # Add Whale Analytics (if available)
+        if self.whale_integration:
+            try:
+                whale_analysis = self.whale_integration.analyze_whale_impact(enhanced_analysis, hyperliquid_price)
+                enhanced_analysis["whale_analysis"] = whale_analysis
+            except Exception as e:
+                logger.debug(f"Whale analytics error: {e}")
+        
+        # Add Global Volume (if available)
+        if self.global_volume_aggregator:
+            try:
+                global_volume = self.global_volume_aggregator.get_realtime_global_volume()
+                enhanced_analysis["global_volume"] = global_volume
+            except Exception as e:
+                logger.debug(f"Global volume error: {e}")
+        
+        # Add Blockchain Data (if available)
+        if self.blockchain_analyzer:
+            try:
+                blockchain_data = self.blockchain_analyzer.get_latest_sentiment()
+                enhanced_analysis["blockchain_data"] = blockchain_data
+            except Exception as e:
+                logger.debug(f"Blockchain data error: {e}")
+        
+        # Get traditional prediction for fallback
         prediction_analysis = self.prediction_engine.build_price_prediction(enhanced_analysis, hyperliquid_price, self.strategy_name)
+        enhanced_analysis["prediction_analysis"] = prediction_analysis
         
-        # Record signals in real-time data manager
-        if self.trading_data_manager and prediction_analysis.get("has_prediction", False):
-            best_prediction = prediction_analysis.get("best_prediction", {})
-            if best_prediction:
-                self.trading_data_manager.add_trading_signal(best_prediction)
-                self.trading_data_manager.update_predictions([best_prediction])
-        
-        # 2.5. APPLY WIN-BACK ENHANCEMENTS (if active)
-        if self.win_back_engine and prediction_analysis.get("has_prediction", False):
-            # Check if win-back is active and enhance signal accordingly
-            winback_requirements = self.win_back_engine.get_winback_signal_requirements()
-            if winback_requirements.get("active", False):
-                logger.info(f"🎯 Win-back active - evaluating signal enhancement...")
-                prediction_analysis = self.win_back_engine.apply_winback_enhancements(
-                    prediction_analysis, enhanced_analysis
-                )
+        # 5. 🧠 MASTER FUSION ENGINE - ULTIMATE INTELLIGENCE ANALYSIS
+        if self.master_fusion_engine:
+            logger.info("🧠 Activating Master Fusion Engine for ultimate trading intelligence...")
             
-            # Check for defensive mode
-            defensive_check = self.win_back_engine.should_enter_defensive_mode()
-            if defensive_check["should_defend"]:
-                logger.warning(f"🛡️ DEFENSIVE MODE ACTIVATED: {defensive_check['reason']}")
-                # Reduce position sizes in defensive mode
-                if prediction_analysis.get("has_prediction", False):
-                    current_position = prediction_analysis.get("position_size", 0.10)
-                    defensive_position = current_position * 0.6  # 40% reduction
-                    prediction_analysis["position_size"] = defensive_position
-                    prediction_analysis["defensive_mode"] = True
-                    prediction_analysis["defensive_reason"] = defensive_check["reason"]
+            try:
+                # Generate ultimate signal using ALL available intelligence
+                fusion_signal = self.master_fusion_engine.generate_ultimate_signal(
+                    binance_analysis, hyperliquid_price, enhanced_analysis
+                )
+                
+                if fusion_signal:
+                    # Convert fusion signal to bot format
+                    signal_data = {
+                        "should_trade": True,
+                        "side": fusion_signal.signal,
+                        "reason": fusion_signal.reason,
+                        "target": fusion_signal.target_price,
+                        "stop": fusion_signal.stop_loss,
+                        "entry_price": fusion_signal.entry_price,
+                        "entry_timeframe": fusion_signal.timeframe,
+                        "prediction_confidence": fusion_signal.confidence,
+                        "position_size_pct": fusion_signal.position_size,
+                        "fusion_score": fusion_signal.fusion_score,
+                        "supporting_factors": fusion_signal.supporting_factors,
+                        "risk_score": fusion_signal.risk_score,
+                        "profit_potential": fusion_signal.profit_potential,
+                        "optimal_params": {
+                            "position_size": self.paper_balance * fusion_signal.position_size / hyperliquid_price,
+                            "leverage": min(self.strategy_config["max_leverage"], 30)
+                        },
+                        "fusion_analysis": True,
+                        "binance_analysis": binance_analysis,
+                        "enhanced_analysis": enhanced_analysis,
+                        "hyperliquid_price": hyperliquid_price,
+                        "strategy_name": self.strategy_name
+                    }
+                    
+                    # Apply win-back enhancements if active
+                    if self.win_back_engine:
+                        winback_requirements = self.win_back_engine.get_winback_signal_requirements()
+                        if winback_requirements.get("active", False):
+                            logger.info(f"🎯 Win-back active - enhancing fusion signal...")
+                            # Enhance position size for win-back
+                            current_position = signal_data["position_size_pct"]
+                            enhanced_position = min(0.6, current_position * 1.3)  # 30% boost, max 60%
+                            signal_data["position_size_pct"] = enhanced_position
+                            signal_data["optimal_params"]["position_size"] = self.paper_balance * enhanced_position / hyperliquid_price
+                            signal_data["winback_enhanced"] = True
+                    
+                    # Record in real-time data manager
+                    if self.trading_data_manager:
+                        fusion_prediction = {
+                            "type": "FUSION",
+                            "side": fusion_signal.signal,
+                            "confidence": fusion_signal.confidence,
+                            "fusion_score": fusion_signal.fusion_score
+                        }
+                        self.trading_data_manager.add_trading_signal(fusion_prediction)
+                        self.trading_data_manager.update_predictions([fusion_prediction])
+                    
+                    # Log fusion analysis
+                    self.trading_logger.log_analysis({
+                        "type": "fusion_analysis",
+                        "timestamp": current_time,
+                        "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
+                        "fusion_signal": fusion_signal.signal,
+                        "fusion_confidence": fusion_signal.confidence,
+                        "fusion_score": fusion_signal.fusion_score,
+                        "supporting_factors": fusion_signal.supporting_factors,
+                        "position_size": fusion_signal.position_size,
+                        "hyperliquid_price": hyperliquid_price,
+                        "strategy_name": self.strategy_name
+                    })
+                    
+                    # Log the fusion signal
+                    self.trading_logger.log_signal(signal_data)
+                    
+                    # Update signal memory
+                    self.last_signal_reason = signal_data["reason"]
+                    self.last_signal_price = hyperliquid_price
+                    self.last_signal_time = current_time
+                    
+                    logger.success(f"🚀 FUSION SIGNAL GENERATED: {fusion_signal.signal} - {fusion_signal.confidence:.1%} confidence")
+                    return signal_data
+                    
+                else:
+                    logger.info("🤔 Master Fusion Engine: No clear trading opportunity")
+            
+            except Exception as e:
+                logger.error(f"Master Fusion Engine error: {e}")
+                logger.info("⚠️ Falling back to traditional prediction system")
         
-        # Log prediction analysis for dashboard
-        self.trading_logger.log_analysis({
-            "type": "prediction_analysis",
-            "timestamp": time.time(),
-            "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "has_prediction": prediction_analysis.get("has_prediction", False),
-            "prediction_mode": prediction_analysis.get("prediction_mode", "UNKNOWN"),
-            "best_prediction": prediction_analysis.get("best_prediction", {}),
-            "all_predictions": prediction_analysis.get("all_predictions", []),
-            "reason": prediction_analysis.get("reason", "No reason provided"),
-            "hyperliquid_price": hyperliquid_price,
-            "strategy_name": self.strategy_name,
-            "volatility_5m": prediction_analysis.get("volatility_5m", 0),
-            "volatility_1h": prediction_analysis.get("volatility_1h", 0),
-            "range_size": prediction_analysis.get("range_size", 0),
-            "support": prediction_analysis.get("support", 0),
-            "resistance": prediction_analysis.get("resistance", 0),
-            "volume_data": volume_data,
-            "rsi_data": proper_rsi.get("rsi", 50.0)  # Add RSI data for dashboard
-        })
-        
-        if not prediction_analysis["has_prediction"]:
+        # 6. FALLBACK TO TRADITIONAL SYSTEM (if fusion not available or no signal)
+        if not prediction_analysis.get("has_prediction", False):
             return {
                 "should_trade": False,
-                "reason": f"No valid prediction: {prediction_analysis['reason']}"
+                "reason": f"No valid prediction: {prediction_analysis.get('reason', 'Unknown')}"
             }
         
-        # 3. ANALYZE ENTRY POINT AND WIN CONDITIONS
+        # Traditional entry analysis
         entry_analysis = self._analyze_entry_point(prediction_analysis, hyperliquid_price)
-        
         if not entry_analysis["should_place_order"]:
             return {
                 "should_trade": False,
                 "reason": f"Entry analysis failed: {entry_analysis['reason']}"
             }
         
-        # 4. CALCULATE TRADING PARAMETERS
+        # Traditional variability check
         variability_decision = self.variability_analyzer.should_trade_based_on_variability(entry_analysis["variability_threshold"])
-        
         if not variability_decision["should_trade"]:
             return {
                 "should_trade": False, 
                 "reason": f"Variability analysis: {variability_decision['reason']}"
             }
         
-        # Get optimal trading parameters
-        variability_analysis = variability_decision["analysis"]
-        optimal_params = variability_decision["optimal_trading_params"]
-        
-        # Calculate dynamic position sizing
-        position_size_pct = self._calculate_dynamic_position_size(
-            variability_analysis, 
-            binance_analysis, 
-            hyperliquid_price,
-            entry_analysis["support"],
-            entry_analysis["resistance"]
-        )
-        strategy_position_size_usd = self.paper_balance * position_size_pct
-        optimal_params["position_size"] = strategy_position_size_usd / hyperliquid_price
-        
-        # Adjust leverage
-        max_leverage = min(self.strategy_config["max_leverage"], self.leverage_settings["max_leverage"])
-        optimal_params["leverage"] = min(optimal_params["leverage"], max_leverage)
-        
-        # 5. BUILD PREDICTIVE SIGNAL
+        # Build traditional signal
         signal_data = {
             "should_trade": True,
             "side": entry_analysis["side"],
-            "reason": f"PREDICTIVE: {entry_analysis['prediction_type']} - {entry_analysis['reason']}",
-            "prediction_analysis": prediction_analysis,
-            "entry_analysis": entry_analysis,
+            "reason": f"TRADITIONAL: {entry_analysis['prediction_type']} - {entry_analysis['reason']}",
             "target": entry_analysis["target_price"],
             "stop": entry_analysis["stop_price"],
             "entry_price": entry_analysis["entry_price"],
-            "entry_timeframe": entry_analysis["entry_timeframe"],
             "prediction_confidence": entry_analysis["confidence"],
-            "variability_analysis": variability_analysis,
-            "optimal_params": optimal_params,
-            "binance_analysis": binance_analysis,
-            "hyperliquid_price": hyperliquid_price,
+            "optimal_params": variability_decision["optimal_trading_params"],
             "strategy_name": self.strategy_name
         }
         
-        # 6. INTELLIGENT TRADE QUALITY EVALUATION
+        # Traditional quality check
         trade_decision = self.trade_manager.should_place_trade(
             signal_data, binance_analysis, hyperliquid_price, self.open_positions
         )
@@ -776,24 +834,11 @@ class YahooHyperliquidPaperTradingBot:
         if not trade_decision["should_place"]:
             return {
                 "should_trade": False,
-                "reason": f"Trade quality check failed: {trade_decision['reason']}",
-                "quality_evaluation": trade_decision.get("quality_evaluation", {})
+                "reason": f"Trade quality check failed: {trade_decision['reason']}"
             }
         
-        # Add quality evaluation to signal data
-        signal_data["quality_evaluation"] = trade_decision["quality_evaluation"]
-        signal_data["trade_decision"] = trade_decision
-        
-        # Add whale confirmation
-        signal_data = integrate_whale_analytics_into_signal(signal_data, self.whale_integration)
-        
-        # Log whale analysis
-        self.whale_integration.log_whale_analysis(self.trading_logger)
-        
-        # Log the predictive signal
+        # Log traditional signal
         self.trading_logger.log_signal(signal_data)
-        
-        # Update signal memory
         self.last_signal_reason = signal_data["reason"]
         self.last_signal_price = hyperliquid_price
         self.last_signal_time = current_time
