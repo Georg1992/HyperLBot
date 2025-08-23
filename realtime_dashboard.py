@@ -289,8 +289,8 @@ class EventDrivenTradingDashboard:
                         "recent_trades": recent_trades,
                         "recent_signals": current_state["recent_signals"],
                         "timestamp": datetime.now().isoformat(),
-                        "data_source": "real_time_active" if session_status == "ACTIVE" else "real_time_inactive",
-                        "connection_status": "🔴 Live Trading" if session_status == "ACTIVE" else "🟡 Ready for Trading"
+                        "data_source": "real_time_active" if session_data["status"] == "ACTIVE" else "real_time_inactive",
+                        "connection_status": "🔴 Live Trading" if session_data["status"] == "ACTIVE" else "🟡 Ready for Trading"
                     }
                     
                     logger.debug("✅ Using RTM real-time data")
