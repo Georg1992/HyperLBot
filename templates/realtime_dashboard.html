@@ -439,6 +439,42 @@
             </div>
         </div>
 
+        <!-- Activity Logs Card -->
+        <div class="card medium-card">
+            <h2>📝 Real-Time Activity</h2>
+            <div class="log-container" id="activity-logs">
+                <div class="log-entry">Connecting to real-time data stream...</div>
+            </div>
+        </div>
+
+        <!-- Predictions Card -->
+        <div class="card">
+            <h2>🔮 Trading Predictions</h2>
+            <div id="predictions-container">
+                <div class="prediction-status">
+                    <div class="data-item">
+                        <span class="data-label">Status:</span>
+                        <span class="data-value" id="prediction-status">Waiting for bot...</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Latest Signal:</span>
+                        <span class="data-value" id="latest-signal">None yet</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Confidence:</span>
+                        <span class="data-value" id="signal-confidence">N/A</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Direction:</span>
+                        <span class="data-value" id="signal-direction">-</span>
+                    </div>
+                </div>
+                <div class="prediction-info" style="margin-top: 10px; padding: 10px; background: rgba(255,165,0,0.1); border-left: 3px solid #FFA500; font-size: 12px;">
+                    💡 <strong>Tip:</strong> Start the trading bot to see live prediction signals from ML engines, pattern recognition, and technical analysis.
+                </div>
+            </div>
+        </div>
+
         <!-- Trade History Card (NEW) -->
         <div class="card wide-card">
             <h2>📋 Trade History & Status</h2>
@@ -483,44 +519,6 @@
                         <div class="data-label">Avg Trade Time</div>
                         <div class="data-value" id="avg-trade-time">0m</div>
                     </div>
-                </div>
-            </div>
-        </div>
-
-
-
-        <!-- Activity Logs Card -->
-        <div class="card medium-card">
-            <h2>📝 Real-Time Activity</h2>
-            <div class="log-container" id="activity-logs">
-                <div class="log-entry">Connecting to real-time data stream...</div>
-            </div>
-        </div>
-
-        <!-- Predictions Card -->
-        <div class="card">
-            <h2>🔮 Trading Predictions</h2>
-            <div id="predictions-container">
-                <div class="prediction-status">
-                    <div class="data-item">
-                        <span class="data-label">Status:</span>
-                        <span class="data-value" id="prediction-status">Waiting for bot...</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Latest Signal:</span>
-                        <span class="data-value" id="latest-signal">None yet</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Confidence:</span>
-                        <span class="data-value" id="signal-confidence">N/A</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Direction:</span>
-                        <span class="data-value" id="signal-direction">-</span>
-                    </div>
-                </div>
-                <div class="prediction-info" style="margin-top: 10px; padding: 10px; background: rgba(255,165,0,0.1); border-left: 3px solid #FFA500; font-size: 12px;">
-                    💡 <strong>Tip:</strong> Start the trading bot to see live prediction signals from ML engines, pattern recognition, and technical analysis.
                 </div>
             </div>
         </div>

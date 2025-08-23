@@ -2894,7 +2894,7 @@ class YahooHyperliquidPaperTradingBot:
                     
                     # Update dashboard with analysis activity
                     if self.trading_data_manager:
-                        self.trading_data_manager.add_activity_log({
+                        self.trading_data_manager.add_activity({
                             "timestamp": current_time,
                             "message": f"🔍 Analyzing market conditions at ${hyperliquid_price:.2f}",
                             "type": "analysis",
@@ -2959,7 +2959,7 @@ class YahooHyperliquidPaperTradingBot:
                         # Update dashboard with signal activity
                         if self.trading_data_manager:
                             confidence_pct = quality_eval.get('confidence_level', 'Unknown') if quality_eval else 'Unknown'
-                            self.trading_data_manager.add_activity_log({
+                            self.trading_data_manager.add_activity({
                                 "timestamp": current_time,
                                 "message": f"🚀 {signal['side']} signal: {signal['reason'][:50]}{'...' if len(signal['reason']) > 50 else ''}",
                                 "type": "signal",
