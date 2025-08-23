@@ -783,17 +783,11 @@ class RealTimeTradingDataManager:
                 with open(json_file_path, 'r') as f:
                     file_state = json.load(f)
                 
-                # NEVER overwrite ACTIVE session with file data
+                # CRITICAL FIX: NEVER load session data from file during RTM startup!
+                # Sessions should ALWAYS start fresh - old session data belongs in logs/database only
+                # Loading old sessions confuses the dashboard about current vs historical data
                 if file_state.get("session"):
-                    current_status = self.current_state["session"].get("status")
-                    file_status = file_state["session"].get("status")
-                    
-                    # Only load from file if current session is INACTIVE and file has useful data
-                    if current_status != "ACTIVE" and file_status != "ACTIVE":
-                        self.current_state["session"].update(file_state["session"])
-                        logger.debug(f"Loaded COMPLETED session from file: {file_state['session'].get('session_id')}")
-                    else:
-                        logger.debug(f"Skipping session load - current: {current_status}, file: {file_status}")
+                    logger.debug(f"Found old session in file: {file_state['session'].get('session_id')} - IGNORING (sessions start fresh)")
                 
                 # Load predictions
                 if file_state.get("predictions"):
