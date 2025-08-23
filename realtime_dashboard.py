@@ -100,12 +100,16 @@ class EventDrivenTradingDashboard:
             
         if self._rtm is None:
             try:
+                # Force reload of the singleton instance
+                import importlib
+                import core.realtime_data_manager
+                importlib.reload(core.realtime_data_manager)
                 from core.realtime_data_manager import trading_data_manager
                 self._rtm = trading_data_manager
                 self._rtm_available = True
-                logger.debug("✅ Connected to Real-Time Data Manager (Global Instance)")
+                logger.success("✅ Real-time data manager connected")
             except Exception as e:
-                logger.debug(f"⚠️ RTM not available: {e}")
+                logger.error(f"❌ Real-time data manager connection failed: {e}")
                 self._rtm_available = False
                 return None
         
@@ -131,7 +135,7 @@ class EventDrivenTradingDashboard:
                 try:
                     if self.active_connections:
                         # Check for data changes
-                        current_data = self._get_all_dashboard_data()
+                        current_data = self._get_dashboard_data()
                         current_hash = self._calculate_data_hash(current_data)
                         
                         # Only emit if data actually changed
@@ -171,7 +175,7 @@ class EventDrivenTradingDashboard:
     def _send_initial_data(self, session_id: str):
         """Send complete dashboard data to new connection"""
         try:
-            data = self._get_all_dashboard_data()
+            data = self._get_dashboard_data()
             self.socketio.emit('initial_data', data, room=session_id)
             logger.info("📤 Sent initial data to new connection")
         except Exception as e:
@@ -180,7 +184,7 @@ class EventDrivenTradingDashboard:
     def _send_all_data(self, session_id: str):
         """Send complete dashboard data to specific connection"""
         try:
-            data = self._get_all_dashboard_data()
+            data = self._get_dashboard_data()
             self.socketio.emit('data_update', data, room=session_id)
             logger.info("📤 Sent complete data update")
         except Exception as e:
@@ -194,8 +198,8 @@ class EventDrivenTradingDashboard:
         except Exception as e:
             logger.error(f"❌ Failed to emit data update: {e}")
     
-    def _get_all_dashboard_data(self) -> Dict[str, Any]:
-        """Get complete dashboard data"""
+    def _get_dashboard_data(self) -> Dict[str, Any]:
+        """Get comprehensive dashboard data with real-time updates"""
         try:
             # Try real-time data first
             rtm = self._get_realtime_manager()
@@ -205,76 +209,51 @@ class EventDrivenTradingDashboard:
                 logger.debug(f"🔍 Real-time manager status: {session_status}")
                 logger.debug(f"🔍 Recent activity count: {len(current_state.get('recent_activity', []))}")
                 
-                if session_status == "ACTIVE":
-                    # Bot is actively running - use live data
-                    session_data = current_state["session"]
-                    enhanced_balance = self._calculate_enhanced_balance(session_data)
-                    
-                    activity_logs = current_state.get("recent_activity", [])
-                    logger.debug(f"📊 Sending {len(activity_logs)} activity logs to dashboard")
-                    if activity_logs:
-                        logger.debug(f"📊 Latest activity: {activity_logs[-1].get('message', 'No message')}")
-                    
-                    return {
-                        "session": {**session_data, **enhanced_balance},
-                        "market": current_state["market"],
-                        "logs": activity_logs,
-                        "summary": {
-                            "total_trades": session_data["total_trades"],
-                            "winning_trades": session_data["winning_trades"],
-                            "losing_trades": session_data["losing_trades"],
-                            "current_balance": enhanced_balance["current_balance"],
-                            "initial_balance": enhanced_balance["initial_balance"],
-                            "balance_change": enhanced_balance["balance_change"],
-                            "balance_change_pct": enhanced_balance.get("balance_change_pct", 0),
-                            "realized_pnl": enhanced_balance.get("realized_pnl", 0),
-                            "unrealized_pnl": enhanced_balance.get("unrealized_pnl", 0),
-                            "open_positions_value": enhanced_balance.get("open_positions_value", 0),
-                            "balance_source": enhanced_balance["balance_source"]
-                        },
-                        "predictions": current_state["predictions"],
-                        "orderbook": self._get_orderbook_data(),
-                        "global_volume": current_state["global_volume"],
-                        "trades": current_state["recent_trades"],
-                        "recent_trades": current_state["recent_trades"],
-                        "recent_signals": current_state["recent_signals"],
-                        "timestamp": datetime.now().isoformat(),
-                        "data_source": "real_time_active",
-                        "connection_status": "🔴 Live Trading"
-                    }
-                else:
-                    # Real-time manager exists but bot is not active
-                    # Use real-time market data but show appropriate status
-                    return {
-                        "session": {
-                            **current_state["session"],
-                            "status": "REAL_TIME_READY"  # Show that we're connected but bot not running
-                        },
-                        "market": current_state["market"],
-                        "logs": current_state["recent_activity"],
-                        "summary": {
-                            "total_trades": current_state["session"]["total_trades"],
-                            "winning_trades": current_state["session"]["winning_trades"],
-                            "losing_trades": current_state["session"]["losing_trades"],
-                            "current_balance": current_state["session"]["current_balance"],
-                            "initial_balance": current_state["session"]["initial_balance"],
-                            "balance_change": current_state["session"]["current_balance"] - current_state["session"]["initial_balance"],
-                            "balance_change_pct": 0,
-                            "realized_pnl": 0,
-                            "unrealized_pnl": 0,
-                            "open_positions_value": 0,
-                            "balance_source": "real_time_inactive"
-                        },
-                        "predictions": current_state["predictions"],
-                        "orderbook": self._get_orderbook_data(),
-                        "global_volume": current_state["global_volume"],
-                        "trades": current_state["recent_trades"],
-                        "recent_trades": current_state["recent_trades"],
-                        "recent_signals": current_state["recent_signals"],
-                        "timestamp": datetime.now().isoformat(),
-                        "data_source": "real_time_inactive",
-                        "connection_status": "🟡 Ready for Trading"
-                    }
+                # Always use real-time data if available, regardless of bot status
+                session_data = current_state["session"]
+                enhanced_balance = self._calculate_enhanced_balance(session_data)
+                
+                activity_logs = current_state.get("recent_activity", [])
+                logger.debug(f"📊 Sending {len(activity_logs)} activity logs to dashboard")
+                if activity_logs:
+                    logger.debug(f"📊 Latest activity: {activity_logs[-1].get('message', 'No message')}")
+                
+                # Get actual trade data from real-time manager
+                recent_trades = list(current_state.get("recent_trades", []))
+                if not recent_trades:
+                    # Try to get from database if not in memory
+                    try:
+                        recent_trades = rtm.get_historical_trades(10)
+                    except:
+                        recent_trades = []
+                
+                return {
+                    "session": {**session_data, **enhanced_balance},
+                    "market": current_state["market"],
+                    "logs": activity_logs,
+                    "summary": {
+                        "total_trades": session_data["total_trades"],
+                        "winning_trades": session_data["winning_trades"],
+                        "losing_trades": session_data["losing_trades"],
+                        "current_balance": enhanced_balance["current_balance"],
+                        "initial_balance": enhanced_balance["initial_balance"],
+                        "balance_change": enhanced_balance["balance_change"],
+                        "balance_change_pct": enhanced_balance.get("balance_change_pct", 0),
+                        "realized_pnl": enhanced_balance.get("realized_pnl", 0),
+                        "unrealized_pnl": enhanced_balance.get("unrealized_pnl", 0),
+                        "open_positions_value": enhanced_balance.get("open_positions_value", 0),
+                        "balance_source": enhanced_balance["balance_source"]
+                    },
+                    "predictions": current_state["predictions"],
+                    "orderbook": self._get_orderbook_data(),
+                    "global_volume": current_state["global_volume"],
+                    "trades": recent_trades,
+                    "recent_trades": recent_trades,
+                    "recent_signals": current_state["recent_signals"],
+                    "timestamp": datetime.now().isoformat(),
+                    "data_source": "real_time_active" if session_status == "ACTIVE" else "real_time_inactive",
+                    "connection_status": "🔴 Live Trading" if session_status == "ACTIVE" else "🟡 Ready for Trading"
+                }
             
             # Fallback to offline data
             return {
@@ -300,53 +279,74 @@ class EventDrivenTradingDashboard:
             }
     
     def _get_session_data(self) -> Dict[str, Any]:
-        """Get session data from logs"""
+        """Get session data from latest session metadata"""
         try:
-            # Ensure log directory exists
-            if not os.path.exists(self.log_dir):
-                os.makedirs(self.log_dir, exist_ok=True)
+            # Find the latest session metadata file
+            session_files = [f for f in os.listdir(self.log_dir) if f.startswith("session_metadata_") and f.endswith(".json")]
+            if session_files:
+                latest_session = max(session_files, key=lambda f: os.path.getmtime(os.path.join(self.log_dir, f)))
+                session_path = os.path.join(self.log_dir, latest_session)
                 
-            session_files = [f for f in os.listdir(self.log_dir) if f.startswith("session_") and f.endswith(".json")]
-            
-            if not session_files:
-                # Dashboard-only mode (no bot running)
+                with open(session_path, 'r') as f:
+                    session_data = json.load(f)
+                
+                # Calculate session duration
+                start_time = datetime.fromisoformat(session_data["start_time"])
+                session_duration = datetime.now() - start_time
+                session_minutes = int(session_duration.total_seconds() / 60)
+                
                 return {
-                    "session_id": "dashboard_monitoring", 
-                    "status": "DASHBOARD_ONLY", 
-                    "strategy": "Dashboard Monitoring - Start bot for live trading",
-                    "start_time": datetime.now().isoformat(),
-                    "initial_balance": 120.0,
-                    "current_balance": 120.0,
-                    "total_trades": 0,
+                    "session_id": session_data["session_id"],
+                    "start_time": session_data["start_time"],
+                    "status": "ACTIVE",  # Assume active if we have recent metadata
+                    "strategy": session_data["strategy"],
+                    "session_time": f"{session_minutes}m",
+                    "initial_balance": session_data["initial_balance"],
+                    "current_balance": session_data["current_balance"],
+                    "balance_change": session_data["balance_change"],
+                    "balance_change_pct": session_data["balance_change_pct"],
+                    "last_balance_update": session_data["last_balance_update"],
+                    "bot_version": session_data["bot_version"],
+                    "total_trades": 0,  # Will be updated by real-time manager
                     "winning_trades": 0,
-                    "losing_trades": 0,
-                    "balance_change": 0.0,
-                    "balance_change_pct": 0.0,
-                    "data_source": "dashboard_monitoring"
+                    "losing_trades": 0
                 }
             
-            latest_session = max(session_files)
-            session_path = os.path.join(self.log_dir, latest_session)
+            # Fallback to default session data
+            return {
+                "session_id": f"session_{int(time.time())}",
+                "start_time": datetime.now().isoformat(),
+                "status": "INACTIVE",
+                "strategy": "standard",
+                "session_time": "0m",
+                "initial_balance": 120.0,
+                "current_balance": 120.0,
+                "balance_change": 0.0,
+                "balance_change_pct": 0.0,
+                "last_balance_update": datetime.now().isoformat(),
+                "bot_version": "Unknown",
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0
+            }
             
-            with open(session_path, 'r') as f:
-                session_data = json.load(f)
-                session_data["status"] = "STOPPED"  # Mark as stopped if reading from logs
-                return session_data
-                
         except Exception as e:
             logger.error(f"Session data error: {e}")
             return {
-                "session_id": "error_session", 
-                "status": "ERROR", 
-                "strategy": "Error loading session data",
+                "session_id": f"session_{int(time.time())}",
+                "start_time": datetime.now().isoformat(),
+                "status": "ERROR",
+                "strategy": "unknown",
+                "session_time": "0m",
                 "initial_balance": 120.0,
                 "current_balance": 120.0,
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
                 "balance_change": 0.0,
                 "balance_change_pct": 0.0,
-                "error": str(e)
+                "last_balance_update": datetime.now().isoformat(),
+                "bot_version": "Error",
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0
             }
     
     def _get_market_data(self) -> Dict[str, Any]:
@@ -541,83 +541,71 @@ class EventDrivenTradingDashboard:
             }]
     
     def _get_trades_data(self) -> List[Dict]:
-        """Get trade history data from logs"""
+        """Get trade history data from latest trade logs"""
         try:
             trades = []
             
-            # Try to get trades from trading logs
-            signal_log_path = os.path.join(self.log_dir, "signals.log")
-            trade_log_path = os.path.join(self.log_dir, "trading_actions.log")
+            # Try to get trades from the latest trade log file
+            trade_files = [f for f in os.listdir(os.path.join(self.log_dir, "trades")) if f.endswith(".json")]
+            if trade_files:
+                latest_trade_file = max(trade_files, key=lambda f: os.path.getmtime(os.path.join(self.log_dir, "trades", f)))
+                trade_path = os.path.join(self.log_dir, "trades", latest_trade_file)
+                
+                with open(trade_path, 'r') as f:
+                    trade_data = json.load(f)
+                
+                for trade in trade_data:
+                    # Convert trade data to dashboard format
+                    dashboard_trade = {
+                        "id": trade.get("trade_id", "unknown"),
+                        "side": trade.get("side", "UNKNOWN"),
+                        "symbol": "BTC",
+                        "status": "CLOSED" if trade.get("exit_timestamp") else "OPEN",
+                        "price": trade.get("price", 0),
+                        "size": trade.get("size", 0),
+                        "timestamp": trade.get("datetime", datetime.now().isoformat()),
+                        "type": trade.get("order_type", "MARKET"),
+                        "pnl": trade.get("net_profit_loss", 0),
+                        "confidence": trade.get("signal_data", {}).get("prediction_confidence", 0) * 100 if trade.get("signal_data") else 0
+                    }
+                    trades.append(dashboard_trade)
             
-            # Read signal logs for trade entries
-            if os.path.exists(signal_log_path):
-                try:
-                    with open(signal_log_path, 'r') as f:
-                        lines = f.readlines()[-50:]  # Last 50 entries
-                        for line in lines:
-                            if 'BUY' in line or 'SELL' in line:
-                                # Parse log entry to extract trade info
-                                timestamp = datetime.now().isoformat()
-                                if '[' in line and ']' in line:
-                                    timestamp_str = line.split('[')[1].split(']')[0]
-                                    try:
-                                        timestamp = datetime.fromisoformat(timestamp_str).isoformat()
-                                    except:
-                                        pass
-                                
-                                # Create trade entry from log
-                                trade = {
-                                    "id": f"trade_{len(trades)}",
-                                    "side": "BUY" if "BUY" in line else "SELL",
-                                    "symbol": "BTC",
-                                    "status": "CLOSED",  # Most log entries are completed trades
-                                    "price": self._extract_price_from_log(line),
-                                    "size": self._extract_size_from_log(line),
-                                    "timestamp": timestamp,
-                                    "type": "MARKET",
-                                    "pnl": self._extract_pnl_from_log(line),
-                                    "confidence": self._extract_confidence_from_log(line)
-                                }
-                                trades.append(trade)
-                except Exception as e:
-                    logger.debug(f"Error reading signal logs: {e}")
-            
-            # Add some sample data if no trades found
+            # If no trades found, provide informative message
             if not trades:
                 current_time = datetime.now()
-                sample_trades = [
+                trades = [
                     {
-                        "id": "sample_1",
-                        "side": "BUY",
+                        "id": "no_trades",
+                        "side": "INFO",
                         "symbol": "BTC",
-                        "status": "CLOSED",
-                        "price": 97500.0,
-                        "size": 0.0012,
-                        "timestamp": (current_time - timedelta(hours=2)).isoformat(),
-                        "type": "MARKET",
-                        "pnl": 15.50,
-                        "confidence": 78
-                    },
-                    {
-                        "id": "sample_2", 
-                        "side": "SELL",
-                        "symbol": "BTC",
-                        "status": "PENDING",
-                        "price": 98200.0,
-                        "size": 0.0008,
-                        "timestamp": (current_time - timedelta(minutes=30)).isoformat(),
-                        "type": "LIMIT",
-                        "pnl": None,
-                        "confidence": 65
+                        "status": "INFO",
+                        "price": 0,
+                        "size": 0,
+                        "timestamp": current_time.isoformat(),
+                        "type": "INFO",
+                        "pnl": 0,
+                        "confidence": 0,
+                        "message": "No trades found in current session. Check if trading bot is running."
                     }
                 ]
-                trades.extend(sample_trades)
             
             return trades[-50:]  # Return last 50 trades
             
         except Exception as e:
             logger.debug(f"Trade data error: {e}")
-            return []
+            return [{
+                "id": "error",
+                "side": "ERROR",
+                "symbol": "BTC",
+                "status": "ERROR",
+                "price": 0,
+                "size": 0,
+                "timestamp": datetime.now().isoformat(),
+                "type": "ERROR",
+                "pnl": 0,
+                "confidence": 0,
+                "message": f"Error loading trade data: {str(e)}"
+            }]
     
     def _extract_price_from_log(self, line: str) -> float:
         """Extract price from log line"""
@@ -727,25 +715,38 @@ class EventDrivenTradingDashboard:
             api = self._get_hyperliquid_api()
             current_btc_price = api.get_current_price("BTC") if api else 97500.0
             
-            # Base balance data
+            # Base balance data from session
             current_balance = session_data.get("current_balance", 120.0)
             initial_balance = session_data.get("initial_balance", 120.0)
+            balance_change = session_data.get("balance_change", 0.0)
+            balance_change_pct = session_data.get("balance_change_pct", 0.0)
             
             # Enhanced balance structure
             enhanced = {
                 "current_balance": current_balance,
                 "initial_balance": initial_balance,
-                "balance_change": current_balance - initial_balance,
-                "balance_change_pct": ((current_balance - initial_balance) / initial_balance * 100) if initial_balance > 0 else 0,
-                "realized_pnl": 0.0,
+                "balance_change": balance_change,
+                "balance_change_pct": balance_change_pct,
+                "realized_pnl": balance_change,  # For now, assume all P&L is realized
                 "unrealized_pnl": 0.0,
                 "open_positions_value": 0.0,
                 "current_btc_price": current_btc_price,
                 "balance_source": "enhanced_real_time"
             }
             
-            # TODO: When bot integration is complete, this will pull from bot's P&L tracker
-            # For now, return the enhanced base data
+            # If we have a real-time manager, try to get more accurate P&L data
+            rtm = self._get_realtime_manager()
+            if rtm:
+                try:
+                    # Get recent trades to calculate realized P&L
+                    recent_trades = list(rtm.get_current_state().get("recent_trades", []))
+                    if recent_trades:
+                        realized_pnl = sum(trade.get("pnl", 0) for trade in recent_trades if trade.get("pnl") is not None)
+                        enhanced["realized_pnl"] = realized_pnl
+                        enhanced["unrealized_pnl"] = balance_change - realized_pnl
+                except Exception as e:
+                    logger.debug(f"Could not calculate detailed P&L: {e}")
+            
             return enhanced
             
         except Exception as e:
@@ -755,6 +756,9 @@ class EventDrivenTradingDashboard:
                 "current_balance": session_data.get("current_balance", 120.0),
                 "initial_balance": session_data.get("initial_balance", 120.0),
                 "balance_change": session_data.get("balance_change", 0.0),
+                "balance_change_pct": session_data.get("balance_change_pct", 0.0),
+                "realized_pnl": session_data.get("balance_change", 0.0),
+                "unrealized_pnl": 0.0,
                 "balance_source": "fallback"
             }
     
