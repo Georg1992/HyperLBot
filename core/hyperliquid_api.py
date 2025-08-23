@@ -498,17 +498,17 @@ class HyperliquidAPI:
             return []
     
     def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
-        """Get current 5-minute volume statistics from real-time sources"""
+        """Get current 5-minute volume statistics from stable real-time sources"""
         try:
             symbol = symbol or self.config.SYMBOL
             
-            # Use real-time volume fetcher for actual trading volume data
-            from data.realtime_volume_fetcher import RealtimeVolumeFetcher
+            # Use stable volume fetcher to prevent wild fluctuations
+            from data.stable_volume_fetcher import StableVolumeFetcher
             
-            volume_fetcher = RealtimeVolumeFetcher()
+            volume_fetcher = StableVolumeFetcher()
             volume_data = volume_fetcher.get_current_5m_volume()
             
-            logger.info(f"Retrieved real-time volume data for {symbol}: {volume_data.get('volume_category', 'UNKNOWN')}")
+            logger.debug(f"Retrieved stable volume data for {symbol}: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
             return volume_data
             
         except Exception as e:
