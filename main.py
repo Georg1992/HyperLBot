@@ -24,6 +24,7 @@ active_bot_instance = None
 def signal_handler(signum, frame):
     """Handle Ctrl+C and other termination signals"""
     logger.warning(f"🛑 Received signal {signum} - Initiating graceful shutdown...")
+    logger.info(f"🔍 Debug: active_bot_instance = {active_bot_instance}")
     
     if active_bot_instance:
         try:
@@ -32,16 +33,23 @@ def signal_handler(signum, frame):
             logger.success("✅ Trading session closed gracefully")
         except Exception as e:
             logger.error(f"Error during graceful shutdown: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+    else:
+        logger.warning("⚠️ No active bot instance found")
     
     # Also close any active sessions in the real-time data manager
     try:
         from core.realtime_data_manager import trading_data_manager
+        logger.info(f"🔍 Debug: RTM session status = {trading_data_manager.current_state['session'].get('status')}")
         if trading_data_manager.current_state["session"].get("status") == "ACTIVE":
             logger.info("🔄 Closing real-time data manager session...")
             trading_data_manager.end_session()
             logger.success("✅ Real-time data manager session closed")
     except Exception as e:
         logger.error(f"Error closing real-time data manager session: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
     
     logger.info("👋 Goodbye!")
     sys.exit(0)

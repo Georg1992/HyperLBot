@@ -359,6 +359,9 @@ class RealTimeTradingDataManager:
             
             logger.info("🏁 Trading session ended")
             self._notify_subscribers("session_ended", self.current_state["session"])
+            
+            # Save to file for cross-process sharing
+            self._save_to_json_file()
     
     def update_balance(self, new_balance: float, reason: str = "Trade execution"):
         """Update current balance in real-time"""

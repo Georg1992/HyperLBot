@@ -1,31 +1,23 @@
 {
   "session": {
-    "session_id": "session_1755948320",
-    "start_time": "2025-08-23T14:25:20.750371",
-    "status": "ACTIVE",
-    "strategy": "Test Strategy 1",
-    "initial_balance": 100.0,
-    "current_balance": 100.0,
+    "session_id": "none",
+    "start_time": "2025-08-23T15:02:05.707564",
+    "status": "INACTIVE",
+    "strategy": "none",
+    "initial_balance": 0.0,
+    "current_balance": 0.0,
     "balance_change": 0.0,
     "balance_change_pct": 0.0,
-    "last_balance_update": "2025-08-23T14:25:20.750371",
-    "bot_version": "Test Bot v1.0",
+    "last_balance_update": "2025-08-23T15:02:05.707564",
+    "bot_version": "Advanced Trading Bot v4.0",
     "open_positions_count": 0,
     "total_trades": 0,
     "winning_trades": 0,
     "losing_trades": 0
   },
   "predictions": [],
-  "recent_activity": [
-    {
-      "type": "activity",
-      "message": "First session activity",
-      "level": "INFO",
-      "timestamp": 1755948320.7503717,
-      "datetime": "2025-08-23T14:25:20.750371"
-    }
-  ],
+  "recent_activity": [],
   "recent_signals": [],
   "recent_trades": [],
-  "last_update": 1755948320.7503717
+  "last_update": 1755950525.7075644
 }

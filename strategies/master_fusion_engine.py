@@ -238,7 +238,10 @@ class MasterFusionEngine:
                 traditional_signal = enhanced_analysis.get("prediction_analysis", {})
                 if traditional_signal.get("has_prediction"):
                     signals["traditional_prediction"] = traditional_signal
-                    logger.info(f"📈 Traditional: {traditional_signal.get('prediction_type', 'UNKNOWN')}")
+                    # Get the prediction type from the best prediction
+                    best_prediction = traditional_signal.get("best_prediction", {})
+                    prediction_type = best_prediction.get("type", "UNKNOWN")
+                    logger.info(f"📈 Traditional: {prediction_type}")
             except Exception as e:
                 logger.debug(f"Traditional prediction error: {e}")
         
@@ -311,7 +314,9 @@ class MasterFusionEngine:
             elif signal_name == "btc_patterns":
                 confidence = signal_data.get("combined_signal", {}).get("confidence", 0)
             elif signal_name == "traditional_prediction":
-                confidence = signal_data.get("prediction_confidence", 0)
+                # Get confidence from the best prediction
+                best_prediction = signal_data.get("best_prediction", {})
+                confidence = best_prediction.get("confidence", 0)
             elif signal_name == "ultimate_pressure":
                 conf_str = signal_data.get("confidence", "0%")
                 confidence = int(conf_str.replace('%', '')) / 100 if conf_str != "0%" else 0
@@ -355,8 +360,11 @@ class MasterFusionEngine:
                 signal = combined.get("signal", "")
                 direction = "BULLISH" if signal == "BUY" else "BEARISH" if signal == "SELL" else "NEUTRAL"
             elif signal_name == "traditional_prediction":
-                pred_type = signal_data.get("prediction_type", "")
-                direction = "BULLISH" if "BUY" in pred_type else "BEARISH" if "SELL" in pred_type else "NEUTRAL"
+                # Get the prediction type from the best prediction
+                best_prediction = signal_data.get("best_prediction", {})
+                pred_type = best_prediction.get("type", "")
+                side = best_prediction.get("side", "")
+                direction = "BULLISH" if side == "BUY" else "BEARISH" if side == "SELL" else "NEUTRAL"
             elif signal_name == "ultimate_pressure":
                 pressure_dir = signal_data.get("direction", "")
                 direction = "BULLISH" if "BUY" in pressure_dir else "BEARISH" if "SELL" in pressure_dir else "NEUTRAL"
