@@ -3104,6 +3104,37 @@ class YahooHyperliquidPaperTradingBot:
         # Export data to CSV for external analysis
         self.trading_logger.export_to_csv()
     
+    def close_session(self):
+        """Close the current trading session gracefully"""
+        try:
+            logger.info("🔄 Closing trading session gracefully...")
+            
+            # Close any remaining open positions
+            hyperliquid_price = self.get_hyperliquid_price()
+            if hyperliquid_price:
+                for position in self.open_positions[:]:  # Copy list to avoid modification during iteration
+                    self.close_paper_position(position, "GRACEFUL_SHUTDOWN", hyperliquid_price)
+            
+            # Stop advanced monitoring systems
+            if self.dynamic_stop_manager:
+                self.dynamic_stop_manager.stop_monitoring()
+                logger.info("🛡️ Dynamic stop monitoring stopped")
+            
+            # End real-time session
+            if self.trading_data_manager:
+                self.trading_data_manager.end_session()
+                logger.info("📊 Real-time data session ended")
+            
+            # Update final balance
+            if self.trading_logger:
+                self.trading_logger.update_current_balance(self.paper_balance)
+            
+            logger.success(f"✅ Trading session closed gracefully!")
+            logger.info(f"   Final Balance: ${self.paper_balance:.2f}")
+            logger.info(f"   Total P&L: ${self.paper_balance - self.initial_balance:.2f}")
+            
+        except Exception as e:
+            logger.error(f"Error during graceful session closure: {e}")
 
 
 def main():

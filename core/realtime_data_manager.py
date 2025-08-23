@@ -179,10 +179,30 @@ class RealTimeTradingDataManager:
                 )
             ''')
             
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS trading_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT UNIQUE,
+                    start_time TEXT,
+                    end_time TEXT,
+                    strategy TEXT,
+                    initial_balance REAL,
+                    final_balance REAL,
+                    balance_change REAL,
+                    balance_change_pct REAL,
+                    total_trades INTEGER,
+                    winning_trades INTEGER,
+                    losing_trades INTEGER,
+                    status TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
             # Create indexes for performance
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_trades_time ON trades(entry_time)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_market_timestamp ON market_data(timestamp)')
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_signals_time ON trading_signals(created_at)')
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_sessions_id ON trading_sessions(session_id)')
             
             conn.commit()
             conn.close()
@@ -196,6 +216,15 @@ class RealTimeTradingDataManager:
     def start_session(self, strategy: str, initial_balance: float, bot_version: str = "Advanced Bot"):
         """Start a new trading session"""
         with self.data_lock:
+            # Check if there's an existing active session and close it properly
+            if self.current_state["session"].get("status") == "ACTIVE":
+                logger.warning(f"🔄 Found existing active session: {self.current_state['session'].get('session_id', 'unknown')}")
+                logger.info("🔄 Closing previous session before starting new one...")
+                self._close_existing_session()
+            
+            # Also check for orphaned sessions in the database and close them
+            self._close_orphaned_sessions()
+            
             session_id = f"session_{int(time.time())}"
             self.current_state["session"].update({
                 "session_id": session_id,
@@ -216,6 +245,112 @@ class RealTimeTradingDataManager:
             
             logger.success(f"🚀 Trading session started: {session_id}")
             self._notify_subscribers("session_started", self.current_state["session"])
+    
+    def _close_existing_session(self):
+        """Close existing session properly"""
+        try:
+            # Mark session as completed
+            self.current_state["session"]["status"] = "COMPLETED"
+            self.current_state["session"]["end_time"] = datetime.now().isoformat()
+            
+            # Calculate final session statistics
+            if "start_time" in self.current_state["session"]:
+                start_time = datetime.fromisoformat(self.current_state["session"]["start_time"])
+                end_time = datetime.now()
+                duration = end_time - start_time
+                self.current_state["session"]["duration_minutes"] = round(duration.total_seconds() / 60, 2)
+            
+            # Save session data to database for historical tracking
+            self._save_session_to_database()
+            
+            # Clear real-time data for fresh start
+            self.recent_activity.clear()
+            self.recent_signals.clear()
+            self.recent_trades.clear()
+            
+            # Clear predictions for fresh start
+            self.current_state["predictions"] = []
+            
+            logger.info(f"✅ Previous session closed: {self.current_state['session'].get('session_id', 'unknown')}")
+            logger.info(f"   Duration: {self.current_state['session'].get('duration_minutes', 0):.1f} minutes")
+            logger.info(f"   Final Balance: ${self.current_state['session'].get('current_balance', 0):.2f}")
+            
+            # Notify subscribers
+            self._notify_subscribers("session_ended", self.current_state["session"])
+            
+        except Exception as e:
+            logger.error(f"Error closing existing session: {e}")
+    
+    def _save_session_to_database(self):
+        """Save completed session data to database"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            session_data = self.current_state["session"]
+            
+            cursor.execute('''
+                INSERT INTO trading_sessions 
+                (session_id, start_time, end_time, strategy, initial_balance, final_balance, 
+                 balance_change, balance_change_pct, total_trades, winning_trades, losing_trades, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                session_data.get("session_id"),
+                session_data.get("start_time"),
+                session_data.get("end_time"),
+                session_data.get("strategy"),
+                session_data.get("initial_balance"),
+                session_data.get("current_balance"),
+                session_data.get("balance_change"),
+                session_data.get("balance_change_pct"),
+                session_data.get("total_trades"),
+                session_data.get("winning_trades"),
+                session_data.get("losing_trades"),
+                session_data.get("status")
+            ))
+            
+            conn.commit()
+            conn.close()
+            logger.debug("Session data saved to database")
+            
+        except Exception as e:
+            logger.error(f"Error saving session to database: {e}")
+    
+    def _close_orphaned_sessions(self):
+        """Close any orphaned sessions that were not properly ended"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Find sessions that are marked as active but haven't been updated recently
+            cursor.execute('''
+                SELECT session_id, start_time, strategy 
+                FROM trading_sessions 
+                WHERE status = 'ACTIVE' 
+                AND start_time < datetime('now', '-1 hour')
+            ''')
+            
+            orphaned_sessions = cursor.fetchall()
+            
+            if orphaned_sessions:
+                logger.warning(f"🔄 Found {len(orphaned_sessions)} orphaned sessions, closing them...")
+                
+                for session_id, start_time, strategy in orphaned_sessions:
+                    cursor.execute('''
+                        UPDATE trading_sessions 
+                        SET status = 'ORPHANED', end_time = datetime('now')
+                        WHERE session_id = ?
+                    ''', (session_id,))
+                    
+                    logger.info(f"   Closed orphaned session: {session_id} ({strategy})")
+                
+                conn.commit()
+                logger.success(f"✅ Closed {len(orphaned_sessions)} orphaned sessions")
+            
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"Error closing orphaned sessions: {e}")
     
     def end_session(self):
         """End current trading session"""

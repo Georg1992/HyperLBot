@@ -11,10 +11,55 @@ import threading
 import time
 import webbrowser
 import subprocess
+import signal
+import atexit
 from loguru import logger
 
 # Import core module to setup paths
 import core
+
+# Global variable to track active bot instance for graceful shutdown
+active_bot_instance = None
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C and other termination signals"""
+    logger.warning(f"🛑 Received signal {signum} - Initiating graceful shutdown...")
+    
+    if active_bot_instance:
+        try:
+            logger.info("🔄 Closing active trading session...")
+            active_bot_instance.close_session()
+            logger.success("✅ Trading session closed gracefully")
+        except Exception as e:
+            logger.error(f"Error during graceful shutdown: {e}")
+    
+    # Also close any active sessions in the real-time data manager
+    try:
+        from core.realtime_data_manager import trading_data_manager
+        if trading_data_manager.current_state["session"].get("status") == "ACTIVE":
+            logger.info("🔄 Closing real-time data manager session...")
+            trading_data_manager.end_session()
+            logger.success("✅ Real-time data manager session closed")
+    except Exception as e:
+        logger.error(f"Error closing real-time data manager session: {e}")
+    
+    logger.info("👋 Goodbye!")
+    sys.exit(0)
+
+def cleanup_on_exit():
+    """Cleanup function called on normal exit"""
+    if active_bot_instance:
+        try:
+            active_bot_instance.close_session()
+        except Exception as e:
+            logger.error(f"Error during cleanup: {e}")
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
+
+# Register cleanup function
+atexit.register(cleanup_on_exit)
 
 def check_and_install_dependencies():
     """Check and automatically install missing dependencies"""
@@ -149,6 +194,8 @@ def main():
 
 def run_paper_trading():
     """Run the Hyperliquid paper trading bot for testing"""
+    global active_bot_instance
+    
     try:
         from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
         
@@ -177,7 +224,12 @@ def run_paper_trading():
             strategy_name=selected_strategy
         )
         
+        # Set global bot instance for graceful shutdown
+        active_bot_instance = bot
+        
         logger.info("🚀 Starting paper trading bot...")
+        logger.info("💡 Press Ctrl+C to stop the bot gracefully")
+        
         bot.run_yahoo_hyperliquid_paper_trading(
             max_trades=max_trades,
             check_interval=check_interval
@@ -186,6 +238,9 @@ def run_paper_trading():
     except Exception as e:
         logger.error(f"Error in paper trading: {e}")
         input("Press Enter to continue...")
+    finally:
+        # Clear global bot instance
+        active_bot_instance = None
 
 def run_real_trading():
     """Run the Hyperliquid real trading bot for production"""
