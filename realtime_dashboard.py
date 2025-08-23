@@ -58,9 +58,11 @@ class EventDrivenTradingDashboard:
         @self.socketio.on('connect')
         def handle_connect():
             """Handle new WebSocket connection"""
+            logger.error("🚨 WEBSOCKET HANDLER: handle_connect() CALLED!")
             logger.error(f"🚨 WEBSOCKET CONNECT: Client from {request.remote_addr}, SID = {request.sid}")
             self.active_connections.add(request.sid)
             logger.error(f"🚨 WEBSOCKET CONNECT: Active connections now = {len(self.active_connections)}")
+            logger.error(f"🚨 WEBSOCKET CONNECT: self.active_connections = {self.active_connections}")
             logger.info(f"🌐 Dashboard client connected from {request.remote_addr}")
             
             # CRITICAL FIX: Clear any cached data hash to force fresh session retrieval
@@ -96,9 +98,11 @@ class EventDrivenTradingDashboard:
         @self.socketio.on('disconnect')
         def handle_disconnect():
             """Handle WebSocket disconnection"""
+            logger.error("🚨 WEBSOCKET HANDLER: handle_disconnect() CALLED!")
             logger.error(f"🚨 WEBSOCKET DISCONNECT: SID = {request.sid}")
             self.active_connections.discard(request.sid)
             logger.error(f"🚨 WEBSOCKET DISCONNECT: Active connections now = {len(self.active_connections)}")
+            logger.error(f"🚨 WEBSOCKET DISCONNECT: self.active_connections = {self.active_connections}")
             logger.info(f"📱 Dashboard client disconnected")
         
         @self.socketio.on('request_manual_refresh')
