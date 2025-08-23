@@ -824,12 +824,16 @@ class EventDrivenTradingDashboard:
                             "side": trade.get("side", "UNKNOWN"),
                             "symbol": "BTC",
                             "status": "CLOSED" if trade.get("exit_time") else "OPEN",
-                            "price": trade.get("entry_price", 0),
+                            "entry_price": trade.get("entry_price", 0),
+                            "exit_price": trade.get("exit_price", 0),
                             "size": trade.get("size", 0),
                             "timestamp": datetime.fromtimestamp(trade.get("entry_time", time.time())).isoformat(),
                             "type": "MARKET",
                             "pnl": trade.get("pnl", 0),
-                            "confidence": trade.get("confidence", 0) * 100 if trade.get("confidence") else 0
+                            "pnl_pct": trade.get("pnl_pct", 0),
+                            "confidence": trade.get("confidence", 0) * 100 if trade.get("confidence") else 0,
+                            "exit_reason": trade.get("exit_reason", "UNKNOWN"),
+                            "holding_time": trade.get("holding_time", 0)
                         }
                         dashboard_trades.append(dashboard_trade)
                     
@@ -854,12 +858,16 @@ class EventDrivenTradingDashboard:
                         "side": trade.get("side", "UNKNOWN"),
                         "symbol": "BTC",
                         "status": "CLOSED" if trade.get("exit_timestamp") else "OPEN",
-                        "price": trade.get("price", 0),
+                        "entry_price": trade.get("price", 0),
+                        "exit_price": trade.get("exit_price", 0),
                         "size": trade.get("size", 0),
                         "timestamp": trade.get("datetime", datetime.now().isoformat()),
                         "type": trade.get("order_type", "MARKET"),
                         "pnl": trade.get("net_profit_loss", 0),
-                        "confidence": trade.get("signal_data", {}).get("prediction_confidence", 0) * 100 if trade.get("signal_data") else 0
+                        "pnl_pct": trade.get("profit_loss_pct", 0) * 100 if trade.get("profit_loss_pct") else 0,
+                        "confidence": trade.get("signal_data", {}).get("prediction_confidence", 0) * 100 if trade.get("signal_data") else 0,
+                        "exit_reason": trade.get("exit_reason", "UNKNOWN"),
+                        "holding_time": trade.get("holding_time", 0)
                     }
                     trades.append(dashboard_trade)
             
