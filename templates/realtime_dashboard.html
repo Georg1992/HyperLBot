@@ -574,6 +574,23 @@
                 
                 this.socket.on('data_update', (data) => {
                     console.log('🔄 Received data update:', data);
+                    
+                    // Debug session and activity data
+                    if (data.session) {
+                        console.log('📊 Session data:', {
+                            status: data.session.status,
+                            session_time: data.session.session_time,
+                            start_time: data.session.start_time
+                        });
+                    }
+                    
+                    if (data.logs) {
+                        console.log('📝 Activity logs received:', data.logs.length, 'entries');
+                        if (data.logs.length > 0) {
+                            console.log('   Latest activity:', data.logs[data.logs.length - 1].message);
+                        }
+                    }
+                    
                     this.updateAllData(data);
                     this.lastUpdateTime = new Date();
                     this.updateIndicator(`✅ Updated: ${this.lastUpdateTime.toLocaleTimeString()}`, 'connected');
@@ -643,12 +660,19 @@
             }
             
             updateSessionData(session) {
+                console.log('📊 Updating session data:', session);
+                
                 document.getElementById('session-status').textContent = session.status || 'UNKNOWN';
                 document.getElementById('session-strategy').textContent = session.strategy || 'Unknown';
                 document.getElementById('session-balance').textContent = 
                     session.current_balance ? `$${parseFloat(session.current_balance).toFixed(2)}` : 'Loading...';
                 
-                if (session.start_time || session.started_at) {
+                // Use pre-calculated session_time if available, otherwise calculate from start_time
+                if (session.session_time) {
+                    console.log('📊 Using pre-calculated session time:', session.session_time);
+                    document.getElementById('session-time').textContent = session.session_time;
+                } else if (session.start_time || session.started_at) {
+                    console.log('📊 Calculating session time from start_time:', session.start_time || session.started_at);
                     const startTime = new Date(session.start_time || session.started_at);
                     const elapsed = new Date() - startTime;
                     const minutes = Math.floor(elapsed / 60000);
@@ -661,6 +685,7 @@
                         document.getElementById('session-time').textContent = `${minutes} minutes`;
                     }
                 } else {
+                    console.log('📊 No start time available, showing "Not started"');
                     document.getElementById('session-time').textContent = 'Not started';
                 }
             }
@@ -818,11 +843,15 @@
             updateActivityLogs(logs) {
                 const container = document.getElementById('activity-logs');
                 console.log('📊 Dashboard: Updating activity logs', logs ? logs.length : 0, 'entries');
+                console.log('📊 Full logs data:', logs);
                 
                 if (!logs || logs.length === 0) {
+                    console.log('📊 No activity logs, showing waiting message');
                     container.innerHTML = '<div class="log-entry">🔍 Waiting for bot activity...</div>';
                     return;
                 }
+                
+                console.log('📊 Processing', logs.length, 'activity logs');
                 
                 container.innerHTML = '';
                 

@@ -189,10 +189,23 @@ class EventDrivenTradingDashboard:
     def _emit_data_update(self, data: Dict):
         """Emit data update to all connected clients"""
         try:
+            # Log activity logs count for debugging
+            activity_count = len(data.get("logs", []))
+            session_time = data.get("session", {}).get("session_time", "N/A")
+            session_status = data.get("session", {}).get("status", "N/A")
+            
             self.socketio.emit('data_update', data)
-            logger.debug(f"📡 Pushed update to {len(self.active_connections)} clients")
+            logger.info(f"📡 WebSocket update sent to {len(self.active_connections)} clients")
+            logger.debug(f"   Session: {session_status}, Time: {session_time}, Activities: {activity_count}")
+            
+            if activity_count > 0:
+                latest_activity = data.get("logs", [])[-1].get("message", "No message")
+                logger.debug(f"   Latest activity: {latest_activity}")
+                
         except Exception as e:
             logger.error(f"❌ Failed to emit data update: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _get_dashboard_data(self) -> Dict[str, Any]:
         """Get comprehensive dashboard data with real-time updates"""
@@ -208,6 +221,23 @@ class EventDrivenTradingDashboard:
                 # Always use real-time data if available, regardless of bot status
                 session_data = current_state["session"]
                 enhanced_balance = self._calculate_enhanced_balance(session_data)
+                
+                # Calculate session duration properly
+                try:
+                    if session_data.get("start_time"):
+                        start_time = datetime.fromisoformat(session_data["start_time"])
+                        session_duration = datetime.now() - start_time
+                        session_minutes = int(session_duration.total_seconds() / 60)
+                        session_data["session_time"] = f"{session_minutes}m"
+                        
+                        # Ensure start_time is in ISO format for JavaScript
+                        if isinstance(session_data["start_time"], str):
+                            session_data["start_time"] = session_data["start_time"]
+                        else:
+                            session_data["start_time"] = session_data["start_time"].isoformat()
+                except Exception as e:
+                    logger.debug(f"Session time calculation error: {e}")
+                    session_data["session_time"] = "0m"
                 
                 activity_logs = current_state.get("recent_activity", [])
                 logger.debug(f"📊 Sending {len(activity_logs)} activity logs to dashboard")
