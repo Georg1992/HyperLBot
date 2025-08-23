@@ -283,6 +283,23 @@ class RealTimeTradingDataManager:
         logger.error(f"🚨 FORCED DEBUG: Session status = {self.current_state['session']['status']}")
         logger.error(f"🚨 FORCED DEBUG: Session ID = {self.current_state['session']['session_id']}")
         
+        # CRITICAL: Immediately add startup activity and basic market data
+        # This ensures dashboard shows data immediately even if bot hasn't started main loop yet
+        self.add_activity({
+            "timestamp": time.time(),
+            "message": f"🚀 RTM Session started - {strategy} strategy initialized",
+            "type": "session_start",
+            "level": "SUCCESS"
+        })
+        
+        # Add basic market data so dashboard doesn't show "Loading..."
+        self.update_market_data({
+            "current_price": 0,
+            "trend": "INITIALIZING",
+            "market_condition": "STARTING",
+            "data_source": "rtm_initialization"
+        })
+        
         # Force save the new clean state to file  
         self._save_to_json_file()
         
