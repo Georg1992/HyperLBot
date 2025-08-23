@@ -386,15 +386,22 @@ class YahooHyperliquidPaperTradingBot:
                 self.trading_data_manager.update_real_balance(real_balance_data)
                 
                 # Set balance mode in RTM based on user choice
+                logger.info(f"🔍 DEBUG: balance_mode = {self.balance_mode}")
+                logger.info(f"🔍 DEBUG: trading_data_manager exists = {self.trading_data_manager is not None}")
+                
                 if self.balance_mode == "real":
                     # Force RTM to use real balance
                     logger.info("🎯 Forcing RTM to use REAL balance mode")
                     self.trading_data_manager.force_balance_mode("real")
+                    logger.success("✅ RTM forced to REAL balance mode")
                 elif self.balance_mode == "simulated":
                     # Keep simulated balance in RTM
                     logger.info("🎮 Forcing RTM to use SIMULATED balance mode")
                     self.trading_data_manager.force_balance_mode("simulated", self.paper_balance)
-            
+                    logger.success("✅ RTM forced to SIMULATED balance mode")
+            else:
+                logger.error("❌ trading_data_manager is None - cannot set balance mode!")
+                
             # Get real open positions
             real_positions = self.hyperliquid_api.get_open_positions()
             if self.trading_data_manager:
