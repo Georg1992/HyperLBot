@@ -13,6 +13,7 @@ import webbrowser
 import subprocess
 import signal
 import atexit
+import traceback
 from loguru import logger
 
 # Import core module to setup paths
@@ -48,7 +49,6 @@ def signal_handler(signum, frame):
             logger.success("✅ Real-time data manager session closed")
     except Exception as e:
         logger.error(f"Error closing real-time data manager session: {e}")
-        import traceback
         logger.error(f"Traceback: {traceback.format_exc()}")
     
     logger.info("👋 Goodbye!")
@@ -252,49 +252,23 @@ def run_paper_trading():
 
 def run_real_trading():
     """Run the Hyperliquid real trading bot for production"""
-    try:
-        from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
-        
-        logger.warning("REAL TRADING MODE - This involves real money!")
-        logger.warning("Make sure you understand the risks before proceeding.")
-        
-        confirm = input("Type 'YES' to confirm you want to use real money: ").strip().upper()
-        if confirm != "YES":
-            logger.info("Real trading cancelled.")
-            return
-        
-        # Get user input for key parameters
-        print("\nReal Trading Configuration:")
-        initial_balance = float(input("Enter initial balance (default 120.0): ") or "120.0")
-        max_trades = int(input("Enter max trades (default 5): ") or "5")  # Lower default for real trading
-        check_interval = 5
-        
-        selected_strategy = "standard"
-        
-        logger.info(f"Real Trading Configuration: Balance=${initial_balance}, Max Trades={max_trades}, Strategy={selected_strategy}")
-        
-        # Start the bot with dashboard
-        logger.info("Starting dashboard...")
-        if start_dashboard():
-            logger.info("✅ Dashboard started successfully!")
-        
-        # Initialize and run the bot (modify for real trading when implemented)
-        bot = YahooHyperliquidPaperTradingBot(
-            initial_balance=initial_balance,
-            strategy_name=selected_strategy
-        )
-        
-        logger.info("🚀 Starting real trading bot...")
-        # Note: This would be modified to use real trading when implemented
-        logger.warning("Note: Currently running in paper mode - real trading implementation pending")
-        bot.run_yahoo_hyperliquid_paper_trading(
-            max_trades=max_trades,
-            check_interval=check_interval
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in real trading: {e}")
-        input("Press Enter to continue...")
+    logger.error("❌ REAL TRADING NOT IMPLEMENTED YET")
+    logger.warning("This feature is currently under development.")
+    logger.info("💡 Use Paper Trading mode (option 1) for testing strategies safely.")
+    logger.info("📧 Contact the developer for real trading implementation timeline.")
+    
+    # Offer to run paper trading instead
+    while True:
+        choice = input("\nWould you like to run Paper Trading instead? (y/n): ").strip().lower()
+        if choice in ['y', 'yes']:
+            logger.info("🔄 Redirecting to Paper Trading mode...")
+            run_paper_trading()
+            break
+        elif choice in ['n', 'no']:
+            logger.info("Returning to main menu.")
+            break
+        else:
+            logger.warning("Please enter 'y' or 'n'")
 
 if __name__ == "__main__":
     main()

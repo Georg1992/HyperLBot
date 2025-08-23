@@ -17,7 +17,7 @@ def test_imports():
     
     try:
         # Test core modules
-        from config import TradingConfig
+        from core.config import TradingConfig
         logger.info("✅ Core config imported successfully")
         
         from hyperliquid_api import HyperliquidAPI
@@ -67,7 +67,7 @@ def test_configuration():
     logger.info("Testing configuration...")
     
     try:
-        from config import TradingConfig
+        from core.config import TradingConfig
         config = TradingConfig()
         logger.info("✅ Configuration loaded successfully")
         logger.info(f"   Strategy configs: {len(config.STRATEGY_CONFIGS)} strategies available")
