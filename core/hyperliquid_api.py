@@ -750,3 +750,45 @@ class HyperliquidAPI:
         except Exception as e:
             logger.error(f"Failed to calculate RSI from Yahoo data: {e}")
             return {"error": str(e), "rsi": 50.0}
+
+    def get_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
+        """Get ultimate buy/sell pressure indicator (replaces volume-based indicators)"""
+        try:
+            from data.ultimate_pressure_indicator import UltimatePressureIndicator
+            
+            # Use singleton pattern for efficiency
+            if not hasattr(self, '_pressure_indicator'):
+                self._pressure_indicator = UltimatePressureIndicator()
+            
+            pressure_data = self._pressure_indicator.analyze_ultimate_pressure(self)
+            
+            if pressure_data.get("status") == "success":
+                # Format for bot consumption
+                return {
+                    "direction": pressure_data["direction"],
+                    "pressure_score": pressure_data["combined_score"],
+                    "confidence": pressure_data["confidence"],
+                    "trend": pressure_data.get("trend", {}).get("trend", "UNKNOWN"),
+                    "active_signals": pressure_data["active_signals"],
+                    "signal_details": pressure_data["signal_details"],
+                    "status": "success",
+                    "display": self._pressure_indicator.get_summary_display(pressure_data)
+                }
+            else:
+                return {
+                    "direction": "ERROR",
+                    "pressure_score": 0,
+                    "confidence": "0%",
+                    "status": "error",
+                    "error": pressure_data.get("error", "Unknown error")
+                }
+                
+        except Exception as e:
+            logger.error(f"❌ Ultimate pressure analysis failed: {e}")
+            return {
+                "direction": "ERROR",
+                "pressure_score": 0,
+                "confidence": "0%",
+                "status": "error",
+                "error": str(e)
+            }
