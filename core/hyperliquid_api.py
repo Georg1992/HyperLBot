@@ -104,6 +104,79 @@ class HyperliquidAPI:
             logger.error(f"Failed to get account info: {e}")
             raise
     
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        """Get all open positions from account"""
+        try:
+            account_info = self.get_account_info()
+            
+            # Extract positions from clearinghouse state
+            positions = []
+            if account_info and 'assetPositions' in account_info:
+                for position in account_info['assetPositions']:
+                    if position.get('position', {}).get('szi', '0') != '0':
+                        # Position is open (size != 0)
+                        position_data = {
+                            "symbol": position.get('position', {}).get('coin', 'UNKNOWN'),
+                            "size": float(position.get('position', {}).get('szi', '0')),
+                            "entry_price": float(position.get('position', {}).get('entryPx', '0')),
+                            "unrealized_pnl": float(position.get('position', {}).get('unrealizedPnl', '0')),
+                            "leverage": float(position.get('position', {}).get('leverage', {}).get('value', '1')),
+                            "side": "LONG" if float(position.get('position', {}).get('szi', '0')) > 0 else "SHORT",
+                            "margin_used": float(position.get('position', {}).get('marginUsed', '0')),
+                            "timestamp": time.time(),
+                            "source": "hyperliquid_real"
+                        }
+                        positions.append(position_data)
+            
+            logger.info(f"🔍 Found {len(positions)} open positions")
+            for pos in positions:
+                logger.info(f"  - {pos['side']} {abs(pos['size'])} {pos['symbol']} @ ${pos['entry_price']:.2f} (PnL: ${pos['unrealized_pnl']:.2f})")
+            
+            return positions
+            
+        except Exception as e:
+            logger.error(f"Failed to get open positions: {e}")
+            return []
+    
+    def get_open_orders(self) -> List[Dict[str, Any]]:
+        """Get all open orders from account"""
+        try:
+            endpoint = "/info"
+            payload = {
+                "type": "openOrders",
+                "user": self.wallet_address
+            }
+            
+            response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
+            response.raise_for_status()
+            
+            orders_data = response.json()
+            orders = []
+            
+            if orders_data:
+                for order in orders_data:
+                    order_info = {
+                        "order_id": order.get('oid', 'unknown'),
+                        "symbol": order.get('coin', 'UNKNOWN'),
+                        "side": order.get('side', 'UNKNOWN'),
+                        "size": float(order.get('sz', '0')),
+                        "price": float(order.get('limitPx', '0')),
+                        "order_type": "LIMIT" if order.get('limitPx') else "MARKET",
+                        "timestamp": order.get('timestamp', time.time()),
+                        "source": "hyperliquid_real"
+                    }
+                    orders.append(order_info)
+            
+            logger.info(f"🔍 Found {len(orders)} open orders")
+            for order in orders:
+                logger.info(f"  - {order['side']} {order['size']} {order['symbol']} @ ${order['price']:.2f}")
+            
+            return orders
+            
+        except Exception as e:
+            logger.error(f"Failed to get open orders: {e}")
+            return []
+    
     def get_current_price(self, symbol: str = None) -> Optional[float]:
         """Get current mid-price from orderbook"""
         try:

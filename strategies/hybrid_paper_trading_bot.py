@@ -376,6 +376,32 @@ class YahooHyperliquidPaperTradingBot:
                 logger.info(f"💰 Real Account Value: ${account_value:.2f} USD")
                 logger.info(f"📊 Paper Trading Balance: ${self.paper_balance:.2f} USD")
             
+            # 🚀 FETCH REAL POSITIONS AND ORDERS FOR REALISTIC SIMULATION
+            logger.info("🔍 Fetching real account state for simulation base...")
+            
+            # Get real open positions
+            real_positions = self.hyperliquid_api.get_open_positions()
+            if self.trading_data_manager:
+                self.trading_data_manager.update_real_positions(real_positions)
+            
+            # Get real open orders
+            real_orders = self.hyperliquid_api.get_open_orders()
+            if self.trading_data_manager:
+                self.trading_data_manager.update_real_orders(real_orders)
+            
+            # Log summary
+            if real_positions:
+                logger.success(f"📊 Found {len(real_positions)} real positions - will factor into simulation")
+                total_real_pnl = sum(pos.get('unrealized_pnl', 0) for pos in real_positions)
+                logger.info(f"💹 Total real position PnL: ${total_real_pnl:.2f}")
+            else:
+                logger.info("📊 No real positions found - clean slate for simulation")
+            
+            if real_orders:
+                logger.success(f"📋 Found {len(real_orders)} real orders - will track alongside simulation")
+            else:
+                logger.info("📋 No real orders found")
+            
             self.connected = True
             return True
             

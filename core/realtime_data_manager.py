@@ -44,8 +44,8 @@ class RealTimeTradingDataManager:
             "session": {
                 "session_id": f"session_{int(time.time())}",
                 "start_time": datetime.now().isoformat(),
-                "status": "ACTIVE",  # CHANGED: Default to ACTIVE instead of INACTIVE
-                "strategy": "standard",
+                "status": "ACTIVE",  # Changed from INACTIVE to prevent dashboard confusion
+                "strategy": "unknown",
                 "initial_balance": 120.0,
                 "current_balance": 120.0,
                 "balance_change": 0.0,
@@ -74,6 +74,16 @@ class RealTimeTradingDataManager:
                 "data_source": "none"
             },
             "predictions": [],
+            "positions": {
+                "open_positions": [],  # Real positions from Hyperliquid
+                "simulated_positions": [],  # Bot's simulated positions
+                "last_update": 0
+            },
+            "orders": {
+                "open_orders": [],  # Real orders from Hyperliquid
+                "simulated_orders": [],  # Bot's simulated orders
+                "last_update": 0
+            },
             "global_volume": {
                 "global_volume_per_second": 0.0,
                 "status": "unavailable",
@@ -444,45 +454,65 @@ class RealTimeTradingDataManager:
     
     # MARKET DATA MANAGEMENT
     def update_market_data(self, market_data: Dict[str, Any]):
-        """Update real-time market data"""
+        """Update market data"""
         with self.data_lock:
-            self.current_state["market"].update({
-                "current_price": market_data.get("current_price", 0),
-                "trend": market_data.get("trend", "UNKNOWN"),
-                "market_condition": market_data.get("market_condition", "UNKNOWN"),
-                "last_update": datetime.now().isoformat(),
-                "rsi": market_data.get("rsi", 50.0),  # Use RSI calculated by bot
-                "volume_depth": market_data.get("volume_depth", 0.0),
-                "orderbook_imbalance": market_data.get("orderbook_imbalance", 0.0),
-                "volatility_5m": market_data.get("volatility_5m", 0.0),
-                "volatility_1h": market_data.get("volatility_1h", 0.0),
-                "support": market_data.get("support", 0.0),
-                "resistance": market_data.get("resistance", 0.0),
-                "volume_category": market_data.get("volume_category", "UNKNOWN"),
-                "volume_trend": market_data.get("volume_trend", "UNKNOWN"),
-                "data_source": market_data.get("data_source", "bot")
-            })
+            self.current_state["market"].update(market_data)
+            self.current_state["market"]["last_update"] = datetime.now().isoformat()
+            self._notify_subscribers("market_update", market_data)
+            self._save_to_json_file()
+    
+    def update_real_positions(self, positions: List[Dict[str, Any]]):
+        """Update real positions from Hyperliquid"""
+        with self.data_lock:
+            self.current_state["positions"]["open_positions"] = positions
+            self.current_state["positions"]["last_update"] = time.time()
+            self.current_state["session"]["open_positions_count"] = len(positions)
             
-            # Store in database for historical analysis
-            try:
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                cursor.execute('''
-                    INSERT INTO market_data 
-                    (timestamp, price, trend, market_condition, rsi, volume, volatility_5m, volatility_1h, orderbook_imbalance)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    time.time(), market_data.get("current_price", 0), market_data.get("trend", "UNKNOWN"),
-                    market_data.get("market_condition", "UNKNOWN"), market_data.get("rsi", 50.0),
-                    market_data.get("volume_depth", 0.0), market_data.get("volatility_5m", 0.0),
-                    market_data.get("volatility_1h", 0.0), market_data.get("orderbook_imbalance", 0.0)
-                ))
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                logger.debug(f"Market data storage error: {e}")
+            logger.info(f"🔄 Updated {len(positions)} real positions from Hyperliquid")
+            self._notify_subscribers("positions_update", positions)
+            self._save_to_json_file()
+    
+    def update_real_orders(self, orders: List[Dict[str, Any]]):
+        """Update real orders from Hyperliquid"""
+        with self.data_lock:
+            self.current_state["orders"]["open_orders"] = orders
+            self.current_state["orders"]["last_update"] = time.time()
             
-            self._notify_subscribers("market_updated", self.current_state["market"])
+            logger.info(f"🔄 Updated {len(orders)} real orders from Hyperliquid")
+            self._notify_subscribers("orders_update", orders)
+            self._save_to_json_file()
+    
+    def add_simulated_position(self, position: Dict[str, Any]):
+        """Add a simulated position from bot trading"""
+        with self.data_lock:
+            # Add position timestamp if not present
+            if "timestamp" not in position:
+                position["timestamp"] = time.time()
+            position["source"] = "simulation"
+            
+            self.current_state["positions"]["simulated_positions"].append(position)
+            self.current_state["positions"]["last_update"] = time.time()
+            
+            logger.info(f"📈 Added simulated position: {position['side']} {position['size']} {position['symbol']}")
+            self._notify_subscribers("simulated_position_added", position)
+            self._save_to_json_file()
+    
+    def close_simulated_position(self, position_id: str, close_price: float, pnl: float):
+        """Close a simulated position"""
+        with self.data_lock:
+            positions = self.current_state["positions"]["simulated_positions"]
+            for i, pos in enumerate(positions):
+                if pos.get("position_id") == position_id:
+                    pos["status"] = "CLOSED"
+                    pos["close_price"] = close_price
+                    pos["close_time"] = time.time()
+                    pos["realized_pnl"] = pnl
+                    
+                    logger.info(f"📉 Closed simulated position: {pos['side']} {pos['size']} {pos['symbol']} | PnL: ${pnl:.2f}")
+                    self._notify_subscribers("simulated_position_closed", pos)
+                    break
+            
+            self._save_to_json_file()
     
     def update_global_volume(self, volume_data: Dict[str, Any]):
         """Update global volume data"""
@@ -877,6 +907,17 @@ class RealTimeTradingDataManager:
             logger.success(f"📁 State exported to {filepath}")
         except Exception as e:
             logger.error(f"Export error: {e}")
+
+    def get_all_positions(self) -> Dict[str, Any]:
+        """Get both real and simulated positions"""
+        with self.data_lock:
+            return {
+                "real_positions": self.current_state["positions"]["open_positions"],
+                "simulated_positions": self.current_state["positions"]["simulated_positions"],
+                "real_orders": self.current_state["orders"]["open_orders"],
+                "simulated_orders": self.current_state["orders"]["simulated_orders"],
+                "last_update": self.current_state["positions"]["last_update"]
+            }
 
 
 # Global instance (singleton)

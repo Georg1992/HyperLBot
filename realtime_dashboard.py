@@ -284,6 +284,15 @@ class EventDrivenTradingDashboard:
                         },
                         "predictions": self._get_predictions_data(),  # Use the dedicated method
                         "orderbook": self._get_orderbook_data(),
+                        "positions": {
+                            "real_positions": current_state.get("positions", {}).get("open_positions", []),
+                            "simulated_positions": current_state.get("positions", {}).get("simulated_positions", []),
+                            "real_orders": current_state.get("orders", {}).get("open_orders", []),
+                            "simulated_orders": current_state.get("orders", {}).get("simulated_orders", []),
+                            "total_real_positions": len(current_state.get("positions", {}).get("open_positions", [])),
+                            "total_simulated_positions": len(current_state.get("positions", {}).get("simulated_positions", [])),
+                            "last_update": current_state.get("positions", {}).get("last_update", 0)
+                        },
                         "global_volume": current_state["global_volume"],
                         "trades": recent_trades,
                         "recent_trades": recent_trades,
