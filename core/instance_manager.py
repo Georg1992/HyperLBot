@@ -7,10 +7,17 @@ Ensures only one bot instance runs at a time
 import os
 import sys
 import time
-import psutil
 from typing import Optional, Dict, Any
 from loguru import logger
 from core.constants import constants
+
+# Try to import psutil, but provide fallback if not available
+try:
+    import psutil
+    PSUTIL_AVAILABLE = True
+except ImportError:
+    PSUTIL_AVAILABLE = False
+    logger.warning("⚠️ psutil not available - using basic process checking")
 
 
 class SingleInstanceManager:
@@ -151,15 +158,18 @@ class SingleInstanceManager:
     
     def _is_process_running(self, pid: int) -> bool:
         """Check if process with given PID is running"""
-        try:
-            return psutil.pid_exists(pid)
-        except Exception:
-            # Fallback method for systems without psutil
+        if PSUTIL_AVAILABLE:
             try:
-                os.kill(pid, 0)
-                return True
-            except OSError:
-                return False
+                return psutil.pid_exists(pid)
+            except Exception:
+                pass  # Fall through to basic method
+        
+        # Fallback method for systems without psutil or if psutil fails
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
     
     def __enter__(self):
         """Context manager entry"""
