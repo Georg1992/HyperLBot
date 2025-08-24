@@ -811,14 +811,22 @@ class EventDrivenTradingDashboard:
             }]
     
     def _get_trades_data(self) -> List[Dict]:
-        """Get trade history data using Trade State Manager"""
+        """Get trade history data using Trade State Manager with fallback to trading logs"""
         try:
             # Use the robust Trade State Manager for all trade data
             dashboard_trades = trade_state_manager.get_dashboard_trade_data()
             
-            if dashboard_trades:
+            if dashboard_trades and len(dashboard_trades) > 0:
                 logger.debug(f"📊 Retrieved {len(dashboard_trades)} trades from Trade State Manager")
                 return dashboard_trades
+            
+            # Fallback: Try to load trades from trading logs
+            logger.debug("📊 No trades in Trade State Manager, trying trading logs...")
+            trading_logs_trades = self._load_trades_from_logs()
+            
+            if trading_logs_trades and len(trading_logs_trades) > 0:
+                logger.debug(f"📊 Retrieved {len(trading_logs_trades)} trades from trading logs")
+                return trading_logs_trades
             
             # If no trades found, provide informative message
             current_time = datetime.now()
@@ -897,6 +905,124 @@ class EventDrivenTradingDashboard:
         except:
             pass
         return None
+    
+    def _load_trades_from_logs(self) -> List[Dict]:
+        """Load trades from trading logs as fallback"""
+        try:
+            # Find the most recent trading session
+            trading_logs_dir = os.path.join(os.path.dirname(__file__), "trading_logs", "trades")
+            if not os.path.exists(trading_logs_dir):
+                logger.debug("📊 Trading logs directory not found")
+                return []
+            
+            # Get all trade files
+            trade_files = [f for f in os.listdir(trading_logs_dir) if f.endswith('.json')]
+            if not trade_files:
+                logger.debug("📊 No trade files found in trading logs")
+                return []
+            
+            # Get the most recent trade file
+            latest_trade_file = max(trade_files, key=lambda f: os.path.getmtime(os.path.join(trading_logs_dir, f)))
+            trade_file_path = os.path.join(trading_logs_dir, latest_trade_file)
+            
+            logger.debug(f"📊 Loading trades from: {latest_trade_file}")
+            
+            with open(trade_file_path, 'r') as f:
+                trades_data = json.load(f)
+            
+            if not isinstance(trades_data, list):
+                logger.debug("📊 Invalid trade data format")
+                return []
+            
+            # Convert trading log format to dashboard format
+            dashboard_trades = []
+            for trade in trades_data:
+                try:
+                    # Extract trade details
+                    trade_id = trade.get("trade_id", f"trade_{int(trade.get('timestamp', time.time()))}")
+                    side = trade.get("side", "UNKNOWN")
+                    price = trade.get("price", 0)
+                    size = trade.get("size", 0)
+                    leverage = trade.get("leverage", 1)
+                    
+                    # Calculate P&L if available
+                    pnl = 0
+                    pnl_pct = 0
+                    if "order_result" in trade and trade["order_result"].get("paper_trade"):
+                        # For paper trades, we might need to calculate P&L differently
+                        # For now, use a placeholder
+                        pnl = 0
+                        pnl_pct = 0
+                    
+                    # Create dashboard trade format
+                    dashboard_trade = {
+                        "id": trade_id,
+                        "side": side,
+                        "symbol": "BTC",
+                        "status": "OPEN" if trade.get("order_result", {}).get("status") == "ok" else "PENDING",
+                        "entry_price": price,
+                        "exit_price": 0,  # Will be set when position is closed
+                        "size": size,
+                        "timestamp": datetime.fromtimestamp(trade.get("timestamp", time.time())).isoformat(),
+                        "type": "MARKET",
+                        "pnl": pnl,
+                        "pnl_pct": pnl_pct,
+                        "confidence": trade.get("signal_data", {}).get("prediction_confidence", 0) * 100,
+                        "exit_reason": "OPEN",
+                        "holding_time": 0,
+                        "message": f"{side} {size} BTC @ ${price:,.2f}"
+                    }
+                    
+                    dashboard_trades.append(dashboard_trade)
+                    
+                except Exception as e:
+                    logger.debug(f"📊 Error processing trade: {e}")
+                    continue
+            
+            logger.debug(f"📊 Successfully loaded {len(dashboard_trades)} trades from logs")
+            return dashboard_trades
+            
+        except Exception as e:
+            logger.debug(f"📊 Error loading trades from logs: {e}")
+            return []
+    
+    def _get_balance_from_session_metadata(self) -> Optional[Dict[str, Any]]:
+        """Get balance data from session metadata as fallback"""
+        try:
+            # Find the most recent session metadata file
+            trading_logs_dir = os.path.join(os.path.dirname(__file__), "trading_logs")
+            if not os.path.exists(trading_logs_dir):
+                return None
+            
+            # Get all session metadata files
+            metadata_files = [f for f in os.listdir(trading_logs_dir) if f.startswith('session_metadata_') and f.endswith('.json')]
+            if not metadata_files:
+                return None
+            
+            # Get the most recent session metadata file
+            latest_metadata_file = max(metadata_files, key=lambda f: os.path.getmtime(os.path.join(trading_logs_dir, f)))
+            metadata_file_path = os.path.join(trading_logs_dir, latest_metadata_file)
+            
+            logger.debug(f"📊 Loading balance from session metadata: {latest_metadata_file}")
+            
+            with open(metadata_file_path, 'r') as f:
+                metadata = json.load(f)
+            
+            # Extract balance information
+            balance_data = {
+                "current_balance": metadata.get("current_balance", 120.0),
+                "initial_balance": metadata.get("initial_balance", 120.0),
+                "balance_change": metadata.get("balance_change", 0.0),
+                "balance_change_pct": metadata.get("balance_change_pct", 0.0),
+                "last_balance_update": metadata.get("last_balance_update", datetime.now().isoformat())
+            }
+            
+            logger.debug(f"📊 Found balance data: ${balance_data['current_balance']:.2f} (Change: ${balance_data['balance_change']:.2f})")
+            return balance_data
+            
+        except Exception as e:
+            logger.debug(f"📊 Error loading balance from session metadata: {e}")
+            return None
     
     def _extract_confidence_from_log(self, line: str) -> Optional[int]:
         """Extract confidence percentage from log line"""
@@ -996,7 +1122,19 @@ class EventDrivenTradingDashboard:
                 balance_change = session_data.get("balance_change", 0.0)
                 balance_change_pct = session_data.get("balance_change_pct", 0.0)
                 balance_source = "simulated"
-                logger.debug(f"🎮 Using SIMULATED balance: ${current_balance:.2f} (Change: ${balance_change:.2f})")
+                
+                # If session data shows no change but we have trading logs, try to get balance from session metadata
+                if balance_change == 0.0 and current_balance == initial_balance:
+                    session_metadata_balance = self._get_balance_from_session_metadata()
+                    if session_metadata_balance:
+                        current_balance = session_metadata_balance.get("current_balance", current_balance)
+                        initial_balance = session_metadata_balance.get("initial_balance", initial_balance)
+                        balance_change = session_metadata_balance.get("balance_change", 0.0)
+                        balance_change_pct = session_metadata_balance.get("balance_change_pct", 0.0)
+                        balance_source = "session_metadata"
+                        logger.debug(f"📊 Using SESSION METADATA balance: ${current_balance:.2f} (Change: ${balance_change:.2f})")
+                
+                logger.debug(f"🎮 Using {balance_source.upper()} balance: ${current_balance:.2f} (Change: ${balance_change:.2f})")
             
             # Enhanced balance structure
             enhanced = {

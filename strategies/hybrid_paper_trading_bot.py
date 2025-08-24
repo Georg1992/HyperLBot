@@ -2269,6 +2269,32 @@ class YahooHyperliquidPaperTradingBot:
             # Log the trade
             self.trading_logger.log_trade(trade_data)
             
+            # Add trade to real-time data manager for instant dashboard updates
+            if self.trading_data_manager:
+                # Create trade record for RTM
+                rtm_trade_record = {
+                    "trade_id": trade_data["trade_id"],
+                    "side": trade_data["side"],
+                    "entry_price": trade_data["price"],
+                    "exit_price": 0,  # Will be set when position is closed
+                    "size": trade_data["size"],
+                    "leverage": trade_data["leverage"],
+                    "pnl": 0,  # Will be calculated when position is closed
+                    "pnl_pct": 0,  # Will be calculated when position is closed
+                    "confidence": trade_data.get("signal_data", {}).get("prediction_confidence", 0),
+                    "entry_time": trade_data["timestamp"],
+                    "exit_time": 0,  # Will be set when position is closed
+                    "holding_time": 0,  # Will be calculated when position is closed
+                    "exit_reason": "OPEN",  # Will be updated when position is closed
+                    "was_profitable": False,  # Will be determined when position is closed
+                    "is_winback_trade": False,
+                    "timestamp": trade_data["timestamp"]
+                }
+                self.trading_data_manager.add_trade(rtm_trade_record)
+                
+                # Update balance in real-time
+                self.trading_data_manager.update_balance(self.paper_balance, f"Trade opened: {trade_data['side']} {trade_data['size']} BTC")
+            
             self.trade_history.append(trade_data)
             self.fee_manager.record_trade_fees(trade_data)
             self.last_trade_time = time.time()
