@@ -2146,7 +2146,7 @@ class YahooHyperliquidPaperTradingBot:
                 logger.info(f"   Prediction Type: {prediction_type}")
                 logger.info(f"   Predicted Entry: ${predicted_entry_price:,.2f}")
                 logger.info(f"   Current Price: ${hyperliquid_price:,.2f}")
-                logger.info(f"   Confidence: {prediction_confidence:.1f}%")
+                logger.info(f"   Confidence: {prediction_confidence*100:.1f}%")
                 logger.info(f"   Expected Timeframe: {entry_timeframe} minutes")
                 
                 # Use predicted entry price as limit price
@@ -2905,19 +2905,17 @@ class YahooHyperliquidPaperTradingBot:
                                     bot_trend_5m = "SIDEWAYS"  # Default to sideways
                                     bot_trend_1h = "SIDEWAYS"  # Default to sideways
                                     
-                                    # Try to get bot's own trend analysis from weekly analysis
-                                    if hasattr(self, 'weekly_trend_analysis') and self.weekly_trend_analysis:
-                                        weekly_trend = self.weekly_trend_analysis.get("weekly_trend", "SIDEWAYS")
-                                        # Map weekly trends to 5m/1h trends
-                                        if weekly_trend in ["BULL", "STRONG_BULL", "WEAK_BULL"]:
-                                            bot_trend_5m = "UP"
-                                            bot_trend_1h = "UP"
-                                        elif weekly_trend in ["BEAR", "STRONG_BEAR", "WEAK_BEAR"]:
-                                            bot_trend_5m = "DOWN"
-                                            bot_trend_1h = "DOWN"
-                                        else:
-                                            bot_trend_5m = "SIDEWAYS"
-                                            bot_trend_1h = "SIDEWAYS"
+                                    # Use the bot's actual trend analysis from the analysis logs
+                                    if hasattr(self, 'binance_analysis') and self.binance_analysis:
+                                        # Get 5m trend from bot's analysis
+                                        trend_5m_data = self.binance_analysis.get("trend_5m", {})
+                                        if trend_5m_data and "trend" in trend_5m_data:
+                                            bot_trend_5m = trend_5m_data["trend"]
+                                        
+                                        # Get 1h trend from bot's analysis
+                                        trend_1h_data = self.binance_analysis.get("trend_1h", {})
+                                        if trend_1h_data and "trend" in trend_1h_data:
+                                            bot_trend_1h = trend_1h_data["trend"]
                                     
                                     # Use bot's trend analysis for dashboard
                                     self.trading_data_manager.update_market_data({
@@ -2950,19 +2948,17 @@ class YahooHyperliquidPaperTradingBot:
                             bot_trend_5m = "SIDEWAYS"  # Default to sideways
                             bot_trend_1h = "SIDEWAYS"  # Default to sideways
                             
-                            # Try to get bot's own trend analysis from weekly analysis
-                            if hasattr(self, 'weekly_trend_analysis') and self.weekly_trend_analysis:
-                                weekly_trend = self.weekly_trend_analysis.get("weekly_trend", "SIDEWAYS")
-                                # Map weekly trends to 5m/1h trends
-                                if weekly_trend in ["BULL", "STRONG_BULL", "WEAK_BULL"]:
-                                    bot_trend_5m = "UP"
-                                    bot_trend_1h = "UP"
-                                elif weekly_trend in ["BEAR", "STRONG_BEAR", "WEAK_BEAR"]:
-                                    bot_trend_5m = "DOWN"
-                                    bot_trend_1h = "DOWN"
-                                else:
-                                    bot_trend_5m = "SIDEWAYS"
-                                    bot_trend_1h = "SIDEWAYS"
+                            # Use the bot's actual trend analysis from the analysis logs
+                            if hasattr(self, 'binance_analysis') and self.binance_analysis:
+                                # Get 5m trend from bot's analysis
+                                trend_5m_data = self.binance_analysis.get("trend_5m", {})
+                                if trend_5m_data and "trend" in trend_5m_data:
+                                    bot_trend_5m = trend_5m_data["trend"]
+                                
+                                # Get 1h trend from bot's analysis
+                                trend_1h_data = self.binance_analysis.get("trend_1h", {})
+                                if trend_1h_data and "trend" in trend_1h_data:
+                                    bot_trend_1h = trend_1h_data["trend"]
                             
                             # Update RTM with bot's trend analysis
                             if self.trading_data_manager:
@@ -3009,19 +3005,17 @@ class YahooHyperliquidPaperTradingBot:
                         bot_trend_5m = "SIDEWAYS"  # Default to sideways
                         bot_trend_1h = "SIDEWAYS"  # Default to sideways
                         
-                        # Try to get bot's own trend analysis from weekly analysis
-                        if hasattr(self, 'weekly_trend_analysis') and self.weekly_trend_analysis:
-                            weekly_trend = self.weekly_trend_analysis.get("weekly_trend", "SIDEWAYS")
-                            # Map weekly trends to 5m/1h trends
-                            if weekly_trend in ["BULL", "STRONG_BULL", "WEAK_BULL"]:
-                                bot_trend_5m = "UP"
-                                bot_trend_1h = "UP"
-                            elif weekly_trend in ["BEAR", "STRONG_BEAR", "WEAK_BEAR"]:
-                                bot_trend_5m = "DOWN"
-                                bot_trend_1h = "DOWN"
-                            else:
-                                bot_trend_5m = "SIDEWAYS"
-                                bot_trend_1h = "SIDEWAYS"
+                        # Use the bot's actual trend analysis from the analysis logs
+                        if hasattr(self, 'binance_analysis') and self.binance_analysis:
+                            # Get 5m trend from bot's analysis
+                            trend_5m_data = self.binance_analysis.get("trend_5m", {})
+                            if trend_5m_data and "trend" in trend_5m_data:
+                                bot_trend_5m = trend_5m_data["trend"]
+                            
+                            # Get 1h trend from bot's analysis
+                            trend_1h_data = self.binance_analysis.get("trend_1h", {})
+                            if trend_1h_data and "trend" in trend_1h_data:
+                                bot_trend_1h = trend_1h_data["trend"]
                         
                         # Update RTM with bot's trend analysis
                         if self.trading_data_manager:
