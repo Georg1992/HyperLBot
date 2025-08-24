@@ -328,36 +328,86 @@ class EventDrivenTradingDashboard:
                     
                 except Exception as rtm_error:
                     logger.error(f"❌ Error in RTM data processing: {rtm_error}")
-                    # Return error data instead of falling back to files
-                    return {
-                        "session": {"error": f"RTM Error: {str(rtm_error)}"},
-                        "market": {"error": f"RTM Error: {str(rtm_error)}"},
-                        "logs": [],
-                        "summary": {"error": f"RTM Error: {str(rtm_error)}"},
-                        "predictions": [],
-                        "trades": [],
-                        "orderbook": {"error": f"RTM Error: {str(rtm_error)}"},
-                        "global_volume": {"error": f"RTM Error: {str(rtm_error)}"},
-                        "timestamp": datetime.now().isoformat(),
-                        "data_source": "rtm_error",
-                        "connection_status": "❌ RTM Connection Error"
-                    }
-            else:
-                # No RTM available - return connection error
-                logger.warning("⚠️ No RTM available - dashboard requires active trading bot")
-                return {
-                    "session": {"error": "No RTM available"},
-                    "market": {"error": "No RTM available"},
-                    "logs": [],
-                    "summary": {"error": "No RTM available"},
-                    "predictions": [],
-                    "trades": [],
-                    "orderbook": {"error": "No RTM available"},
-                    "global_volume": {"error": "No RTM available"},
-                    "timestamp": datetime.now().isoformat(),
-                    "data_source": "no_rtm",
-                    "connection_status": "❌ No Active Trading Bot"
-                }
+                    # Fall back to RTM state file if live RTM fails
+            
+            # If no live RTM, check RTM state file for active session data
+            rtm_file_data = self._load_rtm_state_from_file()
+            if rtm_file_data and "session" in rtm_file_data:
+                session_data = rtm_file_data["session"]
+                logger.debug(f"📊 RTM file session status: {session_data.get('status')}, balance: ${session_data.get('current_balance', 0):.2f}")
+                
+                # Only use file data if it shows an ACTIVE session
+                if session_data.get("status") == "ACTIVE":
+                    logger.info("📊 Using RTM file data for active session")
+                    
+                    enhanced_balance = self._calculate_enhanced_balance(session_data)
+                    
+                    # Calculate session duration
+                    try:
+                        if session_data.get("start_time"):
+                            start_time = datetime.fromisoformat(session_data["start_time"])
+                            session_duration = datetime.now() - start_time
+                            session_minutes = int(session_duration.total_seconds() / 60)
+                            session_data["session_time"] = f"{session_minutes}m"
+                            logger.debug(f"📊 Session duration: {session_minutes}m")
+                    except Exception as e:
+                        logger.error(f"Session time calculation error: {e}")
+                        session_data["session_time"] = "0m"
+                    
+                    activity_logs = rtm_file_data.get("recent_activity", [])
+                    recent_trades = rtm_file_data.get("recent_trades", [])
+                    recent_signals = rtm_file_data.get("recent_signals", [])
+                    predictions = rtm_file_data.get("predictions", [])
+                    
+                    # Build data structure from file
+                    file_data = {
+                         "session": {**session_data, **enhanced_balance},
+                         "market": self._get_market_data(),  # Use live market data
+                         "logs": activity_logs,
+                         "summary": {
+                             "total_trades": session_data.get("total_trades", 0),
+                             "winning_trades": session_data.get("winning_trades", 0),
+                             "losing_trades": session_data.get("losing_trades", 0),
+                             "current_balance": enhanced_balance["current_balance"],
+                             "initial_balance": enhanced_balance["initial_balance"],
+                             "balance_change": enhanced_balance["balance_change"],
+                             "balance_change_pct": enhanced_balance.get("balance_change_pct", 0),
+                             "realized_pnl": enhanced_balance.get("realized_pnl", 0),
+                             "unrealized_pnl": enhanced_balance.get("unrealized_pnl", 0),
+                             "open_positions_value": enhanced_balance.get("open_positions_value", 0),
+                             "balance_source": "rtm_file_active"
+                         },
+                         "predictions": self._get_predictions_data(),  # Use the dedicated method
+                         "orderbook": self._get_orderbook_data(),
+                         "global_volume": self._get_global_volume_data(),
+                         "trades": recent_trades,
+                         "recent_trades": recent_trades,
+                         "recent_signals": recent_signals,
+                         "timestamp": datetime.now().isoformat(),
+                         "data_source": "rtm_file_active",
+                         "connection_status": "🔴 Live Trading (File Data)"
+                     }
+                    
+                    logger.debug(f"📊 Using RTM file active session - Final balance: ${file_data['session']['current_balance']:.2f}")
+                    return file_data
+                else:
+                    logger.debug(f"📊 RTM file shows completed session, not using file data")
+            
+            # No active session data available
+            logger.warning("⚠️ No active session data available - dashboard requires active trading bot")
+            return {
+                "session": {"error": "No active session data available"},
+                "market": {"error": "No active session data available"},
+                "logs": [],
+                "summary": {"error": "No active session data available"},
+                "predictions": [],
+                "trades": [],
+                "orderbook": {"error": "No active session data available"},
+                "global_volume": {"error": "No active session data available"},
+                "timestamp": datetime.now().isoformat(),
+                "data_source": "no_active_session",
+                "connection_status": "❌ No Active Trading Session"
+            }
             
         except Exception as e:
             logger.error(f"❌ Failed to get dashboard data: {e}")
