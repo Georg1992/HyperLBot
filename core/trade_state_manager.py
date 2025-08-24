@@ -34,7 +34,7 @@ class TradeStateManager:
         # Trade data validation schema
         self.trade_schema = {
             "required_fields": [
-                "trade_id", "symbol", "side", "entry_price", "size", 
+                "trade_id", "account_id", "symbol", "side", "entry_price", "size", 
                 "entry_time", "status", "strategy", "confidence"
             ],
             "optional_fields": [
@@ -48,7 +48,8 @@ class TradeStateManager:
                 "pnl": 0.0,
                 "pnl_pct": 0.0,
                 "exit_reason": "UNKNOWN",
-                "confidence": 0.0
+                "confidence": 0.0,
+                "account_id": "default_account"
             }
         }
         
@@ -94,8 +95,8 @@ class TradeStateManager:
             logger.error(f"Trade data: {trade}")
             return None
     
-    def load_open_positions(self) -> List[Dict[str, Any]]:
-        """Load open positions with validation"""
+    def load_open_positions(self, account_id: str = None) -> List[Dict[str, Any]]:
+        """Load open positions with validation, optionally filtered by account"""
         with self.lock:
             try:
                 if os.path.exists(self.files["open_positions"]):
@@ -107,6 +108,10 @@ class TradeStateManager:
                     for pos in positions:
                         validated_pos = self.validate_trade(pos)
                         if validated_pos and validated_pos.get("status") == "OPEN":
+                            # Filter by account if specified
+                            if account_id and validated_pos.get("account_id") != account_id:
+                                continue
+                            
                             # Check if position isn't too old (24 hours max)
                             entry_time = validated_pos.get("entry_time", 0)
                             if time.time() - entry_time < 86400:
@@ -114,7 +119,7 @@ class TradeStateManager:
                             else:
                                 logger.warning(f"⚠️ Removing stale position: {validated_pos.get('trade_id')}")
                     
-                    logger.info(f"📂 Loaded {len(valid_positions)} valid open positions")
+                    logger.info(f"📂 Loaded {len(valid_positions)} valid open positions{f' for account {account_id}' if account_id else ''}")
                     return valid_positions
                 
                 return []
@@ -142,8 +147,8 @@ class TradeStateManager:
             except Exception as e:
                 logger.error(f"Error saving open positions: {e}")
     
-    def load_trade_history(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Load trade history with validation"""
+    def load_trade_history(self, limit: int = 100, account_id: str = None) -> List[Dict[str, Any]]:
+        """Load trade history with validation, optionally filtered by account"""
         with self.lock:
             try:
                 if os.path.exists(self.files["trade_history"]):
@@ -155,12 +160,15 @@ class TradeStateManager:
                     for trade in trades:
                         validated_trade = self.validate_trade(trade)
                         if validated_trade:
+                            # Filter by account if specified
+                            if account_id and validated_trade.get("account_id") != account_id:
+                                continue
                             valid_trades.append(validated_trade)
                     
                     # Sort by entry time (newest first) and limit
                     valid_trades.sort(key=lambda x: x.get("entry_time", 0), reverse=True)
                     
-                    logger.info(f"📂 Loaded {len(valid_trades[:limit])} trade history entries")
+                    logger.info(f"📂 Loaded {len(valid_trades[:limit])} trade history entries{f' for account {account_id}' if account_id else ''}")
                     return valid_trades[:limit]
                 
                 return []
@@ -318,14 +326,14 @@ class TradeStateManager:
             except Exception as e:
                 logger.error(f"Error during phantom trade cleanup: {e}")
     
-    def get_dashboard_trade_data(self) -> List[Dict[str, Any]]:
-        """Get formatted trade data for dashboard display"""
+    def get_dashboard_trade_data(self, account_id: str = None) -> List[Dict[str, Any]]:
+        """Get formatted trade data for dashboard display, optionally filtered by account"""
         try:
             # Get recent completed trades
-            trade_history = self.load_trade_history(50)
+            trade_history = self.load_trade_history(50, account_id)
             
             # Get current open positions  
-            open_positions = self.load_open_positions()
+            open_positions = self.load_open_positions(account_id)
             
             # Combine and format for dashboard
             dashboard_trades = []
@@ -346,7 +354,8 @@ class TradeStateManager:
                     "pnl_pct": trade.get("pnl_pct", 0),
                     "confidence": trade.get("confidence", 0) * 100,
                     "exit_reason": trade.get("exit_reason", "UNKNOWN"),
-                    "holding_time": trade.get("exit_time", 0) - trade.get("entry_time", 0)
+                    "holding_time": trade.get("exit_time", 0) - trade.get("entry_time", 0),
+                    "account_id": trade.get("account_id", "unknown")
                 }
                 dashboard_trades.append(dashboard_trade)
             
@@ -366,13 +375,15 @@ class TradeStateManager:
                     "pnl_pct": pos.get("pnl_pct", 0),
                     "confidence": pos.get("confidence", 0) * 100,
                     "exit_reason": "OPEN",
-                    "holding_time": time.time() - pos.get("entry_time", time.time())
+                    "holding_time": time.time() - pos.get("entry_time", time.time()),
+                    "account_id": pos.get("account_id", "unknown")
                 }
                 dashboard_trades.append(dashboard_trade)
             
             # Sort by timestamp (newest first)
             dashboard_trades.sort(key=lambda x: x["timestamp"], reverse=True)
             
+            logger.debug(f"📊 Retrieved {len(dashboard_trades)} trades for dashboard{f' (account: {account_id})' if account_id else ''}")
             return dashboard_trades[:50]  # Return last 50 trades
             
         except Exception as e:

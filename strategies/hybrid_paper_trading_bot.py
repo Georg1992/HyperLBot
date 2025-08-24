@@ -59,6 +59,9 @@ class YahooHyperliquidPaperTradingBot:
         self.closed_positions = []
         self.trade_history = []
         
+        # Initialize current account ID
+        self.current_account_id = None
+        
         # Load existing open positions from previous sessions
         self.open_positions = trade_state_manager.load_open_positions()
         
@@ -219,6 +222,9 @@ class YahooHyperliquidPaperTradingBot:
         
         # Ensure account manager is available
         self._ensure_account_manager()
+        
+        # Get current account ID for trade linking
+        self._set_current_account_id()
     
     def _ensure_account_manager(self):
         """Ensure account manager is properly initialized"""
@@ -230,6 +236,20 @@ class YahooHyperliquidPaperTradingBot:
             except ImportError as e:
                 logger.warning(f"⚠️ Account manager not available: {e}")
                 self.account_manager = None
+    
+    def _set_current_account_id(self):
+        """Set current account ID for trade linking"""
+        try:
+            if self.account_manager and self.account_manager.account_data:
+                self.current_account_id = self.account_manager.account_data.get("account_id")
+                logger.info(f"🔗 Linked to account: {self.current_account_id}")
+            else:
+                # Generate default account ID if no account manager
+                self.current_account_id = f"bot_account_{int(time.time())}"
+                logger.warning(f"⚠️ No account data found, using default: {self.current_account_id}")
+        except Exception as e:
+            logger.error(f"❌ Error setting account ID: {e}")
+            self.current_account_id = "unknown_account"
     
     def _test_api_connections(self):
         """Test API connections and set connected status"""
