@@ -1,46 +1,36 @@
 {
-  "account_id": "sim_account_1756050774",
-  "created_at": "2025-08-24T18:52:54.370290",
-  "last_updated": "2025-08-24T18:53:32.167981",
-  "initial_balance": 1111.0,
-  "current_balance": 1131.5163390036985,
-  "total_deposits": 1111.0,
+  "account_id": "sim_account_1756053930",
+  "created_at": "2025-08-24T19:45:30.153687",
+  "last_updated": "2025-08-24T19:46:28.702937",
+  "initial_balance": 500.0,
+  "current_balance": 519.6052625888522,
+  "total_deposits": 500.0,
   "total_withdrawals": 0.0,
   "total_trades": 0,
   "winning_trades": 0,
   "losing_trades": 0,
-  "total_pnl": 20.550711626848326,
-  "realized_pnl": 20.550711626848326,
+  "total_pnl": 19.639602869422117,
+  "realized_pnl": 19.639602869422117,
   "unrealized_pnl": 0.0,
   "open_positions": [],
   "trade_history": [],
   "session_history": [
     {
-      "session_id": "session_1756050782",
+      "session_id": "session_1756053938",
       "strategy": "standard",
-      "initial_balance": 1111.0,
-      "start_time": "2025-08-24T18:53:03.003505",
-      "timestamp": "2025-08-24T18:53:03.003505"
+      "initial_balance": 500.0,
+      "start_time": "2025-08-24T19:45:38.918587",
+      "timestamp": "2025-08-24T19:45:38.918587"
     },
     {
-      "session_id": "session_1756050782",
-      "end_time": "2025-08-24T18:53:27.920331",
-      "final_balance": 1111.0,
+      "session_id": "session_1756053938",
+      "end_time": "2025-08-24T19:46:28.702937",
+      "final_balance": 500.0,
       "total_trades": 0,
       "winning_trades": 0,
       "losing_trades": 0,
       "balance_change": 0.0,
-      "timestamp": "2025-08-24T18:53:27.920331"
-    },
-    {
-      "session_id": "session_1756050782",
-      "end_time": "2025-08-24T18:53:32.167981",
-      "final_balance": 1111.0,
-      "total_trades": 0,
-      "winning_trades": 0,
-      "losing_trades": 0,
-      "balance_change": 0.0,
-      "timestamp": "2025-08-24T18:53:32.167981"
+      "timestamp": "2025-08-24T19:46:28.702937"
     }
   ],
   "account_status": "active"

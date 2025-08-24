@@ -2223,7 +2223,8 @@ class YahooHyperliquidPaperTradingBot:
                 # Win-back metadata
                 "is_winback_trade": signal_data.get("is_winback_trade", False),
                 "winback_data": signal_data.get("winback_data", {}),
-                "defensive_mode": signal_data.get("defensive_mode", False)
+                "defensive_mode": signal_data.get("defensive_mode", False),
+                "strategy": self.strategy_name
             }
             
             # Add to open positions
@@ -2242,6 +2243,8 @@ class YahooHyperliquidPaperTradingBot:
             
             # Prepare trade data for logging
             trade_data = {
+                "timestamp": time.time(),
+                "datetime": time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
                 "trade_id": position["trade_id"],
                 "side": side,
                 "price": execution_result["execution_price"],
@@ -2263,7 +2266,8 @@ class YahooHyperliquidPaperTradingBot:
                 "signal_reason": signal_data.get("reason") if signal_data else None,
                 "profit_target": execution_result["target_price"],
                 "stop_loss": execution_result["stop_price"],
-                "risk_level": signal_data.get("variability_analysis", {}).get("risk_level") if signal_data else "STANDARD"
+                "risk_level": signal_data.get("variability_analysis", {}).get("risk_level") if signal_data else "STANDARD",
+                "strategy": self.strategy_name
             }
             
             # Log the trade
@@ -2288,7 +2292,8 @@ class YahooHyperliquidPaperTradingBot:
                     "exit_reason": "OPEN",  # Will be updated when position is closed
                     "was_profitable": False,  # Will be determined when position is closed
                     "is_winback_trade": False,
-                    "timestamp": trade_data["timestamp"]
+                    "timestamp": trade_data["timestamp"],
+                    "strategy": self.strategy_name
                 }
                 self.trading_data_manager.add_trade(rtm_trade_record)
                 
@@ -2690,7 +2695,8 @@ class YahooHyperliquidPaperTradingBot:
             "balance_after": self.paper_balance,
             "is_winback_trade": position.get("is_winback_trade", False),
             "winback_data": position.get("winback_data", {}),
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "strategy": position.get("strategy", self.strategy_name)
         }
         
         self.trading_logger.update_trade_result(position["trade_id"], trade_result)
@@ -2895,9 +2901,30 @@ class YahooHyperliquidPaperTradingBot:
                                     
                                     logger.info(f"📊 Updating dashboard: RSI={real_rsi:.1f}, Volume={real_volume:.1f} BTC ({volume_category}), Imbalance={real_imbalance:.3f}")
                                     
+                                    # Get bot's own trend analysis from recent analysis logs
+                                    bot_trend_5m = "SIDEWAYS"  # Default to sideways
+                                    bot_trend_1h = "SIDEWAYS"  # Default to sideways
+                                    
+                                    # Try to get bot's own trend analysis from weekly analysis
+                                    if hasattr(self, 'weekly_trend_analysis') and self.weekly_trend_analysis:
+                                        weekly_trend = self.weekly_trend_analysis.get("weekly_trend", "SIDEWAYS")
+                                        # Map weekly trends to 5m/1h trends
+                                        if weekly_trend in ["BULL", "STRONG_BULL", "WEAK_BULL"]:
+                                            bot_trend_5m = "UP"
+                                            bot_trend_1h = "UP"
+                                        elif weekly_trend in ["BEAR", "STRONG_BEAR", "WEAK_BEAR"]:
+                                            bot_trend_5m = "DOWN"
+                                            bot_trend_1h = "DOWN"
+                                        else:
+                                            bot_trend_5m = "SIDEWAYS"
+                                            bot_trend_1h = "SIDEWAYS"
+                                    
+                                    # Use bot's trend analysis for dashboard
                                     self.trading_data_manager.update_market_data({
                                         "current_price": hyperliquid_price,
-                                        "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "UNKNOWN"),
+                                        "trend": bot_trend_5m,  # Use bot's own trend analysis
+                                        "trend_5m": {"trend": bot_trend_5m},  # Add structured trend data
+                                        "trend_1h": {"trend": bot_trend_1h},  # Add structured trend data
                                         "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
                                         "rsi": real_rsi,  # REAL RSI from calculations
                                         "volume_depth": real_volume,  # REAL volume from analysis
@@ -2908,7 +2935,7 @@ class YahooHyperliquidPaperTradingBot:
                                         "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
                                         "volume_category": volume_category,
                                         "volume_trend": "CALCULATED",  # Using smart cache data
-                                        "data_source": "smart_cache_real_values"
+                                        "data_source": "bot_analysis_with_smart_cache"
                                     })
                                 
                                 logger.info(f"💾 Smart cache update: {cache_update.get('api_calls_saved', 0)} API calls saved")
@@ -2918,6 +2945,44 @@ class YahooHyperliquidPaperTradingBot:
                         if yahoo_analysis:
                             self.binance_analysis = yahoo_analysis
                             self.last_market_update = current_time
+                            
+                            # Update dashboard with bot's own trend analysis
+                            bot_trend_5m = "SIDEWAYS"  # Default to sideways
+                            bot_trend_1h = "SIDEWAYS"  # Default to sideways
+                            
+                            # Try to get bot's own trend analysis from weekly analysis
+                            if hasattr(self, 'weekly_trend_analysis') and self.weekly_trend_analysis:
+                                weekly_trend = self.weekly_trend_analysis.get("weekly_trend", "SIDEWAYS")
+                                # Map weekly trends to 5m/1h trends
+                                if weekly_trend in ["BULL", "STRONG_BULL", "WEAK_BULL"]:
+                                    bot_trend_5m = "UP"
+                                    bot_trend_1h = "UP"
+                                elif weekly_trend in ["BEAR", "STRONG_BEAR", "WEAK_BEAR"]:
+                                    bot_trend_5m = "DOWN"
+                                    bot_trend_1h = "DOWN"
+                                else:
+                                    bot_trend_5m = "SIDEWAYS"
+                                    bot_trend_1h = "SIDEWAYS"
+                            
+                            # Update RTM with bot's trend analysis
+                            if self.trading_data_manager:
+                                self.trading_data_manager.update_market_data({
+                                    "current_price": hyperliquid_price,
+                                    "trend": bot_trend_5m,  # Use bot's own trend analysis
+                                    "trend_5m": {"trend": bot_trend_5m},  # Add structured trend data
+                                    "trend_1h": {"trend": bot_trend_1h},  # Add structured trend data
+                                    "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
+                                    "rsi": yahoo_analysis.get("rsi", 50.0),
+                                    "volume_depth": yahoo_analysis.get("volume_depth", 0.0),
+                                    "orderbook_imbalance": 0.0,
+                                    "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                                    "volatility_1h": yahoo_analysis.get("volatility_1h", 0.0),
+                                    "support": yahoo_analysis.get("support_resistance_5m", {}).get("support", 0),
+                                    "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
+                                    "volume_category": "UNKNOWN",
+                                    "volume_trend": "UNKNOWN",
+                                    "data_source": "bot_analysis_fallback"
+                                })
                         
                         # Log market data for dashboard (Hyperliquid price + Yahoo historical comparison)
                         self.trading_logger.log_analysis({
@@ -2939,6 +3004,44 @@ class YahooHyperliquidPaperTradingBot:
                     if yahoo_analysis:
                         self.binance_analysis = yahoo_analysis  # Keep variable name for compatibility
                         self.last_candle_update = current_time
+                        
+                        # Update dashboard with bot's own trend analysis
+                        bot_trend_5m = "SIDEWAYS"  # Default to sideways
+                        bot_trend_1h = "SIDEWAYS"  # Default to sideways
+                        
+                        # Try to get bot's own trend analysis from weekly analysis
+                        if hasattr(self, 'weekly_trend_analysis') and self.weekly_trend_analysis:
+                            weekly_trend = self.weekly_trend_analysis.get("weekly_trend", "SIDEWAYS")
+                            # Map weekly trends to 5m/1h trends
+                            if weekly_trend in ["BULL", "STRONG_BULL", "WEAK_BULL"]:
+                                bot_trend_5m = "UP"
+                                bot_trend_1h = "UP"
+                            elif weekly_trend in ["BEAR", "STRONG_BEAR", "WEAK_BEAR"]:
+                                bot_trend_5m = "DOWN"
+                                bot_trend_1h = "DOWN"
+                            else:
+                                bot_trend_5m = "SIDEWAYS"
+                                bot_trend_1h = "SIDEWAYS"
+                        
+                        # Update RTM with bot's trend analysis
+                        if self.trading_data_manager:
+                            self.trading_data_manager.update_market_data({
+                                "current_price": hyperliquid_price,
+                                "trend": bot_trend_5m,  # Use bot's own trend analysis
+                                "trend_5m": {"trend": bot_trend_5m},  # Add structured trend data
+                                "trend_1h": {"trend": bot_trend_1h},  # Add structured trend data
+                                "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
+                                "rsi": yahoo_analysis.get("rsi", 50.0),
+                                "volume_depth": yahoo_analysis.get("volume_depth", 0.0),
+                                "orderbook_imbalance": 0.0,
+                                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                                "volatility_1h": yahoo_analysis.get("volatility_1h", 0.0),
+                                "support": yahoo_analysis.get("support_resistance_5m", {}).get("support", 0),
+                                "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
+                                "volume_category": "UNKNOWN",
+                                "volume_trend": "UNKNOWN",
+                                "data_source": "bot_analysis_periodic"
+                            })
                         
                         # Log analysis (Hyperliquid price + Yahoo historical comparison)
                         self.trading_logger.log_analysis({

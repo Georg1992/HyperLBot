@@ -49,7 +49,8 @@ class TradeStateManager:
                 "pnl_pct": 0.0,
                 "exit_reason": "UNKNOWN",
                 "confidence": 0.0,
-                "account_id": "default_account"
+                "account_id": "default_account",
+                "strategy": "standard"
             }
         }
         

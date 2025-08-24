@@ -111,7 +111,7 @@ class EventDrivenTradingDashboard:
             }
     
     def _get_realtime_manager(self):
-        """Get real-time data manager with fallback handling"""
+        """Get real-time data manager - NO FALLBACKS"""
         try:
             from core.realtime_data_manager import trading_data_manager
             
@@ -132,7 +132,7 @@ class EventDrivenTradingDashboard:
             return None
     
     def _load_rtm_state_from_file(self) -> Dict[str, Any]:
-        """Load RTM state from JSON file as fallback"""
+        """Load RTM state from JSON file - NO FALLBACKS"""
         try:
             rtm_file_path = constants.RTM_STATE_FILE
             if os.path.exists(rtm_file_path):
@@ -328,85 +328,21 @@ class EventDrivenTradingDashboard:
                     
                 except Exception as rtm_error:
                     logger.error(f"❌ Error in RTM data processing: {rtm_error}")
-                    # Fall back to RTM state file if live RTM fails
             
-            # If no live RTM, check RTM state file for active session data
-            rtm_file_data = self._load_rtm_state_from_file()
-            if rtm_file_data and "session" in rtm_file_data:
-                session_data = rtm_file_data["session"]
-                logger.debug(f"📊 RTM file session status: {session_data.get('status')}, balance: ${session_data.get('current_balance', 0):.2f}")
-                
-                # Only use file data if it shows an ACTIVE session
-                if session_data.get("status") == "ACTIVE":
-                    logger.info("📊 Using RTM file data for active session")
-                    
-                    enhanced_balance = self._calculate_enhanced_balance(session_data)
-                    
-                    # Calculate session duration
-                    try:
-                        if session_data.get("start_time"):
-                            start_time = datetime.fromisoformat(session_data["start_time"])
-                            session_duration = datetime.now() - start_time
-                            session_minutes = int(session_duration.total_seconds() / 60)
-                            session_data["session_time"] = f"{session_minutes}m"
-                            logger.debug(f"📊 Session duration: {session_minutes}m")
-                    except Exception as e:
-                        logger.error(f"Session time calculation error: {e}")
-                        session_data["session_time"] = "0m"
-                    
-                    activity_logs = rtm_file_data.get("recent_activity", [])
-                    recent_trades = rtm_file_data.get("recent_trades", [])
-                    recent_signals = rtm_file_data.get("recent_signals", [])
-                    predictions = rtm_file_data.get("predictions", [])
-                    
-                    # Build data structure from file
-                    file_data = {
-                         "session": {**session_data, **enhanced_balance},
-                         "market": self._get_market_data(),  # Use live market data
-                         "logs": activity_logs,
-                         "summary": {
-                             "total_trades": session_data.get("total_trades", 0),
-                             "winning_trades": session_data.get("winning_trades", 0),
-                             "losing_trades": session_data.get("losing_trades", 0),
-                             "current_balance": enhanced_balance["current_balance"],
-                             "initial_balance": enhanced_balance["initial_balance"],
-                             "balance_change": enhanced_balance["balance_change"],
-                             "balance_change_pct": enhanced_balance.get("balance_change_pct", 0),
-                             "realized_pnl": enhanced_balance.get("realized_pnl", 0),
-                             "unrealized_pnl": enhanced_balance.get("unrealized_pnl", 0),
-                             "open_positions_value": enhanced_balance.get("open_positions_value", 0),
-                             "balance_source": "rtm_file_active"
-                         },
-                         "predictions": self._get_predictions_data(),  # Use the dedicated method
-                         "orderbook": self._get_orderbook_data(),
-                         "global_volume": self._get_global_volume_data(),
-                         "trades": recent_trades,
-                         "recent_trades": recent_trades,
-                         "recent_signals": recent_signals,
-                         "timestamp": datetime.now().isoformat(),
-                         "data_source": "rtm_file_active",
-                         "connection_status": "🔴 Live Trading (File Data)"
-                     }
-                    
-                    logger.debug(f"📊 Using RTM file active session - Final balance: ${file_data['session']['current_balance']:.2f}")
-                    return file_data
-                else:
-                    logger.debug(f"📊 RTM file shows completed session, not using file data")
-            
-            # No active session data available
-            logger.warning("⚠️ No active session data available - dashboard requires active trading bot")
+            # NO FALLBACKS - Only RTM data allowed
+            logger.warning("⚠️ No active RTM available - dashboard requires active trading bot")
             return {
-                "session": {"error": "No active session data available"},
-                "market": {"error": "No active session data available"},
+                "session": {"error": "No active RTM available"},
+                "market": {"error": "No active RTM available"},
                 "logs": [],
-                "summary": {"error": "No active session data available"},
+                "summary": {"error": "No active RTM available"},
                 "predictions": [],
                 "trades": [],
-                "orderbook": {"error": "No active session data available"},
-                "global_volume": {"error": "No active session data available"},
+                "orderbook": {"error": "No active RTM available"},
+                "global_volume": {"error": "No active RTM available"},
                 "timestamp": datetime.now().isoformat(),
-                "data_source": "no_active_session",
-                "connection_status": "❌ No Active Trading Session"
+                "data_source": "no_rtm",
+                "connection_status": "❌ No Active RTM"
             }
             
         except Exception as e:
@@ -456,16 +392,16 @@ class EventDrivenTradingDashboard:
                     "losing_trades": session_data["losing_trades"]
                 }
             
-            # Only fallback to logs if real-time manager is not available
-            logger.debug("📊 Falling back to logs data")
-            return self._get_session_data_from_logs()
+            # NO FALLBACKS - Only RTM data allowed
+            logger.warning("⚠️ No active RTM available - session data requires active trading bot")
+            return {"error": "No active RTM available"}
             
         except Exception as e:
             logger.error(f"Session data error: {e}")
-            return self._get_session_data_from_logs()
+            return {"error": str(e)}
     
     def _get_session_data_from_logs(self) -> Dict[str, Any]:
-        """Fallback: Get session data from logs (only when real-time manager unavailable)"""
+        """Get session data from logs - NO FALLBACKS"""
         try:
             # Find the latest session metadata file
             session_files = [f for f in os.listdir(self.log_dir) if f.startswith("session_metadata_") and f.endswith(".json")]
@@ -560,24 +496,33 @@ class EventDrivenTradingDashboard:
                     except:
                         orderbook_imbalance = 0.0
                 
-                # Get actual trend analysis from Yahoo Finance
+                # Get trend analysis from bot's RTM ONLY
                 trend_display = "NEUTRAL"
                 try:
-                    from data.yahoo_data_fetcher import YahooDataFetcher
-                    yahoo_fetcher = YahooDataFetcher()
-                    market_analysis = yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price=current_price)
-                    if "error" not in market_analysis:
-                        trend_5m = market_analysis.get("trend_5m", {}).get("trend", "SIDEWAYS")
-                        # Map Yahoo Finance trend to dashboard display
+                    rtm = self._get_realtime_manager()
+                    if rtm:
+                        current_state = rtm.get_current_state()
+                        market_data = current_state.get("market", {})
+                        
+                        # Get trend from bot's analysis
+                        trend_5m = market_data.get("trend_5m", {}).get("trend", "SIDEWAYS")
+                        trend_1h = market_data.get("trend_1h", {}).get("trend", "SIDEWAYS")
+                        
+                        # Use 5m trend for display, with 1h as context
                         if trend_5m in ["STRONG_UP", "UP", "WEAK_UP"]:
                             trend_display = "BULLISH"
                         elif trend_5m in ["STRONG_DOWN", "DOWN", "WEAK_DOWN"]:
                             trend_display = "BEARISH"
                         else:  # SIDEWAYS or unknown
                             trend_display = "SIDEWAYS"
+                            
+                        logger.debug(f"🎯 Bot trend analysis - 5m: {trend_5m}, 1h: {trend_1h}, Display: {trend_display}")
+                    else:
+                        logger.debug("❌ No RTM available - cannot get trend data")
+                        trend_display = "NO_DATA"
                 except Exception as e:
-                    logger.debug(f"Yahoo Finance trend analysis error: {e}")
-                    trend_display = "NEUTRAL"
+                    logger.debug(f"Trend analysis error: {e}")
+                    trend_display = "ERROR"
 
                 # Enhanced market data with analytics
                 return {
@@ -602,59 +547,17 @@ class EventDrivenTradingDashboard:
                     "last_update": datetime.now().isoformat()
                 }
             
-            # Fallback when API not available
-            return {
-                "current_price": constants.DEFAULT_BTC_PRICE,  # Reasonable BTC price
-                "trend": "API_OFFLINE",
-                "market_condition": "DASHBOARD_ONLY",
-                "rsi": constants.DEFAULT_RSI,
-                "volume_depth": 20.0,
-                "volume_category": "UNKNOWN",
-                "orderbook_imbalance": 0.0,
-                "volatility_5m": 0.005,
-                "volatility_1h": 0.010,
-                "support": 95000,
-                "resistance": 100000,
-                "volume_trend": "UNKNOWN",
-                "ultimate_pressure": {
-                    "direction": "NEUTRAL",
-                    "confidence": "N/A",
-                    "strength": 0.0
-                },
-                "data_source": "fallback_data",
-                "last_update": datetime.now().isoformat()
-            }
+            # NO FALLBACKS - Only RTM data allowed
+            logger.warning("⚠️ No active RTM available - market data requires active trading bot")
+            return {"error": "No active RTM available"}
             
         except Exception as e:
             logger.error(f"Market data error: {e}")
-            # Return reasonable fallback data even on error
-            return {
-                "current_price": constants.DEFAULT_BTC_PRICE,
-                "trend": "ERROR",
-                "market_condition": "DATA_ERROR",
-                "rsi": constants.DEFAULT_RSI,
-                "volume_depth": 0.0,
-                "volume_category": "ERROR",
-                "orderbook_imbalance": 0.0,
-                "volatility_5m": 0.0,
-                "volatility_1h": 0.0,
-                "support": 95000,
-                "resistance": 100000,
-                "volume_trend": "ERROR",
-                "ultimate_pressure": {
-                    "direction": "UNKNOWN",
-                    "confidence": "ERROR",
-                    "strength": 0.0
-                },
-                "data_source": "error_fallback",
-                "last_update": datetime.now().isoformat(),
-                "error": str(e)
-            }
+            return {"error": str(e)}
     
     def _get_activity_logs(self) -> List[Dict]:
-        """Get recent activity logs from real-time manager"""
+        """Get recent activity logs from RTM ONLY"""
         try:
-            # Try to get activity logs from real-time manager first
             rtm = self._get_realtime_manager()
             if rtm:
                 current_state = rtm.get_current_state()
@@ -674,64 +577,13 @@ class EventDrivenTradingDashboard:
                     
                     return logs
             
-            # Fallback to log files only if real-time manager not available
-            logs = []
-            log_files = ["market_analysis.log", "trading_actions.log", "signals.log"]
-            
-            for log_file in log_files:
-                log_path = os.path.join(self.log_dir, log_file)
-                if os.path.exists(log_path):
-                    with open(log_path, 'r') as f:
-                        lines = f.readlines()[-10:]  # Last 10 lines
-                        for line in lines:
-                            if line.strip():
-                                logs.append({
-                                    "timestamp": datetime.now().isoformat(),
-                                    "message": line.strip(),
-                                    "source": log_file,
-                                    "level": "INFO"
-                                })
-            
-            # If no logs found, provide informative fallback
-            if not logs:
-                current_time = datetime.now().isoformat()
-                logs = [
-                    {
-                        "timestamp": current_time,
-                        "message": "🚀 Dashboard initialized and monitoring market data",
-                        "source": "dashboard",
-                        "level": "INFO"
-                    },
-                    {
-                        "timestamp": current_time,
-                        "message": "📊 Real-time price data connection established",
-                        "source": "market_data",
-                        "level": "INFO"
-                    },
-                    {
-                        "timestamp": current_time,
-                        "message": "⚡ WebSocket connection active for live updates",
-                        "source": "websocket",
-                        "level": "INFO"
-                    },
-                    {
-                        "timestamp": current_time,
-                        "message": "🤖 Start trading bot to see live activity logs here",
-                        "source": "bot_status",
-                        "level": "INFO"
-                    }
-                ]
-            
-            return logs[-20:]  # Return last 20 log entries
+            # NO FALLBACKS - Only RTM data
+            logger.debug("❌ No RTM available - cannot get activity logs")
+            return []
             
         except Exception as e:
             logger.error(f"Activity logs error: {e}")
-            return [{
-                "message": f"⚠️ Error loading activity logs: {e}",
-                "timestamp": datetime.now().isoformat(),
-                "source": "error",
-                "level": "ERROR"
-            }]
+            return []
     
     def _get_trade_summary(self) -> Dict[str, Any]:
         """Get trading summary"""
@@ -747,9 +599,8 @@ class EventDrivenTradingDashboard:
         }
     
     def _get_predictions_data(self) -> List[Dict]:
-        """Get predictions data from real-time manager"""
+        """Get predictions data from real-time manager ONLY"""
         try:
-            # Try to get predictions from real-time manager first
             rtm = self._get_realtime_manager()
             if rtm:
                 current_state = rtm.get_current_state()
@@ -773,123 +624,33 @@ class EventDrivenTradingDashboard:
                     logger.debug(f"📊 Found {len(dashboard_predictions)} real-time predictions")
                     return dashboard_predictions
             
-            # Try to load predictions from RTM file data
-            rtm_file_data = self._load_rtm_state_from_file()
-            if rtm_file_data and "predictions" in rtm_file_data:
-                predictions = rtm_file_data.get("predictions", [])
-                if predictions:
-                    # Convert file predictions to dashboard format
-                    dashboard_predictions = []
-                    for pred in predictions[-5:]:  # Last 5 predictions
-                        dashboard_pred = {
-                            "signal_type": pred.get("type", "UNKNOWN"),
-                            "direction": pred.get("side", "NEUTRAL"),
-                            "confidence": pred.get("confidence", 0) * 100 if pred.get("confidence") else 0,
-                            "prediction_type": pred.get("reason", "Historical Signal"),
-                            "timestamp": datetime.fromtimestamp(pred.get("timestamp", time.time())).isoformat(),
-                            "message": pred.get("reason", "Historical trading signal"),
-                            "data_source": "rtm_file_data"
-                        }
-                        dashboard_predictions.append(dashboard_pred)
-                    
-                    logger.debug(f"📊 Found {len(dashboard_predictions)} predictions from RTM file")
-                    return dashboard_predictions
-            
-            # Fallback to log files only if real-time manager not available
-            prediction_files = [f for f in os.listdir(self.log_dir) if "predictions" in f.lower() and f.endswith(".json")]
-            
-            if prediction_files:
-                latest_prediction_file = max(prediction_files, key=lambda f: os.path.getmtime(os.path.join(self.log_dir, f)))
-                prediction_path = os.path.join(self.log_dir, latest_prediction_file)
-                
-                with open(prediction_path, 'r') as f:
-                    predictions = json.load(f)
-                    
-                if isinstance(predictions, list) and predictions:
-                    return predictions[:5]  # Return last 5 predictions
-            
-            # Return informative fallback data when no bot running
-            return [{
-                "signal_type": "DASHBOARD_MONITORING",
-                "direction": "NEUTRAL",
-                "confidence": 0,
-                "prediction_type": "Start Bot for Live Signals",
-                "timestamp": datetime.now().isoformat(),
-                "message": "Dashboard is monitoring market data. Start the trading bot to see live predictions and signals.",
-                "data_source": "dashboard_fallback"
-            }]
+            # NO FALLBACKS - Only RTM data
+            logger.debug("❌ No RTM available - cannot get predictions")
+            return []
             
         except Exception as e:
             logger.debug(f"Predictions data error: {e}")
-            return [{
-                "signal_type": "ERROR",
-                "direction": "UNKNOWN",
-                "confidence": 0,
-                "prediction_type": "Data Error",
-                "timestamp": datetime.now().isoformat(),
-                "message": f"Unable to load prediction data: {str(e)}",
-                "data_source": "error"
-            }]
+            return []
     
     def _get_trades_data(self) -> List[Dict]:
-        """Get trade history data using Trade State Manager with fallback to trading logs"""
+        """Get trade history data from RTM ONLY"""
         try:
-            # Use the robust Trade State Manager for all trade data
-            dashboard_trades = trade_state_manager.get_dashboard_trade_data()
+            rtm = self._get_realtime_manager()
+            if rtm:
+                current_state = rtm.get_current_state()
+                recent_trades = current_state.get("recent_trades", [])
+                
+                if recent_trades:
+                    logger.debug(f"📊 Retrieved {len(recent_trades)} trades from RTM")
+                    return recent_trades
             
-            if dashboard_trades and len(dashboard_trades) > 0:
-                logger.debug(f"📊 Retrieved {len(dashboard_trades)} trades from Trade State Manager")
-                return dashboard_trades
-            
-            # Fallback: Try to load trades from trading logs
-            logger.debug("📊 No trades in Trade State Manager, trying trading logs...")
-            trading_logs_trades = self._load_trades_from_logs()
-            
-            if trading_logs_trades and len(trading_logs_trades) > 0:
-                logger.debug(f"📊 Retrieved {len(trading_logs_trades)} trades from trading logs")
-                return trading_logs_trades
-            
-            # If no trades found, provide informative message
-            current_time = datetime.now()
-            return [
-                {
-                    "id": "no_trades",
-                    "side": "INFO",
-                    "symbol": "BTC",
-                    "status": "INFO",
-                    "entry_price": 0,
-                    "exit_price": 0,
-                    "size": 0,
-                    "timestamp": current_time.isoformat(),
-                    "type": "INFO",
-                    "pnl": 0,
-                    "pnl_pct": 0,
-                    "confidence": 0,
-                    "exit_reason": "INFO",
-                    "holding_time": 0,
-                    "message": "No trades found. Start the trading bot to see live trades."
-                }
-            ]
+            # NO FALLBACKS - Only RTM data
+            logger.debug("❌ No RTM available - cannot get trades")
+            return []
             
         except Exception as e:
             logger.error(f"❌ Error getting trade data: {e}")
-            return [{
-                "id": "error",
-                "side": "ERROR",
-                "symbol": "BTC",
-                "status": "ERROR",
-                "entry_price": 0,
-                "exit_price": 0,
-                "size": 0,
-                "timestamp": datetime.now().isoformat(),
-                "type": "ERROR",
-                "pnl": 0,
-                "pnl_pct": 0,
-                "confidence": 0,
-                "exit_reason": "ERROR",
-                "holding_time": 0,
-                "message": f"Error loading trade data: {str(e)}"
-            }]
+            return []
     
     def _extract_price_from_log(self, line: str) -> float:
         """Extract price from log line"""
@@ -928,7 +689,7 @@ class EventDrivenTradingDashboard:
         return None
     
     def _load_trades_from_logs(self) -> List[Dict]:
-        """Load trades from trading logs as fallback"""
+        """Load trades from trading logs - NO FALLBACKS"""
         try:
             # Find the most recent trading session
             trading_logs_dir = os.path.join(os.path.dirname(__file__), "trading_logs", "trades")
@@ -1137,25 +898,13 @@ class EventDrivenTradingDashboard:
                 balance_source = "real_hyperliquid"
                 logger.debug(f"💰 Using REAL balance: ${current_balance:.2f} (PnL: ${balance_change:.2f})")
             else:
-                # Use session/simulated balance
+                # Use session data from RTM ONLY - NO METADATA FALLBACK
                 current_balance = session_data.get("current_balance", 120.0)
                 initial_balance = session_data.get("initial_balance", 120.0)
                 balance_change = session_data.get("balance_change", 0.0)
                 balance_change_pct = session_data.get("balance_change_pct", 0.0)
-                balance_source = "simulated"
-                
-                # If session data shows no change but we have trading logs, try to get balance from session metadata
-                if balance_change == 0.0 and current_balance == initial_balance:
-                    session_metadata_balance = self._get_balance_from_session_metadata()
-                    if session_metadata_balance:
-                        current_balance = session_metadata_balance.get("current_balance", current_balance)
-                        initial_balance = session_metadata_balance.get("initial_balance", initial_balance)
-                        balance_change = session_metadata_balance.get("balance_change", 0.0)
-                        balance_change_pct = session_metadata_balance.get("balance_change_pct", 0.0)
-                        balance_source = "session_metadata"
-                        logger.debug(f"📊 Using SESSION METADATA balance: ${current_balance:.2f} (Change: ${balance_change:.2f})")
-                
-                logger.debug(f"🎮 Using {balance_source.upper()} balance: ${current_balance:.2f} (Change: ${balance_change:.2f})")
+                balance_source = "rtm_session_data"
+                logger.debug(f"🎮 Using RTM SESSION DATA balance: ${current_balance:.2f} (Change: ${balance_change:.2f})")
             
             # Enhanced balance structure
             enhanced = {
@@ -1201,7 +950,7 @@ class EventDrivenTradingDashboard:
             
         except Exception as e:
             logger.debug(f"Enhanced balance calculation error: {e}")
-            # Fallback to basic balance data
+            # Fallback to basic balance data from RTM session only
             return {
                 "current_balance": session_data.get("current_balance", 120.0),
                 "initial_balance": session_data.get("initial_balance", 120.0),
@@ -1211,7 +960,7 @@ class EventDrivenTradingDashboard:
                 "unrealized_pnl": 0.0,
                 "open_positions_value": 0.0,
                 "current_btc_price": 97500.0,
-                "balance_source": "fallback"
+                "balance_source": "rtm_fallback"
             }
     
     def _check_active_bot_instance(self) -> bool:

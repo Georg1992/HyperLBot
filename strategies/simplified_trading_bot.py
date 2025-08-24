@@ -285,7 +285,8 @@ class SimplifiedTradingBot:
                 "entry_time": time.time(),
                 "status": "OPEN",
                 "reason": signal["reason"],
-                "confidence": signal["confidence"]
+                "confidence": signal["confidence"],
+                "strategy": self.strategy_name
             }
             
             # Add to open positions

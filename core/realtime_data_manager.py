@@ -950,6 +950,7 @@ class RealTimeTradingDataManager:
             # Create a simplified state for file sharing
             file_state = {
                 "session": self.current_state["session"],
+                "market": self.current_state["market"],
                 "predictions": self.current_state["predictions"],
                 "recent_activity": list(self.recent_activity),
                 "recent_signals": list(self.recent_signals),
@@ -975,6 +976,8 @@ class RealTimeTradingDataManager:
                 
                 # Update current_state with loaded data (BUT NOT TRADES!)
                 self.current_state["session"] = loaded_state["session"]
+                if "market" in loaded_state:
+                    self.current_state["market"] = loaded_state["market"]
                 self.current_state["predictions"] = loaded_state["predictions"]
                 self.recent_activity = deque(loaded_state["recent_activity"], maxlen=self.MAX_ACTIVITY)
                 self.recent_signals = deque(loaded_state["recent_signals"], maxlen=self.MAX_SIGNALS)
