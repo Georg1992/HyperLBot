@@ -27,6 +27,7 @@ from core.hyperliquid_api import HyperliquidAPI
 from data.yahoo_data_fetcher import YahooDataFetcher
 from core.config import TradingConfig
 from core.constants import constants, strategy_constants, ui_constants
+from core.trade_state_manager import trade_state_manager
 from strategies.fee_manager import FeeManager
 from strategies.variability_analyzer import VariabilityAnalyzer
 from core.trading_logger import TradingLogger
@@ -59,7 +60,10 @@ class YahooHyperliquidPaperTradingBot:
         self.trade_history = []
         
         # Load existing open positions from previous sessions
-        self._load_existing_positions()
+        self.open_positions = trade_state_manager.load_open_positions()
+        
+        # Clean up any phantom trades from previous sessions
+        trade_state_manager.cleanup_phantom_trades()
         
         # Market data storage
         self.binance_analysis = {}
@@ -2198,8 +2202,8 @@ class YahooHyperliquidPaperTradingBot:
             except Exception as e:
                 logger.error(f"❌ Failed to update account manager: {e}")
             
-            # Save positions to file
-            self._save_positions()
+            # Save positions using trade state manager
+            trade_state_manager.save_open_positions(self.open_positions)
             
             # Prepare trade data for logging
             trade_data = {
@@ -2431,7 +2435,7 @@ class YahooHyperliquidPaperTradingBot:
             logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
             
             # Save updated positions
-            self._save_positions()
+            trade_state_manager.save_open_positions(self.open_positions)
             
         except Exception as e:
             logger.error(f"❌ Error executing partial close: {e}")
@@ -2513,7 +2517,7 @@ class YahooHyperliquidPaperTradingBot:
             logger.info(f"   Remaining balance: ${self.paper_balance:.2f}")
             
             # Save updated positions
-            self._save_positions()
+            trade_state_manager.save_open_positions(self.open_positions)
             
         except Exception as e:
             logger.error(f"❌ Error executing scale-in: {e}")
@@ -2585,8 +2589,22 @@ class YahooHyperliquidPaperTradingBot:
         except Exception as e:
             logger.error(f"❌ Failed to update account manager on position close: {e}")
         
-        # Save updated positions
-        self._save_positions()
+        # Close position using trade state manager
+        exit_data = {
+            "exit_price": current_price,
+            "exit_time": time.time(),
+            "exit_reason": exit_reason,
+            "pnl": net_pnl,
+            "pnl_pct": (net_pnl / entry_amount) * 100 if entry_amount > 0 else 0,
+            "fees": exit_fees["total_fees"]
+        }
+        
+        # Use trade state manager to close position
+        trade_state_manager.close_position(position["trade_id"], exit_data)
+        
+        # Remove from local open positions list
+        if position in self.open_positions:
+            self.open_positions.remove(position)
         
         # Update trade result in logger
         trade_result = {

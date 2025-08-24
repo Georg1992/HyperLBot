@@ -16,8 +16,9 @@ from flask import Flask, render_template, request, make_response
 from flask_socketio import SocketIO, emit
 from loguru import logger
 
-# Import constants
+# Import constants and trade state manager
 from core.constants import constants, ui_constants
+from core.trade_state_manager import trade_state_manager
 
 # Suppress SSL warnings
 urllib3.disable_warnings()
@@ -810,104 +811,54 @@ class EventDrivenTradingDashboard:
             }]
     
     def _get_trades_data(self) -> List[Dict]:
-        """Get trade history data from real-time manager"""
+        """Get trade history data using Trade State Manager"""
         try:
-            # Try to get trades from real-time manager first
-            rtm = self._get_realtime_manager()
-            if rtm:
-                current_state = rtm.get_current_state()
-                recent_trades = list(current_state.get("recent_trades", []))
-                
-                if recent_trades:
-                    # Convert real-time trades to dashboard format
-                    dashboard_trades = []
-                    for trade in recent_trades[-50:]:  # Last 50 trades
-                        dashboard_trade = {
-                            "id": trade.get("trade_id", "unknown"),
-                            "side": trade.get("side", "UNKNOWN"),
-                            "symbol": "BTC",
-                            "status": "CLOSED" if trade.get("exit_time") else "OPEN",
-                            "entry_price": trade.get("entry_price", 0),
-                            "exit_price": trade.get("exit_price", 0),
-                            "size": trade.get("size", 0),
-                            "timestamp": datetime.fromtimestamp(trade.get("entry_time", time.time())).isoformat(),
-                            "type": "MARKET",
-                            "pnl": trade.get("pnl", 0),
-                            "pnl_pct": trade.get("pnl_pct", 0),
-                            "confidence": trade.get("confidence", 0) * 100 if trade.get("confidence") else 0,
-                            "exit_reason": trade.get("exit_reason", "UNKNOWN"),
-                            "holding_time": trade.get("holding_time", 0)
-                        }
-                        dashboard_trades.append(dashboard_trade)
-                    
-                    return dashboard_trades
+            # Use the robust Trade State Manager for all trade data
+            dashboard_trades = trade_state_manager.get_dashboard_trade_data()
             
-            # Fallback to log files only if real-time manager not available
-            trades = []
-            
-            # Try to get trades from the latest trade log file
-            trade_files = [f for f in os.listdir(os.path.join(self.log_dir, "trades")) if f.endswith(".json")]
-            if trade_files:
-                latest_trade_file = max(trade_files, key=lambda f: os.path.getmtime(os.path.join(self.log_dir, "trades", f)))
-                trade_path = os.path.join(self.log_dir, "trades", latest_trade_file)
-                
-                with open(trade_path, 'r') as f:
-                    trade_data = json.load(f)
-                
-                for trade in trade_data:
-                    # Convert trade data to dashboard format
-                    dashboard_trade = {
-                        "id": trade.get("trade_id", "unknown"),
-                        "side": trade.get("side", "UNKNOWN"),
-                        "symbol": "BTC",
-                        "status": "CLOSED" if trade.get("exit_timestamp") else "OPEN",
-                        "entry_price": trade.get("price", 0),
-                        "exit_price": trade.get("exit_price", 0),
-                        "size": trade.get("size", 0),
-                        "timestamp": trade.get("datetime", datetime.now().isoformat()),
-                        "type": trade.get("order_type", "MARKET"),
-                        "pnl": trade.get("net_profit_loss", 0),
-                        "pnl_pct": trade.get("profit_loss_pct", 0) * 100 if trade.get("profit_loss_pct") else 0,
-                        "confidence": trade.get("signal_data", {}).get("prediction_confidence", 0) * 100 if trade.get("signal_data") else 0,
-                        "exit_reason": trade.get("exit_reason", "UNKNOWN"),
-                        "holding_time": trade.get("holding_time", 0)
-                    }
-                    trades.append(dashboard_trade)
+            if dashboard_trades:
+                logger.debug(f"📊 Retrieved {len(dashboard_trades)} trades from Trade State Manager")
+                return dashboard_trades
             
             # If no trades found, provide informative message
-            if not trades:
-                current_time = datetime.now()
-                trades = [
-                    {
-                        "id": "no_trades",
-                        "side": "INFO",
-                        "symbol": "BTC",
-                        "status": "INFO",
-                        "price": 0,
-                        "size": 0,
-                        "timestamp": current_time.isoformat(),
-                        "type": "INFO",
-                        "pnl": 0,
-                        "confidence": 0,
-                        "message": "No trades found. Start the trading bot to see live trades."
-                    }
-                ]
-            
-            return trades[-50:]  # Return last 50 trades
+            current_time = datetime.now()
+            return [
+                {
+                    "id": "no_trades",
+                    "side": "INFO",
+                    "symbol": "BTC",
+                    "status": "INFO",
+                    "entry_price": 0,
+                    "exit_price": 0,
+                    "size": 0,
+                    "timestamp": current_time.isoformat(),
+                    "type": "INFO",
+                    "pnl": 0,
+                    "pnl_pct": 0,
+                    "confidence": 0,
+                    "exit_reason": "INFO",
+                    "holding_time": 0,
+                    "message": "No trades found. Start the trading bot to see live trades."
+                }
+            ]
             
         except Exception as e:
-            logger.debug(f"Trade data error: {e}")
+            logger.error(f"❌ Error getting trade data: {e}")
             return [{
                 "id": "error",
                 "side": "ERROR",
                 "symbol": "BTC",
                 "status": "ERROR",
-                "price": 0,
+                "entry_price": 0,
+                "exit_price": 0,
                 "size": 0,
                 "timestamp": datetime.now().isoformat(),
                 "type": "ERROR",
                 "pnl": 0,
+                "pnl_pct": 0,
                 "confidence": 0,
+                "exit_reason": "ERROR",
+                "holding_time": 0,
                 "message": f"Error loading trade data: {str(e)}"
             }]
     
