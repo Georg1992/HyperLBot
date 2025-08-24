@@ -26,6 +26,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.hyperliquid_api import HyperliquidAPI
 from data.yahoo_data_fetcher import YahooDataFetcher
 from core.config import TradingConfig
+from core.constants import constants, strategy_constants, ui_constants
 from strategies.fee_manager import FeeManager
 from strategies.variability_analyzer import VariabilityAnalyzer
 from core.trading_logger import TradingLogger
@@ -34,27 +35,25 @@ from strategies.prediction_engine import PredictionEngine
 from strategies.trade_manager import TradeManager
 
 class YahooHyperliquidPaperTradingBot:
-    def __init__(self, initial_balance: float = 120.0, strategy_name: str = "standard", balance_mode: str = "simulated"):
+    def __init__(self, initial_balance: float = None, strategy_name: str = None, balance_mode: str = "simulated"):
         self.config = TradingConfig()
-        self.strategy_name = strategy_name
-        self.strategy_config = self.config.STRATEGY_CONFIGS.get(strategy_name, self.config.STRATEGY_CONFIGS["standard"])
+        self.strategy_name = strategy_name or constants.DEFAULT_STRATEGY
+        self.strategy_config = self.config.STRATEGY_CONFIGS.get(self.strategy_name, strategy_constants.STANDARD_STRATEGY)
         self.hyperliquid_api = None
         self.yahoo_fetcher = YahooDataFetcher()
         self.connected = False
         self.balance_mode = balance_mode  # "real" or "simulated"
         
-        # Initialize advanced system attributes (will be set to proper instances or None)
+        # Essential system attributes
         self.smart_data_cache = None
         self.trading_data_manager = None
         self.dynamic_stop_manager = None
         self.global_volume_aggregator = None
         self.blockchain_analyzer = None
-        self.win_back_engine = None
-        self.loss_pattern_analyzer = None
         
         # Paper trading state
-        self.paper_balance = initial_balance
-        self.initial_balance = initial_balance
+        self.paper_balance = initial_balance or constants.DEFAULT_INITIAL_BALANCE
+        self.initial_balance = self.paper_balance
         self.open_positions = []
         self.closed_positions = []
         self.trade_history = []
@@ -67,26 +66,26 @@ class YahooHyperliquidPaperTradingBot:
         self.weekly_trend_analysis = {}
         self.hyperliquid_price = 0
         self.last_trade_time = 0
-        self.min_interval = 300  # 5 minutes in seconds
+        self.min_interval = constants.MIN_TRADE_INTERVAL
         
         # Signal deduplication
         self.last_signal_reason = ""
         self.last_signal_price = 0
         self.last_signal_time = 0
-        self.signal_cooldown = 300  # 5 minutes between similar signals
+        self.signal_cooldown = constants.SIGNAL_COOLDOWN
         
         # Price difference monitoring
-        self.price_difference_threshold = 0.002  # 0.2% threshold for price difference alerts
+        self.price_difference_threshold = constants.PRICE_DIFFERENCE_THRESHOLD
         self.last_price_difference_alert = 0
-        self.price_difference_alert_cooldown = 300  # 5 minutes between alerts
+        self.price_difference_alert_cooldown = constants.PRICE_DIFFERENCE_ALERT_COOLDOWN
         
         # Analysis components
         self.fee_manager = FeeManager()
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
-        self.trading_logger = TradingLogger("trading_logs")
+        self.trading_logger = TradingLogger(constants.LOG_DIR)
         
-        # Clean up old sessions - keep only last 3 sessions
-        self.trading_logger.cleanup_old_sessions(keep_sessions=3)
+        # Clean up old sessions
+        self.trading_logger.cleanup_old_sessions(keep_sessions=constants.MAX_SESSIONS_TO_KEEP)
         
         # Whale analytics integration
         self.whale_integration = WhaleIntegration(enabled=self.config.WHALE_ANALYTICS_ENABLED)
@@ -100,7 +99,6 @@ class YahooHyperliquidPaperTradingBot:
         # Initialize advanced trading systems
         try:
             from strategies.dynamic_stop_manager import DynamicStopManager, GlobalVolumeAggregator, BlockchainDataAnalyzer
-            from strategies.win_back_engine import WinBackEngine, LossPatternAnalyzer
             from core.realtime_data_manager import trading_data_manager
             from core.smart_data_cache import SmartDataCache
             from core.account_manager import account_manager
@@ -108,79 +106,37 @@ class YahooHyperliquidPaperTradingBot:
             self.dynamic_stop_manager = DynamicStopManager(self.strategy_config)
             self.global_volume_aggregator = GlobalVolumeAggregator()
             self.blockchain_analyzer = BlockchainDataAnalyzer()
-            self.win_back_engine = WinBackEngine(self.strategy_config)
-            self.loss_pattern_analyzer = LossPatternAnalyzer()
             
             # Professional data management
             self.trading_data_manager = trading_data_manager
             self.account_manager = account_manager
             # Note: SmartDataCache will be initialized AFTER API connection test
             
-            # INITIALIZE ULTIMATE INTELLIGENCE SYSTEMS
-            try:
-                from strategies.ml_prediction_engine import MLPredictionEngine
-                from strategies.bitcoin_pattern_engine import BitcoinPatternEngine
-                from strategies.master_fusion_engine import MasterFusionEngine
-                
-                self.ml_engine = MLPredictionEngine(self.strategy_config)
-                self.btc_pattern_engine = BitcoinPatternEngine(self.strategy_config)
-                self.master_fusion_engine = MasterFusionEngine(self.strategy_config)
-                
-                # Connect all engines to the master fusion engine
-                self.master_fusion_engine.initialize_engines({
-                    "ml_engine": self.ml_engine,
-                    "btc_pattern_engine": self.btc_pattern_engine,
-                    "prediction_engine": self.prediction_engine,
-                    "variability_analyzer": self.variability_analyzer,
-                    "trade_manager": self.trade_manager,
-                    "whale_integration": self.whale_integration
-                })
-                
-                logger.success("🧠 ULTIMATE INTELLIGENCE SYSTEMS ACTIVATED:")
-                logger.success("   🤖 ML Prediction Engine - Advanced machine learning models")
-                logger.success("   🏗️ Bitcoin Pattern Engine - BTC-specific pattern recognition")
-                logger.success("   🧠 Master Fusion Engine - Ultimate trading intelligence")
-                logger.info(f"   DEBUG: Fusion Engine initialized: {self.master_fusion_engine is not None}")
-                
-            except ImportError as e:
-                logger.warning(f"Ultimate intelligence systems not available: {e}")
-                self.ml_engine = None
-                self.btc_pattern_engine = None
-                self.master_fusion_engine = None
+            logger.success("🔥 Advanced trading systems initialized successfully")
                 
             # Initialize Real-Time P&L Tracker
-            try:
-                from strategies.realtime_pnl_tracker import RealTimePnLTracker
-                self.pnl_tracker = RealTimePnLTracker(initial_balance=self.paper_balance)
-                logger.success("💰 Real-Time P&L Tracker activated")
-            except ImportError as e:
-                logger.warning(f"Real-Time P&L Tracker not available: {e}")
-                self.pnl_tracker = None
+            from strategies.realtime_pnl_tracker import RealTimePnLTracker
+            self.pnl_tracker = RealTimePnLTracker(initial_balance=self.paper_balance)
+            logger.success("💰 Real-Time P&L Tracker activated")
                 
             # Initialize Active Position Manager
-            try:
-                from strategies.active_position_manager import ActivePositionManager
-                self.active_position_manager = ActivePositionManager()
-                # Inject dependencies
-                self.active_position_manager.inject_dependencies(
-                    pnl_tracker=self.pnl_tracker,
-                    hyperliquid_api=self.hyperliquid_api,
-                    prediction_engines={"master_fusion": self.master_fusion_engine}
-                )
-                self.active_position_manager.start_monitoring()
-                logger.success("🤖 Active Position Manager activated - Intelligent trade monitoring active")
-            except ImportError as e:
-                logger.warning(f"Active Position Manager not available: {e}")
-                self.active_position_manager = None
+            from strategies.active_position_manager import ActivePositionManager
+            self.active_position_manager = ActivePositionManager()
+            # Inject dependencies
+            self.active_position_manager.inject_dependencies(
+                pnl_tracker=self.pnl_tracker,
+                hyperliquid_api=self.hyperliquid_api,
+                prediction_engines={"prediction_engine": self.prediction_engine}
+            )
+            self.active_position_manager.start_monitoring()
+            logger.success("🤖 Active Position Manager activated")
             
-            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Win-back + Real-time data + Account Manager + ULTIMATE INTELLIGENCE")
+            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Real-time data + Account Manager + Position tracking")
         except ImportError as e:
             logger.warning(f"Advanced systems not available: {e}")
             self.dynamic_stop_manager = None
             self.global_volume_aggregator = None
             self.blockchain_analyzer = None
-            self.win_back_engine = None
-            self.loss_pattern_analyzer = None
             self.trading_data_manager = None
             # Keep account manager available even if other systems fail
             if not hasattr(self, 'account_manager') or self.account_manager is None:
@@ -190,9 +146,6 @@ class YahooHyperliquidPaperTradingBot:
                 except ImportError:
                     self.account_manager = None
             self.smart_data_cache = None  # Ensure attribute exists
-            self.ml_engine = None
-            self.btc_pattern_engine = None
-            self.master_fusion_engine = None
             self.pnl_tracker = None
             self.active_position_manager = None
         
@@ -793,113 +746,7 @@ class YahooHyperliquidPaperTradingBot:
         enhanced_analysis["prediction_analysis"] = prediction_analysis
         logger.info(f"🔮 PREDICTION ENGINE: Generated analysis with keys: {list(prediction_analysis.keys()) if prediction_analysis else 'None'}")
         
-        # 5. 🧠 MASTER FUSION ENGINE - ULTIMATE INTELLIGENCE ANALYSIS
-        if self.master_fusion_engine:
-            logger.info("🧠 Activating Master Fusion Engine for ultimate trading intelligence...")
-            
-            try:
-                # Generate ultimate signal using ALL available intelligence
-                fusion_signal = self.master_fusion_engine.generate_ultimate_signal(
-                    binance_analysis, hyperliquid_price, enhanced_analysis
-                )
-                
-                logger.info(f"🔬 FUSION ENGINE RESULT: Signal={fusion_signal is not None}")
-                if fusion_signal:
-                    logger.info(f"   Signal: {fusion_signal.signal} | Confidence: {fusion_signal.confidence:.1%}")
-                
-                if fusion_signal:
-                    # Convert fusion signal to bot format
-                    signal_data = {
-                        "should_trade": True,
-                        "side": fusion_signal.signal,
-                        "reason": fusion_signal.reason,
-                        "target": fusion_signal.target_price,
-                        "stop": fusion_signal.stop_loss,
-                        "entry_price": fusion_signal.entry_price,
-                        "entry_timeframe": fusion_signal.timeframe,
-                        "prediction_confidence": fusion_signal.confidence,
-                        "position_size_pct": fusion_signal.position_size,
-                        "fusion_score": fusion_signal.fusion_score,
-                        "supporting_factors": fusion_signal.supporting_factors,
-                        "risk_score": fusion_signal.risk_score,
-                        "profit_potential": fusion_signal.profit_potential,
-                        "optimal_params": {
-                            "position_size": self.paper_balance * fusion_signal.position_size / hyperliquid_price,
-                            "leverage": min(self.strategy_config["max_leverage"], 30)
-                        },
-                        "fusion_analysis": True,
-                        "binance_analysis": binance_analysis,
-                        "enhanced_analysis": enhanced_analysis,
-                        "hyperliquid_price": hyperliquid_price,
-                        "strategy_name": self.strategy_name
-                    }
-                    
-                    # Apply win-back enhancements if active
-                    if self.win_back_engine:
-                        winback_requirements = self.win_back_engine.get_winback_signal_requirements()
-                        if winback_requirements.get("active", False):
-                            logger.info(f"🎯 Win-back active - enhancing fusion signal...")
-                            # Enhance position size for win-back
-                            current_position = signal_data["position_size_pct"]
-                            enhanced_position = min(0.6, current_position * 1.3)  # 30% boost, max 60%
-                            signal_data["position_size_pct"] = enhanced_position
-                            signal_data["optimal_params"]["position_size"] = self.paper_balance * enhanced_position / hyperliquid_price
-                            signal_data["winback_enhanced"] = True
-                    
-                    # Record in real-time data manager
-                    if self.trading_data_manager:
-                        fusion_prediction = {
-                            "type": "FUSION",
-                            "side": fusion_signal.signal,
-                            "confidence": fusion_signal.confidence,
-                            "fusion_score": fusion_signal.fusion_score
-                        }
-                        self.trading_data_manager.add_trading_signal(fusion_prediction)
-                        self.trading_data_manager.update_predictions([fusion_prediction])
-                        
-                        # Add fusion prediction activity
-                        self.trading_data_manager.add_activity({
-                            "timestamp": time.time(),
-                            "message": f"🧠 Fusion prediction: {fusion_signal.signal} signal with {fusion_signal.confidence*100:.1f}% confidence",
-                            "type": "fusion_prediction",
-                            "level": "INFO"
-                        })
-                    
-                    # Log fusion analysis
-                    self.trading_logger.log_analysis({
-                        "type": "fusion_analysis",
-                        "timestamp": current_time,
-                        "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                        "fusion_signal": fusion_signal.signal,
-                        "fusion_confidence": fusion_signal.confidence,
-                        "fusion_score": fusion_signal.fusion_score,
-                        "supporting_factors": fusion_signal.supporting_factors,
-                        "position_size": fusion_signal.position_size,
-                        "hyperliquid_price": hyperliquid_price,
-                        "strategy_name": self.strategy_name
-                    })
-                    
-                    # Log the fusion signal
-                    self.trading_logger.log_signal(signal_data)
-                    
-                    # Update signal memory
-                    self.last_signal_reason = signal_data["reason"]
-                    self.last_signal_price = hyperliquid_price
-                    self.last_signal_time = current_time
-                    
-                    logger.success(f"🚀 FUSION SIGNAL GENERATED: {fusion_signal.signal} - {fusion_signal.confidence:.1%} confidence")
-                    return signal_data
-                    
-                else:
-                    logger.info("🤔 Master Fusion Engine: No clear trading opportunity")
-            
-            except Exception as e:
-                logger.error(f"Master Fusion Engine error: {e}")
-                logger.info("⚠️ Falling back to traditional prediction system")
-        else:
-            logger.info("⚠️ Master Fusion Engine not available - using traditional prediction system")
-        
-        # 6. FALLBACK TO TRADITIONAL SYSTEM (if fusion not available or no signal)
+        # 5. PREDICTION ENGINE ANALYSIS
         logger.info(f"🔍 TRADITIONAL SYSTEM: Checking prediction analysis - has_prediction: {prediction_analysis.get('has_prediction', False)}")
         if not prediction_analysis.get("has_prediction", False):
             return {
@@ -2769,12 +2616,7 @@ class YahooHyperliquidPaperTradingBot:
         
         self.trading_logger.update_trade_result(position["trade_id"], trade_result)
         
-        # Register with win-back engine
-        if self.win_back_engine:
-            if net_pnl < 0:  # This was a loss
-                self.win_back_engine.register_loss(trade_result)
-            elif trade_result.get("is_winback_trade", False):  # This was a win-back trade
-                self.win_back_engine.register_winback_result(trade_result)
+        # Trade result logged above
         
         # Register with real-time data manager for instant dashboard updates
         if self.trading_data_manager:
@@ -2857,8 +2699,7 @@ class YahooHyperliquidPaperTradingBot:
         if self.blockchain_analyzer:
             logger.info(f"⛓️ Blockchain analytics: On-chain sentiment and network activity")
         
-        if self.win_back_engine:
-            logger.info(f"🔥 Win-back engine: Smart revenge trading after losses (1.8x position boost)")
+        # Win-back functionality disabled in this version
         
         logger.info("=" * 50)
         
@@ -3194,17 +3035,7 @@ class YahooHyperliquidPaperTradingBot:
             logger.info(f"   Cache hit ratio: {cache_perf['cache_hit_ratio']:.1%}")
             logger.info(f"   Initialization time: {cache_perf['initialization_time']:.2f}s")
         
-        # Show win-back performance
-        if self.win_back_engine:
-            winback_stats = self.win_back_engine.get_winback_status()
-            if winback_stats["stats"]["attempts"] > 0:
-                success_rate = winback_stats["stats"]["success_rate"] * 100
-                total_recovered = winback_stats["stats"]["total_recovered"]
-                logger.info(f"🔥 Win-Back Performance: {success_rate:.1f}% success rate")
-                logger.info(f"   Total Recovered: ${total_recovered:.2f}")
-                logger.info(f"   Attempts: {winback_stats['stats']['attempts']}")
-            else:
-                logger.info("🔥 Win-Back Engine: No recovery attempts needed this session")
+        # Win-back performance tracking disabled in this version
         
         logger.success(f"🎯 Yahoo + Hyperliquid Paper Trading session completed!")
         logger.info(f"   Total trades placed: {trades_placed}")
