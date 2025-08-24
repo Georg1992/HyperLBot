@@ -235,9 +235,10 @@ class EventDrivenTradingDashboard:
     def _get_dashboard_data(self) -> Dict[str, Any]:
         """Get comprehensive dashboard data with real-time updates"""
         try:
-            # Try real-time data first
+            # Get real-time data from RTM ONLY
             rtm = self._get_realtime_manager()
             logger.debug(f"🔍 RTM available: {rtm is not None}")
+            
             if rtm:
                 try:
                     current_state = rtm.get_current_state()
@@ -245,7 +246,10 @@ class EventDrivenTradingDashboard:
                     
                     # Use real-time data from RTM
                     session_data = current_state["session"]
+                    logger.debug(f"🔍 RTM session status: {session_data.get('status')}, balance: ${session_data.get('current_balance', 0):.2f}")
+                    
                     enhanced_balance = self._calculate_enhanced_balance(session_data)
+                    logger.debug(f"🔍 Enhanced balance: ${enhanced_balance.get('current_balance', 0):.2f} (source: {enhanced_balance.get('balance_source')})")
                     
                     # Calculate session duration properly
                     try:
@@ -254,6 +258,7 @@ class EventDrivenTradingDashboard:
                             session_duration = datetime.now() - start_time
                             session_minutes = int(session_duration.total_seconds() / 60)
                             session_data["session_time"] = f"{session_minutes}m"
+                            logger.debug(f"🔍 Session duration: {session_minutes}m")
                     except Exception as e:
                         logger.error(f"Session time calculation error: {e}")
                         session_data["session_time"] = "0m"
@@ -318,90 +323,56 @@ class EventDrivenTradingDashboard:
                         "connection_status": "🔴 Live Trading" if session_data["status"] == "ACTIVE" else "🟡 Ready for Trading"
                     }
                     
-                    logger.debug("✅ Using RTM real-time data")
+                    logger.debug(f"✅ Using RTM real-time data - Final balance: ${rtm_data['session']['current_balance']:.2f}")
                     return rtm_data
                     
                 except Exception as rtm_error:
                     logger.error(f"❌ Error in RTM data processing: {rtm_error}")
-                    # Continue to fallback
-            
-            # Try to load data from RTM state file as fallback
-            rtm_file_data = self._load_rtm_state_from_file()
-            if rtm_file_data and "session" in rtm_file_data:
-                logger.debug("📊 Using RTM file data as fallback")
-                
-                session_data = rtm_file_data["session"]
-                enhanced_balance = self._calculate_enhanced_balance(session_data)
-                
-                # Calculate session duration
-                try:
-                    if session_data.get("start_time"):
-                        start_time = datetime.fromisoformat(session_data["start_time"])
-                        session_duration = datetime.now() - start_time
-                        session_minutes = int(session_duration.total_seconds() / 60)
-                        session_data["session_time"] = f"{session_minutes}m"
-                except Exception as e:
-                    logger.error(f"Session time calculation error: {e}")
-                    session_data["session_time"] = "0m"
-                
-                activity_logs = rtm_file_data.get("recent_activity", [])
-                recent_trades = rtm_file_data.get("recent_trades", [])
-                recent_signals = rtm_file_data.get("recent_signals", [])
-                predictions = rtm_file_data.get("predictions", [])
-                
-                # Build data structure from file
-                file_data = {
-                     "session": {**session_data, **enhanced_balance},
-                     "market": self._get_market_data(),  # Use live market data
-                     "logs": activity_logs,
-                     "summary": {
-                         "total_trades": session_data.get("total_trades", 0),
-                         "winning_trades": session_data.get("winning_trades", 0),
-                         "losing_trades": session_data.get("losing_trades", 0),
-                         "current_balance": enhanced_balance["current_balance"],
-                         "initial_balance": enhanced_balance["initial_balance"],
-                         "balance_change": enhanced_balance["balance_change"],
-                         "balance_change_pct": enhanced_balance.get("balance_change_pct", 0),
-                         "realized_pnl": enhanced_balance.get("realized_pnl", 0),
-                         "unrealized_pnl": enhanced_balance.get("unrealized_pnl", 0),
-                         "open_positions_value": enhanced_balance.get("open_positions_value", 0),
-                         "balance_source": "rtm_file_data"
-                     },
-                     "predictions": self._get_predictions_data(),  # Use the dedicated method
-                     "orderbook": self._get_orderbook_data(),
-                     "global_volume": self._get_global_volume_data(),
-                     "trades": recent_trades,
-                     "recent_trades": recent_trades,
-                     "recent_signals": recent_signals,
-                     "timestamp": datetime.now().isoformat(),
-                     "data_source": "rtm_file_fallback",
-                     "connection_status": "📊 Last Session Data"
-                 }
-                
-                return file_data
-            
-            # Final fallback to offline data
-            logger.debug("🚨 Using final fallback - no RTM or file data available!")
-            return {
-                "session": self._get_session_data(),
-                "market": self._get_market_data(),
-                "logs": self._get_activity_logs(),
-                "summary": self._get_trade_summary(),
-                "predictions": self._get_predictions_data(),
-                "trades": self._get_trades_data(),
-                "orderbook": self._get_orderbook_data(),
-                "global_volume": self._get_global_volume_data(),
-                "timestamp": datetime.now().isoformat(),
-                "data_source": "offline",
-                "connection_status": "📊 Monitoring"
-            }
+                    # Return error data instead of falling back to files
+                    return {
+                        "session": {"error": f"RTM Error: {str(rtm_error)}"},
+                        "market": {"error": f"RTM Error: {str(rtm_error)}"},
+                        "logs": [],
+                        "summary": {"error": f"RTM Error: {str(rtm_error)}"},
+                        "predictions": [],
+                        "trades": [],
+                        "orderbook": {"error": f"RTM Error: {str(rtm_error)}"},
+                        "global_volume": {"error": f"RTM Error: {str(rtm_error)}"},
+                        "timestamp": datetime.now().isoformat(),
+                        "data_source": "rtm_error",
+                        "connection_status": "❌ RTM Connection Error"
+                    }
+            else:
+                # No RTM available - return connection error
+                logger.warning("⚠️ No RTM available - dashboard requires active trading bot")
+                return {
+                    "session": {"error": "No RTM available"},
+                    "market": {"error": "No RTM available"},
+                    "logs": [],
+                    "summary": {"error": "No RTM available"},
+                    "predictions": [],
+                    "trades": [],
+                    "orderbook": {"error": "No RTM available"},
+                    "global_volume": {"error": "No RTM available"},
+                    "timestamp": datetime.now().isoformat(),
+                    "data_source": "no_rtm",
+                    "connection_status": "❌ No Active Trading Bot"
+                }
             
         except Exception as e:
             logger.error(f"❌ Failed to get dashboard data: {e}")
             return {
-                "error": str(e),
+                "session": {"error": str(e)},
+                "market": {"error": str(e)},
+                "logs": [],
+                "summary": {"error": str(e)},
+                "predictions": [],
+                "trades": [],
+                "orderbook": {"error": str(e)},
+                "global_volume": {"error": str(e)},
                 "timestamp": datetime.now().isoformat(),
-                "data_source": "error"
+                "data_source": "error",
+                "connection_status": "❌ Error"
             }
     
     def _get_session_data(self) -> Dict[str, Any]:
@@ -1192,6 +1163,116 @@ class EventDrivenTradingDashboard:
                 "current_btc_price": 97500.0,
                 "balance_source": "fallback"
             }
+    
+    def _check_active_bot_instance(self) -> bool:
+        """Check if there's an active bot instance running."""
+        try:
+            # Check for bot instance lock file
+            lock_file_path = os.path.join(os.path.dirname(__file__), "bot_instance.lock")
+            if not os.path.exists(lock_file_path):
+                return False
+            
+            # Read lock file to get PID
+            try:
+                with open(lock_file_path, 'r') as f:
+                    lock_data = json.load(f)
+                    pid = lock_data.get("pid")
+                    if not pid:
+                        return False
+            except Exception as e:
+                logger.debug(f"Error reading lock file: {e}")
+                return False
+            
+            # Check if the process is still running
+            try:
+                import psutil
+                if psutil.pid_exists(pid):
+                    # Additional check: verify it's a Python process running main.py
+                    process = psutil.Process(pid)
+                    cmdline = process.cmdline()
+                    if len(cmdline) >= 2 and "main.py" in cmdline[1]:
+                        logger.debug(f"✅ Active bot instance detected (PID: {pid})")
+                        return True
+                    else:
+                        logger.debug(f"Process {pid} exists but is not running main.py")
+                        return False
+                else:
+                    logger.debug(f"Process {pid} from lock file is not running")
+                    return False
+            except ImportError:
+                # psutil not available, use basic check
+                logger.debug("psutil not available, using basic process check")
+                try:
+                    import subprocess
+                    result = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], 
+                                          capture_output=True, text=True, shell=True)
+                    if str(pid) in result.stdout:
+                        logger.debug(f"✅ Active bot instance detected (PID: {pid})")
+                        return True
+                    else:
+                        logger.debug(f"Process {pid} not found in tasklist")
+                        return False
+                except Exception as e:
+                    logger.debug(f"Error checking process: {e}")
+                    return False
+            except Exception as e:
+                logger.debug(f"Error checking process with psutil: {e}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error checking active bot instance: {e}")
+            return False
+
+    def _get_most_recent_session_data(self) -> Optional[Dict[str, Any]]:
+        """Get the most recent session data from the session_metadata directory."""
+        try:
+            session_files = [f for f in os.listdir(self.log_dir) if f.startswith("session_metadata_") and f.endswith(".json")]
+            if not session_files:
+                return None
+            
+            latest_session_file = max(session_files, key=lambda f: os.path.getmtime(os.path.join(self.log_dir, f)))
+            session_path = os.path.join(self.log_dir, latest_session_file)
+            
+            with open(session_path, 'r') as f:
+                session_data = json.load(f)
+            
+            # Ensure it's a valid session file and has the expected keys
+            if isinstance(session_data, dict) and "session_id" in session_data and "start_time" in session_data:
+                # Convert session metadata format to dashboard session format
+                dashboard_session_data = {
+                    "session_id": session_data.get("session_id", ""),
+                    "start_time": session_data.get("start_time", ""),
+                    "status": "ACTIVE",  # Assume recent session is active
+                    "strategy": session_data.get("strategy", "unknown"),
+                    "initial_balance": session_data.get("initial_balance", 120.0),
+                    "current_balance": session_data.get("current_balance", 120.0),
+                    "balance_change": session_data.get("balance_change", 0.0),
+                    "balance_change_pct": session_data.get("balance_change_pct", 0.0),
+                    "last_balance_update": session_data.get("last_balance_update", ""),
+                    "bot_version": session_data.get("bot_version", "Unknown"),
+                    "total_trades": session_data.get("total_trades", 0),
+                    "winning_trades": session_data.get("winning_trades", 0),
+                    "losing_trades": session_data.get("losing_trades", 0),
+                    "total_pnl": session_data.get("total_pnl", 0.0),
+                    "realized_pnl": session_data.get("realized_pnl", 0.0),
+                    "unrealized_pnl": session_data.get("unrealized_pnl", 0.0),
+                    "max_drawdown": session_data.get("max_drawdown", 0.0),
+                    "win_rate": session_data.get("win_rate", 0.0),
+                    "avg_win": session_data.get("avg_win", 0.0),
+                    "avg_loss": session_data.get("avg_loss", 0.0),
+                    "sharpe_ratio": session_data.get("sharpe_ratio", 0.0),
+                    "total_volume": session_data.get("total_volume", 0.0),
+                    "total_fees": session_data.get("total_fees", 0.0)
+                }
+                
+                logger.debug(f"📊 Loaded session data from {latest_session_file}: ${dashboard_session_data['current_balance']:.2f}")
+                return dashboard_session_data
+            else:
+                logger.warning(f"Found session file but it's not a valid session metadata: {latest_session_file}")
+                return None
+        except Exception as e:
+            logger.error(f"Error getting most recent session data: {e}")
+            return None
     
     def run(self, host='0.0.0.0', port=5002, debug=False):
         """Run the event-driven dashboard"""
