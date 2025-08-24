@@ -1,65 +1,36 @@
 {
-  "account_id": "sim_account_1755982265",
-  "created_at": "2025-08-23T23:51:05.852695",
-  "last_updated": "2025-08-23T23:52:26.212039",
-  "initial_balance": 1000.0,
-  "current_balance": 1033.2512246866527,
-  "total_deposits": 1000.0,
+  "account_id": "sim_account_1756049078",
+  "created_at": "2025-08-24T18:24:38.177544",
+  "last_updated": "2025-08-24T18:25:34.105546",
+  "initial_balance": 666.0,
+  "current_balance": 738.7669048300753,
+  "total_deposits": 666.0,
   "total_withdrawals": 0.0,
-  "total_trades": 1,
-  "winning_trades": 1,
+  "total_trades": 0,
+  "winning_trades": 0,
   "losing_trades": 0,
-  "total_pnl": 33.28580941832254,
-  "realized_pnl": 33.28580941832254,
+  "total_pnl": 72.80130179003524,
+  "realized_pnl": 72.80130179003524,
   "unrealized_pnl": 0.0,
   "open_positions": [],
-  "trade_history": [
-    {
-      "trade_id": "hybrid_trade_1",
-      "side": "BUY",
-      "entry_price": 115282.43890000001,
-      "exit_price": 115319.5,
-      "size": 0.001,
-      "leverage": 30,
-      "pnl": 33.28580941832254,
-      "pnl_pct": 0.009644426424428736,
-      "confidence": 0,
-      "entry_time": 1755982287.2572317,
-      "exit_time": 1755982342.2509222,
-      "holding_time": 54.993690490722656,
-      "exit_reason": "GRACEFUL_SHUTDOWN",
-      "was_profitable": true,
-      "is_winback_trade": false,
-      "timestamp": "2025-08-23T23:52:22.262454"
-    }
-  ],
+  "trade_history": [],
   "session_history": [
     {
-      "session_id": "session_1755982274",
+      "session_id": "session_1756049086",
       "strategy": "standard",
-      "initial_balance": 1000.0,
-      "start_time": "2025-08-23T23:51:14.354886",
-      "timestamp": "2025-08-23T23:51:14.354886"
+      "initial_balance": 666.0,
+      "start_time": "2025-08-24T18:24:46.606475",
+      "timestamp": "2025-08-24T18:24:46.606475"
     },
     {
-      "session_id": "session_1755982274",
-      "end_time": "2025-08-23T23:52:22.295458",
-      "final_balance": 1033.2512246866527,
-      "total_trades": 1,
-      "winning_trades": 1,
+      "session_id": "session_1756049086",
+      "end_time": "2025-08-24T18:25:34.105546",
+      "final_balance": 666.0,
+      "total_trades": 0,
+      "winning_trades": 0,
       "losing_trades": 0,
-      "balance_change": 33.25122468665268,
-      "timestamp": "2025-08-23T23:52:22.295458"
-    },
-    {
-      "session_id": "session_1755982274",
-      "end_time": "2025-08-23T23:52:26.212039",
-      "final_balance": 1033.2512246866527,
-      "total_trades": 1,
-      "winning_trades": 1,
-      "losing_trades": 0,
-      "balance_change": 33.25122468665268,
-      "timestamp": "2025-08-23T23:52:26.212039"
+      "balance_change": 0.0,
+      "timestamp": "2025-08-24T18:25:34.105546"
     }
   ],
   "account_status": "active"

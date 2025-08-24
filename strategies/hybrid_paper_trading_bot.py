@@ -809,9 +809,17 @@ class YahooHyperliquidPaperTradingBot:
             "target": entry_analysis["target_price"],
             "stop": entry_analysis["stop_price"],
             "entry_price": entry_analysis["entry_price"],
+            "current_price": hyperliquid_price,  # Add current price for logging
             "prediction_confidence": entry_analysis["confidence"],
             "optimal_params": variability_decision["optimal_trading_params"],
-            "strategy_name": self.strategy_name
+            "strategy_name": self.strategy_name,
+            # Add market analysis data for logging
+            "support_5m": enhanced_analysis.get("support_5m"),
+            "resistance_5m": enhanced_analysis.get("resistance_5m"),
+            "trend_5m": enhanced_analysis.get("trend_5m"),
+            "trend_1h": enhanced_analysis.get("trend_1h"),
+            "hourly_confidence": enhanced_analysis.get("hourly_confidence"),
+            "range_size": enhanced_analysis.get("range_size")
         }
         
         # Traditional quality check
@@ -1532,7 +1540,7 @@ class YahooHyperliquidPaperTradingBot:
             )
             
             # Log the entry analysis with price comparison
-            yahoo_price = current_price  # Yahoo analysis price
+            yahoo_price = hyperliquid_price  # Yahoo analysis price (using hyperliquid_price from earlier)
             hyperliquid_exec_price = best_opportunity['entry_price']  # Hyperliquid execution price
             price_diff = abs(hyperliquid_exec_price - yahoo_price)
             price_diff_pct = (price_diff / yahoo_price) * 100
