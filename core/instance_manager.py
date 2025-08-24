@@ -11,14 +11,6 @@ from typing import Optional, Dict, Any
 from loguru import logger
 from core.constants import constants
 
-# Try to import psutil, but provide fallback if not available
-try:
-    import psutil
-    PSUTIL_AVAILABLE = True
-except ImportError:
-    PSUTIL_AVAILABLE = False
-    logger.warning("⚠️ psutil not available - using basic process checking")
-
 
 class SingleInstanceManager:
     """Manages single bot instance with PID-based locking"""
@@ -116,16 +108,7 @@ class SingleInstanceManager:
                 if lock_data:
                     pid = lock_data.get("pid")
                     if pid and self._is_process_running(pid):
-                        # Add process information
-                        try:
-                            process = psutil.Process(pid)
-                            lock_data["process_name"] = process.name()
-                            lock_data["memory_usage"] = process.memory_info().rss / 1024 / 1024  # MB
-                            lock_data["cpu_percent"] = process.cpu_percent()
-                            lock_data["status"] = "RUNNING"
-                        except psutil.NoSuchProcess:
-                            lock_data["status"] = "NOT_FOUND"
-                        
+                        lock_data["status"] = "RUNNING"
                         return lock_data
             
             return None
@@ -158,17 +141,12 @@ class SingleInstanceManager:
     
     def _is_process_running(self, pid: int) -> bool:
         """Check if process with given PID is running"""
-        if PSUTIL_AVAILABLE:
-            try:
-                return psutil.pid_exists(pid)
-            except Exception:
-                pass  # Fall through to basic method
-        
-        # Fallback method for systems without psutil or if psutil fails
         try:
+            # On Windows, this will raise an exception if the process doesn't exist
+            # On Unix-like systems, signal 0 just checks if the process exists
             os.kill(pid, 0)
             return True
-        except OSError:
+        except (OSError, ProcessLookupError):
             return False
     
     def __enter__(self):
