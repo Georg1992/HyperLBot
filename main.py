@@ -208,97 +208,97 @@ def run_paper_trading():
             
             logger.info("Starting Paper Trading Bot (Testing Mode)...")
             logger.info("This mode uses simulated trading - no real money involved")
-        
-        # Simulated Account Management
-        print(f"\n🎮 Simulated Account Management:")
-        
-        initial_balance = None
-        
-        # Check if account exists
-        if account_manager.account_exists():
-            # Load existing account
-            account_data = account_manager.load_account()
-            if account_data:
-                summary = account_manager.get_account_summary()
-                print(f"📊 Existing Account Found:")
-                print(f"   Account ID: {summary['account_id']}")
-                print(f"   Current Balance: ${summary['current_balance']:.2f}")
-                print(f"   Total Trades: {summary['total_trades']}")
-                print(f"   Win Rate: {summary['win_rate']:.1f}%")
-                print(f"   Open Positions: {summary['open_positions_count']}")
-                print(f"   Created: {summary['created_at'][:10]}")
-                
-                # Ask user what to do
-                while True:
-                    choice = input("\nChoose action:\n1. Continue with existing account\n2. Create new account (reset)\nEnter choice (1-2): ").strip()
+            
+            # Simulated Account Management
+            print(f"\n🎮 Simulated Account Management:")
+            
+            initial_balance = None
+            
+            # Check if account exists
+            if account_manager.account_exists():
+                # Load existing account
+                account_data = account_manager.load_account()
+                if account_data:
+                    summary = account_manager.get_account_summary()
+                    print(f"📊 Existing Account Found:")
+                    print(f"   Account ID: {summary['account_id']}")
+                    print(f"   Current Balance: ${summary['current_balance']:.2f}")
+                    print(f"   Total Trades: {summary['total_trades']}")
+                    print(f"   Win Rate: {summary['win_rate']:.1f}%")
+                    print(f"   Open Positions: {summary['open_positions_count']}")
+                    print(f"   Created: {summary['created_at'][:10]}")
                     
-                    if choice == "1":
-                        initial_balance = account_data["current_balance"]
-                        logger.info(f"🎮 Continuing with existing account: ${initial_balance:.2f}")
-                        break
-                    elif choice == "2":
-                        if account_manager.reset_account():
-                            # Create new account
-                            new_balance = float(input(f"Enter initial balance for new account (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
-                            account_data = account_manager.create_account(new_balance)
-                            initial_balance = new_balance
-                            logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
+                    # Ask user what to do
+                    while True:
+                        choice = input("\nChoose action:\n1. Continue with existing account\n2. Create new account (reset)\nEnter choice (1-2): ").strip()
+                        
+                        if choice == "1":
+                            initial_balance = account_data["current_balance"]
+                            logger.info(f"🎮 Continuing with existing account: ${initial_balance:.2f}")
                             break
+                        elif choice == "2":
+                            if account_manager.reset_account():
+                                # Create new account
+                                new_balance = float(input(f"Enter initial balance for new account (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
+                                account_data = account_manager.create_account(new_balance)
+                                initial_balance = new_balance
+                                logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
+                                break
+                            else:
+                                logger.error("❌ Failed to reset account")
+                                return
                         else:
-                            logger.error("❌ Failed to reset account")
-                            return
-                    else:
-                        print("Invalid choice. Please enter 1 or 2.")
+                            print("Invalid choice. Please enter 1 or 2.")
+                else:
+                    logger.error("❌ Failed to load existing account")
+                    return
             else:
-                logger.error("❌ Failed to load existing account")
+                # Create new account
+                print("📝 No existing account found. Creating new simulated account...")
+                new_balance = float(input(f"Enter initial balance (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
+                account_data = account_manager.create_account(new_balance)
+                initial_balance = new_balance
+                logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
+            
+            # Get user input for trading parameters
+            print(f"\nPaper Trading Configuration:")
+            print(f"💰 Balance: ${initial_balance:.2f} (simulated)")
+            max_trades = int(input(f"Enter max trades (default {config.DEFAULT_MAX_TRADES}): ") or str(config.DEFAULT_MAX_TRADES))
+            check_interval = constants.DEFAULT_CHECK_INTERVAL  # Fixed for responsiveness
+            
+            # Use default strategy
+            selected_strategy = constants.DEFAULT_STRATEGY
+            
+            # Update instance lock with strategy info
+            instance_manager.update_lock_info(selected_strategy, initial_balance)
+            
+            logger.info(f"Configuration: Balance=${initial_balance:.2f}, Max Trades={max_trades}, Strategy={selected_strategy}")
+            
+            # Start the bot with dashboard
+            logger.info("Starting dashboard...")
+            if start_dashboard():
+                logger.info("✅ Dashboard started successfully!")
+            
+            # Initialize and run the bot
+            bot = YahooHyperliquidPaperTradingBot(
+                initial_balance=initial_balance,
+                strategy_name=selected_strategy,
+                balance_mode="simulated"
+            )
+            
+            # Set global bot instance for graceful shutdown
+            active_bot_instance = bot
+            
+            logger.info("🚀 Starting paper trading bot...")
+            logger.info("💡 Press Ctrl+C to stop the bot gracefully")
+            
+            # Connect to Hyperliquid for market data only
+            logger.info("🔗 Connecting to Hyperliquid API for market data...")
+            if not bot.connect():
+                logger.error("❌ Failed to connect to Hyperliquid API")
                 return
-        else:
-            # Create new account
-            print("📝 No existing account found. Creating new simulated account...")
-            new_balance = float(input(f"Enter initial balance (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
-            account_data = account_manager.create_account(new_balance)
-            initial_balance = new_balance
-            logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
-        
-        # Get user input for trading parameters
-        print(f"\nPaper Trading Configuration:")
-        print(f"💰 Balance: ${initial_balance:.2f} (simulated)")
-        max_trades = int(input(f"Enter max trades (default {config.DEFAULT_MAX_TRADES}): ") or str(config.DEFAULT_MAX_TRADES))
-        check_interval = constants.DEFAULT_CHECK_INTERVAL  # Fixed for responsiveness
-        
-        # Use default strategy
-        selected_strategy = constants.DEFAULT_STRATEGY
-        
-        # Update instance lock with strategy info
-        instance_manager.update_lock_info(selected_strategy, initial_balance)
-        
-        logger.info(f"Configuration: Balance=${initial_balance:.2f}, Max Trades={max_trades}, Strategy={selected_strategy}")
-        
-        # Start the bot with dashboard
-        logger.info("Starting dashboard...")
-        if start_dashboard():
-            logger.info("✅ Dashboard started successfully!")
-        
-        # Initialize and run the bot
-        bot = YahooHyperliquidPaperTradingBot(
-            initial_balance=initial_balance,
-            strategy_name=selected_strategy,
-            balance_mode="simulated"
-        )
-        
-        # Set global bot instance for graceful shutdown
-        active_bot_instance = bot
-        
-        logger.info("🚀 Starting paper trading bot...")
-        logger.info("💡 Press Ctrl+C to stop the bot gracefully")
-        
-        # Connect to Hyperliquid for market data only
-        logger.info("🔗 Connecting to Hyperliquid API for market data...")
-        if not bot.connect():
-            logger.error("❌ Failed to connect to Hyperliquid API")
-            return
-        logger.success("✅ Connected to Hyperliquid API (market data only)")
-        
+            logger.success("✅ Connected to Hyperliquid API (market data only)")
+            
             bot.run_yahoo_hyperliquid_paper_trading(
                 max_trades=max_trades,
                 check_interval=check_interval
