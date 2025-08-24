@@ -885,6 +885,7 @@ class HyperliquidAPI:
             if not hasattr(self, '_pressure_indicator'):
                 self._pressure_indicator = UltimatePressureIndicator()
             
+            # Add timeout to prevent hanging
             pressure_data = self._pressure_indicator.analyze_ultimate_pressure(self)
             
             if pressure_data.get("status") == "success":

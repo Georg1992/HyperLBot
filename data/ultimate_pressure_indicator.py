@@ -53,23 +53,63 @@ class UltimatePressureIndicator:
         Returns comprehensive pressure analysis with high accuracy
         """
         try:
-            # Get current market data
+            # Get current market data with timeout protection
             current_time = time.time()
-            market_data = api.get_market_data("BTC")
-            current_price = api.get_current_price("BTC")
+            
+            # Try to get market data with error handling
+            try:
+                market_data = api.get_market_data("BTC")
+                current_price = api.get_current_price("BTC")
+            except Exception as e:
+                logger.debug(f"Market data API call failed: {e}")
+                return {
+                    "status": "error", 
+                    "error": f"API call failed: {str(e)[:100]}",
+                    "direction": "NEUTRAL",
+                    "confidence": "0%",
+                    "combined_score": 0
+                }
             
             if not market_data or not current_price:
-                return {"status": "error", "error": "No market data available"}
+                logger.debug("No market data or price available")
+                return {
+                    "status": "error", 
+                    "error": "No market data available",
+                    "direction": "NEUTRAL",
+                    "confidence": "0%",
+                    "combined_score": 0
+                }
             
             # Store current data
             self.price_history.append({"price": current_price, "timestamp": current_time})
             
-            # Extract orderbook
-            bids = market_data.get('levels', [[], []])[0]
-            asks = market_data.get('levels', [[], []])[1]
+            # Extract orderbook with safer parsing
+            try:
+                levels = market_data.get('levels', [[], []])
+                if len(levels) >= 2:
+                    bids = levels[0] if levels[0] else []
+                    asks = levels[1] if levels[1] else []
+                else:
+                    bids, asks = [], []
+            except (IndexError, TypeError, KeyError) as e:
+                logger.debug(f"Orderbook data parsing failed: {e}")
+                return {
+                    "status": "error", 
+                    "error": "Invalid orderbook format",
+                    "direction": "NEUTRAL",
+                    "confidence": "0%",
+                    "combined_score": 0
+                }
             
             if not bids or not asks:
-                return {"status": "error", "error": "No orderbook data"}
+                logger.debug("Empty orderbook data")
+                return {
+                    "status": "error", 
+                    "error": "No orderbook data",
+                    "direction": "NEUTRAL", 
+                    "confidence": "0%",
+                    "combined_score": 0
+                }
             
             # 1. ENHANCED ORDERBOOK IMBALANCE (Multiple Levels)
             orderbook_pressure = self._calculate_enhanced_orderbook_imbalance(bids, asks)

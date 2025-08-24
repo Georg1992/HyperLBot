@@ -720,6 +720,13 @@ class YahooHyperliquidPaperTradingBot:
             enhanced_analysis["ultimate_pressure"] = ultimate_pressure
         except Exception as e:
             logger.debug(f"Ultimate pressure error: {e}")
+            # Provide fallback ultimate pressure data
+            enhanced_analysis["ultimate_pressure"] = {
+                "direction": "NEUTRAL",
+                "confidence": "N/A",
+                "strength": 0.5,
+                "status": "offline"
+            }
         
         # Add Whale Analytics (if available)
         if self.whale_integration:
