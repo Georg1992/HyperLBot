@@ -15,6 +15,10 @@ import signal
 import atexit
 from loguru import logger
 
+# Fix Windows import issues - add current directory to Python path
+if os.getcwd() not in sys.path:
+    sys.path.insert(0, os.getcwd())
+
 # Import core module to setup paths
 import core
 from core.config import config
