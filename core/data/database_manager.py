@@ -5,6 +5,7 @@ Handles all SQLite database operations for trading data persistence
 Single Responsibility: Database operations and data persistence
 """
 
+import os
 import sqlite3
 import time
 import threading
@@ -34,6 +35,8 @@ class DatabaseManager:
             return
         
         self._initialized = True
+        # Ensure data directories exist
+        os.makedirs("data/sessions", exist_ok=True)
         self.db_path = "data/sessions/trading_data.db"
         self.connection_lock = threading.RLock()
         

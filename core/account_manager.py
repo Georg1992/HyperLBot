@@ -15,6 +15,8 @@ class SimulatedAccountManager:
     """Manages simulated trading account data and persistence"""
     
     def __init__(self):
+        # Ensure data directories exist
+        os.makedirs("data/sessions", exist_ok=True)
         self.account_file = "data/sessions/simulated_account.json"
         self.account_data = None
     

@@ -22,14 +22,17 @@ class TradeStateManager:
         
         # Separate storage files for different data types
         self.files = {
-            "open_positions": "data/open_positions.json",
-            "trade_history": "data/trade_history.json", 
-            "pending_orders": "data/pending_orders.json",
-            "session_state": "data/session_state.json"
+            "open_positions": "data/sessions/open_positions.json",
+            "trade_history": "data/sessions/trade_history.json", 
+            "pending_orders": "data/sessions/pending_orders.json",
+            "session_state": "data/sessions/session_state.json"
         }
         
-        # Ensure data directory exists
-        os.makedirs("data", exist_ok=True)
+        # Ensure data directories exist
+        os.makedirs("data/sessions", exist_ok=True)
+        os.makedirs("data/cache", exist_ok=True)
+        os.makedirs("data/temp", exist_ok=True)
+        os.makedirs("data/logs", exist_ok=True)
         
         # Trade data validation schema
         self.trade_schema = {

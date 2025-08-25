@@ -424,7 +424,7 @@ class DataManagerCoordinator:
             }
             
             # Save to JSON file
-            json_file_path = os.path.join(os.path.dirname(__file__), "..", "..", "rtm_state.json")
+            json_file_path = "data/cache/rtm_state.json"
             with open(json_file_path, 'w') as f:
                 json.dump(file_state, f, indent=2, default=str)
                 
@@ -436,7 +436,7 @@ class DataManagerCoordinator:
     def _load_from_json_file(self):
         """Load state from JSON file if available (for compatibility)"""
         try:
-            json_file_path = os.path.join(os.path.dirname(__file__), "..", "..", "rtm_state.json")
+            json_file_path = "data/cache/rtm_state.json"
             if os.path.exists(json_file_path):
                 with open(json_file_path, 'r') as f:
                     loaded_state = json.load(f)
