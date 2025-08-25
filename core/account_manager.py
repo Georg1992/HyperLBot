@@ -15,7 +15,7 @@ class SimulatedAccountManager:
     """Manages simulated trading account data and persistence"""
     
     def __init__(self):
-        self.account_file = os.path.join(os.path.dirname(__file__), "..", "simulated_account.json")
+        self.account_file = "data/sessions/simulated_account.json"
         self.account_data = None
     
     def account_exists(self) -> bool:

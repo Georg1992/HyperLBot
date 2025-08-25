@@ -34,7 +34,7 @@ class DatabaseManager:
             return
         
         self._initialized = True
-        self.db_path = "trading_data.db"
+        self.db_path = "data/sessions/trading_data.db"
         self.connection_lock = threading.RLock()
         
         # Initialize database

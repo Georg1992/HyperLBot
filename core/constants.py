@@ -35,10 +35,10 @@ class TradingConstants:
     SESSION_TIMEOUT = 1800  # 30 minutes
     
     # File Paths
-    LOCK_FILE = "bot_instance.lock"
-    RTM_STATE_FILE = "rtm_state.json"
-    POSITIONS_FILE = "open_positions.json"
-    SIMULATED_ACCOUNT_FILE = "simulated_account.json"
+    LOCK_FILE = "data/temp/bot_instance.lock"
+    RTM_STATE_FILE = "data/cache/rtm_state.json"
+    POSITIONS_FILE = "data/sessions/open_positions.json"
+    SIMULATED_ACCOUNT_FILE = "data/sessions/simulated_account.json"
     
     # Log Configuration
     DEFAULT_LOG_LEVEL = "INFO"
