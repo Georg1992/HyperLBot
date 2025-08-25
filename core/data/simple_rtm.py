@@ -76,27 +76,23 @@ class SimpleRTM:
         except Exception as e:
             logger.error(f"❌ Failed to save data: {e}")
     
-    def update_session(self, session_data: Dict[str, Any]):
-        """Update session information"""
-        with self._lock:
-            self._data["session"].update(session_data)
-            self._data["session"]["last_updated"] = datetime.now().isoformat()
-            self._data["timestamp"] = datetime.now().isoformat()
-            self._save_data()
-            
-            session_id = session_data.get('session_id', 'unknown')
-            logger.debug(f"✅ Session updated: {session_id}")
+    def get_session_data(self) -> Dict[str, Any]:
+        """Get session data from SessionManager"""
+        try:
+            from core.session.session_manager import session_manager
+            return session_manager.get_current_session_data()
+        except Exception as e:
+            logger.error(f"❌ Failed to get session data: {e}")
+            return self._data["session"]
     
-    def update_account(self, account_data: Dict[str, Any]):
-        """Update account information"""
-        with self._lock:
-            self._data["session"].update(account_data)
-            self._data["session"]["last_updated"] = datetime.now().isoformat()
-            self._data["timestamp"] = datetime.now().isoformat()
-            self._save_data()
-            
-            current_balance = account_data.get('current_balance', 0) or 0
-            logger.debug(f"✅ Account updated: ${current_balance:.2f}")
+    def get_account_data(self) -> Dict[str, Any]:
+        """Get account data from AccountManager"""
+        try:
+            from core.account_manager import account_manager
+            return account_manager.get_account_summary()
+        except Exception as e:
+            logger.error(f"❌ Failed to get account data: {e}")
+            return self._data["session"]
     
     def update_market(self, market_data: Dict[str, Any]):
         """Update market data"""
@@ -175,13 +171,16 @@ class SimpleRTM:
             logger.debug(f"✅ Trade added: {trade_data.get('side', 'UNKNOWN')} {size} BTC")
     
     def get_dashboard_data(self) -> Dict[str, Any]:
-        """Get complete dashboard data"""
+        """Get complete dashboard data - PRESENTATION LAYER ONLY"""
         with self._lock:
-            # Reload data from file to get latest updates
-            self._load_data()
+            # Get session data from SessionManager (source of truth)
+            session_data = self.get_session_data()
+            
+            # Get account data from AccountManager (source of truth)
+            account_data = self.get_account_data()
             
             # Calculate session time
-            start_time = self._data["session"].get("start_time")
+            start_time = session_data.get("start_time")
             session_time = "0m"
             if start_time:
                 try:
@@ -196,19 +195,19 @@ class SimpleRTM:
                 except:
                     session_time = "0m"
             
-            # Format data for dashboard
+            # Format data for dashboard - PRESENTATION LAYER ONLY
             dashboard_data = {
                 "session": {
-                    "session_id": self._data["session"]["session_id"],
-                    "status": self._data["session"]["status"],
-                    "strategy": self._data["session"]["strategy"],
+                    "session_id": session_data.get("session_id", "no_session"),
+                    "status": session_data.get("status", "INACTIVE"),
+                    "strategy": session_data.get("strategy", "standard"),
                     "session_time": session_time,
-                    "start_time": self._data["session"]["start_time"],
-                    "current_balance": self._data["session"]["current_balance"],
-                    "initial_balance": self._data["session"]["initial_balance"],
-                    "total_pnl": self._data["session"]["total_pnl"],
-                    "win_rate": self._data["session"]["win_rate"],
-                    "total_trades": self._data["session"]["total_trades"]
+                    "start_time": session_data.get("start_time"),
+                    "current_balance": account_data.get("current_balance", 0.0),
+                    "initial_balance": account_data.get("initial_balance", 0.0),
+                    "total_pnl": account_data.get("total_pnl", 0.0),
+                    "win_rate": account_data.get("win_rate", 0.0),
+                    "total_trades": account_data.get("total_trades", 0)
                 },
                 "market": {
                     "current_price": self._data["market"]["current_price"],
@@ -221,45 +220,29 @@ class SimpleRTM:
                 "trades": self._data["trades"],
                 "orderbook": {"bids": [], "asks": []},  # Placeholder
                 "global_volume": {"volume": 0.0},  # Placeholder
-                "timestamp": self._data["timestamp"],
-                "data_source": "SimpleRTM",
+                "timestamp": datetime.now().isoformat(),
+                "data_source": "Presentation Layer",
                 "connection_status": "✅ Connected"
             }
             
             return dashboard_data
     
-    def clear_data(self):
-        """Clear all data"""
+    def clear_presentation_data(self):
+        """Clear only presentation data (logs, predictions, trades) - NOT account/session data"""
         with self._lock:
-            self._data = {
-                "session": {
-                    "session_id": "no_session",
-                    "status": "INACTIVE",
-                    "start_time": None,
-                    "strategy": "standard",
-                    "current_balance": 0.0,
-                    "initial_balance": 0.0,
-                    "total_trades": 0,
-                    "winning_trades": 0,
-                    "losing_trades": 0,
-                    "total_pnl": 0.0,
-                    "win_rate": 0.0,
-                    "last_updated": None
-                },
-                "market": {
-                    "current_price": 97500.0,
-                    "trend": "NEUTRAL",
-                    "rsi": 50.0,
-                    "volume_depth": 0.0,
-                    "last_updated": None
-                },
-                "logs": [],
-                "predictions": [],
-                "trades": [],
-                "timestamp": datetime.now().isoformat()
+            self._data["logs"] = []
+            self._data["predictions"] = []
+            self._data["trades"] = []
+            self._data["market"] = {
+                "current_price": 97500.0,
+                "trend": "NEUTRAL",
+                "rsi": 50.0,
+                "volume_depth": 0.0,
+                "last_updated": None
             }
+            self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()
-            logger.info("🧹 SimpleRTM data cleared")
+            logger.info("🧹 SimpleRTM presentation data cleared (account/session data preserved)")
 
 # Global instance
 simple_rtm = SimpleRTM()

@@ -924,9 +924,9 @@
                     const latest = predictions[0];
                     // Update prediction status elements
                     this.updateElement('prediction-status', '🔴 Active Predictions');
-                    this.updateElement('latest-signal', latest.prediction_type || latest.signal_type || 'Unknown');
+                    this.updateElement('latest-signal', latest.type || 'Unknown');
                     this.updateElement('signal-confidence', `${latest.confidence || 0}%`);
-                    this.updateElement('signal-direction', latest.direction || latest.signal || 'Unknown');
+                    this.updateElement('signal-direction', latest.type || 'Unknown');
                     
                     // Update confidence color
                     const confidenceElement = document.getElementById('signal-confidence');
@@ -944,11 +944,13 @@
                     // Update direction color
                     const directionElement = document.getElementById('signal-direction');
                     if (directionElement) {
-                        const direction = (latest.direction || latest.signal || '').toUpperCase();
+                        const direction = (latest.type || '').toUpperCase();
                         if (direction.includes('BUY') || direction.includes('BULLISH') || direction.includes('UP')) {
                             directionElement.className = 'data-value trend-up';
                         } else if (direction.includes('SELL') || direction.includes('BEARISH') || direction.includes('DOWN')) {
                             directionElement.className = 'data-value trend-down';
+                        } else if (direction.includes('HOLD')) {
+                            directionElement.className = 'data-value trend-neutral';
                         } else {
                             directionElement.className = 'data-value';
                         }

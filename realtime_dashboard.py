@@ -16,9 +16,8 @@ from flask import Flask, render_template, request, make_response
 from flask_socketio import SocketIO, emit
 from loguru import logger
 
-# Import constants and trade state manager
+# Import constants only
 from core.constants import constants, ui_constants
-from core.trade_state_manager import trade_state_manager
 
 # Suppress SSL warnings
 urllib3.disable_warnings()
@@ -40,10 +39,7 @@ class EventDrivenTradingDashboard:
         # Data change tracking for smart updates
         self.last_data_hash = {}
         
-        # Connection management
-        self._rtm = None
-        self._api = None
-        self._rtm_available = None
+        # SimpleRTM is the single source of truth
         
         # Force update counter for reliability
         self.force_update_counter = 0
@@ -71,7 +67,6 @@ class EventDrivenTradingDashboard:
             
             # Clear cached data and send initial data
             self.last_data_hash.clear()
-            self._rtm = None
             fresh_data = self._get_dashboard_data()
             self.socketio.emit('initial_data', fresh_data, room=request.sid)
         

@@ -52,8 +52,14 @@ class SessionManager:
                 # Close any existing session first
                 self._close_existing_session()
                 
-                # Initialize session in SimpleRTM
-                session_data = {
+                # Session data is managed by SessionManager (source of truth)
+                # Account data is managed by AccountManager (source of truth)
+                # SimpleRTM will read from them automatically
+                
+                self.current_session_id = session_id
+                
+                # Store session data
+                self.current_session_data = {
                     "session_id": session_id,
                     "start_time": datetime.now().isoformat(),
                     "status": "ACTIVE",
@@ -67,41 +73,19 @@ class SessionManager:
                     "win_rate": 0.0
                 }
                 
-                simple_rtm.update_session(session_data)
+                # Add startup activity to SimpleRTM
+                simple_rtm.add_activity(f"🚀 Trading session started - {strategy} strategy initialized", "SUCCESS", "session")
                 
-                # Update account data in SimpleRTM
-                account_data = {
-                    "current_balance": initial_balance,
-                    "initial_balance": initial_balance,
-                    "total_trades": 0,
-                    "winning_trades": 0,
-                    "losing_trades": 0,
-                    "total_pnl": 0.0,
-                    "win_rate": 0.0
-                }
-                
-                simple_rtm.update_account(account_data)
-                })
-                
-                self.current_session_id = session_id
-                
-                # Add startup activity
-                realtime_data_store.add_activity_record({
-                    "message": f"🚀 Trading session started - {strategy} strategy initialized",
-                    "type": "session_start",
-                    "level": "SUCCESS"
-                })
-                
-                # Initialize basic market data
-                realtime_data_store.update_market_data({
+                # Initialize basic market data in SimpleRTM
+                simple_rtm.update_market({
                     "current_price": 0,
                     "trend": "INITIALIZING",
-                    "market_condition": "STARTING",
-                    "data_source": "session_initialization"
+                    "rsi": 50.0,
+                    "volume_depth": 0.0
                 })
                 
-                # Update SimpleRTM with session data
-                self._update_simple_rtm_session(session_data)
+                # Session data is managed by SessionManager (source of truth)
+                # SimpleRTM reads from SessionManager automatically
                 
                 logger.success(f"🚀 Trading session started: {session_id} ({strategy})")
                 return session_id
@@ -165,35 +149,14 @@ class SessionManager:
                 return False
     
     def _close_orphaned_sessions(self):
-        """Close any orphaned sessions in database"""
+        """Close any orphaned sessions - simplified for SimpleRTM"""
         try:
-            # Get recent sessions from database
-            recent_sessions = database_manager.get_recent_sessions(10)
-            
-            orphaned_count = 0
-            for session in recent_sessions:
-                if session.get("status") == "ACTIVE":
-                    # Check if session is old (more than 2 hours)
-                    if session.get("start_time"):
-                        start_time = datetime.fromisoformat(session["start_time"])
-                        age_hours = (datetime.now() - start_time).total_seconds() / 3600
-                        
-                        if age_hours > 2:  # Session older than 2 hours
-                            # Mark as orphaned
-                            orphaned_session = session.copy()
-                            orphaned_session["status"] = "ORPHANED"
-                            orphaned_session["end_time"] = datetime.now().isoformat()
-                            
-                            database_manager.save_session(orphaned_session)
-                            orphaned_count += 1
-                            
-                            logger.info(f"   Closed orphaned session: {session['session_id']}")
-            
-            if orphaned_count > 0:
-                logger.success(f"✅ Closed {orphaned_count} orphaned sessions")
+            # SimpleRTM handles session cleanup automatically
+            # No need for complex database operations
+            logger.debug("✅ Session cleanup handled by SimpleRTM")
                 
         except Exception as e:
-            logger.error(f"Error closing orphaned sessions: {e}")
+            logger.error(f"Error in session cleanup: {e}")
     
     def get_current_session_info(self) -> Optional[Dict[str, Any]]:
         """Get information about current session"""
@@ -213,7 +176,7 @@ class SessionManager:
         """Get current session data for dashboard"""
         with self.session_lock:
             try:
-                if not self.current_session_id:
+                if not self.current_session_id or not hasattr(self, 'current_session_data'):
                     return {
                         "session_id": "no_session",
                         "start_time": datetime.now().isoformat(),
@@ -228,8 +191,7 @@ class SessionManager:
                         "losing_trades": 0
                     }
                 
-                session_data = simple_rtm.get_dashboard_data()["session"]
-                return session_data
+                return self.current_session_data
                 
             except Exception as e:
                 logger.error(f"Error getting session data: {e}")
@@ -290,13 +252,11 @@ class SessionManager:
                     logger.warning("⚠️ No active session to update balance")
                     return
                 
-                # Update balance in SimpleRTM
-                account_data = simple_rtm.get_dashboard_data()["account"]
-                account_data["current_balance"] = new_balance
-                simple_rtm.update_account(account_data)
+                # Balance updates are handled by AccountManager (source of truth)
+                # SimpleRTM will read the updated balance automatically
                 
-                # Add activity record
-                session_data = simple_rtm.get_dashboard_data()["session"]
+                # Add activity record to SimpleRTM
+                session_data = self.get_current_session_data()
                 balance_change = new_balance - session_data.get("initial_balance", 0)
                 
                 simple_rtm.add_activity(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}", "INFO", "account")
@@ -332,18 +292,8 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"Error adding trade to session: {e}")
     
-    def _update_simple_rtm_session(self, session_data: Dict[str, Any]):
-        """Update SimpleRTM with session data"""
-        try:
-            from core.data.simple_rtm import simple_rtm
-            
-            # Update SimpleRTM with session data
-            simple_rtm.update_session(session_data)
-            
-            logger.debug(f"✅ SimpleRTM updated with session: {session_data.get('session_id', 'unknown')}")
-            
-        except Exception as e:
-            logger.debug(f"❌ Could not update SimpleRTM with session: {e}")
+    # Session data is managed by SessionManager (source of truth)
+    # SimpleRTM reads from SessionManager automatically
 
 
 # Global instance (singleton)

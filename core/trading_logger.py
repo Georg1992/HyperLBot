@@ -91,12 +91,16 @@ class TradingLogger:
     
     def update_initial_balance(self, balance: float):
         """Update initial balance in session metadata"""
+        if balance is None:
+            balance = 0.0
         self.session_metadata["initial_balance"] = balance
         self._save_session_metadata()
         logger.info(f"💰 Updated initial balance: ${balance:.2f}")
     
     def update_current_balance(self, balance: float):
         """Update current balance in session metadata for real-time dashboard updates"""
+        if balance is None:
+            balance = 0.0
         self.session_metadata["current_balance"] = balance
         self.session_metadata["last_balance_update"] = datetime.now().isoformat()
         

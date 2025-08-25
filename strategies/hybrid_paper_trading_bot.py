@@ -153,11 +153,10 @@ class YahooHyperliquidPaperTradingBot:
         # Update session metadata with initial balance
         self.trading_logger.update_initial_balance(initial_balance)
         
-        logger.info(f"📊 Hybrid Paper Trading Bot initialized with ${initial_balance:.2f} balance")
-        if self.whale_integration.is_available():
-            logger.info("🐋 Whale analytics integration enabled")
-        else:
-            logger.info("🐋 Whale analytics integration disabled")
+        initial_balance_safe = initial_balance or 0.0
+        logger.info(f"📊 Hybrid Paper Trading Bot initialized with ${initial_balance_safe:.2f} balance")
+        # Whale integration removed during cleanup
+        logger.info("🐋 Whale analytics integration disabled (removed)")
         
         # Ensure account manager is available
         self._ensure_account_manager()
@@ -2627,9 +2626,9 @@ class YahooHyperliquidPaperTradingBot:
             from core.session.session_manager import SessionManager
             from core.data.simple_rtm import simple_rtm
             
-            # CLEAR ALL OLD DATA BEFORE STARTING NEW SESSION
-            simple_rtm.clear_data()
-            logger.info("🧹 SimpleRTM cleared - Fresh session data")
+            # CLEAR PRESENTATION DATA BEFORE STARTING NEW SESSION
+            simple_rtm.clear_presentation_data()
+            logger.info("🧹 SimpleRTM presentation data cleared - Fresh session data")
             
             # Start session via SessionManager (which updates SimpleRTM)
             session_manager = SessionManager()
@@ -2639,24 +2638,8 @@ class YahooHyperliquidPaperTradingBot:
                 initial_balance=self.initial_balance
             )
             
-            # Update SimpleRTM with initial session data
-            simple_rtm.update_session({
-                "session_id": session_id,
-                "status": "ACTIVE",
-                "strategy": self.strategy_name,
-                "start_time": datetime.now().isoformat()
-            })
-            
-            # Update SimpleRTM with initial account data
-            simple_rtm.update_account({
-                "current_balance": self.initial_balance,
-                "initial_balance": self.initial_balance,
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "total_pnl": 0.0,
-                "win_rate": 0.0
-            })
+            # Session and account data are managed by SessionManager and AccountManager
+            # SimpleRTM will read from them automatically
             
             # Add initial activity log to SimpleRTM
             self._update_simple_rtm_activity(f"🚀 Trading bot started - {self.strategy_name} strategy with ${self.initial_balance:.2f} initial balance", "SUCCESS")
@@ -2830,24 +2813,8 @@ class YahooHyperliquidPaperTradingBot:
                     # Enhanced analysis with global volume and blockchain data
                     enhanced_analysis = self.binance_analysis.copy()
                     
-                    # Add global volume data
-                    if self.global_volume_aggregator:
-                        self._update_simple_rtm_activity("🌍 Fetching global volume data", "INFO")
-                        global_volume_data = self.global_volume_aggregator.get_realtime_global_volume()
-                        enhanced_analysis["global_volume"] = global_volume_data
-                        if global_volume_data.get("status") == "success":
-                            logger.info(f"🌍 Global Volume: {global_volume_data['global_volume_per_second']:.1f} BTC/sec")
-                            self._update_simple_rtm_activity(f"✅ Global volume: {global_volume_data['global_volume_per_second']:.1f} BTC/sec", "SUCCESS")
-                    
-                    # Add blockchain sentiment
-                    if self.blockchain_analyzer:
-                        self._update_simple_rtm_activity("⛓️ Fetching blockchain sentiment", "INFO")
-                        blockchain_data = self.blockchain_analyzer.get_onchain_sentiment()
-                        enhanced_analysis["blockchain_sentiment"] = blockchain_data
-                        if blockchain_data.get("confidence", 0) > 0.5:
-                            sentiment = blockchain_data["overall_sentiment"]
-                            logger.info(f"⛓️ On-chain Sentiment: {sentiment}")
-                            self._update_simple_rtm_activity(f"✅ Blockchain sentiment: {sentiment}", "SUCCESS")
+                    # Global volume and blockchain analysis removed during cleanup
+                    # Using simplified analysis with Yahoo + Hyperliquid data only
                     
                     # Analyze market using enhanced data (Yahoo historical + Hyperliquid real-time + Global volume + Blockchain)
                     self._update_simple_rtm_activity("🧠 Running market analysis", "INFO")
