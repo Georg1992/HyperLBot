@@ -89,10 +89,29 @@ class SimpleRTM:
         """Get account data from AccountManager"""
         try:
             from core.account_manager import account_manager
-            return account_manager.get_account_summary()
+            account_data = account_manager.get_account_summary()
+            if not account_data:  # Empty dict returned
+                return {
+                    "current_balance": 0.0,
+                    "initial_balance": 0.0,
+                    "total_pnl": 0.0,
+                    "total_trades": 0,
+                    "winning_trades": 0,
+                    "losing_trades": 0,
+                    "win_rate": 0.0
+                }
+            return account_data
         except Exception as e:
             logger.error(f"❌ Failed to get account data: {e}")
-            return self._data["session"]
+            return {
+                "current_balance": 0.0,
+                "initial_balance": 0.0,
+                "total_pnl": 0.0,
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "win_rate": 0.0
+            }
     
     def update_market(self, market_data: Dict[str, Any]):
         """Update market data"""

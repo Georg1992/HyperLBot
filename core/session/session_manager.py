@@ -130,8 +130,8 @@ class SessionManager:
                     duration = end_time_dt - start_time
                     session_data["duration_minutes"] = round(duration.total_seconds() / 60, 2)
                 
-                # Update session in SimpleRTM
-                simple_rtm.update_session(session_data)
+                # Update internal session data
+                self.current_session_data = session_data
                 
                 # Add completion activity
                 simple_rtm.add_activity(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes", "SUCCESS", "session")
@@ -255,10 +255,14 @@ class SessionManager:
                 # Balance updates are handled by AccountManager (source of truth)
                 # SimpleRTM will read the updated balance automatically
                 
-                # Add activity record to SimpleRTM
-                session_data = self.get_current_session_data()
-                balance_change = new_balance - session_data.get("initial_balance", 0)
+                # Update internal session data
+                if hasattr(self, 'current_session_data') and self.current_session_data:
+                    self.current_session_data["current_balance"] = new_balance
+                    balance_change = new_balance - self.current_session_data.get("initial_balance", 0)
+                    self.current_session_data["balance_change"] = balance_change
+                    self.current_session_data["balance_change_pct"] = (balance_change / self.current_session_data.get("initial_balance", 1)) * 100
                 
+                # Add activity record to SimpleRTM
                 simple_rtm.add_activity(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}", "INFO", "account")
                 
                 logger.debug(f"💰 Session balance updated: ${new_balance:.2f} - {reason}")
@@ -277,8 +281,18 @@ class SessionManager:
                 # Add trade to SimpleRTM
                 simple_rtm.add_trade(trade_data)
                 
-                # Update session statistics
-                session_data = simple_rtm.get_dashboard_data()["session"]
+                # Update internal session data
+                if hasattr(self, 'current_session_data') and self.current_session_data:
+                    self.current_session_data["total_trades"] = self.current_session_data.get("total_trades", 0) + 1
+                    if trade_data.get("was_profitable", False):
+                        self.current_session_data["winning_trades"] = self.current_session_data.get("winning_trades", 0) + 1
+                    else:
+                        self.current_session_data["losing_trades"] = self.current_session_data.get("losing_trades", 0) + 1
+                    
+                    # Update win rate
+                    total_trades = self.current_session_data["total_trades"]
+                    winning_trades = self.current_session_data["winning_trades"]
+                    self.current_session_data["win_rate"] = (winning_trades / total_trades * 100) if total_trades > 0 else 0
                 
                 # Add trade activity
                 side = trade_data.get("side", "UNKNOWN")

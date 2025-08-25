@@ -288,23 +288,28 @@ class YahooHyperliquidPaperTradingBot:
                 logger.error("❌ Failed to connect to Yahoo Finance")
                 return False
             
-            # Test Hyperliquid connection
-            if not self.config.WALLET_ADDRESS or not self.config.WALLET_PRIVATE_KEY:
-                logger.error("❌ Wallet credentials not found")
+            # Initialize Hyperliquid API for market data only (no account access needed)
+            self.hyperliquid_api = HyperliquidAPI()
+            
+            # Initialize enhanced Hyperliquid simulator
+            from core.hyperliquid_simulator import hyperliquid_simulator
+            self.hyperliquid_simulator = hyperliquid_simulator
+            
+            # Test market data connection
+            try:
+                current_price = self.hyperliquid_api.get_current_price("BTC")
+                if current_price:
+                    logger.success(f"✅ Successfully connected to Hyperliquid API!")
+                    logger.info(f"📊 Current BTC Price: ${current_price:,.2f} USD")
+                    logger.info(f"📊 Paper Trading Balance: ${self.paper_balance:.2f} USD")
+                else:
+                    logger.warning("⚠️ Could not get current price from Hyperliquid API")
+            except Exception as e:
+                logger.error(f"❌ Hyperliquid API connection failed: {e}")
                 return False
             
-            self.hyperliquid_api = HyperliquidAPI(self.config.WALLET_ADDRESS, self.config.WALLET_PRIVATE_KEY)
-            account_info = self.hyperliquid_api.get_account_info()
-            logger.success(f"✅ Successfully connected to Hyperliquid API!")
-            
-            if 'data' in account_info and 'marginSummary' in account_info['data']:
-                margin = account_info['data']['marginSummary']
-                account_value = margin.get('accountValue', 0)
-                logger.info(f"💰 Real Account Value: ${account_value:.2f} USD")
-                logger.info(f"📊 Paper Trading Balance: ${self.paper_balance:.2f} USD")
-            
-            # 🚀 REAL BALANCE FEATURE DISABLED - USING SIMULATED MODE ONLY
-            logger.info("🔒 Real balance feature disabled - using simulated mode only")
+            # Paper trading mode - no real account access needed
+            logger.info("🎮 Paper trading mode - using simulated balance and positions")
             
             # Load account data if available
             if self.account_manager and self.account_manager.account_data:
@@ -347,228 +352,14 @@ class YahooHyperliquidPaperTradingBot:
             })
             return False
     
-    def get_weekly_trend_analysis(self) -> Dict[str, Any]:
-        """Get weekly trend analysis for overall market context"""
-        try:
-            logger.info("📅 Analyzing weekly trend for overall market context...")
-            
-            # Get 1-week candlestick data (7 days * 24 hours = 168 candles)
-            weekly_candles = self.yahoo_fetcher.get_1h_klines("BTC", 168)
-            
-            if not weekly_candles or len(weekly_candles) < 24:
-                logger.error("❌ Insufficient weekly data for trend analysis")
-                return {"error": "Insufficient weekly data"}
-            
-            # Calculate weekly trend
-            week_start_price = weekly_candles[0]["close"]
-            week_end_price = weekly_candles[-1]["close"]
-            weekly_change = (week_end_price - week_start_price) / week_start_price
-            
-            # Calculate weekly volatility
-            weekly_returns = []
-            for i in range(1, len(weekly_candles)):
-                prev_close = weekly_candles[i-1]["close"]
-                curr_close = weekly_candles[i]["close"]
-                ret = (curr_close - prev_close) / prev_close
-                weekly_returns.append(ret)
-            
-            weekly_volatility = statistics.stdev(weekly_returns) if len(weekly_returns) > 1 else 0
-            
-            # Find weekly high and low
-            weekly_high = max([candle["high"] for candle in weekly_candles])
-            weekly_low = min([candle["low"] for candle in weekly_candles])
-            weekly_range = weekly_high - weekly_low
-            
-            # Determine weekly trend strength
-            if weekly_change > 0.05:  # 5% weekly gain
-                weekly_trend = "STRONG_BULL"
-                trend_strength = "VERY_STRONG"
-            elif weekly_change > 0.02:  # 2% weekly gain
-                weekly_trend = "BULL"
-                trend_strength = "STRONG"
-            elif weekly_change > 0.005:  # 0.5% weekly gain
-                weekly_trend = "WEAK_BULL"
-                trend_strength = "WEAK"
-            elif weekly_change < -0.05:  # 5% weekly loss
-                weekly_trend = "STRONG_BEAR"
-                trend_strength = "VERY_STRONG"
-            elif weekly_change < -0.02:  # 2% weekly loss
-                weekly_trend = "BEAR"
-                trend_strength = "STRONG"
-            elif weekly_change < -0.005:  # 0.5% weekly loss
-                weekly_trend = "WEAK_BEAR"
-                trend_strength = "WEAK"
-            else:
-                weekly_trend = "SIDEWAYS"
-                trend_strength = "NEUTRAL"
-            
-            # Calculate momentum indicators
-            recent_candles = weekly_candles[-24:]  # Last 24 hours
-            recent_change = (recent_candles[-1]["close"] - recent_candles[0]["close"]) / recent_candles[0]["close"]
-            
-            # Determine if recent momentum aligns with weekly trend
-            momentum_alignment = "ALIGNED"
-            if (weekly_trend in ["BULL", "STRONG_BULL", "WEAK_BULL"] and recent_change < -0.01) or \
-               (weekly_trend in ["BEAR", "STRONG_BEAR", "WEAK_BEAR"] and recent_change > 0.01):
-                momentum_alignment = "DIVERGING"
-            
-            weekly_analysis = {
-                "weekly_trend": weekly_trend,
-                "trend_strength": trend_strength,
-                "weekly_change_pct": weekly_change * 100,
-                "weekly_volatility": weekly_volatility,
-                "weekly_high": weekly_high,
-                "weekly_low": weekly_low,
-                "weekly_range": weekly_range,
-                "week_start_price": week_start_price,
-                "week_end_price": week_end_price,
-                "recent_24h_change": recent_change * 100,
-                "momentum_alignment": momentum_alignment,
-                "candles_analyzed": len(weekly_candles),
-                "analysis_timestamp": time.time()
-            }
-            
-            logger.success(f"✅ Weekly trend analysis completed:")
-            logger.info(f"   Weekly Trend: {weekly_trend} ({weekly_change*100:.2f}%)")
-            logger.info(f"   Trend Strength: {trend_strength}")
-            logger.info(f"   Weekly Range: ${weekly_low:,.2f} - ${weekly_high:,.2f}")
-            logger.info(f"   Recent 24h: {recent_change*100:.2f}% ({momentum_alignment})")
-            
-            return weekly_analysis
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get weekly trend analysis: {e}")
-            return {"error": str(e)}
-    
     def get_optimized_rsi_data(self, hyperliquid_price: float) -> Dict[str, Any]:
-        """Get optimized RSI data with smart caching and frequent updates"""
-        current_time = time.time()
-        
-        # Check if we need to update RSI (every 30 seconds)
-        if (current_time - self.last_rsi_update >= self.rsi_update_interval or 
-            self.cached_rsi_data is None):
-            
-            try:
-                logger.debug("🔄 Updating RSI data (30-second interval)")
-                
-                # Get fresh Yahoo data for RSI calculation
-                candles_5m = self.yahoo_fetcher.get_klines("BTC", "5m", 30)
-                
-                if candles_5m and len(candles_5m) >= 25:
-                    # Calculate RSI using our optimized method
-                    rsi_result = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=20)
-                    
-                    # Cache the result with timestamp
-                    self.cached_rsi_data = rsi_result
-                    self.cached_rsi_timestamp = current_time
-                    self.last_rsi_update = current_time
-                    
-                    logger.debug(f"📊 RSI updated: {rsi_result.get('rsi', 50):.1f} (20-period)")
-                    
-                else:
-                    logger.warning("⚠️ Insufficient candle data for RSI calculation")
-                    # Use cached data if available, otherwise return default
-                    if self.cached_rsi_data:
-                        logger.info(f"📊 Using cached RSI: {self.cached_rsi_data.get('rsi', 50):.1f}")
-                    else:
-                        self.cached_rsi_data = {"rsi": 50.0, "calculation_method": "default"}
-                        
-            except Exception as e:
-                logger.error(f"❌ Error updating RSI data: {e}")
-                # Use cached data if available, otherwise return default
-                if self.cached_rsi_data:
-                    logger.info(f"📊 Using cached RSI due to error: {self.cached_rsi_data.get('rsi', 50):.1f}")
-                else:
-                    self.cached_rsi_data = {"rsi": 50.0, "calculation_method": "error_fallback"}
-        
-        return self.cached_rsi_data or {"rsi": 50.0, "calculation_method": "fallback"}
-    
-    def _build_5m_prices_from_hyperliquid_trades(self, trade_history: List[Dict[str, Any]]) -> List[float]:
-        """Build 5-minute price samples from Hyperliquid trade history"""
-        try:
-            if not trade_history:
-                return []
-            
-            import time
-            
-            # Group trades by 5-minute intervals
-            current_time = time.time() * 1000  # Convert to milliseconds for comparison
-            price_samples = []
-            
-            # Create buckets for the last 6 hours (14 periods, expanded for low trade frequency)
-            available_trades_timespan = 6 * 60  # 6 hours in minutes
-            bucket_size_minutes = available_trades_timespan // 14  # ~25 minutes per period
-            
-            for i in range(14):
-                bucket_end = current_time - (i * bucket_size_minutes * 60 * 1000)  # Convert to ms
-                bucket_start = bucket_end - (bucket_size_minutes * 60 * 1000)
-                
-                # Find trades in this 5-minute window
-                bucket_trades = []
-                for trade in trade_history:
-                    try:
-                        # Hyperliquid timestamps are in milliseconds
-                        trade_time = float(trade.get('time', trade.get('timestamp', 0)))
-                        if bucket_start <= trade_time <= bucket_end:
-                            bucket_trades.append(float(trade.get('px', trade.get('price', 0))))
-                    except (ValueError, TypeError):
-                        continue
-                
-                # Use average price of trades in this bucket (approximates 5m close)
-                if bucket_trades:
-                    avg_price = sum(bucket_trades) / len(bucket_trades)
-                    price_samples.append(avg_price)
-                elif price_samples:  # Use last known price if no trades in bucket
-                    price_samples.append(price_samples[-1])
-            
-            # Reverse to get chronological order (oldest first)
-            price_samples.reverse()
-            logger.debug(f"🔧 Built {len(price_samples)} price samples from {len(trade_history)} trades")
-            return price_samples
-            
-        except Exception as e:
-            logger.error(f"❌ Error building Hyperliquid price samples: {e}")
-            return []
-    
-    def _calculate_rsi_from_price_samples(self, price_samples: List[float], periods: int = 14) -> float:
-        """Calculate RSI from price samples (standard RSI formula)"""
-        try:
-            if len(price_samples) < periods + 1:
-                return 50.0
-                
-            # Calculate price changes
-            gains = []
-            losses = []
-            
-            for i in range(1, len(price_samples)):
-                change = price_samples[i] - price_samples[i-1]
-                if change > 0:
-                    gains.append(change)
-                    losses.append(0)
-                else:
-                    gains.append(0)
-                    losses.append(-change)
-            
-            if len(gains) < periods:
-                return 50.0
-                
-            # Calculate RSI using standard formula
-            avg_gain = sum(gains[-periods:]) / periods
-            avg_loss = sum(losses[-periods:]) / periods
-            
-            if avg_loss == 0:
-                return 100.0  # All gains, no losses
-                
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-            
-            logger.debug(f"🎯 RSI calculation: {periods}-period, {len(price_samples)} samples, RSI={rsi:.1f}")
-            return max(0.0, min(100.0, rsi))  # Clamp to 0-100
-            
-        except Exception as e:
-            logger.error(f"❌ RSI calculation error: {e}")
-            return 50.0
-    
+        """Get RSI data from Yahoo analysis"""
+        yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price)
+        return {
+            "rsi": yahoo_analysis.get("rsi", 50.0),
+            "rsi_trend": yahoo_analysis.get("rsi_trend", "NEUTRAL"),
+            "rsi_signal": yahoo_analysis.get("rsi_signal", "NEUTRAL")
+        }
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get comprehensive market analysis from Yahoo Finance (HISTORICAL DATA ONLY)"""
         try:
@@ -755,1270 +546,38 @@ class YahooHyperliquidPaperTradingBot:
         
         return signal_data
     
-    def _apply_weekly_trend_context(self, current_price: float, support: float, resistance: float) -> Dict[str, Any]:
-        """Apply weekly trend context to trading decisions"""
-        if not self.weekly_trend_analysis or "error" in self.weekly_trend_analysis:
-            return {"should_proceed": True, "reason": "No weekly analysis available"}
-        
-        weekly_trend = self.weekly_trend_analysis.get("weekly_trend", "UNKNOWN")
-        trend_strength = self.weekly_trend_analysis.get("trend_strength", "NEUTRAL")
-        weekly_high = self.weekly_trend_analysis.get("weekly_high", 0)
-        weekly_low = self.weekly_trend_analysis.get("weekly_low", 0)
-        momentum_alignment = self.weekly_trend_analysis.get("momentum_alignment", "UNKNOWN")
-        
-        # Strong weekly trends should influence trading direction
-        if trend_strength in ["VERY_STRONG", "STRONG"]:
-            if weekly_trend in ["STRONG_BULL", "BULL"]:
-                # In strong bull market, prefer long trades and avoid shorting near weekly high
-                if current_price > weekly_high * 0.995:  # Near weekly high
-                    return {
-                        "should_proceed": False,
-                        "reason": "Strong bull market - avoiding shorts near weekly high"
-                    }
-                # Prefer long trades in bull market
-                return {
-                    "should_proceed": True,
-                    "reason": "Strong bull market - favoring long positions",
-                    "preferred_direction": "BUY"
-                }
-            
-            elif weekly_trend in ["STRONG_BEAR", "BEAR"]:
-                # In strong bear market, prefer short trades and avoid longing near weekly low
-                if current_price < weekly_low * 1.005:  # Near weekly low
-                    return {
-                        "should_proceed": False,
-                        "reason": "Strong bear market - avoiding longs near weekly low"
-                    }
-                # Prefer short trades in bear market
-                return {
-                    "should_proceed": True,
-                    "reason": "Strong bear market - favoring short positions",
-                    "preferred_direction": "SELL"
-                }
-        
-        # Check for momentum divergence
-        if momentum_alignment == "DIVERGING":
-            if weekly_trend in ["BULL", "STRONG_BULL"] and current_price < support * 0.998:
-                return {
-                    "should_proceed": False,
-                    "reason": "Bull market momentum diverging - avoiding shorts"
-                }
-            elif weekly_trend in ["BEAR", "STRONG_BEAR"] and current_price > resistance * 1.002:
-                return {
-                    "should_proceed": False,
-                    "reason": "Bear market momentum diverging - avoiding longs"
-                }
-        
-        # Weekly range considerations
-        weekly_range = weekly_high - weekly_low
-        current_position_in_range = (current_price - weekly_low) / weekly_range if weekly_range > 0 else 0.5
-        
-        # Avoid trades at extreme ends of weekly range unless strong signals
-        if current_position_in_range > 0.95:  # Near weekly high
-            return {
-                "should_proceed": True,
-                "reason": "Near weekly high - cautious trading",
-                "risk_level": "HIGH"
-            }
-        elif current_position_in_range < 0.05:  # Near weekly low
-            return {
-                "should_proceed": True,
-                "reason": "Near weekly low - cautious trading",
-                "risk_level": "HIGH"
-            }
-        
-        return {
-            "should_proceed": True,
-            "reason": "Weekly trend context allows trading",
-            "risk_level": "NORMAL"
-        }
-    
-    def _auto_detect_strategy(self, binance_analysis: Dict[str, Any], current_price: float) -> str:
-        """Auto-detect market volatility and return appropriate strategy"""
-        try:
-            # Get market condition from Binance analysis
-            market_condition = binance_analysis.get("market_condition", "UNKNOWN")
-            
-            # Get volatility indicators
-            candles_5m = binance_analysis.get("candles_5m", [])
-            candles_1h = binance_analysis.get("candles_1h", [])
-            
-            if len(candles_5m) < 10 or len(candles_1h) < 10:
-                return self.strategy_name  # Keep current strategy if insufficient data
-            
-            # Calculate 5-minute volatility
-            prices_5m = [candle["close"] for candle in candles_5m[-20:]]  # Last 20 candles
-            returns_5m = []
-            for i in range(1, len(prices_5m)):
-                ret = abs((prices_5m[i] - prices_5m[i-1]) / prices_5m[i-1])
-                returns_5m.append(ret)
-            
-            volatility_5m = statistics.mean(returns_5m) if returns_5m else 0
-            
-            # Calculate 1-hour volatility
-            prices_1h = [candle["close"] for candle in candles_1h[-24:]]  # Last 24 candles
-            returns_1h = []
-            for i in range(1, len(prices_1h)):
-                ret = abs((prices_1h[i] - prices_1h[i-1]) / prices_1h[i-1])
-                returns_1h.append(ret)
-            
-            volatility_1h = statistics.mean(returns_1h) if returns_1h else 0
-            
-            # Get range size
-            support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
-            range_size = support_resistance_5m.get("range", 0)
-            range_percentage = (range_size / current_price) if current_price > 0 else 0
-            
-            # Enhanced strategy selection logic with crypto-appropriate thresholds
-            if market_condition == "LOW_VOLATILITY" or volatility_5m < 0.0015 or range_percentage < 0.002:
-                # Low volatility conditions (tightened thresholds)
-                logger.info(f"📊 Low volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%")
-                return "low_volatility"
-            
-            elif market_condition in ["HIGH_VOLATILITY", "ELEVATED_VOLATILITY"] or volatility_5m > 0.003 or volatility_1h > 0.006 or range_percentage > 0.008:
-                # High volatility conditions (much more sensitive)
-                logger.info(f"📊 High volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%, condition={market_condition}")
-                return "high_volatility"
-            
-            else:
-                # Medium volatility conditions
-                logger.info(f"📊 Medium volatility detected: 5m={volatility_5m*100:.3f}%, 1h={volatility_1h*100:.3f}%, range={range_percentage*100:.2f}%")
-                return "standard"
-                
-        except Exception as e:
-            logger.error(f"❌ Error in auto-strategy detection: {e}")
-            return self.strategy_name  # Keep current strategy on error
-    
     def _get_volatility_5m(self, binance_analysis: Dict[str, Any]) -> float:
-        """Extract 5-minute volatility from analysis with enhanced recent sensitivity"""
-        try:
-            # Use the enhanced volatility from Yahoo analysis if available
-            if "volatility_5m" in binance_analysis:
-                return binance_analysis["volatility_5m"]
-            
-            # Fallback to manual calculation with enhanced sensitivity
-            candles_5m = binance_analysis.get("candles_5m", [])
-            if len(candles_5m) < 10:
-                return 0.0
-            
-            # Use shorter lookback for more responsive volatility
-            lookback_periods = min(15, len(candles_5m))
-            prices_5m = [candle["close"] for candle in candles_5m[-lookback_periods:]]
-            returns_5m = []
-            
-            for i in range(1, len(prices_5m)):
-                ret = abs((prices_5m[i] - prices_5m[i-1]) / prices_5m[i-1])
-                returns_5m.append(ret)
-            
-            if not returns_5m:
-                return 0.0
-            
-            # Enhanced calculation with recent bias
-            baseline_vol = statistics.mean(returns_5m)
-            recent_vol = statistics.mean(returns_5m[-5:]) if len(returns_5m) >= 5 else baseline_vol
-            
-            # Boost if recent volatility is higher (catch volatility spikes)
-            if recent_vol > baseline_vol * 1.3:
-                enhanced_vol = baseline_vol * 0.6 + recent_vol * 0.4
-                logger.info(f"📈 Enhanced volatility: baseline={baseline_vol*100:.3f}%, recent={recent_vol*100:.3f}%, final={enhanced_vol*100:.3f}%")
-            else:
-                enhanced_vol = baseline_vol * 0.8 + recent_vol * 0.2
-            
-            return enhanced_vol
-            
-        except Exception as e:
-            logger.error(f"Error calculating enhanced 5m volatility: {e}")
-            return 0.0
-    
+        """Get 5m volatility from Yahoo analysis"""
+        return binance_analysis.get("volatility_5m", 0.0)
     def _get_volatility_1h(self, binance_analysis: Dict[str, Any]) -> float:
-        """Extract 1-hour volatility from analysis with enhanced recent sensitivity"""
-        try:
-            # Use the enhanced volatility from Yahoo analysis if available
-            if "volatility_1h" in binance_analysis:
-                return binance_analysis["volatility_1h"]
-            
-            # Fallback to manual calculation with enhanced sensitivity
-            candles_1h = binance_analysis.get("candles_1h", [])
-            if len(candles_1h) < 10:
-                return 0.0
-            
-            # Use shorter lookback for more responsive volatility
-            lookback_periods = min(18, len(candles_1h))
-            prices_1h = [candle["close"] for candle in candles_1h[-lookback_periods:]]
-            returns_1h = []
-            
-            for i in range(1, len(prices_1h)):
-                ret = abs((prices_1h[i] - prices_1h[i-1]) / prices_1h[i-1])
-                returns_1h.append(ret)
-            
-            if not returns_1h:
-                return 0.0
-            
-            # Enhanced calculation with recent bias 
-            baseline_vol = statistics.mean(returns_1h)
-            recent_vol = statistics.mean(returns_1h[-4:]) if len(returns_1h) >= 4 else baseline_vol
-            
-            # Weight recent volatility for spike detection
-            if recent_vol > baseline_vol * 1.3:
-                enhanced_vol = baseline_vol * 0.6 + recent_vol * 0.4
-            else:
-                enhanced_vol = baseline_vol * 0.8 + recent_vol * 0.2
-            
-            return enhanced_vol
-            
-        except Exception as e:
-            logger.error(f"Error calculating enhanced 1h volatility: {e}")
-            return 0.0
-    
+        """Get 1h volatility from Yahoo analysis"""
+        return binance_analysis.get("volatility_1h", 0.0)
     def _get_range_percentage(self, binance_analysis: Dict[str, Any], current_price: float) -> float:
-        """Extract range percentage from analysis"""
-        try:
-            support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
-            range_size = support_resistance_5m.get("range", 0)
-            return (range_size / current_price) if current_price > 0 else 0.0
-        except:
-            return 0.0
-    
-    def _calculate_dynamic_position_size(self, variability_analysis: Dict[str, Any], binance_analysis: Dict[str, Any], 
-                                       current_price: float, support: float, resistance: float) -> float:
-        """Calculate dynamic position size based on risk assessment and win probability"""
-        
-        # Base position size from strategy config
-        base_position_size = self.strategy_config["position_size"]
-        
-        # 1. VARIABILITY SCORE FACTOR (0.5x - 2.0x)
-        variability_score = variability_analysis.get("current_variability_score", 0.5)
-        if variability_score > 0.8:
-            variability_multiplier = 2.0  # High variability = optimal conditions
-        elif variability_score > 0.6:
-            variability_multiplier = 1.5  # Good variability
-        elif variability_score > 0.4:
-            variability_multiplier = 1.0  # Standard variability
-        else:
-            variability_multiplier = 0.5  # Low variability = poor conditions
-        
-        # 2. MARKET CONDITION FACTOR (0.7x - 1.3x)
-        market_condition = binance_analysis.get("market_condition", "UNKNOWN")
-        if market_condition == "LOW_VOLATILITY_CHOPPY":
-            market_multiplier = 0.7  # Reduce size in choppy markets
-        elif market_condition in ["MEDIUM_VOLATILITY_OPTIMAL", "HIGH_VOLATILITY_OPTIMAL"]:
-            market_multiplier = 1.3  # Increase size in optimal conditions
-        elif market_condition in ["EXTREME_VOLATILITY_RISKY", "EXTREME_VOLATILITY_AVOID"]:
-            market_multiplier = 0.5  # Significantly reduce in extreme volatility
-        else:
-            market_multiplier = 1.0  # Standard conditions
-        
-        # 3. TREND ALIGNMENT FACTOR (0.8x - 1.4x)
-        trend_5m = binance_analysis.get("trend_5m", {}).get("trend", "UNKNOWN")
-        trend_1h = binance_analysis.get("trend_1h", {}).get("trend", "UNKNOWN")
-        trend_strength_1h = binance_analysis.get("trend_1h", {}).get("strength", 0)
-        
-        # Check if trends align with our signal direction
-        trend_alignment = 1.0
-        if trend_1h == "UP" and trend_5m == "UP":
-            trend_alignment = 1.4  # Strong bullish alignment
-        elif trend_1h == "DOWN" and trend_5m == "DOWN":
-            trend_alignment = 1.4  # Strong bearish alignment
-        elif trend_1h == "UP" or trend_5m == "UP":
-            trend_alignment = 1.2  # Partial bullish alignment
-        elif trend_1h == "DOWN" or trend_5m == "DOWN":
-            trend_alignment = 1.2  # Partial bearish alignment
-        elif trend_strength_1h < 0.3:
-            trend_alignment = 0.8  # Weak trends
-        
-        # 4. SUPPORT/RESISTANCE PROXIMITY FACTOR (0.6x - 1.2x)
-        range_size = resistance - support
-        if range_size > 0:
-            # Calculate how close we are to support/resistance
-            distance_to_support = abs(current_price - support) / range_size
-            distance_to_resistance = abs(current_price - resistance) / range_size
-            
-            # If very close to support/resistance, reduce position size
-            if distance_to_support < 0.1 or distance_to_resistance < 0.1:
-                proximity_multiplier = 0.6  # Too close to key levels
-            elif distance_to_support < 0.2 or distance_to_resistance < 0.2:
-                proximity_multiplier = 0.8  # Close to key levels
-            else:
-                proximity_multiplier = 1.2  # Good distance from key levels
-        else:
-            proximity_multiplier = 1.0
-        
-        # 5. WEEKLY TREND CONTEXT FACTOR (0.7x - 1.3x)
-        weekly_context = self._apply_weekly_trend_context(current_price, support, resistance)
-        if weekly_context.get("risk_level") == "HIGH":
-            weekly_multiplier = 0.7  # High risk weekly context
-        elif weekly_context.get("preferred_direction") in ["BUY", "SELL"]:
-            weekly_multiplier = 1.3  # Weekly trend supports our direction
-        else:
-            weekly_multiplier = 1.0  # Neutral weekly context
-        
-        # 6. VOLATILITY STRATEGY FACTOR (0.8x - 1.5x)
-        if self.strategy_name == "low_volatility":
-            strategy_multiplier = 1.5  # Low volatility = safer, can use larger positions
-        elif self.strategy_name == "high_volatility":
-            strategy_multiplier = 0.8  # High volatility = riskier, use smaller positions
-        else:
-            strategy_multiplier = 1.0  # Standard volatility
-        
-        # 7. WIN PROBABILITY FACTOR (0.5x - 2.0x)
-        win_probability = self._calculate_win_probability(
-            variability_analysis, binance_analysis, current_price, support, resistance
-        )
-        
-        if win_probability > 0.8:
-            probability_multiplier = 2.0  # Very high win probability
-        elif win_probability > 0.7:
-            probability_multiplier = 1.5  # High win probability
-        elif win_probability > 0.6:
-            probability_multiplier = 1.2  # Good win probability
-        elif win_probability > 0.5:
-            probability_multiplier = 1.0  # Average win probability
-        else:
-            probability_multiplier = 0.5  # Low win probability
-        
-        # Calculate final position size
-        final_position_size = base_position_size * \
-                             variability_multiplier * \
-                             market_multiplier * \
-                             trend_alignment * \
-                             proximity_multiplier * \
-                             weekly_multiplier * \
-                             strategy_multiplier * \
-                             probability_multiplier
-        
-        # Apply limits
-        min_position_size = 0.05   # Minimum 5% of balance
-        max_position_size = 0.80   # Maximum 80% of balance (as requested)
-        
-        final_position_size = max(min_position_size, min(max_position_size, final_position_size))
-        
-        # Log the position sizing calculation
-        logger.info(f"🎯 Dynamic Position Sizing:")
-        logger.info(f"   Base Size: {base_position_size*100:.1f}%")
-        logger.info(f"   Variability: {variability_multiplier:.1f}x (score: {variability_score:.3f})")
-        logger.info(f"   Market: {market_multiplier:.1f}x ({market_condition})")
-        logger.info(f"   Trend: {trend_alignment:.1f}x (5m: {trend_5m}, 1h: {trend_1h})")
-        logger.info(f"   Proximity: {proximity_multiplier:.1f}x")
-        logger.info(f"   Weekly: {weekly_multiplier:.1f}x")
-        logger.info(f"   Strategy: {strategy_multiplier:.1f}x ({self.strategy_name})")
-        logger.info(f"   Win Probability: {probability_multiplier:.1f}x ({win_probability*100:.1f}%)")
-        logger.info(f"   Final Size: {final_position_size*100:.1f}% (${self.paper_balance * final_position_size:.2f})")
-        
-        return final_position_size
-    
+        """Get range percentage from Yahoo analysis"""
+        support_resistance = binance_analysis.get("support_resistance_5m", {})
+        range_size = support_resistance.get("range", 0)
+        return (range_size / current_price) if current_price > 0 else 0.0
     def _build_price_prediction(self, binance_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Build price prediction and identify potential entry points"""
-        try:
-            # Extract data from Binance analysis
-            candles_5m = binance_analysis.get("candles_5m", [])
-            candles_1h = binance_analysis.get("candles_1h", [])
-            trend_5m = binance_analysis.get("trend_5m", {})
-            trend_1h = binance_analysis.get("trend_1h", {})
-            support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
-            
-            if len(candles_5m) < 10 or len(candles_1h) < 10:
-                return {"has_prediction": False, "reason": "Insufficient candlestick data"}
-            
-            support_5m = support_resistance_5m.get("support", 0)
-            resistance_5m = support_resistance_5m.get("resistance", 0)
-            range_size_5m = support_resistance_5m.get("range", 0)
-            
-            # Minimum range requirement
-            min_range_percentage = self.strategy_config["min_range_percentage"]
-            if range_size_5m < current_price * min_range_percentage:
-                return {"has_prediction": False, "reason": f"Range too small (need {min_range_percentage*100:.1f}%, have {range_size_5m/current_price*100:.1f}%)"}
-            
-            # Calculate volatility for prediction confidence
-            volatility_5m = self._get_volatility_5m(binance_analysis)
-            volatility_1h = self._get_volatility_1h(binance_analysis)
-            
-            # Build predictions based on market conditions
-            predictions = []
-            
-            # 1. BREAKOUT PREDICTIONS
-            if current_price > resistance_5m * 0.998:  # Near resistance
-                # Predict potential breakout above resistance
-                breakout_prediction = {
-                    "type": "BREAKOUT_ABOVE",
-                    "entry_price": resistance_5m * 1.0005,  # Slightly above resistance
-                    "side": "BUY",
-                    "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                    "reason": f"Potential breakout above ${resistance_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m
-                }
-                predictions.append(breakout_prediction)
-            
-            elif current_price < support_5m * 1.002:  # Near support
-                # Predict potential breakout below support
-                breakout_prediction = {
-                    "type": "BREAKOUT_BELOW",
-                    "entry_price": support_5m * 0.9995,  # Slightly below support
-                    "side": "SELL",
-                    "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                    "reason": f"Potential breakout below ${support_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m
-                }
-                predictions.append(breakout_prediction)
-            
-            # 2. REVERSION PREDICTIONS
-            if current_price > resistance_5m * 0.999:  # Very near resistance
-                # Predict potential reversion from resistance
-                reversion_prediction = {
-                    "type": "REVERSION_FROM_RESISTANCE",
-                    "entry_price": resistance_5m * 0.9995,  # Slightly below resistance
-                    "side": "SELL",
-                    "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                    "reason": f"Potential reversion from ${resistance_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m
-                }
-                predictions.append(reversion_prediction)
-            
-            elif current_price < support_5m * 1.001:  # Very near support
-                # Predict potential reversion from support
-                reversion_prediction = {
-                    "type": "REVERSION_FROM_SUPPORT",
-                    "entry_price": support_5m * 1.0005,  # Slightly above support
-                    "side": "BUY",
-                    "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                    "reason": f"Potential reversion from ${support_5m:,.2f}",
-                    "support": support_5m,
-                    "resistance": resistance_5m
-                }
-                predictions.append(reversion_prediction)
-            
-            # 3. MOMENTUM PREDICTIONS
-            if trend_1h.get("trend") == "UP" and trend_5m.get("trend") == "UP":
-                # Strong upward momentum
-                momentum_prediction = {
-                    "type": "MOMENTUM_UP",
-                    "entry_price": current_price * 1.0005,  # Slightly above current
-                    "side": "BUY",
-                    "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_momentum_timeframe(volatility_5m),
-                    "reason": "Strong upward momentum",
-                    "support": support_5m,
-                    "resistance": resistance_5m
-                }
-                predictions.append(momentum_prediction)
-            
-            elif trend_1h.get("trend") == "DOWN" and trend_5m.get("trend") == "DOWN":
-                # Strong downward momentum
-                momentum_prediction = {
-                    "type": "MOMENTUM_DOWN",
-                    "entry_price": current_price * 0.9995,  # Slightly below current
-                    "side": "SELL",
-                    "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m),
-                    "timeframe": self._calculate_momentum_timeframe(volatility_5m),
-                    "reason": "Strong downward momentum",
-                    "support": support_5m,
-                    "resistance": resistance_5m
-                }
-                predictions.append(momentum_prediction)
-            
-            # Select best prediction
-            if predictions:
-                # Sort by confidence and select the best
-                predictions.sort(key=lambda x: x["confidence"], reverse=True)
-                best_prediction = predictions[0]
-                
-                logger.info(f"🔮 Price Prediction Built:")
-                logger.info(f"   Type: {best_prediction['type']}")
-                logger.info(f"   Entry Price: ${best_prediction['entry_price']:,.2f}")
-                logger.info(f"   Side: {best_prediction['side']}")
-                logger.info(f"   Confidence: {best_prediction['confidence']:.1f}%")
-                logger.info(f"   Timeframe: {best_prediction['timeframe']} minutes")
-                logger.info(f"   Reason: {best_prediction['reason']}")
-                
-                return {
-                    "has_prediction": True,
-                    "best_prediction": best_prediction,
-                    "all_predictions": predictions,
-                    "volatility_5m": volatility_5m,
-                    "volatility_1h": volatility_1h,
-                    "range_size": range_size_5m
-                }
-            else:
-                return {"has_prediction": False, "reason": "No valid predictions found"}
-                
-        except Exception as e:
-            logger.error(f"❌ Error building price prediction: {e}")
-            return {"has_prediction": False, "reason": f"Prediction error: {e}"}
-    
+        """Build price prediction using PredictionEngine"""
+        return self.prediction_engine.build_price_prediction(binance_analysis, current_price, self.strategy_name)
     def _analyze_entry_point(self, prediction_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Analyze entry point and determine if order should be placed"""
-        try:
-            predictions = prediction_analysis.get("all_predictions", [])
-            if not predictions:
-                return {
-                    "should_place_order": False,
-                    "reason": "No predictions available",
-                    "variability_threshold": 0.5
-                }
-            
-            # Get real-time Hyperliquid price for accurate stop loss calculation
-            hyperliquid_price = self.get_hyperliquid_price()
-            if not hyperliquid_price:
-                return {
-                    "should_place_order": False,
-                    "reason": "Cannot get real-time Hyperliquid price for stop loss calculation",
-                    "variability_threshold": 0.5
-                }
-            
-            # Analyze both BUY and SELL opportunities
-            buy_opportunities = []
-            sell_opportunities = []
-            
-            for prediction in predictions:
-                # Calculate realistic entry price based on Hyperliquid market price
-                if prediction["side"] == "BUY":
-                    # For BUY: entry should be at or below current Hyperliquid price
-                    if prediction["type"] == "BREAKOUT_ABOVE":
-                        # Wait for breakout confirmation - entry at Hyperliquid price
-                        entry_price = hyperliquid_price
-                    elif prediction["type"] == "REVERSION_FROM_SUPPORT":
-                        # Buy near support - wait for price to reach support level
-                        # Check execution timing from prediction engine
-                        execution_timing = prediction.get("execution_timing", "IMMEDIATE")
-                        
-                        if execution_timing == "WAIT_FOR_SUPPORT":
-                            # Price not at support yet - skip this opportunity
-                            logger.info(f"⏳ REVERSION_FROM_SUPPORT: Waiting for price to reach support ${prediction['support']:,.2f} (current: ${hyperliquid_price:,.2f})")
-                            continue
-                        elif execution_timing == "IMMEDIATE" or hyperliquid_price <= prediction["support"] * 1.002:
-                            # Price is at support or within 0.2% - proceed with entry
-                            entry_price = hyperliquid_price
-                            logger.info(f"✅ REVERSION_FROM_SUPPORT: Price ${hyperliquid_price:,.2f} at support ${prediction['support']:,.2f} - proceeding with entry")
-                        else:
-                            # Price not at support yet - skip this opportunity
-                            logger.info(f"⏳ REVERSION_FROM_SUPPORT: Price ${hyperliquid_price:,.2f} not at support ${prediction['support']:,.2f} - waiting")
-                            continue
-                    elif prediction["type"] == "MOMENTUM_UP":
-                        # Buy on momentum - entry at Hyperliquid price
-                        entry_price = hyperliquid_price
-                    else:
-                        # Default: entry at Hyperliquid price
-                        entry_price = hyperliquid_price
-                    
-                    # Calculate realistic targets using Hyperliquid price for accuracy
-                    target_distance = min(0.005, self.strategy_config["profit_target"])  # Max 0.5% target (increased from 0.2%)
-                    stop_distance = min(0.002, self.strategy_config["stop_loss"])  # Max 0.2% stop (increased from 0.1%)
-                    
-                    target_price = entry_price * (1 + target_distance)
-                    stop_price = entry_price * (1 - stop_distance)
-                    
-                    buy_opportunities.append({
-                        "prediction": prediction,
-                        "entry_price": entry_price,
-                        "target_price": target_price,
-                        "stop_price": stop_price,
-                        "risk_reward": (target_price - entry_price) / (entry_price - stop_price) if entry_price > stop_price else 0
-                    })
-                    
-                else:  # SELL
-                    # For SELL: entry should be at or above current Hyperliquid price
-                    if prediction["type"] == "BREAKOUT_BELOW":
-                        # Wait for breakdown confirmation - entry at Hyperliquid price
-                        entry_price = hyperliquid_price
-                    elif prediction["type"] == "REVERSION_FROM_RESISTANCE":
-                        # Sell near resistance - wait for price to reach resistance level
-                        # Check execution timing from prediction engine
-                        execution_timing = prediction.get("execution_timing", "IMMEDIATE")
-                        
-                        if execution_timing == "WAIT_FOR_RESISTANCE":
-                            # Price not at resistance yet - skip this opportunity
-                            logger.info(f"⏳ REVERSION_FROM_RESISTANCE: Waiting for price to reach resistance ${prediction['resistance']:,.2f} (current: ${hyperliquid_price:,.2f})")
-                            continue
-                        elif execution_timing == "IMMEDIATE" or hyperliquid_price >= prediction["resistance"] * 0.998:
-                            # Price is at resistance or within 0.2% - proceed with entry
-                            entry_price = hyperliquid_price
-                            logger.info(f"✅ REVERSION_FROM_RESISTANCE: Price ${hyperliquid_price:,.2f} at resistance ${prediction['resistance']:,.2f} - proceeding with entry")
-                        else:
-                            # Price not at resistance yet - skip this opportunity
-                            logger.info(f"⏳ REVERSION_FROM_RESISTANCE: Price ${hyperliquid_price:,.2f} not at resistance ${prediction['resistance']:,.2f} - waiting")
-                            continue
-                    elif prediction["type"] == "MOMENTUM_DOWN":
-                        # Sell on momentum - entry at Hyperliquid price
-                        entry_price = hyperliquid_price
-                    else:
-                        # Default: entry at Hyperliquid price
-                        entry_price = hyperliquid_price
-                    
-                    # Calculate realistic targets using Hyperliquid price for accuracy
-                    target_distance = min(0.005, self.strategy_config["profit_target"])  # Max 0.5% target (increased from 0.2%)
-                    stop_distance = min(0.002, self.strategy_config["stop_loss"])  # Max 0.2% stop (increased from 0.1%)
-                    
-                    target_price = entry_price * (1 - target_distance)
-                    stop_price = entry_price * (1 + stop_distance)
-                    
-                    sell_opportunities.append({
-                        "prediction": prediction,
-                        "entry_price": entry_price,
-                        "target_price": target_price,
-                        "stop_price": stop_price,
-                        "risk_reward": (entry_price - target_price) / (stop_price - entry_price) if stop_price > entry_price else 0
-                    })
-            
-            # Choose the best opportunity
-            best_opportunity = None
-            best_score = 0
-            
-            for opportunity in buy_opportunities + sell_opportunities:
-                prediction = opportunity["prediction"]
-                
-                # Calculate win probability
-                win_probability = self._calculate_prediction_win_probability(prediction, prediction_analysis)
-                
-                # Check minimum confidence - made more lenient for better prediction acceptance
-                min_confidence = 0.35  # Reduced from 0.45 to 0.35 (35%) for more trades
-                if prediction["confidence"] < min_confidence:
-                    continue
-                
-                # Check profitability
-                profitability = self.fee_manager.is_trade_profitable(
-                    opportunity["entry_price"], 
-                    opportunity["target_price"], 
-                    0.001, 
-                    30,
-                    prediction["side"]
-                )
-                
-                if not profitability["is_profitable"]:
-                    continue
-                
-                # Calculate opportunity score
-                score = (
-                    prediction["confidence"] * 0.4 +
-                    win_probability * 0.3 +
-                    opportunity["risk_reward"] * 0.2 +
-                    profitability["profit_margin"] * 0.1
-                )
-                
-                if score > best_score:
-                    best_score = score
-                    best_opportunity = opportunity
-            
-            if not best_opportunity:
-                return {
-                    "should_place_order": False,
-                    "reason": "No profitable opportunities found",
-                    "variability_threshold": 0.5
-                }
-            
-            # Determine variability threshold based on strategy
-            if self.strategy_name == "low_volatility":
-                variability_threshold = 0.2
-            elif self.strategy_name == "high_volatility":
-                variability_threshold = 0.6
-            else:
-                variability_threshold = 0.5
-            
-            prediction = best_opportunity["prediction"]
-            win_probability = self._calculate_prediction_win_probability(prediction, prediction_analysis)
-            profitability = self.fee_manager.is_trade_profitable(
-                best_opportunity["entry_price"], 
-                best_opportunity["target_price"], 
-                0.001, 
-                30,
-                prediction["side"]
-            )
-            
-            # Log the entry analysis with price comparison
-            yahoo_price = hyperliquid_price  # Yahoo analysis price (using hyperliquid_price from earlier)
-            hyperliquid_exec_price = best_opportunity['entry_price']  # Hyperliquid execution price
-            price_diff = abs(hyperliquid_exec_price - yahoo_price)
-            price_diff_pct = (price_diff / yahoo_price) * 100
-            
-            logger.info(f"🎯 Entry Point Analysis:")
-            logger.info(f"   Prediction Type: {prediction['type']}")
-            logger.info(f"   Side: {prediction['side']}")
-            logger.info(f"   Yahoo Analysis Price: ${yahoo_price:,.2f}")
-            logger.info(f"   Hyperliquid Exec Price: ${hyperliquid_exec_price:,.2f}")
-            logger.info(f"   Price Alignment: ${price_diff:,.2f} ({price_diff_pct:.3f}%)")
-            logger.info(f"   Target Price: ${best_opportunity['target_price']:,.2f}")
-            logger.info(f"   Stop Price: ${best_opportunity['stop_price']:,.2f}")
-            logger.info(f"   Risk/Reward: {best_opportunity['risk_reward']:.2f}:1")
-            logger.info(f"   Win Probability: {win_probability:.1f}%")
-            logger.info(f"   Confidence: {prediction['confidence']*100:.1f}%")
-            logger.info(f"   Profitability: {profitability['profit_margin']:.2f}% margin")
-            
-            return {
-                "should_place_order": True,
-                "side": prediction["side"],
-                "entry_price": best_opportunity["entry_price"],
-                "target_price": best_opportunity["target_price"],
-                "stop_price": best_opportunity["stop_price"],
-                "prediction_type": prediction["type"],
-                "confidence": prediction["confidence"],
-                "win_probability": win_probability,
-                "entry_timeframe": prediction["timeframe"],
-                "reason": prediction["reason"],
-                "support": prediction["support"],
-                "resistance": prediction["resistance"],
-                "variability_threshold": variability_threshold,
-                "profitability": profitability,
-                "risk_reward": best_opportunity["risk_reward"]
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Error analyzing entry point: {e}")
-            return {
-                "should_place_order": False,
-                "reason": f"Entry analysis error: {e}",
-                "variability_threshold": 0.5
-            }
-    
-    def _calculate_breakout_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float) -> float:
-        """Calculate confidence for breakout predictions"""
-        base_confidence = 0.5
-        
-        # Trend alignment bonus
-        if trend_1h.get("trend") == trend_5m.get("trend"):
-            base_confidence += 0.2
-        
-        # Trend strength bonus
-        trend_strength = trend_1h.get("strength", 0.5)
-        base_confidence += trend_strength * 0.1
-        
-        # Volatility adjustment
-        if volatility < 0.002:  # Low volatility = more predictable
-            base_confidence += 0.1
-        elif volatility > 0.005:  # High volatility = less predictable
-            base_confidence -= 0.1
-        
-        return min(0.95, max(0.1, base_confidence))
-    
-    def _calculate_reversion_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float) -> float:
-        """Calculate confidence for reversion predictions"""
-        base_confidence = 0.4  # Lower base for reversions
-        
-        # Trend divergence bonus (reversion more likely when trends diverge)
-        if trend_1h.get("trend") != trend_5m.get("trend"):
-            base_confidence += 0.15
-        
-        # Volatility adjustment
-        if volatility < 0.002:  # Low volatility = more predictable reversions
-            base_confidence += 0.1
-        elif volatility > 0.005:  # High volatility = less predictable
-            base_confidence -= 0.1
-        
-        return min(0.9, max(0.1, base_confidence))
-    
-    def _calculate_momentum_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float) -> float:
-        """Calculate confidence for momentum predictions"""
-        base_confidence = 0.6  # Higher base for momentum
-        
-        # Strong trend alignment
-        if trend_1h.get("trend") == trend_5m.get("trend"):
-            base_confidence += 0.2
-        
-        # Trend strength bonus
-        trend_strength = trend_1h.get("strength", 0.5)
-        base_confidence += trend_strength * 0.15
-        
-        # Volatility adjustment
-        if volatility < 0.003:  # Moderate volatility = good for momentum
-            base_confidence += 0.1
-        elif volatility > 0.006:  # High volatility = less predictable
-            base_confidence -= 0.1
-        
-        return min(0.95, max(0.1, base_confidence))
-    
-    def _calculate_breakout_timeframe(self, volatility: float, range_size: float) -> int:
-        """Calculate expected timeframe for breakout"""
-        # Base timeframe: 15-30 minutes
-        base_timeframe = 20
-        
-        # Adjust based on volatility
-        if volatility < 0.002:
-            base_timeframe += 10  # Slower in low volatility
-        elif volatility > 0.005:
-            base_timeframe -= 5   # Faster in high volatility
-        
-        # Adjust based on range size
-        range_percentage = range_size / 114000  # Assuming current BTC price
-        if range_percentage < 0.005:  # Small range
-            base_timeframe += 5
-        elif range_percentage > 0.01:  # Large range
-            base_timeframe -= 5
-        
-        return max(10, min(60, base_timeframe))  # Between 10-60 minutes
-    
-    def _calculate_reversion_timeframe(self, volatility: float) -> int:
-        """Calculate expected timeframe for reversion"""
-        # Reversions typically happen faster than breakouts
-        base_timeframe = 15
-        
-        # Adjust based on volatility
-        if volatility < 0.002:
-            base_timeframe += 5
-        elif volatility > 0.005:
-            base_timeframe -= 3
-        
-        return max(8, min(45, base_timeframe))  # Between 8-45 minutes
-    
-    def _calculate_momentum_timeframe(self, volatility: float) -> int:
-        """Calculate expected timeframe for momentum continuation"""
-        # Momentum trades can be faster
-        base_timeframe = 12
-        
-        # Adjust based on volatility
-        if volatility < 0.002:
-            base_timeframe += 3
-        elif volatility > 0.005:
-            base_timeframe -= 2
-        
-        return max(5, min(30, base_timeframe))  # Between 5-30 minutes
-    
+        """Analyze entry point using PredictionEngine"""
+        return self.prediction_engine.analyze_entry_point(prediction_analysis, current_price)
     def _is_prediction_valid(self, prediction: Dict[str, Any], current_price: float) -> bool:
-        """Check if prediction is still valid given current price"""
-        entry_price = prediction["entry_price"]
-        price_diff = abs(current_price - entry_price) / current_price
-        
-        # Prediction is valid if price is within 0.5% of entry
-        return price_diff < 0.005
-    
+        """Simple prediction validation"""
+        return prediction.get("confidence", 0) > 0.5 and prediction.get("has_prediction", False)
     def _calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
-        """Calculate win probability for a prediction"""
-        # Ensure confidence is in decimal format (0.0 to 1.0)
-        base_probability = prediction["confidence"]
-        if base_probability > 1.0:  # If it's already a percentage, convert to decimal
-            base_probability = base_probability / 100.0
-        
-        # Adjust based on volatility
-        volatility_5m = prediction_analysis.get("volatility_5m", 0.003)
-        if volatility_5m < 0.002:
-            base_probability += 0.05  # More predictable in low volatility
-        elif volatility_5m > 0.005:
-            base_probability -= 0.05  # Less predictable in high volatility
-        
-        # Adjust based on range size
-        range_size = prediction_analysis.get("range_size", 0)
-        if range_size > 0:
-            range_percentage = range_size / 114000
-            if range_percentage > 0.01:  # Large range
-                base_probability += 0.03
-            elif range_percentage < 0.005:  # Small range
-                base_probability -= 0.02
-        
-        return min(0.95, max(0.1, base_probability))
-    
-    def _calculate_smart_limit_price(self, side: str, current_price: float) -> float:
-        """Calculate smart limit price for better execution than market price"""
-        try:
-            # Get market data for spread analysis
-            market_data = self.hyperliquid_api.get_market_data("BTC")
-            
-            if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
-                # Check if levels are lists (not floats)
-                if isinstance(market_data['levels'][0], list) and isinstance(market_data['levels'][1], list):
-                    bids = market_data['levels'][0]
-                    asks = market_data['levels'][1]
-                else:
-                    logger.warning("Market data levels are not in expected format")
-                    return current_price
-                
-                if bids and asks:
-                    best_bid = float(bids[0]['px'])
-                    best_ask = float(asks[0]['px'])
-                    spread = best_ask - best_bid
-                    
-                    # Calculate smart limit price
-                    if side == "BUY":
-                        # For BUY orders, place limit slightly below current ask for better fill
-                        limit_price = best_ask - (spread * 0.1)  # 10% of spread below ask
-                    else:
-                        # For SELL orders, place limit slightly above current bid for better fill
-                        limit_price = best_bid + (spread * 0.1)  # 10% of spread above bid
-                    
-                    # Ensure limit price is reasonable
-                    if side == "BUY" and limit_price > current_price:
-                        limit_price = current_price * 0.9995  # Slightly below current price
-                    elif side == "SELL" and limit_price < current_price:
-                        limit_price = current_price * 1.0005  # Slightly above current price
-                    
-                    return limit_price
-            
-            # Fallback: use current price with small adjustment
-            if side == "BUY":
-                return current_price * 0.9995  # Slightly below current price
-            else:
-                return current_price * 1.0005  # Slightly above current price
-                
-        except Exception as e:
-            logger.warning(f"Could not calculate smart limit price: {e}")
-            # Fallback to current price
-            return current_price
-    
-    def simulate_predictive_limit_order_execution(self, side: str, size: float, limit_price: float, 
-                                                current_price: float, leverage: int, entry_timeframe: int, 
-                                                signal_data: Dict = None) -> Dict[str, Any]:
-        """Simulate predictive limit order execution with time-based order management"""
-        try:
-            # Calculate order expiry time
-            order_placement_time = time.time()
-            order_expiry_time = order_placement_time + (entry_timeframe * 60)  # Convert minutes to seconds
-            
-            # Simulate order monitoring and execution
-            execution_price = None
-            execution_time = None
-            order_status = "PENDING"
-            
-            # Simulate price movement towards limit price
-            if side == "BUY":
-                # For BUY orders, price needs to drop to or below limit price
-                if current_price <= limit_price:
-                    # Immediate execution if price is already at/below limit
-                    execution_price = min(limit_price, current_price * 0.9998)
-                    execution_time = order_placement_time + 5  # 5 seconds later
-                    order_status = "FILLED"
-                else:
-                    # Simulate price movement towards limit
-                    price_gap = current_price - limit_price
-                    time_to_fill = min(entry_timeframe * 60 * 0.7, price_gap / 0.001)  # 70% of timeframe or price-based
-                    
-                    if time_to_fill <= entry_timeframe * 60:
-                        execution_price = limit_price * 0.9999  # Slightly better than limit
-                        execution_time = order_placement_time + time_to_fill
-                        order_status = "FILLED"
-                    else:
-                        # Order expires
-                        order_status = "EXPIRED"
-            else:
-                # For SELL orders, price needs to rise to or above limit price
-                if current_price >= limit_price:
-                    # Immediate execution if price is already at/above limit
-                    execution_price = max(limit_price, current_price * 1.0002)
-                    execution_time = order_placement_time + 5  # 5 seconds later
-                    order_status = "FILLED"
-                else:
-                    # Simulate price movement towards limit
-                    price_gap = limit_price - current_price
-                    time_to_fill = min(entry_timeframe * 60 * 0.7, price_gap / 0.001)  # 70% of timeframe or price-based
-                    
-                    if time_to_fill <= entry_timeframe * 60:
-                        execution_price = limit_price * 1.0001  # Slightly better than limit
-                        execution_time = order_placement_time + time_to_fill
-                        order_status = "FILLED"
-                    else:
-                        # Order expires
-                        order_status = "EXPIRED"
-            
-            if order_status == "EXPIRED":
-                logger.warning(f"⏰ Order EXPIRED: Price didn't reach limit within {entry_timeframe} minutes")
-                return {
-                    "success": False,
-                    "error": f"Order expired - price didn't reach ${limit_price:,.2f} within {entry_timeframe} minutes",
-                    "order_status": order_status,
-                    "limit_price": limit_price,
-                    "current_price": current_price,
-                    "entry_timeframe": entry_timeframe
-                }
-            
-            # Calculate fees using Hyperliquid LIMIT order fee structure
-            fees = self.fee_manager.calculate_order_fees(size, execution_price, "LIMIT")
-            
-            # Calculate position value and required margin
-            position_value = size * execution_price
-            required_margin = position_value / leverage
-            
-            # Check if we have enough balance for margin + fees
-            total_required = required_margin + fees["total_cost"]
-            if total_required > self.paper_balance:
-                return {
-                    "success": False,
-                    "error": "Insufficient balance for position"
-                }
-            
-            # Calculate target and stop prices based on strategy
-            if side == "BUY":
-                target_price = execution_price * (1 + self.strategy_config["profit_target"])
-                stop_price = execution_price * (1 - self.strategy_config["stop_loss"])
-            else:
-                target_price = execution_price * (1 - self.strategy_config["profit_target"])
-                stop_price = execution_price * (1 + self.strategy_config["stop_loss"])
-            
-            # Deduct fees from balance
-            self.paper_balance -= fees["total_cost"]
-            
-            # Update account manager if available (balance already updated above)
-            try:
-                from core.account_manager import account_manager
-                account_manager.update_balance(self.paper_balance, 0)  # No additional PnL change
-            except Exception as e:
-                logger.debug(f"Account manager update failed: {e}")
-            
-            # Update current balance in session metadata for dashboard
-            self.trading_logger.update_current_balance(self.paper_balance)
-            
-            # Calculate time to execution
-            time_to_execution = execution_time - order_placement_time if execution_time else 0
-            
-            logger.info(f"✅ Predictive Order {order_status}:")
-            logger.info(f"   Limit Price: ${limit_price:,.2f}")
-            logger.info(f"   Execution Price: ${execution_price:,.2f}")
-            logger.info(f"   Time to Execution: {time_to_execution:.1f} seconds")
-            logger.info(f"   Price Improvement: ${abs(current_price - execution_price):,.2f}")
-            
-            return {
-                "success": True,
-                "execution_price": execution_price,
-                "limit_price": limit_price,
-                "price_improvement": abs(current_price - execution_price),
-                "fees": fees,
-                "position_value": position_value,
-                "target_price": target_price,
-                "stop_price": stop_price,
-                "remaining_balance": self.paper_balance,
-                "order_status": order_status,
-                "execution_time": execution_time,
-                "time_to_execution": time_to_execution,
-                "entry_timeframe": entry_timeframe
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Predictive limit order simulation failed: {e}"
-            }
-    
+        """Get win probability from prediction engine"""
+        return self.prediction_engine.calculate_win_probability(prediction, prediction_analysis)
+    def simulate_predictive_limit_order_execution(self, side: str, size: float, limit_price: float, current_price: float, leverage: int) -> Dict[str, Any]:
+        """Simulate order execution using HyperliquidSimulator"""
+        return self.hyperliquid_simulator.simulate_order_execution('LIMIT', side, size, limit_price, leverage)
     def simulate_limit_order_execution(self, side: str, size: float, limit_price: float, current_price: float, leverage: int) -> Dict[str, Any]:
-        """Simulate limit order execution with better pricing than market orders"""
-        try:
-            # Limit orders typically get better execution than market orders
-            # Simulate execution at or better than limit price
-            if side == "BUY":
-                # For BUY limit orders, we might get filled at limit price or better
-                execution_price = min(limit_price, current_price * 0.9998)  # Slightly better than limit
-            else:
-                # For SELL limit orders, we might get filled at limit price or better
-                execution_price = max(limit_price, current_price * 1.0002)  # Slightly better than limit
-            
-            # Calculate fees using Hyperliquid LIMIT order fee structure (much lower than market)
-            fees = self.fee_manager.calculate_order_fees(size, execution_price, "LIMIT")
-            
-            # Calculate position value and required margin
-            position_value = size * execution_price
-            required_margin = position_value / leverage
-            
-            # Check if we have enough balance for margin + fees
-            total_required = required_margin + fees["total_cost"]
-            if total_required > self.paper_balance:
-                return {
-                    "success": False,
-                    "error": "Insufficient balance for position"
-                }
-            
-            # Calculate target and stop prices based on strategy
-            if side == "BUY":
-                target_price = execution_price * (1 + self.strategy_config["profit_target"])
-                stop_price = execution_price * (1 - self.strategy_config["stop_loss"])
-            else:
-                target_price = execution_price * (1 - self.strategy_config["profit_target"])
-                stop_price = execution_price * (1 + self.strategy_config["stop_loss"])
-            
-            # Deduct fees from balance
-            self.paper_balance -= fees["total_cost"]
-            
-            # Update account manager if available (balance already updated above)
-            try:
-                from core.account_manager import account_manager
-                account_manager.update_balance(self.paper_balance, 0)  # No additional PnL change
-            except Exception as e:
-                logger.debug(f"Account manager update failed: {e}")
-            
-            # Update current balance in session metadata for dashboard
-            self.trading_logger.update_current_balance(self.paper_balance)
-            
-            return {
-                "success": True,
-                "execution_price": execution_price,
-                "limit_price": limit_price,
-                "price_improvement": abs(current_price - execution_price),
-                "fees": fees,
-                "position_value": position_value,
-                "target_price": target_price,
-                "stop_price": stop_price,
-                "remaining_balance": self.paper_balance
-            }
-            
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Limit order simulation failed: {e}"
-            }
-    
-    def _calculate_win_probability(self, variability_analysis: Dict[str, Any], binance_analysis: Dict[str, Any],
-                                 current_price: float, support: float, resistance: float) -> float:
-        """Calculate win probability based on multiple factors"""
-        
-        # Base probability starts at 50%
-        base_probability = 0.5
-        
-        # 1. VARIABILITY SCORE CONTRIBUTION (0-20%)
-        variability_score = variability_analysis.get("current_variability_score", 0.5)
-        variability_contribution = variability_score * 0.2  # Up to 20% contribution
-        
-        # 2. TREND STRENGTH CONTRIBUTION (0-15%)
-        trend_1h = binance_analysis.get("trend_1h", {})
-        trend_strength = trend_1h.get("strength", 0.5)
-        trend_contribution = trend_strength * 0.15  # Up to 15% contribution
-        
-        # 3. MARKET CONDITION CONTRIBUTION (0-10%)
-        market_condition = binance_analysis.get("market_condition", "UNKNOWN")
-        if market_condition in ["MEDIUM_VOLATILITY_OPTIMAL", "HIGH_VOLATILITY_OPTIMAL"]:
-            market_contribution = 0.10  # Optimal conditions
-        elif market_condition == "LOW_VOLATILITY_CHOPPY":
-            market_contribution = 0.05  # Choppy conditions
-        elif market_condition in ["EXTREME_VOLATILITY_RISKY", "EXTREME_VOLATILITY_AVOID"]:
-            market_contribution = 0.02  # Risky conditions
-        else:
-            market_contribution = 0.07  # Standard conditions
-        
-        # 4. SUPPORT/RESISTANCE QUALITY CONTRIBUTION (0-10%)
-        range_size = resistance - support
-        if range_size > 0:
-            range_percentage = range_size / current_price
-            if range_percentage > 0.01:  # Good range (>1%)
-                range_contribution = 0.10
-            elif range_percentage > 0.005:  # Decent range (>0.5%)
-                range_contribution = 0.07
-            else:
-                range_contribution = 0.03  # Small range
-        else:
-            range_contribution = 0.05
-        
-        # 5. WEEKLY TREND ALIGNMENT CONTRIBUTION (0-10%)
-        weekly_context = self._apply_weekly_trend_context(current_price, support, resistance)
-        if weekly_context.get("preferred_direction") in ["BUY", "SELL"]:
-            weekly_contribution = 0.10  # Weekly trend supports our direction
-        elif weekly_context.get("risk_level") == "HIGH":
-            weekly_contribution = 0.03  # High risk weekly context
-        else:
-            weekly_contribution = 0.07  # Neutral weekly context
-        
-        # 6. VOLATILITY STRATEGY CONTRIBUTION (0-5%)
-        if self.strategy_name == "low_volatility":
-            strategy_contribution = 0.05  # Low volatility = more predictable
-        elif self.strategy_name == "high_volatility":
-            strategy_contribution = 0.02  # High volatility = less predictable
-        else:
-            strategy_contribution = 0.04  # Standard volatility
-        
-        # 7. PRICE POSITION CONTRIBUTION (0-10%)
-        # Check if price is in a good position relative to support/resistance
-        if range_size > 0:
-            price_position = (current_price - support) / range_size
-            if 0.2 < price_position < 0.8:  # Price in middle range
-                position_contribution = 0.10
-            elif 0.1 < price_position < 0.9:  # Price in good range
-                position_contribution = 0.07
-            else:
-                position_contribution = 0.03  # Price at extremes
-        else:
-            position_contribution = 0.05
-        
-        # Calculate total probability
-        total_probability = base_probability + \
-                          variability_contribution + \
-                          trend_contribution + \
-                          market_contribution + \
-                          range_contribution + \
-                          weekly_contribution + \
-                          strategy_contribution + \
-                          position_contribution
-        
-        # Ensure probability is between 0.1 and 0.95
-        total_probability = max(0.1, min(0.95, total_probability))
-        
-        return total_probability
-    
+        """Simulate limit order execution using HyperliquidSimulator"""
+        return self.hyperliquid_simulator.simulate_order_execution('LIMIT', side, size, limit_price, leverage)
     def simulate_trade_execution(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
-        """Simulate trade execution with realistic Hyperliquid slippage and fees"""
-        # Get Hyperliquid order book for realistic slippage
-        try:
-            market_data = self.hyperliquid_api.get_market_data("BTC")
-            if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
-                # Check if levels are lists (not floats)
-                if isinstance(market_data['levels'][0], list) and isinstance(market_data['levels'][1], list):
-                    bids = market_data['levels'][0]
-                    asks = market_data['levels'][1]
-                else:
-                    logger.warning("Market data levels are not in expected format")
-                    return 0.0
-                
-                if bids and asks:
-                    best_bid = float(bids[0]['px'])
-                    best_ask = float(asks[0]['px'])
-                    spread = best_ask - best_bid
-                    
-                    # Calculate realistic slippage based on order book depth
-                    if side == "BUY":
-                        execution_price = best_ask + (spread * 0.1)  # Slight slippage for buy
-                    else:
-                        execution_price = best_bid - (spread * 0.1)  # Slight slippage for sell
-                else:
-                    # Fallback slippage
-                    slippage = random.uniform(0.0001, 0.0005)
-                    if side == "BUY":
-                        execution_price = price * (1 + slippage)
-                    else:
-                        execution_price = price * (1 - slippage)
-            else:
-                # Fallback slippage
-                slippage = random.uniform(0.0001, 0.0005)
-                if side == "BUY":
-                    execution_price = price * (1 + slippage)
-                else:
-                    execution_price = price * (1 - slippage)
-        except:
-            # Fallback slippage
-            slippage = random.uniform(0.0001, 0.0005)
-            if side == "BUY":
-                execution_price = price * (1 + slippage)
-            else:
-                execution_price = price * (1 - slippage)
-        
-        # Calculate fees using Hyperliquid fee structure
-        fees = self.fee_manager.calculate_order_fees(size, execution_price, "LIMIT")
-        
-        # Calculate position value and required margin
-        position_value = size * execution_price
-        required_margin = position_value / leverage
-        
-        # Check if we have enough balance for margin + fees
-        total_required = required_margin + fees["total_cost"]
-        if total_required > self.paper_balance:
-            return {
-                "success": False,
-                "error": "Insufficient balance for position"
-            }
-        
-        # Deduct fees from balance
-        self.paper_balance -= fees["total_cost"]
-        
-        # Update account manager if available
-        if self.account_manager and self.account_manager.account_data:
-            self.account_manager.update_balance(self.paper_balance, -fees["total_cost"])
-        
-        # Update current balance in session metadata for dashboard
-        self.trading_logger.update_current_balance(self.paper_balance)
-        
-        return {
-            "success": True,
-            "execution_price": execution_price,
-            "slippage": abs(execution_price - price) / price,
-            "fees": fees,
-            "position_value": position_value,
-            "remaining_balance": self.paper_balance
-        }
-    
+        """Simulate trade execution using HyperliquidSimulator"""
+        return self.hyperliquid_simulator.simulate_order_execution('MARKET', side, size, price, leverage)
     def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
         """Place a PREDICTIVE paper trade using predicted entry points and time-based order management"""
         try:
@@ -2071,13 +630,26 @@ class YahooHyperliquidPaperTradingBot:
             logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
             logger.info(f"   Order Type: LIMIT (Lower fees than MARKET!)")
             
-            # Simulate LIMIT order execution with time-based management
-            execution_result = self.simulate_predictive_limit_order_execution(
-                side, size, limit_price, hyperliquid_price, leverage, entry_timeframe, signal_data
+            # Update simulator with real order book data
+            try:
+                orderbook = self.hyperliquid_api.get_orderbook("BTC")
+                if orderbook and not orderbook.get('error'):
+                    self.hyperliquid_simulator.update_order_book(orderbook)
+                    logger.debug("📊 Updated simulator with real order book data")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not update simulator order book: {e}")
+            
+            # Use enhanced Hyperliquid simulator for realistic order execution
+            execution_result = self.hyperliquid_simulator.simulate_order_execution(
+                order_type="LIMIT",
+                side=side,
+                size=size,
+                price=limit_price,
+                leverage=leverage
             )
             
-            if not execution_result["success"]:
-                error_msg = f"Paper trade failed: {execution_result['error']}"
+            if not execution_result.get("success", False):
+                error_msg = f"Paper trade failed: {execution_result.get('error', 'Unknown error')}"
                 logger.error(f"❌ {error_msg}")
                 
                 # Log error to JSON file
@@ -2097,17 +669,17 @@ class YahooHyperliquidPaperTradingBot:
             position = {
                 "trade_id": f"hybrid_trade_{len(self.trade_history) + 1}",
                 "side": side,
-                "entry_price": execution_result["execution_price"],
-                "limit_price": execution_result["limit_price"],
+                "entry_price": execution_result.get("execution_price", limit_price),
+                "limit_price": limit_price,
                 "size": size,
                 "leverage": leverage,
                 "entry_time": time.time(),
                 "entry_datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "fees": execution_result["fees"],
+                "fees": execution_result.get("fees", {"fee_amount": 0, "fee_type": "maker"}),
                 "signal_data": signal_data,
-                "target_price": execution_result["target_price"],
-                "stop_price": execution_result["stop_price"],
-                "current_stop_loss": execution_result["stop_price"],  # Initialize dynamic stop
+                "target_price": hyperliquid_price * 1.02 if side == "BUY" else hyperliquid_price * 0.98,  # 2% target
+                "stop_price": hyperliquid_price * 0.98 if side == "BUY" else hyperliquid_price * 1.02,  # 2% stop
+                "current_stop_loss": hyperliquid_price * 0.98 if side == "BUY" else hyperliquid_price * 1.02,
                 "status": "OPEN",
                 "order_type": "PREDICTIVE_LIMIT",
                 "prediction_type": prediction_type,
@@ -2147,13 +719,13 @@ class YahooHyperliquidPaperTradingBot:
                 "datetime": time.strftime("%Y-%m-%dT%H:%M:%S.%f"),
                 "trade_id": position["trade_id"],
                 "side": side,
-                "price": execution_result["execution_price"],
-                "limit_price": execution_result["limit_price"],
+                "price": execution_result.get("execution_price", limit_price),
+                "limit_price": limit_price,
                 "size": size,
                 "leverage": leverage,
                 "order_type": "LIMIT",
-                "fees": execution_result["fees"],
-                "price_improvement": execution_result["price_improvement"],
+                "fees": execution_result.get("fees", {"fee_amount": 0, "fee_type": "maker"}),
+                "price_improvement": execution_result.get("slippage", 0),
                 "signal_data": signal_data,
                 "order_result": {"status": "ok", "paper_trade": True, "hybrid": True, "limit_order": True},
                 "hyperliquid_price": hyperliquid_price,
@@ -2164,14 +736,18 @@ class YahooHyperliquidPaperTradingBot:
                 "variability_score": signal_data.get("variability_analysis", {}).get("current_variability_score") if signal_data else None,
                 "market_condition": signal_data.get("binance_analysis", {}).get("market_condition") if signal_data else None,
                 "signal_reason": signal_data.get("reason") if signal_data else None,
-                "profit_target": execution_result["target_price"],
-                "stop_loss": execution_result["stop_price"],
+                "profit_target": position["target_price"],
+                "stop_loss": position["stop_price"],
                 "risk_level": signal_data.get("variability_analysis", {}).get("risk_level") if signal_data else "STANDARD",
                 "strategy": self.strategy_name
             }
             
             # Log the trade
             self.trading_logger.log_trade(trade_data)
+            
+            # Add trade to session manager
+            if hasattr(self, 'session_manager'):
+                self.session_manager.add_session_trade(trade_data)
             
             # Trade and balance updates handled by AccountManager (SimpleRTM integration)
             
@@ -2183,19 +759,18 @@ class YahooHyperliquidPaperTradingBot:
                 logger.success(f"✅ PREDICTIVE {side} LIMIT trade placed successfully!")
                 logger.info(f"   Prediction Type: {prediction_type}")
                 logger.info(f"   Prediction Confidence: {prediction_confidence:.1f}%")
-                logger.info(f"   Predicted Entry: ${execution_result['limit_price']:,.2f}")
-                logger.info(f"   Actual Execution: ${execution_result['execution_price']:,.2f}")
-                logger.info(f"   Time to Execution: {execution_result.get('time_to_execution', 0):.1f}s")
+                logger.info(f"   Predicted Entry: ${limit_price:,.2f}")
+                logger.info(f"   Actual Execution: ${execution_result.get('execution_price', limit_price):,.2f}")
                 logger.info(f"   Entry Timeframe: {entry_timeframe} minutes")
             else:
                 logger.success(f"✅ HYBRID PAPER {side} LIMIT trade placed successfully!")
-                logger.info(f"   Limit Price: ${execution_result['limit_price']:,.2f}")
-                logger.info(f"   Execution Price: ${execution_result['execution_price']:,.2f}")
+                logger.info(f"   Limit Price: ${limit_price:,.2f}")
+                logger.info(f"   Execution Price: ${execution_result.get('execution_price', limit_price):,.2f}")
             
-            logger.info(f"   Position Value: ${execution_result['position_value']:,.2f}")
-            logger.info(f"   Price Improvement: ${execution_result['price_improvement']:,.2f}")
-            logger.info(f"   Fees: ${execution_result['fees']['total_cost']:.4f} (LIMIT ORDER - MUCH LOWER!)")
-            logger.info(f"   Remaining Balance: ${execution_result['remaining_balance']:.2f}")
+            logger.info(f"   Position Value: ${position_value_usd:,.2f}")
+            logger.info(f"   Slippage: {execution_result.get('slippage', 0)*100:.3f}%")
+            logger.info(f"   Fees: ${execution_result.get('fees', {}).get('fee_amount', 0):.4f} ({execution_result.get('fees', {}).get('fee_type', 'maker')})")
+            logger.info(f"   Remaining Balance: ${self.paper_balance:.2f}")
             
             return True
                 
@@ -2309,191 +884,60 @@ class YahooHyperliquidPaperTradingBot:
         for position, exit_reason, exit_price in positions_to_close:
             self.close_paper_position(position, exit_reason, exit_price)
     
-    def _execute_partial_close(self, position: Dict[str, Any], partial_close_decision: Dict[str, Any], current_price: float):
-        """Execute partial close of a position"""
-        try:
-            close_size = partial_close_decision["close_size"]
-            close_pct = partial_close_decision["close_pct"]
-            target_level = partial_close_decision["target_level"]
-            
-            # Calculate P&L for the closed portion
-            entry_price = position["entry_price"]
-            side = position["side"]
-            
-            if side == "BUY":
-                pnl_pct = (current_price - entry_price) / entry_price
-            else:
-                pnl_pct = (entry_price - current_price) / entry_price
-            
-            # Apply leverage
-            leverage = position["leverage"]
-            pnl_amount = close_size * entry_price * leverage * pnl_pct
-            
-            # Calculate fees
-            exit_fees = self.fee_manager.calculate_order_fees(close_size, current_price, "LIMIT")
-            
-            # Net P&L for partial close
-            net_pnl = pnl_amount - exit_fees["total_cost"]
-            
-            # Update balance
-            self.paper_balance += net_pnl
-            
-            # Update account manager if available
-            try:
-                from core.account_manager import account_manager
-                account_manager.update_balance(self.paper_balance, net_pnl)
-            except Exception as e:
-                logger.debug(f"Account manager update failed: {e}")
-            
-            # Update current balance in session metadata for dashboard
-            self.trading_logger.update_current_balance(self.paper_balance)
-            
-            # Update position size
-            position["size"] -= close_size
-            
-            # Record partial close
-            partial_close_record = {
-                "timestamp": time.time(),
-                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "close_size": close_size,
-                "close_pct": close_pct,
-                "close_price": current_price,
-                "target_level": target_level,
-                "pnl_pct": pnl_pct,
-                "pnl_amount": pnl_amount,
-                "net_pnl": net_pnl,
-                "fees": exit_fees
-            }
-            
-            position["partial_closes"].append(partial_close_record)
-            
-            # Log the partial close
-            logger.success(f"💰 Partial close executed: {target_level}")
-            logger.info(f"   Closed: {close_size} BTC ({close_pct*100:.0f}% of position)")
-            logger.info(f"   Price: ${current_price:,.2f}")
-            logger.info(f"   P&L: {pnl_pct*100:.2f}% (${net_pnl:.4f})")
-            logger.info(f"   Remaining size: {position['size']} BTC")
-            logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
-            
-            # Save updated positions
-            trade_state_manager.save_open_positions(self.open_positions)
-            
-        except Exception as e:
-            logger.error(f"❌ Error executing partial close: {e}")
-            self.trading_logger.log_error({
-                "type": "partial_close_error",
-                "message": str(e),
-                "position_id": position.get("trade_id"),
-                "partial_close_decision": partial_close_decision
-            })
-    
-    def _execute_scale_in(self, position: Dict[str, Any], scale_decision: Dict[str, Any], current_price: float):
-        """Execute scaling into an existing position"""
-        try:
-            scale_size = scale_decision["scale_size"]
-            scale_price = scale_decision["scale_price"]
-            
-            # Check if we have enough balance for the scale-in
-            position_value = scale_size * scale_price
-            leverage = position["leverage"]
-            required_margin = position_value / leverage
-            
-            # Calculate fees
-            fees = self.fee_manager.calculate_order_fees(scale_size, scale_price, "LIMIT")
-            total_required = required_margin + fees["total_cost"]
-            
-            if total_required > self.paper_balance:
-                logger.warning(f"⚠️ Insufficient balance for scale-in: need ${total_required:.2f}, have ${self.paper_balance:.2f}")
-                return
-            
-            # Deduct fees from balance
-            self.paper_balance -= fees["total_cost"]
-            
-            # Update account manager if available (balance already updated above)
-            try:
-                from core.account_manager import account_manager
-                account_manager.update_balance(self.paper_balance, 0)  # No additional PnL change
-            except Exception as e:
-                logger.debug(f"Account manager update failed: {e}")
-            
-            # Update current balance in session metadata for dashboard
-            self.trading_logger.update_current_balance(self.paper_balance)
-            
-            # Update position with scaled-in size
-            original_size = position["size"]
-            position["size"] += scale_size
-            
-            # Calculate new average entry price
-            original_value = original_size * position["entry_price"]
-            scale_value = scale_size * scale_price
-            total_value = original_value + scale_value
-            new_avg_entry = total_value / position["size"]
-            
-            # Update position entry price to weighted average
-            position["entry_price"] = new_avg_entry
-            
-            # Record scale-in
-            scale_record = {
-                "timestamp": time.time(),
-                "datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
-                "scale_size": scale_size,
-                "scale_price": scale_price,
-                "original_size": original_size,
-                "new_size": position["size"],
-                "original_entry": position["entry_price"],
-                "new_avg_entry": new_avg_entry,
-                "fees": fees
-            }
-            
-            if "scale_ins" not in position:
-                position["scale_ins"] = []
-            position["scale_ins"].append(scale_record)
-            
-            # Log the scale-in
-            logger.success(f"📈 Scale-in executed successfully")
-            logger.info(f"   Added: {scale_size} BTC at ${scale_price:,.2f}")
-            logger.info(f"   New total size: {position['size']} BTC")
-            logger.info(f"   New avg entry: ${new_avg_entry:,.2f}")
-            logger.info(f"   Fees: ${fees['total_cost']:.4f}")
-            logger.info(f"   Remaining balance: ${self.paper_balance:.2f}")
-            
-            # Save updated positions
-            trade_state_manager.save_open_positions(self.open_positions)
-            
-        except Exception as e:
-            logger.error(f"❌ Error executing scale-in: {e}")
-            self.trading_logger.log_error({
-                "type": "scale_in_error",
-                "message": str(e),
-                "position_id": position.get("trade_id"),
-                "scale_decision": scale_decision
-            })
-    
     def close_paper_position(self, position: Dict, exit_reason: str, exit_price: float):
-        """Close a paper trading position"""
+        """Close a paper trading position using enhanced Hyperliquid simulator"""
         entry_price = position["entry_price"]
         side = position["side"]
         size = position["size"]
         leverage = position["leverage"]
         
+        # Update simulator with real order book data
+        try:
+            orderbook = self.hyperliquid_api.get_orderbook("BTC")
+            if orderbook and not orderbook.get('error'):
+                self.hyperliquid_simulator.update_order_book(orderbook)
+                logger.debug("📊 Updated simulator with real order book data for position close")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not update simulator order book: {e}")
+        
+        # Use enhanced Hyperliquid simulator for realistic exit execution
+        exit_side = "SELL" if side == "BUY" else "BUY"  # Opposite of entry
+        execution_result = self.hyperliquid_simulator.simulate_order_execution(
+            order_type="MARKET",  # Market order for exit
+            side=exit_side,
+            size=size,
+            leverage=leverage
+        )
+        
+        if not execution_result.get("success", False):
+            logger.error(f"❌ Position close failed: {execution_result.get('error', 'Unknown error')}")
+            return False
+        
+        # Use execution price from simulator or fallback to provided exit price
+        actual_exit_price = execution_result.get("execution_price", exit_price)
+        
         # Calculate P&L
         if side == "BUY":
-            price_change = (exit_price - entry_price) / entry_price
+            price_change = (actual_exit_price - entry_price) / entry_price
         else:
-            price_change = (entry_price - exit_price) / entry_price
+            price_change = (entry_price - actual_exit_price) / entry_price
         
         # Apply leverage
         pnl_pct = price_change * leverage
         pnl_amount = size * entry_price * leverage * pnl_pct
         
-        # Calculate fees
-        exit_fees = self.fee_manager.calculate_order_fees(size, exit_price, "LIMIT")
-        # Handle both old format (float) and new format (dict)
-        if isinstance(position["fees"], dict):
-            entry_fees = position["fees"]["total_cost"]
+        # Calculate fees using simulator results
+        exit_fees = execution_result.get("fees", {"fee_amount": 0, "fee_type": "taker"})
+        exit_fee_amount = exit_fees.get("fee_amount", 0) if isinstance(exit_fees, dict) else exit_fees
+        
+        # Handle entry fees from position
+        entry_fees = position.get("fees", {})
+        if isinstance(entry_fees, dict):
+            entry_fee_amount = entry_fees.get("fee_amount", 0)
         else:
-            entry_fees = position["fees"] or 0.0
-        total_fees = entry_fees + exit_fees["total_cost"]
+            entry_fee_amount = entry_fees or 0.0
+        
+        total_fees = entry_fee_amount + exit_fee_amount
         
         # Net P&L
         net_pnl = pnl_amount - total_fees
@@ -2505,12 +949,16 @@ class YahooHyperliquidPaperTradingBot:
         if self.account_manager and self.account_manager.account_data:
             self.account_manager.update_balance(self.paper_balance, net_pnl)
         
+        # Update session manager with new balance
+        if hasattr(self, 'session_manager'):
+            self.session_manager.update_session_balance(self.paper_balance, f"Position closed: {exit_reason}")
+        
         # Update current balance in session metadata for dashboard
         self.trading_logger.update_current_balance(self.paper_balance)
         
         # Update position
         position.update({
-            "exit_price": exit_price,
+            "exit_price": actual_exit_price,
             "exit_time": time.time(),
             "exit_datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
             "exit_reason": exit_reason,
@@ -2519,7 +967,8 @@ class YahooHyperliquidPaperTradingBot:
             "total_fees": total_fees,
             "net_pnl": net_pnl,
             "status": "CLOSED",
-            "was_profitable": net_pnl > 0
+            "was_profitable": net_pnl > 0,
+            "execution_result": execution_result
         })
         
         # Move to closed positions
@@ -2531,7 +980,7 @@ class YahooHyperliquidPaperTradingBot:
             "trade_id": position["trade_id"],
             "side": position["side"],
             "entry_price": position["entry_price"],
-            "exit_price": exit_price,
+            "exit_price": actual_exit_price,
             "size": position["size"],
             "leverage": position["leverage"],
             "confidence": position.get("confidence", 0),
@@ -2550,7 +999,8 @@ class YahooHyperliquidPaperTradingBot:
             "is_winback_trade": position.get("is_winback_trade", False),
             "winback_data": position.get("winback_data", {}),
             "timestamp": time.time(),
-            "strategy": position.get("strategy", self.strategy_name)
+            "strategy": position.get("strategy", self.strategy_name),
+            "execution_result": execution_result
         }
         
         # Update account manager with open positions
@@ -2565,12 +1015,12 @@ class YahooHyperliquidPaperTradingBot:
         # Close position using trade state manager
         entry_amount = size * entry_price
         exit_data = {
-            "exit_price": exit_price,
+            "exit_price": actual_exit_price,
             "exit_time": time.time(),
             "exit_reason": exit_reason,
             "pnl": net_pnl,
             "pnl_pct": (net_pnl / entry_amount) * 100 if entry_amount > 0 else 0,
-            "fees": exit_fees["total_cost"]
+            "fees": exit_fee_amount
         }
         
         # Use trade state manager to close position
@@ -2587,9 +1037,10 @@ class YahooHyperliquidPaperTradingBot:
         position_value_usd = size * entry_price
         
         logger.info(f"📊 Position closed: {position['trade_id']}")
-        logger.info(f"   {side} {size} BTC (${position_value_usd:,.2f}) @ ${entry_price:,.2f} → ${exit_price:,.2f}")
+        logger.info(f"   {side} {size} BTC (${position_value_usd:,.2f}) @ ${entry_price:,.2f} → ${actual_exit_price:,.2f}")
         logger.info(f"   P&L: {pnl_pct*100:.2f}% (${pnl_amount:.4f})")
         logger.info(f"   Net P&L: ${net_pnl:.4f} (fees: ${total_fees:.4f})")
+        logger.info(f"   Slippage: {execution_result.get('slippage', 0)*100:.3f}%")
         logger.info(f"   Reason: {exit_reason}")
         logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
     
@@ -2631,8 +1082,8 @@ class YahooHyperliquidPaperTradingBot:
             logger.info("🧹 SimpleRTM presentation data cleared - Fresh session data")
             
             # Start session via SessionManager (which updates SimpleRTM)
-            session_manager = SessionManager()
-            session_id = session_manager.start_session(
+            self.session_manager = SessionManager()
+            session_id = self.session_manager.start_session(
                 session_id=f"bot_session_{int(time.time())}",
                 strategy=self.strategy_name,
                 initial_balance=self.initial_balance
@@ -2918,18 +1369,10 @@ class YahooHyperliquidPaperTradingBot:
                 self.close_paper_position(position, "SESSION_END", hyperliquid_price)
         
         logger.info("=" * 50)
-        # Stop advanced monitoring systems
-        if self.dynamic_stop_manager:
-            self.dynamic_stop_manager.stop_monitoring()
-            logger.info("🛡️ Dynamic stop monitoring stopped")
+        # Advanced monitoring systems removed for simplicity
         
         # End SimpleRTM session
         try:
-            from core.data.simple_rtm import simple_rtm
-            simple_rtm.update_session({
-                "status": "COMPLETED",
-                "end_time": datetime.now().isoformat()
-            })
             self._update_simple_rtm_activity("🏁 Trading session completed", "SUCCESS")
             logger.info("📊 SimpleRTM session ended")
         except Exception as e:
@@ -2977,11 +1420,6 @@ class YahooHyperliquidPaperTradingBot:
             
             # End SimpleRTM session
             try:
-                from core.data.simple_rtm import simple_rtm
-                simple_rtm.update_session({
-                    "status": "COMPLETED",
-                    "end_time": datetime.now().isoformat()
-                })
                 self._update_simple_rtm_activity("🏁 Trading session closed gracefully", "SUCCESS")
                 logger.info("📊 SimpleRTM session ended")
             except Exception as e:
@@ -3025,6 +1463,119 @@ class YahooHyperliquidPaperTradingBot:
             logger.debug(f"✅ SimpleRTM signal added: {signal_data.get('type', 'UNKNOWN')}")
         except Exception as e:
             logger.debug(f"❌ Could not update SimpleRTM signal: {e}")
+
+    def get_weekly_trend_analysis(self) -> Dict[str, Any]:
+        """Get weekly trend analysis from Yahoo Finance"""
+        try:
+            # Get weekly data from Yahoo Finance
+            weekly_data = self.yahoo_fetcher.get_klines("BTC", "1d", 7)
+            if not weekly_data or len(weekly_data) < 2:
+                return {"error": "Insufficient weekly data"}
+            
+            # Calculate weekly trend
+            first_price = weekly_data[0].get("close", 0)
+            last_price = weekly_data[-1].get("close", 0)
+            weekly_change = ((last_price - first_price) / first_price) * 100 if first_price > 0 else 0
+            
+            # Determine trend direction
+            if weekly_change > 2:
+                trend = "BULLISH"
+            elif weekly_change < -2:
+                trend = "BEARISH"
+            else:
+                trend = "SIDEWAYS"
+            
+            return {
+                "weekly_trend": trend,
+                "weekly_change_pct": weekly_change,
+                "first_price": first_price,
+                "last_price": last_price,
+                "data_points": len(weekly_data)
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to get weekly trend analysis: {e}")
+            return {"error": str(e)}
+
+    def _calculate_smart_limit_price(self, side: str, current_price: float) -> float:
+        """Calculate smart limit price based on side and current price"""
+        try:
+            # Simple smart limit calculation
+            if side == "BUY":
+                # Buy slightly below current price for better fill
+                return current_price * 0.9995  # 0.05% below
+            else:
+                # Sell slightly above current price for better fill
+                return current_price * 1.0005  # 0.05% above
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate smart limit price: {e}")
+            return current_price
+
+    def _auto_detect_strategy(self, binance_analysis: Dict[str, Any], current_price: float) -> str:
+        """Auto-detect strategy based on market conditions"""
+        try:
+            # Simple strategy detection based on volatility
+            volatility_5m = binance_analysis.get("volatility_5m", 0.0)
+            
+            if volatility_5m > 0.05:  # High volatility
+                return "high_volatility"
+            elif volatility_5m < 0.02:  # Low volatility
+                return "low_volatility"
+            else:
+                return "standard"  # Default strategy
+        except Exception as e:
+            logger.error(f"❌ Failed to auto-detect strategy: {e}")
+            return "standard"  # Fallback to standard
+
+    def _execute_partial_close(self, position: Dict, partial_close_decision: Dict, current_price: float):
+        """Execute partial close of position"""
+        try:
+            # Simple partial close implementation
+            close_percentage = partial_close_decision.get("close_percentage", 0.5)
+            close_size = position["size"] * close_percentage
+            
+            logger.info(f"💰 Partial close: {close_percentage*100:.1f}% of position {position['trade_id']}")
+            logger.info(f"   Close size: {close_size} BTC")
+            logger.info(f"   Reason: {partial_close_decision.get('reason', 'Unknown')}")
+            
+            # Update position size
+            position["size"] -= close_size
+            position["partial_closes"].append({
+                "size": close_size,
+                "price": current_price,
+                "timestamp": time.time(),
+                "reason": partial_close_decision.get("reason", "Unknown")
+            })
+            
+            # Log partial close
+            self._update_simple_rtm_activity(f"💰 Partial close: {close_percentage*100:.1f}% of {position['trade_id']}", "INFO")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to execute partial close: {e}")
+
+    def _execute_scale_in(self, position: Dict, scale_decision: Dict, current_price: float):
+        """Execute scale-in to position"""
+        try:
+            # Simple scale-in implementation
+            scale_size = scale_decision.get("scale_size", position["size"] * 0.5)
+            scale_price = current_price
+            
+            logger.info(f"📈 Scale-in: {scale_size} BTC to position {position['trade_id']}")
+            logger.info(f"   Scale price: ${scale_price:,.2f}")
+            logger.info(f"   Reason: {scale_decision.get('reason', 'Unknown')}")
+            
+            # Update position (simple average price calculation)
+            total_size = position["size"] + scale_size
+            total_value = (position["size"] * position["entry_price"]) + (scale_size * scale_price)
+            new_entry_price = total_value / total_size if total_size > 0 else position["entry_price"]
+            
+            position["size"] = total_size
+            position["entry_price"] = new_entry_price
+            
+            # Log scale-in
+            self._update_simple_rtm_activity(f"📈 Scale-in: {scale_size} BTC to {position['trade_id']}", "INFO")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to execute scale-in: {e}")
 
 
 def main():
