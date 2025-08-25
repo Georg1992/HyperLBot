@@ -11,8 +11,7 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from datetime import datetime
 
-from core.data.realtime_data_store import realtime_data_store
-from core.data.database_manager import database_manager
+from core.data.simple_rtm import simple_rtm
 
 
 class SessionManager:
@@ -53,10 +52,7 @@ class SessionManager:
                 # Close any existing session first
                 self._close_existing_session()
                 
-                # Reset data store to fresh session state
-                realtime_data_store.reset_session(session_id, strategy, initial_balance)
-                
-                # Initialize session in data store
+                # Initialize session in SimpleRTM
                 session_data = {
                     "session_id": session_id,
                     "start_time": datetime.now().isoformat(),
@@ -64,40 +60,27 @@ class SessionManager:
                     "strategy": strategy,
                     "initial_balance": initial_balance,
                     "current_balance": initial_balance,
-                    "balance_change": 0.0,
-                    "balance_change_pct": 0.0,
-                    "last_balance_update": datetime.now().isoformat(),
-                    "bot_version": "Advanced Trading Bot v4.0",
                     "total_trades": 0,
                     "winning_trades": 0,
                     "losing_trades": 0,
                     "total_pnl": 0.0,
-                    "realized_pnl": 0.0,
-                    "unrealized_pnl": 0.0,
-                    "max_drawdown": 0.0,
-                    "win_rate": 0.0,
-                    "avg_win": 0.0,
-                    "avg_loss": 0.0,
-                    "sharpe_ratio": 0.0,
-                    "total_volume": 0.0,
-                    "total_fees": 0.0
+                    "win_rate": 0.0
                 }
                 
-                realtime_data_store.update_session_data(session_data)
+                simple_rtm.update_session(session_data)
                 
-                # Save session to database
-                database_manager.save_session({
-                    "session_id": session_id,
-                    "start_time": session_data["start_time"],
-                    "strategy": strategy,
+                # Update account data in SimpleRTM
+                account_data = {
+                    "current_balance": initial_balance,
                     "initial_balance": initial_balance,
-                    "final_balance": initial_balance,  # Will be updated on close
-                    "balance_change": 0.0,
-                    "balance_change_pct": 0.0,
                     "total_trades": 0,
                     "winning_trades": 0,
                     "losing_trades": 0,
-                    "status": "ACTIVE"
+                    "total_pnl": 0.0,
+                    "win_rate": 0.0
+                }
+                
+                simple_rtm.update_account(account_data)
                 })
                 
                 self.current_session_id = session_id
@@ -116,6 +99,9 @@ class SessionManager:
                     "market_condition": "STARTING",
                     "data_source": "session_initialization"
                 })
+                
+                # Update SimpleRTM with session data
+                self._update_simple_rtm_session(session_data)
                 
                 logger.success(f"🚀 Trading session started: {session_id} ({strategy})")
                 return session_id
@@ -145,8 +131,8 @@ class SessionManager:
                     logger.warning("⚠️ No active session to close")
                     return False
                 
-                # Get current session data
-                session_data = realtime_data_store.get_session_data()
+                # Get current session data from SimpleRTM
+                session_data = simple_rtm.get_dashboard_data()["session"]
                 
                 # Mark session as completed
                 end_time = datetime.now().isoformat()
@@ -160,32 +146,11 @@ class SessionManager:
                     duration = end_time_dt - start_time
                     session_data["duration_minutes"] = round(duration.total_seconds() / 60, 2)
                 
-                # Update session in data store
-                realtime_data_store.update_session_data(session_data)
-                realtime_data_store.set_session_status("COMPLETED")
-                
-                # Save final session state to database
-                database_manager.save_session({
-                    "session_id": session_data["session_id"],
-                    "start_time": session_data.get("start_time"),
-                    "end_time": end_time,
-                    "strategy": session_data.get("strategy"),
-                    "initial_balance": session_data.get("initial_balance"),
-                    "final_balance": session_data.get("current_balance"),
-                    "balance_change": session_data.get("balance_change"),
-                    "balance_change_pct": session_data.get("balance_change_pct"),
-                    "total_trades": session_data.get("total_trades"),
-                    "winning_trades": session_data.get("winning_trades"),
-                    "losing_trades": session_data.get("losing_trades"),
-                    "status": "COMPLETED"
-                })
+                # Update session in SimpleRTM
+                simple_rtm.update_session(session_data)
                 
                 # Add completion activity
-                realtime_data_store.add_activity_record({
-                    "message": f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes",
-                    "type": "session_end",
-                    "level": "SUCCESS"
-                })
+                simple_rtm.add_activity(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes", "SUCCESS", "session")
                 
                 logger.success(f"✅ Session ended: {self.current_session_id}")
                 logger.info(f"   Duration: {session_data.get('duration_minutes', 0):.1f} minutes")
@@ -237,12 +202,50 @@ class SessionManager:
                 return None
             
             try:
-                session_data = realtime_data_store.get_session_data()
+                session_data = simple_rtm.get_dashboard_data()["session"]
                 return session_data
                 
             except Exception as e:
                 logger.error(f"Error getting session info: {e}")
                 return None
+    
+    def get_current_session_data(self) -> Dict[str, Any]:
+        """Get current session data for dashboard"""
+        with self.session_lock:
+            try:
+                if not self.current_session_id:
+                    return {
+                        "session_id": "no_session",
+                        "start_time": datetime.now().isoformat(),
+                        "status": "INACTIVE",
+                        "strategy": "none",
+                        "initial_balance": 0.0,
+                        "current_balance": 0.0,
+                        "balance_change": 0.0,
+                        "balance_change_pct": 0.0,
+                        "total_trades": 0,
+                        "winning_trades": 0,
+                        "losing_trades": 0
+                    }
+                
+                session_data = simple_rtm.get_dashboard_data()["session"]
+                return session_data
+                
+            except Exception as e:
+                logger.error(f"Error getting session data: {e}")
+                return {
+                    "session_id": "error",
+                    "start_time": datetime.now().isoformat(),
+                    "status": "ERROR",
+                    "strategy": "error",
+                    "initial_balance": 0.0,
+                    "current_balance": 0.0,
+                    "balance_change": 0.0,
+                    "balance_change_pct": 0.0,
+                    "total_trades": 0,
+                    "winning_trades": 0,
+                    "losing_trades": 0
+                }
     
     def is_session_active(self) -> bool:
         """Check if there's an active session"""
@@ -255,8 +258,8 @@ class SessionManager:
                 if not self.current_session_id:
                     return {"error": "No active session"}
                 
-                session_data = realtime_data_store.get_session_data()
-                recent_trades = realtime_data_store.get_recent_trades(50)
+                session_data = simple_rtm.get_dashboard_data()["session"]
+                recent_trades = simple_rtm.get_dashboard_data()["trades"]
                 
                 # Calculate additional statistics
                 if recent_trades:
@@ -287,18 +290,16 @@ class SessionManager:
                     logger.warning("⚠️ No active session to update balance")
                     return
                 
-                # Update balance in data store
-                realtime_data_store.update_balance(new_balance, reason)
+                # Update balance in SimpleRTM
+                account_data = simple_rtm.get_dashboard_data()["account"]
+                account_data["current_balance"] = new_balance
+                simple_rtm.update_account(account_data)
                 
                 # Add activity record
-                session_data = realtime_data_store.get_session_data()
-                balance_change = session_data.get("balance_change", 0)
+                session_data = simple_rtm.get_dashboard_data()["session"]
+                balance_change = new_balance - session_data.get("initial_balance", 0)
                 
-                realtime_data_store.add_activity_record({
-                    "message": f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}",
-                    "type": "balance_update",
-                    "level": "INFO"
-                })
+                simple_rtm.add_activity(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}", "INFO", "account")
                 
                 logger.debug(f"💰 Session balance updated: ${new_balance:.2f} - {reason}")
                 
@@ -313,30 +314,36 @@ class SessionManager:
                     logger.warning("⚠️ No active session to add trade")
                     return
                 
-                # Add trade to data store
-                realtime_data_store.add_trade_record(trade_data)
-                
-                # Save trade to database
-                database_manager.save_trade(trade_data)
+                # Add trade to SimpleRTM
+                simple_rtm.add_trade(trade_data)
                 
                 # Update session statistics
-                session_data = realtime_data_store.get_session_data()
+                session_data = simple_rtm.get_dashboard_data()["session"]
                 
                 # Add trade activity
                 side = trade_data.get("side", "UNKNOWN")
                 pnl = trade_data.get("pnl", 0)
                 pnl_pct = trade_data.get("pnl_pct", 0)
                 
-                realtime_data_store.add_activity_record({
-                    "message": f"📊 Trade completed: {side} {pnl:+.2f} ({pnl_pct*100:+.1f}%)",
-                    "type": "trade_completed",
-                    "level": "SUCCESS" if trade_data.get("was_profitable", False) else "WARNING"
-                })
+                simple_rtm.add_activity(f"📊 Trade completed: {side} {pnl:+.2f} ({pnl_pct*100:+.1f}%)", "SUCCESS" if trade_data.get("was_profitable", False) else "WARNING", "trade")
                 
                 logger.info(f"📊 Trade added to session: {trade_data.get('trade_id')}")
                 
             except Exception as e:
                 logger.error(f"Error adding trade to session: {e}")
+    
+    def _update_simple_rtm_session(self, session_data: Dict[str, Any]):
+        """Update SimpleRTM with session data"""
+        try:
+            from core.data.simple_rtm import simple_rtm
+            
+            # Update SimpleRTM with session data
+            simple_rtm.update_session(session_data)
+            
+            logger.debug(f"✅ SimpleRTM updated with session: {session_data.get('session_id', 'unknown')}")
+            
+        except Exception as e:
+            logger.debug(f"❌ Could not update SimpleRTM with session: {e}")
 
 
 # Global instance (singleton)

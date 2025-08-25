@@ -114,7 +114,7 @@ class SingleInstanceManager:
             return None
             
         except Exception as e:
-            logger.debug(f"Error getting running instance info: {e}")
+            logger.debug(f"Error getting running instance info: {type(e).__name__}: {e}")
             return None
     
     def _read_lock_file(self) -> Optional[Dict[str, Any]]:
@@ -142,11 +142,23 @@ class SingleInstanceManager:
     def _is_process_running(self, pid: int) -> bool:
         """Check if process with given PID is running"""
         try:
-            # On Windows, this will raise an exception if the process doesn't exist
-            # On Unix-like systems, signal 0 just checks if the process exists
-            os.kill(pid, 0)
-            return True
-        except (OSError, ProcessLookupError):
+            import platform
+            if platform.system() == "Windows":
+                # Windows-specific process check
+                import subprocess
+                result = subprocess.run(['tasklist', '/FI', f'PID eq {pid}'], 
+                                      capture_output=True, text=True, timeout=2)
+                return str(pid) in result.stdout
+            else:
+                # Unix-like systems
+                os.kill(pid, 0)
+                return True
+        except (OSError, ProcessLookupError, ValueError, subprocess.TimeoutExpired):
+            # Process doesn't exist or check failed
+            return False
+        except Exception as e:
+            # Only log unexpected errors
+            logger.debug(f"Unexpected error checking PID {pid}: {e}")
             return False
     
     def __enter__(self):

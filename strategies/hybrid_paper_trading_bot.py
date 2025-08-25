@@ -8,20 +8,14 @@ import time
 import json
 import random
 import statistics
+import os
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 from loguru import logger
-import sys
-import os
 import urllib3
 
 # Disable SSL warnings globally
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-
-
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.hyperliquid_api import HyperliquidAPI
 from data.yahoo_data_fetcher import YahooDataFetcher
@@ -31,7 +25,6 @@ from core.trade_state_manager import trade_state_manager
 from strategies.fee_manager import FeeManager
 from strategies.variability_analyzer import VariabilityAnalyzer
 from core.trading_logger import TradingLogger
-from strategies.whale_integration import WhaleIntegration, integrate_whale_analytics_into_signal
 from strategies.prediction_engine import PredictionEngine
 from strategies.trade_manager import TradeManager
 
@@ -44,13 +37,6 @@ class YahooHyperliquidPaperTradingBot:
         self.yahoo_fetcher = YahooDataFetcher()
         self.connected = False
         self.balance_mode = balance_mode  # "real" or "simulated"
-        
-        # Essential system attributes
-        self.smart_data_cache = None
-        self.trading_data_manager = None
-        self.dynamic_stop_manager = None
-        self.global_volume_aggregator = None
-        self.blockchain_analyzer = None
         
         # Paper trading state
         self.paper_balance = initial_balance or constants.DEFAULT_INITIAL_BALANCE
@@ -94,67 +80,20 @@ class YahooHyperliquidPaperTradingBot:
         # Clean up old sessions
         self.trading_logger.cleanup_old_sessions(keep_sessions=constants.MAX_SESSIONS_TO_KEEP)
         
-        # Whale analytics integration
-        self.whale_integration = WhaleIntegration(enabled=self.config.WHALE_ANALYTICS_ENABLED)
-        
         # Prediction engine
         self.prediction_engine = PredictionEngine(self.strategy_config)
         
         # Advanced trade manager
         self.trade_manager = TradeManager(self.strategy_config)
         
-        # Initialize advanced trading systems
+        # Initialize account manager
         try:
-            from strategies.dynamic_stop_manager import DynamicStopManager, GlobalVolumeAggregator, BlockchainDataAnalyzer
-            from core.realtime_data_manager import trading_data_manager
-            from core.smart_data_cache import SmartDataCache
             from core.account_manager import account_manager
-            
-            self.dynamic_stop_manager = DynamicStopManager(self.strategy_config)
-            self.global_volume_aggregator = GlobalVolumeAggregator()
-            self.blockchain_analyzer = BlockchainDataAnalyzer()
-            
-            # Professional data management
-            self.trading_data_manager = trading_data_manager
             self.account_manager = account_manager
-            # Note: SmartDataCache will be initialized AFTER API connection test
-            
-            logger.success("🔥 Advanced trading systems initialized successfully")
-                
-            # Initialize Real-Time P&L Tracker
-            from strategies.realtime_pnl_tracker import RealTimePnLTracker
-            self.pnl_tracker = RealTimePnLTracker(initial_balance=self.paper_balance)
-            logger.success("💰 Real-Time P&L Tracker activated")
-                
-            # Initialize Active Position Manager
-            from strategies.active_position_manager import ActivePositionManager
-            self.active_position_manager = ActivePositionManager()
-            # Inject dependencies
-            self.active_position_manager.inject_dependencies(
-                pnl_tracker=self.pnl_tracker,
-                hyperliquid_api=self.hyperliquid_api,
-                prediction_engines={"prediction_engine": self.prediction_engine}
-            )
-            self.active_position_manager.start_monitoring()
-            logger.success("🤖 Active Position Manager activated")
-            
-            logger.success("🔥 All advanced systems initialized: Dynamic stops + Global volume + Blockchain + Real-time data + Account Manager + Position tracking")
+            logger.success("💰 Account Manager initialized")
         except ImportError as e:
-            logger.warning(f"Advanced systems not available: {e}")
-            self.dynamic_stop_manager = None
-            self.global_volume_aggregator = None
-            self.blockchain_analyzer = None
-            self.trading_data_manager = None
-            # Keep account manager available even if other systems fail
-            if not hasattr(self, 'account_manager') or self.account_manager is None:
-                try:
-                    from core.account_manager import account_manager
-                    self.account_manager = account_manager
-                except ImportError:
-                    self.account_manager = None
-            self.smart_data_cache = None  # Ensure attribute exists
-            self.pnl_tracker = None
-            self.active_position_manager = None
+            logger.warning(f"Account manager not available: {e}")
+            self.account_manager = None
         
         # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
         self._test_api_connections()
@@ -262,7 +201,8 @@ class YahooHyperliquidPaperTradingBot:
             # Test Hyperliquid connection
             current_price = self.hyperliquid_api.get_current_price("BTC")
             if current_price and current_price > 0:
-                logger.success(f"✅ Hyperliquid API connected - BTC: ${current_price:,.2f}")
+                current_price_safe = current_price or 0
+                logger.success(f"✅ Hyperliquid API connected - BTC: ${current_price_safe:,.2f}")
                 hyperliquid_ok = True
             else:
                 logger.error("❌ Hyperliquid API connection failed")
@@ -285,19 +225,6 @@ class YahooHyperliquidPaperTradingBot:
             if hyperliquid_ok and yahoo_ok:
                 self.connected = True
                 logger.success("🚀 ALL APIs CONNECTED - Bot ready to trade!")
-                
-                # Initialize SmartDataCache now that APIs are connected
-                if hasattr(self, 'smart_data_cache'):  # Only if advanced systems are available
-                    try:
-                        from core.smart_data_cache import SmartDataCache
-                        self.smart_data_cache = SmartDataCache(self.yahoo_fetcher, self.hyperliquid_api)
-                        logger.success("✅ SmartDataCache initialized with connected APIs")
-                    except Exception as e:
-                        logger.error(f"SmartDataCache initialization failed: {e}")
-                        self.smart_data_cache = None
-                else:
-                    logger.info("🔧 Advanced systems disabled - SmartDataCache not available")
-                
             else:
                 self.connected = False
                 logger.error("❌ API connection failed - Bot cannot trade")
@@ -403,18 +330,8 @@ class YahooHyperliquidPaperTradingBot:
                 except Exception as e:
                     logger.error(f"❌ Failed to load account data directly: {e}")
             
-            # Force simulated balance mode
-            if self.trading_data_manager:
-                logger.info("🎮 Forcing RTM to use SIMULATED balance mode")
-                self.trading_data_manager.force_balance_mode("simulated", self.paper_balance)
-                logger.success("✅ RTM forced to SIMULATED balance mode")
-            else:
-                logger.error("❌ trading_data_manager is None - cannot set balance mode!")
-            
-            # Clear any real positions/orders data
-            if self.trading_data_manager:
-                self.trading_data_manager.update_real_positions([])
-                self.trading_data_manager.update_real_orders([])
+            # Balance and position updates handled by AccountManager (SimpleRTM integration)
+            logger.info("🎮 AccountManager handles balance and position updates")
             
             logger.info("📊 No real positions/orders loaded - clean simulated environment")
             logger.info(f"🎮 Using simulated balance: ${self.paper_balance:.2f}")
@@ -748,29 +665,7 @@ class YahooHyperliquidPaperTradingBot:
                 "status": "offline"
             }
         
-        # Add Whale Analytics (if available)
-        if self.whale_integration:
-            try:
-                whale_analysis = self.whale_integration.analyze_whale_impact(enhanced_analysis, hyperliquid_price)
-                enhanced_analysis["whale_analysis"] = whale_analysis
-            except Exception as e:
-                logger.debug(f"Whale analytics error: {e}")
-        
-        # Add Global Volume (if available)
-        if self.global_volume_aggregator:
-            try:
-                global_volume = self.global_volume_aggregator.get_realtime_global_volume()
-                enhanced_analysis["global_volume"] = global_volume
-            except Exception as e:
-                logger.debug(f"Global volume error: {e}")
-        
-        # Add Blockchain Data (if available)
-        if self.blockchain_analyzer:
-            try:
-                blockchain_data = self.blockchain_analyzer.get_latest_sentiment()
-                enhanced_analysis["blockchain_data"] = blockchain_data
-            except Exception as e:
-                logger.debug(f"Blockchain data error: {e}")
+        # Enhanced analysis components removed for simplicity
         
         # Get traditional prediction for fallback
         prediction_analysis = self.prediction_engine.build_price_prediction(enhanced_analysis, hyperliquid_price, self.strategy_name)
@@ -836,28 +731,24 @@ class YahooHyperliquidPaperTradingBot:
         # Log traditional signal
         self.trading_logger.log_signal(signal_data)
         
-        # Update real-time data manager with traditional prediction
-        if self.trading_data_manager:
-            traditional_prediction = {
-                "type": "TRADITIONAL",
+        # Update SimpleRTM with traditional prediction
+        try:
+            # Update SimpleRTM with signal
+            self._update_simple_rtm_signal({
+                "type": signal_data["side"],
                 "side": signal_data["side"],
-                "confidence": signal_data.get("prediction_confidence", 0),
+                "confidence": int(signal_data.get("prediction_confidence", 0) * 100),
                 "reason": signal_data["reason"],
-                "entry_price": signal_data.get("entry_price", hyperliquid_price),
-                "target": signal_data.get("target", hyperliquid_price),
                 "timestamp": time.time()
-            }
-            self.trading_data_manager.add_trading_signal(traditional_prediction)
-            self.trading_data_manager.update_predictions([traditional_prediction])
-            logger.info(f"📊 TRADITIONAL PREDICTION sent to dashboard: {signal_data['side']} - {signal_data.get('prediction_confidence', 0)*100:.1f}% confidence")
-            
-            # Also add prediction activity
-            self.trading_data_manager.add_activity({
-                "timestamp": time.time(),
-                "message": f"🔮 Traditional prediction: {signal_data['side']} signal with {signal_data.get('prediction_confidence', 0)*100:.1f}% confidence",
-                "type": "prediction",
-                "level": "INFO"
             })
+            
+            # Update SimpleRTM with activity
+            confidence = (signal_data.get('prediction_confidence', 0) or 0) * 100
+            self._update_simple_rtm_activity(f"🔮 Traditional prediction: {signal_data['side']} signal with {confidence:.1f}% confidence", "INFO")
+            
+            logger.info(f"📊 TRADITIONAL PREDICTION sent to SimpleRTM: {signal_data['side']} - {confidence:.1f}% confidence")
+        except Exception as e:
+            logger.debug(f"❌ Could not update SimpleRTM with prediction: {e}")
         
         self.last_signal_reason = signal_data["reason"]
         self.last_signal_price = hyperliquid_price
@@ -1726,8 +1617,13 @@ class YahooHyperliquidPaperTradingBot:
             market_data = self.hyperliquid_api.get_market_data("BTC")
             
             if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
-                bids = market_data['levels'][0]
-                asks = market_data['levels'][1]
+                # Check if levels are lists (not floats)
+                if isinstance(market_data['levels'][0], list) and isinstance(market_data['levels'][1], list):
+                    bids = market_data['levels'][0]
+                    asks = market_data['levels'][1]
+                else:
+                    logger.warning("Market data levels are not in expected format")
+                    return current_price
                 
                 if bids and asks:
                     best_bid = float(bids[0]['px'])
@@ -2050,8 +1946,13 @@ class YahooHyperliquidPaperTradingBot:
         try:
             market_data = self.hyperliquid_api.get_market_data("BTC")
             if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
-                bids = market_data['levels'][0]
-                asks = market_data['levels'][1]
+                # Check if levels are lists (not floats)
+                if isinstance(market_data['levels'][0], list) and isinstance(market_data['levels'][1], list):
+                    bids = market_data['levels'][0]
+                    asks = market_data['levels'][1]
+                else:
+                    logger.warning("Market data levels are not in expected format")
+                    return 0.0
                 
                 if bids and asks:
                     best_bid = float(bids[0]['px'])
@@ -2273,32 +2174,7 @@ class YahooHyperliquidPaperTradingBot:
             # Log the trade
             self.trading_logger.log_trade(trade_data)
             
-            # Add trade to real-time data manager for instant dashboard updates
-            if self.trading_data_manager:
-                # Create trade record for RTM
-                rtm_trade_record = {
-                    "trade_id": trade_data["trade_id"],
-                    "side": trade_data["side"],
-                    "entry_price": trade_data["price"],
-                    "exit_price": 0,  # Will be set when position is closed
-                    "size": trade_data["size"],
-                    "leverage": trade_data["leverage"],
-                    "pnl": 0,  # Will be calculated when position is closed
-                    "pnl_pct": 0,  # Will be calculated when position is closed
-                    "confidence": trade_data.get("signal_data", {}).get("prediction_confidence", 0),
-                    "entry_time": trade_data["timestamp"],
-                    "exit_time": 0,  # Will be set when position is closed
-                    "holding_time": 0,  # Will be calculated when position is closed
-                    "exit_reason": "OPEN",  # Will be updated when position is closed
-                    "was_profitable": False,  # Will be determined when position is closed
-                    "is_winback_trade": False,
-                    "timestamp": trade_data["timestamp"],
-                    "strategy": self.strategy_name
-                }
-                self.trading_data_manager.add_trade(rtm_trade_record)
-                
-                # Update balance in real-time
-                self.trading_data_manager.update_balance(self.paper_balance, f"Trade opened: {trade_data['side']} {trade_data['size']} BTC")
+            # Trade and balance updates handled by AccountManager (SimpleRTM integration)
             
             self.trade_history.append(trade_data)
             self.fee_manager.record_trade_fees(trade_data)
@@ -2613,7 +2489,12 @@ class YahooHyperliquidPaperTradingBot:
         
         # Calculate fees
         exit_fees = self.fee_manager.calculate_order_fees(size, exit_price, "LIMIT")
-        total_fees = position["fees"]["total_cost"] + exit_fees["total_cost"]
+        # Handle both old format (float) and new format (dict)
+        if isinstance(position["fees"], dict):
+            entry_fees = position["fees"]["total_cost"]
+        else:
+            entry_fees = position["fees"] or 0.0
+        total_fees = entry_fees + exit_fees["total_cost"]
         
         # Net P&L
         net_pnl = pnl_amount - total_fees
@@ -2646,32 +2527,6 @@ class YahooHyperliquidPaperTradingBot:
         self.open_positions.remove(position)
         self.closed_positions.append(position)
         
-        # Update account manager with open positions
-        try:
-            from core.account_manager import account_manager
-            account_manager.update_open_positions(self.open_positions)
-            account_manager.add_trade(trade_result)
-            logger.debug(f"✅ Updated account manager: position closed, {len(self.open_positions)} positions remaining")
-        except Exception as e:
-            logger.error(f"❌ Failed to update account manager on position close: {e}")
-        
-        # Close position using trade state manager
-        exit_data = {
-            "exit_price": current_price,
-            "exit_time": time.time(),
-            "exit_reason": exit_reason,
-            "pnl": net_pnl,
-            "pnl_pct": (net_pnl / entry_amount) * 100 if entry_amount > 0 else 0,
-            "fees": exit_fees["total_fees"]
-        }
-        
-        # Use trade state manager to close position
-        trade_state_manager.close_position(position["trade_id"], exit_data)
-        
-        # Remove from local open positions list
-        if position in self.open_positions:
-            self.open_positions.remove(position)
-        
         # Update trade result in logger
         trade_result = {
             "trade_id": position["trade_id"],
@@ -2699,15 +2554,35 @@ class YahooHyperliquidPaperTradingBot:
             "strategy": position.get("strategy", self.strategy_name)
         }
         
+        # Update account manager with open positions
+        try:
+            from core.account_manager import account_manager
+            account_manager.update_open_positions(self.open_positions)
+            account_manager.add_trade(trade_result)
+            logger.debug(f"✅ Updated account manager: position closed, {len(self.open_positions)} positions remaining")
+        except Exception as e:
+            logger.error(f"❌ Failed to update account manager on position close: {e}")
+        
+        # Close position using trade state manager
+        entry_amount = size * entry_price
+        exit_data = {
+            "exit_price": exit_price,
+            "exit_time": time.time(),
+            "exit_reason": exit_reason,
+            "pnl": net_pnl,
+            "pnl_pct": (net_pnl / entry_amount) * 100 if entry_amount > 0 else 0,
+            "fees": exit_fees["total_cost"]
+        }
+        
+        # Use trade state manager to close position
+        from core.trade_state_manager import trade_state_manager
+        trade_state_manager.close_position(position["trade_id"], exit_data)
+        
         self.trading_logger.update_trade_result(position["trade_id"], trade_result)
         
         # Trade result logged above
         
-        # Register with real-time data manager for instant dashboard updates
-        if self.trading_data_manager:
-            self.trading_data_manager.add_trade(trade_result)
-            # Update balance in real-time
-            self.trading_data_manager.update_balance(self.paper_balance, f"Trade closed: {exit_reason}")
+        # Trade and balance updates handled by AccountManager (SimpleRTM integration)
         
         # Calculate position value in USD
         position_value_usd = size * entry_price
@@ -2745,46 +2620,55 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"   Analysis Frequency: Price every {self.price_update_interval}s, Signals every {self.signal_check_interval}s (ULTRA-FAST)")
         logger.info(f"   Strategy: Auto-Detection (Standard/Low/High Volatility)")
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
-        logger.info(f"   Whale Analytics: {'Enabled' if self.whale_integration.is_available() else 'Disabled'}")
         logger.info(f"   Logging: Comprehensive Yahoo + Hyperliquid paper trading logs enabled")
         
-        # Initialize professional data systems
-        if self.smart_data_cache:
-            logger.info("📚 INITIALIZING SMART DATA CACHE - This happens once per session...")
-            if self.smart_data_cache.initialize_historical_data("BTC"):
-                logger.success("✅ Historical data loaded - Ready for incremental updates")
-            else:
-                logger.error("❌ Failed to initialize data cache")
-        
-        if self.trading_data_manager:
-            session_id = self.trading_data_manager.start_session(
-                strategy=self.strategy_name
+        # Start session with SimpleRTM integration
+        try:
+            from core.session.session_manager import SessionManager
+            from core.data.simple_rtm import simple_rtm
+            
+            # CLEAR ALL OLD DATA BEFORE STARTING NEW SESSION
+            simple_rtm.clear_data()
+            logger.info("🧹 SimpleRTM cleared - Fresh session data")
+            
+            # Start session via SessionManager (which updates SimpleRTM)
+            session_manager = SessionManager()
+            session_id = session_manager.start_session(
+                session_id=f"bot_session_{int(time.time())}",
+                strategy=self.strategy_name,
+                initial_balance=self.initial_balance
             )
-            logger.success("🔥 Real-time data manager active - Dashboard connection established")
+            
+            # Update SimpleRTM with initial session data
+            simple_rtm.update_session({
+                "session_id": session_id,
+                "status": "ACTIVE",
+                "strategy": self.strategy_name,
+                "start_time": datetime.now().isoformat()
+            })
+            
+            # Update SimpleRTM with initial account data
+            simple_rtm.update_account({
+                "current_balance": self.initial_balance,
+                "initial_balance": self.initial_balance,
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "total_pnl": 0.0,
+                "win_rate": 0.0
+            })
+            
+            # Add initial activity log to SimpleRTM
+            self._update_simple_rtm_activity(f"🚀 Trading bot started - {self.strategy_name} strategy with ${self.initial_balance:.2f} initial balance", "SUCCESS")
+            
+            logger.success("🔥 SimpleRTM integration active - Dashboard connection established")
             logger.info(f"   📊 Dashboard will receive live predictions and market data")
             
-            # Add initial activity log
-            self.trading_data_manager.add_activity({
-                "timestamp": time.time(),
-                "message": f"🚀 Trading bot started - {self.strategy_name} strategy with ${self.initial_balance:.2f} initial balance",
-                "type": "startup",
-                "level": "SUCCESS"
-            })
-        else:
-            logger.warning("⚠️ Real-time data manager not available - Dashboard will show offline data only")
+        except Exception as e:
+            logger.error(f"❌ Failed to start session with SimpleRTM: {e}")
+            logger.warning("⚠️ Dashboard will show offline data only")
         
-        # Start advanced monitoring systems
-        if self.dynamic_stop_manager:
-            self.dynamic_stop_manager.start_monitoring(self)
-            logger.info(f"🛡️ Dynamic stop monitoring: Every 3 seconds with volatility awareness")
-        
-        if self.global_volume_aggregator:
-            logger.info(f"🌍 Global volume tracking: Real-time aggregation from 6 exchanges")
-        
-        if self.blockchain_analyzer:
-            logger.info(f"⛓️ Blockchain analytics: On-chain sentiment and network activity")
-        
-        # Win-back functionality disabled in this version
+        # Advanced monitoring systems removed for simplicity
         
         logger.info("=" * 50)
         
@@ -2793,6 +2677,9 @@ class YahooHyperliquidPaperTradingBot:
         while trades_placed < max_trades:
             try:
                 current_time = time.time()
+                
+                # Test SimpleRTM activity at loop start
+                self._update_simple_rtm_activity("🔄 Main trading loop iteration", "INFO")
                 
                 # Update Hyperliquid price data frequently
                 hyperliquid_price = self.get_hyperliquid_price()
@@ -2820,165 +2707,41 @@ class YahooHyperliquidPaperTradingBot:
                     self.hyperliquid_volume_data = None
                 
                 # Check for position exits with advanced management
+                self._update_simple_rtm_activity("🔍 Checking position exits", "INFO")
                 self.check_position_exits(hyperliquid_price, self.binance_analysis)
                 
                 # Update market data for dashboard (every 10 seconds)
                 if current_time - self.last_market_update >= 10:
-                    # Use smart cache for efficient data updates
-                    if self.smart_data_cache:
-                        # Only fetch NEW candles (usually 0-1 new candles)
-                        cache_update = self.smart_data_cache.update_latest_candles("BTC")
-                        if cache_update["success"]:
-                            # Get analysis from cached data (no API calls)
-                            yahoo_analysis = self.smart_data_cache.get_market_analysis("BTC", hyperliquid_price)
-                            if yahoo_analysis:
-                                self.binance_analysis = yahoo_analysis
-                                self.last_market_update = current_time
-                                
-                                # Update real-time data manager with REAL calculated values
-                                if self.trading_data_manager:
-                                    # Calculate IMMEDIATE accurate RSI using Smart Cache + Hyperliquid current price
-                                    real_rsi = 50.0  # Default
-                                    try:
-                                        if self.smart_data_cache and self.smart_data_cache.cache_initialized:
-                                            # Get MORE historical candles for BETTER initial accuracy
-                                            cached_candles = self.smart_data_cache.get_candles("5m", 50)  # 50 candles for stability
-                                            if cached_candles and len(cached_candles) >= 30:
-                                                # Extract closes + add current Hyperliquid price
-                                                closes = [float(candle["close"]) for candle in cached_candles[-30:]]  # Use 30 historical points
-                                                closes.append(hyperliquid_price)  # Add current price as latest data point
-                                                
-                                                # Calculate CRYPTO-OPTIMIZED RSI (21-period for better crypto accuracy)
-                                                real_rsi = self._calculate_rsi_from_price_samples(closes, periods=21)
-                                                logger.info(f"🎯 ENHANCED RSI: {real_rsi:.1f} (21-period, 31 data points for crypto accuracy)")
-                                            elif cached_candles and len(cached_candles) >= 14:
-                                                # Fallback to standard 14-period if insufficient data
-                                                closes = [float(candle["close"]) for candle in cached_candles[-14:]]
-                                                closes.append(hyperliquid_price)
-                                                real_rsi = self._calculate_rsi_from_price_samples(closes, periods=14)
-                                                logger.info(f"📊 STANDARD RSI: {real_rsi:.1f} (14-period fallback)")
-                                            else:
-                                                logger.warning(f"Insufficient cached candles: {len(cached_candles) if cached_candles else 0}")
-                                        else:
-                                            # Fallback to cached calculation
-                                            real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
-                                            logger.info(f"📊 Fallback RSI: {real_rsi:.1f}")
-                                    except Exception as e:
-                                        logger.debug(f"Immediate RSI calculation failed: {e}")
-                                        real_rsi = self.cached_rsi_data.get("rsi", 50.0) if hasattr(self, 'cached_rsi_data') and self.cached_rsi_data else 50.0
-                                    
-                                    # Get REAL volume from direct API call
-                                    try:
-                                        volume_result = self.hyperliquid_api.get_current_5m_volume("BTC")
-                                        real_volume = volume_result.get("current_volume", 0.0)
-                                        volume_category = volume_result.get("volume_category", "UNKNOWN")
-                                        logger.debug(f"📊 Direct volume fetch: {real_volume:.1f} BTC ({volume_category})")
-                                    except Exception as e:
-                                        logger.debug(f"Volume fetch failed: {e}")
-                                        real_volume = 0.0
-                                        volume_category = "FETCH_ERROR"
-                                    
-                                    # Get REAL orderbook imbalance from market data
-                                    try:
-                                        market_data = self.hyperliquid_api.get_market_data("BTC")
-                                        if market_data and "levels" in market_data:
-                                            bids = market_data['levels'][0][:10] if market_data['levels'][0] else []
-                                            asks = market_data['levels'][1][:10] if market_data['levels'][1] else []
-                                            
-                                            total_bid_volume = sum(float(bid['sz']) for bid in bids)
-                                            total_ask_volume = sum(float(ask['sz']) for ask in asks)
-                                            
-                                            if total_bid_volume + total_ask_volume > 0:
-                                                real_imbalance = (total_bid_volume - total_ask_volume) / (total_bid_volume + total_ask_volume) * 100
-                                            else:
-                                                real_imbalance = 0.0
-                                            logger.debug(f"📊 Direct orderbook imbalance: {real_imbalance:.1f}%")
-                                        else:
-                                            real_imbalance = 0.0
-                                    except Exception as e:
-                                        logger.debug(f"Orderbook imbalance calc failed: {e}")
-                                        real_imbalance = 0.0
-                                    
-                                    logger.info(f"📊 Updating dashboard: RSI={real_rsi:.1f}, Volume={real_volume:.1f} BTC ({volume_category}), Imbalance={real_imbalance:.3f}")
-                                    
-                                    # Get bot's own trend analysis from recent analysis logs
-                                    bot_trend_5m = "SIDEWAYS"  # Default to sideways
-                                    bot_trend_1h = "SIDEWAYS"  # Default to sideways
-                                    
-                                    # Use the bot's actual trend analysis from the analysis logs
-                                    if hasattr(self, 'binance_analysis') and self.binance_analysis:
-                                        # Get 5m trend from bot's analysis
-                                        trend_5m_data = self.binance_analysis.get("trend_5m", {})
-                                        if trend_5m_data and "trend" in trend_5m_data:
-                                            bot_trend_5m = trend_5m_data["trend"]
-                                        
-                                        # Get 1h trend from bot's analysis
-                                        trend_1h_data = self.binance_analysis.get("trend_1h", {})
-                                        if trend_1h_data and "trend" in trend_1h_data:
-                                            bot_trend_1h = trend_1h_data["trend"]
-                                    
-                                    # Use bot's trend analysis for dashboard
-                                    self.trading_data_manager.update_market_data({
-                                        "current_price": hyperliquid_price,
-                                        "trend": bot_trend_5m,  # Use bot's own trend analysis
-                                        "trend_5m": {"trend": bot_trend_5m},  # Add structured trend data
-                                        "trend_1h": {"trend": bot_trend_1h},  # Add structured trend data
-                                        "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
-                                        "rsi": real_rsi,  # REAL RSI from calculations
-                                        "volume_depth": real_volume,  # REAL volume from analysis
-                                        "orderbook_imbalance": real_imbalance,  # REAL imbalance
-                                        "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                                        "volatility_1h": yahoo_analysis.get("volatility_1h", 0.0),
-                                        "support": yahoo_analysis.get("support_resistance_5m", {}).get("support", 0),
-                                        "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
-                                        "volume_category": volume_category,
-                                        "volume_trend": "CALCULATED",  # Using smart cache data
-                                        "data_source": "bot_analysis_with_smart_cache"
-                                    })
-                                
-                                logger.info(f"💾 Smart cache update: {cache_update.get('api_calls_saved', 0)} API calls saved")
-                    else:
-                        # Fallback to old method if smart cache not available
-                        yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price=hyperliquid_price)
+                    # Update SimpleRTM with market data fetch activity
+                    self._update_simple_rtm_activity("📊 Fetching latest market data", "INFO")
+                    
+                    # Simple market data update without smart cache
+                    try:
+                        # Get basic market analysis
+                        yahoo_analysis = self.yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price)
                         if yahoo_analysis:
                             self.binance_analysis = yahoo_analysis
                             self.last_market_update = current_time
                             
-                            # Update dashboard with bot's own trend analysis
-                            bot_trend_5m = "SIDEWAYS"  # Default to sideways
-                            bot_trend_1h = "SIDEWAYS"  # Default to sideways
-                            
-                            # Use the bot's actual trend analysis from the analysis logs
-                            if hasattr(self, 'binance_analysis') and self.binance_analysis:
-                                # Get 5m trend from bot's analysis
-                                trend_5m_data = self.binance_analysis.get("trend_5m", {})
-                                if trend_5m_data and "trend" in trend_5m_data:
-                                    bot_trend_5m = trend_5m_data["trend"]
-                                
-                                # Get 1h trend from bot's analysis
-                                trend_1h_data = self.binance_analysis.get("trend_1h", {})
-                                if trend_1h_data and "trend" in trend_1h_data:
-                                    bot_trend_1h = trend_1h_data["trend"]
-                            
-                            # Update RTM with bot's trend analysis
-                            if self.trading_data_manager:
-                                self.trading_data_manager.update_market_data({
-                                    "current_price": hyperliquid_price,
-                                    "trend": bot_trend_5m,  # Use bot's own trend analysis
-                                    "trend_5m": {"trend": bot_trend_5m},  # Add structured trend data
-                                    "trend_1h": {"trend": bot_trend_1h},  # Add structured trend data
-                                    "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
-                                    "rsi": yahoo_analysis.get("rsi", 50.0),
-                                    "volume_depth": yahoo_analysis.get("volume_depth", 0.0),
-                                    "orderbook_imbalance": 0.0,
-                                    "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                                    "volatility_1h": yahoo_analysis.get("volatility_1h", 0.0),
-                                    "support": yahoo_analysis.get("support_resistance_5m", {}).get("support", 0),
-                                    "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
-                                    "volume_category": "UNKNOWN",
-                                    "volume_trend": "UNKNOWN",
-                                    "data_source": "bot_analysis_fallback"
-                                })
+                            # Update SimpleRTM with successful data fetch
+                            self._update_simple_rtm_activity("✅ Market data updated", "SUCCESS")
+                    except Exception as e:
+                        logger.debug(f"Market data update failed: {e}")
+                        
+                        # Update SimpleRTM with market data
+                        self._update_simple_rtm_market({
+                            "current_price": hyperliquid_price,
+                            "trend": "SIDEWAYS",
+                                "rsi": yahoo_analysis.get("rsi", 50.0),
+                                "volume_depth": yahoo_analysis.get("volume_depth", 0.0),
+                                "volume_category": "UNKNOWN",
+                                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                                "ultimate_pressure": {
+                                    "direction": bot_trend_5m,
+                                    "confidence": "75%",
+                                    "strength": 0.75
+                                }
+                            })
                         
                         # Log market data for dashboard (Hyperliquid price + Yahoo historical comparison)
                         self.trading_logger.log_analysis({
@@ -2996,10 +2759,12 @@ class YahooHyperliquidPaperTradingBot:
                 
                 # Update Yahoo analysis periodically (every 30 seconds)
                 if current_time - self.last_candle_update >= self.candle_update_interval:
+                    self._update_simple_rtm_activity("📈 Updating Yahoo analysis data", "INFO")
                     yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price=hyperliquid_price)
                     if yahoo_analysis:
                         self.binance_analysis = yahoo_analysis  # Keep variable name for compatibility
                         self.last_candle_update = current_time
+                        self._update_simple_rtm_activity("✅ Yahoo analysis updated", "SUCCESS")
                         
                         # Update dashboard with bot's own trend analysis
                         bot_trend_5m = "SIDEWAYS"  # Default to sideways
@@ -3017,25 +2782,20 @@ class YahooHyperliquidPaperTradingBot:
                             if trend_1h_data and "trend" in trend_1h_data:
                                 bot_trend_1h = trend_1h_data["trend"]
                         
-                        # Update RTM with bot's trend analysis
-                        if self.trading_data_manager:
-                            self.trading_data_manager.update_market_data({
-                                "current_price": hyperliquid_price,
-                                "trend": bot_trend_5m,  # Use bot's own trend analysis
-                                "trend_5m": {"trend": bot_trend_5m},  # Add structured trend data
-                                "trend_1h": {"trend": bot_trend_1h},  # Add structured trend data
-                                "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
-                                "rsi": yahoo_analysis.get("rsi", 50.0),
-                                "volume_depth": yahoo_analysis.get("volume_depth", 0.0),
-                                "orderbook_imbalance": 0.0,
-                                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                                "volatility_1h": yahoo_analysis.get("volatility_1h", 0.0),
-                                "support": yahoo_analysis.get("support_resistance_5m", {}).get("support", 0),
-                                "resistance": yahoo_analysis.get("support_resistance_5m", {}).get("resistance", 0),
-                                "volume_category": "UNKNOWN",
-                                "volume_trend": "UNKNOWN",
-                                "data_source": "bot_analysis_periodic"
-                            })
+                        # Update SimpleRTM with market data (REPLACE OLD DATA MANAGER)
+                        self._update_simple_rtm_market({
+                            "current_price": hyperliquid_price,
+                            "trend": bot_trend_5m,
+                            "rsi": yahoo_analysis.get("rsi", 50.0),
+                            "volume_depth": yahoo_analysis.get("volume_depth", 0.0),
+                            "volume_category": "UNKNOWN",
+                            "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                            "ultimate_pressure": {
+                                "direction": bot_trend_5m,
+                                "confidence": "75%",
+                                "strength": 0.75
+                            }
+                        })
                         
                         # Log analysis (Hyperliquid price + Yahoo historical comparison)
                         self.trading_logger.log_analysis({
@@ -3060,44 +2820,43 @@ class YahooHyperliquidPaperTradingBot:
                     
                     logger.info(f"🔍 SIGNAL CHECK: Starting signal analysis at ${hyperliquid_price:.2f}")
                     
-                    # Update dashboard with analysis activity
-                    if self.trading_data_manager:
-                        activity_data = {
-                            "timestamp": current_time,
-                            "message": f"🔍 Analyzing market conditions at ${hyperliquid_price:.2f}",
-                            "type": "analysis",
-                            "level": "INFO"
-                        }
-                        self.trading_data_manager.add_activity(activity_data)
-                        logger.debug(f"📊 Activity logged to dashboard: {activity_data['message']}")
-                    else:
-                        logger.warning("⚠️ Trading data manager not available - activity not logged to dashboard")
+                    # Update SimpleRTM with analysis activity
+                    try:
+                        self._update_simple_rtm_activity(f"🔍 Analyzing market conditions at ${hyperliquid_price:.2f}", "INFO")
+                        logger.debug(f"📊 Activity logged to SimpleRTM: Analyzing market conditions")
+                    except Exception as e:
+                        logger.debug(f"❌ Could not log activity to SimpleRTM: {e}")
                     
                     # Enhanced analysis with global volume and blockchain data
                     enhanced_analysis = self.binance_analysis.copy()
                     
                     # Add global volume data
                     if self.global_volume_aggregator:
+                        self._update_simple_rtm_activity("🌍 Fetching global volume data", "INFO")
                         global_volume_data = self.global_volume_aggregator.get_realtime_global_volume()
                         enhanced_analysis["global_volume"] = global_volume_data
                         if global_volume_data.get("status") == "success":
                             logger.info(f"🌍 Global Volume: {global_volume_data['global_volume_per_second']:.1f} BTC/sec")
+                            self._update_simple_rtm_activity(f"✅ Global volume: {global_volume_data['global_volume_per_second']:.1f} BTC/sec", "SUCCESS")
                     
                     # Add blockchain sentiment
                     if self.blockchain_analyzer:
+                        self._update_simple_rtm_activity("⛓️ Fetching blockchain sentiment", "INFO")
                         blockchain_data = self.blockchain_analyzer.get_onchain_sentiment()
                         enhanced_analysis["blockchain_sentiment"] = blockchain_data
                         if blockchain_data.get("confidence", 0) > 0.5:
                             sentiment = blockchain_data["overall_sentiment"]
                             logger.info(f"⛓️ On-chain Sentiment: {sentiment}")
+                            self._update_simple_rtm_activity(f"✅ Blockchain sentiment: {sentiment}", "SUCCESS")
                     
                     # Analyze market using enhanced data (Yahoo historical + Hyperliquid real-time + Global volume + Blockchain)
+                    self._update_simple_rtm_activity("🧠 Running market analysis", "INFO")
                     signal = self.should_trade(hyperliquid_price, enhanced_analysis)
                     
                     logger.info(f"🎯 SIGNAL RESULT: {signal.get('should_trade', False)} | Reason: {signal.get('reason', 'Unknown')}")
                     
                     # Always update dashboard with prediction status, even if no trade signal
-                    if self.trading_data_manager and not signal["should_trade"]:
+                    if not signal["should_trade"]:
                         no_signal_prediction = {
                             "type": "ANALYSIS",
                             "side": "HOLD",
@@ -3108,15 +2867,17 @@ class YahooHyperliquidPaperTradingBot:
                             "market_condition": enhanced_analysis.get("market_condition", "UNKNOWN"),
                             "analysis_active": True
                         }
-                        self.trading_data_manager.update_predictions([no_signal_prediction])
-                        
-                        # Add analysis activity
-                        self.trading_data_manager.add_activity({
-                            "timestamp": time.time(),
-                            "message": f"📊 Analysis complete: {signal.get('reason', 'No clear signal')[:80]}{'...' if len(signal.get('reason', '')) > 80 else ''}",
-                            "type": "analysis",
-                            "level": "INFO"
+                        # Update SimpleRTM with no-signal prediction
+                        self._update_simple_rtm_signal({
+                            "type": "HOLD",
+                            "side": "HOLD",
+                            "confidence": 0,
+                            "reason": signal.get("reason", "No clear signal"),
+                            "timestamp": time.time()
                         })
+                        
+                        # Add analysis activity to SimpleRTM
+                        self._update_simple_rtm_activity(f"📊 Analysis complete: {signal.get('reason', 'No clear signal')[:80]}{'...' if len(signal.get('reason', '')) > 80 else ''}", "INFO")
                         logger.debug(f"📊 NO-SIGNAL status sent to dashboard: {signal.get('reason', 'Unknown')}")
                     
                     if signal["should_trade"]:
@@ -3136,20 +2897,15 @@ class YahooHyperliquidPaperTradingBot:
                             logger.info(f"   Quality: {quality_eval.get('quality_rating', 'UNKNOWN')} ({quality_eval.get('quality_score', 0):.2f})")
                             logger.info(f"   Confidence: {quality_eval.get('confidence_level', 'UNKNOWN')}")
                         
-                        # Update dashboard with signal activity
-                        if self.trading_data_manager:
-                            confidence_pct = quality_eval.get('confidence_level', 'Unknown') if quality_eval else 'Unknown'
-                            self.trading_data_manager.add_activity({
-                                "timestamp": current_time,
-                                "message": f"🚀 {signal['side']} signal: {signal['reason'][:50]}{'...' if len(signal['reason']) > 50 else ''}",
-                                "type": "signal",
-                                "level": "SUCCESS"
-                            })
+                        # Update SimpleRTM with signal activity
+                        self._update_simple_rtm_activity(f"🚀 {signal['side']} signal: {signal['reason'][:50]}{'...' if len(signal['reason']) > 50 else ''}", "SUCCESS")
                         
                         # Place the paper trade
+                        self._update_simple_rtm_activity(f"💰 Placing {signal['side']} trade", "INFO")
                         if self.place_paper_trade(signal['side'], signal_data=signal):
                             trades_placed += 1
                             logger.info(f"   Paper Trade {trades_placed}/{max_trades} completed")
+                            self._update_simple_rtm_activity(f"✅ Trade {trades_placed}/{max_trades} completed", "SUCCESS")
                             
                             # Log portfolio risk after trade
                             if self.open_positions:
@@ -3168,9 +2924,11 @@ class YahooHyperliquidPaperTradingBot:
                                     logger.info(f"✅ LOW PORTFOLIO RISK: {portfolio_risk['total_risk']*100:.1f}% max loss potential")
                         else:
                             logger.error("   Hybrid paper trade placement failed")
+                            self._update_simple_rtm_activity("❌ Trade placement failed", "ERROR")
                     
                     else:
                         logger.info(f"⏳ No signal: {signal['reason']}")
+                        self._update_simple_rtm_activity(f"⏳ No trading signal: {signal['reason'][:50]}{'...' if len(signal['reason']) > 50 else ''}", "INFO")
                     
                     self.last_signal_check = current_time
                 
@@ -3198,20 +2956,19 @@ class YahooHyperliquidPaperTradingBot:
             self.dynamic_stop_manager.stop_monitoring()
             logger.info("🛡️ Dynamic stop monitoring stopped")
         
-        # End real-time session
-        if self.trading_data_manager:
-            self.trading_data_manager.end_session()
-            logger.info("📊 Real-time data session ended")
+        # End SimpleRTM session
+        try:
+            from core.data.simple_rtm import simple_rtm
+            simple_rtm.update_session({
+                "status": "COMPLETED",
+                "end_time": datetime.now().isoformat()
+            })
+            self._update_simple_rtm_activity("🏁 Trading session completed", "SUCCESS")
+            logger.info("📊 SimpleRTM session ended")
+        except Exception as e:
+            logger.debug(f"❌ Could not end SimpleRTM session: {e}")
         
-        # Show smart cache performance
-        if self.smart_data_cache:
-            cache_perf = self.smart_data_cache.get_cache_performance()
-            logger.info(f"💾 Smart Cache Performance:")
-            logger.info(f"   API calls saved: {cache_perf['total_api_calls_saved']}")
-            logger.info(f"   Cache hit ratio: {cache_perf['cache_hit_ratio']:.1%}")
-            logger.info(f"   Initialization time: {cache_perf['initialization_time']:.2f}s")
-        
-        # Win-back performance tracking disabled in this version
+        # Performance tracking simplified
         
         logger.success(f"🎯 Yahoo + Hyperliquid Paper Trading session completed!")
         logger.info(f"   Total trades placed: {trades_placed}")
@@ -3249,15 +3006,19 @@ class YahooHyperliquidPaperTradingBot:
                 for position in self.open_positions[:]:  # Copy list to avoid modification during iteration
                     self.close_paper_position(position, "GRACEFUL_SHUTDOWN", hyperliquid_price)
             
-            # Stop advanced monitoring systems
-            if self.dynamic_stop_manager:
-                self.dynamic_stop_manager.stop_monitoring()
-                logger.info("🛡️ Dynamic stop monitoring stopped")
+            # Advanced monitoring systems cleanup removed for simplicity
             
-            # End real-time session
-            if self.trading_data_manager:
-                self.trading_data_manager.end_session()
-                logger.info("📊 Real-time data session ended")
+            # End SimpleRTM session
+            try:
+                from core.data.simple_rtm import simple_rtm
+                simple_rtm.update_session({
+                    "status": "COMPLETED",
+                    "end_time": datetime.now().isoformat()
+                })
+                self._update_simple_rtm_activity("🏁 Trading session closed gracefully", "SUCCESS")
+                logger.info("📊 SimpleRTM session ended")
+            except Exception as e:
+                logger.debug(f"❌ Could not end SimpleRTM session: {e}")
             
             # Update final balance
             if self.trading_logger:
@@ -3269,6 +3030,34 @@ class YahooHyperliquidPaperTradingBot:
             
         except Exception as e:
             logger.error(f"Error during graceful session closure: {e}")
+    
+    def _update_simple_rtm_market(self, market_data: Dict[str, Any]):
+        """Update SimpleRTM with market data"""
+        try:
+            from core.data.simple_rtm import simple_rtm
+            simple_rtm.update_market(market_data)
+            current_price = market_data.get('current_price', 0) or 0
+            logger.debug(f"✅ SimpleRTM market updated: ${current_price:.2f}")
+        except Exception as e:
+            logger.debug(f"❌ Could not update SimpleRTM market: {e}")
+    
+    def _update_simple_rtm_activity(self, message: str, level: str = "INFO"):
+        """Update SimpleRTM with activity"""
+        try:
+            from core.data.simple_rtm import simple_rtm
+            simple_rtm.add_activity(message, level, "bot")
+            logger.debug(f"✅ SimpleRTM activity added: {message}")
+        except Exception as e:
+            logger.debug(f"❌ Could not update SimpleRTM activity: {e}")
+    
+    def _update_simple_rtm_signal(self, signal_data: Dict[str, Any]):
+        """Update SimpleRTM with signal"""
+        try:
+            from core.data.simple_rtm import simple_rtm
+            simple_rtm.add_signal(signal_data)
+            logger.debug(f"✅ SimpleRTM signal added: {signal_data.get('type', 'UNKNOWN')}")
+        except Exception as e:
+            logger.debug(f"❌ Could not update SimpleRTM signal: {e}")
 
 
 def main():

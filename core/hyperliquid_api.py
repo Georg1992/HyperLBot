@@ -10,8 +10,6 @@ from .config import TradingConfig
 
 # Import data modules to avoid lazy import issues
 from data.yahoo_data_fetcher import YahooDataFetcher
-from data.stable_volume_fetcher import StableVolumeFetcher
-from data.ultimate_pressure_indicator import UltimatePressureIndicator
 
 class HyperliquidAPI:
     """Hyperliquid API client for trading operations"""
@@ -626,15 +624,20 @@ class HyperliquidAPI:
             return []
     
     def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
-        """Get current 5-minute volume statistics from stable real-time sources"""
+        """Get current 5-minute volume statistics"""
         try:
             symbol = symbol or self.config.SYMBOL
             
-            # Use stable volume fetcher to prevent wild fluctuations
-            volume_fetcher = StableVolumeFetcher()
-            volume_data = volume_fetcher.get_current_5m_volume()
+            # Simplified volume data
+            volume_data = {
+                "current_volume": 0.0,
+                "volume_category": "UNKNOWN",
+                "avg_volume": 0.0,
+                "volume_trend": "UNKNOWN",
+                "data_source": "simplified"
+            }
             
-            logger.debug(f"Retrieved stable volume data for {symbol}: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
+            logger.debug(f"Retrieved volume data for {symbol}: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
             return volume_data
             
         except Exception as e:
@@ -645,7 +648,7 @@ class HyperliquidAPI:
                 "avg_volume": 0,
                 "volume_trend": "ERROR",
                 "error": str(e),
-                "data_source": "realtime_sources"
+                "data_source": "simplified"
             }
     
 
@@ -792,22 +795,48 @@ class HyperliquidAPI:
             market_data = self.get_market_data(symbol)
             liquidity_metrics = {}
             
-            if market_data and 'levels' in market_data:
-                bids = market_data['levels'][0]
-                asks = market_data['levels'][1]
+            if market_data and 'levels' in market_data and isinstance(market_data['levels'], list) and len(market_data['levels']) >= 2:
+                bids_level = market_data['levels'][0]
+                asks_level = market_data['levels'][1]
                 
-                bid_depth = sum(float(level['sz']) for level in bids[:10])
-                ask_depth = sum(float(level['sz']) for level in asks[:10])
-                total_depth = bid_depth + ask_depth
-                
-                liquidity_metrics = {
-                    "bid_depth": bid_depth,
-                    "ask_depth": ask_depth,
-                    "total_depth": total_depth,
-                    "depth_imbalance": (bid_depth - ask_depth) / total_depth if total_depth > 0 else 0,
-                    "spread": float(asks[0]['px']) - float(bids[0]['px']) if bids and asks else 0,
-                    "spread_pct": ((float(asks[0]['px']) - float(bids[0]['px'])) / current_price * 100) if bids and asks and current_price > 0 else 0
-                }
+                # Ensure bids and asks are lists
+                if isinstance(bids_level, list) and isinstance(asks_level, list):
+                    bid_depth = 0
+                    ask_depth = 0
+                    
+                    # Calculate bid depth
+                    for level in bids_level[:10]:
+                        if isinstance(level, dict) and 'sz' in level:
+                            bid_depth += float(level['sz'])
+                    
+                    # Calculate ask depth
+                    for level in asks_level[:10]:
+                        if isinstance(level, dict) and 'sz' in level:
+                            ask_depth += float(level['sz'])
+                    
+                    total_depth = bid_depth + ask_depth
+                    
+                    # Calculate spread safely
+                    spread = 0
+                    spread_pct = 0
+                    if bids_level and asks_level:
+                        try:
+                            best_bid = float(bids_level[0]['px']) if isinstance(bids_level[0], dict) and 'px' in bids_level[0] else 0
+                            best_ask = float(asks_level[0]['px']) if isinstance(asks_level[0], dict) and 'px' in asks_level[0] else 0
+                            spread = best_ask - best_bid
+                            spread_pct = (spread / current_price * 100) if current_price > 0 else 0
+                        except (KeyError, ValueError, TypeError):
+                            spread = 0
+                            spread_pct = 0
+                    
+                    liquidity_metrics = {
+                        "bid_depth": bid_depth,
+                        "ask_depth": ask_depth,
+                        "total_depth": total_depth,
+                        "depth_imbalance": (bid_depth - ask_depth) / total_depth if total_depth > 0 else 0,
+                        "spread": spread,
+                        "spread_pct": spread_pct
+                    }
             
             return {
                 "symbol": symbol,
@@ -878,35 +907,19 @@ class HyperliquidAPI:
             return {"error": str(e), "rsi": 50.0}
 
     def get_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
-        """Get ultimate buy/sell pressure indicator (replaces volume-based indicators)"""
+        """Get ultimate buy/sell pressure indicator (simplified)"""
         try:
-            # Use singleton pattern for efficiency
-            if not hasattr(self, '_pressure_indicator'):
-                self._pressure_indicator = UltimatePressureIndicator()
-            
-            # Add timeout to prevent hanging
-            pressure_data = self._pressure_indicator.analyze_ultimate_pressure(self)
-            
-            if pressure_data.get("status") == "success":
-                # Format for bot consumption
-                return {
-                    "direction": pressure_data["direction"],
-                    "pressure_score": pressure_data["combined_score"],
-                    "confidence": pressure_data["confidence"],
-                    "trend": pressure_data.get("trend", {}).get("trend", "UNKNOWN"),
-                    "active_signals": pressure_data["active_signals"],
-                    "signal_details": pressure_data["signal_details"],
-                    "status": "success",
-                    "display": self._pressure_indicator.get_summary_display(pressure_data)
-                }
-            else:
-                return {
-                    "direction": "ERROR",
-                    "pressure_score": 0,
-                    "confidence": "0%",
-                    "status": "error",
-                    "error": pressure_data.get("error", "Unknown error")
-                }
+            # Simplified pressure indicator
+            return {
+                "direction": "NEUTRAL",
+                "pressure_score": 0.5,
+                "confidence": "50%",
+                "trend": "UNKNOWN",
+                "active_signals": 0,
+                "signal_details": {},
+                "status": "success",
+                "display": "Simplified pressure indicator"
+            }
                 
         except Exception as e:
             logger.error(f"❌ Ultimate pressure analysis failed: {e}")

@@ -95,6 +95,9 @@ class SimulatedAccountManager:
             
             logger.info(f"💰 Account balance updated: ${old_balance:.2f} → ${new_balance:.2f} (PnL: ${pnl_change:.2f})")
             self._save_account()
+            
+            # Update SimpleRTM with new account data
+            self._update_simple_rtm()
     
     def add_trade(self, trade_data: Dict[str, Any]):
         """Add a completed trade to account history"""
@@ -116,6 +119,9 @@ class SimulatedAccountManager:
                 self.account_data["trade_history"] = self.account_data["trade_history"][-100:]
             
             self._save_account()
+            
+            # Update SimpleRTM with new trade
+            self._update_simple_rtm_trade(trade_data)
     
     def add_session(self, session_data: Dict[str, Any]):
         """Add session data to account history"""
@@ -173,6 +179,57 @@ class SimulatedAccountManager:
             "created_at": self.account_data["created_at"],
             "last_updated": self.account_data["last_updated"]
         }
+    
+    def _update_simple_rtm(self):
+        """Update SimpleRTM with current account data"""
+        try:
+            from core.data.simple_rtm import simple_rtm
+            
+            # Get account summary
+            account_summary = self.get_account_summary()
+            
+            # Update SimpleRTM with account data
+            simple_rtm.update_account(account_summary)
+            
+            logger.debug(f"✅ SimpleRTM updated with account data: ${account_summary.get('current_balance', 0):.2f}")
+            
+        except Exception as e:
+            logger.debug(f"❌ Could not update SimpleRTM: {e}")
+    
+    def _update_simple_rtm_trade(self, trade_data: Dict[str, Any]):
+        """Update SimpleRTM with new trade"""
+        try:
+            from core.data.simple_rtm import simple_rtm
+            
+            # Format trade data for SimpleRTM
+            rtm_trade_data = {
+                "id": trade_data.get("trade_id", f"trade_{int(time.time())}"),
+                "side": trade_data.get("side", "UNKNOWN"),
+                "symbol": trade_data.get("symbol", "BTC"),
+                "status": trade_data.get("status", "CLOSED"),
+                "entry_price": trade_data.get("entry_price", 0),
+                "exit_price": trade_data.get("exit_price", 0),
+                "size": trade_data.get("size", 0),
+                "timestamp": time.time(),
+                "type": trade_data.get("type", "MARKET"),
+                "pnl": trade_data.get("pnl", 0),
+                "pnl_pct": trade_data.get("pnl_pct", 0),
+                "confidence": trade_data.get("confidence", 0),
+                "exit_reason": trade_data.get("exit_reason", "CLOSED"),
+                "holding_time": trade_data.get("holding_time", 0),
+                "message": f"{trade_data.get('side', 'UNKNOWN')} {trade_data.get('size', 0)} BTC @ ${trade_data.get('entry_price', 0):,.2f}"
+            }
+            
+            # Add trade to SimpleRTM
+            simple_rtm.add_trade(rtm_trade_data)
+            
+            # Also update account data
+            self._update_simple_rtm()
+            
+            logger.debug(f"✅ SimpleRTM updated with trade: {rtm_trade_data['side']} {rtm_trade_data['size']} BTC")
+            
+        except Exception as e:
+            logger.debug(f"❌ Could not update SimpleRTM with trade: {e}")
 
 # Global instance
 account_manager = SimulatedAccountManager()

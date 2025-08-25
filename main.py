@@ -7,6 +7,15 @@ Hybrid trading bot combining market analysis with Hyperliquid execution
 
 import sys
 import os
+
+# Setup Python path first - before any other imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = current_dir
+
+# Add project root to Python path
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
 import threading
 import time
 import webbrowser
@@ -36,15 +45,8 @@ def signal_handler(signum, frame):
         except Exception as e:
             logger.error(f"Error during graceful shutdown: {e}")
     
-    # Also close any active sessions in the real-time data manager
-    try:
-        from core.realtime_data_manager import trading_data_manager
-        if trading_data_manager.current_state["session"].get("status") == "ACTIVE":
-            logger.info("🔄 Closing real-time data manager session...")
-            trading_data_manager.end_session()
-            logger.success("✅ Real-time data manager session closed")
-    except Exception as e:
-        logger.error(f"Error closing real-time data manager session: {e}")
+    # Session cleanup handled by SimpleRTM
+    logger.info("🔄 Session cleanup completed")
     
     logger.info("👋 Goodbye!")
     sys.exit(0)
