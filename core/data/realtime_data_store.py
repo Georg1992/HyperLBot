@@ -133,13 +133,11 @@ class RealTimeDataStore:
         """Update session data"""
         with self.data_lock:
             self.current_state["session"].update(updates)
-            logger.debug(f"🔄 Session data updated: {list(updates.keys())}")
     
     def set_session_status(self, status: str):
         """Update session status"""
         with self.data_lock:
             self.current_state["session"]["status"] = status
-            logger.debug(f"📊 Session status: {status}")
     
     # MARKET DATA METHODS
     def get_market_data(self) -> Dict[str, Any]:
@@ -152,7 +150,6 @@ class RealTimeDataStore:
         with self.data_lock:
             self.current_state["market"].update(market_data)
             self.current_state["market"]["last_update"] = datetime.now().isoformat()
-            logger.debug(f"📊 Market data updated: {list(market_data.keys())}")
     
     # BALANCE METHODS
     def get_balance_data(self) -> Dict[str, Any]:
@@ -172,7 +169,6 @@ class RealTimeDataStore:
             self.current_state["session"]["last_balance_update"] = datetime.now().isoformat()
             
             balance_change = new_balance - old_balance
-            logger.debug(f"💰 Balance: ${old_balance:.2f} → ${new_balance:.2f} ({balance_change:+.2f}) - {reason}")
     
     def update_simulated_balance(self, new_balance: float, change: float):
         """Update simulated balance"""
@@ -190,8 +186,7 @@ class RealTimeDataStore:
                     if self.current_state["session"]["initial_balance"] > 0 else 0
                 )
                 self.current_state["balance"]["balance_source"] = "simulated"
-            
-            logger.debug(f"🎮 Simulated balance: ${new_balance:.2f} (Change: ${change:.2f})")
+
     
     # PREDICTIONS METHODS
     def get_predictions(self) -> List[Dict[str, Any]]:
@@ -203,7 +198,6 @@ class RealTimeDataStore:
         """Update current trading predictions"""
         with self.data_lock:
             self.current_state["predictions"] = predictions_data
-            logger.debug(f"🎯 Predictions updated: {len(predictions_data)} predictions")
     
     # POSITIONS METHODS
     def get_positions_data(self) -> Dict[str, Any]:
@@ -217,7 +211,6 @@ class RealTimeDataStore:
             self.current_state["positions"]["open_positions"] = positions
             self.current_state["positions"]["last_update"] = time.time()
             self.current_state["session"]["open_positions_count"] = len(positions)
-            logger.debug(f"🔄 Real positions updated: {len(positions)} positions")
     
     def add_simulated_position(self, position: Dict[str, Any]):
         """Add a simulated position"""
@@ -228,7 +221,6 @@ class RealTimeDataStore:
             
             self.current_state["positions"]["simulated_positions"].append(position)
             self.current_state["positions"]["last_update"] = time.time()
-            logger.debug(f"📈 Simulated position added: {position['side']} {position['size']} {position['symbol']}")
     
     # ORDERS METHODS
     def get_orders_data(self) -> Dict[str, Any]:
@@ -241,7 +233,6 @@ class RealTimeDataStore:
         with self.data_lock:
             self.current_state["orders"]["open_orders"] = orders
             self.current_state["orders"]["last_update"] = time.time()
-            logger.debug(f"🔄 Real orders updated: {len(orders)} orders")
     
     # VOLUME AND SENTIMENT METHODS
     def update_global_volume(self, volume_data: Dict[str, Any]):
@@ -256,7 +247,6 @@ class RealTimeDataStore:
                 "status": volume_data.get("status", "unavailable"),
                 "last_update": time.time()
             }
-            logger.debug("🌍 Global volume data updated")
     
     def update_blockchain_sentiment(self, sentiment_data: Dict[str, Any]):
         """Update blockchain sentiment data"""
@@ -267,7 +257,6 @@ class RealTimeDataStore:
                 "indicators": sentiment_data.get("indicators", {}),
                 "last_update": time.time()
             }
-            logger.debug("🧠 Blockchain sentiment updated")
     
     # HISTORICAL DATA METHODS
     def add_trade_record(self, trade_record: Dict[str, Any]):
@@ -283,15 +272,12 @@ class RealTimeDataStore:
                 session["winning_trades"] += 1
             else:
                 session["losing_trades"] += 1
-            
-            logger.debug(f"📊 Trade recorded: {trade_record.get('side', 'UNKNOWN')} {trade_record.get('pnl', 0):+.2f}")
     
     def add_signal_record(self, signal_record: Dict[str, Any]):
         """Add signal to recent signals"""
         with self.data_lock:
             signal_record["timestamp"] = time.time()
             self.recent_signals.append(signal_record)
-            logger.debug(f"🎯 Signal recorded: {signal_record.get('signal_type', 'UNKNOWN')}")
     
     def add_activity_record(self, activity_record: Dict[str, Any]):
         """Add activity to recent activity"""
@@ -299,7 +285,6 @@ class RealTimeDataStore:
             activity_record["timestamp"] = time.time()
             activity_record["datetime"] = datetime.now().isoformat()
             self.recent_activity.append(activity_record)
-            logger.debug(f"📊 Activity recorded: {activity_record.get('message', '')}")
     
     def get_recent_trades(self, count: int = 10) -> List[Dict[str, Any]]:
         """Get recent trades"""
