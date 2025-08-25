@@ -8,6 +8,11 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 from .config import TradingConfig
 
+# Import data modules to avoid lazy import issues
+from data.yahoo_data_fetcher import YahooDataFetcher
+from data.stable_volume_fetcher import StableVolumeFetcher
+from data.ultimate_pressure_indicator import UltimatePressureIndicator
+
 class HyperliquidAPI:
     """Hyperliquid API client for trading operations"""
     
@@ -606,8 +611,6 @@ class HyperliquidAPI:
             symbol = symbol or self.config.SYMBOL
             
             # Use Yahoo Finance for volume data since Hyperliquid API doesn't support candlestick volume
-            from data.yahoo_data_fetcher import YahooDataFetcher
-            
             yahoo_fetcher = YahooDataFetcher()
             candles = yahoo_fetcher.get_5m_klines(symbol, limit)
             
@@ -628,8 +631,6 @@ class HyperliquidAPI:
             symbol = symbol or self.config.SYMBOL
             
             # Use stable volume fetcher to prevent wild fluctuations
-            from data.stable_volume_fetcher import StableVolumeFetcher
-            
             volume_fetcher = StableVolumeFetcher()
             volume_data = volume_fetcher.get_current_5m_volume()
             
@@ -879,8 +880,6 @@ class HyperliquidAPI:
     def get_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
         """Get ultimate buy/sell pressure indicator (replaces volume-based indicators)"""
         try:
-            from data.ultimate_pressure_indicator import UltimatePressureIndicator
-            
             # Use singleton pattern for efficiency
             if not hasattr(self, '_pressure_indicator'):
                 self._pressure_indicator = UltimatePressureIndicator()
