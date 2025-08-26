@@ -223,24 +223,73 @@ class EventDrivenTradingDashboard:
             logger.error(f"❌ Failed to emit data update: {e}")
     
     def _get_dashboard_data(self) -> Dict[str, Any]:
-        """Get dashboard data from SimpleRTM - SINGLE SOURCE OF TRUTH"""
+        """Get dashboard data from SimpleRTM - PRESENTATION LAYER ONLY"""
         try:
-            # Import SimpleRTM
             from core.data.simple_rtm import simple_rtm
+            from core.session.session_manager import SessionManager
+            from core.account_manager import account_manager
             
-            # Get all data from SimpleRTM
-            dashboard_data = simple_rtm.get_dashboard_data()
+            # Get raw data from SimpleRTM
+            rtm_data = simple_rtm.get_data()
             
-            logger.debug(f"✅ SimpleRTM data - Balance: ${dashboard_data['session']['current_balance']:.2f}, Session: {dashboard_data['session']['session_id']}")
+            # Get session data from SessionManager (source of truth)
+            session_manager = SessionManager()
+            session_data = session_manager.get_current_session_data()
+            
+            # Get account data from AccountManager (source of truth)
+            account_data = account_manager.get_account_summary()
+            
+            # Calculate session time
+            start_time = session_data.get("start_time")
+            session_time = "0m"
+            if start_time:
+                try:
+                    from datetime import datetime
+                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    elapsed = datetime.now() - start_dt
+                    hours = int(elapsed.total_seconds() // 3600)
+                    minutes = int((elapsed.total_seconds() % 3600) // 60)
+                    if hours > 0:
+                        session_time = f"{hours}h {minutes}m"
+                    else:
+                        session_time = f"{minutes}m"
+                except:
+                    session_time = "0m"
+            
+            # Format data for dashboard - PRESENTATION LAYER ONLY
+            dashboard_data = {
+                "session": {
+                    "session_id": session_data.get("session_id", "no_session"),
+                    "status": session_data.get("status", "INACTIVE"),
+                    "strategy": session_data.get("strategy", "standard"),
+                    "session_time": session_time,
+                    "start_time": session_data.get("start_time"),
+                    "current_balance": account_data.get("current_balance", 0.0),
+                    "initial_balance": account_data.get("initial_balance", 0.0),
+                    "total_pnl": account_data.get("total_pnl", 0.0),
+                    "win_rate": account_data.get("win_rate", 0.0),
+                    "total_trades": account_data.get("total_trades", 0)
+                },
+                "market": rtm_data.get("market", {}),
+                "logs": rtm_data.get("logs", []),
+                "predictions": rtm_data.get("predictions", []),
+                "trades": rtm_data.get("trades", []),
+                "orderbook": {"bids": [], "asks": []},  # Placeholder
+                "global_volume": {"volume": 0.0},  # Placeholder
+                "timestamp": rtm_data.get("timestamp", ""),
+                "data_source": "Presentation Layer",
+                "connection_status": "✅ Connected"
+            }
+            
+            logger.debug(f"✅ Dashboard data - Balance: ${dashboard_data['session']['current_balance']:.2f}, Session: {dashboard_data['session']['session_id']}")
             return dashboard_data
             
         except Exception as e:
-            logger.error(f"❌ Failed to get dashboard data from SimpleRTM: {e}")
+            logger.error(f"❌ Failed to get dashboard data: {e}")
             return {
                 "session": {"error": str(e)},
                 "market": {"error": str(e)},
                 "logs": [],
-                "summary": {"error": str(e)},
                 "predictions": [],
                 "trades": [],
                 "orderbook": {"error": str(e)},

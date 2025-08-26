@@ -13,7 +13,7 @@ def test_dashboard_data_flow():
     print("=" * 50)
     
     # Get current SimpleRTM data
-    data = simple_rtm.get_dashboard_data()
+    data = simple_rtm.get_data()
     
     print(f"📊 Session Status: {data['session']['status']}")
     print(f"📊 Session ID: {data['session']['session_id']}")

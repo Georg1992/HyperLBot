@@ -109,44 +109,7 @@ class SimpleRTM:
         except Exception as e:
             logger.error(f"❌ Failed to save data: {e}")
     
-    def get_session_data(self) -> Dict[str, Any]:
-        """Get session data from SessionManager"""
-        try:
-            # Import here to avoid circular imports
-            from core.session.session_manager import SessionManager
-            session_manager = SessionManager()
-            return session_manager.get_current_session_data()
-        except Exception as e:
-            logger.error(f"❌ Failed to get session data: {e}")
-            return self._data["session"]
-    
-    def get_account_data(self) -> Dict[str, Any]:
-        """Get account data from AccountManager"""
-        try:
-            from core.account_manager import account_manager
-            account_data = account_manager.get_account_summary()
-            if not account_data:  # Empty dict returned
-                return {
-                    "current_balance": 0.0,
-                    "initial_balance": 0.0,
-                    "total_pnl": 0.0,
-                    "total_trades": 0,
-                    "winning_trades": 0,
-                    "losing_trades": 0,
-                    "win_rate": 0.0
-                }
-            return account_data
-        except Exception as e:
-            logger.error(f"❌ Failed to get account data: {e}")
-            return {
-                "current_balance": 0.0,
-                "initial_balance": 0.0,
-                "total_pnl": 0.0,
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "win_rate": 0.0
-            }
+
     
     def update_market(self, market_data: Dict[str, Any]):
         """Update market data"""
@@ -157,9 +120,6 @@ class SimpleRTM:
             # Handle trend analysis data separately
             if "trend_analysis" in market_data:
                 self._data["market"]["trend_analysis"] = market_data["trend_analysis"]
-                logger.info(f"📊 SimpleRTM: Updated trend_analysis - Overall: {market_data['trend_analysis'].get('overall_trend', 'UNKNOWN')} | Alignment: {market_data['trend_analysis'].get('alignment_score', 0)*100:.1f}%")
-            else:
-                logger.warning(f"⚠️ SimpleRTM: No trend_analysis in market_data")
             
             self._data["market"]["last_updated"] = datetime.now().isoformat()
             self._data["timestamp"] = datetime.now().isoformat()
@@ -171,9 +131,6 @@ class SimpleRTM:
             self._data["market"]["data_update_status"] = data_status
             self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()
-            
-            current_price = market_data.get('current_price', 0) or 0
-            logger.debug(f"✅ Market updated: ${current_price:.2f}")
     
     def add_activity(self, message: str, level: str = "INFO", source: str = "bot"):
         """Add activity log entry"""
@@ -192,8 +149,6 @@ class SimpleRTM:
             
             self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()
-            
-            logger.debug(f"✅ Activity added: {message}")
     
     def add_signal(self, signal_data: Dict[str, Any]):
         """Add trading signal"""
@@ -240,75 +195,10 @@ class SimpleRTM:
             size = trade_data.get('size', 0) or 0
             logger.debug(f"✅ Trade added: {trade_data.get('side', 'UNKNOWN')} {size} BTC")
     
-    def get_dashboard_data(self) -> Dict[str, Any]:
-        """Get complete dashboard data - PRESENTATION LAYER ONLY"""
+    def get_data(self) -> Dict[str, Any]:
+        """Get raw data - Dashboard reads directly from this"""
         with self._lock:
-            # Get session data from SessionManager (source of truth)
-            session_data = self.get_session_data()
-            
-            # Get account data from AccountManager (source of truth)
-            account_data = self.get_account_data()
-            
-            # Calculate session time
-            start_time = session_data.get("start_time")
-            session_time = "0m"
-            if start_time:
-                try:
-                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                    elapsed = datetime.now() - start_dt
-                    hours = int(elapsed.total_seconds() // 3600)
-                    minutes = int((elapsed.total_seconds() % 3600) // 60)
-                    if hours > 0:
-                        session_time = f"{hours}h {minutes}m"
-                    else:
-                        session_time = f"{minutes}m"
-                except:
-                    session_time = "0m"
-            
-            # Format data for dashboard - PRESENTATION LAYER ONLY
-            dashboard_data = {
-                "session": {
-                    "session_id": session_data.get("session_id", "no_session"),
-                    "status": session_data.get("status", "INACTIVE"),
-                    "strategy": session_data.get("strategy", "standard"),
-                    "session_time": session_time,
-                    "start_time": session_data.get("start_time"),
-                    "current_balance": account_data.get("current_balance", 0.0),
-                    "initial_balance": account_data.get("initial_balance", 0.0),
-                    "total_pnl": account_data.get("total_pnl", 0.0),
-                    "win_rate": account_data.get("win_rate", 0.0),
-                    "total_trades": account_data.get("total_trades", 0)
-                },
-                "market": {
-                    "current_price": self._data["market"]["current_price"],
-                    "trend": self._data["market"]["trend"],
-                    "rsi": self._data["market"]["rsi"],
-                    "volume_depth": self._data["market"]["volume_depth"],
-                    "volume_category": self._data["market"].get("volume_category", "UNKNOWN"),
-                    "order_flow": self._data["market"].get("order_flow", "NEUTRAL"),
-                    "depth_analysis": self._data["market"].get("depth_analysis", "UNKNOWN"),
-                    "volatility_5m": self._data["market"].get("volatility_5m", 0.0),
-                    "volatility_category": self._data["market"].get("volatility_category", "UNKNOWN"),
-                    "volatility_trend": self._data["market"].get("volatility_trend", "UNKNOWN"),
-                    "spread_volatility": self._data["market"].get("spread_volatility", 0.0),
-                    "ultimate_pressure": self._data["market"].get("ultimate_pressure", {
-                        "direction": "NEUTRAL",
-                        "confidence": "50%",
-                        "strength": 0.5,
-                        "trend": "NEUTRAL"
-                    })
-                },
-                "logs": self._data["logs"],
-                "predictions": self._data["predictions"],
-                "trades": self._data["trades"],
-                "orderbook": {"bids": [], "asks": []},  # Placeholder
-                "global_volume": {"volume": 0.0},  # Placeholder
-                "timestamp": datetime.now().isoformat(),
-                "data_source": "Presentation Layer",
-                "connection_status": "✅ Connected"
-            }
-            
-            return dashboard_data
+            return self._data.copy()
     
     def clear_presentation_data(self):
         """Clear only presentation data (logs, predictions, trades) - NOT account/session data or market data"""
