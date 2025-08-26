@@ -417,8 +417,12 @@
             <div class="price-big" id="current-price">Loading...</div>
             <div id="market-data">
                 <div class="data-item">
-                    <span class="data-label">Trend:</span>
-                    <span class="data-value" id="market-trend">Loading...</span>
+                    <span class="data-label">Overall Trend:</span>
+                    <span class="data-value" id="market-overall-trend">Loading...</span>
+                </div>
+                <div class="data-item">
+                    <span class="data-label">Alignment Score:</span>
+                    <span class="data-value" id="market-alignment-score">Loading...</span>
                 </div>
                 <div class="data-item">
                     <span class="data-label">RSI:</span>
@@ -439,40 +443,7 @@
             </div>
         </div>
 
-        <!-- Advanced Trend Analysis Card -->
-        <div class="card">
-            <h2>📊 Advanced Trend Analysis</h2>
-            <div id="trend-analysis">
-                <div class="data-item">
-                    <span class="data-label">Overall Trend:</span>
-                    <span class="data-value" id="overall-trend">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Alignment Score:</span>
-                    <span class="data-value" id="alignment-score">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">1m Trend:</span>
-                    <span class="data-value" id="trend-1m">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">5m Trend:</span>
-                    <span class="data-value" id="trend-5m">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">1h Trend:</span>
-                    <span class="data-value" id="trend-1h">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Reversal Probability:</span>
-                    <span class="data-value" id="reversal-probability">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Reversal Signals:</span>
-                    <span class="data-value" id="reversal-signals">Loading...</span>
-                </div>
-            </div>
-        </div>
+
 
         <!-- Activity Logs Card -->
         <div class="card medium-card">
@@ -779,10 +750,27 @@
                         `$${parseFloat(market.current_price).toLocaleString()}`;
                 }
                 
-                // Update trend
-                const trendElement = document.getElementById('market-trend');
-                trendElement.textContent = market.trend || 'N/A';
-                trendElement.className = 'data-value ' + this.getTrendClass(market.trend);
+                // Update Overall Trend from trend_analysis
+                const overallTrendElement = document.getElementById('market-overall-trend');
+                if (market.trend_analysis && market.trend_analysis.overall_trend) {
+                    const overallTrend = market.trend_analysis.overall_trend;
+                    overallTrendElement.textContent = overallTrend;
+                    overallTrendElement.className = 'data-value ' + this.getTrendClass(overallTrend);
+                } else {
+                    overallTrendElement.textContent = 'N/A';
+                    overallTrendElement.className = 'data-value trend-neutral';
+                }
+                
+                // Update Alignment Score from trend_analysis
+                const alignmentElement = document.getElementById('market-alignment-score');
+                if (market.trend_analysis && market.trend_analysis.alignment_score !== undefined) {
+                    const alignmentScore = market.trend_analysis.alignment_score || 0;
+                    alignmentElement.textContent = `${(alignmentScore * 100).toFixed(1)}%`;
+                    alignmentElement.className = 'data-value ' + (alignmentScore > 0.7 ? 'trend-up' : alignmentScore > 0.4 ? 'trend-neutral' : 'trend-down');
+                } else {
+                    alignmentElement.textContent = 'N/A';
+                    alignmentElement.className = 'data-value trend-neutral';
+                }
                 
                 // Update RSI
                 const rsiElement = document.getElementById('market-rsi');
@@ -836,9 +824,6 @@
                 } else {
                     volatilityElement.textContent = 'N/A';
                 }
-                
-                // Update Advanced Trend Analysis
-                this.updateTrendAnalysis(market.trend_analysis);
                 
                 // Update Ultimate Pressure with enhanced display
                 const pressureElement = document.getElementById('market-pressure');
@@ -1160,73 +1145,7 @@
                 return tradeDiv;
             }
             
-            updateTrendAnalysis(trendAnalysis) {
-                if (!trendAnalysis) {
-                    // Set default values if no trend analysis data
-                    document.getElementById('overall-trend').textContent = 'N/A';
-                    document.getElementById('alignment-score').textContent = 'N/A';
-                    document.getElementById('trend-1m').textContent = 'N/A';
-                    document.getElementById('trend-5m').textContent = 'N/A';
-                    document.getElementById('trend-1h').textContent = 'N/A';
-                    document.getElementById('reversal-probability').textContent = 'N/A';
-                    document.getElementById('reversal-signals').textContent = 'N/A';
-                    return;
-                }
-                
-                // Update overall trend
-                const overallTrendElement = document.getElementById('overall-trend');
-                const overallTrend = trendAnalysis.overall_trend || 'UNKNOWN';
-                overallTrendElement.textContent = overallTrend;
-                overallTrendElement.className = 'data-value ' + this.getTrendClass(overallTrend);
-                
-                // Update alignment score
-                const alignmentElement = document.getElementById('alignment-score');
-                const alignmentScore = trendAnalysis.alignment_score || 0;
-                alignmentElement.textContent = `${(alignmentScore * 100).toFixed(1)}%`;
-                alignmentElement.className = 'data-value ' + (alignmentScore > 0.7 ? 'trend-up' : alignmentScore > 0.4 ? 'trend-neutral' : 'trend-down');
-                
-                // Update timeframe trends
-                const timeframes = trendAnalysis.timeframes || {};
-                
-                // 1m trend
-                const trend1mElement = document.getElementById('trend-1m');
-                const trend1m = timeframes['1m'] || {};
-                const trend1mText = `${trend1m.trend || 'UNKNOWN'} (${((trend1m.confidence || 0) * 100).toFixed(0)}%)`;
-                trend1mElement.textContent = trend1mText;
-                trend1mElement.className = 'data-value ' + this.getTrendClass(trend1m.trend);
-                
-                // 5m trend
-                const trend5mElement = document.getElementById('trend-5m');
-                const trend5m = timeframes['5m'] || {};
-                const trend5mText = `${trend5m.trend || 'UNKNOWN'} (${((trend5m.confidence || 0) * 100).toFixed(0)}%)`;
-                trend5mElement.textContent = trend5mText;
-                trend5mElement.className = 'data-value ' + this.getTrendClass(trend5m.trend);
-                
-                // 1h trend
-                const trend1hElement = document.getElementById('trend-1h');
-                const trend1h = timeframes['1h'] || {};
-                const trend1hText = `${trend1h.trend || 'UNKNOWN'} (${((trend1h.confidence || 0) * 100).toFixed(0)}%)`;
-                trend1hElement.textContent = trend1hText;
-                trend1hElement.className = 'data-value ' + this.getTrendClass(trend1h.trend);
-                
-                // Update reversal analysis
-                const reversalAnalysis = trendAnalysis.reversal_analysis || {};
-                const reversalProbElement = document.getElementById('reversal-probability');
-                const reversalProb = reversalAnalysis.reversal_probability || 0;
-                reversalProbElement.textContent = `${(reversalProb * 100).toFixed(1)}%`;
-                reversalProbElement.className = 'data-value ' + (reversalProb > 0.5 ? 'trend-down' : 'trend-neutral');
-                
-                // Update reversal signals
-                const reversalSignalsElement = document.getElementById('reversal-signals');
-                const signals = reversalAnalysis.signals || [];
-                if (signals.length > 0) {
-                    reversalSignalsElement.textContent = signals.join(', ');
-                    reversalSignalsElement.className = 'data-value trend-down';
-                } else {
-                    reversalSignalsElement.textContent = 'None detected';
-                    reversalSignalsElement.className = 'data-value trend-neutral';
-                }
-            }
+
             
             getTrendClass(trend) {
                 if (!trend) return 'trend-neutral';
