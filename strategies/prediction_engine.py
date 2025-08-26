@@ -281,49 +281,7 @@ class PredictionEngine:
                 "confidence": 0.0
             }
     
-    def _get_volatility_5m(self, yahoo_analysis: Dict[str, Any]) -> float:
-        """Calculate 5-minute volatility from Yahoo analysis"""
-        try:
-            candles_5m = yahoo_analysis.get("candles_5m", [])
-            if len(candles_5m) < 2:
-                return 0.0
-            
-            # Calculate price changes
-            price_changes = []
-            for i in range(1, len(candles_5m)):
-                prev_close = float(candles_5m[i-1]["close"])
-                curr_close = float(candles_5m[i]["close"])
-                change = abs((curr_close - prev_close) / prev_close)
-                price_changes.append(change)
-            
-            # Return average volatility
-            return sum(price_changes) / len(price_changes) if price_changes else 0.0
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to calculate 5m volatility: {e}")
-            return 0.0
-    
-    def _get_volatility_1h(self, yahoo_analysis: Dict[str, Any]) -> float:
-        """Calculate 1-hour volatility from Yahoo analysis"""
-        try:
-            candles_1h = yahoo_analysis.get("candles_1h", [])
-            if len(candles_1h) < 2:
-                return 0.0
-            
-            # Calculate price changes
-            price_changes = []
-            for i in range(1, len(candles_1h)):
-                prev_close = float(candles_1h[i-1]["close"])
-                curr_close = float(candles_1h[i]["close"])
-                change = abs((curr_close - prev_close) / prev_close)
-                price_changes.append(change)
-            
-            # Return average volatility
-            return sum(price_changes) / len(price_changes) if price_changes else 0.0
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to calculate 1h volatility: {e}")
-            return 0.0
+
     
     def _generate_basic_predictions(self, current_price: float, support: float, resistance: float, trend_5m: Dict, trend_1h: Dict, volatility: float, current_rsi: float = 50.0, total_depth: float = 0, depth_imbalance: float = 0) -> List[Dict]:
         """Generate basic predictions even with small ranges - focus on current price action"""

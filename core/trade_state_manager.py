@@ -387,7 +387,7 @@ class TradeStateManager:
             # Sort by timestamp (newest first)
             dashboard_trades.sort(key=lambda x: x["timestamp"], reverse=True)
             
-            logger.debug(f"📊 Retrieved {len(dashboard_trades)} trades for dashboard{f' (account: {account_id})' if account_id else ''}")
+    
             return dashboard_trades[:50]  # Return last 50 trades
             
         except Exception as e:

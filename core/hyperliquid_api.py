@@ -246,7 +246,7 @@ class HyperliquidAPI:
                 if websocket.is_connected():
                     price = websocket.get_current_price()
                     if price and price > 0:
-                        logger.debug(f"💰 WebSocket price: ${price:,.2f} (real-time)")
+                
                         return price
                     else:
                         logger.debug("⚠️ WebSocket connected but no price data yet")

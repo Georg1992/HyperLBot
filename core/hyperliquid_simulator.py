@@ -40,7 +40,7 @@ class HyperliquidSimulator:
     def update_order_book(self, orderbook: Dict[str, Any]):
         """Update the order book snapshot"""
         self.order_book_snapshot = copy.deepcopy(orderbook)
-        logger.debug(f"📊 Order book updated: {len(orderbook.get('bids', []))} bids, {len(orderbook.get('asks', []))} asks")
+
     
     def simulate_order_execution(self, 
                                order_type: str, 

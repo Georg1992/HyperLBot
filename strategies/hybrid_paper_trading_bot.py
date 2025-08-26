@@ -209,9 +209,9 @@ class YahooHyperliquidPaperTradingBot:
                 volume_category = volume_data.get("volume_category", "UNKNOWN")
                 order_flow = volume_data.get("order_flow", "NEUTRAL")
                 depth_analysis = volume_data.get("depth_analysis", "UNKNOWN")
-                logger.debug(f"📊 Enhanced volume data: {volume_depth:.1f} BTC ({volume_category}) | Flow: {order_flow} | Depth: {depth_analysis}")
+        
             except Exception as e:
-                logger.debug(f"Enhanced volume calculation error: {e}")
+        
                 volume_depth = 0.0
                 volume_category = "UNKNOWN"
                 order_flow = "NEUTRAL"
@@ -229,9 +229,9 @@ class YahooHyperliquidPaperTradingBot:
                 volatility_category = volatility_data.get("volatility_category", "UNKNOWN")
                 volatility_trend = volatility_data.get("volatility_trend", "UNKNOWN")
                 spread_volatility = volatility_data.get("spread_volatility", 0.0)
-                logger.debug(f"📊 Enhanced volatility: {volatility_5m:.4f} ({volatility_category}) | Trend: {volatility_trend} | Spread: {spread_volatility:.4f}")
+        
             except Exception as e:
-                logger.debug(f"Enhanced volatility calculation error: {e}")
+        
                 volatility_5m = 0.0
                 volatility_category = "UNKNOWN"
                 volatility_trend = "UNKNOWN"
@@ -244,9 +244,9 @@ class YahooHyperliquidPaperTradingBot:
                 pressure_confidence = ultimate_pressure.get("confidence", "50%")
                 pressure_strength = ultimate_pressure.get("strength", 0.5)
                 pressure_trend = ultimate_pressure.get("trend", "NEUTRAL")
-                logger.debug(f"📊 Enhanced pressure: {pressure_direction} ({pressure_confidence}) | Trend: {pressure_trend} | Strength: {pressure_strength:.2f}")
+        
             except Exception as e:
-                logger.debug(f"Enhanced ultimate pressure error: {e}")
+        
                 pressure_direction = "NEUTRAL"
                 pressure_confidence = "50%"
                 pressure_strength = 0.5
@@ -612,17 +612,7 @@ class YahooHyperliquidPaperTradingBot:
         
         return signal_data
     
-    def _get_volatility_5m(self, yahoo_analysis: Dict[str, Any]) -> float:
-        """Get 5m volatility from Yahoo analysis"""
-        return yahoo_analysis.get("volatility_5m", 0.0)
-    def _get_volatility_1h(self, yahoo_analysis: Dict[str, Any]) -> float:
-        """Get 1h volatility from Yahoo analysis"""
-        return yahoo_analysis.get("volatility_1h", 0.0)
-    def _get_range_percentage(self, yahoo_analysis: Dict[str, Any], current_price: float) -> float:
-        """Get range percentage from Yahoo analysis"""
-        support_resistance = yahoo_analysis.get("support_resistance_5m", {})
-        range_size = support_resistance.get("range", 0)
-        return (range_size / current_price) if current_price > 0 else 0.0
+
     def _build_price_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """Build price prediction using PredictionEngine"""
         return self.prediction_engine.build_price_prediction(yahoo_analysis, current_price, self.strategy_name)
@@ -635,15 +625,7 @@ class YahooHyperliquidPaperTradingBot:
     def _calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
         """Get win probability from prediction engine"""
         return self.prediction_engine.calculate_win_probability(prediction, prediction_analysis)
-    def simulate_predictive_limit_order_execution(self, side: str, size: float, limit_price: float, current_price: float, leverage: int) -> Dict[str, Any]:
-        """Simulate order execution using HyperliquidSimulator"""
-        return self.hyperliquid_simulator.simulate_order_execution('LIMIT', side, size, limit_price, leverage)
-    def simulate_limit_order_execution(self, side: str, size: float, limit_price: float, current_price: float, leverage: int) -> Dict[str, Any]:
-        """Simulate limit order execution using HyperliquidSimulator"""
-        return self.hyperliquid_simulator.simulate_order_execution('LIMIT', side, size, limit_price, leverage)
-    def simulate_trade_execution(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
-        """Simulate trade execution using HyperliquidSimulator"""
-        return self.hyperliquid_simulator.simulate_order_execution('MARKET', side, size, price, leverage)
+
     def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
         """Place a PREDICTIVE paper trade using predicted entry points and time-based order management"""
         try:
@@ -701,7 +683,7 @@ class YahooHyperliquidPaperTradingBot:
                 orderbook = self.hyperliquid_api.get_orderbook("BTC")
                 if orderbook and not orderbook.get('error'):
                     self.hyperliquid_simulator.update_order_book(orderbook)
-                    logger.debug("📊 Updated simulator with real order book data")
+            
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
             
@@ -962,7 +944,7 @@ class YahooHyperliquidPaperTradingBot:
             orderbook = self.hyperliquid_api.get_orderbook("BTC")
             if orderbook and not orderbook.get('error'):
                 self.hyperliquid_simulator.update_order_book(orderbook)
-                logger.debug("📊 Updated simulator with real order book data for position close")
+        
         except Exception as e:
             logger.warning(f"⚠️ Could not update simulator order book: {e}")
         
@@ -1253,7 +1235,7 @@ class YahooHyperliquidPaperTradingBot:
                     # Update SimpleRTM with analysis activity
                     try:
                         self._update_simple_rtm_activity(f"🔍 Analyzing market conditions at ${hyperliquid_price:.2f}", "INFO")
-                        logger.debug(f"📊 Activity logged to SimpleRTM: Analyzing market conditions")
+                
                     except Exception as e:
                         logger.debug(f"❌ Could not log activity to SimpleRTM: {e}")
                     
@@ -1291,7 +1273,7 @@ class YahooHyperliquidPaperTradingBot:
                         
                         # Add analysis activity to SimpleRTM
                         self._update_simple_rtm_activity(f"📊 Analysis complete: {signal.get('reason', 'No clear signal')[:80]}{'...' if len(signal.get('reason', '')) > 80 else ''}", "INFO")
-                        logger.debug(f"📊 NO-SIGNAL status sent to dashboard: {signal.get('reason', 'Unknown')}")
+                
                     
                     if signal["should_trade"]:
                         # Calculate position value from signal data
@@ -1640,7 +1622,7 @@ class YahooHyperliquidPaperTradingBot:
             
             # Log successful update
             rsi_display = f"{rsi_value:.1f}" if rsi_value is not None else "N/A"
-            logger.debug(f"📊 Optimized market update: ${current_price:.2f} | RSI: {rsi_display} | Trend: {trend_value}")
+    
             
         except Exception as e:
             logger.error(f"❌ Optimized market update failed: {e}")

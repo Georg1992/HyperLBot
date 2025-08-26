@@ -79,7 +79,7 @@ class YahooDataFetcher:
             self.cached_yahoo_analysis = self.get_market_analysis(symbol, hyperliquid_price)
             self.last_yahoo_update = current_time
         else:
-            logger.debug("📊 Using cached Yahoo Finance market analysis")
+    
         
         return self.cached_yahoo_analysis
     
@@ -91,7 +91,7 @@ class YahooDataFetcher:
         current_time = time.time()
         
         if self._should_update_data(self.last_rsi_update, self.rsi_update_interval):
-            logger.debug("📊 Updating RSI data (1-minute interval)")
+    
             # Use 5-minute candles instead of 1-minute for more reliable data
             # 5-minute data is available for 60 days vs 1-minute data only 7 days
             candles_5m = self.get_5m_klines(symbol, 30)  # Get 30 candles for 14-period RSI + buffer
@@ -115,7 +115,7 @@ class YahooDataFetcher:
             
             self.last_rsi_update = current_time
         else:
-            logger.debug("📊 Using cached RSI data")
+    
         
         return self.cached_rsi_data
     
@@ -126,7 +126,7 @@ class YahooDataFetcher:
         current_time = time.time()
         
         if self._should_update_data(self.last_trend_update, self.trend_update_interval):
-            logger.debug("📊 Updating trend data (1-minute interval)")
+    
             candles_1m = self.get_1m_klines(symbol, periods + 5)  # Get extra candles for buffer
             if candles_1m and len(candles_1m) >= periods:
                 from core.market_data_manager import market_data_manager
@@ -135,7 +135,7 @@ class YahooDataFetcher:
                 self.cached_trend_data = {"trend": "SIDEWAYS", "strength": 0, "direction": 0}
             self.last_trend_update = current_time
         else:
-            logger.debug("📊 Using cached trend data")
+    
         
         return self.cached_trend_data
     
@@ -160,7 +160,7 @@ class YahooDataFetcher:
                 self.cached_1h_data = {}
             self.last_1h_update = current_time
         else:
-            logger.debug("📊 Using cached 1-hour data")
+    
         
         return self.cached_1h_data
     
@@ -185,7 +185,7 @@ class YahooDataFetcher:
                 self.cached_daily_data = {}
             self.last_daily_update = current_time
         else:
-            logger.debug("📊 Using cached daily data")
+    
         
         return self.cached_daily_data
     

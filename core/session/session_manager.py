@@ -253,7 +253,7 @@ class SessionManager:
                 # Add activity record to SimpleRTM
                 simple_rtm.add_activity(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}", "INFO", "account")
                 
-                logger.debug(f"💰 Session balance updated: ${new_balance:.2f} - {reason}")
+        
                 
             except Exception as e:
                 logger.error(f"Error updating session balance: {e}")

@@ -113,7 +113,7 @@ class TradingLogger:
         self.session_metadata["balance_change_pct"] = balance_change_pct
         
         self._save_session_metadata()
-        logger.debug(f"💰 Updated current balance: ${balance:.2f} (P&L: {balance_change:+.2f}, {balance_change_pct:+.2f}%)")
+
     
     def log_trade(self, trade_data: Dict[str, Any]):
         """Log a completed trade with comprehensive details"""

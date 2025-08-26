@@ -110,11 +110,11 @@ class MarketDataManager:
             # Calculate RS and RSI
             if avg_loss == 0:
                 rsi = 100.0
-                logger.debug(f"📊 RSI calculation: avg_loss=0, RSI=100.0")
+        
             else:
                 rs = avg_gain / avg_loss
                 rsi = 100 - (100 / (1 + rs))
-                logger.debug(f"📊 RSI calculation: avg_gain={avg_gain:.6f}, avg_loss={avg_loss:.6f}, RS={rs:.6f}, RSI={rsi:.2f}")
+        
             
             # Determine trend and signal
             if rsi > 70:

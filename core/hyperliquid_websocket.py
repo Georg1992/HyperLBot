@@ -229,7 +229,7 @@ class HyperliquidWebSocket:
                         except Exception as e:
                             logger.error(f"❌ Error in price callback: {e}")
                     
-                    logger.debug(f"💰 Trade price update: ${price:,.2f}")
+            
                     
         except Exception as e:
             logger.error(f"❌ Error processing trades update: {e}")
@@ -260,7 +260,7 @@ class HyperliquidWebSocket:
                     # Call price update callbacks
                     self._notify_price_callbacks()
                     
-                    logger.debug(f"💰 Price update: ${mid_price:,.2f} (Bid: ${best_bid:,.2f}, Ask: ${best_ask:,.2f})")
+            
                     
         except Exception as e:
             logger.error(f"❌ Error processing orderbook update: {e}")
