@@ -86,17 +86,33 @@ class YahooDataFetcher:
     def get_optimized_rsi_data(self, symbol: str = "BTC", periods: int = 14) -> Dict[str, Any]:
         """
         Get optimized RSI data with 1-minute update interval
+        Uses 5-minute candles for more reliable data availability
         """
         current_time = time.time()
         
         if self._should_update_data(self.last_rsi_update, self.rsi_update_interval):
             logger.debug("📊 Updating RSI data (1-minute interval)")
-            candles_1m = self.get_1m_klines(symbol, 20)  # Get 20 candles for 14-period RSI + buffer
-            if candles_1m and len(candles_1m) >= 15:
+            # Use 5-minute candles instead of 1-minute for more reliable data
+            # 5-minute data is available for 60 days vs 1-minute data only 7 days
+            candles_5m = self.get_5m_klines(symbol, 30)  # Get 30 candles for 14-period RSI + buffer
+            if candles_5m and len(candles_5m) >= 15:
                 from core.market_data_manager import market_data_manager
-                self.cached_rsi_data = market_data_manager.calculate_rsi(candles_1m, periods)
+                self.cached_rsi_data = market_data_manager.calculate_rsi(candles_5m, periods)
+                logger.debug(f"✅ RSI calculated from {len(candles_5m)} 5-minute candles")
             else:
-                self.cached_rsi_data = {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
+                # Fallback to 1-hour data if 5-minute data is insufficient
+                logger.warning(f"⚠️ Insufficient 5-minute data for RSI: {len(candles_5m) if candles_5m else 0} candles (need 15+)")
+                logger.info("🔄 Falling back to 1-hour data for RSI calculation")
+                
+                candles_1h = self.get_1h_klines(symbol, 50)  # Get 50 1-hour candles
+                if candles_1h and len(candles_1h) >= 15:
+                    from core.market_data_manager import market_data_manager
+                    self.cached_rsi_data = market_data_manager.calculate_rsi(candles_1h, periods)
+                    logger.debug(f"✅ RSI calculated from {len(candles_1h)} 1-hour candles (fallback)")
+                else:
+                    self.cached_rsi_data = {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
+                    logger.error(f"❌ Insufficient data for RSI calculation: 5m={len(candles_5m) if candles_5m else 0}, 1h={len(candles_1h) if candles_1h else 0}")
+            
             self.last_rsi_update = current_time
         else:
             logger.debug("📊 Using cached RSI data")

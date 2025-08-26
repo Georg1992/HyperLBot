@@ -84,7 +84,8 @@ class MarketDataManager:
         
         try:
             if len(candles) < periods + 1:
-                return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
+                logger.warning(f"⚠️ Insufficient candles for RSI: {len(candles)} (need {periods + 1})")
+                return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL", "error": "insufficient_data"}
             
             # Calculate price changes
             closes = [candle["close"] for candle in candles]
@@ -95,7 +96,8 @@ class MarketDataManager:
                 changes.append(change)
             
             if len(changes) < periods:
-                return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
+                logger.warning(f"⚠️ Insufficient price changes for RSI: {len(changes)} (need {periods})")
+                return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL", "error": "insufficient_changes"}
             
             # Calculate gains and losses
             gains = [change if change > 0 else 0 for change in changes]
@@ -108,9 +110,11 @@ class MarketDataManager:
             # Calculate RS and RSI
             if avg_loss == 0:
                 rsi = 100.0
+                logger.debug(f"📊 RSI calculation: avg_loss=0, RSI=100.0")
             else:
                 rs = avg_gain / avg_loss
                 rsi = 100 - (100 / (1 + rs))
+                logger.debug(f"📊 RSI calculation: avg_gain={avg_gain:.6f}, avg_loss={avg_loss:.6f}, RS={rs:.6f}, RSI={rsi:.2f}")
             
             # Determine trend and signal
             if rsi > 70:
@@ -129,7 +133,9 @@ class MarketDataManager:
                 "signal": signal,
                 "avg_gain": avg_gain,
                 "avg_loss": avg_loss,
-                "rs": rs if avg_loss > 0 else None
+                "rs": rs if avg_loss > 0 else None,
+                "data_points": len(candles),
+                "periods_used": periods
             }
             
             self._cache_data(cache_key, result, self._indicator_cache_duration)
@@ -137,7 +143,7 @@ class MarketDataManager:
             
         except Exception as e:
             logger.error(f"❌ RSI calculation failed: {e}")
-            return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
+            return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL", "error": str(e)}
     
     def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
         """Centralized trend calculation to eliminate redundant calculations"""
