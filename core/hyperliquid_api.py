@@ -729,8 +729,8 @@ class HyperliquidAPI:
 
 
 
-    def get_enhanced_volume_analysis(self, symbol: str = None) -> Dict[str, Any]:
-        """Get enhanced volume analysis using order book dynamics and trade flow"""
+    def get_volume_analysis(self, symbol: str = None) -> Dict[str, Any]:
+        """Get volume analysis using order book dynamics and trade flow"""
         try:
             symbol = symbol or self.config.SYMBOL
             
@@ -839,7 +839,7 @@ class HyperliquidAPI:
             }
             
         except Exception as e:
-            logger.error(f"Enhanced volume analysis failed: {e}")
+            logger.error(f"Volume analysis failed: {e}")
             return {
                 "current_volume": 0.0,
                 "volume_category": "ERROR",
@@ -850,8 +850,8 @@ class HyperliquidAPI:
                 "data_source": "error"
             }
 
-    def get_enhanced_volatility_analysis(self, symbol: str = None) -> Dict[str, Any]:
-        """Get enhanced volatility analysis using order book dynamics and spread analysis"""
+    def get_volatility_analysis(self, symbol: str = None) -> Dict[str, Any]:
+        """Get volatility analysis using order book dynamics and spread analysis"""
         try:
             symbol = symbol or self.config.SYMBOL
             
@@ -955,7 +955,7 @@ class HyperliquidAPI:
             }
             
         except Exception as e:
-            logger.error(f"Enhanced volatility analysis failed: {e}")
+            logger.error(f"Volatility analysis failed: {e}")
             return {
                 "volatility_5m": 0.0,
                 "volatility_category": "ERROR",
@@ -966,8 +966,8 @@ class HyperliquidAPI:
                 "data_source": "error"
             }
 
-    def get_enhanced_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
-        """Get enhanced ultimate pressure analysis using advanced order book metrics"""
+    def get_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
+        """Get ultimate pressure analysis using advanced order book metrics"""
         try:
             symbol = symbol or self.config.SYMBOL
             
@@ -1086,7 +1086,7 @@ class HyperliquidAPI:
             }
                 
         except Exception as e:
-            logger.error(f"❌ Enhanced ultimate pressure analysis failed: {e}")
+            logger.error(f"❌ Ultimate pressure analysis failed: {e}")
             return {
                 "direction": "ERROR",
                 "pressure_score": 0.5,

@@ -57,6 +57,19 @@ class SimpleRTM:
                     "strength": 0.5,
                     "trend": "NEUTRAL"
                 },
+                "trend_analysis": {
+                    "overall_trend": "UNKNOWN",
+                    "alignment_score": 0.0,
+                    "timeframes": {
+                        "1m": {"trend": "UNKNOWN", "strength": 0, "confidence": 0},
+                        "5m": {"trend": "UNKNOWN", "strength": 0, "confidence": 0},
+                        "1h": {"trend": "UNKNOWN", "strength": 0, "confidence": 0}
+                    },
+                    "reversal_analysis": {
+                        "reversal_probability": 0.0,
+                        "signals": []
+                    }
+                },
                 "data_update_status": {
                     "yahoo_analysis": {"last_update": 0, "next_update": 0, "time_until_update": 0},
                     "rsi_data": {"last_update": 0, "next_update": 0, "time_until_update": 0},
@@ -138,7 +151,13 @@ class SimpleRTM:
     def update_market(self, market_data: Dict[str, Any]):
         """Update market data"""
         with self._lock:
+            # Update basic market data
             self._data["market"].update(market_data)
+            
+            # Handle trend analysis data separately
+            if "trend_analysis" in market_data:
+                self._data["market"]["trend_analysis"] = market_data["trend_analysis"]
+            
             self._data["market"]["last_updated"] = datetime.now().isoformat()
             self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()

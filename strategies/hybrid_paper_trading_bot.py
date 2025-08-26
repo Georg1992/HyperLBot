@@ -1574,12 +1574,23 @@ class YahooHyperliquidPaperTradingBot:
         """Centralized market data update with optimized periodic updates"""
         try:
             
-            # Get optimized data from Yahoo Finance (with periodic updates)
+            # Get advanced data from Yahoo Finance (with periodic updates)
             hybrid_rsi_analysis = self.yahoo_fetcher.get_hybrid_rsi_analysis("BTC", current_price)
-            trend_data = self.yahoo_fetcher.get_optimized_trend_data("BTC", periods=5)
+            
+            # Get advanced trend analysis using trend manager
+            from core.trend_manager import trend_manager
+            candles_1m = self.yahoo_fetcher.get_1m_klines("BTC", 10)
+            candles_5m = self.yahoo_fetcher.get_5m_klines("BTC", 10)
+            candles_1h = self.yahoo_fetcher.get_1h_klines("BTC", 10)
+            
+            if candles_1m and candles_5m and candles_1h:
+                trend_data = trend_manager.get_multi_timeframe_trend(candles_1m, candles_5m, candles_1h)
+                trend_value = trend_data.get("overall_trend", "UNKNOWN")
+            else:
+                trend_data = {"overall_trend": "UNKNOWN", "alignment_score": 0}
+                trend_value = "UNKNOWN"
             
             rsi_value = hybrid_rsi_analysis.get("rsi_value", None)
-            trend_value = trend_data.get("trend", "SIDEWAYS")
             
             # Get real-time data from Hyperliquid API using centralized manager
             from core.market_data_manager import market_data_manager
@@ -1607,7 +1618,8 @@ class YahooHyperliquidPaperTradingBot:
                     "confidence": ultimate_pressure_data.get("confidence", "50%") if ultimate_pressure_data else "50%",
                     "strength": ultimate_pressure_data.get("strength", 0.5) if ultimate_pressure_data else 0.5,
                     "trend": ultimate_pressure_data.get("trend", "NEUTRAL") if ultimate_pressure_data else "NEUTRAL"
-                }
+                },
+                "trend_analysis": trend_data
             }
             
             # Update SimpleRTM with centralized data

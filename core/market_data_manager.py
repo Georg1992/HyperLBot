@@ -48,9 +48,9 @@ class MarketDataManager:
         
         try:
             # Fetch all Hyperliquid data in one call
-            volume_data = hyperliquid_api.get_enhanced_volume_analysis(symbol)
-            volatility_data = hyperliquid_api.get_enhanced_volatility_analysis(symbol)
-            ultimate_pressure_data = hyperliquid_api.get_enhanced_ultimate_pressure(symbol)
+            volume_data = hyperliquid_api.get_volume_analysis(symbol)
+            volatility_data = hyperliquid_api.get_volatility_analysis(symbol)
+            ultimate_pressure_data = hyperliquid_api.get_ultimate_pressure(symbol)
             current_price = hyperliquid_api.get_current_price(symbol)
             
             data = {
@@ -146,68 +146,9 @@ class MarketDataManager:
             return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL", "error": str(e)}
     
     def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
-        """Centralized trend calculation to eliminate redundant calculations"""
-        cache_key = f"trend_{periods}_{hash(str(candles[-periods:]))}"
-        cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
-        
-        if cached_result:
-            return cached_result
-        
-        try:
-            if len(candles) < periods:
-                return {"trend": "SIDEWAYS", "strength": 0, "direction": 0}
-            
-            # Get recent closes
-            recent_closes = [candle["close"] for candle in candles[-periods:]]
-            
-            # Calculate trend direction
-            first_price = recent_closes[0]
-            last_price = recent_closes[-1]
-            price_change = last_price - first_price
-            price_change_pct = (price_change / first_price) * 100
-            
-            # Calculate trend strength based on consistency
-            up_moves = 0
-            down_moves = 0
-            
-            for i in range(1, len(recent_closes)):
-                if recent_closes[i] > recent_closes[i-1]:
-                    up_moves += 1
-                elif recent_closes[i] < recent_closes[i-1]:
-                    down_moves += 1
-            
-            total_moves = up_moves + down_moves
-            if total_moves == 0:
-                strength = 0
-            else:
-                strength = max(up_moves, down_moves) / total_moves
-            
-            # Determine trend
-            if price_change_pct > 1.0 and strength > 0.6:
-                trend = "UPTREND"
-                direction = 1
-            elif price_change_pct < -1.0 and strength > 0.6:
-                trend = "DOWNTREND"
-                direction = -1
-            else:
-                trend = "SIDEWAYS"
-                direction = 0
-            
-            result = {
-                "trend": trend,
-                "strength": round(strength, 3),
-                "direction": direction,
-                "price_change_pct": round(price_change_pct, 2),
-                "up_moves": up_moves,
-                "down_moves": down_moves
-            }
-            
-            self._cache_data(cache_key, result, self._indicator_cache_duration)
-            return result
-            
-        except Exception as e:
-            logger.error(f"❌ Trend calculation failed: {e}")
-            return {"trend": "SIDEWAYS", "strength": 0, "direction": 0}
+        """Use trend manager for advanced trend calculation"""
+        from core.trend_manager import trend_manager
+        return trend_manager.calculate_trend(candles, periods)
     
     def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:
         """Centralized volatility calculation to eliminate redundant calculations"""

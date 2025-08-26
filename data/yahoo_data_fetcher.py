@@ -499,10 +499,14 @@ class YahooDataFetcher:
             support_resistance_5m = market_data_manager.calculate_support_resistance(candles_5m)
             support_resistance_1h = market_data_manager.calculate_support_resistance(candles_1h)
             
-            # Multi-timeframe trend analysis - COMPLETE coverage
-            trend_5m = market_data_manager.calculate_trend(candles_5m)   # Short-term trend (5 hours)
-            trend_1h = market_data_manager.calculate_trend(candles_1h)   # Daily trend (3.5 days)
-            trend_1d = market_data_manager.calculate_trend(candles_1d)   # Weekly/monthly trend (6 weeks)
+            # Multi-timeframe trend analysis using advanced trend manager
+            from core.trend_manager import trend_manager
+            multi_trend_analysis = trend_manager.get_multi_timeframe_trend(
+                candles_1m, candles_5m, candles_1h
+            )
+            trend_5m = multi_trend_analysis["timeframes"]["5m"]
+            trend_1h = multi_trend_analysis["timeframes"]["1h"]
+            trend_1d = multi_trend_analysis["timeframes"]["1h"]  # Use 1h for daily context
             
             # Multi-timeframe volatility analysis
             volatility_5m = market_data_manager.calculate_volatility(candles_5m)
@@ -529,6 +533,7 @@ class YahooDataFetcher:
                 "trend_5m": trend_5m,     # Short-term trend (5h)
                 "trend_1h": trend_1h,     # Daily trend (3.5d)
                 "trend_1d": trend_1d,     # Weekly/monthly trend (6w)
+                "multi_trend_analysis": multi_trend_analysis,  # Advanced trend analysis
                 "volatility_5m": volatility_5m,
                 "volatility_1h": volatility_1h,
                 "volatility_1d": volatility_1d,
@@ -546,7 +551,7 @@ class YahooDataFetcher:
     
     def _determine_market_condition(self, trend_5m: Dict, trend_1h: Dict, volatility: float) -> str:
         """Determine overall market condition with crypto-appropriate thresholds"""
-        # Enhanced volatility thresholds for crypto markets
+        # Volatility thresholds for crypto markets
         if volatility > 0.008:  # 0.8% volatility (reduced from 2.0%)
             return "HIGH_VOLATILITY"
         elif volatility > 0.006:  # 0.6% volatility  
@@ -790,7 +795,7 @@ class YahooDataFetcher:
             time_elapsed = (now - period_start).total_seconds()
             period_progress = min(time_elapsed / 300, 1.0)  # 300 seconds = 5 minutes
             
-            # ENHANCED: Real-time volume estimation for immediate spike detection
+            # Real-time volume estimation for immediate spike detection
             estimated_current_volume = completed_volume
             
             # Strategy 1: Use current minute volume if available (most recent data)
@@ -815,7 +820,7 @@ class YahooDataFetcher:
             else:
                 volume_source = "no_data"
             
-            # ENHANCED: Volume acceleration detection for immediate spike alerts
+            # Volume acceleration detection for immediate spike alerts
             volume_acceleration = 0
             if len(candles_1m) >= 10:
                 # Compare last 3 minutes vs previous 3 minutes
@@ -825,7 +830,7 @@ class YahooDataFetcher:
                 if previous_3m_volume > 0:
                     volume_acceleration = (recent_3m_volume - previous_3m_volume) / previous_3m_volume
             
-            # ENHANCED: Immediate spike detection based on acceleration
+            # Immediate spike detection based on acceleration
             is_immediate_spike = False
             spike_reason = ""
             if volume_acceleration > 2.0:  # 200% increase
@@ -851,7 +856,7 @@ class YahooDataFetcher:
                 "yahoo_5m_volume": current_5m["volume"] if current_5m else 0,
                 "data_source": "yahoo_finance_1m_aggregation",
                 "update_frequency": "5_seconds",
-                # ENHANCED: Real-time spike detection data
+                # Real-time spike detection data
                 "volume_source": volume_source,
                 "volume_acceleration": volume_acceleration,
                 "is_immediate_spike": is_immediate_spike,
@@ -880,7 +885,7 @@ class YahooDataFetcher:
 
     def get_realtime_momentum_analysis(self, symbol: str = "BTC", current_price: float = None) -> Dict[str, Any]:
         """
-        Get real-time momentum analysis for enhanced profitability
+        Get real-time momentum analysis for optimal profitability
         Calculates momentum indicators every 5 seconds (bot loop frequency)
         """
         try:
@@ -955,13 +960,13 @@ class YahooDataFetcher:
             # Get real-time momentum (calculated every call)
             realtime_momentum = self.get_realtime_momentum_analysis(symbol, current_price)
             
-            # Combine analysis for enhanced profitability
+            # Combine analysis for optimal profitability
             rsi_value = cached_rsi.get("rsi")
             rsi_trend = cached_rsi.get("trend", "NEUTRAL")
             momentum_direction = realtime_momentum.get("direction", 0)
             momentum_strength = realtime_momentum.get("strength", 0)
             
-            # Enhanced signal generation
+            # Advanced signal generation
             if rsi_value is not None:
                 # RSI-based signals with momentum confirmation
                 if rsi_value < 30 and momentum_direction > 0:  # Oversold + upward momentum
@@ -997,7 +1002,7 @@ class YahooDataFetcher:
                 "momentum": realtime_momentum.get("momentum"),
                 "momentum_direction": momentum_direction,
                 "momentum_strength": momentum_strength,
-                "enhanced_signal": enhanced_signal,
+                "advanced_signal": enhanced_signal,
                 "confidence": round(confidence, 3),
                 "signal_reason": f"RSI: {rsi_trend} + Momentum: {realtime_momentum.get('momentum')}",
                 "timestamp": time.time(),
@@ -1006,7 +1011,7 @@ class YahooDataFetcher:
             
         except Exception as e:
             logger.error(f"❌ Failed to get hybrid RSI analysis: {e}")
-            return {"enhanced_signal": "HOLD", "confidence": 0.5, "error": str(e)}
+            return {"advanced_signal": "HOLD", "confidence": 0.5, "error": str(e)}
 
 
 def main():
