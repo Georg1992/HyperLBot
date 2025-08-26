@@ -708,163 +708,24 @@ class HyperliquidAPI:
                 "error": str(e)
             }
     
-    def get_liquidation_price(self, symbol: str = None) -> float:
-        """Calculate liquidation price for current position"""
+    def calculate_liquidation_price(self, entry_price: float, side: str, leverage: float, margin: float) -> float:
+        """Calculate liquidation price for a position"""
         try:
-            symbol = symbol or self.config.SYMBOL
-            
-            # Get current position and account info
-            positions = self.get_positions(symbol)
-            account_info = self.get_account_info()
-            
-            if not positions:
+            if side.upper() == "LONG":
+                # For long positions: liquidation_price = entry_price - (margin / leverage)
+                liquidation_price = entry_price - (margin / leverage)
+            elif side.upper() == "SHORT":
+                # For short positions: liquidation_price = entry_price + (margin / leverage)
+                liquidation_price = entry_price + (margin / leverage)
+            else:
+                logger.error(f"Invalid side: {side}")
                 return 0.0
             
-            position = positions[0]
-            position_size = float(position.get('size', 0))
-            entry_price = float(position.get('entryPrice', 0))
-            leverage = float(position.get('leverage', 1))
-            
-            if position_size == 0:
-                return 0.0
-            
-            # Calculate liquidation price based on leverage and margin
-            margin_ratio = 0.1  # 10% maintenance margin (approximate)
-            
-            if position_size > 0:  # Long position
-                liquidation_price = entry_price * (1 - 1/leverage + margin_ratio)
-            else:  # Short position
-                liquidation_price = entry_price * (1 + 1/leverage - margin_ratio)
-            
-            return liquidation_price
+            return max(0, liquidation_price)  # Ensure non-negative
             
         except Exception as e:
             logger.error(f"Failed to calculate liquidation price: {e}")
             return 0.0
-    
-
-    
-
-    
-    def calculate_rsi_from_yahoo_data(self, candles: List[Dict], periods: int = 14) -> Dict[str, Any]:
-        """Calculate RSI using Wilder's Smoothing method (standard for most exchanges including Hyperliquid)"""
-        try:
-            if not candles or len(candles) < periods + 1:
-                return {
-                    "rsi": None,  # Use None instead of 50.0 for proper N/A handling
-                    "trend": "NEUTRAL",
-                    "signal": "NEUTRAL",
-                    "error": f"Insufficient data for RSI calculation (need {periods + 1}, have {len(candles)})",
-                    "data_source": "insufficient_data"
-                }
-            
-            # Handle both Yahoo Finance and Hyperliquid candle formats
-            closes = []
-            for candle in candles[-(periods + 1):]:
-                if isinstance(candle, dict):
-                    # Try different possible close price keys
-                    close_price = None
-                    for key in ['close', 'Close', 'close_price']:
-                        if key in candle and candle[key] is not None:
-                            try:
-                                close_price = float(candle[key])
-                                break
-                            except (ValueError, TypeError):
-                                continue
-                    
-                    if close_price is not None and close_price > 0:
-                        closes.append(close_price)
-            
-            if len(closes) < periods + 1:
-                return {
-                    "rsi": None,  # Use None instead of 50.0 for proper N/A handling
-                    "trend": "NEUTRAL", 
-                    "signal": "NEUTRAL",
-                    "error": f"Invalid close prices for RSI calculation",
-                    "data_source": "invalid_data"
-                }
-            
-            # Calculate price changes
-            changes = []
-            for i in range(1, len(closes)):
-                change = closes[i] - closes[i-1]
-                changes.append(change)
-            
-            # Calculate initial average gain and loss (first 'periods' changes)
-            
-            # Calculate initial average gain and loss (first 'periods' changes)
-            gains = []
-            losses = []
-            for change in changes[:periods]:
-                if change > 0:
-                    gains.append(change)
-                    losses.append(0)
-                else:
-                    gains.append(0)
-                    losses.append(abs(change))
-            
-            # Initial averages
-            avg_gain = sum(gains) / periods
-            avg_loss = sum(losses) / periods
-            
-            # Apply Wilder's Smoothing for remaining changes
-            for change in changes[periods:]:
-                if change > 0:
-                    current_gain = change
-                    current_loss = 0
-                else:
-                    current_gain = 0
-                    current_loss = abs(change)
-                
-                # Wilder's Smoothing: (Previous Average * (Period - 1) + Current Value) / Period
-                avg_gain = (avg_gain * (periods - 1) + current_gain) / periods
-                avg_loss = (avg_loss * (periods - 1) + current_loss) / periods
-            
-            # Calculate RSI using Wilder's formula
-            if avg_loss == 0:
-                rsi = 100
-            else:
-                rs = avg_gain / avg_loss
-                rsi = 100 - (100 / (1 + rs))
-            
-            # Determine trend and signal
-            
-            # Determine trend and signal
-            if rsi > 70:
-                trend = "OVERBOUGHT"
-                signal = "SELL"
-            elif rsi < 30:
-                trend = "OVERSOLD"
-                signal = "BUY"
-            else:
-                trend = "NEUTRAL"
-                signal = "HOLD"
-            
-            # Determine data source
-            if candles and len(candles) > 0:
-                data_source = candles[0].get('data_source', 'unknown')
-            else:
-                data_source = 'unknown'
-            
-            return {
-                "rsi": round(rsi, 2),
-                "trend": trend,
-                "signal": signal,
-                "periods": periods,
-                "data_source": data_source,
-                "last_close": closes[-1] if closes else None,
-                "calculation_method": "Wilder's Smoothing"
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ RSI calculation failed: {e}")
-            return {
-                "rsi": None,  # Use None instead of 50.0 for proper N/A handling
-                "trend": "NEUTRAL",
-                "signal": "NEUTRAL", 
-                "error": str(e),
-                "data_source": "calculation_error"
-            }
 
 
 

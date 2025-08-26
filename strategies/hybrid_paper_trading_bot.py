@@ -451,12 +451,14 @@ class YahooHyperliquidPaperTradingBot:
     def get_hyperliquid_price(self) -> Optional[float]:
         """Get current price from Hyperliquid"""
         try:
-            mid_price = self.hyperliquid_api.get_current_price("BTC")
+            # Use centralized market data manager
+            from core.market_data_manager import market_data_manager
+            hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
+            mid_price = hyperliquid_data.get("current_price")
             
             if mid_price:
                 # Update variability analyzer with new price data
-                # Get real volume data from Hyperliquid enhanced analysis
-                volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
+                volume_data = hyperliquid_data.get("volume_data", {})
                 real_volume = volume_data.get("current_volume", 100)  # Fallback to 100 if no data
                 
                 self.variability_analyzer.add_price_data(mid_price, volume=real_volume)
@@ -487,10 +489,13 @@ class YahooHyperliquidPaperTradingBot:
             return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
         # 3. GATHER ALL MARKET INTELLIGENCE
-        # Get real-time Hyperliquid data
-        volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
-        volatility_data = self.hyperliquid_api.get_enhanced_volatility_analysis("BTC")
-        pressure_data = self.hyperliquid_api.get_enhanced_ultimate_pressure("BTC")
+        # Get real-time Hyperliquid data using centralized manager
+        from core.market_data_manager import market_data_manager
+        hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
+        
+        volume_data = hyperliquid_data.get("volume_data", {})
+        volatility_data = hyperliquid_data.get("volatility_data", {})
+        pressure_data = hyperliquid_data.get("ultimate_pressure_data", {})
         
         # Get optimized RSI data (with periodic updates)
         proper_rsi = self.yahoo_fetcher.get_optimized_rsi_data("BTC", periods=14)
@@ -1588,17 +1593,13 @@ class YahooHyperliquidPaperTradingBot:
             rsi_value = rsi_data.get("rsi", None)
             trend_value = trend_data.get("trend", "SIDEWAYS")
             
-            # Get real-time data from Hyperliquid API
-            volume_data = None
-            volatility_data = None
-            ultimate_pressure_data = None
+            # Get real-time data from Hyperliquid API using centralized manager
+            from core.market_data_manager import market_data_manager
+            hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
             
-            try:
-                volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
-                volatility_data = self.hyperliquid_api.get_enhanced_volatility_analysis("BTC")
-                ultimate_pressure_data = self.hyperliquid_api.get_enhanced_ultimate_pressure("BTC")
-            except Exception as e:
-                logger.debug(f"Enhanced market data fetch error: {e}")
+            volume_data = hyperliquid_data.get("volume_data", {})
+            volatility_data = hyperliquid_data.get("volatility_data", {})
+            ultimate_pressure_data = hyperliquid_data.get("ultimate_pressure_data", {})
             
             # Prepare market data with proper fallbacks
             market_data = {

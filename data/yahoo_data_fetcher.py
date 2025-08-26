@@ -93,9 +93,8 @@ class YahooDataFetcher:
             logger.debug("📊 Updating RSI data (1-minute interval)")
             candles_1m = self.get_1m_klines(symbol, 20)  # Get 20 candles for 14-period RSI + buffer
             if candles_1m and len(candles_1m) >= 15:
-                from core.hyperliquid_api import HyperliquidAPI
-                api = HyperliquidAPI()
-                self.cached_rsi_data = api.calculate_rsi_from_yahoo_data(candles_1m, periods)
+                from core.market_data_manager import market_data_manager
+                self.cached_rsi_data = market_data_manager.calculate_rsi(candles_1m, periods)
             else:
                 self.cached_rsi_data = {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
             self.last_rsi_update = current_time
@@ -114,7 +113,8 @@ class YahooDataFetcher:
             logger.debug("📊 Updating trend data (1-minute interval)")
             candles_1m = self.get_1m_klines(symbol, periods + 5)  # Get extra candles for buffer
             if candles_1m and len(candles_1m) >= periods:
-                self.cached_trend_data = self.calculate_trend(candles_1m, periods)
+                from core.market_data_manager import market_data_manager
+                self.cached_trend_data = market_data_manager.calculate_trend(candles_1m, periods)
             else:
                 self.cached_trend_data = {"trend": "SIDEWAYS", "strength": 0, "direction": 0}
             self.last_trend_update = current_time
@@ -133,11 +133,12 @@ class YahooDataFetcher:
             logger.info("📊 Updating 1-hour data (15-minute interval)")
             candles_1h = self.get_1h_klines(symbol, 84)
             if candles_1h:
+                from core.market_data_manager import market_data_manager
                 self.cached_1h_data = {
                     "candles": candles_1h,
-                    "trend": self.calculate_trend(candles_1h),
-                    "support_resistance": self.calculate_support_resistance(candles_1h),
-                    "volatility": self.calculate_volatility(candles_1h)
+                    "trend": market_data_manager.calculate_trend(candles_1h),
+                    "support_resistance": market_data_manager.calculate_support_resistance(candles_1h),
+                    "volatility": market_data_manager.calculate_volatility(candles_1h)
                 }
             else:
                 self.cached_1h_data = {}
@@ -157,11 +158,12 @@ class YahooDataFetcher:
             logger.info("📊 Updating daily data (1-hour interval)")
             candles_1d = self.get_klines(symbol, "1d", 45)
             if candles_1d:
+                from core.market_data_manager import market_data_manager
                 self.cached_daily_data = {
                     "candles": candles_1d,
-                    "trend": self.calculate_trend(candles_1d),
-                    "support_resistance": self.calculate_support_resistance(candles_1d),
-                    "volatility": self.calculate_volatility(candles_1d)
+                    "trend": market_data_manager.calculate_trend(candles_1d),
+                    "support_resistance": market_data_manager.calculate_support_resistance(candles_1d),
+                    "volatility": market_data_manager.calculate_volatility(candles_1d)
                 }
             else:
                 self.cached_daily_data = {}
@@ -204,23 +206,19 @@ class YahooDataFetcher:
     
     def _convert_yf_to_standard(self, yf_data) -> List[Dict[str, Any]]:
         """Convert yfinance DataFrame to standard candlestick format"""
-        if yf_data.empty:
+        if yf_data is None or yf_data.empty:
             return []
         
         candles = []
         for index, row in yf_data.iterrows():
             candle = {
                 "open_time": int(index.timestamp() * 1000),
-                "open": float(row['Open']),
-                "high": float(row['High']),
-                "low": float(row['Low']),
-                "close": float(row['Close']),
-                "volume": float(row['Volume']) if 'Volume' in row else 0,
-                "close_time": int(index.timestamp() * 1000),
-                "quote_asset_volume": float(row['Volume']) if 'Volume' in row else 0,
-                "number_of_trades": 0,
-                "taker_buy_base_asset_volume": 0,
-                "taker_buy_quote_asset_volume": 0
+                "open": float(row["Open"]),
+                "high": float(row["High"]),
+                "low": float(row["Low"]),
+                "close": float(row["Close"]),
+                "volume": float(row["Volume"]),
+                "close_time": int(index.timestamp() * 1000) + 59999  # Add 59.999 seconds
             }
             candles.append(candle)
         
@@ -443,130 +441,6 @@ class YahooDataFetcher:
         # No significant consecutive pattern found
         return None
     
-    def calculate_support_resistance(self, candles: List[Dict[str, Any]], lookback: int = 20) -> Dict[str, float]:
-        """Calculate support and resistance levels from candlestick data"""
-        if len(candles) < lookback:
-            return {"support": 0, "resistance": 0, "range": 0}
-        
-        recent_candles = candles[-lookback:]
-        highs = [candle["high"] for candle in recent_candles]
-        lows = [candle["low"] for candle in recent_candles]
-        
-        resistance = max(highs)
-        support = min(lows)
-        range_size = resistance - support
-        
-        return {
-            "support": support,
-            "resistance": resistance,
-            "range": range_size
-        }
-    
-    def calculate_trend(self, candles: List[Dict[str, Any]], periods: int = 5) -> Dict[str, Any]:
-        """Calculate trend direction and strength with enhanced neutral market handling"""
-        if len(candles) < periods:
-            return {"trend": "INSUFFICIENT_DATA", "strength": 0, "direction": 0, "raw_change": 0}
-        
-        recent_candles = candles[-periods:]
-        closes = [candle["close"] for candle in recent_candles]
-        
-        # PRIORITY 1: Check for recent consecutive candle patterns (recent trend override)
-        consecutive_pattern = self._analyze_consecutive_candles(recent_candles[-4:])  # Last 4 candles (20 minutes)
-        if consecutive_pattern:
-            return consecutive_pattern
-        
-        # PRIORITY 2: Calculate overall trend direction (25-minute comparison)
-        first_close = closes[0]
-        last_close = closes[-1]
-        price_change = (last_close - first_close) / first_close
-        
-        # More realistic trend detection thresholds for crypto markets
-        if price_change > 0.005:  # 0.5% strong uptrend 
-            trend = "STRONG_UP"
-            strength = min(abs(price_change), 0.1)  # Cap at 10%
-        elif price_change > 0.002:  # 0.2% uptrend 
-            trend = "UP"
-            strength = min(abs(price_change), 0.1)
-        elif price_change > 0.001:  # 0.1% weak uptrend 
-            trend = "WEAK_UP"  
-            strength = min(abs(price_change) * 2, 0.1)  # Amplify weak strength
-        elif price_change < -0.005:  # 0.5% strong downtrend 
-            trend = "STRONG_DOWN"
-            strength = min(abs(price_change), 0.1)
-        elif price_change < -0.002:  # 0.2% downtrend 
-            trend = "DOWN"
-            strength = min(abs(price_change), 0.1)
-        elif price_change < -0.001:  # 0.1% weak downtrend 
-            trend = "WEAK_DOWN"  
-            strength = min(abs(price_change) * 2, 0.1)  # Amplify weak strength
-        else:
-            # True sideways market - movement less than 0.1% in either direction
-            trend = "SIDEWAYS"
-            strength = 0.02  # Give small but meaningful strength
-        
-        # Calculate additional trend confidence metrics
-        highs = [candle["high"] for candle in recent_candles]
-        lows = [candle["low"] for candle in recent_candles]
-        
-        # Check for consistent direction (higher highs/higher lows for uptrend)
-        direction_consistency = 0
-        if len(closes) >= 3:
-            ups = sum(1 for i in range(1, len(closes)) if closes[i] > closes[i-1])
-            downs = sum(1 for i in range(1, len(closes)) if closes[i] < closes[i-1])
-            total_moves = ups + downs
-            if total_moves > 0:
-                direction_consistency = max(ups, downs) / total_moves
-        
-        # Enhanced strength calculation considering consistency
-        if direction_consistency > 0.7:  # 70%+ moves in same direction
-            strength = min(strength * 1.3, 0.1)  # Boost strength for consistent trends
-        
-        return {
-            "trend": trend,
-            "strength": strength,
-            "direction": price_change,
-            "raw_change": price_change,
-            "direction_consistency": direction_consistency,
-            "periods_analyzed": periods,
-            "trend_quality": "HIGH" if direction_consistency > 0.7 else "MEDIUM" if direction_consistency > 0.5 else "LOW"
-        }
-    
-    def calculate_volatility(self, candles: List[Dict[str, Any]], periods: int = 20) -> float:
-        """Calculate price volatility with enhanced recent market sensitivity"""
-        if len(candles) < periods:
-            return 0
-        
-        recent_candles = candles[-periods:]
-        returns = []
-        
-        for i in range(1, len(recent_candles)):
-            prev_close = recent_candles[i-1]["close"]
-            curr_close = recent_candles[i]["close"]
-            ret = abs((curr_close - prev_close) / prev_close)
-            returns.append(ret)
-        
-        if not returns:
-            return 0
-        
-        # Calculate traditional volatility (baseline)
-        baseline_volatility = statistics.mean(returns)
-        
-        # Calculate recent volatility (last 25% of periods) for spike detection
-        recent_period_count = max(3, periods // 4)  # At least 3 periods, max 25% of total
-        recent_returns = returns[-recent_period_count:]
-        recent_volatility = statistics.mean(recent_returns) if recent_returns else baseline_volatility
-        
-        # Weight recent volatility more heavily to catch spikes
-        # If recent volatility is significantly higher, boost overall volatility
-        if recent_volatility > baseline_volatility * 1.5:  # Recent vol 50% higher than average
-            # Boost overall volatility to reflect current market conditions
-            enhanced_volatility = baseline_volatility * 0.7 + recent_volatility * 0.3
-        else:
-            # Use mostly baseline with slight recent bias
-            enhanced_volatility = baseline_volatility * 0.8 + recent_volatility * 0.2
-        
-        return enhanced_volatility
-    
     def get_market_analysis(self, symbol: str = "BTC", hyperliquid_price: float = None) -> Dict[str, Any]:
         """
         Get comprehensive market analysis from Yahoo Finance (HISTORICAL DATA ONLY)
@@ -604,22 +478,23 @@ class YahooDataFetcher:
                 price_difference_pct = 0
                 logger.warning(f"⚠️ No Hyperliquid price provided, using last close: ${current_price:,.2f}")
             
-            # Calculate indicators using Yahoo Finance historical data
-            support_resistance_5m = self.calculate_support_resistance(candles_5m)
-            support_resistance_1h = self.calculate_support_resistance(candles_1h)
+            # Calculate indicators using centralized market data manager
+            from core.market_data_manager import market_data_manager
+            support_resistance_5m = market_data_manager.calculate_support_resistance(candles_5m)
+            support_resistance_1h = market_data_manager.calculate_support_resistance(candles_1h)
             
             # Multi-timeframe trend analysis - COMPLETE coverage
-            trend_5m = self.calculate_trend(candles_5m)   # Short-term trend (5 hours)
-            trend_1h = self.calculate_trend(candles_1h)   # Daily trend (3.5 days)
-            trend_1d = self.calculate_trend(candles_1d)   # Weekly/monthly trend (6 weeks)
+            trend_5m = market_data_manager.calculate_trend(candles_5m)   # Short-term trend (5 hours)
+            trend_1h = market_data_manager.calculate_trend(candles_1h)   # Daily trend (3.5 days)
+            trend_1d = market_data_manager.calculate_trend(candles_1d)   # Weekly/monthly trend (6 weeks)
             
             # Multi-timeframe volatility analysis
-            volatility_5m = self.calculate_volatility(candles_5m)
-            volatility_1h = self.calculate_volatility(candles_1h)
-            volatility_1d = self.calculate_volatility(candles_1d)
+            volatility_5m = market_data_manager.calculate_volatility(candles_5m)
+            volatility_1h = market_data_manager.calculate_volatility(candles_1h)
+            volatility_1d = market_data_manager.calculate_volatility(candles_1d)
             
             # Daily support/resistance for major levels
-            support_resistance_1d = self.calculate_support_resistance(candles_1d)
+            support_resistance_1d = market_data_manager.calculate_support_resistance(candles_1d)
             
             analysis = {
                 "timestamp": time.time(),
