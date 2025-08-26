@@ -79,7 +79,7 @@ class YahooDataFetcher:
             self.cached_yahoo_analysis = self.get_market_analysis(symbol, hyperliquid_price)
             self.last_yahoo_update = current_time
         else:
-    
+            pass
         
         return self.cached_yahoo_analysis
     
@@ -115,7 +115,7 @@ class YahooDataFetcher:
             
             self.last_rsi_update = current_time
         else:
-    
+            pass
         
         return self.cached_rsi_data
     
@@ -135,7 +135,7 @@ class YahooDataFetcher:
                 self.cached_trend_data = {"trend": "SIDEWAYS", "strength": 0, "direction": 0}
             self.last_trend_update = current_time
         else:
-    
+            pass
         
         return self.cached_trend_data
     
@@ -160,7 +160,7 @@ class YahooDataFetcher:
                 self.cached_1h_data = {}
             self.last_1h_update = current_time
         else:
-    
+            pass
         
         return self.cached_1h_data
     
@@ -185,7 +185,7 @@ class YahooDataFetcher:
                 self.cached_daily_data = {}
             self.last_daily_update = current_time
         else:
-    
+            pass
         
         return self.cached_daily_data
     
