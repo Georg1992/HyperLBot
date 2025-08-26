@@ -75,8 +75,6 @@ class YahooDataFetcher:
             logger.info("📊 Updating Yahoo Finance market analysis (periodic update)")
             self.cached_yahoo_analysis = self.get_market_analysis(symbol, hyperliquid_price)
             self.last_yahoo_update = current_time
-        else:
-            pass
         
         return self.cached_yahoo_analysis
     
@@ -111,8 +109,6 @@ class YahooDataFetcher:
                     logger.error(f"❌ Insufficient data for RSI calculation: 5m={len(candles_5m) if candles_5m else 0}, 1h={len(candles_1h) if candles_1h else 0}")
             
             self.last_rsi_update = current_time
-        else:
-            pass
         
         return self.cached_rsi_data
     
@@ -136,8 +132,6 @@ class YahooDataFetcher:
             else:
                 self.cached_1h_data = {}
             self.last_1h_update = current_time
-        else:
-            pass
         
         return self.cached_1h_data
     
@@ -161,8 +155,6 @@ class YahooDataFetcher:
             else:
                 self.cached_daily_data = {}
             self.last_daily_update = current_time
-        else:
-            pass
         
         return self.cached_daily_data
     

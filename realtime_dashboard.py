@@ -19,7 +19,7 @@ from flask_socketio import SocketIO, emit
 from loguru import logger
 
 # Import constants only
-from core.constants import constants, ui_constants
+from core.constants import constants, magic_numbers, ui_constants
 
 # Suppress SSL warnings
 urllib3.disable_warnings()
@@ -85,6 +85,7 @@ class EventDrivenTradingDashboard:
                 logger.info(f"⚠️ Port {port} is in use, but dashboard may not be responding")
                 return True
         except Exception:
+            # Port check failed, assume not running
             pass
         
         return False
@@ -96,7 +97,7 @@ class EventDrivenTradingDashboard:
         while time.time() - start_time < timeout:
             if EventDrivenTradingDashboard.is_dashboard_running(host, port):
                 return True
-            time.sleep(0.5)
+            time.sleep(magic_numbers.DASHBOARD_SLEEP_INTERVAL)
         return False
     
     def _setup_websocket_handlers(self):

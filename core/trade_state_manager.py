@@ -22,7 +22,7 @@ class TradeStateManager:
         
         # Separate storage files for different data types
         self.files = {
-            "open_positions": "data/sessions/open_positions.json",
+            "open_positions": "data/open_positions.json",
             "trade_history": "data/sessions/trade_history.json", 
             "pending_orders": "data/sessions/pending_orders.json",
             "session_state": "data/sessions/session_state.json"

@@ -37,7 +37,7 @@ class TradingConstants:
     # File Paths
     LOCK_FILE = "data/temp/bot_instance.lock"
     RTM_STATE_FILE = "data/cache/rtm_state.json"
-    POSITIONS_FILE = "data/sessions/open_positions.json"
+    POSITIONS_FILE = "data/open_positions.json"
     SIMULATED_ACCOUNT_FILE = "data/sessions/simulated_account.json"
     
     # Log Configuration
@@ -171,3 +171,82 @@ class UIConstants:
 constants = TradingConstants()
 strategy_constants = StrategyConstants()
 ui_constants = UIConstants()
+
+# Common Magic Numbers (extracted from codebase)
+class MagicNumbers:
+    """Common magic numbers used throughout the codebase"""
+    
+    # Default confidence values
+    DEFAULT_CONFIDENCE = 0.5
+    HIGH_CONFIDENCE_THRESHOLD = 0.7
+    ULTRA_CONFIDENCE_THRESHOLD = 0.9
+    
+    # Default strength values
+    DEFAULT_STRENGTH = 0.5
+    HIGH_STRENGTH_THRESHOLD = 0.7
+    LOW_STRENGTH_THRESHOLD = 0.3
+    
+    # Default win probability
+    DEFAULT_WIN_PROBABILITY = 0.5
+    HIGH_WIN_PROBABILITY = 0.95
+    
+    # Price multipliers
+    PROFIT_TARGET_MULTIPLIER = 1.02  # 2% profit target
+    STOP_LOSS_MULTIPLIER = 0.98      # 2% stop loss
+    PARTIAL_CLOSE_MULTIPLIER = 0.5   # 50% partial close
+    SCALE_SIZE_MULTIPLIER = 0.5      # 50% scale size
+    
+    # Imbalance thresholds
+    ORDERBOOK_IMBALANCE_THRESHOLD = 0.3  # 30% imbalance
+    
+    # Volatility thresholds
+    LOW_VOLATILITY_CAP = 0.001       # 0.1%
+    MEDIUM_VOLATILITY_CAP = 0.003    # 0.3%
+    HIGH_VOLATILITY_CAP = 0.015      # 1.5%
+    
+    # Strength caps
+    MAX_STRENGTH_CAP = 0.1           # 10% max strength
+    
+    # Time intervals
+    DASHBOARD_SLEEP_INTERVAL = 0.5   # 0.5 seconds
+    
+    # Risk management
+    MIN_PROFIT_MARGIN = 0.001        # 0.1% minimum profit margin
+    CHANGE_THRESHOLD = 0.001         # 0.1% change threshold
+    
+    # Position sizing
+    BASE_POSITION_SIZE = 0.10        # 10% base position
+    BASE_PROFIT_TARGET = 0.003       # 0.3% base profit target
+    BASE_STOP_LOSS = 0.0015          # 0.15% base stop loss
+    
+    # Multipliers
+    POSITION_MULTIPLIER_LOW = 0.5
+    POSITION_MULTIPLIER_MED = 0.7
+    LEVERAGE_MULTIPLIER = 0.9
+    
+    # Heat thresholds
+    HEAT_THRESHOLD_ULTRA = 0.9
+    HEAT_THRESHOLD_HIGH = 0.7
+    HEAT_THRESHOLD_MED = 0.5
+    HEAT_THRESHOLD_LOW = 0.3
+    
+    # Close percentages
+    CLOSE_PERCENTAGE_HALF = 0.50
+    CLOSE_PERCENTAGE_THREE_QUARTERS = 0.75
+    
+    # Correlation risk
+    CORRELATION_RISK_SINGLE = 1.0
+    CORRELATION_RISK_MIXED = 0.5
+    
+    # Variability thresholds
+    VARIABILITY_LOW = 0.3
+    VARIABILITY_MEDIUM = 0.7
+    VARIABILITY_OPTIMAL = 0.7
+    VARIABILITY_GOOD = 0.5
+    
+    # Confidence thresholds
+    MIN_CONFIDENCE_THRESHOLD = 0.1
+    CONFIDENCE_THRESHOLD_LOW = 0.3
+
+# Global magic numbers instance
+magic_numbers = MagicNumbers()

@@ -235,29 +235,31 @@ class HyperliquidAPI:
     
     def get_current_price(self, symbol: str = None) -> Optional[float]:
         """Get current mid-price from WebSocket cache (ultra-fast) or orderbook (fallback)"""
+        symbol = symbol or self.config.SYMBOL
+        
+        # Try WebSocket first (real-time latency)
         try:
-            symbol = symbol or self.config.SYMBOL
+            from core.hyperliquid_websocket import get_websocket_instance
+            websocket = get_websocket_instance(symbol)
             
-            # Try WebSocket first (real-time latency)
-            try:
-                from core.hyperliquid_websocket import get_websocket_instance
-                websocket = get_websocket_instance(symbol)
-                
-                if websocket.is_connected():
-                    price = websocket.get_current_price()
-                    if price and price > 0:
-                
-                        return price
-                    else:
-                        logger.debug("⚠️ WebSocket connected but no price data yet")
+            if websocket.is_connected():
+                price = websocket.get_current_price()
+                if price and price > 0:
+                    return price
                 else:
-                    logger.debug("⚠️ WebSocket not connected, using HTTP fallback")
-            except ImportError:
-                logger.debug("⚠️ WebSocket module not available, using HTTP fallback")
-            except Exception as e:
-                logger.debug(f"⚠️ WebSocket error: {e}, using HTTP fallback")
-            
-            # HTTP API fallback (current method)
+                    # WebSocket connected but no price data yet
+                    pass
+            else:
+                # WebSocket not connected, using HTTP fallback
+                pass
+        except ImportError:
+            # WebSocket module not available, using HTTP fallback
+            pass
+        except Exception as e:
+            logger.debug(f"⚠️ WebSocket error: {e}, using HTTP fallback")
+        
+        # HTTP API fallback (current method)
+        try:
             market_data = self.get_market_data(symbol)
             
             if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
