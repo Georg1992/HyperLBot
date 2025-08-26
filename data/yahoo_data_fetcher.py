@@ -34,7 +34,7 @@ class YahooDataFetcher:
         
         # Update intervals (in seconds)
         self.yahoo_update_interval = 300  # 5 minutes for full analysis
-        self.rsi_update_interval = 60     # 1 minute for RSI (1m candles)
+        self.rsi_update_interval = 30     # 30 seconds for RSI (optimized for profitability)
         self.trend_update_interval = 60   # 1 minute for trend (1m candles)
         self.hourly_update_interval = 900 # 15 minutes for 1h candles
         self.daily_update_interval = 3600 # 1 hour for daily candles
@@ -877,6 +877,136 @@ class YahooDataFetcher:
                 "error": str(e),
                 "data_source": "yahoo_finance"
             }
+
+    def get_realtime_momentum_analysis(self, symbol: str = "BTC", current_price: float = None) -> Dict[str, Any]:
+        """
+        Get real-time momentum analysis for enhanced profitability
+        Calculates momentum indicators every 5 seconds (bot loop frequency)
+        """
+        try:
+            # Get recent 5-minute candles for momentum calculation
+            candles_5m = self.get_5m_klines(symbol, 10)  # Last 10 candles (50 minutes)
+            if not candles_5m or len(candles_5m) < 3:
+                return {"momentum": "NEUTRAL", "strength": 0, "direction": 0}
+            
+            # Calculate price momentum
+            recent_closes = [candle["close"] for candle in candles_5m[-3:]]  # Last 3 candles
+            if len(recent_closes) < 3:
+                return {"momentum": "NEUTRAL", "strength": 0, "direction": 0}
+            
+            # Calculate momentum indicators
+            price_change_1 = (recent_closes[-1] - recent_closes[-2]) / recent_closes[-2]
+            price_change_2 = (recent_closes[-2] - recent_closes[-3]) / recent_closes[-3]
+            
+            # Momentum acceleration
+            momentum_acceleration = price_change_1 - price_change_2
+            
+            # Determine momentum direction and strength
+            if price_change_1 > 0.001 and momentum_acceleration > 0:  # 0.1% gain with acceleration
+                momentum = "STRONG_UP"
+                direction = 1
+                strength = min(abs(price_change_1) * 100, 1.0)
+            elif price_change_1 > 0.0005:  # 0.05% gain
+                momentum = "WEAK_UP"
+                direction = 1
+                strength = min(abs(price_change_1) * 50, 0.5)
+            elif price_change_1 < -0.001 and momentum_acceleration < 0:  # 0.1% loss with acceleration
+                momentum = "STRONG_DOWN"
+                direction = -1
+                strength = min(abs(price_change_1) * 100, 1.0)
+            elif price_change_1 < -0.0005:  # 0.05% loss
+                momentum = "WEAK_DOWN"
+                direction = -1
+                strength = min(abs(price_change_1) * 50, 0.5)
+            else:
+                momentum = "NEUTRAL"
+                direction = 0
+                strength = 0
+            
+            # Calculate volatility for momentum context
+            volatility = abs(price_change_1) + abs(price_change_2)
+            
+            return {
+                "momentum": momentum,
+                "direction": direction,
+                "strength": round(strength, 3),
+                "price_change_1": round(price_change_1 * 100, 3),  # Percentage
+                "price_change_2": round(price_change_2 * 100, 3),  # Percentage
+                "momentum_acceleration": round(momentum_acceleration * 100, 3),  # Percentage
+                "volatility": round(volatility * 100, 3),  # Percentage
+                "current_price": current_price,
+                "timestamp": time.time(),
+                "data_points": len(recent_closes)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate real-time momentum: {e}")
+            return {"momentum": "NEUTRAL", "strength": 0, "direction": 0, "error": str(e)}
+    
+    def get_hybrid_rsi_analysis(self, symbol: str = "BTC", current_price: float = None) -> Dict[str, Any]:
+        """
+        Get hybrid RSI analysis combining cached RSI with real-time momentum
+        Optimized for maximum profitability
+        """
+        try:
+            # Get cached RSI (updated every 30 seconds)
+            cached_rsi = self.get_optimized_rsi_data(symbol, periods=14)
+            
+            # Get real-time momentum (calculated every call)
+            realtime_momentum = self.get_realtime_momentum_analysis(symbol, current_price)
+            
+            # Combine analysis for enhanced profitability
+            rsi_value = cached_rsi.get("rsi")
+            rsi_trend = cached_rsi.get("trend", "NEUTRAL")
+            momentum_direction = realtime_momentum.get("direction", 0)
+            momentum_strength = realtime_momentum.get("strength", 0)
+            
+            # Enhanced signal generation
+            if rsi_value is not None:
+                # RSI-based signals with momentum confirmation
+                if rsi_value < 30 and momentum_direction > 0:  # Oversold + upward momentum
+                    enhanced_signal = "STRONG_BUY"
+                    confidence = min(0.9, 0.7 + momentum_strength)
+                elif rsi_value > 70 and momentum_direction < 0:  # Overbought + downward momentum
+                    enhanced_signal = "STRONG_SELL"
+                    confidence = min(0.9, 0.7 + momentum_strength)
+                elif rsi_value < 40 and momentum_direction > 0:  # Approaching oversold + upward momentum
+                    enhanced_signal = "BUY"
+                    confidence = min(0.8, 0.6 + momentum_strength)
+                elif rsi_value > 60 and momentum_direction < 0:  # Approaching overbought + downward momentum
+                    enhanced_signal = "SELL"
+                    confidence = min(0.8, 0.6 + momentum_strength)
+                else:
+                    enhanced_signal = "HOLD"
+                    confidence = 0.5
+            else:
+                # Fallback to momentum-only signals
+                if momentum_direction > 0 and momentum_strength > 0.3:
+                    enhanced_signal = "MOMENTUM_BUY"
+                    confidence = momentum_strength
+                elif momentum_direction < 0 and momentum_strength > 0.3:
+                    enhanced_signal = "MOMENTUM_SELL"
+                    confidence = momentum_strength
+                else:
+                    enhanced_signal = "HOLD"
+                    confidence = 0.5
+            
+            return {
+                "rsi_value": rsi_value,
+                "rsi_trend": rsi_trend,
+                "momentum": realtime_momentum.get("momentum"),
+                "momentum_direction": momentum_direction,
+                "momentum_strength": momentum_strength,
+                "enhanced_signal": enhanced_signal,
+                "confidence": round(confidence, 3),
+                "signal_reason": f"RSI: {rsi_trend} + Momentum: {realtime_momentum.get('momentum')}",
+                "timestamp": time.time(),
+                "analysis_type": "hybrid_rsi_momentum"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get hybrid RSI analysis: {e}")
+            return {"enhanced_signal": "HOLD", "confidence": 0.5, "error": str(e)}
 
 
 def main():

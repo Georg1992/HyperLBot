@@ -424,12 +424,14 @@ class YahooHyperliquidPaperTradingBot:
             return False
     
     def get_optimized_rsi_data(self, hyperliquid_price: float) -> Dict[str, Any]:
-        """Get RSI data from Yahoo analysis"""
-        yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price)
+        """Get hybrid RSI data for enhanced profitability"""
+        hybrid_analysis = self.yahoo_fetcher.get_hybrid_rsi_analysis("BTC", hyperliquid_price)
         return {
-            "rsi": yahoo_analysis.get("rsi", None),  # Use None instead of 50.0 for proper N/A handling
-            "rsi_trend": yahoo_analysis.get("rsi_trend", "NEUTRAL"),
-            "rsi_signal": yahoo_analysis.get("rsi_signal", "NEUTRAL")
+            "rsi": hybrid_analysis.get("rsi_value", None),
+            "rsi_trend": hybrid_analysis.get("rsi_trend", "NEUTRAL"),
+            "rsi_signal": hybrid_analysis.get("enhanced_signal", "NEUTRAL"),
+            "momentum": hybrid_analysis.get("momentum", "NEUTRAL"),
+            "confidence": hybrid_analysis.get("confidence", 0.5)
         }
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get optimized market analysis from Yahoo Finance with periodic updates"""
@@ -498,21 +500,21 @@ class YahooHyperliquidPaperTradingBot:
         pressure_data = hyperliquid_data.get("ultimate_pressure_data", {})
         
         # Get optimized RSI data (with periodic updates)
-        proper_rsi = self.yahoo_fetcher.get_optimized_rsi_data("BTC", periods=14)
+        hybrid_rsi_analysis = self.yahoo_fetcher.get_hybrid_rsi_analysis("BTC", hyperliquid_price)
         
         # Update variability analyzer
         real_volume = volume_data.get("current_volume", 100)
         self.variability_analyzer.add_price_data(hyperliquid_price, volume=real_volume)
         
-        logger.info(f"📊 Enhanced RSI: {proper_rsi.get('rsi', 'N/A')} (14-period standard)")
-        logger.info(f"📊 Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
+        logger.info(f"📊 Hybrid RSI: {hybrid_rsi_analysis.get('rsi_value', 'N/A')} | Signal: {hybrid_rsi_analysis.get('enhanced_signal', 'N/A')} | Confidence: {hybrid_rsi_analysis.get('confidence', 0)*100:.1f}%")
+        logger.info(f"📊 Momentum: {hybrid_rsi_analysis.get('momentum', 'N/A')} | Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
         
         # 4. BUILD COMPREHENSIVE ENHANCED ANALYSIS
         enhanced_analysis = yahoo_analysis.copy()
         enhanced_analysis["hyperliquid_volume"] = volume_data
         enhanced_analysis["hyperliquid_volatility"] = volatility_data
         enhanced_analysis["hyperliquid_pressure"] = pressure_data
-        enhanced_analysis["hyperliquid_rsi"] = proper_rsi
+        enhanced_analysis["hybrid_rsi_analysis"] = hybrid_rsi_analysis
         enhanced_analysis["timestamp"] = current_time
         
         # Enhanced analysis components removed for simplicity
@@ -550,12 +552,13 @@ class YahooHyperliquidPaperTradingBot:
         signal_data = {
             "should_trade": True,
             "side": entry_analysis["side"],
-            "reason": f"TRADITIONAL: {entry_analysis['prediction_type']} - {entry_analysis['reason']}",
+            "reason": f"HYBRID: {hybrid_rsi_analysis.get('enhanced_signal', 'UNKNOWN')} - {entry_analysis['reason']}",
             "target": entry_analysis["target_price"],
             "stop": entry_analysis["stop_price"],
             "entry_price": entry_analysis["entry_price"],
             "current_price": hyperliquid_price,  # Add current price for logging
             "prediction_confidence": entry_analysis["confidence"],
+            "hybrid_confidence": hybrid_rsi_analysis.get("confidence", 0.5),
             "optimal_params": variability_decision["optimal_trading_params"],
             "strategy_name": self.strategy_name,
             # Add market analysis data for logging (using correct field names from Yahoo analysis)
@@ -564,7 +567,10 @@ class YahooHyperliquidPaperTradingBot:
             "trend_5m": enhanced_analysis.get("trend_5m", {}).get("trend"),
             "trend_1h": enhanced_analysis.get("trend_1h", {}).get("trend"),
             "volatility_5m": enhanced_analysis.get("volatility_5m"),
-            "market_condition": enhanced_analysis.get("market_condition")
+            "market_condition": enhanced_analysis.get("market_condition"),
+            "rsi_value": hybrid_rsi_analysis.get("rsi_value"),
+            "momentum": hybrid_rsi_analysis.get("momentum"),
+            "enhanced_signal": hybrid_rsi_analysis.get("enhanced_signal")
         }
         
         # Traditional quality check
@@ -584,19 +590,19 @@ class YahooHyperliquidPaperTradingBot:
         # Update SimpleRTM with traditional prediction
         try:
             # Update SimpleRTM with signal
+            hybrid_confidence = hybrid_rsi_analysis.get("confidence", 0.5)
             self._update_simple_rtm_signal({
                 "type": signal_data["side"],
                 "side": signal_data["side"],
-                "confidence": int(signal_data.get("prediction_confidence", 0) * 100),
+                "confidence": int(hybrid_confidence * 100),
                 "reason": signal_data["reason"],
                 "timestamp": time.time()
             })
             
             # Update SimpleRTM with activity
-            confidence = (signal_data.get('prediction_confidence', 0) or 0) * 100
-            self._update_simple_rtm_activity(f"🔮 Traditional prediction: {signal_data['side']} signal with {confidence:.1f}% confidence", "INFO")
+            self._update_simple_rtm_activity(f"🔮 Hybrid prediction: {signal_data['side']} signal with {hybrid_confidence*100:.1f}% confidence", "INFO")
             
-            logger.info(f"📊 TRADITIONAL PREDICTION sent to SimpleRTM: {signal_data['side']} - {confidence:.1f}% confidence")
+            logger.info(f"📊 HYBRID PREDICTION sent to SimpleRTM: {signal_data['side']} - {hybrid_confidence*100:.1f}% confidence")
         except Exception as e:
             logger.debug(f"❌ Could not update SimpleRTM with prediction: {e}")
         
@@ -1587,10 +1593,10 @@ class YahooHyperliquidPaperTradingBot:
         try:
             
             # Get optimized data from Yahoo Finance (with periodic updates)
-            rsi_data = self.yahoo_fetcher.get_optimized_rsi_data("BTC", periods=14)
+            hybrid_rsi_analysis = self.yahoo_fetcher.get_hybrid_rsi_analysis("BTC", current_price)
             trend_data = self.yahoo_fetcher.get_optimized_trend_data("BTC", periods=5)
             
-            rsi_value = rsi_data.get("rsi", None)
+            rsi_value = hybrid_rsi_analysis.get("rsi_value", None)
             trend_value = trend_data.get("trend", "SIDEWAYS")
             
             # Get real-time data from Hyperliquid API using centralized manager
