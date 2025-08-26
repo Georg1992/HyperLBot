@@ -429,7 +429,7 @@ class YahooHyperliquidPaperTradingBot:
         return {
             "rsi": hybrid_analysis.get("rsi_value", None),
             "rsi_trend": hybrid_analysis.get("rsi_trend", "NEUTRAL"),
-            "rsi_signal": hybrid_analysis.get("enhanced_signal", "NEUTRAL"),
+            "rsi_signal": hybrid_analysis.get("advanced_signal", "NEUTRAL"),
             "momentum": hybrid_analysis.get("momentum", "NEUTRAL"),
             "confidence": hybrid_analysis.get("confidence", 0.5)
         }
@@ -506,7 +506,7 @@ class YahooHyperliquidPaperTradingBot:
         real_volume = volume_data.get("current_volume", 100)
         self.variability_analyzer.add_price_data(hyperliquid_price, volume=real_volume)
         
-        logger.info(f"📊 Hybrid RSI: {hybrid_rsi_analysis.get('rsi_value', 'N/A')} | Signal: {hybrid_rsi_analysis.get('enhanced_signal', 'N/A')} | Confidence: {hybrid_rsi_analysis.get('confidence', 0)*100:.1f}%")
+        logger.info(f"📊 Hybrid RSI: {hybrid_rsi_analysis.get('rsi_value', 'N/A')} | Signal: {hybrid_rsi_analysis.get('advanced_signal', 'N/A')} | Confidence: {hybrid_rsi_analysis.get('confidence', 0)*100:.1f}%")
         logger.info(f"📊 Momentum: {hybrid_rsi_analysis.get('momentum', 'N/A')} | Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
         
         # 4. BUILD COMPREHENSIVE ENHANCED ANALYSIS
@@ -552,7 +552,7 @@ class YahooHyperliquidPaperTradingBot:
         signal_data = {
             "should_trade": True,
             "side": entry_analysis["side"],
-            "reason": f"HYBRID: {hybrid_rsi_analysis.get('enhanced_signal', 'UNKNOWN')} - {entry_analysis['reason']}",
+            "reason": f"HYBRID: {hybrid_rsi_analysis.get('advanced_signal', 'UNKNOWN')} - {entry_analysis['reason']}",
             "target": entry_analysis["target_price"],
             "stop": entry_analysis["stop_price"],
             "entry_price": entry_analysis["entry_price"],
@@ -570,7 +570,7 @@ class YahooHyperliquidPaperTradingBot:
             "market_condition": enhanced_analysis.get("market_condition"),
             "rsi_value": hybrid_rsi_analysis.get("rsi_value"),
             "momentum": hybrid_rsi_analysis.get("momentum"),
-            "enhanced_signal": hybrid_rsi_analysis.get("enhanced_signal")
+            "advanced_signal": hybrid_rsi_analysis.get("advanced_signal")
         }
         
         # Traditional quality check
