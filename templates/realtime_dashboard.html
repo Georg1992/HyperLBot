@@ -980,9 +980,9 @@
                     const directionElement = document.getElementById('signal-direction');
                     if (directionElement) {
                         const direction = (latest.type || '').toUpperCase();
-                        if (direction.includes('BUY') || direction.includes('BULLISH') || direction.includes('UP')) {
+                        if (direction.includes('BUY') || direction.includes('UPTREND') || direction.includes('UP')) {
                             directionElement.className = 'data-value trend-up';
-                        } else if (direction.includes('SELL') || direction.includes('BEARISH') || direction.includes('DOWN')) {
+                        } else if (direction.includes('SELL') || direction.includes('DOWNTREND') || direction.includes('DOWN')) {
                             directionElement.className = 'data-value trend-down';
                         } else if (direction.includes('HOLD')) {
                             directionElement.className = 'data-value trend-neutral';

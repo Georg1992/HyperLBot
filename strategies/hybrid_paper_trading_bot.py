@@ -1178,7 +1178,7 @@ class YahooHyperliquidPaperTradingBot:
                     
                     # Log significant market conditions
                     if abs(imbalance) > 0.3:  # > 30% imbalance
-                        direction = "BEARISH (Heavy Selling)" if imbalance < -0.3 else "BULLISH (Heavy Buying)"
+                        direction = "DOWNTREND (Heavy Selling)" if imbalance < -0.3 else "UPTREND (Heavy Buying)"
                         logger.warning(f"🚨 SIGNIFICANT ORDERBOOK IMBALANCE: {direction} ({imbalance*100:+.1f}%)")
                         logger.warning(f"   Total Depth: {total_depth:.2f} BTC, Bid: {volume_data.get('bid_depth_5', 0):.2f} BTC, Ask: {volume_data.get('ask_depth_5', 0):.2f} BTC")
                     
@@ -1472,9 +1472,9 @@ class YahooHyperliquidPaperTradingBot:
             
             # Determine trend direction
             if weekly_change > 2:
-                trend = "BULLISH"
+                trend = "UPTREND"
             elif weekly_change < -2:
-                trend = "BEARISH"
+                trend = "DOWNTREND"
             else:
                 trend = "SIDEWAYS"
             

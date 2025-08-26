@@ -126,23 +126,27 @@ class PredictionEngine:
                 "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN")
             }
             
-            # Determine side based on trend alignment
-            if trend_5m.get("trend") == "BULLISH" and trend_1h.get("trend") == "BULLISH":
+            # Determine side based on trend alignment (using new trend system)
+            trend_5m_type = trend_5m.get("trend", "SIDEWAYS")
+            trend_1h_type = trend_1h.get("trend", "SIDEWAYS")
+            
+            # Check for strong trend alignment
+            if trend_5m_type in ["UPTREND", "STRONG_UPTREND"] and trend_1h_type in ["UPTREND", "STRONG_UPTREND"]:
                 prediction["side"] = "BUY"
                 prediction["confidence"] = 0.7
-                prediction["reason"] = "Strong bullish trend alignment (5m + 1h)"
-            elif trend_5m.get("trend") == "BEARISH" and trend_1h.get("trend") == "BEARISH":
+                prediction["reason"] = "Strong uptrend alignment (5m + 1h)"
+            elif trend_5m_type in ["DOWNTREND", "STRONG_DOWNTREND"] and trend_1h_type in ["DOWNTREND", "STRONG_DOWNTREND"]:
                 prediction["side"] = "SELL"
                 prediction["confidence"] = 0.7
-                prediction["reason"] = "Strong bearish trend alignment (5m + 1h)"
-            elif trend_5m.get("trend") == "BULLISH":
+                prediction["reason"] = "Strong downtrend alignment (5m + 1h)"
+            elif trend_5m_type in ["UPTREND", "STRONG_UPTREND"]:
                 prediction["side"] = "BUY"
                 prediction["confidence"] = 0.6
-                prediction["reason"] = "5m bullish trend"
-            elif trend_5m.get("trend") == "BEARISH":
+                prediction["reason"] = "5m uptrend"
+            elif trend_5m_type in ["DOWNTREND", "STRONG_DOWNTREND"]:
                 prediction["side"] = "SELL"
                 prediction["confidence"] = 0.6
-                prediction["reason"] = "5m bearish trend"
+                prediction["reason"] = "5m downtrend"
             else:
                 prediction["side"] = "HOLD"
                 prediction["confidence"] = 0.3
@@ -217,52 +221,52 @@ class PredictionEngine:
             trend_reasons = []
             
             # 5m trend weight: 40%
-            if trend_5m.get("trend") == "BULLISH":
+            if trend_5m.get("trend") in ["UPTREND", "STRONG_UPTREND"]:
                 trend_score += 0.4
-                trend_reasons.append("5m bullish")
-            elif trend_5m.get("trend") == "BEARISH":
+                trend_reasons.append("5m uptrend")
+            elif trend_5m.get("trend") in ["DOWNTREND", "STRONG_DOWNTREND"]:
                 trend_score -= 0.4
-                trend_reasons.append("5m bearish")
+                trend_reasons.append("5m downtrend")
             
             # 1h trend weight: 35%
-            if trend_1h.get("trend") == "BULLISH":
+            if trend_1h.get("trend") in ["UPTREND", "STRONG_UPTREND"]:
                 trend_score += 0.35
-                trend_reasons.append("1h bullish")
-            elif trend_1h.get("trend") == "BEARISH":
+                trend_reasons.append("1h uptrend")
+            elif trend_1h.get("trend") in ["DOWNTREND", "STRONG_DOWNTREND"]:
                 trend_score -= 0.35
-                trend_reasons.append("1h bearish")
+                trend_reasons.append("1h downtrend")
             
             # 1d trend weight: 25%
-            if trend_1d.get("trend") == "BULLISH":
+            if trend_1d.get("trend") in ["UPTREND", "STRONG_UPTREND"]:
                 trend_score += 0.25
-                trend_reasons.append("1d bullish")
-            elif trend_1d.get("trend") == "BEARISH":
+                trend_reasons.append("1d uptrend")
+            elif trend_1d.get("trend") in ["DOWNTREND", "STRONG_DOWNTREND"]:
                 trend_score -= 0.25
-                trend_reasons.append("1d bearish")
+                trend_reasons.append("1d downtrend")
             
             # Determine side based on trend score
-            if trend_score >= 0.6:  # Strong bullish
+            if trend_score >= 0.6:  # Strong uptrend
                 prediction["side"] = "BUY"
                 prediction["confidence"] = min(0.9, 0.7 + (trend_score - 0.6) * 0.5)
-                prediction["reason"] = f"Strong bullish trend: {', '.join(trend_reasons)}"
+                prediction["reason"] = f"Strong uptrend: {', '.join(trend_reasons)}"
                 prediction["target_price"] = current_price * 1.025  # 2.5% target
                 prediction["stop_price"] = current_price * 0.975   # 2.5% stop
-            elif trend_score <= -0.6:  # Strong bearish
+            elif trend_score <= -0.6:  # Strong downtrend
                 prediction["side"] = "SELL"
                 prediction["confidence"] = min(0.9, 0.7 + abs(trend_score - 0.6) * 0.5)
-                prediction["reason"] = f"Strong bearish trend: {', '.join(trend_reasons)}"
+                prediction["reason"] = f"Strong downtrend: {', '.join(trend_reasons)}"
                 prediction["target_price"] = current_price * 0.975  # 2.5% target
                 prediction["stop_price"] = current_price * 1.025   # 2.5% stop
-            elif trend_score >= 0.2:  # Moderate bullish
+            elif trend_score >= 0.2:  # Moderate uptrend
                 prediction["side"] = "BUY"
                 prediction["confidence"] = 0.6 + trend_score * 0.2
-                prediction["reason"] = f"Moderate bullish trend: {', '.join(trend_reasons)}"
+                prediction["reason"] = f"Moderate uptrend: {', '.join(trend_reasons)}"
                 prediction["target_price"] = current_price * 1.02   # 2% target
                 prediction["stop_price"] = current_price * 0.98    # 2% stop
-            elif trend_score <= -0.2:  # Moderate bearish
+            elif trend_score <= -0.2:  # Moderate downtrend
                 prediction["side"] = "SELL"
                 prediction["confidence"] = 0.6 + abs(trend_score) * 0.2
-                prediction["reason"] = f"Moderate bearish trend: {', '.join(trend_reasons)}"
+                prediction["reason"] = f"Moderate downtrend: {', '.join(trend_reasons)}"
                 prediction["target_price"] = current_price * 0.98   # 2% target
                 prediction["stop_price"] = current_price * 1.02    # 2% stop
             else:  # Neutral
@@ -332,13 +336,13 @@ class PredictionEngine:
             trend_5m_type = trend_5m.get("trend", "UNKNOWN")
             trend_1h_type = trend_1h.get("trend", "UNKNOWN")
             
-            # Enhanced bull momentum detection
-            is_bullish_5m = trend_5m_type in ["UP", "STRONG_UP", "WEAK_UP"]
-            is_bullish_1h = trend_1h_type in ["UP", "STRONG_UP", "WEAK_UP"]
-            is_bearish_5m = trend_5m_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
-            is_bearish_1h = trend_1h_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+            # Enhanced momentum detection (using new trend system)
+            is_uptrend_5m = trend_5m_type in ["UPTREND", "STRONG_UPTREND", "WEAK_UPTREND"]
+            is_uptrend_1h = trend_1h_type in ["UPTREND", "STRONG_UPTREND", "WEAK_UPTREND"]
+            is_downtrend_5m = trend_5m_type in ["DOWNTREND", "STRONG_DOWNTREND", "WEAK_DOWNTREND"]
+            is_downtrend_1h = trend_1h_type in ["DOWNTREND", "STRONG_DOWNTREND", "WEAK_DOWNTREND"]
             
-            if is_bullish_5m and is_bullish_1h:
+            if is_uptrend_5m and is_uptrend_1h:
                 # Both timeframes showing upward momentum (including weak)
                 combined_strength = (trend_5m.get("strength", 0) + trend_1h.get("strength", 0)) / 2
                 prediction = {
@@ -347,14 +351,14 @@ class PredictionEngine:
                     "side": "BUY",
                     "confidence": 0.5 + (combined_strength * 10),  # Scale strength appropriately
                     "timeframe": 10,
-                    "reason": f"Bull momentum detected: 1h:{trend_1h_type}, 5m:{trend_5m_type} (strength:{combined_strength:.3f})",
+                    "reason": f"Uptrend momentum detected: 1h:{trend_1h_type}, 5m:{trend_5m_type} (strength:{combined_strength:.3f})",
                     "support": support,
                     "resistance": resistance,
                     "prediction_mode": "MOMENTUM_ANALYSIS"
                 }
                 predictions.append(prediction)
                  
-            elif is_bearish_5m and is_bearish_1h:
+            elif is_downtrend_5m and is_downtrend_1h:
                 # Both timeframes showing downward momentum (including weak)
                 combined_strength = (trend_5m.get("strength", 0) + trend_1h.get("strength", 0)) / 2
                 prediction = {
@@ -363,7 +367,7 @@ class PredictionEngine:
                     "side": "SELL",
                     "confidence": 0.5 + (combined_strength * 10),  # Scale strength appropriately
                     "timeframe": 10,
-                    "reason": f"Bear momentum detected: 1h:{trend_1h_type}, 5m:{trend_5m_type} (strength:{combined_strength:.3f})",
+                    "reason": f"Downtrend momentum detected: 1h:{trend_1h_type}, 5m:{trend_5m_type} (strength:{combined_strength:.3f})",
                     "support": support,
                     "resistance": resistance,
                     "prediction_mode": "MOMENTUM_ANALYSIS"
@@ -371,32 +375,32 @@ class PredictionEngine:
                 predictions.append(prediction)
                 
             # Single timeframe momentum for gradual moves
-            elif is_bullish_5m or is_bullish_1h:  # At least one bullish timeframe
-                timeframe_strength = trend_5m.get("strength", 0) if is_bullish_5m else trend_1h.get("strength", 0)
+            elif is_uptrend_5m or is_uptrend_1h:  # At least one uptrend timeframe
+                timeframe_strength = trend_5m.get("strength", 0) if is_uptrend_5m else trend_1h.get("strength", 0)
                 if timeframe_strength > 0.005:  # Even very weak momentum
                     prediction = {
-                        "type": "SINGLE_TIMEFRAME_BULL",
+                        "type": "SINGLE_TIMEFRAME_UPTREND",
                         "entry_price": current_price * 0.999,
                         "side": "BUY",
                         "confidence": 0.35 + (timeframe_strength * 8),
                         "timeframe": 15,
-                        "reason": f"Single timeframe bull: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
+                        "reason": f"Single timeframe uptrend: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
                         "support": support,
                         "resistance": resistance,
                         "prediction_mode": "MOMENTUM_ANALYSIS"
                     }
                     predictions.append(prediction)
                     
-            elif is_bearish_5m or is_bearish_1h:  # At least one bearish timeframe
-                timeframe_strength = trend_5m.get("strength", 0) if is_bearish_5m else trend_1h.get("strength", 0)
+            elif is_downtrend_5m or is_downtrend_1h:  # At least one downtrend timeframe
+                timeframe_strength = trend_5m.get("strength", 0) if is_downtrend_5m else trend_1h.get("strength", 0)
                 if timeframe_strength > 0.005:
                     prediction = {
-                        "type": "SINGLE_TIMEFRAME_BEAR",
+                        "type": "SINGLE_TIMEFRAME_DOWNTREND",
                         "entry_price": current_price * 1.001,
                         "side": "SELL",
                         "confidence": 0.35 + (timeframe_strength * 8),
                         "timeframe": 15,
-                        "reason": f"Single timeframe bear: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
+                        "reason": f"Single timeframe downtrend: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
                         "support": support,
                         "resistance": resistance,
                         "prediction_mode": "MOMENTUM_ANALYSIS"
@@ -442,10 +446,10 @@ class PredictionEngine:
             if volatility > 0.002:  # Lower threshold for volatility predictions
                 # In high volatility, look for reversal opportunities
                 trend_5m_type = trend_5m.get("trend", "UNKNOWN")
-                is_bullish_5m = trend_5m_type in ["UP", "STRONG_UP", "WEAK_UP"]
-                is_bearish_5m = trend_5m_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+                is_uptrend_5m = trend_5m_type in ["UPTREND", "STRONG_UPTREND", "WEAK_UPTREND"]
+                is_downtrend_5m = trend_5m_type in ["DOWNTREND", "STRONG_DOWNTREND", "WEAK_DOWNTREND"]
                 
-                if is_bullish_5m:
+                if is_uptrend_5m:
                     prediction = {
                         "type": "VOLATILITY_REVERSAL",
                         "entry_price": current_price * 1.001,
@@ -458,7 +462,7 @@ class PredictionEngine:
                         "prediction_mode": "VOLATILITY_ANALYSIS"
                     }
                     predictions.append(prediction)
-                elif is_bearish_5m:
+                elif is_downtrend_5m:
                     prediction = {
                         "type": "VOLATILITY_REVERSAL",
                         "entry_price": current_price * 0.999,
@@ -492,30 +496,30 @@ class PredictionEngine:
                 trend_5m_type = trend_5m.get("trend", "UNKNOWN")
                 trend_1h_type = trend_1h.get("trend", "UNKNOWN")
                 
-                # Check for any bullish signals
-                is_any_bullish = trend_5m_type in ["UP", "STRONG_UP", "WEAK_UP"] or trend_1h_type in ["UP", "STRONG_UP", "WEAK_UP"]
-                is_any_bearish = trend_5m_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"] or trend_1h_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
+                # Check for any uptrend signals
+                is_any_uptrend = trend_5m_type in ["UPTREND", "STRONG_UPTREND", "WEAK_UPTREND"] or trend_1h_type in ["UPTREND", "STRONG_UPTREND", "WEAK_UPTREND"]
+                is_any_downtrend = trend_5m_type in ["DOWNTREND", "STRONG_DOWNTREND", "WEAK_DOWNTREND"] or trend_1h_type in ["DOWNTREND", "STRONG_DOWNTREND", "WEAK_DOWNTREND"]
                 
-                if is_any_bullish:
+                if is_any_uptrend:
                     prediction = {
                         "type": "TREND_FOLLOWING",
                         "entry_price": current_price * 0.999,
                         "side": "BUY",
                         "confidence": 0.3,
                         "timeframe": 15,
-                        "reason": f"Following bull trend: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
+                        "reason": f"Following uptrend: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
                         "support": support,
                         "resistance": resistance,
                         "prediction_mode": "TREND_FOLLOWING"
                     }
-                elif is_any_bearish:
+                elif is_any_downtrend:
                     prediction = {
                         "type": "TREND_FOLLOWING",
                         "entry_price": current_price * 1.001,
                         "side": "SELL",
                         "confidence": 0.3,
                         "timeframe": 15,
-                        "reason": f"Following bear trend: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
+                        "reason": f"Following downtrend: 1h:{trend_1h_type}, 5m:{trend_5m_type}",
                         "support": support,
                         "resistance": resistance,
                         "prediction_mode": "TREND_FOLLOWING"
@@ -894,14 +898,14 @@ class PredictionEngine:
         trend_1h_dir = trend_1h.get("trend", "UNKNOWN")
         trend_1d_dir = trend_1d.get("trend", "UNKNOWN")
         
-        # Enhanced trend classification for alignment
+        # Enhanced trend classification for alignment (using new trend system)
         def get_trend_direction(trend_type):
-            if trend_type in ["UP", "STRONG_UP", "WEAK_UP"]:
-                return "BULLISH"
-            elif trend_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]:
-                return "BEARISH"
+            if trend_type in ["UPTREND", "STRONG_UPTREND", "WEAK_UPTREND"]:
+                return "UPTREND"
+            elif trend_type in ["DOWNTREND", "STRONG_DOWNTREND", "WEAK_DOWNTREND"]:
+                return "DOWNTREND"
             elif trend_type == "SIDEWAYS":
-                return "NEUTRAL"
+                return "SIDEWAYS"
             else:
                 return "UNKNOWN"
         
@@ -911,20 +915,20 @@ class PredictionEngine:
         
         # Short-term trend alignment bonus (enhanced)
         if trend_1h_direction == trend_5m_direction and trend_1h_direction != "UNKNOWN":
-            if trend_1h_direction == "BULLISH" or trend_1h_direction == "BEARISH":
+            if trend_1h_direction in ["UPTREND", "DOWNTREND"]:
                 base_confidence += 0.25  # Strong alignment bonus
-            else:  # NEUTRAL alignment
-                base_confidence += 0.1   # Smaller bonus for neutral alignment
+            else:  # SIDEWAYS alignment
+                base_confidence += 0.1   # Smaller bonus for sideways alignment
             
         # Daily trend support for breakouts (powerful confirmation with enhanced trend types)
         if trend_1d_direction != "UNKNOWN":
-            if trend_1d_direction == trend_5m_direction == trend_1h_direction and trend_1d_direction != "NEUTRAL":
+            if trend_1d_direction == trend_5m_direction == trend_1h_direction and trend_1d_direction != "SIDEWAYS":
                 # All timeframes aligned in same direction = very strong breakout potential
                 base_confidence += 0.3
-            elif trend_1d_direction == trend_5m_direction and trend_1d_direction != "NEUTRAL":
+            elif trend_1d_direction == trend_5m_direction and trend_1d_direction != "SIDEWAYS":
                 # Daily supports short-term direction = good breakout potential
                 base_confidence += 0.2
-            elif trend_1d_direction != trend_5m_direction and trend_1d_direction != "NEUTRAL" and trend_5m_direction != "NEUTRAL":
+            elif trend_1d_direction != trend_5m_direction and trend_1d_direction != "SIDEWAYS" and trend_5m_direction != "SIDEWAYS":
                 # Daily contradicts short-term = breakout may fail
                 base_confidence -= 0.1
         
@@ -968,14 +972,14 @@ class PredictionEngine:
         trend_1h_dir = trend_1h.get("trend", "UNKNOWN") 
         trend_1d_dir = trend_1d.get("trend", "UNKNOWN")
         
-        # Enhanced trend classification for reversions
+        # Enhanced trend classification for reversions (using new trend system)
         def get_trend_direction(trend_type):
-            if trend_type in ["UP", "STRONG_UP", "WEAK_UP"]:
-                return "BULLISH"
-            elif trend_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]:
-                return "BEARISH"
+            if trend_type in ["UPTREND", "STRONG_UPTREND", "WEAK_UPTREND"]:
+                return "UPTREND"
+            elif trend_type in ["DOWNTREND", "STRONG_DOWNTREND", "WEAK_DOWNTREND"]:
+                return "DOWNTREND"
             elif trend_type == "SIDEWAYS":
-                return "NEUTRAL"
+                return "SIDEWAYS"
             else:
                 return "UNKNOWN"
         
@@ -988,10 +992,10 @@ class PredictionEngine:
             base_confidence += 0.08  # Reduced from 0.15 - more conservative
             
         # Daily trend context - much more conservative
-        if trend_1d_direction == "BEARISH" and trend_5m_direction == "BULLISH":
+        if trend_1d_direction == "DOWNTREND" and trend_5m_direction == "UPTREND":
             # Daily downtrend with short-term up = moderate reversion probability
             base_confidence += 0.10  # Reduced from 0.18
-        elif trend_1d_direction == "BULLISH" and trend_5m_direction == "BEARISH":
+        elif trend_1d_direction == "UPTREND" and trend_5m_direction == "DOWNTREND":
             # Daily uptrend with short-term down = moderate reversion probability  
             base_confidence += 0.10  # Reduced from 0.18
         elif trend_1d_direction != "UNKNOWN" and trend_1d_direction == trend_5m_direction and trend_1d_direction != "NEUTRAL":

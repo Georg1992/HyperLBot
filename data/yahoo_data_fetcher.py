@@ -28,21 +28,18 @@ class YahooDataFetcher:
         # Optimized data manager - periodic update tracking
         self.last_yahoo_update = 0
         self.last_rsi_update = 0
-        self.last_trend_update = 0
         self.last_1h_update = 0
         self.last_daily_update = 0
         
         # Update intervals (in seconds)
         self.yahoo_update_interval = 300  # 5 minutes for full analysis
         self.rsi_update_interval = 30     # 30 seconds for RSI (optimized for profitability)
-        self.trend_update_interval = 60   # 1 minute for trend (1m candles)
         self.hourly_update_interval = 900 # 15 minutes for 1h candles
         self.daily_update_interval = 3600 # 1 hour for daily candles
         
         # Stored analysis data
         self.cached_yahoo_analysis = {}
         self.cached_rsi_data = {}
-        self.cached_trend_data = {}
         self.cached_1h_data = {}
         self.cached_daily_data = {}
         
@@ -119,26 +116,6 @@ class YahooDataFetcher:
         
         return self.cached_rsi_data
     
-    def get_optimized_trend_data(self, symbol: str = "BTC", periods: int = 5) -> Dict[str, Any]:
-        """
-        Get optimized trend data with 1-minute update interval
-        """
-        current_time = time.time()
-        
-        if self._should_update_data(self.last_trend_update, self.trend_update_interval):
-    
-            candles_1m = self.get_1m_klines(symbol, periods + 5)  # Get extra candles for buffer
-            if candles_1m and len(candles_1m) >= periods:
-                from core.market_data_manager import market_data_manager
-                self.cached_trend_data = market_data_manager.calculate_trend(candles_1m, periods)
-            else:
-                self.cached_trend_data = {"trend": "SIDEWAYS", "strength": 0, "direction": 0}
-            self.last_trend_update = current_time
-        else:
-            pass
-        
-        return self.cached_trend_data
-    
     def get_optimized_1h_data(self, symbol: str = "BTC") -> Dict[str, Any]:
         """
         Get optimized 1-hour data with 15-minute update interval
@@ -202,11 +179,6 @@ class YahooDataFetcher:
                 "last_update": self.last_rsi_update,
                 "next_update": self.last_rsi_update + self.rsi_update_interval,
                 "time_until_update": max(0, (self.last_rsi_update + self.rsi_update_interval) - current_time)
-            },
-            "trend_data": {
-                "last_update": self.last_trend_update,
-                "next_update": self.last_trend_update + self.trend_update_interval,
-                "time_until_update": max(0, (self.last_trend_update + self.trend_update_interval) - current_time)
             },
             "hourly_data": {
                 "last_update": self.last_1h_update,

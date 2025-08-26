@@ -922,10 +922,27 @@ class HyperliquidAPI:
                 if len(all_depths) > 1:
                     mean_depth = statistics.mean(all_depths)
                     depth_std = statistics.stdev(all_depths)
-                    depth_volatility = depth_std / mean_depth if mean_depth > 0 else 0
+                    # Add bounds checking to prevent unrealistic values
+                    if mean_depth > 0.001:  # Only calculate if mean depth is significant
+                        depth_volatility = depth_std / mean_depth
+                        # Cap depth volatility at reasonable levels (max 0.5 = 50%)
+                        depth_volatility = min(depth_volatility, 0.5)
+                    else:
+                        depth_volatility = 0.0
             
             # Combine spread and depth volatility for overall volatility
             combined_volatility = (spread_volatility * 0.6) + (depth_volatility * 0.4)
+            
+            # Add bounds checking to ensure realistic volatility values
+            # Cap at 0.1 (10%) which is extremely high for crypto markets
+            combined_volatility = min(combined_volatility, 0.1)
+            
+            # Ensure non-negative
+            combined_volatility = max(combined_volatility, 0.0)
+            
+            # Debug logging for volatility components
+            if combined_volatility > 0.05:  # Log if volatility is unusually high
+                logger.debug(f"⚠️ High volatility detected: {combined_volatility:.4f} (spread: {spread_volatility:.4f}, depth: {depth_volatility:.4f})")
             
             # Categorize volatility
             if combined_volatility > 0.005:  # 0.5%
