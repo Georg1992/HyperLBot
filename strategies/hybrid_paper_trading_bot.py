@@ -202,9 +202,9 @@ class YahooHyperliquidPaperTradingBot:
             # Calculate real market data instead of using defaults
             current_price = price_data["current_price"]
             
-            # Get enhanced volume data from order book analysis
+            # Get volume data from order book analysis
             try:
-                volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
+                volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
                 volume_depth = volume_data.get("current_volume", 0.0)
                 volume_category = volume_data.get("volume_category", "UNKNOWN")
                 order_flow = volume_data.get("order_flow", "NEUTRAL")
@@ -222,9 +222,9 @@ class YahooHyperliquidPaperTradingBot:
             rsi_value = None  # Will be updated by main loop
             trend_value = "SIDEWAYS"  # Will be updated by main loop
             
-            # Get enhanced volatility data from order book analysis
+            # Get volatility data from order book analysis
             try:
-                volatility_data = self.hyperliquid_api.get_enhanced_volatility_analysis("BTC")
+                volatility_data = self.hyperliquid_api.get_volatility_analysis("BTC")
                 volatility_5m = volatility_data.get("volatility_5m", 0.0)
                 volatility_category = volatility_data.get("volatility_category", "UNKNOWN")
                 volatility_trend = volatility_data.get("volatility_trend", "UNKNOWN")
@@ -237,9 +237,9 @@ class YahooHyperliquidPaperTradingBot:
                 volatility_trend = "UNKNOWN"
                 spread_volatility = 0.0
             
-            # Get enhanced ultimate pressure from order book analysis
+            # Get ultimate pressure from order book analysis
             try:
-                ultimate_pressure = self.hyperliquid_api.get_enhanced_ultimate_pressure("BTC")
+                ultimate_pressure = self.hyperliquid_api.get_ultimate_pressure("BTC")
                 pressure_direction = ultimate_pressure.get("direction", "NEUTRAL")
                 pressure_confidence = ultimate_pressure.get("confidence", "50%")
                 pressure_strength = ultimate_pressure.get("strength", 0.5)
@@ -1171,7 +1171,7 @@ class YahooHyperliquidPaperTradingBot:
                     continue
                 
                 # Get current Hyperliquid volume/liquidity data
-                volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
+                volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
                 if volume_data and "depth_imbalance" in volume_data:
                     imbalance = volume_data.get("depth_imbalance", 0)
                     total_depth = volume_data.get("total_depth_5", 0)
