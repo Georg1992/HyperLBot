@@ -157,6 +157,9 @@ class SimpleRTM:
             # Handle trend analysis data separately
             if "trend_analysis" in market_data:
                 self._data["market"]["trend_analysis"] = market_data["trend_analysis"]
+                logger.info(f"📊 SimpleRTM: Updated trend_analysis - Overall: {market_data['trend_analysis'].get('overall_trend', 'UNKNOWN')} | Alignment: {market_data['trend_analysis'].get('alignment_score', 0)*100:.1f}%")
+            else:
+                logger.warning(f"⚠️ SimpleRTM: No trend_analysis in market_data")
             
             self._data["market"]["last_updated"] = datetime.now().isoformat()
             self._data["timestamp"] = datetime.now().isoformat()

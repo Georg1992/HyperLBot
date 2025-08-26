@@ -1586,9 +1586,11 @@ class YahooHyperliquidPaperTradingBot:
             if candles_1m and candles_5m and candles_1h:
                 trend_data = trend_manager.get_multi_timeframe_trend(candles_1m, candles_5m, candles_1h)
                 trend_value = trend_data.get("overall_trend", "UNKNOWN")
+                logger.info(f"📊 Trend Analysis: {trend_data.get('overall_trend', 'UNKNOWN')} | Alignment: {trend_data.get('alignment_score', 0)*100:.1f}%")
             else:
                 trend_data = {"overall_trend": "UNKNOWN", "alignment_score": 0}
                 trend_value = "UNKNOWN"
+                logger.warning(f"⚠️ Missing candle data: 1m={len(candles_1m) if candles_1m else 0}, 5m={len(candles_5m) if candles_5m else 0}, 1h={len(candles_1h) if candles_1h else 0}")
             
             rsi_value = hybrid_rsi_analysis.get("rsi_value", None)
             
@@ -1621,6 +1623,9 @@ class YahooHyperliquidPaperTradingBot:
                 },
                 "trend_analysis": trend_data
             }
+            
+            # Debug log the trend data being sent
+            logger.info(f"📊 Sending to SimpleRTM - Overall Trend: {trend_data.get('overall_trend', 'UNKNOWN')} | Alignment: {trend_data.get('alignment_score', 0)*100:.1f}%")
             
             # Update SimpleRTM with centralized data
             self._update_simple_rtm_market(market_data)
