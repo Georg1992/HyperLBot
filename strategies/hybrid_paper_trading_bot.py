@@ -432,10 +432,10 @@ class YahooHyperliquidPaperTradingBot:
             "rsi_signal": yahoo_analysis.get("rsi_signal", "NEUTRAL")
         }
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
-        """Get comprehensive market analysis from Yahoo Finance (HISTORICAL DATA ONLY)"""
+        """Get optimized market analysis from Yahoo Finance with periodic updates"""
         try:
-            # Pass Hyperliquid price to Yahoo analysis for current price context
-            analysis = self.yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price=hyperliquid_price)
+            # Use optimized data manager with periodic updates
+            analysis = self.yahoo_fetcher.get_optimized_market_analysis("BTC", hyperliquid_price=hyperliquid_price)
             
             if "error" not in analysis:
                 logger.info(f"📊 Yahoo Finance analysis: ${analysis['current_price']:,.2f} - {analysis['market_condition']}")
@@ -492,9 +492,8 @@ class YahooHyperliquidPaperTradingBot:
         volatility_data = self.hyperliquid_api.get_enhanced_volatility_analysis("BTC")
         pressure_data = self.hyperliquid_api.get_enhanced_ultimate_pressure("BTC")
         
-        # Calculate enhanced RSI using 1m candles for better granularity
-        candles_1m = yahoo_analysis.get("candles_1m", [])
-        proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_1m, periods=14)
+        # Get optimized RSI data (with periodic updates)
+        proper_rsi = self.yahoo_fetcher.get_optimized_rsi_data("BTC", periods=14)
         
         # Update variability analyzer
         real_volume = volume_data.get("current_volume", 100)
@@ -1199,76 +1198,38 @@ class YahooHyperliquidPaperTradingBot:
                 self._update_simple_rtm_activity("🔍 Checking position exits", "INFO")
                 self.check_position_exits(hyperliquid_price, self.yahoo_analysis)
                 
-                # Update market data for dashboard
-                self._update_simple_rtm_activity("📊 Fetching latest market data", "INFO")
+                # Update market data for dashboard (optimized with periodic updates)
+                self._update_simple_rtm_activity("📊 Fetching optimized market data", "INFO")
                 
-                # Simple market data update
-                try:
-                    # Get basic market analysis
-                    yahoo_analysis = self.yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price)
-                    if yahoo_analysis:
-                        self.yahoo_analysis = yahoo_analysis
-                        self._update_simple_rtm_activity("✅ Market data updated", "SUCCESS")
-                except Exception as e:
-                    logger.debug(f"Market data update failed: {e}")
-                    
-                    # Use centralized market data update - SINGLE SOURCE OF TRUTH
-                    self._update_market_data_centralized(hyperliquid_price)
-                    
-                    # Log market data for dashboard (Hyperliquid price + Yahoo historical comparison)
-                    fallback_analysis = self.yahoo_analysis or {}
-                    self.trading_logger.log_analysis({
-                        "type": "hybrid_analysis_update",
-                        "timeframe": "5m",
-                        "support_resistance": fallback_analysis.get("support_resistance_5m", {}),
-                        "trend_analysis": fallback_analysis.get("trend_5m", {}),
-                        "market_condition": fallback_analysis.get("market_condition", "UNKNOWN"),
-                        "hyperliquid_price": hyperliquid_price,
-                        "yahoo_last_close": fallback_analysis.get("yahoo_last_close", hyperliquid_price),
-                        "price_difference_pct": fallback_analysis.get("price_difference_pct", 0.0),
-                        "price_difference_amount": fallback_analysis.get("price_difference", 0.0),
-                        "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"
-                    })
-                
-                # Update RSI calculation
-                self._update_simple_rtm_activity("📊 Updating RSI calculation", "INFO")
-                
-                try:
-                    # Get fresh 1m candles for RSI calculation
-                    candles_1m = self.yahoo_fetcher.get_1m_klines("BTC", 20)  # Get 20 candles for 14-period RSI + buffer
-                    if candles_1m and len(candles_1m) >= 15:
-                        rsi_data = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_1m, periods=14)
-                        if rsi_data and rsi_data.get("rsi") is not None:
-                            # Update SimpleRTM with RSI data immediately
-                            rsi_value = rsi_data.get("rsi")
-                            rsi_trend = rsi_data.get("trend", "NEUTRAL")
-                            logger.debug(f"📊 RSI Updated: {rsi_value:.1f} ({rsi_trend})")
-                            
-                            # Force update market data with new RSI
-                            self._update_market_data_centralized(hyperliquid_price, force_update=True)
-                            self._update_simple_rtm_activity(f"✅ RSI updated: {rsi_value:.1f} ({rsi_trend})", "SUCCESS")
-                        else:
-                            logger.debug(f"⚠️ RSI calculation returned None")
-                    else:
-                        logger.debug(f"⚠️ Insufficient 1m candles for RSI: {len(candles_1m) if candles_1m else 0}")
-                except Exception as e:
-                    logger.debug(f"RSI update failed: {e}")
-                
-                # Update Yahoo analysis
-                self._update_simple_rtm_activity("📈 Updating market analysis data", "INFO")
-                
-                # Get market analysis from Yahoo Finance (Hyperliquid doesn't provide historical candles)
+                # Get optimized market analysis with periodic updates
                 try:
                     yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price=hyperliquid_price)
                     if yahoo_analysis:
                         self.yahoo_analysis = yahoo_analysis
-                        self._update_simple_rtm_activity("✅ Yahoo Finance analysis updated", "SUCCESS")
+                        self._update_simple_rtm_activity("✅ Optimized market data updated", "SUCCESS")
                         
-                        # Use centralized market data update - SINGLE SOURCE OF TRUTH
+                        # Log market data for dashboard
+                        self.trading_logger.log_analysis({
+                            "type": "optimized_analysis_update",
+                            "timeframe": "5m",
+                            "support_resistance": yahoo_analysis.get("support_resistance_5m", {}),
+                            "trend_analysis": yahoo_analysis.get("trend_5m", {}),
+                            "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
+                            "hyperliquid_price": hyperliquid_price,
+                            "yahoo_last_close": yahoo_analysis.get("yahoo_last_close", hyperliquid_price),
+                            "price_difference_pct": yahoo_analysis.get("price_difference_pct", 0.0),
+                            "price_difference_amount": yahoo_analysis.get("price_difference", 0.0),
+                            "data_source": "Yahoo Finance (Optimized) + Hyperliquid (Real-time Price)"
+                        })
+                        
+                        # Update centralized market data
+                        self._update_market_data_centralized(hyperliquid_price)
+                    else:
+                        logger.debug("No Yahoo analysis available, using fallback")
                         self._update_market_data_centralized(hyperliquid_price)
                 except Exception as e:
-                    logger.debug(f"Market analysis update failed: {e}")
-                    self.yahoo_analysis = {}
+                    logger.debug(f"Optimized market data update failed: {e}")
+                    self._update_market_data_centralized(hyperliquid_price)
                 
                 # Check for signals
                     if not self.yahoo_analysis or not self.yahoo_analysis.get("market_condition"):
@@ -1477,6 +1438,14 @@ class YahooHyperliquidPaperTradingBot:
         except Exception as e:
             logger.debug(f"❌ Could not update SimpleRTM market: {e}")
     
+    def _update_simple_rtm_data_status(self, data_status: Dict[str, Any]):
+        """Update SimpleRTM data status"""
+        try:
+            from core.data.simple_rtm import simple_rtm
+            simple_rtm.update_data_status(data_status)
+        except Exception as e:
+            logger.debug(f"❌ Could not update SimpleRTM data status: {e}")
+    
     def _update_simple_rtm_activity(self, message: str, level: str = "INFO"):
         """Update SimpleRTM with activity"""
         try:
@@ -1609,48 +1578,25 @@ class YahooHyperliquidPaperTradingBot:
             logger.error(f"❌ Failed to execute scale-in: {e}")
 
     def _update_market_data_centralized(self, current_price: float, force_update: bool = False):
-        """Centralized market data update - SINGLE SOURCE OF TRUTH"""
+        """Centralized market data update with optimized periodic updates"""
         try:
             
-            # Get all market data from APIs
+            # Get optimized data from Yahoo Finance (with periodic updates)
+            rsi_data = self.yahoo_fetcher.get_optimized_rsi_data("BTC", periods=14)
+            trend_data = self.yahoo_fetcher.get_optimized_trend_data("BTC", periods=5)
+            
+            rsi_value = rsi_data.get("rsi", None)
+            trend_value = trend_data.get("trend", "SIDEWAYS")
+            
+            # Get real-time data from Hyperliquid API
             volume_data = None
             volatility_data = None
             ultimate_pressure_data = None
-            rsi_value = None
-            trend_value = "SIDEWAYS"
-            
-            # Calculate RSI from 1m candles (updates every minute when new candle closes)
-            try:
-                candles_1m = self.yahoo_fetcher.get_1m_klines("BTC", 15)
-                if candles_1m and len(candles_1m) >= 15:
-                    rsi_data = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_1m, periods=14)
-                    rsi_value = rsi_data.get("rsi", None)
-                    logger.debug(f"📊 RSI calculated: {rsi_value:.1f}")
-                else:
-                    rsi_value = None
-                    logger.debug(f"⚠️ Insufficient candles for RSI calculation")
-            except Exception as e:
-                logger.debug(f"RSI calculation error: {e}")
-                rsi_value = None
             
             try:
-                # Get enhanced market data from Hyperliquid API
                 volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
                 volatility_data = self.hyperliquid_api.get_enhanced_volatility_analysis("BTC")
                 ultimate_pressure_data = self.hyperliquid_api.get_enhanced_ultimate_pressure("BTC")
-                
-                # Calculate trend from 1m candles (separate from RSI)
-                try:
-                    candles_1m = self.yahoo_fetcher.get_1m_klines("BTC", 5)
-                    if candles_1m and len(candles_1m) >= 5:
-                        trend_data = self.yahoo_fetcher.calculate_trend(candles_1m, periods=5)
-                        trend_value = trend_data.get("trend", "SIDEWAYS")
-                    else:
-                        trend_value = "SIDEWAYS"
-                except Exception as e:
-                    logger.debug(f"Trend calculation error: {e}")
-                    trend_value = "SIDEWAYS"
-                    
             except Exception as e:
                 logger.debug(f"Enhanced market data fetch error: {e}")
             
@@ -1678,12 +1624,27 @@ class YahooHyperliquidPaperTradingBot:
             # Update SimpleRTM with centralized data
             self._update_simple_rtm_market(market_data)
             
+            # Update data status for monitoring
+            try:
+                data_status = self.get_data_update_status()
+                self._update_simple_rtm_data_status(data_status)
+            except Exception as e:
+                logger.debug(f"Failed to update data status: {e}")
+            
             # Log successful update
             rsi_display = f"{rsi_value:.1f}" if rsi_value is not None else "N/A"
-            logger.debug(f"📊 Centralized market update: ${current_price:.2f} | RSI: {rsi_display} | Trend: {trend_value}")
+            logger.debug(f"📊 Optimized market update: ${current_price:.2f} | RSI: {rsi_display} | Trend: {trend_value}")
             
         except Exception as e:
-            logger.error(f"❌ Centralized market update failed: {e}")
+            logger.error(f"❌ Optimized market update failed: {e}")
+    
+    def get_data_update_status(self) -> Dict[str, Any]:
+        """Get status of all data updates for monitoring"""
+        try:
+            return self.yahoo_fetcher.get_update_status()
+        except Exception as e:
+            logger.error(f"❌ Failed to get data update status: {e}")
+            return {}
 
 
 

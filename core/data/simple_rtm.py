@@ -57,6 +57,13 @@ class SimpleRTM:
                     "strength": 0.5,
                     "trend": "NEUTRAL"
                 },
+                "data_update_status": {
+                    "yahoo_analysis": {"last_update": 0, "next_update": 0, "time_until_update": 0},
+                    "rsi_data": {"last_update": 0, "next_update": 0, "time_until_update": 0},
+                    "trend_data": {"last_update": 0, "next_update": 0, "time_until_update": 0},
+                    "hourly_data": {"last_update": 0, "next_update": 0, "time_until_update": 0},
+                    "daily_data": {"last_update": 0, "next_update": 0, "time_until_update": 0}
+                },
                 "last_updated": None
             },
             "logs": [],
@@ -133,6 +140,13 @@ class SimpleRTM:
         with self._lock:
             self._data["market"].update(market_data)
             self._data["market"]["last_updated"] = datetime.now().isoformat()
+            self._data["timestamp"] = datetime.now().isoformat()
+            self._save_data()
+    
+    def update_data_status(self, data_status: Dict[str, Any]):
+        """Update data update status"""
+        with self._lock:
+            self._data["market"]["data_update_status"] = data_status
             self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()
             

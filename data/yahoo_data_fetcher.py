@@ -25,8 +25,30 @@ class YahooDataFetcher:
         self.cache = {}
         self.cache_duration = 5  # 5 seconds cache for ultra-frequent updates
         
+        # Optimized data manager - periodic update tracking
+        self.last_yahoo_update = 0
+        self.last_rsi_update = 0
+        self.last_trend_update = 0
+        self.last_1h_update = 0
+        self.last_daily_update = 0
+        
+        # Update intervals (in seconds)
+        self.yahoo_update_interval = 300  # 5 minutes for full analysis
+        self.rsi_update_interval = 60     # 1 minute for RSI (1m candles)
+        self.trend_update_interval = 60   # 1 minute for trend (1m candles)
+        self.hourly_update_interval = 900 # 15 minutes for 1h candles
+        self.daily_update_interval = 3600 # 1 hour for daily candles
+        
+        # Stored analysis data
+        self.cached_yahoo_analysis = {}
+        self.cached_rsi_data = {}
+        self.cached_trend_data = {}
+        self.cached_1h_data = {}
+        self.cached_daily_data = {}
+        
         logger.info("🔗 Yahoo Finance Data Fetcher initialized for BTC-USD (HISTORICAL DATA ONLY)")
         logger.info("📊 Real-time pricing should come from Hyperliquid API")
+        logger.info("⚡ Optimized data manager: Periodic updates enabled")
     
     def _get_cached_data(self, key: str) -> Optional[Dict]:
         """Get cached data if still valid"""
@@ -39,6 +61,146 @@ class YahooDataFetcher:
     def _cache_data(self, key: str, data: Dict):
         """Cache data with timestamp"""
         self.cache[key] = (data, time.time())
+    
+    def _should_update_data(self, last_update: float, interval: int) -> bool:
+        """Check if data should be updated based on interval"""
+        return time.time() - last_update > interval
+    
+    def get_optimized_market_analysis(self, symbol: str = "BTC", hyperliquid_price: float = None) -> Dict[str, Any]:
+        """
+        Get optimized market analysis with periodic updates
+        Only fetches new data when intervals are exceeded
+        """
+        current_time = time.time()
+        
+        # Check if we need a full Yahoo analysis update
+        if self._should_update_data(self.last_yahoo_update, self.yahoo_update_interval):
+            logger.info("📊 Updating Yahoo Finance market analysis (periodic update)")
+            self.cached_yahoo_analysis = self.get_market_analysis(symbol, hyperliquid_price)
+            self.last_yahoo_update = current_time
+        else:
+            logger.debug("📊 Using cached Yahoo Finance market analysis")
+        
+        return self.cached_yahoo_analysis
+    
+    def get_optimized_rsi_data(self, symbol: str = "BTC", periods: int = 14) -> Dict[str, Any]:
+        """
+        Get optimized RSI data with 1-minute update interval
+        """
+        current_time = time.time()
+        
+        if self._should_update_data(self.last_rsi_update, self.rsi_update_interval):
+            logger.debug("📊 Updating RSI data (1-minute interval)")
+            candles_1m = self.get_1m_klines(symbol, 20)  # Get 20 candles for 14-period RSI + buffer
+            if candles_1m and len(candles_1m) >= 15:
+                from core.hyperliquid_api import HyperliquidAPI
+                api = HyperliquidAPI()
+                self.cached_rsi_data = api.calculate_rsi_from_yahoo_data(candles_1m, periods)
+            else:
+                self.cached_rsi_data = {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
+            self.last_rsi_update = current_time
+        else:
+            logger.debug("📊 Using cached RSI data")
+        
+        return self.cached_rsi_data
+    
+    def get_optimized_trend_data(self, symbol: str = "BTC", periods: int = 5) -> Dict[str, Any]:
+        """
+        Get optimized trend data with 1-minute update interval
+        """
+        current_time = time.time()
+        
+        if self._should_update_data(self.last_trend_update, self.trend_update_interval):
+            logger.debug("📊 Updating trend data (1-minute interval)")
+            candles_1m = self.get_1m_klines(symbol, periods + 5)  # Get extra candles for buffer
+            if candles_1m and len(candles_1m) >= periods:
+                self.cached_trend_data = self.calculate_trend(candles_1m, periods)
+            else:
+                self.cached_trend_data = {"trend": "SIDEWAYS", "strength": 0, "direction": 0}
+            self.last_trend_update = current_time
+        else:
+            logger.debug("📊 Using cached trend data")
+        
+        return self.cached_trend_data
+    
+    def get_optimized_1h_data(self, symbol: str = "BTC") -> Dict[str, Any]:
+        """
+        Get optimized 1-hour data with 15-minute update interval
+        """
+        current_time = time.time()
+        
+        if self._should_update_data(self.last_1h_update, self.hourly_update_interval):
+            logger.info("📊 Updating 1-hour data (15-minute interval)")
+            candles_1h = self.get_1h_klines(symbol, 84)
+            if candles_1h:
+                self.cached_1h_data = {
+                    "candles": candles_1h,
+                    "trend": self.calculate_trend(candles_1h),
+                    "support_resistance": self.calculate_support_resistance(candles_1h),
+                    "volatility": self.calculate_volatility(candles_1h)
+                }
+            else:
+                self.cached_1h_data = {}
+            self.last_1h_update = current_time
+        else:
+            logger.debug("📊 Using cached 1-hour data")
+        
+        return self.cached_1h_data
+    
+    def get_optimized_daily_data(self, symbol: str = "BTC") -> Dict[str, Any]:
+        """
+        Get optimized daily data with 1-hour update interval
+        """
+        current_time = time.time()
+        
+        if self._should_update_data(self.last_daily_update, self.daily_update_interval):
+            logger.info("📊 Updating daily data (1-hour interval)")
+            candles_1d = self.get_klines(symbol, "1d", 45)
+            if candles_1d:
+                self.cached_daily_data = {
+                    "candles": candles_1d,
+                    "trend": self.calculate_trend(candles_1d),
+                    "support_resistance": self.calculate_support_resistance(candles_1d),
+                    "volatility": self.calculate_volatility(candles_1d)
+                }
+            else:
+                self.cached_daily_data = {}
+            self.last_daily_update = current_time
+        else:
+            logger.debug("📊 Using cached daily data")
+        
+        return self.cached_daily_data
+    
+    def get_update_status(self) -> Dict[str, Any]:
+        """Get status of all data updates"""
+        current_time = time.time()
+        return {
+            "yahoo_analysis": {
+                "last_update": self.last_yahoo_update,
+                "next_update": self.last_yahoo_update + self.yahoo_update_interval,
+                "time_until_update": max(0, (self.last_yahoo_update + self.yahoo_update_interval) - current_time)
+            },
+            "rsi_data": {
+                "last_update": self.last_rsi_update,
+                "next_update": self.last_rsi_update + self.rsi_update_interval,
+                "time_until_update": max(0, (self.last_rsi_update + self.rsi_update_interval) - current_time)
+            },
+            "trend_data": {
+                "last_update": self.last_trend_update,
+                "next_update": self.last_trend_update + self.trend_update_interval,
+                "time_until_update": max(0, (self.last_trend_update + self.trend_update_interval) - current_time)
+            },
+            "hourly_data": {
+                "last_update": self.last_1h_update,
+                "next_update": self.last_1h_update + self.hourly_update_interval,
+                "time_until_update": max(0, (self.last_1h_update + self.hourly_update_interval) - current_time)
+            },
+            "daily_data": {
+                "last_update": self.last_daily_update,
+                "next_update": self.last_daily_update + self.daily_update_interval,
+                "time_until_update": max(0, (self.last_daily_update + self.daily_update_interval) - current_time)
+            }
+        }
     
     def _convert_yf_to_standard(self, yf_data) -> List[Dict[str, Any]]:
         """Convert yfinance DataFrame to standard candlestick format"""
