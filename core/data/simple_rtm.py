@@ -42,8 +42,21 @@ class SimpleRTM:
             "market": {
                 "current_price": 97500.0,
                 "trend": "NEUTRAL",
-                "rsi": 50.0,
+                "rsi": None,  # Use None instead of 50.0 for proper N/A handling
                 "volume_depth": 0.0,
+                "volume_category": "UNKNOWN",
+                "order_flow": "NEUTRAL",
+                "depth_analysis": "UNKNOWN",
+                "volatility_5m": 0.0,
+                "volatility_category": "UNKNOWN",
+                "volatility_trend": "UNKNOWN",
+                "spread_volatility": 0.0,
+                "ultimate_pressure": {
+                    "direction": "NEUTRAL",
+                    "confidence": "50%",
+                    "strength": 0.5,
+                    "trend": "NEUTRAL"
+                },
                 "last_updated": None
             },
             "logs": [],
@@ -79,7 +92,9 @@ class SimpleRTM:
     def get_session_data(self) -> Dict[str, Any]:
         """Get session data from SessionManager"""
         try:
-            from core.session.session_manager import session_manager
+            # Import here to avoid circular imports
+            from core.session.session_manager import SessionManager
+            session_manager = SessionManager()
             return session_manager.get_current_session_data()
         except Exception as e:
             logger.error(f"❌ Failed to get session data: {e}")
@@ -232,7 +247,20 @@ class SimpleRTM:
                     "current_price": self._data["market"]["current_price"],
                     "trend": self._data["market"]["trend"],
                     "rsi": self._data["market"]["rsi"],
-                    "volume_depth": self._data["market"]["volume_depth"]
+                    "volume_depth": self._data["market"]["volume_depth"],
+                    "volume_category": self._data["market"].get("volume_category", "UNKNOWN"),
+                    "order_flow": self._data["market"].get("order_flow", "NEUTRAL"),
+                    "depth_analysis": self._data["market"].get("depth_analysis", "UNKNOWN"),
+                    "volatility_5m": self._data["market"].get("volatility_5m", 0.0),
+                    "volatility_category": self._data["market"].get("volatility_category", "UNKNOWN"),
+                    "volatility_trend": self._data["market"].get("volatility_trend", "UNKNOWN"),
+                    "spread_volatility": self._data["market"].get("spread_volatility", 0.0),
+                    "ultimate_pressure": self._data["market"].get("ultimate_pressure", {
+                        "direction": "NEUTRAL",
+                        "confidence": "50%",
+                        "strength": 0.5,
+                        "trend": "NEUTRAL"
+                    })
                 },
                 "logs": self._data["logs"],
                 "predictions": self._data["predictions"],
@@ -247,21 +275,16 @@ class SimpleRTM:
             return dashboard_data
     
     def clear_presentation_data(self):
-        """Clear only presentation data (logs, predictions, trades) - NOT account/session data"""
+        """Clear only presentation data (logs, predictions, trades) - NOT account/session data or market data"""
         with self._lock:
             self._data["logs"] = []
             self._data["predictions"] = []
             self._data["trades"] = []
-            self._data["market"] = {
-                "current_price": 97500.0,
-                "trend": "NEUTRAL",
-                "rsi": 50.0,
-                "volume_depth": 0.0,
-                "last_updated": None
-            }
+            # DO NOT reset market data - it should persist and be updated by the bot
+            # Market data is real-time and should not be cleared when starting new sessions
             self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()
-            logger.info("🧹 SimpleRTM presentation data cleared (account/session data preserved)")
+            logger.info("🧹 SimpleRTM presentation data cleared (logs, predictions, trades only - market data preserved)")
 
 # Global instance
 simple_rtm = SimpleRTM()

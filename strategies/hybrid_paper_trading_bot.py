@@ -55,7 +55,7 @@ class YahooHyperliquidPaperTradingBot:
         trade_state_manager.cleanup_phantom_trades()
         
         # Market data storage
-        self.binance_analysis = {}
+        self.yahoo_analysis = {}
         self.weekly_trend_analysis = {}
         self.hyperliquid_price = 0
         self.last_trade_time = 0
@@ -95,34 +95,20 @@ class YahooHyperliquidPaperTradingBot:
             logger.warning(f"Account manager not available: {e}")
             self.account_manager = None
         
+        # Initialize WebSocket for real-time price streaming
+        self._initialize_websocket()
+        
         # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
         self._test_api_connections()
         
         # Override trade manager's get_open_positions method
         self.trade_manager.get_open_positions = self.get_open_positions
         
-        # Enhanced analysis frequency - Optimized for rolling candle updates
-        self.price_update_interval = 2  # Update price every 2 seconds for ultra-fast reaction
-        self.market_analysis_interval = 10  # Market analysis every 10 seconds
-        self.signal_check_interval = 5  # Check for signals every 5 seconds for faster reaction
-        self.candle_update_interval = 5   # Update 5m candles every 5 seconds for ultra-frequent analysis
-        self.hourly_analysis_interval = 3600  # Update 1h candles every hour
-        
-        # RSI update optimization - Update more frequently for better accuracy
-        self.rsi_update_interval = 5  # Update RSI every 5 seconds for ultra-frequent accuracy
-        self.last_rsi_update = 0
-        self.cached_rsi_data = None
-        self.cached_rsi_timestamp = 0
-        
-        # Enhanced candle management - COMPLETE multi-timeframe configuration
+        # Simple candle management
         self.candles_1m_buffer = []   # Rolling buffer of 120 most recent 1m candles (2h)
         self.candles_5m_buffer = []   # Rolling buffer of 60 most recent 5m candles (5h) 
         self.candles_1h_buffer = []   # Rolling buffer of 84 most recent 1h candles (3.5d)
         self.candles_1d_buffer = []   # Rolling buffer of 45 most recent 1d candles (6w)
-        self.last_candle_1m_time = 0
-        self.last_candle_5m_time = 0
-        self.last_candle_1h_time = 0
-        self.last_candle_1d_time = 0
         self.initial_analysis_complete = False
         self.market_structure = {}  # Store analyzed market structure
         
@@ -133,13 +119,6 @@ class YahooHyperliquidPaperTradingBot:
             "1h": 84,   # 3.5 days - daily trend context
             "1d": 45    # 6 weeks - weekly/monthly trend context
         }
-        
-        self.last_price_update = 0
-        self.last_market_analysis = 0
-        self.last_signal_check = 0
-        self.last_candle_update = 0
-        self.last_hourly_analysis = 0
-        self.last_market_update = 0
         
         # Leverage settings (respecting Hyperliquid 40x limit)
         self.leverage_settings = {
@@ -188,6 +167,98 @@ class YahooHyperliquidPaperTradingBot:
         except Exception as e:
             logger.error(f"❌ Error setting account ID: {e}")
             self.current_account_id = "unknown_account"
+    
+    def _initialize_websocket(self):
+        """Initialize WebSocket for real-time price updates"""
+        try:
+            from core.hyperliquid_websocket import start_websocket
+            
+            logger.info("🚀 Initializing Hyperliquid WebSocket for real-time price updates...")
+            
+            # Start WebSocket connection
+            self.websocket = start_websocket("BTC")
+            
+            # Wait a moment for connection to establish
+            import time
+            time.sleep(2)
+            
+            if self.websocket.is_connected():
+                logger.success("✅ Hyperliquid WebSocket connected - Real-time price updates active")
+                
+                # Add price update callback for dashboard
+                self.websocket.add_price_callback(self._on_price_update)
+                
+            else:
+                logger.warning("⚠️ WebSocket connection failed, will use HTTP API")
+                
+        except ImportError:
+            logger.warning("⚠️ WebSocket module not available, using HTTP API only")
+        except Exception as e:
+            logger.error(f"❌ WebSocket initialization failed: {e}")
+    
+    def _on_price_update(self, price_data: Dict[str, Any]):
+        """Callback for WebSocket price updates"""
+        try:
+            # Calculate real market data instead of using defaults
+            current_price = price_data["current_price"]
+            
+            # Get enhanced volume data from order book analysis
+            try:
+                volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
+                volume_depth = volume_data.get("current_volume", 0.0)
+                volume_category = volume_data.get("volume_category", "UNKNOWN")
+                order_flow = volume_data.get("order_flow", "NEUTRAL")
+                depth_analysis = volume_data.get("depth_analysis", "UNKNOWN")
+                logger.debug(f"📊 Enhanced volume data: {volume_depth:.1f} BTC ({volume_category}) | Flow: {order_flow} | Depth: {depth_analysis}")
+            except Exception as e:
+                logger.debug(f"Enhanced volume calculation error: {e}")
+                volume_depth = 0.0
+                volume_category = "UNKNOWN"
+                order_flow = "NEUTRAL"
+                depth_analysis = "UNKNOWN"
+            
+            # RSI calculation is handled by the main loop every 3 seconds
+            # This prevents conflicts and ensures consistent RSI updates
+            rsi_value = None  # Will be updated by main loop
+            trend_value = "SIDEWAYS"  # Will be updated by main loop
+            
+            # Get enhanced volatility data from order book analysis
+            try:
+                volatility_data = self.hyperliquid_api.get_enhanced_volatility_analysis("BTC")
+                volatility_5m = volatility_data.get("volatility_5m", 0.0)
+                volatility_category = volatility_data.get("volatility_category", "UNKNOWN")
+                volatility_trend = volatility_data.get("volatility_trend", "UNKNOWN")
+                spread_volatility = volatility_data.get("spread_volatility", 0.0)
+                logger.debug(f"📊 Enhanced volatility: {volatility_5m:.4f} ({volatility_category}) | Trend: {volatility_trend} | Spread: {spread_volatility:.4f}")
+            except Exception as e:
+                logger.debug(f"Enhanced volatility calculation error: {e}")
+                volatility_5m = 0.0
+                volatility_category = "UNKNOWN"
+                volatility_trend = "UNKNOWN"
+                spread_volatility = 0.0
+            
+            # Get enhanced ultimate pressure from order book analysis
+            try:
+                ultimate_pressure = self.hyperliquid_api.get_enhanced_ultimate_pressure("BTC")
+                pressure_direction = ultimate_pressure.get("direction", "NEUTRAL")
+                pressure_confidence = ultimate_pressure.get("confidence", "50%")
+                pressure_strength = ultimate_pressure.get("strength", 0.5)
+                pressure_trend = ultimate_pressure.get("trend", "NEUTRAL")
+                logger.debug(f"📊 Enhanced pressure: {pressure_direction} ({pressure_confidence}) | Trend: {pressure_trend} | Strength: {pressure_strength:.2f}")
+            except Exception as e:
+                logger.debug(f"Enhanced ultimate pressure error: {e}")
+                pressure_direction = "NEUTRAL"
+                pressure_confidence = "50%"
+                pressure_strength = 0.5
+                pressure_trend = "NEUTRAL"
+            
+            # Use centralized market data update - SINGLE SOURCE OF TRUTH
+            self._update_market_data_centralized(current_price)
+            
+            logger.debug(f"📡 Real-time price update: ${current_price:,.2f} | Volume: {volume_depth:.1f} BTC | Vol: {volatility_5m:.3f}")
+            
+        except Exception as e:
+            logger.error(f"❌ Error in price update callback: {e}")
     
     def _test_api_connections(self):
         """Test API connections and set connected status"""
@@ -356,7 +427,7 @@ class YahooHyperliquidPaperTradingBot:
         """Get RSI data from Yahoo analysis"""
         yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price)
         return {
-            "rsi": yahoo_analysis.get("rsi", 50.0),
+            "rsi": yahoo_analysis.get("rsi", None),  # Use None instead of 50.0 for proper N/A handling
             "rsi_trend": yahoo_analysis.get("rsi_trend", "NEUTRAL"),
             "rsi_signal": yahoo_analysis.get("rsi_signal", "NEUTRAL")
         }
@@ -384,14 +455,11 @@ class YahooHyperliquidPaperTradingBot:
             
             if mid_price:
                 # Update variability analyzer with new price data
-                current_time = time.time()
-                if current_time - self.last_price_update >= self.price_update_interval:
-                    # Get real volume data from Hyperliquid 5m candles
-                    volume_data = self.hyperliquid_api.get_current_5m_volume("BTC")
-                    real_volume = volume_data.get("current_volume", 100)  # Fallback to 100 if no data
-                    
-                    self.variability_analyzer.add_price_data(mid_price, volume=real_volume)
-                    self.last_price_update = current_time
+                # Get real volume data from Hyperliquid enhanced analysis
+                volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
+                real_volume = volume_data.get("current_volume", 100)  # Fallback to 100 if no data
+                
+                self.variability_analyzer.add_price_data(mid_price, volume=real_volume)
                 
                 return mid_price
             
@@ -400,13 +468,13 @@ class YahooHyperliquidPaperTradingBot:
             logger.error(f"❌ Failed to get Hyperliquid price: {e}")
             return None
     
-    def should_trade(self, hyperliquid_price: float, binance_analysis: Dict[str, Any]) -> Dict[str, Any]:
+    def should_trade(self, hyperliquid_price: float, yahoo_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """ULTIMATE INTELLIGENT TRADING: Master Fusion Engine analyzes ALL available intelligence"""
-        if not binance_analysis or "error" in binance_analysis:
+        if not yahoo_analysis or "error" in yahoo_analysis:
             return {"should_trade": False, "reason": "No market analysis available"}
         
         # 1. DETECT STRATEGY AND MARKET CONDITIONS
-        current_strategy = self._auto_detect_strategy(binance_analysis, hyperliquid_price)
+        current_strategy = self._auto_detect_strategy(yahoo_analysis, hyperliquid_price)
         if current_strategy != self.strategy_name:
             logger.info(f"🔄 Auto-switching strategy: {self.strategy_name} → {current_strategy}")
             self.strategy_name = current_strategy
@@ -420,40 +488,28 @@ class YahooHyperliquidPaperTradingBot:
         
         # 3. GATHER ALL MARKET INTELLIGENCE
         # Get real-time Hyperliquid data
-        hyperliquid_indicators = self.hyperliquid_api.get_current_market_indicators("BTC")
-        volume_data = self.hyperliquid_api.get_current_5m_volume("BTC")
+        volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
+        volatility_data = self.hyperliquid_api.get_enhanced_volatility_analysis("BTC")
+        pressure_data = self.hyperliquid_api.get_enhanced_ultimate_pressure("BTC")
         
-        # Calculate enhanced RSI
-        candles_5m = binance_analysis.get("candles_5m", [])
-        proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_5m, periods=21)
+        # Calculate enhanced RSI using 1m candles for better granularity
+        candles_1m = yahoo_analysis.get("candles_1m", [])
+        proper_rsi = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_1m, periods=14)
         
         # Update variability analyzer
         real_volume = volume_data.get("current_volume", 100)
         self.variability_analyzer.add_price_data(hyperliquid_price, volume=real_volume)
         
-        logger.info(f"📊 Enhanced RSI: {proper_rsi.get('rsi', 50):.1f} (21-period for crypto accuracy)")
+        logger.info(f"📊 Enhanced RSI: {proper_rsi.get('rsi', 'N/A')} (14-period standard)")
         logger.info(f"📊 Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
         
         # 4. BUILD COMPREHENSIVE ENHANCED ANALYSIS
-        enhanced_analysis = binance_analysis.copy()
-        enhanced_analysis["hyperliquid_volume"] = hyperliquid_indicators
+        enhanced_analysis = yahoo_analysis.copy()
+        enhanced_analysis["hyperliquid_volume"] = volume_data
+        enhanced_analysis["hyperliquid_volatility"] = volatility_data
+        enhanced_analysis["hyperliquid_pressure"] = pressure_data
         enhanced_analysis["hyperliquid_rsi"] = proper_rsi
-        enhanced_analysis["hyperliquid_5m_volume"] = volume_data
         enhanced_analysis["timestamp"] = current_time
-        
-        # Add Ultimate Pressure Indicator
-        try:
-            ultimate_pressure = self.hyperliquid_api.get_ultimate_pressure("BTC")
-            enhanced_analysis["ultimate_pressure"] = ultimate_pressure
-        except Exception as e:
-            logger.debug(f"Ultimate pressure error: {e}")
-            # Provide fallback ultimate pressure data
-            enhanced_analysis["ultimate_pressure"] = {
-                "direction": "NEUTRAL",
-                "confidence": "N/A",
-                "strength": 0.5,
-                "status": "offline"
-            }
         
         # Enhanced analysis components removed for simplicity
         
@@ -498,18 +554,18 @@ class YahooHyperliquidPaperTradingBot:
             "prediction_confidence": entry_analysis["confidence"],
             "optimal_params": variability_decision["optimal_trading_params"],
             "strategy_name": self.strategy_name,
-            # Add market analysis data for logging
-            "support_5m": enhanced_analysis.get("support_5m"),
-            "resistance_5m": enhanced_analysis.get("resistance_5m"),
-            "trend_5m": enhanced_analysis.get("trend_5m"),
-            "trend_1h": enhanced_analysis.get("trend_1h"),
-            "hourly_confidence": enhanced_analysis.get("hourly_confidence"),
-            "range_size": enhanced_analysis.get("range_size")
+            # Add market analysis data for logging (using correct field names from Yahoo analysis)
+            "support_5m": enhanced_analysis.get("support_resistance_5m", {}).get("support"),
+            "resistance_5m": enhanced_analysis.get("support_resistance_5m", {}).get("resistance"),
+            "trend_5m": enhanced_analysis.get("trend_5m", {}).get("trend"),
+            "trend_1h": enhanced_analysis.get("trend_1h", {}).get("trend"),
+            "volatility_5m": enhanced_analysis.get("volatility_5m"),
+            "market_condition": enhanced_analysis.get("market_condition")
         }
         
         # Traditional quality check
         trade_decision = self.trade_manager.should_place_trade(
-            signal_data, binance_analysis, hyperliquid_price, self.open_positions
+            signal_data, yahoo_analysis, hyperliquid_price, self.open_positions
         )
         
         if not trade_decision["should_place"]:
@@ -546,20 +602,20 @@ class YahooHyperliquidPaperTradingBot:
         
         return signal_data
     
-    def _get_volatility_5m(self, binance_analysis: Dict[str, Any]) -> float:
+    def _get_volatility_5m(self, yahoo_analysis: Dict[str, Any]) -> float:
         """Get 5m volatility from Yahoo analysis"""
-        return binance_analysis.get("volatility_5m", 0.0)
-    def _get_volatility_1h(self, binance_analysis: Dict[str, Any]) -> float:
+        return yahoo_analysis.get("volatility_5m", 0.0)
+    def _get_volatility_1h(self, yahoo_analysis: Dict[str, Any]) -> float:
         """Get 1h volatility from Yahoo analysis"""
-        return binance_analysis.get("volatility_1h", 0.0)
-    def _get_range_percentage(self, binance_analysis: Dict[str, Any], current_price: float) -> float:
+        return yahoo_analysis.get("volatility_1h", 0.0)
+    def _get_range_percentage(self, yahoo_analysis: Dict[str, Any], current_price: float) -> float:
         """Get range percentage from Yahoo analysis"""
-        support_resistance = binance_analysis.get("support_resistance_5m", {})
+        support_resistance = yahoo_analysis.get("support_resistance_5m", {})
         range_size = support_resistance.get("range", 0)
         return (range_size / current_price) if current_price > 0 else 0.0
-    def _build_price_prediction(self, binance_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+    def _build_price_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """Build price prediction using PredictionEngine"""
-        return self.prediction_engine.build_price_prediction(binance_analysis, current_price, self.strategy_name)
+        return self.prediction_engine.build_price_prediction(yahoo_analysis, current_price, self.strategy_name)
     def _analyze_entry_point(self, prediction_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """Analyze entry point using PredictionEngine"""
         return self.prediction_engine.analyze_entry_point(prediction_analysis, current_price)
@@ -687,7 +743,7 @@ class YahooHyperliquidPaperTradingBot:
                 "entry_timeframe": entry_timeframe,
                 "time_to_execution": execution_result.get("time_to_execution", 0),
                 "order_status": execution_result.get("order_status", "FILLED"),
-                "original_market_analysis": self.binance_analysis.copy(),  # Store original analysis for comparison
+                "original_market_analysis": self.yahoo_analysis.copy(),  # Store original analysis for comparison
                 "quality_evaluation": signal_data.get("quality_evaluation", {}),
                 "stop_adjustment_count": 0,
                 "partial_closes": [],
@@ -733,12 +789,12 @@ class YahooHyperliquidPaperTradingBot:
                 "resistance": signal_data.get("resistance_5m") if signal_data else None,
                 "trend_5m": signal_data.get("trend_5m") if signal_data else None,
                 "trend_1h": signal_data.get("trend_1h") if signal_data else None,
-                "variability_score": signal_data.get("variability_analysis", {}).get("current_variability_score") if signal_data else None,
-                "market_condition": signal_data.get("binance_analysis", {}).get("market_condition") if signal_data else None,
+                "variability_score": None,  # Variability analysis is handled separately
+                "market_condition": None,  # Market condition is available in enhanced_analysis
                 "signal_reason": signal_data.get("reason") if signal_data else None,
                 "profit_target": position["target_price"],
                 "stop_loss": position["stop_price"],
-                "risk_level": signal_data.get("variability_analysis", {}).get("risk_level") if signal_data else "STANDARD",
+                "risk_level": "STANDARD",  # Risk level is determined by variability analyzer separately
                 "strategy": self.strategy_name
             }
             
@@ -1067,7 +1123,7 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"   Check Interval: {check_interval} seconds (FAST REACTION MODE)")
         logger.info(f"   Max Leverage: {self.leverage_settings['max_leverage']}x")
         logger.info(f"   Data Sources: Yahoo Finance (Historical) + Hyperliquid (Real-time Price)")
-        logger.info(f"   Analysis Frequency: Price every {self.price_update_interval}s, Signals every {self.signal_check_interval}s (ULTRA-FAST)")
+        logger.info(f"   Analysis Frequency: Real-time updates (ULTRA-FAST)")
         logger.info(f"   Strategy: Auto-Detection (Standard/Low/High Volatility)")
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
         logger.info(f"   Logging: Comprehensive Yahoo + Hyperliquid paper trading logs enabled")
@@ -1123,131 +1179,99 @@ class YahooHyperliquidPaperTradingBot:
                     continue
                 
                 # Get current Hyperliquid volume/liquidity data
-                hyperliquid_indicators = self.hyperliquid_api.get_current_market_indicators("BTC")
-                if hyperliquid_indicators and "liquidity_metrics" in hyperliquid_indicators:
-                    liquidity = hyperliquid_indicators["liquidity_metrics"]
-                    imbalance = liquidity.get("depth_imbalance", 0)
-                    total_depth = liquidity.get("total_depth", 0)
+                volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
+                if volume_data and "depth_imbalance" in volume_data:
+                    imbalance = volume_data.get("depth_imbalance", 0)
+                    total_depth = volume_data.get("total_depth_5", 0)
                     
                     # Log significant market conditions
                     if abs(imbalance) > 0.3:  # > 30% imbalance
                         direction = "BEARISH (Heavy Selling)" if imbalance < -0.3 else "BULLISH (Heavy Buying)"
                         logger.warning(f"🚨 SIGNIFICANT ORDERBOOK IMBALANCE: {direction} ({imbalance*100:+.1f}%)")
-                        logger.warning(f"   Total Depth: {total_depth:.2f} BTC, Bid: {liquidity.get('bid_depth', 0):.2f} BTC, Ask: {liquidity.get('ask_depth', 0):.2f} BTC")
+                        logger.warning(f"   Total Depth: {total_depth:.2f} BTC, Bid: {volume_data.get('bid_depth_5', 0):.2f} BTC, Ask: {volume_data.get('ask_depth_5', 0):.2f} BTC")
                     
                     # Store for analysis
-                    self.hyperliquid_volume_data = hyperliquid_indicators
+                    self.hyperliquid_volume_data = volume_data
                 else:
                     self.hyperliquid_volume_data = None
                 
                 # Check for position exits with advanced management
                 self._update_simple_rtm_activity("🔍 Checking position exits", "INFO")
-                self.check_position_exits(hyperliquid_price, self.binance_analysis)
+                self.check_position_exits(hyperliquid_price, self.yahoo_analysis)
                 
-                # Update market data for dashboard (every 10 seconds)
-                if current_time - self.last_market_update >= 10:
-                    # Update SimpleRTM with market data fetch activity
-                    self._update_simple_rtm_activity("📊 Fetching latest market data", "INFO")
+                # Update market data for dashboard
+                self._update_simple_rtm_activity("📊 Fetching latest market data", "INFO")
+                
+                # Simple market data update
+                try:
+                    # Get basic market analysis
+                    yahoo_analysis = self.yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price)
+                    if yahoo_analysis:
+                        self.yahoo_analysis = yahoo_analysis
+                        self._update_simple_rtm_activity("✅ Market data updated", "SUCCESS")
+                except Exception as e:
+                    logger.debug(f"Market data update failed: {e}")
                     
-                    # Simple market data update without smart cache
-                    try:
-                        # Get basic market analysis
-                        yahoo_analysis = self.yahoo_fetcher.get_market_analysis("BTC", hyperliquid_price)
-                        if yahoo_analysis:
-                            self.binance_analysis = yahoo_analysis
-                            self.last_market_update = current_time
-                            
-                            # Update SimpleRTM with successful data fetch
-                            self._update_simple_rtm_activity("✅ Market data updated", "SUCCESS")
-                    except Exception as e:
-                        logger.debug(f"Market data update failed: {e}")
-                        
-                        # Update SimpleRTM with market data
-                        self._update_simple_rtm_market({
-                            "current_price": hyperliquid_price,
-                            "trend": "SIDEWAYS",
-                                "rsi": yahoo_analysis.get("rsi", 50.0),
-                                "volume_depth": yahoo_analysis.get("volume_depth", 0.0),
-                                "volume_category": "UNKNOWN",
-                                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                                "ultimate_pressure": {
-                                    "direction": bot_trend_5m,
-                                    "confidence": "75%",
-                                    "strength": 0.75
-                                }
-                            })
-                        
-                        # Log market data for dashboard (Hyperliquid price + Yahoo historical comparison)
-                        self.trading_logger.log_analysis({
-                            "type": "hybrid_analysis_update",
-                            "timeframe": "5m",
-                            "support_resistance": yahoo_analysis.get("support_resistance_5m", {}),
-                            "trend_analysis": yahoo_analysis.get("trend_5m", {}),
-                            "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
-                            "hyperliquid_price": hyperliquid_price,
-                            "yahoo_last_close": yahoo_analysis.get("yahoo_last_close", hyperliquid_price),
-                            "price_difference_pct": yahoo_analysis.get("price_difference_pct", 0.0),
-                            "price_difference_amount": yahoo_analysis.get("price_difference", 0.0),
-                            "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"
-                        })
+                    # Use centralized market data update - SINGLE SOURCE OF TRUTH
+                    self._update_market_data_centralized(hyperliquid_price)
+                    
+                    # Log market data for dashboard (Hyperliquid price + Yahoo historical comparison)
+                    fallback_analysis = self.yahoo_analysis or {}
+                    self.trading_logger.log_analysis({
+                        "type": "hybrid_analysis_update",
+                        "timeframe": "5m",
+                        "support_resistance": fallback_analysis.get("support_resistance_5m", {}),
+                        "trend_analysis": fallback_analysis.get("trend_5m", {}),
+                        "market_condition": fallback_analysis.get("market_condition", "UNKNOWN"),
+                        "hyperliquid_price": hyperliquid_price,
+                        "yahoo_last_close": fallback_analysis.get("yahoo_last_close", hyperliquid_price),
+                        "price_difference_pct": fallback_analysis.get("price_difference_pct", 0.0),
+                        "price_difference_amount": fallback_analysis.get("price_difference", 0.0),
+                        "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"
+                    })
                 
-                # Update Yahoo analysis periodically (every 30 seconds)
-                if current_time - self.last_candle_update >= self.candle_update_interval:
-                    self._update_simple_rtm_activity("📈 Updating Yahoo analysis data", "INFO")
+                # Update RSI calculation
+                self._update_simple_rtm_activity("📊 Updating RSI calculation", "INFO")
+                
+                try:
+                    # Get fresh 1m candles for RSI calculation
+                    candles_1m = self.yahoo_fetcher.get_1m_klines("BTC", 20)  # Get 20 candles for 14-period RSI + buffer
+                    if candles_1m and len(candles_1m) >= 15:
+                        rsi_data = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_1m, periods=14)
+                        if rsi_data and rsi_data.get("rsi") is not None:
+                            # Update SimpleRTM with RSI data immediately
+                            rsi_value = rsi_data.get("rsi")
+                            rsi_trend = rsi_data.get("trend", "NEUTRAL")
+                            logger.debug(f"📊 RSI Updated: {rsi_value:.1f} ({rsi_trend})")
+                            
+                            # Force update market data with new RSI
+                            self._update_market_data_centralized(hyperliquid_price, force_update=True)
+                            self._update_simple_rtm_activity(f"✅ RSI updated: {rsi_value:.1f} ({rsi_trend})", "SUCCESS")
+                        else:
+                            logger.debug(f"⚠️ RSI calculation returned None")
+                    else:
+                        logger.debug(f"⚠️ Insufficient 1m candles for RSI: {len(candles_1m) if candles_1m else 0}")
+                except Exception as e:
+                    logger.debug(f"RSI update failed: {e}")
+                
+                # Update Yahoo analysis
+                self._update_simple_rtm_activity("📈 Updating market analysis data", "INFO")
+                
+                # Get market analysis from Yahoo Finance (Hyperliquid doesn't provide historical candles)
+                try:
                     yahoo_analysis = self.get_yahoo_analysis(hyperliquid_price=hyperliquid_price)
                     if yahoo_analysis:
-                        self.binance_analysis = yahoo_analysis  # Keep variable name for compatibility
-                        self.last_candle_update = current_time
-                        self._update_simple_rtm_activity("✅ Yahoo analysis updated", "SUCCESS")
+                        self.yahoo_analysis = yahoo_analysis
+                        self._update_simple_rtm_activity("✅ Yahoo Finance analysis updated", "SUCCESS")
                         
-                        # Update dashboard with bot's own trend analysis
-                        bot_trend_5m = "SIDEWAYS"  # Default to sideways
-                        bot_trend_1h = "SIDEWAYS"  # Default to sideways
-                        
-                        # Use the bot's actual trend analysis from the analysis logs
-                        if hasattr(self, 'binance_analysis') and self.binance_analysis:
-                            # Get 5m trend from bot's analysis
-                            trend_5m_data = self.binance_analysis.get("trend_5m", {})
-                            if trend_5m_data and "trend" in trend_5m_data:
-                                bot_trend_5m = trend_5m_data["trend"]
-                            
-                            # Get 1h trend from bot's analysis
-                            trend_1h_data = self.binance_analysis.get("trend_1h", {})
-                            if trend_1h_data and "trend" in trend_1h_data:
-                                bot_trend_1h = trend_1h_data["trend"]
-                        
-                        # Update SimpleRTM with market data (REPLACE OLD DATA MANAGER)
-                        self._update_simple_rtm_market({
-                            "current_price": hyperliquid_price,
-                            "trend": bot_trend_5m,
-                            "rsi": yahoo_analysis.get("rsi", 50.0),
-                            "volume_depth": yahoo_analysis.get("volume_depth", 0.0),
-                            "volume_category": "UNKNOWN",
-                            "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                            "ultimate_pressure": {
-                                "direction": bot_trend_5m,
-                                "confidence": "75%",
-                                "strength": 0.75
-                            }
-                        })
-                        
-                        # Log analysis (Hyperliquid price + Yahoo historical comparison)
-                        self.trading_logger.log_analysis({
-                            "type": "hybrid_analysis_update",
-                            "timeframe": "5m",
-                            "support_resistance": yahoo_analysis.get("support_resistance_5m", {}),
-                            "trend_analysis": yahoo_analysis.get("trend_5m", {}),
-                            "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
-                            "hyperliquid_price": hyperliquid_price,
-                            "yahoo_last_close": yahoo_analysis.get("yahoo_last_close", hyperliquid_price),
-                            "price_difference_pct": yahoo_analysis.get("price_difference_pct", 0.0),
-                            "price_difference_amount": yahoo_analysis.get("price_difference", 0.0),
-                            "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"
-                        })
+                        # Use centralized market data update - SINGLE SOURCE OF TRUTH
+                        self._update_market_data_centralized(hyperliquid_price)
+                except Exception as e:
+                    logger.debug(f"Market analysis update failed: {e}")
+                    self.yahoo_analysis = {}
                 
-                # Check for signals periodically
-                if current_time - self.last_signal_check >= self.signal_check_interval:
-                    if not self.binance_analysis or not self.binance_analysis.get("market_condition"):
+                # Check for signals
+                    if not self.yahoo_analysis or not self.yahoo_analysis.get("market_condition"):
                         logger.warning("⚠️ Could not get Yahoo analysis, retrying...")
                         time.sleep(check_interval)
                         continue
@@ -1261,13 +1285,12 @@ class YahooHyperliquidPaperTradingBot:
                     except Exception as e:
                         logger.debug(f"❌ Could not log activity to SimpleRTM: {e}")
                     
-                    # Enhanced analysis with global volume and blockchain data
-                    enhanced_analysis = self.binance_analysis.copy()
+                    # Enhanced analysis with Yahoo and Hyperliquid data
+                    enhanced_analysis = self.yahoo_analysis.copy()
                     
-                    # Global volume and blockchain analysis removed during cleanup
                     # Using simplified analysis with Yahoo + Hyperliquid data only
                     
-                    # Analyze market using enhanced data (Yahoo historical + Hyperliquid real-time + Global volume + Blockchain)
+                    # Analyze market using enhanced data (Yahoo historical + Hyperliquid real-time)
                     self._update_simple_rtm_activity("🧠 Running market analysis", "INFO")
                     signal = self.should_trade(hyperliquid_price, enhanced_analysis)
                     
@@ -1348,7 +1371,7 @@ class YahooHyperliquidPaperTradingBot:
                         logger.info(f"⏳ No signal: {signal['reason']}")
                         self._update_simple_rtm_activity(f"⏳ No trading signal: {signal['reason'][:50]}{'...' if len(signal['reason']) > 50 else ''}", "INFO")
                     
-                    self.last_signal_check = current_time
+                                         # Signal check completed
                 
                 # Wait before next check
                 time.sleep(check_interval)
@@ -1409,6 +1432,14 @@ class YahooHyperliquidPaperTradingBot:
         """Close the current trading session gracefully"""
         try:
             logger.info("🔄 Closing trading session gracefully...")
+            
+            # Stop WebSocket
+            try:
+                if hasattr(self, 'websocket') and self.websocket:
+                    self.websocket.stop()
+                    logger.info("🔌 WebSocket stopped")
+            except Exception as e:
+                logger.debug(f"❌ Could not stop WebSocket: {e}")
             
             # Close any remaining open positions
             hyperliquid_price = self.get_hyperliquid_price()
@@ -1510,11 +1541,11 @@ class YahooHyperliquidPaperTradingBot:
             logger.error(f"❌ Failed to calculate smart limit price: {e}")
             return current_price
 
-    def _auto_detect_strategy(self, binance_analysis: Dict[str, Any], current_price: float) -> str:
+    def _auto_detect_strategy(self, yahoo_analysis: Dict[str, Any], current_price: float) -> str:
         """Auto-detect strategy based on market conditions"""
         try:
             # Simple strategy detection based on volatility
-            volatility_5m = binance_analysis.get("volatility_5m", 0.0)
+            volatility_5m = yahoo_analysis.get("volatility_5m", 0.0)
             
             if volatility_5m > 0.05:  # High volatility
                 return "high_volatility"
@@ -1576,6 +1607,85 @@ class YahooHyperliquidPaperTradingBot:
             
         except Exception as e:
             logger.error(f"❌ Failed to execute scale-in: {e}")
+
+    def _update_market_data_centralized(self, current_price: float, force_update: bool = False):
+        """Centralized market data update - SINGLE SOURCE OF TRUTH"""
+        try:
+            
+            # Get all market data from APIs
+            volume_data = None
+            volatility_data = None
+            ultimate_pressure_data = None
+            rsi_value = None
+            trend_value = "SIDEWAYS"
+            
+            # Calculate RSI from 1m candles (updates every minute when new candle closes)
+            try:
+                candles_1m = self.yahoo_fetcher.get_1m_klines("BTC", 15)
+                if candles_1m and len(candles_1m) >= 15:
+                    rsi_data = self.hyperliquid_api.calculate_rsi_from_yahoo_data(candles_1m, periods=14)
+                    rsi_value = rsi_data.get("rsi", None)
+                    logger.debug(f"📊 RSI calculated: {rsi_value:.1f}")
+                else:
+                    rsi_value = None
+                    logger.debug(f"⚠️ Insufficient candles for RSI calculation")
+            except Exception as e:
+                logger.debug(f"RSI calculation error: {e}")
+                rsi_value = None
+            
+            try:
+                # Get enhanced market data from Hyperliquid API
+                volume_data = self.hyperliquid_api.get_enhanced_volume_analysis("BTC")
+                volatility_data = self.hyperliquid_api.get_enhanced_volatility_analysis("BTC")
+                ultimate_pressure_data = self.hyperliquid_api.get_enhanced_ultimate_pressure("BTC")
+                
+                # Calculate trend from 1m candles (separate from RSI)
+                try:
+                    candles_1m = self.yahoo_fetcher.get_1m_klines("BTC", 5)
+                    if candles_1m and len(candles_1m) >= 5:
+                        trend_data = self.yahoo_fetcher.calculate_trend(candles_1m, periods=5)
+                        trend_value = trend_data.get("trend", "SIDEWAYS")
+                    else:
+                        trend_value = "SIDEWAYS"
+                except Exception as e:
+                    logger.debug(f"Trend calculation error: {e}")
+                    trend_value = "SIDEWAYS"
+                    
+            except Exception as e:
+                logger.debug(f"Enhanced market data fetch error: {e}")
+            
+            # Prepare market data with proper fallbacks
+            market_data = {
+                "current_price": current_price,
+                "trend": trend_value,
+                "rsi": rsi_value,
+                "volume_depth": volume_data.get("volume_depth", 0.0) if volume_data else 0.0,
+                "volume_category": volume_data.get("volume_category", "UNKNOWN") if volume_data else "UNKNOWN",
+                "order_flow": volume_data.get("order_flow", "NEUTRAL") if volume_data else "NEUTRAL",
+                "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN") if volume_data else "UNKNOWN",
+                "volatility_5m": volatility_data.get("volatility_5m", 0.0) if volatility_data else 0.0,
+                "volatility_category": volatility_data.get("volatility_category", "UNKNOWN") if volatility_data else "UNKNOWN",
+                "volatility_trend": volatility_data.get("volatility_trend", "UNKNOWN") if volatility_data else "UNKNOWN",
+                "spread_volatility": volatility_data.get("spread_volatility", 0.0) if volatility_data else 0.0,
+                "ultimate_pressure": {
+                    "direction": ultimate_pressure_data.get("direction", "NEUTRAL") if ultimate_pressure_data else "NEUTRAL",
+                    "confidence": ultimate_pressure_data.get("confidence", "50%") if ultimate_pressure_data else "50%",
+                    "strength": ultimate_pressure_data.get("strength", 0.5) if ultimate_pressure_data else 0.5,
+                    "trend": ultimate_pressure_data.get("trend", "NEUTRAL") if ultimate_pressure_data else "NEUTRAL"
+                }
+            }
+            
+            # Update SimpleRTM with centralized data
+            self._update_simple_rtm_market(market_data)
+            
+            # Log successful update
+            rsi_display = f"{rsi_value:.1f}" if rsi_value is not None else "N/A"
+            logger.debug(f"📊 Centralized market update: ${current_price:.2f} | RSI: {rsi_display} | Trend: {trend_value}")
+            
+        except Exception as e:
+            logger.error(f"❌ Centralized market update failed: {e}")
+
+
 
 
 def main():

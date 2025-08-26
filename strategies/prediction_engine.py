@@ -72,615 +72,258 @@ class PredictionEngine:
             
         return prediction
     
-    def build_price_prediction(self, binance_analysis: Dict[str, Any], current_price: float, strategy_name: str = "standard") -> Dict[str, Any]:
-        """Build price prediction based on market volatility and strategy"""
-        try:
-            # Determine if we should use reactive or predictive approach
-            if strategy_name == "high_volatility":
-                return self._build_reactive_prediction(binance_analysis, current_price)
-            else:
-                return self._build_predictive_prediction(binance_analysis, current_price)
-                
-        except Exception as e:
-            logger.error(f"Error building price prediction: {e}")
-            return {"has_prediction": False, "reason": f"Prediction error: {str(e)}"}
+    def build_price_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float, strategy_name: str = "standard") -> Dict[str, Any]:
+        """Build price prediction based on strategy"""
+        if strategy_name == "reactive":
+            prediction = self._build_reactive_prediction(yahoo_analysis, current_price)
+        else:
+            prediction = self._build_predictive_prediction(yahoo_analysis, current_price)
+        
+        # Return the prediction in the expected format with best_prediction key
+        return {
+            "has_prediction": prediction.get("has_prediction", False),
+            "best_prediction": prediction,
+            "prediction_mode": prediction.get("prediction_mode", "PREDICTIVE"),
+            "reason": prediction.get("reason", "No prediction available"),
+            "confidence": prediction.get("confidence", 0.0),
+            "volatility_5m": prediction.get("volatility_5m", 0.0),
+            "range_size": prediction.get("range_size", 0.0)
+        }
     
-    def _build_reactive_prediction(self, binance_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Build reactive prediction for high volatility markets - catch fast movements"""
+    def _build_reactive_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Build reactive prediction based on current market conditions"""
         try:
-            # Extract data
-            candles_5m = binance_analysis.get("candles_5m", [])
-            candles_1h = binance_analysis.get("candles_1h", [])
-            trend_5m = binance_analysis.get("trend_5m", {})
-            trend_1h = binance_analysis.get("trend_1h", {})
+            # Extract key data from Yahoo analysis
+            candles_5m = yahoo_analysis.get("candles_5m", [])
+            candles_1h = yahoo_analysis.get("candles_1h", [])
+            trend_5m = yahoo_analysis.get("trend_5m", {})
+            trend_1h = yahoo_analysis.get("trend_1h", {})
             
-            if len(candles_5m) < 5 or len(candles_1h) < 5:
-                return {"has_prediction": False, "reason": "Insufficient data for reactive analysis"}
+            # Get volatility data
+            volatility_5m = self._get_volatility_5m(yahoo_analysis)
             
-            # Calculate reactive indicators
-            volatility_5m = self._get_volatility_5m(binance_analysis)
-            price_acceleration = self._calculate_price_acceleration(candles_5m)
-            momentum_surge = self._detect_momentum_surge(candles_5m, trend_5m)
-            volume_spike = self._detect_volume_spike(candles_5m)
+            # Get Hyperliquid-specific data
+            hyperliquid_volume = yahoo_analysis.get("hyperliquid_volume", {})
+            hyperliquid_rsi = yahoo_analysis.get("hyperliquid_rsi", {})
             
-            # Get real-time Hyperliquid data for enhanced reactive predictions
-            hyperliquid_volume = binance_analysis.get("hyperliquid_volume", {})
-            hyperliquid_rsi = binance_analysis.get("hyperliquid_rsi", {})
-            
-            current_rsi = hyperliquid_rsi.get("rsi", 50.0)  # Use proper RSI calculation
-            liquidity_metrics = hyperliquid_volume.get("liquidity_metrics", {})
-            total_depth = liquidity_metrics.get("total_depth", 0)
-            depth_imbalance = liquidity_metrics.get("depth_imbalance", 0)
-            
-            # Enhanced volume spike detection with Hyperliquid real-time data
-            hyperliquid_volume_spike = self._detect_hyperliquid_volume_activity(liquidity_metrics, depth_imbalance)
-            
-            logger.info(f"⚡ Reactive Mode: RSI={current_rsi:.1f}, Depth={total_depth:.1f}BTC, Yahoo Vol Spike={volume_spike['detected']}, HL Vol Activity={hyperliquid_volume_spike['detected']}")
-            
-            # Build reactive signals
-            reactive_signals = []
-            
-            # 1. FAST BREAKOUT DETECTION
-            if price_acceleration > 0.001:  # Much more sensitive to acceleration
-                # Determine direction based on recent price action
-                recent_prices = [candle["close"] for candle in candles_5m[-3:]]
-                if recent_prices[-1] > recent_prices[0]:
-                    signal = {
-                        "type": "FAST_BREAKOUT",
-                        "entry_price": current_price * 0.995,  # Enter well below current price for BUY
-                        "side": "BUY",
-                        "confidence": min(0.9, 0.6 + (price_acceleration * 50)),
-                        "timeframe": 5,  # Very short timeframe
-                        "reason": f"Fast upward breakout detected (acceleration: {price_acceleration:.3f}) - enter below current",
-                        "reactive_factor": "price_acceleration"
-                    }
-                else:
-                    signal = {
-                        "type": "FAST_BREAKOUT",
-                        "entry_price": current_price * 1.005,  # Enter well above current price for SELL
-                        "side": "SELL",
-                        "confidence": min(0.9, 0.6 + (price_acceleration * 50)),
-                        "timeframe": 5,
-                        "reason": f"Fast downward breakout detected (acceleration: {price_acceleration:.3f}) - enter above current",
-                        "reactive_factor": "price_acceleration"
-                    }
-                reactive_signals.append(signal)
-            
-            # 2. MOMENTUM SURGE DETECTION
-            if momentum_surge["detected"]:
-                if momentum_surge["direction"] == "UP":
-                    entry_price = current_price * 0.995  # Enter well below current for BUY
-                else:
-                    entry_price = current_price * 1.005  # Enter well above current for SELL
-                    
-                signal = {
-                    "type": "MOMENTUM_SURGE",
-                    "entry_price": entry_price,
-                    "side": "BUY" if momentum_surge["direction"] == "UP" else "SELL",
-                    "confidence": min(0.85, 0.5 + momentum_surge["strength"]),
-                    "timeframe": 8,
-                    "reason": f"Momentum surge detected ({momentum_surge['direction']}, strength: {momentum_surge['strength']:.2f}) - enter at better price",
-                    "reactive_factor": "momentum_surge"
-                }
-                reactive_signals.append(signal)
-            
-            # 3. VOLATILITY SPIKE DETECTION
-            if volatility_5m > 0.003:  # Much more sensitive to volatility
-                # Look for reversal opportunities in high volatility
-                recent_highs = [candle["high"] for candle in candles_5m[-3:]]
-                recent_lows = [candle["low"] for candle in candles_5m[-3:]]
-                
-                if current_price > max(recent_highs) * 0.998:  # Near recent high
-                    signal = {
-                        "type": "VOLATILITY_SPIKE",
-                        "entry_price": current_price * 0.9995,
-                        "side": "SELL",
-                        "confidence": min(0.8, 0.4 + (volatility_5m * 20)),
-                        "timeframe": 6,
-                        "reason": f"Volatility spike - potential reversal from high (volatility: {volatility_5m:.3f})",
-                        "reactive_factor": "volatility_spike"
-                    }
-                    reactive_signals.append(signal)
-                elif current_price < min(recent_lows) * 1.002:  # Near recent low
-                    signal = {
-                        "type": "VOLATILITY_SPIKE",
-                        "entry_price": current_price * 1.0005,
-                        "side": "BUY",
-                        "confidence": min(0.8, 0.4 + (volatility_5m * 20)),
-                        "timeframe": 6,
-                        "reason": f"Volatility spike - potential reversal from low (volatility: {volatility_5m:.3f})",
-                        "reactive_factor": "volatility_spike"
-                    }
-                    reactive_signals.append(signal)
-            
-            # 4. VOLUME SPIKE DETECTION
-            if volume_spike["detected"]:  # Only trigger when actual volume spike is detected
-                # Volume spike often precedes significant moves
-                if volume_spike["direction"] == "UP":
-                    entry_price = current_price * 0.995  # Enter well below current for BUY
-                else:
-                    entry_price = current_price * 1.005  # Enter well above current for SELL
-                    
-                signal = {
-                    "type": "PRICE_ACCELERATION",
-                    "entry_price": entry_price,
-                    "side": "BUY" if volume_spike["direction"] == "UP" else "SELL",
-                    "confidence": min(0.75, 0.5 + volume_spike["strength"]),
-                    "timeframe": 7,
-                    "reason": f"Volume spike detected ({volume_spike['direction']}, strength: {volume_spike['strength']:.2f}) - enter at better price",
-                    "reactive_factor": "volume_spike"
-                }
-                reactive_signals.append(signal)
-            
-            # 5. HYPERLIQUID REAL-TIME VOLUME ACTIVITY DETECTION
-            if hyperliquid_volume_spike["detected"]:
-                # Real-time volume activity from orderbook depth
-                if hyperliquid_volume_spike["direction"] == "DOWN":
-                    entry_price = current_price * 1.002  # Enter above current for SELL (selling pressure)
-                    side = "SELL"
-                elif hyperliquid_volume_spike["direction"] == "UP":
-                    entry_price = current_price * 0.998  # Enter below current for BUY (buying pressure)
-                    side = "BUY"
-                else:  # NEUTRAL - high activity but balanced
-                    # Use RSI to determine direction
-                    if current_rsi > 55:
-                        entry_price = current_price * 1.001
-                        side = "SELL"
-                    else:
-                        entry_price = current_price * 0.999
-                        side = "BUY"
-                
-                signal = {
-                    "type": "HYPERLIQUID_VOLUME_ACTIVITY",
-                    "entry_price": entry_price,
-                    "side": side,
-                    "confidence": min(0.85, 0.6 + hyperliquid_volume_spike["strength"]),
-                    "timeframe": 5,
-                    "reason": f"High orderbook activity detected ({hyperliquid_volume_spike['direction']}, depth: {hyperliquid_volume_spike['total_depth']:.1f}BTC, imbalance: {hyperliquid_volume_spike['imbalance']*100:+.1f}%)",
-                    "reactive_factor": "hyperliquid_volume",
-                    "rsi_context": current_rsi,
-                    "orderbook_depth": hyperliquid_volume_spike["total_depth"],
-                    "orderbook_imbalance": hyperliquid_volume_spike["imbalance"]
-                }
-                reactive_signals.append(signal)
-            
-            # Select best reactive signal
-            if reactive_signals:
-                # Get support/resistance for validation
-                support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
-                support_5m = support_resistance_5m.get("support", current_price * 0.99)
-                resistance_5m = support_resistance_5m.get("resistance", current_price * 1.01)
-                
-                # Validate and fix entry prices for reactive signals
-                for i, signal in enumerate(reactive_signals):
-                    signal = self._validate_entry_price(signal, current_price, support_5m, resistance_5m, candles_5m)
-                    # Add prediction metadata to all signals
-                    reactive_signals[i] = self._add_prediction_metadata(signal, current_price, support_5m, resistance_5m, candles_5m, "HIGH_VOLATILITY", trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, None, None)
-                
-                best_signal = max(reactive_signals, key=lambda x: x["confidence"])
-                
-                # FINAL VALIDATION: Ensure best signal has valid entry price
-                best_signal = self._validate_entry_price(best_signal, current_price, support_5m, resistance_5m, candles_5m)
-                
-                return {
-                    "has_prediction": True,
-                    "prediction_mode": "REACTIVE",
-                    "best_prediction": best_signal,
-                    "all_predictions": reactive_signals,
-                    "volatility_5m": volatility_5m,
-                    "price_acceleration": price_acceleration,
-                    "momentum_surge": momentum_surge,
-                    "volume_spike": volume_spike,
-                    "reactive_factors": [signal["reactive_factor"] for signal in reactive_signals]
-                }
-            else:
-                return {"has_prediction": False, "reason": "No reactive signals detected"}
-                
-        except Exception as e:
-            logger.error(f"Error building reactive prediction: {e}")
-            return {"has_prediction": False, "reason": f"Reactive prediction error: {str(e)}"}
-    
-    def _build_predictive_prediction(self, binance_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Build predictive prediction for standard/low volatility markets - technical analysis based"""
-        try:
-            # Extract data from enhanced multi-timeframe analysis
-            candles_1m = binance_analysis.get("candles_1m", [])  # 2h immediate momentum
-            candles_5m = binance_analysis.get("candles_5m", [])  # 5h core analysis
-            candles_1h = binance_analysis.get("candles_1h", [])  # 3.5d daily context
-            candles_1d = binance_analysis.get("candles_1d", [])  # 6w weekly/monthly context
-            trend_5m = binance_analysis.get("trend_5m", {})      # Short-term trend
-            trend_1h = binance_analysis.get("trend_1h", {})      # Daily trend
-            trend_1d = binance_analysis.get("trend_1d", {})      # Weekly/monthly trend
-            support_resistance_5m = binance_analysis.get("support_resistance_5m", {})
-            
-            # Extract real-time Hyperliquid data for enhanced predictions
-            hyperliquid_volume = binance_analysis.get("hyperliquid_volume", {})
-            hyperliquid_5m_volume = binance_analysis.get("hyperliquid_5m_volume", {})
-            hyperliquid_rsi = binance_analysis.get("hyperliquid_rsi", {})
-            
-            # Get current market conditions from Hyperliquid (corrected RSI)
-            current_rsi = hyperliquid_rsi.get("rsi", 50.0)  # Use proper RSI calculation
-            is_oversold = hyperliquid_rsi.get("is_oversold", False)
-            is_overbought = hyperliquid_rsi.get("is_overbought", False)
-            
-            liquidity_metrics = hyperliquid_volume.get("liquidity_metrics", {})
-            total_depth = liquidity_metrics.get("total_depth", 0)
-            depth_imbalance = liquidity_metrics.get("depth_imbalance", 0)
-            
-            # Enhanced trend logging with strength and quality indicators
-            trend_5m_info = f"{trend_5m.get('trend','?')}({trend_5m.get('strength',0)*100:.1f}%,{trend_5m.get('trend_quality','?')})"
-            trend_1h_info = f"{trend_1h.get('trend','?')}({trend_1h.get('strength',0)*100:.1f}%,{trend_1h.get('trend_quality','?')})"
-            trend_1d_info = f"{trend_1d.get('trend','?')}({trend_1d.get('strength',0)*100:.1f}%,{trend_1d.get('trend_quality','?')})"
-            
-            logger.info(f"📊 Multi-timeframe Context: RSI={current_rsi:.1f}, 5m={trend_5m_info}, 1h={trend_1h_info}, 1d={trend_1d_info}, Depth={total_depth:.1f}BTC")
-            
-            # Enhanced data validation for multi-timeframe analysis (increased for 20-period RSI)
-            if len(candles_5m) < 45 or len(candles_1h) < 30 or len(candles_1d) < 20:
-                return {"has_prediction": False, "reason": f"Insufficient candlestick data - need 45+ 5m ({len(candles_5m)}), 30+ 1h ({len(candles_1h)}), 20+ 1d ({len(candles_1d)}) candles for reliable analysis"}
-            
-            support_5m = support_resistance_5m.get("support", 0)
-            resistance_5m = support_resistance_5m.get("resistance", 0)
-            range_size_5m = support_resistance_5m.get("range", 0)
-            
-            # Minimum range requirement - make it very lenient
-            min_range_percentage = self.strategy_config["min_range_percentage"] * 0.1  # Reduce requirement by 90%
-            if range_size_5m < current_price * min_range_percentage:
-                # Instead of returning no prediction, try to generate basic predictions
-                logger.info(f"Range small ({range_size_5m/current_price*100:.1f}%) but attempting basic predictions")
-            
-            # Calculate volatility for prediction confidence
-            volatility_5m = self._get_volatility_5m(binance_analysis)
-            volatility_1h = self._get_volatility_1h(binance_analysis)
-            
-            # Determine market condition based on volatility
-            if volatility_5m < 0.002:
-                market_condition = "LOW_VOLATILITY"
-            elif volatility_5m > 0.005:
-                market_condition = "HIGH_VOLATILITY"
-            else:
-                market_condition = "NORMAL"
-            
-            # Create volume data structure for metadata
-            volume_data = {
-                "current_volume": hyperliquid_5m_volume.get("current_volume", 0),
-                "volume_category": hyperliquid_5m_volume.get("volume_category", "UNKNOWN"),
-                "volume_trend": hyperliquid_5m_volume.get("volume_trend", "UNKNOWN")
+            # Build reactive prediction
+            prediction = {
+                "prediction_mode": "REACTIVE",
+                "has_prediction": True,
+                "confidence": 0.6,  # Lower confidence for reactive
+                "reason": "Reactive prediction based on current market conditions",
+                "entry_price": current_price,
+                "target_price": current_price * 1.01,  # 1% target
+                "stop_price": current_price * 0.99,    # 1% stop
+                "side": "HOLD",  # Default to hold for reactive
+                "prediction_type": "REACTIVE",
+                "type": "REACTIVE",  # Add type field
+                "timeframe": 5,  # Add timeframe field
+                "prediction_timestamp": time.time(),  # Add timestamp
+                "volatility_5m": volatility_5m,
+                "trend_5m": trend_5m.get("trend", "SIDEWAYS"),
+                "trend_1h": trend_1h.get("trend", "SIDEWAYS"),
+                "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN")
             }
             
-            # Build predictions based on market conditions
-            predictions = []
-            
-            # 1. BREAKOUT PREDICTIONS - Smart direction analysis
-            if current_price > resistance_5m * 0.998:  # Near resistance
-                # Analyze whether to expect breakout or reversion
-                breakout_probability = self._analyze_breakout_probability(trend_1h, trend_5m, volatility_5m, range_size_5m)
-                
-                if breakout_probability > 0.6:  # High probability of breakout
-                    # Predict potential breakout above resistance - wait for pullback to support
-                    breakout_prediction = {
-                        "type": "BREAKOUT_ABOVE",
-                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),  # Below support AND below current price
-                        "side": "BUY",
-                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
-                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                        "reason": f"High probability breakout above ${resistance_5m:,.2f} - enter below support ${support_5m:,.2f}",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "breakout_probability": breakout_probability,
-                        "current_price": current_price,
-                        "prediction_timestamp": time.time()
-                    }
-                    predictions.append(breakout_prediction)
-                else:  # Higher probability of reversion
-                    # Predict potential reversion from resistance
-                    reversion_prediction = {
-                        "type": "REVERSION_FROM_RESISTANCE",
-                        "entry_price": resistance_5m * 1.001,  # Enter slightly above resistance for SELL order
-                        "side": "SELL",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
-                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                        "reason": f"High probability reversion from ${resistance_5m:,.2f} - enter at resistance",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "breakout_probability": breakout_probability
-                    }
-                    predictions.append(reversion_prediction)
-            
-            elif current_price < support_5m * 1.002:  # Near support
-                # Analyze whether to expect breakout or reversion
-                breakdown_probability = self._analyze_breakdown_probability(trend_1h, trend_5m, volatility_5m, range_size_5m)
-                
-                if breakdown_probability > 0.6:  # High probability of breakdown
-                    # Predict potential breakout below support - wait for bounce to resistance
-                    breakout_prediction = {
-                        "type": "BREAKOUT_BELOW",
-                        "entry_price": resistance_5m * 0.999,  # Enter near resistance level, above current price
-                        "side": "SELL",
-                        "confidence": self._calculate_breakout_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
-                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                        "reason": f"High probability breakdown below ${support_5m:,.2f} - enter at resistance ${resistance_5m:,.2f}",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "breakdown_probability": breakdown_probability
-                    }
-                    predictions.append(breakout_prediction)
-                else:  # Higher probability of bounce
-                    # Predict potential reversion from support
-                    reversion_prediction = {
-                        "type": "REVERSION_FROM_SUPPORT",
-                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),  # Below support AND below current price
-                        "side": "BUY",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
-                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                        "reason": f"High probability bounce from ${support_5m:,.2f} - enter below support",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "breakdown_probability": breakdown_probability
-                    }
-                    predictions.append(reversion_prediction)
-            
-            # 2. MOMENTUM PREDICTIONS - Enhanced direction analysis with weak trends
-            trend_5m_type = trend_5m.get("trend", "UNKNOWN")
-            trend_1h_type = trend_1h.get("trend", "UNKNOWN")
-            
-            # Enhanced bull momentum detection - include weak trends
-            is_bullish_5m = trend_5m_type in ["UP", "STRONG_UP", "WEAK_UP"]
-            is_bullish_1h = trend_1h_type in ["UP", "STRONG_UP", "WEAK_UP"] 
-            is_bearish_5m = trend_5m_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
-            is_bearish_1h = trend_1h_type in ["DOWN", "STRONG_DOWN", "WEAK_DOWN"]
-            
-            # Check for any bullish alignment (including weak trends)
-            if is_bullish_1h and is_bullish_5m:
-                # Strong upward momentum - analyze if it's sustainable
-                momentum_strength = self._analyze_momentum_strength(trend_1h, trend_5m, volatility_5m)
-                
-                if momentum_strength > 0.7:  # Strong momentum
-                    momentum_prediction = {
-                        "type": "MOMENTUM_UP",
-                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),  # Below support AND below current price
-                        "side": "BUY",
-                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
-                        "timeframe": self._calculate_momentum_timeframe(volatility_5m),
-                        "reason": f"Strong upward momentum (strength: {momentum_strength:.2f}) - enter below support ${support_5m:,.2f}",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "momentum_strength": momentum_strength
-                    }
-                    predictions.append(momentum_prediction)
-                else:  # Weak momentum - might reverse
-                    momentum_prediction = {
-                        "type": "MOMENTUM_REVERSION",
-                        "entry_price": current_price * 1.001,  # Enter slightly above current price for SELL order
-                        "side": "SELL",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
-                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                        "reason": f"Weak upward momentum (strength: {momentum_strength:.2f}) - expect reversal",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "momentum_strength": momentum_strength
-                }
-                predictions.append(momentum_prediction)
-            
-            elif is_bearish_1h and is_bearish_5m:
-                # Strong downward momentum - analyze if it's sustainable
-                momentum_strength = self._analyze_momentum_strength(trend_1h, trend_5m, volatility_5m)
-                
-                if momentum_strength > 0.7:  # Strong momentum
-                    momentum_prediction = {
-                        "type": "MOMENTUM_DOWN",
-                        "entry_price": resistance_5m * 0.999,  # Enter at resistance level, well above current price
-                        "side": "SELL",
-                        "confidence": self._calculate_momentum_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance),
-                        "timeframe": self._calculate_momentum_timeframe(volatility_5m),
-                        "reason": f"Strong downward momentum (strength: {momentum_strength:.2f}) - enter at resistance ${resistance_5m:,.2f}",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "momentum_strength": momentum_strength
-                    }
-                    predictions.append(momentum_prediction)
-                else:  # Weak momentum - might reverse
-                    momentum_prediction = {
-                        "type": "MOMENTUM_REVERSION",
-                        "entry_price": current_price * 0.999,  # Enter slightly below current price for BUY order
-                        "side": "BUY",
-                        "confidence": self._calculate_reversion_confidence(trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d),
-                        "timeframe": self._calculate_reversion_timeframe(volatility_5m),
-                        "reason": f"Weak downward momentum (strength: {momentum_strength:.2f}) - expect reversal",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "momentum_strength": momentum_strength
-                }
-                predictions.append(momentum_prediction)
-            
-            # 2b. WEAK BULL/BEAR MOMENTUM - Handle gradual trends and mixed signals
-            elif is_bullish_1h or is_bullish_5m:  # At least one timeframe is bullish
-                # Weak bullish momentum - could be gradual bull market
-                combined_strength = (trend_1h.get("strength", 0) + trend_5m.get("strength", 0)) / 2
-                
-                if combined_strength > 0.01:  # Even weak momentum is significant
-                    momentum_prediction = {
-                        "type": "WEAK_MOMENTUM_UP",
-                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),
-                        "side": "BUY",
-                        "confidence": 0.45 + combined_strength * 5,  # Lower confidence but still actionable
-                        "timeframe": 20,  # Longer timeframe for weak momentum
-                        "reason": f"Gradual bull momentum detected (1h:{trend_1h_type}, 5m:{trend_5m_type}, strength:{combined_strength:.3f})",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "momentum_type": "GRADUAL_BULL"
-                    }
-                    predictions.append(momentum_prediction)
-                    
-            elif is_bearish_1h or is_bearish_5m:  # At least one timeframe is bearish
-                # Weak bearish momentum
-                combined_strength = (trend_1h.get("strength", 0) + trend_5m.get("strength", 0)) / 2
-                
-                if combined_strength > 0.01:
-                    momentum_prediction = {
-                        "type": "WEAK_MOMENTUM_DOWN", 
-                        "entry_price": resistance_5m * 0.999,
-                        "side": "SELL",
-                        "confidence": 0.45 + combined_strength * 5,
-                        "timeframe": 20,
-                        "reason": f"Gradual bear momentum detected (1h:{trend_1h_type}, 5m:{trend_5m_type}, strength:{combined_strength:.3f})",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "momentum_type": "GRADUAL_BEAR"
-                    }
-                    predictions.append(momentum_prediction)
-            
-            # 2c. SIDEWAYS MARKET WITH DIRECTIONAL BIAS
-            elif trend_5m_type == "SIDEWAYS" or trend_1h_type == "SIDEWAYS":
-                # Look for subtle directional bias in sideways markets
-                recent_candles_5m = candles_5m[-10:] if candles_5m and len(candles_5m) >= 10 else []
-                if recent_candles_5m:
-                    # Calculate cumulative price movement over longer period
-                    first_price = recent_candles_5m[0]["close"]
-                    last_price = recent_candles_5m[-1]["close"]
-                    cumulative_change = (last_price - first_price) / first_price
-                    
-                    if abs(cumulative_change) > 0.002:  # 0.2% cumulative change
-                        if cumulative_change > 0:
-                            sideways_prediction = {
-                                "type": "SIDEWAYS_BIAS_UP",
-                                "entry_price": current_price * 0.998,
-                                "side": "BUY", 
-                                "confidence": 0.35 + abs(cumulative_change) * 10,
-                                "timeframe": 25,
-                                "reason": f"Sideways market with bull bias (cumulative: {cumulative_change*100:.2f}%)",
-                                "support": support_5m,
-                                "resistance": resistance_5m,
-                                "prediction_mode": "TECHNICAL_ANALYSIS",
-                                "momentum_type": "SIDEWAYS_BULL_BIAS"
-                            }
-                        else:
-                            sideways_prediction = {
-                                "type": "SIDEWAYS_BIAS_DOWN",
-                                "entry_price": current_price * 1.002,
-                                "side": "SELL",
-                                "confidence": 0.35 + abs(cumulative_change) * 10,
-                                "timeframe": 25,
-                                "reason": f"Sideways market with bear bias (cumulative: {cumulative_change*100:.2f}%)",
-                                "support": support_5m,
-                                "resistance": resistance_5m,
-                                "prediction_mode": "TECHNICAL_ANALYSIS",
-                                "momentum_type": "SIDEWAYS_BEAR_BIAS"
-                            }
-                        predictions.append(sideways_prediction)
-            
-            # 3. RANGE-BOUND ANALYSIS - When price is in the middle of range
-            if support_5m < current_price < resistance_5m and range_size_5m > current_price * 0.01:
-                # Price is in the middle of a significant range - analyze direction
-                range_direction = self._analyze_range_direction(trend_1h, trend_5m, volatility_5m, current_price, support_5m, resistance_5m)
-                
-                if range_direction["direction"] == "UP":
-                    range_prediction = {
-                        "type": "RANGE_BREAKOUT_UP",
-                        "entry_price": min(support_5m * 0.9995, current_price * 0.999),  # Below support AND below current price
-                        "side": "BUY",
-                        "confidence": range_direction["confidence"],
-                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                        "reason": f"Range analysis suggests upward move (confidence: {range_direction['confidence']:.2f}) - enter below support ${support_5m:,.2f}",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "range_position": (current_price - support_5m) / (resistance_5m - support_5m)
-                    }
-                    predictions.append(range_prediction)
-                else:
-                    range_prediction = {
-                        "type": "RANGE_BREAKOUT_DOWN",
-                        "entry_price": resistance_5m * 0.999,  # Enter at resistance level, well above current price
-                        "side": "SELL",
-                        "confidence": range_direction["confidence"],
-                        "timeframe": self._calculate_breakout_timeframe(volatility_5m, range_size_5m),
-                        "reason": f"Range analysis suggests downward move (confidence: {range_direction['confidence']:.2f}) - enter at resistance ${resistance_5m:,.2f}",
-                        "support": support_5m,
-                        "resistance": resistance_5m,
-                        "prediction_mode": "TECHNICAL_ANALYSIS",
-                        "range_position": (current_price - support_5m) / (resistance_5m - support_5m)
-                    }
-                    predictions.append(range_prediction)
-            
-            # Select best prediction based on confidence
-            if predictions:
-                # Validate and fix entry prices to ensure they're logical
-                for i, prediction in enumerate(predictions):
-                    prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m, candles_5m)
-                    # Add prediction metadata with RSI context
-                    predictions[i] = self._add_prediction_metadata(prediction, current_price, support_5m, resistance_5m, candles_5m, market_condition, trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d, volume_data)
-                
-                best_prediction = max(predictions, key=lambda x: x["confidence"])
-                
-                logger.info(f"🎯 Selected best prediction: {best_prediction['type']} ({best_prediction['side']}) - Confidence: {best_prediction['confidence']:.1%}")
-                
-                # FINAL VALIDATION: Ensure best prediction has valid entry price
-                best_prediction = self._validate_entry_price(best_prediction, current_price, support_5m, resistance_5m, candles_5m)
-                
-                # Ensure best prediction has metadata (safety check)
-                if "current_price" not in best_prediction:
-                    best_prediction = self._add_prediction_metadata(best_prediction, current_price, support_5m, resistance_5m, candles_5m, market_condition, trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d, volume_data)
-                
-                return {
-                    "has_prediction": True,
-                    "prediction_mode": "PREDICTIVE",
-                    "best_prediction": best_prediction,
-                    "all_predictions": predictions,
-                    "volatility_5m": volatility_5m,
-                    "volatility_1h": volatility_1h,
-                    "range_size": range_size_5m,
-                    "support": support_5m,
-                    "resistance": resistance_5m
-                }
+            # Determine side based on trend alignment
+            if trend_5m.get("trend") == "BULLISH" and trend_1h.get("trend") == "BULLISH":
+                prediction["side"] = "BUY"
+                prediction["confidence"] = 0.7
+                prediction["reason"] = "Strong bullish trend alignment (5m + 1h)"
+            elif trend_5m.get("trend") == "BEARISH" and trend_1h.get("trend") == "BEARISH":
+                prediction["side"] = "SELL"
+                prediction["confidence"] = 0.7
+                prediction["reason"] = "Strong bearish trend alignment (5m + 1h)"
+            elif trend_5m.get("trend") == "BULLISH":
+                prediction["side"] = "BUY"
+                prediction["confidence"] = 0.6
+                prediction["reason"] = "5m bullish trend"
+            elif trend_5m.get("trend") == "BEARISH":
+                prediction["side"] = "SELL"
+                prediction["confidence"] = 0.6
+                prediction["reason"] = "5m bearish trend"
             else:
-                # Generate basic predictions even with small ranges
-                basic_predictions = self._generate_basic_predictions(current_price, support_5m, resistance_5m, trend_5m, trend_1h, volatility_5m, current_rsi, total_depth, depth_imbalance)
-                if basic_predictions:
-                    # Validate and fix entry prices to ensure they're logical
-                    for i, prediction in enumerate(basic_predictions):
-                        prediction = self._validate_entry_price(prediction, current_price, support_5m, resistance_5m, candles_5m)
-                        # Add prediction metadata with RSI context
-                        basic_predictions[i] = self._add_prediction_metadata(prediction, current_price, support_5m, resistance_5m, candles_5m, market_condition, trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d, volume_data)
-                    
-                    # Select the prediction with highest confidence
-                    best_basic = max(basic_predictions, key=lambda x: x["confidence"])
-                    
-                    logger.info(f"🎯 Selected best basic prediction: {best_basic['type']} ({best_basic['side']}) - Confidence: {best_basic['confidence']:.1%}")
-                    
-                    # FINAL VALIDATION: Ensure best prediction has valid entry price
-                    best_basic = self._validate_entry_price(best_basic, current_price, support_5m, resistance_5m, candles_5m)
-                    
-                    # Ensure best prediction has metadata (safety check)
-                    if "current_price" not in best_basic:
-                        best_basic = self._add_prediction_metadata(best_basic, current_price, support_5m, resistance_5m, candles_5m, market_condition, trend_1h, trend_5m, volatility_5m, current_rsi, total_depth, depth_imbalance, trend_1d, volume_data)
-                    
-                    return {
-                        "has_prediction": True,
-                        "prediction_mode": "BASIC",
-                        "best_prediction": best_basic,
-                        "all_predictions": basic_predictions,
-                        "volatility_5m": volatility_5m,
-                        "volatility_1h": volatility_1h,
-                        "range_size": range_size_5m,
-                        "support": support_5m,
-                        "resistance": resistance_5m
-                    }
-                else:
-                    return {"has_prediction": False, "reason": "No valid predictions found"}
+                prediction["side"] = "HOLD"
+                prediction["confidence"] = 0.3
+                prediction["reason"] = "No clear trend direction"
+            
+            # Adjust targets based on side
+            if prediction["side"] == "BUY":
+                prediction["target_price"] = current_price * 1.015  # 1.5% target
+                prediction["stop_price"] = current_price * 0.985   # 1.5% stop
+            elif prediction["side"] == "SELL":
+                prediction["target_price"] = current_price * 0.985  # 1.5% target
+                prediction["stop_price"] = current_price * 1.015   # 1.5% stop
+            
+            return prediction
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to build reactive prediction: {e}")
+            return {
+                "prediction_mode": "REACTIVE",
+                "has_prediction": False,
+                "reason": f"Reactive prediction failed: {e}",
+                "confidence": 0.0
+            }
+    
+    def _build_predictive_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Build predictive prediction using multi-timeframe analysis"""
+        try:
+            # Extract multi-timeframe data
+            candles_1m = yahoo_analysis.get("candles_1m", [])  # 2h immediate momentum
+            candles_5m = yahoo_analysis.get("candles_5m", [])  # 5h core analysis
+            candles_1h = yahoo_analysis.get("candles_1h", [])  # 3.5d daily context
+            candles_1d = yahoo_analysis.get("candles_1d", [])  # 6w weekly/monthly context
+            trend_5m = yahoo_analysis.get("trend_5m", {})      # Short-term trend
+            trend_1h = yahoo_analysis.get("trend_1h", {})      # Daily trend
+            trend_1d = yahoo_analysis.get("trend_1d", {})      # Weekly/monthly trend
+            support_resistance_5m = yahoo_analysis.get("support_resistance_5m", {})
+            
+            # Get Hyperliquid-specific data
+            hyperliquid_volume = yahoo_analysis.get("hyperliquid_volume", {})
+            hyperliquid_5m_volume = yahoo_analysis.get("hyperliquid_5m_volume", {})
+            hyperliquid_rsi = yahoo_analysis.get("hyperliquid_rsi", {})
+            
+            # Calculate volatility across timeframes
+            volatility_5m = self._get_volatility_5m(yahoo_analysis)
+            volatility_1h = self._get_volatility_1h(yahoo_analysis)
+            
+            # Build comprehensive prediction
+            prediction = {
+                "prediction_mode": "PREDICTIVE",
+                "has_prediction": True,
+                "confidence": 0.8,  # Higher confidence for predictive
+                "reason": "Multi-timeframe predictive analysis",
+                "entry_price": current_price,
+                "target_price": current_price * 1.02,  # 2% target
+                "stop_price": current_price * 0.98,    # 2% stop
+                "side": "HOLD",
+                "prediction_type": "PREDICTIVE",
+                "type": "PREDICTIVE",  # Add type field
+                "timeframe": 15,  # Add timeframe field
+                "prediction_timestamp": time.time(),  # Add timestamp
+                "volatility_5m": volatility_5m,
+                "volatility_1h": volatility_1h,
+                "trend_5m": trend_5m.get("trend", "SIDEWAYS"),
+                "trend_1h": trend_1h.get("trend", "SIDEWAYS"),
+                "trend_1d": trend_1d.get("trend", "SIDEWAYS"),
+                "market_condition": yahoo_analysis.get("market_condition", "UNKNOWN"),
+                "support_resistance": support_resistance_5m
+            }
+            
+            # Multi-timeframe trend analysis
+            trend_score = 0
+            trend_reasons = []
+            
+            # 5m trend weight: 40%
+            if trend_5m.get("trend") == "BULLISH":
+                trend_score += 0.4
+                trend_reasons.append("5m bullish")
+            elif trend_5m.get("trend") == "BEARISH":
+                trend_score -= 0.4
+                trend_reasons.append("5m bearish")
+            
+            # 1h trend weight: 35%
+            if trend_1h.get("trend") == "BULLISH":
+                trend_score += 0.35
+                trend_reasons.append("1h bullish")
+            elif trend_1h.get("trend") == "BEARISH":
+                trend_score -= 0.35
+                trend_reasons.append("1h bearish")
+            
+            # 1d trend weight: 25%
+            if trend_1d.get("trend") == "BULLISH":
+                trend_score += 0.25
+                trend_reasons.append("1d bullish")
+            elif trend_1d.get("trend") == "BEARISH":
+                trend_score -= 0.25
+                trend_reasons.append("1d bearish")
+            
+            # Determine side based on trend score
+            if trend_score >= 0.6:  # Strong bullish
+                prediction["side"] = "BUY"
+                prediction["confidence"] = min(0.9, 0.7 + (trend_score - 0.6) * 0.5)
+                prediction["reason"] = f"Strong bullish trend: {', '.join(trend_reasons)}"
+                prediction["target_price"] = current_price * 1.025  # 2.5% target
+                prediction["stop_price"] = current_price * 0.975   # 2.5% stop
+            elif trend_score <= -0.6:  # Strong bearish
+                prediction["side"] = "SELL"
+                prediction["confidence"] = min(0.9, 0.7 + abs(trend_score - 0.6) * 0.5)
+                prediction["reason"] = f"Strong bearish trend: {', '.join(trend_reasons)}"
+                prediction["target_price"] = current_price * 0.975  # 2.5% target
+                prediction["stop_price"] = current_price * 1.025   # 2.5% stop
+            elif trend_score >= 0.2:  # Moderate bullish
+                prediction["side"] = "BUY"
+                prediction["confidence"] = 0.6 + trend_score * 0.2
+                prediction["reason"] = f"Moderate bullish trend: {', '.join(trend_reasons)}"
+                prediction["target_price"] = current_price * 1.02   # 2% target
+                prediction["stop_price"] = current_price * 0.98    # 2% stop
+            elif trend_score <= -0.2:  # Moderate bearish
+                prediction["side"] = "SELL"
+                prediction["confidence"] = 0.6 + abs(trend_score) * 0.2
+                prediction["reason"] = f"Moderate bearish trend: {', '.join(trend_reasons)}"
+                prediction["target_price"] = current_price * 0.98   # 2% target
+                prediction["stop_price"] = current_price * 1.02    # 2% stop
+            else:  # Neutral
+                prediction["side"] = "HOLD"
+                prediction["confidence"] = 0.3
+                prediction["reason"] = "No clear trend direction across timeframes"
+            
+            return prediction
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to build predictive prediction: {e}")
+            return {
+                "prediction_mode": "PREDICTIVE",
+                "has_prediction": False,
+                "reason": f"Predictive prediction failed: {e}",
+                "confidence": 0.0
+            }
+    
+    def _get_volatility_5m(self, yahoo_analysis: Dict[str, Any]) -> float:
+        """Calculate 5-minute volatility from Yahoo analysis"""
+        try:
+            candles_5m = yahoo_analysis.get("candles_5m", [])
+            if len(candles_5m) < 2:
+                return 0.0
+            
+            # Calculate price changes
+            price_changes = []
+            for i in range(1, len(candles_5m)):
+                prev_close = float(candles_5m[i-1]["close"])
+                curr_close = float(candles_5m[i]["close"])
+                change = abs((curr_close - prev_close) / prev_close)
+                price_changes.append(change)
+            
+            # Return average volatility
+            return sum(price_changes) / len(price_changes) if price_changes else 0.0
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate 5m volatility: {e}")
+            return 0.0
+    
+    def _get_volatility_1h(self, yahoo_analysis: Dict[str, Any]) -> float:
+        """Calculate 1-hour volatility from Yahoo analysis"""
+        try:
+            candles_1h = yahoo_analysis.get("candles_1h", [])
+            if len(candles_1h) < 2:
+                return 0.0
+            
+            # Calculate price changes
+            price_changes = []
+            for i in range(1, len(candles_1h)):
+                prev_close = float(candles_1h[i-1]["close"])
+                curr_close = float(candles_1h[i]["close"])
+                change = abs((curr_close - prev_close) / prev_close)
+                price_changes.append(change)
+            
+            # Return average volatility
+            return sum(price_changes) / len(price_changes) if price_changes else 0.0
                 
         except Exception as e:
-            logger.error(f"Error building predictive prediction: {e}")
-            return {"has_prediction": False, "reason": f"Predictive prediction error: {str(e)}"}
+            logger.error(f"❌ Failed to calculate 1h volatility: {e}")
+            return 0.0
     
     def _generate_basic_predictions(self, current_price: float, support: float, resistance: float, trend_5m: Dict, trend_1h: Dict, volatility: float, current_rsi: float = 50.0, total_depth: float = 0, depth_imbalance: float = 0) -> List[Dict]:
         """Generate basic predictions even with small ranges - focus on current price action"""
@@ -949,7 +592,7 @@ class PredictionEngine:
              
             # Add metadata to all predictions before returning
             for i, prediction in enumerate(predictions):
-                predictions[i] = self._add_prediction_metadata(prediction, current_price, support, resistance, None, "BASIC", trend_1h, trend_5m, volatility, current_rsi, total_depth, depth_imbalance, None, None)
+                predictions[i] = self._add_prediction_metadata(prediction, current_price, support, resistance, None, "BASIC", trend_1h, trend_5m, volatility, current_rsi, total_depth, depth_imbalance, trend_1d, None)
              
             return predictions
              
@@ -1283,50 +926,6 @@ class PredictionEngine:
         except Exception as e:
             logger.error(f"Error detecting Hyperliquid volume activity: {e}")
             return {"detected": False, "direction": "UNKNOWN", "strength": 0.0}
-    
-    def _get_volatility_5m(self, binance_analysis: Dict[str, Any]) -> float:
-        """Calculate 5-minute volatility"""
-        try:
-            candles_5m = binance_analysis.get("candles_5m", [])
-            if len(candles_5m) < 10:
-                return 0.003  # Default volatility
-            
-            # Calculate price changes
-            price_changes = []
-            for i in range(1, min(10, len(candles_5m))):
-                # Access close price using dictionary key, not array index
-                prev_close = candles_5m[i-1]["close"]
-                curr_close = candles_5m[i]["close"]
-                change = abs(curr_close - prev_close) / prev_close
-                price_changes.append(change)
-            
-            return sum(price_changes) / len(price_changes) if price_changes else 0.003
-            
-        except Exception as e:
-            logger.error(f"Error calculating 5m volatility: {e}")
-            return 0.003
-    
-    def _get_volatility_1h(self, binance_analysis: Dict[str, Any]) -> float:
-        """Calculate 1-hour volatility"""
-        try:
-            candles_1h = binance_analysis.get("candles_1h", [])
-            if len(candles_1h) < 10:
-                return 0.005  # Default volatility
-            
-            # Calculate price changes
-            price_changes = []
-            for i in range(1, min(10, len(candles_1h))):
-                # Access close price using dictionary key, not array index
-                prev_close = candles_1h[i-1]["close"]
-                curr_close = candles_1h[i]["close"]
-                change = abs(curr_close - prev_close) / prev_close
-                price_changes.append(change)
-            
-            return sum(price_changes) / len(price_changes) if price_changes else 0.005
-            
-        except Exception as e:
-            logger.error(f"Error calculating 1h volatility: {e}")
-            return 0.005
     
     def _calculate_breakout_confidence(self, trend_1h: Dict, trend_5m: Dict, volatility: float, rsi: float = 50, volume_depth: float = 0, depth_imbalance: float = 0, trend_1d: Dict = {}) -> float:
         """Calculate confidence for breakout predictions with multi-timeframe RSI and volume integration"""
@@ -2140,7 +1739,11 @@ class PredictionEngine:
         """Analyze entry point and determine if order should be placed"""
         try:
             if not prediction_analysis.get("has_prediction", False):
-                return {"should_place_order": False, "reason": "No valid prediction"}
+                return {
+                    "should_place_order": False, 
+                    "reason": "No valid prediction",
+                    "variability_threshold": prediction_analysis.get("volatility_5m", 0)
+                }
             
             prediction = prediction_analysis["best_prediction"]
             prediction_mode = prediction_analysis.get("prediction_mode", "PREDICTIVE")
@@ -2149,7 +1752,11 @@ class PredictionEngine:
             if prediction_mode == "PREDICTIVE":
                 validation_result = self._validate_predictive_prediction(prediction, current_price, candles_5m, prediction_analysis)
                 if not validation_result["is_valid"]:
-                    return {"should_place_order": False, "reason": f"Prediction validation failed: {validation_result['reason']}"}
+                    return {
+                        "should_place_order": False, 
+                        "reason": f"Prediction validation failed: {validation_result['reason']}",
+                        "variability_threshold": prediction_analysis.get("volatility_5m", 0)
+                    }
                 
                 # If prediction is validated, proceed with execution
                 logger.info(f"🎯 PREDICTIVE VALIDATION PASSED: {prediction['type']} - {validation_result['reason']}")
@@ -2157,7 +1764,11 @@ class PredictionEngine:
             # REACTIVE LOGIC: Direct execution for reactive signals
             elif prediction_mode == "REACTIVE":
                 if not self.is_prediction_valid(prediction, current_price, candles_5m):
-                    return {"should_place_order": False, "reason": "Reactive prediction no longer valid"}
+                    return {
+                        "should_place_order": False, 
+                        "reason": "Reactive prediction no longer valid",
+                        "variability_threshold": prediction_analysis.get("volatility_5m", 0)
+                    }
             
             # Calculate win probability
             win_probability = self.calculate_prediction_win_probability(prediction, prediction_analysis)
@@ -2169,7 +1780,11 @@ class PredictionEngine:
                 confidence_threshold = self.strategy_config.get("confidence_threshold", 0.6)
             
             if prediction["confidence"] < confidence_threshold:
-                return {"should_place_order": False, "reason": f"Confidence too low ({prediction['confidence']:.2f} < {confidence_threshold})"}
+                return {
+                    "should_place_order": False, 
+                    "reason": f"Confidence too low ({prediction['confidence']:.2f} < {confidence_threshold})",
+                    "variability_threshold": prediction_analysis.get("volatility_5m", 0)
+                }
             
             # Calculate target and stop prices
             entry_price = prediction["entry_price"]
@@ -2211,12 +1826,17 @@ class PredictionEngine:
                 "reason": prediction["reason"],
                 "risk_reward_ratio": risk_reward_ratio,
                 "volatility_5m": prediction_analysis.get("volatility_5m", 0),
-                "range_size": prediction_analysis.get("range_size", 0)
+                "range_size": prediction_analysis.get("range_size", 0),
+                "variability_threshold": prediction_analysis.get("volatility_5m", 0)  # Add variability threshold
             }
             
         except Exception as e:
             logger.error(f"Error analyzing entry point: {e}")
-            return {"should_place_order": False, "reason": f"Analysis error: {str(e)}"}
+            return {
+                "should_place_order": False, 
+                "reason": f"Analysis error: {str(e)}",
+                "variability_threshold": prediction_analysis.get("volatility_5m", 0)  # Add variability threshold even on failure
+            }
     
     def _validate_predictive_prediction(self, prediction: Dict[str, Any], current_price: float, candles_5m: List, prediction_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Validate predictive prediction by checking if market behavior confirms the prediction"""

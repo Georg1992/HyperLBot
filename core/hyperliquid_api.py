@@ -10,6 +10,7 @@ from .config import TradingConfig
 
 # Import data modules to avoid lazy import issues
 from data.yahoo_data_fetcher import YahooDataFetcher
+import statistics # Added for enhanced volatility analysis
 
 class HyperliquidAPI:
     """Hyperliquid API client for trading operations"""
@@ -233,9 +234,30 @@ class HyperliquidAPI:
             return []
     
     def get_current_price(self, symbol: str = None) -> Optional[float]:
-        """Get current mid-price from orderbook"""
+        """Get current mid-price from WebSocket cache (ultra-fast) or orderbook (fallback)"""
         try:
             symbol = symbol or self.config.SYMBOL
+            
+            # Try WebSocket first (real-time latency)
+            try:
+                from core.hyperliquid_websocket import get_websocket_instance
+                websocket = get_websocket_instance(symbol)
+                
+                if websocket.is_connected():
+                    price = websocket.get_current_price()
+                    if price and price > 0:
+                        logger.debug(f"💰 WebSocket price: ${price:,.2f} (real-time)")
+                        return price
+                    else:
+                        logger.debug("⚠️ WebSocket connected but no price data yet")
+                else:
+                    logger.debug("⚠️ WebSocket not connected, using HTTP fallback")
+            except ImportError:
+                logger.debug("⚠️ WebSocket module not available, using HTTP fallback")
+            except Exception as e:
+                logger.debug(f"⚠️ WebSocket error: {e}, using HTTP fallback")
+            
+            # HTTP API fallback (current method)
             market_data = self.get_market_data(symbol)
             
             if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
@@ -580,13 +602,26 @@ class HyperliquidAPI:
             raise
     
     def get_klines(self, symbol: str = None, interval: str = "1m", limit: int = 100) -> List[Dict[str, Any]]:
-        """Get historical kline/candlestick data (fallback to Yahoo Finance due to API issues)"""
+        """Get historical kline/candlestick data from Yahoo Finance (Hyperliquid doesn't provide historical candles)"""
         try:
             symbol = symbol or self.config.SYMBOL
             
-            # API endpoint has issues (422 errors), use Yahoo Finance as fallback
-            logger.warning(f"Hyperliquid klines API has issues, using Yahoo Finance for {symbol}")
+            logger.info(f"📊 Getting {interval} klines from Yahoo Finance for {symbol}")
+            return self._get_yahoo_fallback_klines(symbol, interval, limit)
             
+        except Exception as e:
+            logger.error(f"❌ Failed to get klines: {e}")
+            return []
+    
+
+    
+    
+    
+
+    
+    def _get_yahoo_fallback_klines(self, symbol: str, interval: str, limit: int) -> List[Dict[str, Any]]:
+        """Fallback to Yahoo Finance for klines data"""
+        try:
             yahoo_fetcher = YahooDataFetcher()
             
             # Map Hyperliquid intervals to Yahoo intervals
@@ -611,107 +646,19 @@ class HyperliquidAPI:
                 candles = yahoo_fetcher.get_5m_klines(symbol, limit)
             
             if candles:
-                logger.info(f"Retrieved {len(candles)} {interval} klines from Yahoo Finance for {symbol}")
+                logger.info(f"📊 Retrieved {len(candles)} {interval} klines from Yahoo Finance fallback for {symbol}")
                 return candles
             else:
-                logger.warning(f"No kline data available from Yahoo Finance for {symbol}")
+                logger.warning(f"⚠️ No kline data available from Yahoo Finance fallback for {symbol}")
                 return []
             
         except Exception as e:
-            logger.error(f"Failed to get klines: {e}")
+            logger.error(f"❌ Yahoo Finance fallback failed: {e}")
             return []
     
-    def get_5m_candles_with_volume(self, symbol: str = None, limit: int = 20) -> List[Dict[str, Any]]:
-        """Get 5-minute candlestick data with volume information from Yahoo Finance"""
-        try:
-            symbol = symbol or self.config.SYMBOL
-            
-            # Use Yahoo Finance for volume data since Hyperliquid API doesn't support candlestick volume
-            yahoo_fetcher = YahooDataFetcher()
-            candles = yahoo_fetcher.get_5m_klines(symbol, limit)
-            
-            if candles:
-                logger.info(f"Retrieved {len(candles)} 5m candles with volume from Yahoo Finance for {symbol}")
-                return candles
-            else:
-                logger.warning(f"No volume data available from Yahoo Finance for {symbol}")
-                return []
-            
-        except Exception as e:
-            logger.error(f"Failed to get 5m candles with volume: {e}")
-            return []
+
     
-    def get_current_5m_volume(self, symbol: str = None) -> Dict[str, Any]:
-        """Get current 5-minute volume statistics from real trade data"""
-        try:
-            symbol = symbol or self.config.SYMBOL
-            
-            # Get real volume data from trade history
-            trades = self.get_trade_history(symbol, limit=100)
-            if trades:
-                # Calculate recent volume from trades
-                current_time = time.time() * 1000  # Convert to milliseconds
-                five_minutes_ago = current_time - (5 * 60 * 1000)
-                
-                recent_trades = [t for t in trades if t.get('time', 0) > five_minutes_ago]
-                recent_volume = sum(float(t.get('sz', 0)) for t in recent_trades)
-                trade_count = len(recent_trades)
-                
-                # Calculate volume trend
-                ten_minutes_ago = current_time - (10 * 60 * 1000)
-                older_trades = [t for t in trades if five_minutes_ago >= t.get('time', 0) > ten_minutes_ago]
-                older_volume = sum(float(t.get('sz', 0)) for t in older_trades)
-                
-                volume_trend = "INCREASING" if recent_volume > older_volume else "DECREASING" if recent_volume < older_volume else "STABLE"
-                
-                volume_data = {
-                    "current_volume": recent_volume,
-                    "volume_category": "HIGH" if recent_volume > 1.0 else "MEDIUM" if recent_volume > 0.1 else "LOW",
-                    "trade_count": trade_count,
-                    "volume_trend": volume_trend,
-                    "data_source": "hyperliquid_trade_history"
-                }
-                
-                logger.debug(f"Retrieved volume data for {symbol}: {recent_volume:.3f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
-                return volume_data
-            
-            # Fallback to orderbook depth as volume proxy
-            market_data = self.get_market_data(symbol)
-            if market_data and 'levels' in market_data:
-                bids = market_data['levels'][0] if len(market_data['levels']) > 0 else []
-                asks = market_data['levels'][1] if len(market_data['levels']) > 1 else []
-                
-                total_depth = sum(float(level['sz']) for level in bids[:5]) + sum(float(level['sz']) for level in asks[:5])
-                
-                volume_data = {
-                    "current_volume": total_depth * 0.1,  # Estimate volume as 10% of depth
-                    "volume_category": "ESTIMATED",
-                    "trade_count": 0,
-                    "volume_trend": "UNKNOWN",
-                    "data_source": "orderbook_depth_estimate"
-                }
-                
-                logger.debug(f"Estimated volume data for {symbol}: {volume_data['current_volume']:.3f} BTC (from orderbook depth)")
-                return volume_data
-            
-            return {
-                "current_volume": 0.0,
-                "volume_category": "UNKNOWN",
-                "avg_volume": 0.0,
-                "volume_trend": "UNKNOWN",
-                "data_source": "no_data_available"
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get current 5m volume: {e}")
-            return {
-                "current_volume": 0,
-                "volume_category": "ERROR",
-                "avg_volume": 0,
-                "volume_trend": "ERROR",
-                "error": str(e),
-                "data_source": "error"
-            }
+
     
 
     
@@ -795,215 +742,382 @@ class HyperliquidAPI:
             logger.error(f"Failed to calculate liquidation price: {e}")
             return 0.0
     
-    def get_volume_stats(self, symbol: str = None) -> Dict[str, Any]:
-        """Get current volume statistics and 24h trading data"""
-        try:
-            symbol = symbol or self.config.SYMBOL
-            
-            # Try to get volume data from trade history
-            try:
-                trades = self.get_trade_history(symbol, limit=100)
-                if trades:
-                    # Calculate recent volume from trades
-                    current_time = time.time() * 1000  # Convert to milliseconds
-                    one_hour_ago = current_time - (60 * 60 * 1000)
-                    
-                    recent_trades = [t for t in trades if t.get('time', 0) > one_hour_ago]
-                    hour_volume = sum(float(t.get('size', 0)) for t in recent_trades)
-                    hour_trade_count = len(recent_trades)
-                    
-                    # Estimate 24h volume
-                    volume_24h_estimate = hour_volume * 24
-                    
-                    return {
-                        "symbol": symbol,
-                        "hour_volume": hour_volume,
-                        "hour_trade_count": hour_trade_count,
-                        "estimated_24h_volume": volume_24h_estimate,
-                        "avg_trade_size": hour_volume / hour_trade_count if hour_trade_count > 0 else 0,
-                        "data_source": "trade_history_calculation"
-                    }
-            except Exception as e:
-                logger.warning(f"Could not calculate volume from trades: {e}")
-            
-            # Fallback: Try to get from orderbook depth
-            try:
-                market_data = self.get_market_data(symbol)
-                if market_data and 'levels' in market_data:
-                    bids = market_data['levels'][0] if len(market_data['levels']) > 0 else []
-                    asks = market_data['levels'][1] if len(market_data['levels']) > 1 else []
-                    
-                    # Calculate orderbook depth as proxy for volume activity
-                    bid_depth = sum(float(level['sz']) for level in bids[:10]) if bids else 0
-                    ask_depth = sum(float(level['sz']) for level in asks[:10]) if asks else 0
-                    total_depth = bid_depth + ask_depth
-                    
-                    return {
-                        "symbol": symbol,
-                        "orderbook_depth": total_depth,
-                        "bid_depth": bid_depth,
-                        "ask_depth": ask_depth,
-                        "depth_imbalance": (bid_depth - ask_depth) / (bid_depth + ask_depth) if total_depth > 0 else 0,
-                        "data_source": "orderbook_depth"
-                    }
-            except Exception as e:
-                logger.warning(f"Could not get orderbook depth: {e}")
-            
-            return {
-                "symbol": symbol,
-                "error": "No volume data available from Hyperliquid",
-                "data_source": "none"
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get volume stats: {e}")
-            return {"error": str(e), "data_source": "error"}
+
     
-    def get_current_market_indicators(self, symbol: str = None) -> Dict[str, Any]:
-        """Get comprehensive current market indicators including volume and liquidity metrics"""
-        try:
-            symbol = symbol or self.config.SYMBOL
-            
-            # Get current price from allMids
-            endpoint = "/info"
-            payload = {"type": "allMids"}
-            response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
-            current_price = 0
-            
-            if response.status_code == 200:
-                mids_data = response.json()
-                current_price = float(mids_data.get(symbol, 0))
-            
-            # Get volume stats
-            volume_stats = self.get_volume_stats(symbol)
-            
-            # Get orderbook for liquidity analysis
-            market_data = self.get_market_data(symbol)
-            liquidity_metrics = {}
-            
-            if market_data and 'levels' in market_data and isinstance(market_data['levels'], list) and len(market_data['levels']) >= 2:
-                bids_level = market_data['levels'][0]
-                asks_level = market_data['levels'][1]
-                
-                # Ensure bids and asks are lists
-                if isinstance(bids_level, list) and isinstance(asks_level, list):
-                    bid_depth = 0
-                    ask_depth = 0
-                    
-                    # Calculate bid depth
-                    for level in bids_level[:10]:
-                        if isinstance(level, dict) and 'sz' in level:
-                            bid_depth += float(level['sz'])
-                    
-                    # Calculate ask depth
-                    for level in asks_level[:10]:
-                        if isinstance(level, dict) and 'sz' in level:
-                            ask_depth += float(level['sz'])
-                    
-                    total_depth = bid_depth + ask_depth
-                    
-                    # Calculate spread safely
-                    spread = 0
-                    spread_pct = 0
-                    if bids_level and asks_level:
-                        try:
-                            best_bid = float(bids_level[0]['px']) if isinstance(bids_level[0], dict) and 'px' in bids_level[0] else 0
-                            best_ask = float(asks_level[0]['px']) if isinstance(asks_level[0], dict) and 'px' in asks_level[0] else 0
-                            spread = best_ask - best_bid
-                            spread_pct = (spread / current_price * 100) if current_price > 0 else 0
-                        except (KeyError, ValueError, TypeError):
-                            spread = 0
-                            spread_pct = 0
-                    
-                    liquidity_metrics = {
-                        "bid_depth": bid_depth,
-                        "ask_depth": ask_depth,
-                        "total_depth": total_depth,
-                        "depth_imbalance": (bid_depth - ask_depth) / total_depth if total_depth > 0 else 0,
-                        "spread": spread,
-                        "spread_pct": spread_pct
-                    }
-            
-            return {
-                "symbol": symbol,
-                "current_price": current_price,
-                "volume_stats": volume_stats,
-                "liquidity_metrics": liquidity_metrics,
-                "timestamp": time.time(),
-                "data_source": "hyperliquid_real_time"
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get market indicators: {e}")
-            return {"error": str(e)}
+
     
-    def calculate_rsi_from_yahoo_data(self, candles: List[Dict], periods: int = 20) -> Dict[str, Any]:
-        """Calculate proper RSI using historical price data from Yahoo Finance (20-period for crypto accuracy)"""
+    def calculate_rsi_from_yahoo_data(self, candles: List[Dict], periods: int = 14) -> Dict[str, Any]:
+        """Calculate RSI using Wilder's Smoothing method (standard for most exchanges including Hyperliquid)"""
         try:
             if not candles or len(candles) < periods + 1:
                 return {
-                    "rsi": 50.0,
+                    "rsi": None,  # Use None instead of 50.0 for proper N/A handling
+                    "trend": "NEUTRAL",
+                    "signal": "NEUTRAL",
                     "error": f"Insufficient data for RSI calculation (need {periods + 1}, have {len(candles)})",
-                    "calculation_method": "insufficient_data"
+                    "data_source": "insufficient_data"
                 }
             
-            # Get closing prices
-            closes = [float(candle["close"]) for candle in candles[-(periods + 1):]]
+            # Handle both Yahoo Finance and Hyperliquid candle formats
+            closes = []
+            for candle in candles[-(periods + 1):]:
+                if isinstance(candle, dict):
+                    # Try different possible close price keys
+                    close_price = None
+                    for key in ['close', 'Close', 'close_price']:
+                        if key in candle and candle[key] is not None:
+                            try:
+                                close_price = float(candle[key])
+                                break
+                            except (ValueError, TypeError):
+                                continue
+                    
+                    if close_price is not None and close_price > 0:
+                        closes.append(close_price)
+            
+            if len(closes) < periods + 1:
+                return {
+                    "rsi": None,  # Use None instead of 50.0 for proper N/A handling
+                    "trend": "NEUTRAL", 
+                    "signal": "NEUTRAL",
+                    "error": f"Invalid close prices for RSI calculation",
+                    "data_source": "invalid_data"
+                }
             
             # Calculate price changes
-            price_changes = []
+            changes = []
             for i in range(1, len(closes)):
                 change = closes[i] - closes[i-1]
-                price_changes.append(change)
+                changes.append(change)
             
-            # Separate gains and losses
-            gains = [change if change > 0 else 0 for change in price_changes]
-            losses = [-change if change < 0 else 0 for change in price_changes]
+            # Calculate initial average gain and loss (first 'periods' changes)
             
-            # Calculate average gain and loss
-            avg_gain = sum(gains) / periods if gains else 0
-            avg_loss = sum(losses) / periods if losses else 0
+            # Calculate initial average gain and loss (first 'periods' changes)
+            gains = []
+            losses = []
+            for change in changes[:periods]:
+                if change > 0:
+                    gains.append(change)
+                    losses.append(0)
+                else:
+                    gains.append(0)
+                    losses.append(abs(change))
             
-            # Calculate RSI
+            # Initial averages
+            avg_gain = sum(gains) / periods
+            avg_loss = sum(losses) / periods
+            
+            # Apply Wilder's Smoothing for remaining changes
+            for change in changes[periods:]:
+                if change > 0:
+                    current_gain = change
+                    current_loss = 0
+                else:
+                    current_gain = 0
+                    current_loss = abs(change)
+                
+                # Wilder's Smoothing: (Previous Average * (Period - 1) + Current Value) / Period
+                avg_gain = (avg_gain * (periods - 1) + current_gain) / periods
+                avg_loss = (avg_loss * (periods - 1) + current_loss) / periods
+            
+            # Calculate RSI using Wilder's formula
             if avg_loss == 0:
-                rsi = 100.0  # No losses = maximum RSI
+                rsi = 100
             else:
                 rs = avg_gain / avg_loss
                 rsi = 100 - (100 / (1 + rs))
             
-            # Get current price
-            current_price = closes[-1]
+            # Determine trend and signal
+            
+            # Determine trend and signal
+            if rsi > 70:
+                trend = "OVERBOUGHT"
+                signal = "SELL"
+            elif rsi < 30:
+                trend = "OVERSOLD"
+                signal = "BUY"
+            else:
+                trend = "NEUTRAL"
+                signal = "HOLD"
+            
+            # Determine data source
+            if candles and len(candles) > 0:
+                data_source = candles[0].get('data_source', 'unknown')
+            else:
+                data_source = 'unknown'
             
             return {
-                "rsi": rsi,
-                "current_price": current_price,
-                "calculation_method": f"proper_rsi_{periods}_period",
-                "periods_used": periods,
-                "avg_gain": avg_gain,
-                "avg_loss": avg_loss,
-                "overbought_threshold": 70,
-                "oversold_threshold": 30,
-                "is_overbought": rsi > 70,
-                "is_oversold": rsi < 30,
-                "timestamp": time.time()
+                "rsi": round(rsi, 2),
+                "trend": trend,
+                "signal": signal,
+                "periods": periods,
+                "data_source": data_source,
+                "last_close": closes[-1] if closes else None,
+                "calculation_method": "Wilder's Smoothing"
             }
             
         except Exception as e:
-            logger.error(f"Failed to calculate RSI from Yahoo data: {e}")
-            return {"error": str(e), "rsi": 50.0}
+            logger.error(f"❌ RSI calculation failed: {e}")
+            return {
+                "rsi": None,  # Use None instead of 50.0 for proper N/A handling
+                "trend": "NEUTRAL",
+                "signal": "NEUTRAL", 
+                "error": str(e),
+                "data_source": "calculation_error"
+            }
 
-    def get_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
-        """Get ultimate buy/sell pressure indicator from real market data"""
+
+
+    def get_enhanced_volume_analysis(self, symbol: str = None) -> Dict[str, Any]:
+        """Get enhanced volume analysis using order book dynamics and trade flow"""
         try:
             symbol = symbol or self.config.SYMBOL
             
-            # Get real market data for pressure analysis
+            # Get market data for order book analysis
+            market_data = self.get_market_data(symbol)
+            if not market_data or 'levels' not in market_data:
+                return {
+                    "current_volume": 0.0,
+                    "volume_category": "UNKNOWN",
+                    "volume_trend": "UNKNOWN",
+                    "order_flow": "NEUTRAL",
+                    "depth_analysis": "INSUFFICIENT_DATA",
+                    "data_source": "no_market_data"
+                }
+            
+            levels = market_data['levels']
+            if len(levels) < 2:
+                return {
+                    "current_volume": 0.0,
+                    "volume_category": "UNKNOWN", 
+                    "volume_trend": "UNKNOWN",
+                    "order_flow": "NEUTRAL",
+                    "depth_analysis": "INSUFFICIENT_DATA",
+                    "data_source": "insufficient_levels"
+                }
+            
+            bids = levels[0] if isinstance(levels[0], list) else []
+            asks = levels[1] if isinstance(levels[1], list) else []
+            
+            if not bids or not asks:
+                return {
+                    "current_volume": 0.0,
+                    "volume_category": "UNKNOWN",
+                    "volume_trend": "UNKNOWN", 
+                    "order_flow": "NEUTRAL",
+                    "depth_analysis": "NO_ORDERBOOK",
+                    "data_source": "no_orderbook_data"
+                }
+            
+            # Calculate order book depth metrics
+            bid_depth_5 = sum(float(level['sz']) for level in bids[:5])
+            ask_depth_5 = sum(float(level['sz']) for level in asks[:5])
+            bid_depth_10 = sum(float(level['sz']) for level in bids[:10])
+            ask_depth_10 = sum(float(level['sz']) for level in asks[:10])
+            
+            total_depth_5 = bid_depth_5 + ask_depth_5
+            total_depth_10 = bid_depth_10 + ask_depth_10
+            
+            # Calculate volume from order book depth (more accurate than trade history)
+            # Use depth as a proxy for recent trading activity
+            estimated_volume = total_depth_5 * 0.15  # 15% of depth as recent volume
+            
+            # Analyze order flow imbalance
+            bid_ask_ratio = bid_depth_5 / ask_depth_5 if ask_depth_5 > 0 else 1.0
+            depth_imbalance = (bid_depth_5 - ask_depth_5) / total_depth_5 if total_depth_5 > 0 else 0
+            
+            # Determine order flow direction
+            if bid_ask_ratio > 1.3:
+                order_flow = "STRONG_BUY"
+            elif bid_ask_ratio > 1.1:
+                order_flow = "BUY"
+            elif bid_ask_ratio < 0.7:
+                order_flow = "STRONG_SELL"
+            elif bid_ask_ratio < 0.9:
+                order_flow = "SELL"
+            else:
+                order_flow = "NEUTRAL"
+            
+            # Categorize volume based on depth
+            if total_depth_5 > 2.0:
+                volume_category = "HIGH"
+            elif total_depth_5 > 0.5:
+                volume_category = "MEDIUM"
+            else:
+                volume_category = "LOW"
+            
+            # Analyze depth distribution for volume trend
+            depth_ratio = total_depth_5 / total_depth_10 if total_depth_10 > 0 else 1.0
+            if depth_ratio > 0.8:
+                volume_trend = "INCREASING"  # More volume near market
+            elif depth_ratio < 0.6:
+                volume_trend = "DECREASING"  # Less volume near market
+            else:
+                volume_trend = "STABLE"
+            
+            # Analyze depth quality
+            if total_depth_5 > 1.0 and abs(depth_imbalance) < 0.3:
+                depth_analysis = "HEALTHY"
+            elif total_depth_5 > 0.5:
+                depth_analysis = "MODERATE"
+            else:
+                depth_analysis = "THIN"
+            
+            return {
+                "current_volume": estimated_volume,
+                "volume_category": volume_category,
+                "volume_trend": volume_trend,
+                "order_flow": order_flow,
+                "depth_analysis": depth_analysis,
+                "bid_depth_5": bid_depth_5,
+                "ask_depth_5": ask_depth_5,
+                "total_depth_5": total_depth_5,
+                "bid_ask_ratio": bid_ask_ratio,
+                "depth_imbalance": depth_imbalance,
+                "data_source": "orderbook_depth_analysis"
+            }
+            
+        except Exception as e:
+            logger.error(f"Enhanced volume analysis failed: {e}")
+            return {
+                "current_volume": 0.0,
+                "volume_category": "ERROR",
+                "volume_trend": "ERROR",
+                "order_flow": "NEUTRAL",
+                "depth_analysis": "ERROR",
+                "error": str(e),
+                "data_source": "error"
+            }
+
+    def get_enhanced_volatility_analysis(self, symbol: str = None) -> Dict[str, Any]:
+        """Get enhanced volatility analysis using order book dynamics and spread analysis"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Get market data for volatility analysis
+            market_data = self.get_market_data(symbol)
+            if not market_data or 'levels' not in market_data:
+                return {
+                    "volatility_5m": 0.0,
+                    "volatility_category": "UNKNOWN",
+                    "spread_volatility": 0.0,
+                    "depth_volatility": 0.0,
+                    "volatility_trend": "UNKNOWN",
+                    "data_source": "no_market_data"
+                }
+            
+            levels = market_data['levels']
+            if len(levels) < 2:
+                return {
+                    "volatility_5m": 0.0,
+                    "volatility_category": "UNKNOWN",
+                    "spread_volatility": 0.0,
+                    "depth_volatility": 0.0,
+                    "volatility_trend": "UNKNOWN",
+                    "data_source": "insufficient_levels"
+                }
+            
+            bids = levels[0] if isinstance(levels[0], list) else []
+            asks = levels[1] if isinstance(levels[1], list) else []
+            
+            if not bids or not asks:
+                return {
+                    "volatility_5m": 0.0,
+                    "volatility_category": "UNKNOWN",
+                    "spread_volatility": 0.0,
+                    "depth_volatility": 0.0,
+                    "volatility_trend": "UNKNOWN",
+                    "data_source": "no_orderbook_data"
+                }
+            
+            # Calculate spread-based volatility
+            spreads = []
+            for i in range(min(5, len(bids), len(asks))):
+                try:
+                    bid_price = float(bids[i]['px'])
+                    ask_price = float(asks[i]['px'])
+                    spread = ask_price - bid_price
+                    spread_pct = spread / bid_price
+                    spreads.append(spread_pct)
+                except (KeyError, ValueError, TypeError):
+                    continue
+            
+            # Calculate spread volatility
+            if spreads:
+                spread_volatility = statistics.mean(spreads)
+                spread_std = statistics.stdev(spreads) if len(spreads) > 1 else 0
+            else:
+                spread_volatility = 0.0
+                spread_std = 0.0
+            
+            # Calculate depth-based volatility (how much depth varies across levels)
+            bid_depths = [float(level['sz']) for level in bids[:5] if 'sz' in level]
+            ask_depths = [float(level['sz']) for level in asks[:5] if 'sz' in level]
+            
+            depth_volatility = 0.0
+            if bid_depths and ask_depths:
+                # Calculate coefficient of variation for depth
+                all_depths = bid_depths + ask_depths
+                if len(all_depths) > 1:
+                    mean_depth = statistics.mean(all_depths)
+                    depth_std = statistics.stdev(all_depths)
+                    depth_volatility = depth_std / mean_depth if mean_depth > 0 else 0
+            
+            # Combine spread and depth volatility for overall volatility
+            combined_volatility = (spread_volatility * 0.6) + (depth_volatility * 0.4)
+            
+            # Categorize volatility
+            if combined_volatility > 0.005:  # 0.5%
+                volatility_category = "HIGH"
+            elif combined_volatility > 0.002:  # 0.2%
+                volatility_category = "MEDIUM"
+            else:
+                volatility_category = "LOW"
+            
+            # Determine volatility trend based on spread consistency
+            if spread_std > 0.001:
+                volatility_trend = "INCREASING"
+            elif spread_std < 0.0001:
+                volatility_trend = "DECREASING"
+            else:
+                volatility_trend = "STABLE"
+            
+            return {
+                "volatility_5m": combined_volatility,
+                "volatility_category": volatility_category,
+                "spread_volatility": spread_volatility,
+                "depth_volatility": depth_volatility,
+                "volatility_trend": volatility_trend,
+                "avg_spread": spread_volatility,
+                "spread_std": spread_std,
+                "data_source": "orderbook_volatility_analysis"
+            }
+            
+        except Exception as e:
+            logger.error(f"Enhanced volatility analysis failed: {e}")
+            return {
+                "volatility_5m": 0.0,
+                "volatility_category": "ERROR",
+                "spread_volatility": 0.0,
+                "depth_volatility": 0.0,
+                "volatility_trend": "ERROR",
+                "error": str(e),
+                "data_source": "error"
+            }
+
+    def get_enhanced_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
+        """Get enhanced ultimate pressure analysis using advanced order book metrics"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Get market data for pressure analysis
             market_data = self.get_market_data(symbol)
             if not market_data or 'levels' not in market_data:
                 return {
                     "direction": "NEUTRAL",
                     "pressure_score": 0.5,
                     "confidence": "0%",
+                    "strength": 0.5,
                     "trend": "UNKNOWN",
                     "status": "no_market_data"
                 }
@@ -1014,6 +1128,7 @@ class HyperliquidAPI:
                     "direction": "NEUTRAL", 
                     "pressure_score": 0.5,
                     "confidence": "0%",
+                    "strength": 0.5,
                     "trend": "UNKNOWN",
                     "status": "insufficient_data"
                 }
@@ -1026,44 +1141,70 @@ class HyperliquidAPI:
                     "direction": "NEUTRAL",
                     "pressure_score": 0.5, 
                     "confidence": "0%",
+                    "strength": 0.5,
                     "trend": "UNKNOWN",
                     "status": "no_orderbook_data"
                 }
             
-            # Calculate bid vs ask pressure
-            bid_volume = sum(float(level['sz']) for level in bids[:5])  # Top 5 levels
-            ask_volume = sum(float(level['sz']) for level in asks[:5])  # Top 5 levels
+            # Calculate weighted pressure metrics
+            bid_pressure = 0.0
+            ask_pressure = 0.0
             
-            total_volume = bid_volume + ask_volume
-            if total_volume == 0:
+            # Weight closer levels more heavily (inverse distance weighting)
+            for i, level in enumerate(bids[:10]):
+                try:
+                    size = float(level['sz'])
+                    weight = 1.0 / (i + 1)  # Level 0 gets weight 1, level 1 gets weight 0.5, etc.
+                    bid_pressure += size * weight
+                except (KeyError, ValueError, TypeError):
+                    continue
+            
+            for i, level in enumerate(asks[:10]):
+                try:
+                    size = float(level['sz'])
+                    weight = 1.0 / (i + 1)
+                    ask_pressure += size * weight
+                except (KeyError, ValueError, TypeError):
+                    continue
+            
+            total_pressure = bid_pressure + ask_pressure
+            if total_pressure == 0:
                 return {
                     "direction": "NEUTRAL",
                     "pressure_score": 0.5,
                     "confidence": "0%",
+                    "strength": 0.5,
                     "trend": "UNKNOWN",
                     "status": "no_volume"
                 }
             
-            # Calculate pressure score (0 = all ask pressure, 1 = all bid pressure)
-            pressure_score = bid_volume / total_volume
+            # Calculate weighted pressure score
+            pressure_score = bid_pressure / total_pressure
             
-            # Determine direction
-            if pressure_score > 0.6:
+            # Calculate pressure strength (how much total pressure exists)
+            pressure_strength = min(1.0, total_pressure / 10.0)  # Normalize to 0-1
+            
+            # Determine direction with enhanced thresholds
+            if pressure_score > 0.65:
                 direction = "BUY"
                 confidence = min(95, int(pressure_score * 100))
-            elif pressure_score < 0.4:
+            elif pressure_score < 0.35:
                 direction = "SELL"
                 confidence = min(95, int((1 - pressure_score) * 100))
             else:
                 direction = "NEUTRAL"
                 confidence = 50
             
-            # Determine trend
-            if pressure_score > 0.7:
+            # Determine trend with more granular levels
+            if pressure_score > 0.75:
+                trend = "VERY_STRONG_BUY"
+            elif pressure_score > 0.6:
                 trend = "STRONG_BUY"
             elif pressure_score > 0.55:
                 trend = "BUY"
-            elif pressure_score < 0.3:
+            elif pressure_score < 0.25:
+                trend = "VERY_STRONG_SELL"
+            elif pressure_score < 0.4:
                 trend = "STRONG_SELL"
             elif pressure_score < 0.45:
                 trend = "SELL"
@@ -1074,20 +1215,22 @@ class HyperliquidAPI:
                 "direction": direction,
                 "pressure_score": pressure_score,
                 "confidence": f"{confidence}%",
+                "strength": pressure_strength,
                 "trend": trend,
-                "bid_volume": bid_volume,
-                "ask_volume": ask_volume,
-                "total_volume": total_volume,
+                "bid_pressure": bid_pressure,
+                "ask_pressure": ask_pressure,
+                "total_pressure": total_pressure,
                 "status": "success",
-                "data_source": "real_orderbook_analysis"
+                "data_source": "enhanced_orderbook_analysis"
             }
                 
         except Exception as e:
-            logger.error(f"❌ Ultimate pressure analysis failed: {e}")
+            logger.error(f"❌ Enhanced ultimate pressure analysis failed: {e}")
             return {
                 "direction": "ERROR",
                 "pressure_score": 0.5,
                 "confidence": "0%",
+                "strength": 0.5,
                 "status": "error",
                 "error": str(e)
             }

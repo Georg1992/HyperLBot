@@ -197,10 +197,10 @@ class TradingLogger:
                 "resistance_5m": signal_data.get("resistance_5m"),
                 "trend_5m": signal_data.get("trend_5m"),
                 "trend_1h": signal_data.get("trend_1h"),
-                "hourly_confidence": signal_data.get("hourly_confidence"),
-                "range_size": signal_data.get("range_size")
+                "volatility_5m": signal_data.get("volatility_5m"),
+                "market_condition": signal_data.get("market_condition")
             },
-            "variability_analysis": signal_data.get("variability_analysis", {}),
+            "variability_analysis": {},  # Variability analysis is handled separately
             "profitability_analysis": signal_data.get("profitability", {}),
             "optimal_params": signal_data.get("optimal_params", {})
         }

@@ -380,31 +380,31 @@
                     <div id="trading-summary">
                         <div class="data-item">
                             <span class="data-label">Total Trades:</span>
-                            <span class="data-value" id="total-trades">0</span>
+                            <span class="data-value" id="total-trades">N/A</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Winning Trades:</span>
-                            <span class="data-value trend-up" id="winning-trades">0</span>
+                            <span class="data-value trend-up" id="winning-trades">N/A</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Losing Trades:</span>
-                            <span class="data-value trend-down" id="losing-trades">0</span>
+                            <span class="data-value trend-down" id="losing-trades">N/A</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Total P&L:</span>
-                            <span class="data-value" id="balance-change">+$0.00</span>
+                            <span class="data-value" id="balance-change">N/A</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Realized P&L:</span>
-                            <span class="data-value" id="realized-pnl">+$0.00</span>
+                            <span class="data-value" id="realized-pnl">N/A</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Unrealized P&L:</span>
-                            <span class="data-value" id="unrealized-pnl">+$0.00</span>
+                            <span class="data-value" id="unrealized-pnl">N/A</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Win Rate:</span>
-                            <span class="data-value" id="win-rate">0%</span>
+                            <span class="data-value" id="win-rate">N/A</span>
                         </div>
                     </div>
                 </div>
@@ -505,19 +505,19 @@
                 <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: center;">
                     <div>
                         <div class="data-label">Open Positions</div>
-                        <div class="data-value" id="open-positions-count">0</div>
+                        <div class="data-value" id="open-positions-count">N/A</div>
                     </div>
                     <div>
                         <div class="data-label">Pending Orders</div>
-                        <div class="data-value" id="pending-orders-count">0</div>
+                        <div class="data-value" id="pending-orders-count">N/A</div>
                     </div>
                     <div>
                         <div class="data-label">Today's Trades</div>
-                        <div class="data-value" id="todays-trades-count">0</div>
+                        <div class="data-value" id="todays-trades-count">N/A</div>
                     </div>
                     <div>
                         <div class="data-label">Avg Trade Time</div>
-                        <div class="data-value" id="avg-trade-time">0m</div>
+                        <div class="data-value" id="avg-trade-time">N/A</div>
                     </div>
                 </div>
             </div>
@@ -709,8 +709,8 @@
             updateSessionData(session) {
                 console.log('📊 Updating session data:', session);
                 
-                document.getElementById('session-status').textContent = session.status || 'UNKNOWN';
-                document.getElementById('session-strategy').textContent = session.strategy || 'Unknown';
+                document.getElementById('session-status').textContent = session.status || 'N/A';
+                document.getElementById('session-strategy').textContent = session.strategy || 'N/A';
                 document.getElementById('session-balance').textContent = 
                     session.current_balance ? `$${parseFloat(session.current_balance).toFixed(2)}` : 'Loading...';
                 
@@ -732,8 +732,8 @@
                         document.getElementById('session-time').textContent = `${minutes} minutes`;
                     }
                 } else {
-                    console.log('📊 No start time available, showing "Not started"');
-                    document.getElementById('session-time').textContent = 'Not started';
+                    console.log('📊 No start time available, showing "N/A"');
+                    document.getElementById('session-time').textContent = 'N/A';
                 }
             }
             
@@ -746,21 +746,27 @@
                 
                 // Update trend
                 const trendElement = document.getElementById('market-trend');
-                trendElement.textContent = market.trend || 'UNKNOWN';
+                trendElement.textContent = market.trend || 'N/A';
                 trendElement.className = 'data-value ' + this.getTrendClass(market.trend);
                 
                 // Update RSI
-                document.getElementById('market-rsi').textContent = 
-                    market.rsi ? `${parseFloat(market.rsi).toFixed(1)}` : 'Loading...';
+                const rsiElement = document.getElementById('market-rsi');
+                if (market.rsi && market.rsi !== 'N/A' && !isNaN(parseFloat(market.rsi))) {
+                    rsiElement.textContent = `${parseFloat(market.rsi).toFixed(1)}`;
+                } else {
+                    rsiElement.textContent = 'N/A';
+                }
                 
                 // Update Volume with enhanced display and timestamps
                 const volumeElement = document.getElementById('market-volume');
                 if (market.volume_depth !== undefined) {
                     const volume = parseFloat(market.volume_depth);
-                    const category = market.volume_category || 'UNKNOWN';
+                    const category = market.volume_category || 'N/A';
+                    const orderFlow = market.order_flow || 'NEUTRAL';
+                    const depthAnalysis = market.depth_analysis || 'UNKNOWN';
                     const timestamp = new Date().toLocaleTimeString();
                     
-                    volumeElement.innerHTML = `${volume.toFixed(1)} BTC (${category}) <span style="font-size: 10px; color: #888;">[${timestamp}]</span>`;
+                    volumeElement.innerHTML = `${volume.toFixed(1)} BTC (${category})<br><span style="font-size: 11px; color: #888;">Flow: ${orderFlow} | Depth: ${depthAnalysis}</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
                     
                     // Color code volume based on category
                     if (category === 'HIGH') {
@@ -771,46 +777,52 @@
                         volumeElement.className = 'data-value';
                     }
                 } else {
-                    volumeElement.textContent = 'Loading...';
+                    volumeElement.textContent = 'N/A';
                 }
                 
                 // Update Volatility with enhanced display and timestamps
                 const volatilityElement = document.getElementById('market-volatility');
-                if (market.volatility_5m !== undefined) {
+                if (market.volatility_5m !== undefined && market.volatility_5m !== 'N/A' && !isNaN(parseFloat(market.volatility_5m))) {
                     const volatility = parseFloat(market.volatility_5m) * 100;
+                    const category = market.volatility_category || 'UNKNOWN';
+                    const trend = market.volatility_trend || 'UNKNOWN';
                     const timestamp = new Date().toLocaleTimeString();
                     
-                    volatilityElement.innerHTML = `${volatility.toFixed(2)}% <span style="font-size: 10px; color: #888;">[${timestamp}]</span>`;
+                    volatilityElement.innerHTML = `${volatility.toFixed(2)}% (${category})<br><span style="font-size: 11px; color: #888;">Trend: ${trend}</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
                     
                     // Color code volatility
-                    if (volatility > 1.0) {
+                    if (category === 'HIGH') {
                         volatilityElement.className = 'data-value trend-down'; // High volatility = red
-                    } else if (volatility > 0.5) {
-                        volatilityElement.className = 'data-value';
-                    } else {
+                    } else if (category === 'LOW') {
                         volatilityElement.className = 'data-value trend-up'; // Low volatility = green
+                    } else {
+                        volatilityElement.className = 'data-value';
                     }
                 } else {
-                    volatilityElement.textContent = 'Loading...';
+                    volatilityElement.textContent = 'N/A';
                 }
                 
-                // Update Ultimate Pressure
+                // Update Ultimate Pressure with enhanced display
                 const pressureElement = document.getElementById('market-pressure');
-                if (market.ultimate_pressure) {
+                if (market.ultimate_pressure && market.ultimate_pressure.direction && market.ultimate_pressure.direction !== 'N/A') {
                     const direction = market.ultimate_pressure.direction || 'NEUTRAL';
                     const confidence = market.ultimate_pressure.confidence || '0%';
-                    pressureElement.textContent = `${direction} (${confidence})`;
+                    const strength = market.ultimate_pressure.strength || 0.5;
+                    const trend = market.ultimate_pressure.trend || 'NEUTRAL';
+                    const timestamp = new Date().toLocaleTimeString();
+                    
+                    pressureElement.innerHTML = `${direction} (${confidence})<br><span style="font-size: 11px; color: #888;">Strength: ${(strength * 100).toFixed(0)}% | Trend: ${trend}</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
                     pressureElement.className = 'data-value ' + this.getTrendClass(direction);
                 } else {
-                    pressureElement.textContent = 'Loading...';
+                    pressureElement.textContent = 'N/A';
                     pressureElement.className = 'data-value trend-neutral';
                 }
             }
             
             updateTradingSummary(summary) {
-                document.getElementById('total-trades').textContent = summary.total_trades || 0;
-                document.getElementById('winning-trades').textContent = summary.winning_trades || 0;
-                document.getElementById('losing-trades').textContent = summary.losing_trades || 0;
+                document.getElementById('total-trades').textContent = summary.total_trades || 'N/A';
+                document.getElementById('winning-trades').textContent = summary.winning_trades || 'N/A';
+                document.getElementById('losing-trades').textContent = summary.losing_trades || 'N/A';
                 
                 // Total P&L (balance change)
                 const balanceChange = parseFloat(summary.balance_change || 0);
@@ -842,7 +854,7 @@
                 // Calculate and update win rate
                 const totalTrades = summary.total_trades || 0;
                 const winningTrades = summary.winning_trades || 0;
-                const winRate = totalTrades > 0 ? ((winningTrades / totalTrades) * 100).toFixed(1) : '0.0';
+                const winRate = totalTrades > 0 ? ((winningTrades / totalTrades) * 100).toFixed(1) : 'N/A';
                 const winRateElement = document.getElementById('win-rate');
                 winRateElement.textContent = `${winRate}%`;
                 winRateElement.className = 'data-value ' + (parseFloat(winRate) >= 50 ? 'trend-up' : 'trend-down');
@@ -881,10 +893,10 @@
                     
                     // Update spread
                     document.getElementById('orderbook-spread').textContent = 
-                        orderbook.spread ? `$${orderbook.spread.toFixed(2)} (${orderbook.spread_pct.toFixed(3)}%)` : 'Loading...';
+                        orderbook.spread ? `$${orderbook.spread.toFixed(2)} (${orderbook.spread_pct.toFixed(3)}%)` : 'N/A';
                 } else {
-                    document.getElementById('orderbook-asks').innerHTML = '<tr><td colspan="3">Error loading orderbook</td></tr>';
-                    document.getElementById('orderbook-bids').innerHTML = '<tr><td colspan="3">Error loading orderbook</td></tr>';
+                    document.getElementById('orderbook-asks').innerHTML = '<tr><td colspan="3">N/A</td></tr>';
+                    document.getElementById('orderbook-bids').innerHTML = '<tr><td colspan="3">N/A</td></tr>';
                 }
             }
             
@@ -908,9 +920,9 @@
                     logEntry.className = 'log-entry';
                     
                     // Simple timestamp handling - we send ISO format from Python
-                    const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'Unknown';
+                    const timestamp = log.timestamp ? new Date(log.timestamp).toLocaleTimeString() : 'N/A';
                     
-                    logEntry.innerHTML = `<strong>[${timestamp}]</strong> ${log.message || 'No message'}`;
+                    logEntry.innerHTML = `<strong>[${timestamp}]</strong> ${log.message || 'N/A'}`;
                     
                     container.appendChild(logEntry);
                 });
@@ -924,9 +936,9 @@
                     const latest = predictions[0];
                     // Update prediction status elements
                     this.updateElement('prediction-status', '🔴 Active Predictions');
-                    this.updateElement('latest-signal', latest.type || 'Unknown');
+                    this.updateElement('latest-signal', latest.type || 'N/A');
                     this.updateElement('signal-confidence', `${latest.confidence || 0}%`);
-                    this.updateElement('signal-direction', latest.type || 'Unknown');
+                    this.updateElement('signal-direction', latest.type || 'N/A');
                     
                     // Update confidence color
                     const confidenceElement = document.getElementById('signal-confidence');
@@ -997,10 +1009,10 @@
                 const avgMinutes = Math.round(avgDuration / 60); // Convert to minutes
                 
                 // Update statistics
-                document.getElementById('open-positions-count').textContent = openPositions;
-                document.getElementById('pending-orders-count').textContent = pendingOrders;
-                document.getElementById('todays-trades-count').textContent = todaysTrades;
-                document.getElementById('avg-trade-time').textContent = `${avgMinutes}m`;
+                document.getElementById('open-positions-count').textContent = openPositions || 'N/A';
+                document.getElementById('pending-orders-count').textContent = pendingOrders || 'N/A';
+                document.getElementById('todays-trades-count').textContent = todaysTrades || 'N/A';
+                document.getElementById('avg-trade-time').textContent = avgMinutes > 0 ? `${avgMinutes}m` : 'N/A';
             }
             
             filterAndDisplayTrades(tabType) {
@@ -1028,7 +1040,7 @@
                 const container = document.getElementById('trade-content');
                 
                 if (!trades || trades.length === 0) {
-                    container.innerHTML = '<div class="trade-entry"><div class="log-entry">📭 No trades found</div></div>';
+                    container.innerHTML = '<div class="trade-entry"><div class="log-entry">📭 No trades available</div></div>';
                     return;
                 }
                 
@@ -1064,12 +1076,12 @@
                 
                 // Format timestamp
                 const timestamp = trade.timestamp || trade.created_at;
-                const timeDisplay = timestamp ? new Date(timestamp).toLocaleTimeString() : 'Unknown';
+                const timeDisplay = timestamp ? new Date(timestamp).toLocaleTimeString() : 'N/A';
                 
                 tradeDiv.innerHTML = `
                     <div class="trade-header">
-                        <span class="${sideClass}">${trade.side || 'UNKNOWN'} ${trade.symbol || 'BTC'}</span>
-                        <span class="${statusClass}">${trade.status || 'UNKNOWN'}</span>
+                        <span class="${sideClass}">${trade.side || 'N/A'} ${trade.symbol || 'BTC'}</span>
+                        <span class="${statusClass}">${trade.status || 'N/A'}</span>
                     </div>
                     <div class="trade-details">
                         <div class="trade-detail">

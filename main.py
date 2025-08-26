@@ -113,7 +113,17 @@ def check_and_install_dependencies():
 def start_dashboard():
     """Start the real-time dashboard in a background thread"""
     try:
-        from realtime_dashboard import create_dashboard
+        from realtime_dashboard import create_dashboard, EventDrivenTradingDashboard
+        
+        # Check if dashboard is already running
+        if EventDrivenTradingDashboard.is_dashboard_running(
+            host=constants.DEFAULT_DASHBOARD_HOST, 
+            port=constants.DEFAULT_DASHBOARD_PORT
+        ):
+            logger.info("✅ Dashboard is already running!")
+            logger.info(f"🌐 Dashboard is available at: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
+            logger.info("💡 No need to start a new dashboard instance")
+            return True
         
         def run_dashboard():
             try:
@@ -130,16 +140,25 @@ def start_dashboard():
         dashboard_thread = threading.Thread(target=run_dashboard, daemon=True)
         dashboard_thread.start()
         
-        # Wait a moment for dashboard to start
-        time.sleep(2)
-        
-        # Open browser automatically
-        try:
-            webbrowser.open(f'http://localhost:{constants.DEFAULT_DASHBOARD_PORT}')
-            logger.info("🌐 Real-time dashboard opened automatically in browser")
-        except Exception as e:
-            logger.warning(f"Could not open browser automatically: {e}")
-            logger.info(f"💡 Please open http://localhost:{constants.DEFAULT_DASHBOARD_PORT} manually")
+        # Wait for dashboard to become available
+        logger.info("⏳ Waiting for dashboard to start...")
+        if EventDrivenTradingDashboard.wait_for_dashboard(
+            host=constants.DEFAULT_DASHBOARD_HOST, 
+            port=constants.DEFAULT_DASHBOARD_PORT, 
+            timeout=10
+        ):
+            logger.info("✅ Dashboard started successfully!")
+            
+            # Open browser automatically only if dashboard is newly started
+            try:
+                webbrowser.open(f'http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}')
+                logger.info("🌐 Real-time dashboard opened automatically in browser")
+            except Exception as e:
+                logger.warning(f"Could not open browser automatically: {e}")
+                logger.info(f"💡 Please open http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT} manually")
+        else:
+            logger.warning("⚠️ Dashboard may not have started properly")
+            logger.info(f"💡 Please check if dashboard is available at: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
         
         return True
         

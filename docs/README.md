@@ -7,14 +7,15 @@ This directory contains detailed documentation for various components and featur
 ### Core Features Documentation
 - **[ADVANCED_TRADE_MANAGEMENT.md](./ADVANCED_TRADE_MANAGEMENT.md)** - Advanced trade management system with intelligent quality evaluation and dynamic stop loss management
 - **[ENHANCED_PREDICTION_ENGINE.md](./ENHANCED_PREDICTION_ENGINE.md)** - Enhanced prediction engine with dual-mode architecture for different market conditions
+- **[DATA_FLOW_ARCHITECTURE.md](./DATA_FLOW_ARCHITECTURE.md)** - Data flow architecture and system design principles
 
 ### Integration Guides
 - **[WHALE_INTEGRATION.md](./WHALE_INTEGRATION.md)** - Complete guide for whale analytics integration
-- **[WHALE_INTEGRATION_SUMMARY.md](./WHALE_INTEGRATION_SUMMARY.md)** - Summary of completed whale analytics integration
 
 ### Development Documentation
 - **[PREDICTION_ENGINE_REFACTORING.md](./PREDICTION_ENGINE_REFACTORING.md)** - Summary of prediction engine modularization
 - **[VARIABILITY_THRESHOLD_ADJUSTMENT.md](./VARIABILITY_THRESHOLD_ADJUSTMENT.md)** - Variability analysis optimization
+- **[ACCOUNT_MANAGEMENT_SYSTEM.md](./ACCOUNT_MANAGEMENT_SYSTEM.md)** - Simulated account management system
 
 ## 🚀 Quick Navigation
 
@@ -22,11 +23,13 @@ This directory contains detailed documentation for various components and featur
 - Start with the main [README.md](../README.md) for installation and usage
 - Review [WHALE_INTEGRATION.md](./WHALE_INTEGRATION.md) for whale analytics features
 - Check [ADVANCED_TRADE_MANAGEMENT.md](./ADVANCED_TRADE_MANAGEMENT.md) for advanced trading features
+- See [ACCOUNT_MANAGEMENT_SYSTEM.md](./ACCOUNT_MANAGEMENT_SYSTEM.md) for account management
 
 ### For Developers
 - See [PREDICTION_ENGINE_REFACTORING.md](./PREDICTION_ENGINE_REFACTORING.md) for architecture details
 - Review [ENHANCED_PREDICTION_ENGINE.md](./ENHANCED_PREDICTION_ENGINE.md) for prediction algorithms
 - Check [VARIABILITY_THRESHOLD_ADJUSTMENT.md](./VARIABILITY_THRESHOLD_ADJUSTMENT.md) for analysis optimization
+- Review [DATA_FLOW_ARCHITECTURE.md](./DATA_FLOW_ARCHITECTURE.md) for system design
 
 ## 📋 Feature Status
 

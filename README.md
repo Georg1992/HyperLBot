@@ -180,7 +180,8 @@ HyperLBot/
     ├── PREDICTION_ENGINE_REFACTORING.md    # Refactoring summary
     ├── VARIABILITY_THRESHOLD_ADJUSTMENT.md # Variability analysis
     ├── WHALE_INTEGRATION.md                # Whale analytics guide
-    └── WHALE_INTEGRATION_SUMMARY.md        # Integration summary
+    ├── DATA_FLOW_ARCHITECTURE.md           # System architecture
+    └── ACCOUNT_MANAGEMENT_SYSTEM.md        # Account management
 ```
 
 ## ⚠️ Important Warnings

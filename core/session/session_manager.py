@@ -76,13 +76,8 @@ class SessionManager:
                 # Add startup activity to SimpleRTM
                 simple_rtm.add_activity(f"🚀 Trading session started - {strategy} strategy initialized", "SUCCESS", "session")
                 
-                # Initialize basic market data in SimpleRTM
-                simple_rtm.update_market({
-                    "current_price": 0,
-                    "trend": "INITIALIZING",
-                    "rsi": 50.0,
-                    "volume_depth": 0.0
-                })
+                # DO NOT initialize market data - it should be updated by the bot during operation
+                # Market data is real-time and should not be reset when starting sessions
                 
                 # Session data is managed by SessionManager (source of truth)
                 # SimpleRTM reads from SessionManager automatically
@@ -115,8 +110,16 @@ class SessionManager:
                     logger.warning("⚠️ No active session to close")
                     return False
                 
-                # Get current session data from SimpleRTM
-                session_data = simple_rtm.get_dashboard_data()["session"]
+                # Use internal session data to avoid circular dependency
+                if hasattr(self, 'current_session_data') and self.current_session_data:
+                    session_data = self.current_session_data.copy()
+                else:
+                    session_data = {
+                        "session_id": self.current_session_id,
+                        "start_time": datetime.now().isoformat(),
+                        "status": "COMPLETED",
+                        "strategy": "unknown"
+                    }
                 
                 # Mark session as completed
                 end_time = datetime.now().isoformat()
@@ -125,10 +128,13 @@ class SessionManager:
                 
                 # Calculate duration
                 if "start_time" in session_data:
-                    start_time = datetime.fromisoformat(session_data["start_time"])
-                    end_time_dt = datetime.now()
-                    duration = end_time_dt - start_time
-                    session_data["duration_minutes"] = round(duration.total_seconds() / 60, 2)
+                    try:
+                        start_time = datetime.fromisoformat(session_data["start_time"])
+                        end_time_dt = datetime.now()
+                        duration = end_time_dt - start_time
+                        session_data["duration_minutes"] = round(duration.total_seconds() / 60, 2)
+                    except:
+                        session_data["duration_minutes"] = 0.0
                 
                 # Update internal session data
                 self.current_session_data = session_data
@@ -165,8 +171,7 @@ class SessionManager:
                 return None
             
             try:
-                session_data = simple_rtm.get_dashboard_data()["session"]
-                return session_data
+                return self.current_session_data
                 
             except Exception as e:
                 logger.error(f"Error getting session info: {e}")
@@ -220,25 +225,8 @@ class SessionManager:
                 if not self.current_session_id:
                     return {"error": "No active session"}
                 
-                session_data = simple_rtm.get_dashboard_data()["session"]
-                recent_trades = simple_rtm.get_dashboard_data()["trades"]
-                
-                # Calculate additional statistics
-                if recent_trades:
-                    profitable_trades = [t for t in recent_trades if t.get("was_profitable", False)]
-                    losing_trades = [t for t in recent_trades if not t.get("was_profitable", False)]
-                    
-                    total_pnl = sum(t.get("pnl", 0) for t in recent_trades)
-                    avg_win = sum(t.get("pnl", 0) for t in profitable_trades) / len(profitable_trades) if profitable_trades else 0
-                    avg_loss = sum(t.get("pnl", 0) for t in losing_trades) / len(losing_trades) if losing_trades else 0
-                    
-                    # Update session with calculated stats
-                    session_data["total_pnl"] = total_pnl
-                    session_data["avg_win"] = avg_win
-                    session_data["avg_loss"] = avg_loss
-                    session_data["win_rate"] = (len(profitable_trades) / len(recent_trades) * 100) if recent_trades else 0
-                
-                return session_data
+                # Return internal session data - no dependency on SimpleRTM
+                return self.current_session_data
                 
             except Exception as e:
                 logger.error(f"Error getting session statistics: {e}")

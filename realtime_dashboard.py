@@ -9,6 +9,8 @@ import json
 import time
 import threading
 import re
+import socket
+import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
 import urllib3
@@ -55,6 +57,47 @@ class EventDrivenTradingDashboard:
         self._start_data_monitoring()
         
         logger.info("🚀 Event-Driven Trading Dashboard initialized with WebSocket support")
+    
+    @staticmethod
+    def is_dashboard_running(host='localhost', port=5002) -> bool:
+        """Check if dashboard is already running and accessible"""
+        # Try multiple host addresses since dashboard binds to 0.0.0.0
+        test_hosts = ['localhost', '127.0.0.1', '0.0.0.0']
+        
+        for test_host in test_hosts:
+            try:
+                # Try to connect to the dashboard health endpoint
+                response = requests.get(f'http://{test_host}:{port}/health', timeout=2)
+                if response.status_code == 200:
+                    logger.info(f"✅ Dashboard already running on {test_host}:{port}")
+                    return True
+            except requests.exceptions.RequestException:
+                continue
+        
+        try:
+            # Fallback: check if port is in use
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(1)
+            result = sock.connect_ex(('localhost', port))
+            sock.close()
+            
+            if result == 0:
+                logger.info(f"⚠️ Port {port} is in use, but dashboard may not be responding")
+                return True
+        except Exception:
+            pass
+        
+        return False
+    
+    @staticmethod
+    def wait_for_dashboard(host='localhost', port=5002, timeout=10) -> bool:
+        """Wait for dashboard to become available"""
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            if EventDrivenTradingDashboard.is_dashboard_running(host, port):
+                return True
+            time.sleep(0.5)
+        return False
     
     def _setup_websocket_handlers(self):
         """Setup WebSocket connection handlers"""
@@ -209,17 +252,25 @@ class EventDrivenTradingDashboard:
     
     def run(self, host='0.0.0.0', port=5002, debug=False):
         """Run the event-driven dashboard"""
-        logger.info(f"🚀 Starting Event-Driven Dashboard on http://{host}:{port}")
-        logger.info("✅ WebSocket real-time updates enabled")
-        logger.info("✅ SimpleRTM - Single source of truth")
-        
-        self.socketio.run(
-            self.app,
-            host=host,
-            port=port,
-            debug=debug,
-            allow_unsafe_werkzeug=True
-        )
+        try:
+            logger.info(f"🚀 Starting Event-Driven Dashboard on http://{host}:{port}")
+            logger.info("✅ WebSocket real-time updates enabled")
+            logger.info("✅ SimpleRTM - Single source of truth")
+            
+            self.socketio.run(
+                self.app,
+                host=host,
+                port=port,
+                debug=debug,
+                allow_unsafe_werkzeug=True
+            )
+        except OSError as e:
+            if "Address already in use" in str(e):
+                logger.warning(f"⚠️ Port {port} is already in use. Dashboard may already be running.")
+                logger.info(f"💡 Dashboard should be available at: http://{host}:{port}")
+                logger.info("💡 If you need to restart, please stop the existing dashboard first.")
+            else:
+                raise e
 
 def create_dashboard():
     """Factory function to create dashboard instance"""
