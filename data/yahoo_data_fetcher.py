@@ -13,6 +13,8 @@ from loguru import logger
 from datetime import datetime, timedelta
 import statistics
 from core.constants import data_constants, volume_constants, technical_constants, time_constants
+from data.yahoo_volume_analyzer import volume_analyzer
+from data.yahoo_momentum_analyzer import momentum_analyzer
 
 class YahooDataFetcher:
     """
@@ -702,143 +704,41 @@ class YahooDataFetcher:
             }
     
     def get_realtime_volume(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """Get real-time volume by aggregating 1-minute candles for the current 5-minute period"""
+        """Get real-time volume using the volume analyzer module"""
         try:
             cache_key = f"realtime_volume_{symbol}"
             cached_data = self._get_cached_data(cache_key)
             if cached_data:
                 return cached_data
             
-            # Get 1-minute candles for the last hour (to cover current 5m period)
+            # Get 1-minute and 5-minute candles
             candles_1m = self.get_klines(symbol, "1m", 60)
-            if not candles_1m:
+            candles_5m = self.get_klines(symbol, "5m", 10)
+            
+            if not candles_1m or not candles_5m:
                 return {
-                    "error": "No 1-minute data available",
+                    "error": "No candle data available",
                     "data_source": "yahoo_finance"
                 }
             
-            # Get current 5-minute candle for reference
-            candles_5m = self.get_klines(symbol, "5m", 10)
-            current_5m = candles_5m[-1] if candles_5m else None
+            # Use volume analyzer for spike detection
+            volume_data = volume_analyzer.detect_volume_spike(candles_1m, candles_5m)
             
-            # Calculate current 5-minute period boundaries
-            now = datetime.now()
-            current_minute = now.minute
-            period_start_minute = (current_minute // 5) * 5  # Round down to nearest 5-minute mark
-            
-            # Create period boundaries
-            period_start = now.replace(minute=period_start_minute, second=0, microsecond=0)
-            period_end = period_start + timedelta(minutes=5)
-            
-            # Filter 1-minute candles for current 5-minute period
-            period_candles = []
-            total_volume = 0
-            completed_volume = 0
-            
-            for candle in candles_1m:
-                candle_time = datetime.fromtimestamp(candle["open_time"] / data_constants.MILLISECONDS_IN_SECOND)
-                
-                # Check if candle is within current 5-minute period
-                if period_start <= candle_time < period_end:
-                    period_candles.append(candle)
-                    total_volume += candle["volume"]
-                    
-                    # If candle is completed (not current minute), add to completed volume
-                    if candle_time < now.replace(second=0, microsecond=0):
-                        completed_volume += candle["volume"]
-            
-            # Calculate volume metrics
-            current_minute_volume = 0
-            if period_candles:
-                # Get current minute's volume (if available)
-                current_minute_candles = [c for c in period_candles 
-                                        if datetime.fromtimestamp(c["open_time"] / data_constants.MILLISECONDS_IN_SECOND).minute == current_minute]
-                if current_minute_candles:
-                    current_minute_volume = current_minute_candles[0]["volume"]
-            
-            # Calculate time progress in current 5-minute period
-            time_elapsed = (now - period_start).total_seconds()
-            period_progress = min(time_elapsed / time_constants.SECONDS_IN_MINUTE * 5, 1.0)  # 5 minutes
-            
-            # Real-time volume estimation for immediate spike detection
-            estimated_current_volume = completed_volume
-            
-            # Strategy 1: Use current minute volume if available (most recent data)
-            if current_minute_volume > 0:
-                estimated_current_volume += current_minute_volume
-                volume_source = "current_minute"
-            # Strategy 2: Use previous 5-minute volume as baseline if current is 0
-            elif completed_volume == 0 and len(candles_5m) >= 2:
-                previous_5m_volume = candles_5m[-2]["volume"] if candles_5m[-2]["volume"] > 0 else 0
-                # Estimate based on time progress and previous volume
-                estimated_current_volume = previous_5m_volume * (period_progress / 1.0)
-                volume_source = "previous_5m_estimate"
-            # Strategy 3: Use recent 1-minute candles average as baseline
-            elif completed_volume == 0 and len(candles_1m) >= 5:
-                recent_volumes = [c["volume"] for c in candles_1m[-5:] if c["volume"] > 0]
-                if recent_volumes:
-                    avg_recent_volume = sum(recent_volumes) / len(recent_volumes)
-                    estimated_current_volume = avg_recent_volume * period_progress
-                    volume_source = "recent_1m_average"
-                else:
-                    volume_source = "no_data"
-            else:
-                volume_source = "no_data"
-            
-            # Volume acceleration detection for immediate spike alerts
-            volume_acceleration = 0
-            if len(candles_1m) >= 10:
-                # Compare last 3 minutes vs previous 3 minutes
-                recent_3m_volume = sum([c["volume"] for c in candles_1m[-3:] if c["volume"] > 0])
-                previous_3m_volume = sum([c["volume"] for c in candles_1m[-6:-3] if c["volume"] > 0])
-                
-                if previous_3m_volume > 0:
-                    volume_acceleration = (recent_3m_volume - previous_3m_volume) / previous_3m_volume
-            
-            # Immediate spike detection based on acceleration
-            is_immediate_spike = False
-            spike_reason = ""
-            if volume_acceleration > 2.0:  # 200% increase
-                is_immediate_spike = True
-                spike_reason = f"VOLUME ACCELERATION: {volume_acceleration*100:.0f}% increase in last 3 minutes"
-            elif estimated_current_volume > 0 and len(candles_1m) >= 20:
-                # Compare against recent average
-                recent_avg = sum([c["volume"] for c in candles_1m[-20:] if c["volume"] > 0]) / 20
-                if recent_avg > 0 and estimated_current_volume > recent_avg * volume_constants.VOLUME_SURGE_MULTIPLIER:  # 300% of average
-                    is_immediate_spike = True
-                    spike_reason = f"VOLUME SPIKE: {estimated_current_volume:.0f} vs avg {recent_avg:.0f}"
-            
-            volume_data = {
-                "current_5m_period": period_start.strftime("%H:%M"),
-                "period_start": period_start.isoformat(),
-                "period_end": period_end.isoformat(),
-                "period_progress": round(period_progress * 100, 1),  # Percentage
-                "total_volume": total_volume,
-                "completed_volume": completed_volume,
-                "current_minute_volume": current_minute_volume,
-                "estimated_current_volume": estimated_current_volume,
-                "candles_in_period": len(period_candles),
-                "yahoo_5m_volume": current_5m["volume"] if current_5m else 0,
+            # Add additional metadata
+            volume_data.update({
                 "data_source": "yahoo_finance_1m_aggregation",
                 "update_frequency": "5_seconds",
-                # Real-time spike detection data
-                "volume_source": volume_source,
-                "volume_acceleration": volume_acceleration,
-                "is_immediate_spike": is_immediate_spike,
-                "spike_reason": spike_reason,
-                "recent_3m_volume": sum([c["volume"] for c in candles_1m[-3:] if c["volume"] > 0]),
-                "previous_3m_volume": sum([c["volume"] for c in candles_1m[-6:-3] if c["volume"] > 0]) if len(candles_1m) >= 6 else 0
-            }
+                "yahoo_5m_volume": candles_5m[-1]["volume"] if candles_5m else 0
+            })
             
             # Cache for 5 seconds
             self._cache_data(cache_key, volume_data)
             
             # Log immediate spike detection
-            if is_immediate_spike:
-                logger.warning(f"🚨 IMMEDIATE VOLUME SPIKE DETECTED: {spike_reason}")
-                logger.warning(f"   Current: {estimated_current_volume:.0f}, Source: {volume_source}")
+            if volume_data.get("is_immediate_spike", False):
+                logger.warning(f"🚨 IMMEDIATE VOLUME SPIKE DETECTED: {volume_data.get('spike_reason', '')}")
+                logger.warning(f"   Current: {volume_data.get('estimated_current_volume', 0):.0f}")
             
-            logger.info(f"📊 Real-time volume: {estimated_current_volume:.0f} (progress: {volume_data['period_progress']}%, source: {volume_source})")
             return volume_data
             
         except Exception as e:
@@ -850,8 +750,7 @@ class YahooDataFetcher:
 
     def get_realtime_momentum_analysis(self, symbol: str = "BTC", current_price: float = None) -> Dict[str, Any]:
         """
-        Get real-time momentum analysis for optimal profitability
-        Calculates momentum indicators every 5 seconds (bot loop frequency)
+        Get real-time momentum analysis using the momentum analyzer module
         """
         try:
             # Get recent 5-minute candles for momentum calculation
@@ -859,42 +758,20 @@ class YahooDataFetcher:
             if not candles_5m or len(candles_5m) < 3:
                 return {"momentum": "NEUTRAL", "strength": 0, "direction": 0}
             
-            # Calculate price momentum
-            recent_closes = [candle["close"] for candle in candles_5m[-3:]]  # Last 3 candles
-            if len(recent_closes) < 3:
-                return {"momentum": "NEUTRAL", "strength": 0, "direction": 0}
+            # Use momentum analyzer for analysis
+            momentum_data = momentum_analyzer.analyze_momentum(candles_5m, symbol)
             
-            # Calculate momentum indicators
-            price_change_1 = (recent_closes[-1] - recent_closes[-2]) / recent_closes[-2]
-            price_change_2 = (recent_closes[-2] - recent_closes[-3]) / recent_closes[-3]
+            # Get enhanced RSI signals
+            rsi_signals = momentum_analyzer.get_enhanced_rsi_signals(candles_5m, momentum_data)
             
-            # Momentum acceleration
-            momentum_acceleration = price_change_1 - price_change_2
+            # Combine momentum and RSI data
+            result = {
+                **momentum_data,
+                "rsi_signals": rsi_signals,
+                "data_source": "yahoo_finance_momentum_analysis"
+            }
             
-            # Determine momentum direction and strength
-            if price_change_1 > technical_constants.PRICE_CHANGE_SIGNIFICANT and momentum_acceleration > 0:  # 0.1% gain with acceleration
-                momentum = "STRONG_UP"
-                direction = 1
-                strength = min(abs(price_change_1) * 100, 1.0)
-            elif price_change_1 > 0.0005:  # 0.05% gain
-                momentum = "WEAK_UP"
-                direction = 1
-                strength = min(abs(price_change_1) * 50, 0.5)
-            elif price_change_1 < -technical_constants.PRICE_CHANGE_SIGNIFICANT and momentum_acceleration < 0:  # 0.1% loss with acceleration
-                momentum = "STRONG_DOWN"
-                direction = -1
-                strength = min(abs(price_change_1) * 100, 1.0)
-            elif price_change_1 < -0.0005:  # 0.05% loss
-                momentum = "WEAK_DOWN"
-                direction = -1
-                strength = min(abs(price_change_1) * 50, 0.5)
-            else:
-                momentum = "NEUTRAL"
-                direction = 0
-                strength = 0
-            
-            # Calculate volatility for momentum context
-            volatility = abs(price_change_1) + abs(price_change_2)
+            return result
             
             return {
                 "momentum": momentum,
