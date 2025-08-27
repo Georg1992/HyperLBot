@@ -14,6 +14,8 @@ from collections import deque
 import core
 
 from core.config import TradingConfig
+from strategies.prediction_confidence import PredictionConfidence
+from strategies.prediction_analysis import PredictionAnalysis
 
 class PredictionEngine:
     """Advanced prediction engine with reactive and predictive modes"""
@@ -40,12 +42,11 @@ class PredictionEngine:
             "PRICE_ACCELERATION": "BUY/SELL"
         }
         
-        # Initialize confidence smoothing variables for stability
-        self._last_reversion_confidence = 0.5
-        self._last_momentum_confidence = 0.6
-        self._last_breakout_confidence = 0.5
+        # Initialize sub-modules
+        self.confidence = PredictionConfidence()
+        self.analysis = PredictionAnalysis()
         
-        logger.info("🎯 Enhanced Prediction Engine initialized with conservative confidence system")
+        logger.info("🎯 Enhanced Prediction Engine initialized with modular confidence and analysis systems")
     
     def _add_prediction_metadata(self, prediction: Dict[str, Any], current_price: float, support_5m: float = 0, resistance_5m: float = 0, candles_5m: List = None, market_condition: str = "UNKNOWN", trend_1h: Dict = None, trend_5m: Dict = None, volatility_5m: float = 0, current_rsi: float = 50.0, total_depth: float = 0, depth_imbalance: float = 0, trend_1d: Dict = None, volume_data: Dict = None) -> Dict[str, Any]:
         """Add standard metadata to all predictions including RSI context"""
