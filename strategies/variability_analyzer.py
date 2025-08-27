@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 from collections import deque
 from core.volatility_calculator import VolatilityCalculator
+from core.constants import variability_constants, trading_constants, simulation_constants
 
 class VariabilityAnalyzer:
     def __init__(self, lookback_periods: int = 100):
@@ -30,17 +31,17 @@ class VariabilityAnalyzer:
         
         # Variability thresholds
         self.variability_thresholds = {
-            "low_volatility": 0.001,    # 0.1% - choppy market
-            "medium_volatility": 0.003,  # 0.3% - normal trading
-            "high_volatility": 0.008,    # 0.8% - volatile market
-            "extreme_volatility": 0.015  # 1.5% - extreme volatility
+            "low_volatility": variability_constants.LOW_VOLATILITY,
+            "medium_volatility": variability_constants.MEDIUM_VOLATILITY,
+            "high_volatility": variability_constants.HIGH_VOLATILITY,
+            "extreme_volatility": variability_constants.EXTREME_VOLATILITY
         }
         
         # Trading condition scores (adjusted for crypto markets)
         self.condition_scores = {
-            "optimal_trading": 0.7,      # 70% score for optimal conditions (lowered)
-            "good_trading": 0.5,         # 50% score for good conditions (lowered)
-            "poor_trading": 0.2          # 20% score for poor conditions (lowered)
+            "optimal_trading": variability_constants.OPTIMAL_TRADING_SCORE,
+            "good_trading": variability_constants.GOOD_TRADING_SCORE,
+            "poor_trading": variability_constants.POOR_TRADING_SCORE
         }
         
     def add_price_data(self, price: float, volume: float = None, timestamp: float = None):
@@ -96,10 +97,10 @@ class VariabilityAnalyzer:
         
         # Weighted average
         total_score = (
-            volatility_score * 0.4 +
-            momentum_score * 0.3 +
-            volume_score * 0.2 +
-            pattern_score * 0.1
+            volatility_score * variability_constants.VOLATILITY_WEIGHT +
+            momentum_score * variability_constants.MOMENTUM_WEIGHT +
+            volume_score * variability_constants.VOLUME_WEIGHT +
+            pattern_score * variability_constants.PATTERN_WEIGHT
         )
         
         return total_score
@@ -177,11 +178,11 @@ class VariabilityAnalyzer:
         cv = std_volume / mean_volume
         
         # Normalize: moderate volume variability is good for trading
-        if cv < 0.3:
+        if cv < variability_constants.VOLUME_CV_LOW:
             return 0.3  # Too stable
-        elif cv < 0.8:
+        elif cv < variability_constants.VOLUME_CV_GOOD:
             return 0.8  # Good variability
-        elif cv < 1.5:
+        elif cv < variability_constants.VOLUME_CV_OPTIMAL:
             return 1.0  # Optimal variability
         else:
             return 0.6  # Too variable
@@ -249,7 +250,7 @@ class VariabilityAnalyzer:
         market_condition = self._classify_market_condition(current_volatility, current_variability_score)
         
         # Calculate optimal trading parameters
-        optimal_params = self._calculate_optimal_trading_params(current_volatility, current_variability_score, balance=1000.0)
+        optimal_params = self._calculate_optimal_trading_params(current_volatility, current_variability_score, balance=simulation_constants.BASE_SIMULATION_PRICE)
         
         return {
             "insufficient_data": False,
@@ -285,11 +286,11 @@ class VariabilityAnalyzer:
     def _calculate_optimal_trading_params(self, volatility: float, variability_score: float, balance: float = 1000.0) -> Dict[str, Any]:
         """Calculate optimal trading parameters based on variability"""
         # Base parameters - use percentage of balance instead of fixed size
-        base_position_size_pct = 0.10  # 10% of balance as base
+        base_position_size_pct = trading_constants.BASE_POSITION_SIZE  # 10% of balance as base
         base_position_size = (balance * base_position_size_pct) / 114000  # Convert to BTC at current price
-        base_leverage = 30
-        base_profit_target = 0.003  # 0.3%
-        base_stop_loss = 0.0015     # 0.15%
+        base_leverage = trading_constants.DEFAULT_LEVERAGE
+        base_profit_target = trading_constants.BASE_PROFIT_TARGET  # 0.3%
+        base_stop_loss = trading_constants.BASE_STOP_LOSS     # 0.15%
         
         # Adjust based on volatility
         if volatility < self.variability_thresholds["low_volatility"]:

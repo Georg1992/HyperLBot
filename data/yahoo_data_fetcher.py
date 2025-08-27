@@ -12,6 +12,7 @@ from typing import Dict, List, Any, Optional
 from loguru import logger
 from datetime import datetime, timedelta
 import statistics
+from core.constants import data_constants, volume_constants, technical_constants, time_constants
 
 class YahooDataFetcher:
     """
@@ -23,7 +24,7 @@ class YahooDataFetcher:
     def __init__(self):
         self.symbol = "BTC-USD"
         self.cache = {}
-        self.cache_duration = 5  # 5 seconds cache for ultra-frequent updates
+        self.cache_duration = data_constants.YAHOO_CACHE_DURATION
         
         # Optimized data manager - periodic update tracking
         self.last_yahoo_update = 0
@@ -32,10 +33,10 @@ class YahooDataFetcher:
         self.last_daily_update = 0
         
         # Update intervals (in seconds)
-        self.yahoo_update_interval = 300  # 5 minutes for full analysis
-        self.rsi_update_interval = 30     # 30 seconds for RSI (optimized for profitability)
-        self.hourly_update_interval = 900 # 15 minutes for 1h candles
-        self.daily_update_interval = 3600 # 1 hour for daily candles
+        self.yahoo_update_interval = data_constants.YAHOO_UPDATE_INTERVAL
+        self.rsi_update_interval = data_constants.RSI_UPDATE_INTERVAL
+        self.hourly_update_interval = data_constants.HOURLY_UPDATE_INTERVAL
+        self.daily_update_interval = data_constants.DAILY_UPDATE_INTERVAL
         
         # Stored analysis data
         self.cached_yahoo_analysis = {}
@@ -89,7 +90,7 @@ class YahooDataFetcher:
     
             # Use 5-minute candles instead of 1-minute for more reliable data
             # 5-minute data is available for 60 days vs 1-minute data only 7 days
-            candles_5m = self.get_5m_klines(symbol, 30)  # Get 30 candles for 14-period RSI + buffer
+            candles_5m = self.get_5m_klines(symbol, data_constants.RSI_CANDLES_COUNT)  # Get 30 candles for 14-period RSI + buffer
             if candles_5m and len(candles_5m) >= 15:
                 from core.market_data_manager import market_data_manager
                 self.cached_rsi_data = market_data_manager.calculate_rsi(candles_5m, periods)
@@ -192,13 +193,13 @@ class YahooDataFetcher:
         candles = []
         for index, row in yf_data.iterrows():
             candle = {
-                "open_time": int(index.timestamp() * 1000),
+                "open_time": int(index.timestamp() * data_constants.MILLISECONDS_IN_SECOND),
                 "open": float(row["Open"]),
                 "high": float(row["High"]),
                 "low": float(row["Low"]),
                 "close": float(row["Close"]),
                 "volume": float(row["Volume"]),
-                "close_time": int(index.timestamp() * 1000) + 59999  # Add 59.999 seconds
+                "close_time": int(index.timestamp() * data_constants.MILLISECONDS_IN_SECOND) + data_constants.CANDLE_CLOSE_OFFSET
             }
             candles.append(candle)
         
@@ -355,19 +356,19 @@ class YahooDataFetcher:
             pattern_start = len(recent_candles) - consecutive_green
             price_change = (recent_candles[-1]["close"] - recent_candles[pattern_start]["open"]) / recent_candles[pattern_start]["open"]
             
-            if price_change > 0.002:  # 0.2% gain over consecutive greens
+            if price_change > technical_constants.TREND_STRENGTH_HIGH:  # 1% gain over consecutive greens
                 return {
                     "trend": "UP",
-                    "strength": min(abs(price_change), 0.1),
+                    "strength": min(abs(price_change), technical_constants.VOLATILITY_MAX_CAP),
                     "direction": 1,
                     "raw_change": price_change,
                     "pattern_type": f"consecutive_green_{consecutive_green}",
                     "pattern_override": True
                 }
-            elif price_change > 0.0005:  # 0.05% gain - weak up
+            elif price_change > technical_constants.PRICE_CHANGE_MINOR:  # 0.05% gain - weak up
                 return {
                     "trend": "WEAK_UP",
-                    "strength": min(abs(price_change) * 2, 0.1),
+                    "strength": min(abs(price_change) * 2, technical_constants.VOLATILITY_MAX_CAP),
                     "direction": 1,
                     "raw_change": price_change,
                     "pattern_type": f"consecutive_green_{consecutive_green}_weak",
@@ -377,7 +378,7 @@ class YahooDataFetcher:
                 # Price barely moved despite consecutive greens = sideways
                 return {
                     "trend": "SIDEWAYS",
-                    "strength": 0.01,
+                    "strength": technical_constants.TREND_STRENGTH_LOW,
                     "direction": 0,
                     "raw_change": price_change,
                     "pattern_type": f"consecutive_green_{consecutive_green}_sideways",
@@ -389,19 +390,19 @@ class YahooDataFetcher:
             pattern_start = len(recent_candles) - consecutive_red
             price_change = (recent_candles[-1]["close"] - recent_candles[pattern_start]["open"]) / recent_candles[pattern_start]["open"]
             
-            if price_change < -0.002:  # 0.2% loss over consecutive reds
+            if price_change < -technical_constants.TREND_STRENGTH_HIGH:  # 1% loss over consecutive reds
                 return {
                     "trend": "DOWN", 
-                    "strength": min(abs(price_change), 0.1),
+                    "strength": min(abs(price_change), technical_constants.VOLATILITY_MAX_CAP),
                     "direction": -1,
                     "raw_change": price_change,
                     "pattern_type": f"consecutive_red_{consecutive_red}",
                     "pattern_override": True
                 }
-            elif price_change < -0.0005:  # 0.05% loss - weak down
+            elif price_change < -technical_constants.PRICE_CHANGE_MINOR:  # 0.05% loss - weak down
                 return {
                     "trend": "WEAK_DOWN",
-                    "strength": min(abs(price_change) * 2, 0.1),
+                    "strength": min(abs(price_change) * 2, technical_constants.VOLATILITY_MAX_CAP),
                     "direction": -1,
                     "raw_change": price_change,
                     "pattern_type": f"consecutive_red_{consecutive_red}_weak", 
@@ -411,7 +412,7 @@ class YahooDataFetcher:
                 # Price barely moved despite consecutive reds = sideways
                 return {
                     "trend": "SIDEWAYS",
-                    "strength": 0.01,
+                    "strength": technical_constants.TREND_STRENGTH_LOW,
                     "direction": 0,
                     "raw_change": price_change,
                     "pattern_type": f"consecutive_red_{consecutive_red}_sideways",
@@ -522,7 +523,7 @@ class YahooDataFetcher:
             return "ELEVATED_VOLATILITY"
         
         # Strong trends
-        if trend_5m["strength"] > 0.01 and trend_1h["strength"] > 0.005:
+        if trend_5m["strength"] > technical_constants.TREND_STRENGTH_HIGH and trend_1h["strength"] > technical_constants.TREND_STRENGTH_MEDIUM:
             if trend_5m["trend"] == trend_1h["trend"]:
                 return "STRONG_TREND"
             else:
@@ -574,17 +575,17 @@ class YahooDataFetcher:
             avg_volume = avg_volume
             
             # Categorize volume based on actual Yahoo Finance ranges (more realistic for BTC)
-            if current_volume >= 500000:  # 500K+
+            if current_volume >= volume_constants.VOLUME_ULTRA_HIGH:  # 500K+
                 volume_category = "EXTREMELY_HIGH"
             elif current_volume >= 200000:  # 200K+
                 volume_category = "VERY_HIGH"
-            elif current_volume >= 100000:  # 100K+
+            elif current_volume >= volume_constants.VOLUME_HIGH:  # 100K+
                 volume_category = "HIGH"
-            elif current_volume >= 50000:  # 50K+
+            elif current_volume >= volume_constants.VOLUME_MEDIUM:  # 50K+
                 volume_category = "ABOVE_AVERAGE"
             elif current_volume >= 20000:  # 20K+
                 volume_category = "NORMAL"
-            elif current_volume >= 10000:  # 10K+
+            elif current_volume >= volume_constants.VOLUME_LOW:  # 10K+
                 volume_category = "BELOW_AVERAGE"
             elif current_volume >= 5000:  # 5K+
                 volume_category = "LOW"
@@ -642,7 +643,7 @@ class YahooDataFetcher:
                 return cached_data
             
             # Get daily data for summary
-            daily_candles = self.get_klines(symbol, "1d", 30)
+            daily_candles = self.get_klines(symbol, "1d", data_constants.DAILY_CANDLES_COUNT)
             if not daily_candles:
                 return {
                     "error": "No daily data available",
@@ -650,7 +651,7 @@ class YahooDataFetcher:
                 }
             
             # Get 5m data for intraday analysis
-            intraday_candles = self.get_klines(symbol, "5m", 30)
+            intraday_candles = self.get_klines(symbol, "5m", data_constants.INTRADAY_CANDLES_COUNT)
             
             # Calculate daily statistics
             today_candle = daily_candles[-1] if daily_candles else None
@@ -735,7 +736,7 @@ class YahooDataFetcher:
             completed_volume = 0
             
             for candle in candles_1m:
-                candle_time = datetime.fromtimestamp(candle["open_time"] / 1000)
+                candle_time = datetime.fromtimestamp(candle["open_time"] / data_constants.MILLISECONDS_IN_SECOND)
                 
                 # Check if candle is within current 5-minute period
                 if period_start <= candle_time < period_end:
@@ -751,13 +752,13 @@ class YahooDataFetcher:
             if period_candles:
                 # Get current minute's volume (if available)
                 current_minute_candles = [c for c in period_candles 
-                                        if datetime.fromtimestamp(c["open_time"] / 1000).minute == current_minute]
+                                        if datetime.fromtimestamp(c["open_time"] / data_constants.MILLISECONDS_IN_SECOND).minute == current_minute]
                 if current_minute_candles:
                     current_minute_volume = current_minute_candles[0]["volume"]
             
             # Calculate time progress in current 5-minute period
             time_elapsed = (now - period_start).total_seconds()
-            period_progress = min(time_elapsed / 300, 1.0)  # 300 seconds = 5 minutes
+            period_progress = min(time_elapsed / time_constants.SECONDS_IN_MINUTE * 5, 1.0)  # 5 minutes
             
             # Real-time volume estimation for immediate spike detection
             estimated_current_volume = completed_volume
@@ -803,7 +804,7 @@ class YahooDataFetcher:
             elif estimated_current_volume > 0 and len(candles_1m) >= 20:
                 # Compare against recent average
                 recent_avg = sum([c["volume"] for c in candles_1m[-20:] if c["volume"] > 0]) / 20
-                if recent_avg > 0 and estimated_current_volume > recent_avg * 3:  # 300% of average
+                if recent_avg > 0 and estimated_current_volume > recent_avg * volume_constants.VOLUME_SURGE_MULTIPLIER:  # 300% of average
                     is_immediate_spike = True
                     spike_reason = f"VOLUME SPIKE: {estimated_current_volume:.0f} vs avg {recent_avg:.0f}"
             
@@ -871,7 +872,7 @@ class YahooDataFetcher:
             momentum_acceleration = price_change_1 - price_change_2
             
             # Determine momentum direction and strength
-            if price_change_1 > 0.001 and momentum_acceleration > 0:  # 0.1% gain with acceleration
+            if price_change_1 > technical_constants.PRICE_CHANGE_SIGNIFICANT and momentum_acceleration > 0:  # 0.1% gain with acceleration
                 momentum = "STRONG_UP"
                 direction = 1
                 strength = min(abs(price_change_1) * 100, 1.0)
@@ -879,7 +880,7 @@ class YahooDataFetcher:
                 momentum = "WEAK_UP"
                 direction = 1
                 strength = min(abs(price_change_1) * 50, 0.5)
-            elif price_change_1 < -0.001 and momentum_acceleration < 0:  # 0.1% loss with acceleration
+            elif price_change_1 < -technical_constants.PRICE_CHANGE_SIGNIFICANT and momentum_acceleration < 0:  # 0.1% loss with acceleration
                 momentum = "STRONG_DOWN"
                 direction = -1
                 strength = min(abs(price_change_1) * 100, 1.0)
@@ -933,7 +934,7 @@ class YahooDataFetcher:
             # Advanced signal generation
             if rsi_value is not None:
                 # RSI-based signals with momentum confirmation
-                if rsi_value < 30 and momentum_direction > 0:  # Oversold + upward momentum
+                if rsi_value < technical_constants.RSI_OVERSOLD and momentum_direction > 0:  # Oversold + upward momentum
                     enhanced_signal = "STRONG_BUY"
                     confidence = min(0.9, 0.7 + momentum_strength)
                 elif rsi_value > 70 and momentum_direction < 0:  # Overbought + downward momentum

@@ -250,3 +250,225 @@ class MagicNumbers:
 
 # Global magic numbers instance
 magic_numbers = MagicNumbers()
+
+
+class DataFetchingConstants:
+    """Data fetching and update interval constants"""
+    
+    # Yahoo Finance Update Intervals (seconds)
+    YAHOO_UPDATE_INTERVAL = 300      # 5 minutes for full analysis
+    RSI_UPDATE_INTERVAL = 30         # 30 seconds for RSI (optimized for profitability)
+    HOURLY_UPDATE_INTERVAL = 900     # 15 minutes for 1h candles
+    DAILY_UPDATE_INTERVAL = 3600     # 1 hour for daily candles
+    
+    # Cache Durations
+    YAHOO_CACHE_DURATION = 5         # 5 seconds cache for ultra-frequent updates
+    MARKET_DATA_CACHE_DURATION = 5   # 5 seconds for real-time data
+    INDICATOR_CACHE_DURATION = 60    # 1 minute for calculated indicators
+    TREND_CACHE_DURATION = 30        # 30 seconds for trend data
+    
+    # Data Periods
+    RSI_CANDLES_COUNT = 30           # 30 candles for 14-period RSI + buffer
+    DAILY_CANDLES_COUNT = 30         # 30 days of daily data
+    INTRADAY_CANDLES_COUNT = 30      # 30 candles for intraday analysis
+    
+    # Time Conversions
+    MILLISECONDS_IN_SECOND = 1000
+    SECONDS_IN_MINUTE = 60
+    SECONDS_IN_HOUR = 3600
+    SECONDS_IN_DAY = 86400
+    
+    # Candle Time Adjustments
+    CANDLE_CLOSE_OFFSET = 59999      # Add 59.999 seconds to close time
+
+
+class VolumeConstants:
+    """Volume analysis constants"""
+    
+    # Volume Thresholds
+    VOLUME_ULTRA_HIGH = 500000       # 500K+
+    VOLUME_HIGH = 100000             # 100K+
+    VOLUME_MEDIUM = 50000            # 50K+
+    VOLUME_LOW = 10000               # 10K+
+    
+    # Volume Multipliers
+    VOLUME_SURGE_MULTIPLIER = 3      # 300% of average for surge detection
+    VOLUME_DEPTH_ESTIMATE = 0.15     # 15% of depth as recent volume
+    
+    # Volume Categories
+    VOLUME_CATEGORY_ULTRA_HIGH = "ULTRA_HIGH"
+    VOLUME_CATEGORY_HIGH = "HIGH"
+    VOLUME_CATEGORY_MEDIUM = "MEDIUM"
+    VOLUME_CATEGORY_LOW = "LOW"
+    VOLUME_CATEGORY_UNKNOWN = "UNKNOWN"
+
+
+class TechnicalAnalysisConstants:
+    """Technical analysis thresholds and parameters"""
+    
+    # RSI Thresholds
+    RSI_OVERSOLD = 30
+    RSI_OVERBOUGHT = 70
+    RSI_NEUTRAL = 50
+    
+    # Trend Strength Thresholds
+    TREND_STRENGTH_HIGH = 0.01       # 1% strength
+    TREND_STRENGTH_MEDIUM = 0.005    # 0.5% strength
+    TREND_STRENGTH_LOW = 0.001       # 0.1% strength
+    
+    # Price Change Thresholds
+    PRICE_CHANGE_SIGNIFICANT = 0.001 # 0.1% significant change
+    PRICE_CHANGE_MINOR = 0.0005      # 0.05% minor change
+    
+    # Momentum Thresholds
+    MOMENTUM_ACCELERATION_THRESHOLD = 0.001  # 0.1% acceleration
+    MOMENTUM_DECELERATION_THRESHOLD = -0.001 # -0.1% deceleration
+    
+    # Support/Resistance
+    SUPPORT_RESISTANCE_NEAR = 0.01   # Within 1% of S/R level
+    
+    # Volatility Caps
+    VOLATILITY_MAX_CAP = 0.1         # 10% max volatility
+    VOLATILITY_DEPTH_CAP = 0.5       # 50% max depth volatility
+    
+    # Spread Analysis
+    SPREAD_SIGNIFICANT = 0.001       # 0.1% significant spread
+    DEPTH_SIGNIFICANT = 0.001        # 0.1% significant depth
+
+
+class TradingExecutionConstants:
+    """Trading execution parameters"""
+    
+    # Default Position Parameters
+    DEFAULT_POSITION_SIZE = 0.001    # 0.1% default size
+    DEFAULT_LEVERAGE = 30            # 30x default leverage
+    DEFAULT_STOP_DISTANCE = 0.002    # 0.2% stop distance
+    DEFAULT_TARGET_DISTANCE = 0.005  # 0.5% target distance
+    
+    # Price Adjustments
+    BUY_PRICE_ADJUSTMENT = 0.999     # 0.1% below current price
+    SELL_PRICE_ADJUSTMENT = 1.001    # 0.1% above current price
+    
+    # Position Management
+    MAX_HOLD_TIME = 3600             # 1 hour max hold time
+    LOSS_THRESHOLD = 0.01            # 1% loss threshold
+    
+    # Partial Close Percentages
+    PARTIAL_CLOSE_HALF = 0.50        # 50% partial close
+    PARTIAL_CLOSE_THREE_QUARTERS = 0.75  # 75% partial close
+    
+    # Scale In Parameters
+    SCALE_IN_SIZE = 0.5              # 50% scale size
+    SCALE_IN_MULTIPLIER = 0.5        # 50% scale multiplier
+
+
+class FeeConstants:
+    """Fee and cost calculation constants"""
+    
+    # Fee Rates
+    MAKER_FEE = 0.0001               # 0.01% maker fee
+    TAKER_FEE = 0.0002               # 0.02% taker fee
+    FUNDING_RATE = 0.0001            # 0.01% funding rate
+    
+    # Order Size Thresholds
+    SMALL_ORDER_THRESHOLD = 100      # $100 small order
+    MEDIUM_ORDER_THRESHOLD = 1000    # $1000 medium order
+    
+    # Fee Categories
+    SMALL_ORDER_FEE = 0.0001         # 0.01% for orders < $100
+    MEDIUM_ORDER_FEE = 0.0002        # 0.02% for orders $100-$1000
+    LARGE_ORDER_FEE = 0.0005         # 0.05% for orders > $1000
+    
+    # Risk Calculations
+    LIQUIDATION_RISK_CHANCE = 0.01   # 1% liquidation chance
+    OPPORTUNITY_COST_RATE = 0.0001   # 0.01% per hour opportunity cost
+    
+    # Profit Analysis
+    MIN_PROFIT_MARGIN = 0.001        # 0.1% minimum profit margin
+    PROFIT_BUFFER = 0.001            # 0.1% profit buffer
+
+
+class VariabilityConstants:
+    """Variability analysis constants"""
+    
+    # Volatility Thresholds
+    LOW_VOLATILITY = 0.001           # 0.1% - choppy market
+    MEDIUM_VOLATILITY = 0.003        # 0.3% - normal trading
+    HIGH_VOLATILITY = 0.008          # 0.8% - volatile market
+    EXTREME_VOLATILITY = 0.015       # 1.5% - extreme volatility
+    
+    # Trading Condition Scores
+    OPTIMAL_TRADING_SCORE = 0.7      # 70% score for optimal conditions
+    GOOD_TRADING_SCORE = 0.5         # 50% score for good conditions
+    POOR_TRADING_SCORE = 0.2         # 20% score for poor conditions
+    
+    # Score Weights
+    VOLATILITY_WEIGHT = 0.4          # 40% weight for volatility
+    MOMENTUM_WEIGHT = 0.3            # 30% weight for momentum
+    VOLUME_WEIGHT = 0.2              # 20% weight for volume
+    PATTERN_WEIGHT = 0.1             # 10% weight for pattern
+    
+    # Volume Variability
+    VOLUME_CV_LOW = 0.3              # Low volume variability
+    VOLUME_CV_GOOD = 0.8             # Good volume variability
+    VOLUME_CV_OPTIMAL = 1.5          # Optimal volume variability
+    
+    # Confidence Thresholds
+    MIN_CONFIDENCE_THRESHOLD = 0.1   # 10% minimum confidence
+    CONFIDENCE_REDUCTION_FACTOR = 0.1 # 10% confidence reduction
+
+
+class SimulationConstants:
+    """Simulation and testing constants"""
+    
+    # Test Parameters
+    TEST_MONITORING_TIME = 30        # 30 seconds monitoring time
+    TEST_TIMEOUT = 300               # 5 minutes test timeout
+    
+    # Simulation Data
+    BASE_SIMULATION_PRICE = 50000    # $50,000 base price
+    SIMULATION_VOLUME_BASE = 1000    # 1000 base volume
+    SIMULATION_VOLUME_VARIANCE = 200 # 200 volume variance
+    
+    # Test Hosts
+    TEST_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+    
+    # Data Limits
+    MAX_MARKET_DATA_POINTS = 1000    # Limit to last 1000 points
+
+
+class TimeConstants:
+    """Time-related constants"""
+    
+    # Time Units
+    SECONDS_IN_MINUTE = 60
+    SECONDS_IN_HOUR = 3600
+    SECONDS_IN_DAY = 86400
+    MINUTES_IN_HOUR = 60
+    HOURS_IN_DAY = 24
+    
+    # Update Intervals
+    DASHBOARD_UPDATE_INTERVAL = 2    # 2 seconds
+    FORCE_UPDATE_INTERVAL = 10       # 10 seconds
+    REAL_BALANCE_UPDATE_INTERVAL = 60 # 1 minute
+    SIMULATED_BALANCE_UPDATE_INTERVAL = 5 # 5 seconds
+    
+    # Cooldown Periods
+    ADJUSTMENT_COOLDOWN = 300        # 5 minutes between adjustments
+    SIGNAL_COOLDOWN = 300            # 5 minutes signal cooldown
+    
+    # Timeout Values
+    API_TIMEOUT = 30                 # 30 seconds API timeout
+    CONNECTION_RETRY_ATTEMPTS = 3    # 3 retry attempts
+    RETRY_DELAY = 5                  # 5 seconds retry delay
+
+
+# Global instances for easy import
+data_constants = DataFetchingConstants()
+volume_constants = VolumeConstants()
+technical_constants = TechnicalAnalysisConstants()
+trading_constants = TradingExecutionConstants()
+fee_constants = FeeConstants()
+variability_constants = VariabilityConstants()
+simulation_constants = SimulationConstants()
+time_constants = TimeConstants()

@@ -9,7 +9,7 @@ import json
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
-from core.constants import constants, MagicNumbers
+from core.constants import constants, MagicNumbers, trading_constants, time_constants
 
 class TradingExecution:
     """Trading execution and position management methods"""
@@ -19,7 +19,7 @@ class TradingExecution:
         self.bot = bot_instance
         self.magic_numbers = MagicNumbers()
     
-    def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
+    def place_paper_trade(self, side: str, size: float = trading_constants.DEFAULT_POSITION_SIZE, leverage: int = trading_constants.DEFAULT_LEVERAGE, signal_data: Dict = None) -> bool:
         """Place a PREDICTIVE paper trade using predicted entry points and time-based order management"""
         try:
             hyperliquid_price = self.bot.get_hyperliquid_price()
@@ -234,10 +234,10 @@ class TradingExecution:
         """Calculate smart limit price based on side and current price"""
         if side == "BUY":
             # For buy orders, set limit slightly below current price
-            return current_price * 0.999  # 0.1% below current price
+            return current_price * trading_constants.BUY_PRICE_ADJUSTMENT  # 0.1% below current price
         else:
             # For sell orders, set limit slightly above current price
-            return current_price * 1.001  # 0.1% above current price
+            return current_price * trading_constants.SELL_PRICE_ADJUSTMENT  # 0.1% above current price
     
     def _validate_trade_risk(self, side: str, size: float, current_price: float, signal_data: Dict = None) -> bool:
         """Validate trade risk parameters"""
@@ -517,7 +517,7 @@ class TradingExecution:
                 logger.info(f"⚠️ HIGH position heat: {heat_analysis['heat_pct']*100:.1f}% - {position['trade_id']}")
             
             # 7. CHECK FOR TIME-BASED EXIT (1 hour max)
-            if time.time() - position["entry_time"] > 3600:  # 1 hour
+            if time.time() - position["entry_time"] > time_constants.SECONDS_IN_HOUR:  # 1 hour
                 positions_to_close.append((position, "TIME_EXIT", hyperliquid_price))
                 continue
         
