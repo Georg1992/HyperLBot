@@ -8,6 +8,7 @@ import time
 import statistics
 from typing import Dict, List, Any, Optional
 from loguru import logger
+from core.volatility_calculator import VolatilityCalculator
 
 class MarketDataManager:
     """Centralized market data manager to eliminate redundant calculations"""
@@ -22,6 +23,9 @@ class MarketDataManager:
         self._indicator_cache = {}
         self._indicator_timestamps = {}
         self._indicator_cache_duration = 60  # 1 minute for calculated indicators
+        
+        # Initialize volatility calculator
+        self.volatility_calculator = VolatilityCalculator()
         
         logger.info("📊 Market Data Manager initialized - Centralized data management")
     
@@ -151,7 +155,7 @@ class MarketDataManager:
         return trend_manager.calculate_trend(candles, periods)
     
     def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:
-        """Centralized volatility calculation to eliminate redundant calculations"""
+        """Centralized volatility calculation using VolatilityCalculator"""
         cache_key = f"volatility_{periods}_{hash(str(candles[-periods:]))}"
         cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
         
@@ -162,33 +166,8 @@ class MarketDataManager:
             if len(candles) < periods:
                 return 0.0
             
-            recent_candles = candles[-periods:]
-            returns = []
-            
-            for i in range(1, len(recent_candles)):
-                prev_close = recent_candles[i-1]["close"]
-                curr_close = recent_candles[i]["close"]
-                ret = abs((curr_close - prev_close) / prev_close)
-                returns.append(ret)
-            
-            if not returns:
-                return 0.0
-            
-            # Calculate traditional volatility (baseline)
-            baseline_volatility = statistics.mean(returns)
-            
-            # Calculate recent volatility (last 25% of periods) for spike detection
-            recent_period_count = max(3, periods // 4)
-            recent_returns = returns[-recent_period_count:]
-            recent_volatility = statistics.mean(recent_returns) if recent_returns else baseline_volatility
-            
-            # Weight recent volatility more heavily to catch spikes
-            if recent_volatility > baseline_volatility * 1.5:
-                enhanced_volatility = baseline_volatility * 0.7 + recent_volatility * 0.3
-            else:
-                enhanced_volatility = baseline_volatility * 0.8 + recent_volatility * 0.2
-            
-            result = round(enhanced_volatility, 6)
+            # Use the centralized volatility calculator
+            result = self.volatility_calculator.calculate_candle_volatility(candles[-periods:], "5m")
             self._cache_data(cache_key, result, self._indicator_cache_duration)
             return result
             

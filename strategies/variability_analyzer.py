@@ -9,6 +9,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 from collections import deque
+from core.volatility_calculator import VolatilityCalculator
 
 class VariabilityAnalyzer:
     def __init__(self, lookback_periods: int = 100):
@@ -23,6 +24,9 @@ class VariabilityAnalyzer:
         self.volatility_history = deque(maxlen=lookback_periods)
         self.volume_history = deque(maxlen=lookback_periods)
         self.variability_scores = deque(maxlen=lookback_periods)
+        
+        # Initialize centralized volatility calculator
+        self.volatility_calculator = VolatilityCalculator()
         
         # Variability thresholds
         self.variability_thresholds = {
@@ -57,23 +61,20 @@ class VariabilityAnalyzer:
             self.variability_scores.append(variability_score)
     
     def _calculate_volatility(self) -> float:
-        """Calculate current volatility based on price changes"""
+        """Calculate current volatility using centralized VolatilityCalculator"""
         if len(self.price_history) < 2:
             return 0.0
         
-        prices = [p["price"] for p in self.price_history]
-        returns = []
+        # Convert price history to candle format for volatility calculator
+        candles = []
+        for price_data in self.price_history:
+            candles.append({
+                "close": price_data["price"],
+                "volume": price_data.get("volume", 0)
+            })
         
-        for i in range(1, len(prices)):
-            return_pct = (prices[i] - prices[i-1]) / prices[i-1]
-            returns.append(abs(return_pct))
-        
-        if not returns:
-            return 0.0
-        
-        # Calculate rolling volatility (standard deviation of returns)
-        volatility = np.std(returns) if len(returns) > 1 else returns[0]
-        return volatility
+        # Use centralized volatility calculator
+        return self.volatility_calculator.calculate_candle_volatility(candles, "1m")
     
     def _calculate_variability_score(self) -> float:
         """Calculate variability score based on multiple factors"""
