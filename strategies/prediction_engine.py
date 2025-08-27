@@ -17,6 +17,7 @@ from core.config import TradingConfig
 from core.volatility_calculator import VolatilityCalculator
 from strategies.prediction_confidence import PredictionConfidence
 from strategies.prediction_analysis import PredictionAnalysis
+from strategies.prediction_builder import PredictionBuilder
 
 class PredictionEngine:
     """Advanced prediction engine with reactive and predictive modes"""
@@ -47,8 +48,9 @@ class PredictionEngine:
         self.confidence = PredictionConfidence()
         self.analysis = PredictionAnalysis()
         self.volatility_calculator = VolatilityCalculator()
+        self.builder = PredictionBuilder(strategy_config)
         
-        logger.info("🎯 Enhanced Prediction Engine initialized with modular confidence and analysis systems")
+        logger.info("🎯 Enhanced Prediction Engine initialized with modular systems")
     
 
     
@@ -78,22 +80,8 @@ class PredictionEngine:
         return prediction
     
     def build_price_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float, strategy_name: str = "standard") -> Dict[str, Any]:
-        """Build price prediction based on strategy"""
-        if strategy_name == "reactive":
-            prediction = self._build_reactive_prediction(yahoo_analysis, current_price)
-        else:
-            prediction = self._build_predictive_prediction(yahoo_analysis, current_price)
-        
-        # Return the prediction in the expected format with best_prediction key
-        return {
-            "has_prediction": prediction.get("has_prediction", False),
-            "best_prediction": prediction,
-            "prediction_mode": prediction.get("prediction_mode", "PREDICTIVE"),
-            "reason": prediction.get("reason", "No prediction available"),
-            "confidence": prediction.get("confidence", 0.0),
-            "volatility_5m": prediction.get("volatility_5m", 0.0),
-            "range_size": prediction.get("range_size", 0.0)
-        }
+        """Build price prediction using the prediction builder module"""
+        return self.builder.build_price_prediction(yahoo_analysis, current_price, strategy_name)
     
     def _build_reactive_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """Build reactive prediction based on current market conditions"""
