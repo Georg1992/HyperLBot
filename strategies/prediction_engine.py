@@ -14,6 +14,7 @@ from collections import deque
 import core
 
 from core.config import TradingConfig
+from core.volatility_calculator import VolatilityCalculator
 from strategies.prediction_confidence import PredictionConfidence
 from strategies.prediction_analysis import PredictionAnalysis
 
@@ -45,8 +46,11 @@ class PredictionEngine:
         # Initialize sub-modules
         self.confidence = PredictionConfidence()
         self.analysis = PredictionAnalysis()
+        self.volatility_calculator = VolatilityCalculator()
         
         logger.info("🎯 Enhanced Prediction Engine initialized with modular confidence and analysis systems")
+    
+
     
     def _add_prediction_metadata(self, prediction: Dict[str, Any], current_price: float, support_5m: float = 0, resistance_5m: float = 0, candles_5m: List = None, market_condition: str = "UNKNOWN", trend_1h: Dict = None, trend_5m: Dict = None, volatility_5m: float = 0, current_rsi: float = 50.0, total_depth: float = 0, depth_imbalance: float = 0, trend_1d: Dict = None, volume_data: Dict = None) -> Dict[str, Any]:
         """Add standard metadata to all predictions including RSI context"""
@@ -101,7 +105,8 @@ class PredictionEngine:
             trend_1h = yahoo_analysis.get("trend_1h", {})
             
             # Get volatility data
-            volatility_5m = self._get_volatility_5m(yahoo_analysis)
+            candles_5m = yahoo_analysis.get("candles_5m", [])
+            volatility_5m = self.volatility_calculator.calculate_volatility_5m(candles_5m)
             
             # Get Hyperliquid-specific data
             hyperliquid_volume = yahoo_analysis.get("hyperliquid_volume", {})
@@ -191,8 +196,10 @@ class PredictionEngine:
             hyperliquid_rsi = yahoo_analysis.get("hyperliquid_rsi", {})
             
             # Calculate volatility across timeframes
-            volatility_5m = self._get_volatility_5m(yahoo_analysis)
-            volatility_1h = self._get_volatility_1h(yahoo_analysis)
+            candles_5m = yahoo_analysis.get("candles_5m", [])
+            candles_1h = yahoo_analysis.get("candles_1h", [])
+            volatility_5m = self.volatility_calculator.calculate_volatility_5m(candles_5m)
+            volatility_1h = self.volatility_calculator.calculate_volatility_1h(candles_1h)
             
             # Build comprehensive prediction
             prediction = {
@@ -750,30 +757,7 @@ class PredictionEngine:
                 prediction["reason"] += " (emergency fallback entry)"
             return prediction
     
-    def _calculate_price_acceleration(self, candles_5m: List) -> float:
-        """Calculate price acceleration (rate of change of price changes)"""
-        try:
-            if len(candles_5m) < 4:
-                return 0.0
-            
-            # Calculate price changes
-            prices = [candle["close"] for candle in candles_5m[-4:]]
-            price_changes = []
-            
-            for i in range(1, len(prices)):
-                change = (prices[i] - prices[i-1]) / prices[i-1]
-                price_changes.append(change)
-            
-            # Calculate acceleration (change in rate of change)
-            if len(price_changes) >= 2:
-                acceleration = abs(price_changes[-1] - price_changes[-2])
-                return acceleration
-            else:
-                return 0.0
-                
-        except Exception as e:
-            logger.error(f"Error calculating price acceleration: {e}")
-            return 0.0
+
     
     def _detect_momentum_surge(self, candles_5m: List, trend_5m: Dict) -> Dict[str, Any]:
         """Detect momentum surge in recent candles"""
