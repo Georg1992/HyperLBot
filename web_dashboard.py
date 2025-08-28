@@ -226,7 +226,7 @@ class EventDrivenTradingDashboard:
     def _get_dashboard_data(self) -> Dict[str, Any]:
         """Get dashboard data from SimpleRTM - PRESENTATION LAYER ONLY"""
         try:
-            from core.data.simple_rtm import simple_rtm
+            from core.data.real_time_manager import simple_rtm
             from core.session.session_manager import SessionManager
             from core.account_manager import account_manager
             

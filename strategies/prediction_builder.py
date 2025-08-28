@@ -7,7 +7,7 @@ Handles building reactive and predictive trading predictions
 import time
 from typing import Dict, Any, List, Optional
 from loguru import logger
-from core.volatility_calculator import VolatilityCalculator
+from core.analysis.real_time.volatility_calculator import VolatilityCalculator
 from strategies.prediction_confidence import PredictionConfidence
 from strategies.prediction_analysis import PredictionAnalysis
 
@@ -188,7 +188,7 @@ class PredictionBuilder:
                 range_size = resistance - support
                 
                 # Breakout above resistance
-                breakout_above_prob = self._analyze_breakout_probability(trend_1h, trend_5m, volatility, range_size)
+                breakout_above_prob = self._analyze_breakout_probability(trend_1h, trend_5m, volatility, range_size, current_price)
                 if breakout_above_prob > 0.3:
                     predictions.append({
                         "type": "BREAKOUT_ABOVE",
@@ -202,7 +202,7 @@ class PredictionBuilder:
                     })
                 
                 # Breakdown below support
-                breakdown_prob = self._analyze_breakdown_probability(trend_1h, trend_5m, volatility, range_size)
+                breakdown_prob = self._analyze_breakdown_probability(trend_1h, trend_5m, volatility, range_size, current_price)
                 if breakdown_prob > 0.3:
                     predictions.append({
                         "type": "BREAKOUT_BELOW",
@@ -345,7 +345,7 @@ class PredictionBuilder:
         else:  # Low volatility
             return 60  # 60 minutes
     
-    def _analyze_breakout_probability(self, trend_1h: Dict, trend_5m: Dict, volatility: float, range_size: float) -> float:
+    def _analyze_breakout_probability(self, trend_1h: Dict, trend_5m: Dict, volatility: float, range_size: float, current_price: float) -> float:
         """Analyze probability of breakout above resistance"""
         try:
             # Base probability
@@ -369,7 +369,7 @@ class PredictionBuilder:
             logger.error(f"Breakout probability analysis failed: {e}")
             return 0.3
     
-    def _analyze_breakdown_probability(self, trend_1h: Dict, trend_5m: Dict, volatility: float, range_size: float) -> float:
+    def _analyze_breakdown_probability(self, trend_1h: Dict, trend_5m: Dict, volatility: float, range_size: float, current_price: float) -> float:
         """Analyze probability of breakdown below support"""
         try:
             # Base probability

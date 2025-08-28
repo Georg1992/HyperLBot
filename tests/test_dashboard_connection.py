@@ -5,7 +5,7 @@ Test dashboard WebSocket connection and data flow
 
 import time
 import json
-from core.data.simple_rtm import simple_rtm
+from core.data.real_time_manager import simple_rtm
 
 def test_dashboard_data_flow():
     """Test if dashboard data is being updated properly"""

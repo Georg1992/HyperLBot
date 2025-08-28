@@ -8,7 +8,7 @@ import time
 import statistics
 from typing import Dict, List, Any, Optional
 from loguru import logger
-from core.volatility_calculator import VolatilityCalculator
+from core.analysis.real_time.volatility_calculator import VolatilityCalculator
 
 class MarketDataManager:
     """Centralized market data manager to eliminate redundant calculations"""
@@ -79,75 +79,14 @@ class MarketDataManager:
             }
     
     def calculate_rsi(self, candles: List[Dict], periods: int = 14) -> Dict[str, Any]:
-        """Centralized RSI calculation to eliminate redundant calculations"""
-        cache_key = f"rsi_{periods}_{hash(str(candles[-periods:]))}"
-        cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
-        
-        if cached_result:
-            return cached_result
-        
-        try:
-            if len(candles) < periods + 1:
-                logger.warning(f"⚠️ Insufficient candles for RSI: {len(candles)} (need {periods + 1})")
-                return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL", "error": "insufficient_data"}
-            
-            # Calculate price changes
-            closes = [candle["close"] for candle in candles]
-            changes = []
-            
-            for i in range(1, len(closes)):
-                change = closes[i] - closes[i-1]
-                changes.append(change)
-            
-            if len(changes) < periods:
-                logger.warning(f"⚠️ Insufficient price changes for RSI: {len(changes)} (need {periods})")
-                return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL", "error": "insufficient_changes"}
-            
-            # Calculate gains and losses
-            gains = [change if change > 0 else 0 for change in changes]
-            losses = [-change if change < 0 else 0 for change in changes]
-            
-            # Calculate average gain and loss using Wilder's smoothing
-            avg_gain = sum(gains[-periods:]) / periods
-            avg_loss = sum(losses[-periods:]) / periods
-            
-            # Calculate RS and RSI
-            if avg_loss == 0:
-                rsi = 100.0
-        
-            else:
-                rs = avg_gain / avg_loss
-                rsi = 100 - (100 / (1 + rs))
-        
-            
-            # Determine trend and signal
-            if rsi > 70:
-                trend = "OVERBOUGHT"
-                signal = "SELL"
-            elif rsi < 30:
-                trend = "OVERSOLD"
-                signal = "BUY"
-            else:
-                trend = "NEUTRAL"
-                signal = "NEUTRAL"
-            
-            result = {
-                "rsi": round(rsi, 2),
-                "trend": trend,
-                "signal": signal,
-                "avg_gain": avg_gain,
-                "avg_loss": avg_loss,
-                "rs": rs if avg_loss > 0 else None,
-                "data_points": len(candles),
-                "periods_used": periods
-            }
-            
-            self._cache_data(cache_key, result, self._indicator_cache_duration)
-            return result
-            
-        except Exception as e:
-            logger.error(f"❌ RSI calculation failed: {e}")
-            return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL", "error": str(e)}
+        """REMOVED: Use core.analysis.real_time.rsi_calculator instead"""
+        logger.warning("⚠️ This method has been removed. Use core.analysis.real_time.rsi_calculator instead")
+        return {
+            "rsi": None,
+            "trend": "NEUTRAL", 
+            "signal": "NEUTRAL",
+            "error": "method_removed"
+        }
     
     def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
         """Use trend manager for advanced trend calculation"""

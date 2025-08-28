@@ -14,7 +14,7 @@ from collections import deque
 import core
 
 from core.config import TradingConfig
-from core.volatility_calculator import VolatilityCalculator
+from core.analysis.real_time.volatility_calculator import VolatilityCalculator
 from strategies.prediction_confidence import PredictionConfidence
 from strategies.prediction_analysis import PredictionAnalysis
 from strategies.prediction_builder import PredictionBuilder

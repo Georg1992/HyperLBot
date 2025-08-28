@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from datetime import datetime
 
-from core.data.simple_rtm import simple_rtm
+from core.data.real_time_manager import simple_rtm
 
 
 class SessionManager:

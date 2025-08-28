@@ -18,16 +18,18 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from core.hyperliquid_api import HyperliquidAPI
-from data.yahoo_data_fetcher import YahooDataFetcher
 from core.config import TradingConfig
 from core.constants import constants, strategy_constants, ui_constants, magic_numbers
 from core.trade_state_manager import trade_state_manager
-from strategies.fee_manager import FeeManager
-from strategies.variability_analyzer import VariabilityAnalyzer
+from core.execution.fee_manager import FeeManager
+from core.analysis.historical.market_volatility_analyzer import VariabilityAnalyzer
 from core.trading_logger import TradingLogger
 from strategies.prediction_engine import PredictionEngine
-from strategies.trade_manager import TradeManager
-from strategies.trading_execution import TradingExecution
+from core.execution.trade_manager import TradeManager
+from core.execution.trading_execution import TradingExecution
+from core.analysis.historical.market_data_analyzer import MarketDataAnalyzer
+from core.data.real_time_data_updater import RTMUpdater
+from core.management.position_manager import PositionManager
 
 class YahooHyperliquidPaperTradingBot:
     def __init__(self, initial_balance: float = None, strategy_name: str = None, balance_mode: str = "simulated"):
@@ -35,7 +37,6 @@ class YahooHyperliquidPaperTradingBot:
         self.strategy_name = strategy_name or constants.DEFAULT_STRATEGY
         self.strategy_config = self.config.STRATEGY_CONFIGS.get(self.strategy_name, strategy_constants.STANDARD_STRATEGY)
         self.hyperliquid_api = None
-        self.yahoo_fetcher = YahooDataFetcher()
         self.connected = False
         self.balance_mode = balance_mode  # "real" or "simulated"
         
@@ -99,6 +100,12 @@ class YahooHyperliquidPaperTradingBot:
             logger.warning(f"Account manager not available: {e}")
             self.account_manager = None
         
+        # Initialize new modules
+        self.market_data_analyzer = MarketDataAnalyzer()
+        self.rtm_updater = RTMUpdater()
+        self.position_manager = PositionManager(self)
+        logger.info("🔄 New modules initialized: MarketDataAnalyzer, RTMUpdater, PositionManager")
+        
         # Initialize WebSocket for real-time price streaming
         self._initialize_websocket()
         
@@ -137,7 +144,7 @@ class YahooHyperliquidPaperTradingBot:
         self.trading_logger.update_initial_balance(initial_balance)
         
         initial_balance_safe = initial_balance or 0.0
-        logger.info(f"📊 Hybrid Paper Trading Bot initialized with ${initial_balance_safe:.2f} balance")
+        logger.info(f"[CHART] Hybrid Paper Trading Bot initialized with ${initial_balance_safe:.2f} balance")
         # Whale integration removed during cleanup
         logger.info("🐋 Whale analytics integration disabled (removed)")
         
@@ -206,6 +213,16 @@ class YahooHyperliquidPaperTradingBot:
             # Calculate real market data instead of using defaults
             current_price = price_data["current_price"]
             
+            # Update RSI calculator with real-time price
+            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+            
+            # Initialize RSI calculator if needed
+            if not real_time_rsi_calculator.is_initialized:
+                real_time_rsi_calculator.initialize_with_yahoo_data()
+            
+            # Add the current price to RSI calculator
+            real_time_rsi_calculator.add_price(current_price)
+            
             # Get volume data from order book analysis
             try:
                 volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
@@ -220,10 +237,10 @@ class YahooHyperliquidPaperTradingBot:
                 order_flow = "NEUTRAL"
                 depth_analysis = "UNKNOWN"
             
-            # RSI calculation is handled by the main loop every 3 seconds
-            # This prevents conflicts and ensures consistent RSI updates
-            rsi_value = None  # Will be updated by main loop
-            trend_value = "SIDEWAYS"  # Will be updated by main loop
+            # RSI calculation is now handled in real-time with each price update
+            rsi_data = real_time_rsi_calculator.calculate_rsi()
+            rsi_value = rsi_data.get("rsi")
+            trend_value = rsi_data.get("trend", "NEUTRAL")
             
             # Get volatility data from order book analysis
             try:
@@ -281,9 +298,8 @@ class YahooHyperliquidPaperTradingBot:
             
             # Test Yahoo Finance connection
             try:
-                test_candles = self.yahoo_fetcher.get_klines("BTC", "5m", 5)
-                if test_candles and len(test_candles) > 0:
-                    logger.success(f"✅ Yahoo Finance API connected - {len(test_candles)} candles")
+                if self.market_data_analyzer.test_connection():
+                    logger.success("✅ Yahoo Finance API connected")
                     yahoo_ok = True
                 else:
                     logger.error("❌ Yahoo Finance API connection failed")
@@ -320,7 +336,7 @@ class YahooHyperliquidPaperTradingBot:
             logger.info("🔌 Connecting to Hyperliquid...")
             
             # Test Yahoo Finance connection
-            if not self.yahoo_fetcher.test_connection():
+            if not self.market_data_analyzer.test_connection():
                 logger.error("❌ Failed to connect to Yahoo Finance")
                 return False
             
@@ -336,8 +352,8 @@ class YahooHyperliquidPaperTradingBot:
                 current_price = self.hyperliquid_api.get_current_price("BTC")
                 if current_price:
                     logger.success(f"✅ Successfully connected to Hyperliquid API!")
-                    logger.info(f"📊 Current BTC Price: ${current_price:,.2f} USD")
-                    logger.info(f"📊 Paper Trading Balance: ${self.paper_balance:.2f} USD")
+                    logger.info(f"[CHART] Current BTC Price: ${current_price:,.2f} USD")
+                    logger.info(f"[CHART] Paper Trading Balance: ${self.paper_balance:.2f} USD")
                 else:
                     logger.warning("⚠️ Could not get current price from Hyperliquid API")
             except Exception as e:
@@ -345,7 +361,7 @@ class YahooHyperliquidPaperTradingBot:
                 return False
             
             # Paper trading mode - no real account access needed
-            logger.info("🎮 Paper trading mode - using simulated balance and positions")
+            logger.info("[GAME] Paper trading mode - using simulated balance and positions")
             
             # Load account data if available
             if self.account_manager and self.account_manager.account_data:
@@ -354,7 +370,7 @@ class YahooHyperliquidPaperTradingBot:
                 old_balance = self.paper_balance
                 self.paper_balance = account_data["current_balance"]
                 self.initial_balance = account_data["initial_balance"]
-                logger.info(f"📊 Loaded account data: Balance ${old_balance:.2f} → ${self.paper_balance:.2f}, {account_data['total_trades']} total trades")
+                logger.info(f"[CHART] Loaded account data: Balance ${old_balance:.2f} → ${self.paper_balance:.2f}, {account_data['total_trades']} total trades")
             else:
                 logger.warning(f"⚠️ No account manager data available. Using initial balance: ${self.paper_balance:.2f}")
                 # Try to load account data directly
@@ -366,15 +382,15 @@ class YahooHyperliquidPaperTradingBot:
                             old_balance = self.paper_balance
                             self.paper_balance = account_data["current_balance"]
                             self.initial_balance = account_data["initial_balance"]
-                            logger.info(f"📊 Direct account load: Balance ${old_balance:.2f} → ${self.paper_balance:.2f}, {account_data['total_trades']} total trades")
+                            logger.info(f"[CHART] Direct account load: Balance ${old_balance:.2f} → ${self.paper_balance:.2f}, {account_data['total_trades']} total trades")
                 except Exception as e:
                     logger.error(f"❌ Failed to load account data directly: {e}")
             
             # Balance and position updates handled by AccountManager (SimpleRTM integration)
-            logger.info("🎮 AccountManager handles balance and position updates")
+            logger.info("[GAME] AccountManager handles balance and position updates")
             
-            logger.info("📊 No real positions/orders loaded - clean simulated environment")
-            logger.info(f"🎮 Using simulated balance: ${self.paper_balance:.2f}")
+            logger.info("[CHART] No real positions/orders loaded - clean simulated environment")
+            logger.info(f"[GAME] Using simulated balance: ${self.paper_balance:.2f}")
             
             self.connected = True
             return True
@@ -390,25 +406,25 @@ class YahooHyperliquidPaperTradingBot:
     
     def get_optimized_rsi_data(self, hyperliquid_price: float) -> Dict[str, Any]:
         """Get hybrid RSI data for enhanced profitability"""
-        hybrid_analysis = self.yahoo_fetcher.get_hybrid_rsi_analysis("BTC", hyperliquid_price)
+        rsi_data = self.market_data_analyzer.get_optimized_rsi_data(hyperliquid_price)
         return {
-            "rsi": hybrid_analysis.get("rsi_value", None),
-            "rsi_trend": hybrid_analysis.get("rsi_trend", "NEUTRAL"),
-            "rsi_signal": hybrid_analysis.get("advanced_signal", "NEUTRAL"),
-            "momentum": hybrid_analysis.get("momentum", "NEUTRAL"),
-            "confidence": hybrid_analysis.get("confidence", magic_numbers.DEFAULT_CONFIDENCE)
+            "rsi": rsi_data.get("rsi", None),
+            "rsi_trend": rsi_data.get("trend", "NEUTRAL"),
+            "rsi_signal": rsi_data.get("signal", "NEUTRAL"),
+            "momentum": rsi_data.get("momentum", "NEUTRAL"),
+            "confidence": rsi_data.get("confidence", magic_numbers.DEFAULT_CONFIDENCE)
         }
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get optimized market analysis from Yahoo Finance with periodic updates"""
         try:
-            # Use optimized data manager with periodic updates
-            analysis = self.yahoo_fetcher.get_optimized_market_analysis("BTC", hyperliquid_price=hyperliquid_price)
+            # Use market data analyzer
+            analysis = self.market_data_analyzer.get_yahoo_analysis(hyperliquid_price)
             
             if "error" not in analysis:
-                logger.info(f"📊 Yahoo Finance analysis: ${analysis['current_price']:,.2f} - {analysis['market_condition']}")
+                logger.info(f"[CHART] Yahoo Finance analysis: ${analysis.get('current_price', 0):,.2f} - {analysis.get('market_condition', 'UNKNOWN')}")
                 return analysis
             else:
-                logger.error(f"❌ Yahoo Finance analysis failed: {analysis['error']}")
+                logger.error(f"❌ Yahoo Finance analysis failed: {analysis.get('error', 'Unknown error')}")
                 return {}
                 
         except Exception as e:
@@ -465,7 +481,7 @@ class YahooHyperliquidPaperTradingBot:
         pressure_data = hyperliquid_data.get("ultimate_pressure_data", {})
         
         # Get optimized RSI data (with periodic updates)
-        hybrid_rsi_analysis = self.yahoo_fetcher.get_hybrid_rsi_analysis("BTC", hyperliquid_price)
+        hybrid_rsi_analysis = self.market_data_analyzer.get_optimized_rsi_data(hyperliquid_price)
         
         # Update variability analyzer
         real_volume = volume_data.get("current_volume", 100)
@@ -632,16 +648,15 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
         logger.info(f"   Logging: Comprehensive Yahoo + Hyperliquid paper trading logs enabled")
         
-        # Start session with SimpleRTM integration
+        # Start session with RTM integration
         try:
             from core.session.session_manager import SessionManager
-            from core.data.simple_rtm import simple_rtm
             
-            # CLEAR PRESENTATION DATA BEFORE STARTING NEW SESSION
-            simple_rtm.clear_presentation_data()
-            logger.info("🧹 SimpleRTM presentation data cleared - Fresh session data")
+            # Clear RTM cache before starting new session
+            self.rtm_updater.clear_rtm_cache()
+            logger.info("🧹 RTM cache cleared - Fresh session data")
             
-            # Start session via SessionManager (which updates SimpleRTM)
+            # Start session via SessionManager
             self.session_manager = SessionManager()
             session_id = self.session_manager.start_session(
                 session_id=f"bot_session_{int(time.time())}",
@@ -650,16 +665,16 @@ class YahooHyperliquidPaperTradingBot:
             )
             
             # Session and account data are managed by SessionManager and AccountManager
-            # SimpleRTM will read from them automatically
+            # RTM will read from them automatically
             
-            # Add initial activity log to SimpleRTM
+            # Add initial activity log
             self._update_simple_rtm_activity(f"🚀 Trading bot started - {self.strategy_name} strategy with ${self.initial_balance:.2f} initial balance", "SUCCESS")
             
-            logger.success("🔥 SimpleRTM integration active - Dashboard connection established")
+            logger.success("🔥 RTM integration active - Dashboard connection established")
             logger.info(f"   📊 Dashboard will receive live predictions and market data")
             
         except Exception as e:
-            logger.error(f"❌ Failed to start session with SimpleRTM: {e}")
+            logger.error(f"❌ Failed to start session with RTM: {e}")
             logger.warning("⚠️ Dashboard will show offline data only")
         
         # Advanced monitoring systems removed for simplicity
@@ -860,12 +875,12 @@ class YahooHyperliquidPaperTradingBot:
         logger.info("=" * 50)
         # Advanced monitoring systems removed for simplicity
         
-        # End SimpleRTM session
+        # End RTM session
         try:
             self._update_simple_rtm_activity("🏁 Trading session completed", "SUCCESS")
-            logger.info("📊 SimpleRTM session ended")
+            logger.info("📊 RTM session ended")
         except Exception as e:
-            # Could not end SimpleRTM session
+            logger.error(f"❌ Could not end RTM session: {e}")
             pass
         
         # Performance tracking simplified
@@ -917,12 +932,12 @@ class YahooHyperliquidPaperTradingBot:
             
             # Advanced monitoring systems cleanup removed for simplicity
             
-            # End SimpleRTM session
+            # End RTM session
             try:
                 self._update_simple_rtm_activity("🏁 Trading session closed gracefully", "SUCCESS")
-                logger.info("📊 SimpleRTM session ended")
+                logger.info("📊 RTM session ended")
             except Exception as e:
-                logger.debug(f"❌ Could not end SimpleRTM session: {e}")
+                logger.debug(f"❌ Could not end RTM session: {e}")
             
             # Update final balance
             if self.trading_logger:
@@ -938,71 +953,40 @@ class YahooHyperliquidPaperTradingBot:
     def _update_simple_rtm_market(self, market_data: Dict[str, Any]):
         """Update SimpleRTM with market data"""
         try:
-            from core.data.simple_rtm import simple_rtm
-            simple_rtm.update_market(market_data)
-            current_price = market_data.get('current_price', 0) or 0
-            # SimpleRTM market updated
+            self.rtm_updater.update_simple_rtm_market_data(market_data)
         except Exception as e:
-            # Could not update SimpleRTM market
+            logger.error(f"❌ Could not update SimpleRTM market: {e}")
             pass
     
     def _update_simple_rtm_data_status(self, data_status: Dict[str, Any]):
         """Update SimpleRTM data status"""
         try:
-            from core.data.simple_rtm import simple_rtm
-            simple_rtm.update_data_status(data_status)
+            self.rtm_updater.update_simple_rtm_analysis_data(data_status)
         except Exception as e:
-            # Could not update SimpleRTM data status
+            logger.error(f"❌ Could not update SimpleRTM data status: {e}")
             pass
     
     def _update_simple_rtm_activity(self, message: str, level: str = "INFO"):
         """Update SimpleRTM with activity"""
         try:
-            from core.data.simple_rtm import simple_rtm
-            simple_rtm.add_activity(message, level, "bot")
-            # SimpleRTM activity added
+            # Note: Activity logging is handled by the trading logger
+            logger.info(f"📊 RTM Activity: {message}")
         except Exception as e:
-            # Could not update SimpleRTM activity
+            logger.error(f"❌ Could not update SimpleRTM activity: {e}")
             pass
     
     def _update_simple_rtm_signal(self, signal_data: Dict[str, Any]):
         """Update SimpleRTM with signal"""
         try:
-            from core.data.simple_rtm import simple_rtm
-            simple_rtm.add_signal(signal_data)
-            # SimpleRTM signal added
+            self.rtm_updater.update_simple_rtm_prediction_data({"best_prediction": signal_data})
         except Exception as e:
-            # Could not update SimpleRTM signal
+            logger.error(f"❌ Could not update SimpleRTM signal: {e}")
             pass
 
     def get_weekly_trend_analysis(self) -> Dict[str, Any]:
         """Get weekly trend analysis from Yahoo Finance"""
         try:
-            # Get weekly data from Yahoo Finance
-            weekly_data = self.yahoo_fetcher.get_klines("BTC", "1d", 7)
-            if not weekly_data or len(weekly_data) < 2:
-                return {"error": "Insufficient weekly data"}
-            
-            # Calculate weekly trend
-            first_price = weekly_data[0].get("close", 0)
-            last_price = weekly_data[-1].get("close", 0)
-            weekly_change = ((last_price - first_price) / first_price) * 100 if first_price > 0 else 0
-            
-            # Determine trend direction
-            if weekly_change > 2:
-                trend = "UPTREND"
-            elif weekly_change < -2:
-                trend = "DOWNTREND"
-            else:
-                trend = "SIDEWAYS"
-            
-            return {
-                "weekly_trend": trend,
-                "weekly_change_pct": weekly_change,
-                "first_price": first_price,
-                "last_price": last_price,
-                "data_points": len(weekly_data)
-            }
+            return self.market_data_analyzer.get_weekly_trend_analysis()
         except Exception as e:
             logger.error(f"❌ Failed to get weekly trend analysis: {e}")
             return {"error": str(e)}
@@ -1044,13 +1028,13 @@ class YahooHyperliquidPaperTradingBot:
         try:
             
             # Get advanced data from Yahoo Finance (with periodic updates)
-            hybrid_rsi_analysis = self.yahoo_fetcher.get_hybrid_rsi_analysis("BTC", current_price)
+            hybrid_rsi_analysis = self.market_data_analyzer.get_optimized_rsi_data(current_price)
             
             # Get advanced trend analysis using trend manager
             from core.trend_manager import trend_manager
-            candles_1m = self.yahoo_fetcher.get_1m_klines("BTC", 10)
-            candles_5m = self.yahoo_fetcher.get_5m_klines("BTC", 10)
-            candles_1h = self.yahoo_fetcher.get_1h_klines("BTC", 10)
+            candles_1m = self.market_data_analyzer.get_1m_candles("BTC", 10)
+            candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 10)
+            candles_1h = self.market_data_analyzer.get_1h_candles("BTC", 10)
             
             if candles_1m and candles_5m and candles_1h:
                 trend_data = trend_manager.get_multi_timeframe_trend(candles_1m, candles_5m, candles_1h)
@@ -1101,8 +1085,8 @@ class YahooHyperliquidPaperTradingBot:
             
             # Update data status for monitoring
             try:
-                data_status = self.get_data_update_status()
-                self._update_simple_rtm_data_status(data_status)
+                # Pass market_data instead of data_status to get RSI values
+                self._update_simple_rtm_data_status(market_data)
             except Exception as e:
                 # Failed to update data status
                 pass
@@ -1117,7 +1101,7 @@ class YahooHyperliquidPaperTradingBot:
     def get_data_update_status(self) -> Dict[str, Any]:
         """Get status of all data updates for monitoring"""
         try:
-            return self.yahoo_fetcher.get_update_status()
+            return self.market_data_analyzer.get_update_status()
         except Exception as e:
             logger.error(f"❌ Failed to get data update status: {e}")
             return {}

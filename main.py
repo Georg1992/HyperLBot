@@ -113,7 +113,7 @@ def check_and_install_dependencies():
 def start_dashboard():
     """Start the real-time dashboard in a background thread"""
     try:
-        from realtime_dashboard import create_dashboard, EventDrivenTradingDashboard
+        from web_dashboard import create_dashboard, EventDrivenTradingDashboard
         
         # Check if dashboard is already running
         if EventDrivenTradingDashboard.is_dashboard_running(
@@ -224,14 +224,14 @@ def run_paper_trading():
     # Acquire instance lock
     with instance_manager:
         try:
-            from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
+            from core.bot.trading_bot import YahooHyperliquidPaperTradingBot
             from core.account_manager import account_manager
             
             logger.info("Starting Paper Trading Bot (Testing Mode)...")
             logger.info("This mode uses simulated trading - no real money involved")
             
             # Simulated Account Management
-            print(f"\n🎮 Simulated Account Management:")
+            print(f"\n[GAME] Simulated Account Management:")
             
             initial_balance = None
             
@@ -241,7 +241,7 @@ def run_paper_trading():
                 account_data = account_manager.load_account()
                 if account_data:
                     summary = account_manager.get_account_summary()
-                    print(f"📊 Existing Account Found:")
+                    print(f"[CHART] Existing Account Found:")
                     print(f"   Account ID: {summary['account_id']}")
                     print(f"   Current Balance: ${summary['current_balance']:.2f}")
                     print(f"   Total Trades: {summary['total_trades']}")
@@ -255,7 +255,7 @@ def run_paper_trading():
                         
                         if choice == "1":
                             initial_balance = account_data["current_balance"]
-                            logger.info(f"🎮 Continuing with existing account: ${initial_balance:.2f}")
+                            logger.info(f"[GAME] Continuing with existing account: ${initial_balance:.2f}")
                             break
                         elif choice == "2":
                             if account_manager.reset_account():
@@ -263,7 +263,7 @@ def run_paper_trading():
                                 new_balance = float(input(f"Enter initial balance for new account (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
                                 account_data = account_manager.create_account(new_balance)
                                 initial_balance = new_balance
-                                logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
+                                logger.info(f"[GAME] Created new account: ${initial_balance:.2f}")
                                 break
                             else:
                                 logger.error("❌ Failed to reset account")
@@ -279,7 +279,7 @@ def run_paper_trading():
                 new_balance = float(input(f"Enter initial balance (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
                 account_data = account_manager.create_account(new_balance)
                 initial_balance = new_balance
-                logger.info(f"🎮 Created new account: ${initial_balance:.2f}")
+                logger.info(f"[GAME] Created new account: ${initial_balance:.2f}")
             
             # Get user input for trading parameters
             print(f"\nPaper Trading Configuration:")

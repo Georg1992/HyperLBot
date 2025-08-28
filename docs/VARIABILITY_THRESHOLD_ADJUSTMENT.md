@@ -79,7 +79,7 @@ VARIABILITY_THRESHOLDS = {
 ### **Basic Threshold Adjustment**
 
 ```python
-from strategies.variability_analyzer import VariabilityAnalyzer
+from core.analysis.historical.market_volatility_analyzer import VariabilityAnalyzer
 
 # Initialize analyzer
 analyzer = VariabilityAnalyzer(lookback_periods=100)

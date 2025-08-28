@@ -101,80 +101,16 @@ class YahooMomentumAnalyzer:
             }
     
     def get_enhanced_rsi_signals(self, candles_5m: List[Dict], momentum_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Get enhanced RSI signals with momentum confirmation"""
-        try:
-            if not candles_5m or len(candles_5m) < 15:
-                return {
-                    "enhanced_signal": "UNKNOWN",
-                    "confidence": 0.0,
-                    "rsi_value": None,
-                    "momentum_confirmation": False,
-                    "error": "insufficient_data",
-                    "data_source": "yahoo_finance"
-                }
-            
-            # Get RSI from market data manager
-            from core.market_data_manager import market_data_manager
-            rsi_data = market_data_manager.calculate_rsi(candles_5m, 14)
-            rsi_value = rsi_data.get("rsi", None)
-            
-            if rsi_value is None:
-                return {
-                    "enhanced_signal": "UNKNOWN",
-                    "confidence": 0.0,
-                    "rsi_value": None,
-                    "momentum_confirmation": False,
-                    "error": "rsi_calculation_failed",
-                    "data_source": "yahoo_finance"
-                }
-            
-            # Extract momentum data
-            momentum_direction = momentum_data.get("direction", 0)
-            momentum_strength = momentum_data.get("strength", 0.0)
-            
-            # RSI-based signals with momentum confirmation
-            if rsi_value < technical_constants.RSI_OVERSOLD and momentum_direction > 0:
-                enhanced_signal = "STRONG_BUY"
-                confidence = min(0.9, 0.7 + momentum_strength)
-            elif rsi_value > technical_constants.RSI_OVERBOUGHT and momentum_direction < 0:
-                enhanced_signal = "STRONG_SELL"
-                confidence = min(0.9, 0.7 + momentum_strength)
-            elif rsi_value < 40 and momentum_direction > 0:
-                enhanced_signal = "BUY"
-                confidence = min(0.7, 0.5 + momentum_strength)
-            elif rsi_value > 60 and momentum_direction < 0:
-                enhanced_signal = "SELL"
-                confidence = min(0.7, 0.5 + momentum_strength)
-            else:
-                enhanced_signal = "NEUTRAL"
-                confidence = 0.3
-            
-            # Check momentum confirmation
-            momentum_confirmation = (
-                (enhanced_signal in ["STRONG_BUY", "BUY"] and momentum_direction > 0) or
-                (enhanced_signal in ["STRONG_SELL", "SELL"] and momentum_direction < 0)
-            )
-            
-            return {
-                "enhanced_signal": enhanced_signal,
-                "confidence": confidence,
-                "rsi_value": rsi_value,
-                "momentum_confirmation": momentum_confirmation,
-                "momentum_direction": momentum_direction,
-                "momentum_strength": momentum_strength,
-                "data_source": "yahoo_finance"
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get enhanced RSI signals: {e}")
-            return {
-                "enhanced_signal": "ERROR",
-                "confidence": 0.0,
-                "rsi_value": None,
-                "momentum_confirmation": False,
-                "error": str(e),
-                "data_source": "yahoo_finance"
-            }
+        """REMOVED: RSI is now handled by real-time calculator only"""
+        logger.warning("⚠️ This method has been removed. RSI is now handled by real-time calculator")
+        return {
+            "enhanced_signal": "NEUTRAL",
+            "confidence": 0.5,
+            "rsi_value": None,
+            "momentum_confirmation": False,
+            "error": "method_removed",
+            "data_source": "yahoo_finance"
+        }
     
     def detect_consecutive_patterns(self, candles: List[Dict]) -> Optional[Dict[str, Any]]:
         """Detect consecutive green/red candle patterns"""

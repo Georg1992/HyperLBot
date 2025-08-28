@@ -92,7 +92,7 @@ This provides a menu-driven interface to:
 
 #### Paper Trading Bot
 ```python
-from strategies.hybrid_paper_trading_bot import HybridPaperTradingBot
+from core.bot.trading_bot import HybridPaperTradingBot
 
 bot = HybridPaperTradingBot(initial_balance=120.0)
 if bot.connect():
@@ -109,7 +109,7 @@ analysis = fetcher.get_market_analysis("BTCUSDT")
 
 #### Fee Analysis
 ```python
-from strategies.fee_manager import FeeManager
+from core.execution.fee_manager import FeeManager
 
 fee_manager = FeeManager()
 fees = fee_manager.calculate_order_fees(0.001, 50000, "LIMIT")
@@ -168,11 +168,11 @@ HyperLBot/
 │   └── external_data_fetcher.py    # Binance data fetcher
 ├── strategies/                     # Trading strategies
 │   ├── __init__.py
-│   ├── hybrid_paper_trading_bot.py # Main trading bot
+│   ├── trading_bot.py # Main trading bot
 │   ├── fee_manager.py              # Fee calculations
 │   ├── prediction_engine.py        # Market prediction algorithms
 │   ├── trade_manager.py            # Advanced trade management
-│   ├── variability_analyzer.py     # Market variability analysis
+│   ├── market_volatility_analyzer.py     # Market volatility analysis
 │   └── whale_integration.py        # Whale analytics integration
 └── docs/                          # Documentation
     ├── ADVANCED_TRADE_MANAGEMENT.md        # Trade management docs

@@ -11,7 +11,7 @@ from .config import TradingConfig
 # Import data modules to avoid lazy import issues
 from data.yahoo_data_fetcher import YahooDataFetcher
 import statistics # Added for enhanced volatility analysis
-from core.hyperliquid_analysis import HyperliquidAnalysis
+from core.analysis.real_time.orderbook_analyzer import MarketOrderbookAnalyzer
 
 class HyperliquidAPI:
     """Hyperliquid API client for trading operations"""
@@ -28,7 +28,7 @@ class HyperliquidAPI:
         })
         
         # Initialize analysis module
-        self.analysis = HyperliquidAnalysis(self)
+        self.analysis = MarketOrderbookAnalyzer(self)
         
         if self.wallet_address and self.wallet_private_key:
             self._authenticate()

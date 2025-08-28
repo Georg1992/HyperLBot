@@ -6,7 +6,7 @@ Test script to verify WebSocket integration and dashboard updates
 import time
 import signal
 import sys
-from strategies.hybrid_paper_trading_bot import YahooHyperliquidPaperTradingBot
+from core.bot.trading_bot import YahooHyperliquidPaperTradingBot
 from loguru import logger
 
 def signal_handler(signum, frame):

@@ -1,4 +1,4 @@
 """
-Strategies module - HyperLBot
-Contains trading strategies, analysis tools, and management components
+Prediction Strategies module - HyperLBot
+Contains prediction strategies, analysis, and confidence calculation components
 """

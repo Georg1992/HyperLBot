@@ -82,38 +82,14 @@ class YahooDataFetcher:
         return self.cached_yahoo_analysis
     
     def get_optimized_rsi_data(self, symbol: str = "BTC", periods: int = 14) -> Dict[str, Any]:
-        """
-        Get optimized RSI data with 1-minute update interval
-        Uses 5-minute candles for more reliable data availability
-        """
-        current_time = time.time()
-        
-        if self._should_update_data(self.last_rsi_update, self.rsi_update_interval):
-    
-            # Use 5-minute candles instead of 1-minute for more reliable data
-            # 5-minute data is available for 60 days vs 1-minute data only 7 days
-            candles_5m = self.get_5m_klines(symbol, data_constants.RSI_CANDLES_COUNT)  # Get 30 candles for 14-period RSI + buffer
-            if candles_5m and len(candles_5m) >= 15:
-                from core.market_data_manager import market_data_manager
-                self.cached_rsi_data = market_data_manager.calculate_rsi(candles_5m, periods)
-                logger.debug(f"✅ RSI calculated from {len(candles_5m)} 5-minute candles")
-            else:
-                # Fallback to 1-hour data if 5-minute data is insufficient
-                logger.warning(f"⚠️ Insufficient 5-minute data for RSI: {len(candles_5m) if candles_5m else 0} candles (need 15+)")
-                logger.info("🔄 Falling back to 1-hour data for RSI calculation")
-                
-                candles_1h = self.get_1h_klines(symbol, 50)  # Get 50 1-hour candles
-                if candles_1h and len(candles_1h) >= 15:
-                    from core.market_data_manager import market_data_manager
-                    self.cached_rsi_data = market_data_manager.calculate_rsi(candles_1h, periods)
-                    logger.debug(f"✅ RSI calculated from {len(candles_1h)} 1-hour candles (fallback)")
-                else:
-                    self.cached_rsi_data = {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
-                    logger.error(f"❌ Insufficient data for RSI calculation: 5m={len(candles_5m) if candles_5m else 0}, 1h={len(candles_1h) if candles_1h else 0}")
-            
-            self.last_rsi_update = current_time
-        
-        return self.cached_rsi_data
+        """REMOVED: RSI is now handled by real-time calculator only"""
+        logger.warning("⚠️ This method has been removed. RSI is now handled by real-time calculator")
+        return {
+            "rsi": None,
+            "trend": "NEUTRAL",
+            "signal": "NEUTRAL", 
+            "error": "method_removed"
+        }
     
     def get_optimized_1h_data(self, symbol: str = "BTC") -> Dict[str, Any]:
         """
@@ -761,13 +737,9 @@ class YahooDataFetcher:
             # Use momentum analyzer for analysis
             momentum_data = momentum_analyzer.analyze_momentum(candles_5m, symbol)
             
-            # Get enhanced RSI signals
-            rsi_signals = momentum_analyzer.get_enhanced_rsi_signals(candles_5m, momentum_data)
-            
-            # Combine momentum and RSI data
+            # RSI is now handled by real-time calculator only
             result = {
                 **momentum_data,
-                "rsi_signals": rsi_signals,
                 "data_source": "yahoo_finance_momentum_analysis"
             }
             
@@ -791,69 +763,15 @@ class YahooDataFetcher:
             return {"momentum": "NEUTRAL", "strength": 0, "direction": 0, "error": str(e)}
     
     def get_hybrid_rsi_analysis(self, symbol: str = "BTC", current_price: float = None) -> Dict[str, Any]:
-        """
-        Get hybrid RSI analysis combining cached RSI with real-time momentum
-        Optimized for maximum profitability
-        """
-        try:
-            # Get cached RSI (updated every 30 seconds)
-            cached_rsi = self.get_optimized_rsi_data(symbol, periods=14)
-            
-            # Get real-time momentum (calculated every call)
-            realtime_momentum = self.get_realtime_momentum_analysis(symbol, current_price)
-            
-            # Combine analysis for optimal profitability
-            rsi_value = cached_rsi.get("rsi")
-            rsi_trend = cached_rsi.get("trend", "NEUTRAL")
-            momentum_direction = realtime_momentum.get("direction", 0)
-            momentum_strength = realtime_momentum.get("strength", 0)
-            
-            # Advanced signal generation
-            if rsi_value is not None:
-                # RSI-based signals with momentum confirmation
-                if rsi_value < technical_constants.RSI_OVERSOLD and momentum_direction > 0:  # Oversold + upward momentum
-                    enhanced_signal = "STRONG_BUY"
-                    confidence = min(0.9, 0.7 + momentum_strength)
-                elif rsi_value > 70 and momentum_direction < 0:  # Overbought + downward momentum
-                    enhanced_signal = "STRONG_SELL"
-                    confidence = min(0.9, 0.7 + momentum_strength)
-                elif rsi_value < 40 and momentum_direction > 0:  # Approaching oversold + upward momentum
-                    enhanced_signal = "BUY"
-                    confidence = min(0.8, 0.6 + momentum_strength)
-                elif rsi_value > 60 and momentum_direction < 0:  # Approaching overbought + downward momentum
-                    enhanced_signal = "SELL"
-                    confidence = min(0.8, 0.6 + momentum_strength)
-                else:
-                    enhanced_signal = "HOLD"
-                    confidence = 0.5
-            else:
-                # Fallback to momentum-only signals
-                if momentum_direction > 0 and momentum_strength > 0.3:
-                    enhanced_signal = "MOMENTUM_BUY"
-                    confidence = momentum_strength
-                elif momentum_direction < 0 and momentum_strength > 0.3:
-                    enhanced_signal = "MOMENTUM_SELL"
-                    confidence = momentum_strength
-                else:
-                    enhanced_signal = "HOLD"
-                    confidence = 0.5
-            
-            return {
-                "rsi_value": rsi_value,
-                "rsi_trend": rsi_trend,
-                "momentum": realtime_momentum.get("momentum"),
-                "momentum_direction": momentum_direction,
-                "momentum_strength": momentum_strength,
-                "advanced_signal": enhanced_signal,
-                "confidence": round(confidence, 3),
-                "signal_reason": f"RSI: {rsi_trend} + Momentum: {realtime_momentum.get('momentum')}",
-                "timestamp": time.time(),
-                "analysis_type": "hybrid_rsi_momentum"
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get hybrid RSI analysis: {e}")
-            return {"advanced_signal": "HOLD", "confidence": 0.5, "error": str(e)}
+        """REMOVED: RSI is now handled by real-time calculator only"""
+        logger.warning("⚠️ This method has been removed. RSI is now handled by real-time calculator")
+        return {
+            "rsi_value": None,
+            "rsi_trend": "NEUTRAL",
+            "enhanced_signal": "NEUTRAL",
+            "confidence": 0.5,
+            "error": "method_removed"
+        }
 
 
 def main():
