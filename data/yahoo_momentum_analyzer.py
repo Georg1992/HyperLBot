@@ -100,18 +100,6 @@ class YahooMomentumAnalyzer:
                 "data_source": "yahoo_finance"
             }
     
-    def get_enhanced_rsi_signals(self, candles_5m: List[Dict], momentum_data: Dict[str, Any]) -> Dict[str, Any]:
-        """REMOVED: RSI is now handled by real-time calculator only"""
-        logger.warning("⚠️ This method has been removed. RSI is now handled by real-time calculator")
-        return {
-            "enhanced_signal": "NEUTRAL",
-            "confidence": 0.5,
-            "rsi_value": None,
-            "momentum_confirmation": False,
-            "error": "method_removed",
-            "data_source": "yahoo_finance"
-        }
-    
     def detect_consecutive_patterns(self, candles: List[Dict]) -> Optional[Dict[str, Any]]:
         """Detect consecutive green/red candle patterns"""
         try:

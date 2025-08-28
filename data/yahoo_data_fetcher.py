@@ -30,19 +30,16 @@ class YahooDataFetcher:
         
         # Optimized data manager - periodic update tracking
         self.last_yahoo_update = 0
-        self.last_rsi_update = 0
         self.last_1h_update = 0
         self.last_daily_update = 0
         
         # Update intervals (in seconds)
         self.yahoo_update_interval = data_constants.YAHOO_UPDATE_INTERVAL
-        self.rsi_update_interval = data_constants.RSI_UPDATE_INTERVAL
         self.hourly_update_interval = data_constants.HOURLY_UPDATE_INTERVAL
         self.daily_update_interval = data_constants.DAILY_UPDATE_INTERVAL
         
         # Stored analysis data
         self.cached_yahoo_analysis = {}
-        self.cached_rsi_data = {}
         self.cached_1h_data = {}
         self.cached_daily_data = {}
         
@@ -80,16 +77,6 @@ class YahooDataFetcher:
             self.last_yahoo_update = current_time
         
         return self.cached_yahoo_analysis
-    
-    def get_optimized_rsi_data(self, symbol: str = "BTC", periods: int = 14) -> Dict[str, Any]:
-        """REMOVED: RSI is now handled by real-time calculator only"""
-        logger.warning("⚠️ This method has been removed. RSI is now handled by real-time calculator")
-        return {
-            "rsi": None,
-            "trend": "NEUTRAL",
-            "signal": "NEUTRAL", 
-            "error": "method_removed"
-        }
     
     def get_optimized_1h_data(self, symbol: str = "BTC") -> Dict[str, Any]:
         """
@@ -145,11 +132,6 @@ class YahooDataFetcher:
                 "last_update": self.last_yahoo_update,
                 "next_update": self.last_yahoo_update + self.yahoo_update_interval,
                 "time_until_update": max(0, (self.last_yahoo_update + self.yahoo_update_interval) - current_time)
-            },
-            "rsi_data": {
-                "last_update": self.last_rsi_update,
-                "next_update": self.last_rsi_update + self.rsi_update_interval,
-                "time_until_update": max(0, (self.last_rsi_update + self.rsi_update_interval) - current_time)
             },
             "hourly_data": {
                 "last_update": self.last_1h_update,
@@ -761,17 +743,6 @@ class YahooDataFetcher:
         except Exception as e:
             logger.error(f"❌ Failed to calculate real-time momentum: {e}")
             return {"momentum": "NEUTRAL", "strength": 0, "direction": 0, "error": str(e)}
-    
-    def get_hybrid_rsi_analysis(self, symbol: str = "BTC", current_price: float = None) -> Dict[str, Any]:
-        """REMOVED: RSI is now handled by real-time calculator only"""
-        logger.warning("⚠️ This method has been removed. RSI is now handled by real-time calculator")
-        return {
-            "rsi_value": None,
-            "rsi_trend": "NEUTRAL",
-            "enhanced_signal": "NEUTRAL",
-            "confidence": 0.5,
-            "error": "method_removed"
-        }
 
 
 def main():

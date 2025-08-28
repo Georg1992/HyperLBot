@@ -78,16 +78,6 @@ class MarketDataManager:
                 "timestamp": time.time()
             }
     
-    def calculate_rsi(self, candles: List[Dict], periods: int = 14) -> Dict[str, Any]:
-        """REMOVED: Use core.analysis.real_time.rsi_calculator instead"""
-        logger.warning("⚠️ This method has been removed. Use core.analysis.real_time.rsi_calculator instead")
-        return {
-            "rsi": None,
-            "trend": "NEUTRAL", 
-            "signal": "NEUTRAL",
-            "error": "method_removed"
-        }
-    
     def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
         """Use trend manager for advanced trend calculation"""
         from core.trend_manager import trend_manager
