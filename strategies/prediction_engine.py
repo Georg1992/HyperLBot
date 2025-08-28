@@ -14,7 +14,7 @@ from collections import deque
 import core
 
 from core.config import TradingConfig
-from core.volatility_calculator import VolatilityCalculator
+# Removed volatility_calculator import as it was deleted
 from strategies.prediction_confidence import PredictionConfidence
 from strategies.prediction_analysis import PredictionAnalysis
 
@@ -46,7 +46,7 @@ class PredictionEngine:
         # Initialize sub-modules
         self.confidence = PredictionConfidence()
         self.analysis = PredictionAnalysis()
-        self.volatility_calculator = VolatilityCalculator()
+        # Volatility calculation will use market_data_manager
         
         logger.info("🎯 Enhanced Prediction Engine initialized with modular confidence and analysis systems")
     
