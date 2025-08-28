@@ -213,14 +213,14 @@ class YahooHyperliquidPaperTradingBot:
             # Calculate real market data instead of using defaults
             current_price = price_data["current_price"]
             
-            # Update RSI calculator with real-time price
+            # Update RSI calculator with real-time price (SINGLE UPDATE PER CYCLE)
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
             
             # Initialize RSI calculator if needed
             if not real_time_rsi_calculator.is_initialized:
                 real_time_rsi_calculator.initialize_with_yahoo_data()
             
-            # Add the current price to RSI calculator
+            # Add the current price to RSI calculator ONCE per cycle
             real_time_rsi_calculator.add_price(current_price)
             
             # Get volume data from order book analysis
@@ -404,16 +404,12 @@ class YahooHyperliquidPaperTradingBot:
             })
             return False
     
-    def get_optimized_rsi_data(self, hyperliquid_price: float) -> Dict[str, Any]:
-        """Get real-time RSI data using dedicated RSI calculator"""
+    def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
+        """Get real-time RSI data from already-updated calculator (NO DUPLICATE UPDATES)"""
         from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
         
-        # Ensure RSI calculator is initialized
-        if not real_time_rsi_calculator.is_initialized:
-            real_time_rsi_calculator.initialize_with_yahoo_data()
-        
-        # Add current price and get RSI
-        real_time_rsi_calculator.add_price(hyperliquid_price)
+        # NO PRICE UPDATE HERE - RSI already updated in price callback
+        # Just get the current cached RSI data
         rsi_data = real_time_rsi_calculator.calculate_rsi()
         
         return {
@@ -489,8 +485,8 @@ class YahooHyperliquidPaperTradingBot:
         volatility_data = hyperliquid_data.get("volatility_data", {})
         pressure_data = hyperliquid_data.get("ultimate_pressure_data", {})
         
-        # Get optimized RSI data using dedicated real-time calculator
-        hybrid_rsi_analysis = self.get_optimized_rsi_data(hyperliquid_price)
+        # Get optimized RSI data (already updated in price callback)
+        hybrid_rsi_analysis = self.get_optimized_rsi_data()
         
         # Update variability analyzer
         real_volume = volume_data.get("current_volume", 100)
@@ -1036,8 +1032,8 @@ class YahooHyperliquidPaperTradingBot:
         """Centralized market data update with optimized periodic updates"""
         try:
             
-            # Get advanced RSI data using dedicated real-time calculator
-            hybrid_rsi_analysis = self.get_optimized_rsi_data(current_price)
+            # Get advanced RSI data (already updated with current price)
+            hybrid_rsi_analysis = self.get_optimized_rsi_data()
             
             # Get advanced trend analysis using trend manager
             from core.trend_manager import trend_manager

@@ -41,9 +41,21 @@ class RealTimeRSICalculator:
         if timestamp is None:
             timestamp = time.time()
         
+        # PREVENT DUPLICATE PRICE UPDATES - major cause of RSI fluctuations
+        if self.last_price is not None and abs(price - self.last_price) < 0.01:
+            logger.debug(f"📊 Skipping duplicate price update: {price} (same as last: {self.last_price})")
+            return
+        
         # Calculate RSI incrementally if we have a previous price
         if self.last_price is not None and self.is_initialized:
             price_change = price - self.last_price
+            
+            # Skip tiny price changes that add noise
+            if abs(price_change) < self.min_price_change_threshold:
+                logger.debug(f"📊 Skipping tiny price change: {price_change:+.2f} (threshold: {self.min_price_change_threshold})")
+                # Still update last_price but don't recalculate RSI
+                self.last_price = price
+                return
             
             # Calculate gain/loss from this single price change
             gain = price_change if price_change > 0 else 0.0
@@ -60,11 +72,18 @@ class RealTimeRSICalculator:
                 rs = self.avg_gain / self.avg_loss
                 new_rsi = 100.0 - (100.0 / (1.0 + rs))
             
-            # Cache the result
-            self.cached_rsi = round(new_rsi, 2)
-            self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(new_rsi)
+            # Apply exponential smoothing to reduce noise
+            if self.smoothed_rsi is None:
+                self.smoothed_rsi = new_rsi
+            else:
+                self.smoothed_rsi = (self.rsi_smoothing_factor * new_rsi + 
+                                   (1 - self.rsi_smoothing_factor) * self.smoothed_rsi)
             
-            logger.debug(f"📊 RSI updated incrementally: {price} → RSI {self.cached_rsi:.2f} (change: {price_change:+.2f})")
+            # Cache the smoothed result
+            self.cached_rsi = round(self.smoothed_rsi, 2)
+            self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(self.smoothed_rsi)
+            
+            logger.debug(f"📊 RSI updated: {price} → Raw RSI {new_rsi:.2f} → Smoothed RSI {self.cached_rsi:.2f} (change: {price_change:+.2f})")
         
         # Store the price and update last_price
         self.price_history.append({
