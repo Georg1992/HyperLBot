@@ -29,15 +29,11 @@ class RealTimeRSICalculator:
         # Track last price for incremental updates
         self.last_price = None
         
-        # RSI smoothing to reduce noise (adjusted to match chart behavior)
-        self.rsi_smoothing_factor = 0.4  # Higher = more responsive to match chart
-        self.smoothed_rsi = None
+        # Price filtering (keep this - prevents noise from tiny changes)
         self.min_price_change_threshold = 5.0  # Lower threshold to catch smaller moves like the chart
         
-        # RSI mean reversion parameters
-        self.mean_reversion_factor = 0.008  # How fast RSI drifts to 50 during low activity (increased)
+        # Track update timing for diagnostics
         self.last_update_time = time.time()
-        self.max_idle_time = 15.0  # Start mean reversion after 15 seconds of no updates (faster)
         
         logger.info(f"📊 Real-time RSI Calculator initialized (periods: {periods})")
     
@@ -70,26 +66,19 @@ class RealTimeRSICalculator:
             self.avg_gain = (self.avg_gain * (self.periods - 1) + gain) / self.periods
             self.avg_loss = (self.avg_loss * (self.periods - 1) + loss) / self.periods
             
-            # Calculate new RSI immediately
+            # Calculate RSI (Wilder's smoothing already built-in, no extra smoothing needed)
             if self.avg_loss == 0:
                 new_rsi = 100.0
             else:
                 rs = self.avg_gain / self.avg_loss
                 new_rsi = 100.0 - (100.0 / (1.0 + rs))
             
-            # Apply exponential smoothing to reduce noise
-            if self.smoothed_rsi is None:
-                self.smoothed_rsi = new_rsi
-            else:
-                self.smoothed_rsi = (self.rsi_smoothing_factor * new_rsi + 
-                                   (1 - self.rsi_smoothing_factor) * self.smoothed_rsi)
-            
-            # Cache the smoothed result
-            self.cached_rsi = round(self.smoothed_rsi, 2)
-            self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(self.smoothed_rsi)
+            # Cache the RSI result (no redundant smoothing)
+            self.cached_rsi = round(new_rsi, 2)
+            self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(new_rsi)
             self.last_update_time = timestamp
             
-            logger.debug(f"📊 RSI updated: {price} → Raw RSI {new_rsi:.2f} → Smoothed RSI {self.cached_rsi:.2f} (change: {price_change:+.2f})")
+            logger.debug(f"📊 RSI updated: {price} → RSI {self.cached_rsi:.2f} (change: {price_change:+.2f})")
         
         # Store the price and update last_price
         self.price_history.append({
@@ -117,22 +106,10 @@ class RealTimeRSICalculator:
             if not self.is_initialized:
                 return self._initialize_rsi()
             
-            # Apply mean reversion if no recent price updates (RSI drifts toward 50)
+            # Return cached RSI result (pure RSI, no artificial manipulation)
             if self.cached_rsi is not None:
                 current_time = time.time()
                 time_since_update = current_time - self.last_update_time
-                
-                if time_since_update > self.max_idle_time:
-                    # Apply gentle mean reversion toward 50
-                    drift_factor = min(time_since_update / 300.0, 1.0)  # Full drift after 5 minutes
-                    target_rsi = 50.0
-                    reversion_amount = (target_rsi - self.cached_rsi) * self.mean_reversion_factor * drift_factor
-                    
-                    if abs(reversion_amount) > 0.01:  # Only apply if meaningful
-                        self.cached_rsi = round(self.cached_rsi + reversion_amount, 2)
-                        self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(self.cached_rsi)
-                        
-                        logger.debug(f"📊 RSI mean reversion: drifting toward 50 → {self.cached_rsi:.2f} (idle: {time_since_update:.1f}s)")
                 
                 return {
                     "rsi": self.cached_rsi,
@@ -146,8 +123,7 @@ class RealTimeRSICalculator:
                     "latest_price": self.last_price,
                     "calculation_timestamp": current_time,
                     "calculation_method": "incremental_update",
-                    "time_since_update": time_since_update,
-                    "mean_reversion_applied": time_since_update > self.max_idle_time
+                    "time_since_update": time_since_update
                 }
             
             # Fallback: force initialization if somehow we get here
