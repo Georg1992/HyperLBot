@@ -66,17 +66,72 @@ class MarketDataAnalyzer:
             return transformed_data
             
         except Exception as e:
-            logger.error(f"❌ Failed to get optimized RSI data: {e}")
-            return {
-                "rsi_value": 50.0,  # Default RSI value
-                "trend": "NEUTRAL",
-                "advanced_signal": "NEUTRAL",
-                "momentum": "NEUTRAL",
-                "confidence": 0.5,
-                "hyperliquid_price": hyperliquid_price,
-                "price_context": "error",
-                "error": str(e)
-            }
+            logger.error(f"❌ Failed to get historical RSI data: {e}")
+            return self._get_default_rsi_data(hyperliquid_price, str(e))
+    
+    def _calculate_historical_rsi(self, candles: List[Dict], periods: int = 14) -> Dict[str, Any]:
+        """Calculate RSI from historical Yahoo Finance candle data"""
+        if len(candles) < periods + 1:
+            return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
+        
+        # Extract closing prices
+        closes = [candle['close'] for candle in candles[-periods-1:]]
+        
+        # Calculate price changes
+        changes = []
+        for i in range(1, len(closes)):
+            changes.append(closes[i] - closes[i-1])
+        
+        if len(changes) < periods:
+            return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
+        
+        # Calculate gains and losses
+        gains = [change if change > 0 else 0 for change in changes[-periods:]]
+        losses = [-change if change < 0 else 0 for change in changes[-periods:]]
+        
+        # Calculate average gain and loss (Wilder's smoothing for historical)
+        avg_gain = sum(gains) / periods
+        avg_loss = sum(losses) / periods
+        
+        # Calculate RSI
+        if avg_loss == 0:
+            rsi = 100.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi = 100.0 - (100.0 / (1.0 + rs))
+        
+        # Determine trend and signal
+        if rsi >= 70:
+            trend, signal = "OVERBOUGHT", "SELL"
+        elif rsi <= 30:
+            trend, signal = "OVERSOLD", "BUY"
+        elif rsi >= 60:
+            trend, signal = "STRONG", "NEUTRAL"
+        elif rsi <= 40:
+            trend, signal = "WEAK", "NEUTRAL"
+        else:
+            trend, signal = "NEUTRAL", "NEUTRAL"
+        
+        return {
+            "rsi": round(rsi, 2),
+            "trend": trend,
+            "signal": signal,
+            "avg_gain": avg_gain,
+            "avg_loss": avg_loss
+        }
+    
+    def _get_default_rsi_data(self, hyperliquid_price: float = None, error: str = "unknown") -> Dict[str, Any]:
+        """Get default RSI data when calculation fails"""
+        return {
+            "rsi_value": 50.0,  # Neutral RSI value
+            "trend": "NEUTRAL",
+            "advanced_signal": "NEUTRAL",
+            "momentum": "NEUTRAL",
+            "confidence": 0.5,
+            "hyperliquid_price": hyperliquid_price,
+            "price_context": "yahoo_historical",
+            "error": error
+        }
     
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get comprehensive Yahoo Finance market analysis"""
