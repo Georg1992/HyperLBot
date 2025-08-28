@@ -29,6 +29,11 @@ class RealTimeRSICalculator:
         # Track last price for incremental updates
         self.last_price = None
         
+        # RSI smoothing to reduce noise
+        self.rsi_smoothing_factor = 0.2  # Lower = more smoothing
+        self.smoothed_rsi = None
+        self.min_price_change_threshold = 10.0  # Minimum $10 change to update RSI
+        
         logger.info(f"📊 Real-time RSI Calculator initialized (periods: {periods})")
     
     def add_price(self, price: float, timestamp: float = None) -> None:
@@ -195,7 +200,7 @@ class RealTimeRSICalculator:
             
             # Get Yahoo Finance data for initialization
             yahoo_fetcher = YahooDataFetcher()
-            candles = yahoo_fetcher.get_5m_klines("BTC", 72)  # 6 hours of data (72 * 5min = 360min = 6h)
+            candles = yahoo_fetcher.get_5m_klines("BTC", 576)  # 48 hours of data (576 * 5min = 2880min = 48h)
             
             if candles and len(candles) >= self.periods + 1:
                 # Extract closing prices
