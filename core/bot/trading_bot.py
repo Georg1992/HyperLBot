@@ -405,14 +405,23 @@ class YahooHyperliquidPaperTradingBot:
             return False
     
     def get_optimized_rsi_data(self, hyperliquid_price: float) -> Dict[str, Any]:
-        """Get hybrid RSI data for enhanced profitability"""
-        rsi_data = self.market_data_analyzer.get_optimized_rsi_data(hyperliquid_price)
+        """Get real-time RSI data using dedicated RSI calculator"""
+        from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+        
+        # Ensure RSI calculator is initialized
+        if not real_time_rsi_calculator.is_initialized:
+            real_time_rsi_calculator.initialize_with_yahoo_data()
+        
+        # Add current price and get RSI
+        real_time_rsi_calculator.add_price(hyperliquid_price)
+        rsi_data = real_time_rsi_calculator.calculate_rsi()
+        
         return {
             "rsi": rsi_data.get("rsi", None),
             "rsi_trend": rsi_data.get("trend", "NEUTRAL"),
             "rsi_signal": rsi_data.get("signal", "NEUTRAL"),
-            "momentum": rsi_data.get("momentum", "NEUTRAL"),
-            "confidence": rsi_data.get("confidence", magic_numbers.DEFAULT_CONFIDENCE)
+            "momentum": rsi_data.get("trend", "NEUTRAL"),  # Use trend as momentum
+            "confidence": 0.8 if rsi_data.get("rsi") is not None else magic_numbers.DEFAULT_CONFIDENCE
         }
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get optimized market analysis from Yahoo Finance with periodic updates"""
@@ -480,14 +489,14 @@ class YahooHyperliquidPaperTradingBot:
         volatility_data = hyperliquid_data.get("volatility_data", {})
         pressure_data = hyperliquid_data.get("ultimate_pressure_data", {})
         
-        # Get optimized RSI data (with periodic updates)
-        hybrid_rsi_analysis = self.market_data_analyzer.get_optimized_rsi_data(hyperliquid_price)
+        # Get optimized RSI data using dedicated real-time calculator
+        hybrid_rsi_analysis = self.get_optimized_rsi_data(hyperliquid_price)
         
         # Update variability analyzer
         real_volume = volume_data.get("current_volume", 100)
         self.variability_analyzer.add_price_data(hyperliquid_price, volume=real_volume)
         
-        logger.info(f"📊 Hybrid RSI: {hybrid_rsi_analysis.get('rsi_value', 'N/A')} | Signal: {hybrid_rsi_analysis.get('advanced_signal', 'N/A')} | Confidence: {hybrid_rsi_analysis.get('confidence', 0)*100:.1f}%")
+        logger.info(f"📊 Real-time RSI: {hybrid_rsi_analysis.get('rsi', 'N/A')} | Signal: {hybrid_rsi_analysis.get('rsi_signal', 'N/A')} | Confidence: {hybrid_rsi_analysis.get('confidence', 0)*100:.1f}%")
         logger.info(f"📊 Momentum: {hybrid_rsi_analysis.get('momentum', 'N/A')} | Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
         
         # 4. BUILD COMPREHENSIVE ENHANCED ANALYSIS
@@ -533,7 +542,7 @@ class YahooHyperliquidPaperTradingBot:
         signal_data = {
             "should_trade": True,
             "side": entry_analysis["side"],
-            "reason": f"HYBRID: {hybrid_rsi_analysis.get('advanced_signal', 'UNKNOWN')} - {entry_analysis['reason']}",
+            "reason": f"RSI: {hybrid_rsi_analysis.get('rsi_signal', 'UNKNOWN')} - {entry_analysis['reason']}",
             "target": entry_analysis["target_price"],
             "stop": entry_analysis["stop_price"],
             "entry_price": entry_analysis["entry_price"],
@@ -549,9 +558,9 @@ class YahooHyperliquidPaperTradingBot:
             "trend_1h": enhanced_analysis.get("trend_1h", {}).get("trend"),
             "volatility_5m": enhanced_analysis.get("volatility_5m"),
             "market_condition": enhanced_analysis.get("market_condition"),
-            "rsi_value": hybrid_rsi_analysis.get("rsi_value"),
+            "rsi_value": hybrid_rsi_analysis.get("rsi"),
             "momentum": hybrid_rsi_analysis.get("momentum"),
-            "advanced_signal": hybrid_rsi_analysis.get("advanced_signal")
+            "rsi_signal": hybrid_rsi_analysis.get("rsi_signal")
         }
         
         # Traditional quality check
@@ -1027,8 +1036,8 @@ class YahooHyperliquidPaperTradingBot:
         """Centralized market data update with optimized periodic updates"""
         try:
             
-            # Get advanced data from Yahoo Finance (with periodic updates)
-            hybrid_rsi_analysis = self.market_data_analyzer.get_optimized_rsi_data(current_price)
+            # Get advanced RSI data using dedicated real-time calculator
+            hybrid_rsi_analysis = self.get_optimized_rsi_data(current_price)
             
             # Get advanced trend analysis using trend manager
             from core.trend_manager import trend_manager
@@ -1045,7 +1054,7 @@ class YahooHyperliquidPaperTradingBot:
                 trend_value = "UNKNOWN"
                 logger.warning(f"⚠️ Missing candle data: 1m={len(candles_1m) if candles_1m else 0}, 5m={len(candles_5m) if candles_5m else 0}, 1h={len(candles_1h) if candles_1h else 0}")
             
-            rsi_value = hybrid_rsi_analysis.get("rsi_value", None)
+            rsi_value = hybrid_rsi_analysis.get("rsi", None)
             
             # Get real-time data from Hyperliquid API using centralized manager
             from core.market_data_manager import market_data_manager
