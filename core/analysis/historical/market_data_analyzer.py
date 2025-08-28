@@ -17,30 +17,28 @@ class MarketDataAnalyzer:
         self.yahoo_fetcher = YahooDataFetcher()
         logger.info("📊 Market Data Analyzer initialized")
     
-    def get_optimized_rsi_data(self, hyperliquid_price: float) -> Dict[str, Any]:
-        """Get RSI data from the real-time calculator only"""
+    def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
+        """Get historical RSI data from Yahoo Finance candles (not real-time)"""
         try:
-            # Use real-time RSI calculator only
-            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+            # Calculate RSI from Yahoo Finance historical data (proper historical analysis)
+            candles_5m = self.get_5m_candles("BTC", 50)  # Get enough data for RSI calculation
             
-            # Initialize with Yahoo data if not already initialized (ONCE ONLY)
-            if not real_time_rsi_calculator.is_initialized:
-                real_time_rsi_calculator.initialize_with_yahoo_data()
+            if not candles_5m or len(candles_5m) < 15:
+                logger.warning("⚠️ Insufficient Yahoo candle data for RSI calculation")
+                return self._get_default_rsi_data(hyperliquid_price, "insufficient_data")
             
-            # RSI is already updated by WebSocket price callback - no duplicate update needed
-            
-            # Get real-time RSI calculation
-            rsi_data = real_time_rsi_calculator.calculate_rsi()
+            # Calculate RSI from Yahoo closing prices
+            rsi_data = self._calculate_historical_rsi(candles_5m)
             
             # Transform the data structure to match what the bot expects
             transformed_data = {
-                "rsi_value": rsi_data.get("rsi"),  # Use real-time RSI
+                "rsi_value": rsi_data.get("rsi"),  # Historical Yahoo RSI
                 "trend": rsi_data.get("trend", "NEUTRAL"),
                 "advanced_signal": rsi_data.get("signal", "NEUTRAL"),
                 "momentum": "NEUTRAL",  # Default momentum
                 "confidence": 0.5,  # Default confidence
                 "hyperliquid_price": hyperliquid_price,
-                "price_context": "hyperliquid_real_time" if hyperliquid_price > 0 else "yahoo_historical"
+                "price_context": "yahoo_historical"  # Always historical for this analyzer
             }
             
             # Calculate confidence based on RSI value
