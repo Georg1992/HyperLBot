@@ -27,9 +27,7 @@ class MarketDataAnalyzer:
             if not real_time_rsi_calculator.is_initialized:
                 real_time_rsi_calculator.initialize_with_yahoo_data()
             
-            # Add the current Hyperliquid price to the real-time calculator
-            if hyperliquid_price and hyperliquid_price > 0:
-                real_time_rsi_calculator.add_price(hyperliquid_price)
+            # RSI is already updated by WebSocket price callback - no duplicate update needed
             
             # Get real-time RSI calculation
             rsi_data = real_time_rsi_calculator.calculate_rsi()
