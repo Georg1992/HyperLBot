@@ -52,7 +52,7 @@ csv_exports/
 trades/
 market_data/
 signals/
-analysis/
+data/analysis/
 performance/
 errors/
 session_metadata_*.json
