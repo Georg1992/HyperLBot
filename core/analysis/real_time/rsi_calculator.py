@@ -29,10 +29,10 @@ class RealTimeRSICalculator:
         # Track last price for incremental updates
         self.last_price = None
         
-        # RSI smoothing to reduce noise
-        self.rsi_smoothing_factor = 0.2  # Lower = more smoothing
+        # RSI smoothing to reduce noise (adjusted to match chart behavior)
+        self.rsi_smoothing_factor = 0.4  # Higher = more responsive to match chart
         self.smoothed_rsi = None
-        self.min_price_change_threshold = 10.0  # Minimum $10 change to update RSI
+        self.min_price_change_threshold = 5.0  # Lower threshold to catch smaller moves like the chart
         
         logger.info(f"📊 Real-time RSI Calculator initialized (periods: {periods})")
     
