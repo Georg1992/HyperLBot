@@ -121,16 +121,20 @@ class TrendManager:
             return {"trend": "SIDEWAYS", "strength": 0, "direction": 0, "confidence": 0}
     
     def _calculate_momentum(self, prices: List[float]) -> float:
-        """Calculate price momentum"""
-        if len(prices) < 3:
+        """Calculate price momentum (rate of change, not acceleration)"""
+        if len(prices) < 2:
             return 0.0
         
-        # Calculate rate of change
-        recent_change = (prices[-1] - prices[-2]) / prices[-2]
-        previous_change = (prices[-2] - prices[-3]) / prices[-3]
+        # Calculate momentum as average rate of change over recent periods
+        if len(prices) >= 3:
+            # Use 3-period momentum for better stability
+            momentum_1 = (prices[-1] - prices[-2]) / prices[-2]
+            momentum_2 = (prices[-2] - prices[-3]) / prices[-3]
+            momentum = (momentum_1 + momentum_2) / 2
+        else:
+            # Single period momentum
+            momentum = (prices[-1] - prices[-2]) / prices[-2]
         
-        # Momentum is acceleration (change in rate of change)
-        momentum = recent_change - previous_change
         return momentum
     
     def _check_volume_confirmation(self, candles: List[Dict]) -> bool:
