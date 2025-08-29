@@ -104,13 +104,17 @@ class MarketOrderbookAnalyzer:
             else:
                 order_flow = "NEUTRAL"
             
-            # Categorize volume based on depth
-            if total_depth_5 > 2.0:
+            # Categorize volume based on realistic Bitcoin orderbook depth
+            if total_depth_5 > 40.0:  # Very high liquidity
+                volume_category = "VERY_HIGH"
+            elif total_depth_5 > 25.0:  # High liquidity
                 volume_category = "HIGH"
-            elif total_depth_5 > 0.5:
+            elif total_depth_5 > 15.0:  # Medium liquidity
                 volume_category = "MEDIUM"
-            else:
+            elif total_depth_5 > 5.0:   # Low liquidity
                 volume_category = "LOW"
+            else:                        # Very low liquidity
+                volume_category = "VERY_LOW"
             
             # Analyze depth distribution for volume trend
             depth_ratio = total_depth_5 / total_depth_10 if total_depth_10 > 0 else 1.0
