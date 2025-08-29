@@ -13,7 +13,7 @@ from collections import deque
 # Import core module to setup paths
 import core
 
-from core.config import TradingConfig
+from config.config import TradingConfig
 from core.analysis.real_time.volatility_calculator import VolatilityCalculator
 from strategies.prediction_confidence import PredictionConfidence
 from strategies.prediction_analysis import PredictionAnalysis

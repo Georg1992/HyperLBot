@@ -13,7 +13,7 @@ from collections import deque
 # Import core module to setup paths
 import core
 
-from core.config import TradingConfig
+from config.config import TradingConfig
 
 class TradeManager:
     """Advanced trade management with intelligent placement and dynamic stops"""

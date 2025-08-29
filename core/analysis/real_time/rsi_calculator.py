@@ -214,7 +214,7 @@ class RealTimeRSICalculator:
     def initialize_with_yahoo_data(self) -> None:
         """Initialize RSI calculator with Yahoo Finance data for starting values"""
         try:
-            from data.yahoo_data_fetcher import YahooDataFetcher
+            from core.external.yahoo_data_fetcher import YahooDataFetcher
             
             # Get Yahoo Finance data for initialization
             yahoo_fetcher = YahooDataFetcher()

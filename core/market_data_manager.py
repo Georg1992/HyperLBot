@@ -80,7 +80,7 @@ class MarketDataManager:
     
     def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
         """Use trend manager for advanced trend calculation"""
-        from core.trend_manager import trend_manager
+        from core.analysis.trend_manager import trend_manager
         return trend_manager.calculate_trend(candles, periods)
     
     def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:

@@ -6,10 +6,10 @@ import hashlib
 import eth_account
 from typing import Dict, Any, Optional, List
 from loguru import logger
-from .config import TradingConfig
+from config.config import TradingConfig
 
 # Import data modules to avoid lazy import issues
-from data.yahoo_data_fetcher import YahooDataFetcher
+from core.external.yahoo_data_fetcher import YahooDataFetcher
 import statistics # Added for enhanced volatility analysis
 from core.analysis.real_time.orderbook_analyzer import MarketOrderbookAnalyzer
 

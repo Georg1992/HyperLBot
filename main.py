@@ -26,7 +26,7 @@ from loguru import logger
 
 # Import core module to setup paths
 import core
-from core.config import config
+from config.config import config
 from core.constants import constants
 from core.instance_manager import instance_manager, check_single_instance
 

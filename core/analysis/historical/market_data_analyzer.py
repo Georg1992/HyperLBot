@@ -8,7 +8,7 @@ import time
 from typing import Dict, Any, List, Optional
 from loguru import logger
 from core.constants import magic_numbers
-from data.yahoo_data_fetcher import YahooDataFetcher
+from core.external.yahoo_data_fetcher import YahooDataFetcher
 
 class MarketDataAnalyzer:
     """Handles market data analysis and RSI calculations"""

@@ -12,7 +12,7 @@ from loguru import logger
 # Import core module to setup paths
 import core
 
-from core.config import TradingConfig
+from config.config import TradingConfig
 
 class FeeManager:
     def __init__(self):

@@ -13,8 +13,8 @@ from loguru import logger
 from datetime import datetime, timedelta
 import statistics
 from core.constants import data_constants, volume_constants, technical_constants, time_constants
-from data.yahoo_volume_analyzer import volume_analyzer
-from data.yahoo_momentum_analyzer import momentum_analyzer
+from core.external.yahoo_volume_analyzer import volume_analyzer
+from core.external.yahoo_momentum_analyzer import momentum_analyzer
 
 class YahooDataFetcher:
     """
@@ -425,7 +425,7 @@ class YahooDataFetcher:
             support_resistance_1h = market_data_manager.calculate_support_resistance(candles_1h)
             
             # Multi-timeframe trend analysis using advanced trend manager
-            from core.trend_manager import trend_manager
+            from core.analysis.trend_manager import trend_manager
             multi_trend_analysis = trend_manager.get_multi_timeframe_trend(
                 candles_1m, candles_5m, candles_1h
             )

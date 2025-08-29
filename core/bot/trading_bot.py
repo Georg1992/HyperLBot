@@ -17,13 +17,13 @@ import urllib3
 # Disable SSL warnings globally
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-from core.hyperliquid_api import HyperliquidAPI
-from core.config import TradingConfig
+from core.api.hyperliquid_api import HyperliquidAPI
+from config.config import TradingConfig
 from core.constants import constants, strategy_constants, ui_constants, magic_numbers
-from core.trade_state_manager import trade_state_manager
+from core.state.trade_state_manager import trade_state_manager
 from core.execution.fee_manager import FeeManager
 from core.analysis.historical.market_volatility_analyzer import VariabilityAnalyzer
-from core.trading_logger import TradingLogger
+from core.logging.trading_logger import TradingLogger
 from strategies.prediction_engine import PredictionEngine
 from core.execution.trade_manager import TradeManager
 from core.execution.trading_execution import TradingExecution
@@ -182,7 +182,7 @@ class YahooHyperliquidPaperTradingBot:
     def _initialize_websocket(self):
         """Initialize WebSocket for real-time price updates"""
         try:
-            from core.hyperliquid_websocket import start_websocket
+            from core.api.hyperliquid_websocket import start_websocket
             
             logger.info("🚀 Initializing Hyperliquid WebSocket for real-time price updates...")
             
@@ -1036,7 +1036,7 @@ class YahooHyperliquidPaperTradingBot:
             hybrid_rsi_analysis = self.get_optimized_rsi_data()
             
             # Get advanced trend analysis using trend manager
-            from core.trend_manager import trend_manager
+            from core.analysis.trend_manager import trend_manager
             candles_1m = self.market_data_analyzer.get_1m_candles("BTC", 10)
             candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 10)
             candles_1h = self.market_data_analyzer.get_1h_candles("BTC", 10)
