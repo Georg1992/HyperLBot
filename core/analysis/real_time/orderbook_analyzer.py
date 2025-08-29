@@ -276,7 +276,7 @@ class MarketOrderbookAnalyzer:
             combined_volatility = max(combined_volatility, 0.0)
             
             # Debug logging for volatility components
-            logger.debug(f"📊 Volatility Analysis: {combined_volatility:.4f} (spread: {spread_volatility:.4f}, depth: {depth_volatility:.4f})")
+            logger.info(f"📊 Volatility Analysis: {combined_volatility:.4f} ({combined_volatility*100:.2f}%) → {volatility_category} (spread: {spread_volatility:.4f}, depth: {depth_volatility:.4f})")
             
             # Categorize volatility with REALISTIC Bitcoin ranges
             if combined_volatility > 0.05:    # > 5% - Extremely high volatility (major events)
@@ -285,7 +285,7 @@ class MarketOrderbookAnalyzer:
                 volatility_category = "VERY_HIGH"
             elif combined_volatility > 0.01:  # > 1% - High volatility (busy periods)
                 volatility_category = "HIGH"
-            elif combined_volatility > 0.005: # > 0.5% - Above average volatility
+            elif combined_volatility > 0.003: # > 0.3% - Above average volatility (adjusted for Bitcoin)
                 volatility_category = "ABOVE_AVERAGE"
             elif combined_volatility > 0.002: # > 0.2% - Normal volatility
                 volatility_category = "NORMAL"
