@@ -947,7 +947,8 @@ class YahooHyperliquidPaperTradingBot:
             rtm_data = simple_rtm.get_data()
             rtm_session = rtm_data.get("session", {})
             
-            if rtm_session.get("status") == "ACTIVE" and rtm_session.get("session_id") != "no_session":
+            # Check for any existing session (ACTIVE or COMPLETED) that needs cleanup
+            if rtm_session.get("session_id") != "no_session" and rtm_session.get("session_id"):
                 return {
                     "session_id": rtm_session.get("session_id"),
                     "status": rtm_session.get("status"),
@@ -1065,7 +1066,9 @@ class YahooHyperliquidPaperTradingBot:
     def _update_simple_rtm_activity(self, message: str, level: str = "INFO"):
         """Update SimpleRTM with activity"""
         try:
-            # Note: Activity logging is handled by the trading logger
+            # Actually update SimpleRTM with activity
+            from core.data.real_time_manager import simple_rtm
+            simple_rtm.add_activity(message, level, "bot")
             logger.info(f"📊 RTM Activity: {message}")
         except Exception as e:
             logger.error(f"❌ Could not update SimpleRTM activity: {e}")

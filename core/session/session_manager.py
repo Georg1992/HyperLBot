@@ -93,13 +93,15 @@ class SessionManager:
             rtm_data = simple_rtm.get_data()
             rtm_session = rtm_data.get("session", {})
             
-            if rtm_session.get("status") == "ACTIVE" and rtm_session.get("session_id") != "no_session":
-                logger.info(f"🔄 Found active session in RTM: {rtm_session.get('session_id')}")
+            # Check for ANY existing session (ACTIVE or COMPLETED) that needs cleanup
+            if rtm_session.get("session_id") != "no_session" and rtm_session.get("session_id"):
+                logger.info(f"🔄 Found existing session in RTM: {rtm_session.get('session_id')}")
                 logger.info(f"   Status: {rtm_session.get('status')}")
                 logger.info(f"   Balance: ${rtm_session.get('current_balance', 0):.2f}")
                 
-                # Don't clear RTM here - let the new session overwrite it
-                logger.info("🔄 Will overwrite existing session with new session data")
+                # Clear any existing session data to ensure clean start
+                simple_rtm.clear_session_data()
+                logger.info("🧹 Cleared existing session data for fresh start")
             
             # Close current session if exists
             if self.current_session_id:

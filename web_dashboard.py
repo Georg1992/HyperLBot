@@ -229,8 +229,15 @@ class EventDrivenTradingDashboard:
             # Use the global RTM instance - SINGLE SOURCE OF TRUTH
             from core.data.real_time_manager import simple_rtm
             
-            # Check for stale sessions and auto-cleanup
-            simple_rtm.auto_cleanup_stale_sessions()
+            # Check for stale sessions and auto-cleanup (less aggressive)
+            # Only cleanup every 30 seconds to avoid interfering with fresh sessions
+            if not hasattr(self, '_last_cleanup_time'):
+                self._last_cleanup_time = 0
+            
+            current_time = time.time()
+            if current_time - self._last_cleanup_time > 30:  # 30 second interval
+                simple_rtm.auto_cleanup_stale_sessions()
+                self._last_cleanup_time = current_time
             
             # Get ALL data from SimpleRTM - SINGLE SOURCE OF TRUTH
             rtm_data = simple_rtm.get_data()
