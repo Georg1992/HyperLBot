@@ -223,19 +223,23 @@ class YahooHyperliquidPaperTradingBot:
             # Add the current price to RSI calculator ONCE per cycle
             real_time_rsi_calculator.add_price(current_price)
             
-            # Get volume data from order book analysis
+            # Get volume data from order book analysis (real-time via WebSocket)
             try:
                 volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
                 volume_depth = volume_data.get("current_volume", 0.0)
                 volume_category = volume_data.get("volume_category", "UNKNOWN")
                 order_flow = volume_data.get("order_flow", "NEUTRAL")
                 depth_analysis = volume_data.get("depth_analysis", "UNKNOWN")
+                
+                # Cache volume data for main trading loop
+                self.hyperliquid_volume_data = volume_data
         
             except Exception as e:
                 volume_depth = 0.0
                 volume_category = "UNKNOWN"
                 order_flow = "NEUTRAL"
                 depth_analysis = "UNKNOWN"
+                self.hyperliquid_volume_data = None
             
             # RSI calculation is now handled in real-time with each price update
             rsi_data = real_time_rsi_calculator.calculate_rsi()
@@ -702,9 +706,10 @@ class YahooHyperliquidPaperTradingBot:
                     time.sleep(check_interval)
                     continue
                 
-                # Get current Hyperliquid volume/liquidity data
-                volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
-                if volume_data and "depth_imbalance" in volume_data:
+                # Volume data is already updated via WebSocket callback (_on_price_update)
+                # Use cached volume data to avoid duplicate API calls
+                if hasattr(self, 'hyperliquid_volume_data') and self.hyperliquid_volume_data:
+                    volume_data = self.hyperliquid_volume_data
                     imbalance = volume_data.get("depth_imbalance", 0)
                     total_depth = volume_data.get("total_depth_5", 0)
                     
@@ -713,11 +718,10 @@ class YahooHyperliquidPaperTradingBot:
                         direction = "DOWNTREND (Heavy Selling)" if imbalance < -magic_numbers.ORDERBOOK_IMBALANCE_THRESHOLD else "UPTREND (Heavy Buying)"
                         logger.warning(f"🚨 SIGNIFICANT ORDERBOOK IMBALANCE: {direction} ({imbalance*100:+.1f}%)")
                         logger.warning(f"   Total Depth: {total_depth:.2f} BTC, Bid: {volume_data.get('bid_depth_5', 0):.2f} BTC, Ask: {volume_data.get('ask_depth_5', 0):.2f} BTC")
-                    
-                    # Store for analysis
-                    self.hyperliquid_volume_data = volume_data
                 else:
-                    self.hyperliquid_volume_data = None
+                    # Fallback: get volume data if not available from WebSocket
+                    volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
+                    self.hyperliquid_volume_data = volume_data
                 
                 # Check for position exits with advanced management
                 self._update_simple_rtm_activity("🔍 Checking position exits", "INFO")
