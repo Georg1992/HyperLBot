@@ -677,14 +677,13 @@ class YahooHyperliquidPaperTradingBot:
                 logger.warning(f"⚠️ Found ongoing session: {ongoing_session['session_id']}")
                 logger.info(f"   Status: {ongoing_session['status']}")
                 logger.info(f"   Balance: ${ongoing_session['current_balance']:.2f}")
-                logger.info("🔄 Closing ongoing session to start fresh...")
+                logger.info("🔄 Will start new session and overwrite existing data...")
             
             # Start session via SessionManager
             self.session_manager = SessionManager()
             
-            # Close any existing sessions
-            self.session_manager._close_existing_session()
-            logger.info("✅ Session cleanup completed")
+            # SessionManager will handle cleanup internally
+            logger.info("✅ SessionManager initialized")
             
             session_id = self.session_manager.start_session(
                 session_id=f"bot_session_{int(time.time())}",

@@ -50,7 +50,7 @@ class SessionManager:
                 if session_id is None:
                     session_id = f"session_{int(time.time())}"
                 
-                # Close any existing session first
+                # Close any existing session first (but don't clear RTM yet)
                 self._close_existing_session()
                 
                 self.current_session_id = session_id
@@ -98,9 +98,8 @@ class SessionManager:
                 logger.info(f"   Status: {rtm_session.get('status')}")
                 logger.info(f"   Balance: ${rtm_session.get('current_balance', 0):.2f}")
                 
-                # Clear the active session in RTM
-                simple_rtm.clear_session_data()
-                logger.info("✅ Cleared active session from RTM")
+                # Don't clear RTM here - let the new session overwrite it
+                logger.info("🔄 Will overwrite existing session with new session data")
             
             # Close current session if exists
             if self.current_session_id:
