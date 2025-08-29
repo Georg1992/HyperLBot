@@ -236,9 +236,9 @@ class MarketOrderbookAnalyzer:
             if spreads:
                 spread_volatility = statistics.mean(spreads)
                 spread_std = statistics.stdev(spreads) if len(spreads) > 1 else 0
-                # Normalize spread volatility to realistic ranges (typical spreads are 0.0001-0.001)
-                # Scale down by 100 to get more reasonable volatility values
-                spread_volatility = min(spread_volatility * 100, 0.01)  # Cap at 1%
+                # Convert spread to percentage volatility (typical spreads are 0.0001-0.001 = 0.01%-0.1%)
+                # Don't scale by 100 - spread is already in decimal form
+                spread_volatility = min(spread_volatility, 0.10)  # Cap at 10% for extreme cases
             else:
                 spread_volatility = 0.0
                 spread_std = 0.0
@@ -257,10 +257,10 @@ class MarketOrderbookAnalyzer:
                     # Add bounds checking to prevent unrealistic values
                     if mean_depth > 0.001:  # Only calculate if mean depth is significant
                         depth_volatility = depth_std / mean_depth
-                        # Cap depth volatility at much more reasonable levels (max 0.1 = 10%)
-                        depth_volatility = min(depth_volatility, 0.1)
-                        # Scale down depth volatility as it's typically much smaller than spread volatility
-                        depth_volatility = depth_volatility * 0.1  # Scale down by 10x
+                        # Cap depth volatility at reasonable levels (max 1.0 = 100% coefficient of variation)
+                        depth_volatility = min(depth_volatility, 1.0)
+                        # Convert to percentage representation and scale appropriately for Bitcoin
+                        depth_volatility = depth_volatility * 0.01  # Convert to percentage scale
                     else:
                         depth_volatility = 0.0
             
@@ -269,22 +269,29 @@ class MarketOrderbookAnalyzer:
             combined_volatility = (spread_volatility * 0.8) + (depth_volatility * 0.2)
             
             # Add bounds checking to ensure realistic volatility values
-            # Cap at 0.01 (1%) which is high for crypto markets
-            combined_volatility = min(combined_volatility, 0.01)
+            # Cap at 0.15 (15%) for extreme volatility events - Bitcoin can be very volatile!
+            combined_volatility = min(combined_volatility, 0.15)
             
             # Ensure non-negative
             combined_volatility = max(combined_volatility, 0.0)
             
             # Debug logging for volatility components
-            if combined_volatility > 0.005:  # Log if volatility is unusually high (0.5%)
-                logger.debug(f"⚠️ High volatility detected: {combined_volatility:.4f} (spread: {spread_volatility:.4f}, depth: {depth_volatility:.4f})")
+            logger.debug(f"📊 Volatility Analysis: {combined_volatility:.4f} (spread: {spread_volatility:.4f}, depth: {depth_volatility:.4f})")
             
-            # Categorize volatility
-            if combined_volatility > 0.003:  # 0.3%
+            # Categorize volatility with REALISTIC Bitcoin ranges
+            if combined_volatility > 0.05:    # > 5% - Extremely high volatility (major events)
+                volatility_category = "EXTREMELY_HIGH"
+            elif combined_volatility > 0.02:  # > 2% - Very high volatility (active trading)
+                volatility_category = "VERY_HIGH"
+            elif combined_volatility > 0.01:  # > 1% - High volatility (busy periods)
                 volatility_category = "HIGH"
-            elif combined_volatility > 0.001:  # 0.1%
-                volatility_category = "MEDIUM"
-            else:
+            elif combined_volatility > 0.005: # > 0.5% - Above average volatility
+                volatility_category = "ABOVE_AVERAGE"
+            elif combined_volatility > 0.002: # > 0.2% - Normal volatility
+                volatility_category = "NORMAL"
+            elif combined_volatility > 0.001: # > 0.1% - Below average volatility
+                volatility_category = "BELOW_AVERAGE"
+            else:                             # < 0.1% - Low volatility (very quiet)
                 volatility_category = "LOW"
             
             # Determine volatility trend based on spread consistency

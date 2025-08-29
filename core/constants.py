@@ -75,10 +75,10 @@ class TradingConstants:
     HIGH_CONFIDENCE_POSITION = 0.20   # 20%
     ULTRA_CONFIDENCE_POSITION = 0.40  # 40%
     
-    # Volatility Ranges
-    LOW_VOLATILITY_THRESHOLD = 0.005
-    MEDIUM_VOLATILITY_THRESHOLD = 0.008
-    HIGH_VOLATILITY_THRESHOLD = 0.015
+    # Volatility Ranges - REALISTIC Bitcoin trading ranges
+    LOW_VOLATILITY_THRESHOLD = 0.002     # 0.2% - quiet Bitcoin market
+    MEDIUM_VOLATILITY_THRESHOLD = 0.01   # 1.0% - normal Bitcoin trading  
+    HIGH_VOLATILITY_THRESHOLD = 0.03     # 3.0% - active Bitcoin trading
     
     # Connection Timeouts
     API_TIMEOUT = 30
@@ -199,10 +199,10 @@ class MagicNumbers:
     # Imbalance thresholds
     ORDERBOOK_IMBALANCE_THRESHOLD = 0.3  # 30% imbalance
     
-    # Volatility thresholds
-    LOW_VOLATILITY_CAP = 0.001       # 0.1%
-    MEDIUM_VOLATILITY_CAP = 0.003    # 0.3%
-    HIGH_VOLATILITY_CAP = 0.015      # 1.5%
+    # Volatility thresholds - REALISTIC Bitcoin ranges
+    LOW_VOLATILITY_CAP = 0.002       # 0.2% - quiet Bitcoin market
+    MEDIUM_VOLATILITY_CAP = 0.01     # 1.0% - normal Bitcoin trading
+    HIGH_VOLATILITY_CAP = 0.05       # 5.0% - high Bitcoin volatility
     
     # Strength caps
     MAX_STRENGTH_CAP = 0.1           # 10% max strength
@@ -391,11 +391,11 @@ class FeeConstants:
 class VariabilityConstants:
     """Variability analysis constants"""
     
-    # Volatility Thresholds
-    LOW_VOLATILITY = 0.001           # 0.1% - choppy market
-    MEDIUM_VOLATILITY = 0.003        # 0.3% - normal trading
-    HIGH_VOLATILITY = 0.008          # 0.8% - volatile market
-    EXTREME_VOLATILITY = 0.015       # 1.5% - extreme volatility
+    # Volatility Thresholds - REALISTIC Bitcoin ranges
+    LOW_VOLATILITY = 0.002           # 0.2% - quiet market
+    MEDIUM_VOLATILITY = 0.01         # 1.0% - normal Bitcoin trading
+    HIGH_VOLATILITY = 0.03           # 3.0% - active Bitcoin trading
+    EXTREME_VOLATILITY = 0.08        # 8.0% - very volatile Bitcoin market
     
     # Trading Condition Scores
     OPTIMAL_TRADING_SCORE = 0.7      # 70% score for optimal conditions
