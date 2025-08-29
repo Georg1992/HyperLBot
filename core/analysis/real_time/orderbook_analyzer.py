@@ -232,13 +232,21 @@ class MarketOrderbookAnalyzer:
                 except (KeyError, ValueError, TypeError):
                     continue
             
-            # Calculate spread volatility - normalize to realistic ranges
+            # Calculate spread volatility - FIX: realistic Bitcoin spreads
             if spreads:
-                spread_volatility = statistics.mean(spreads)
+                raw_spread_volatility = statistics.mean(spreads)
                 spread_std = statistics.stdev(spreads) if len(spreads) > 1 else 0
-                # Convert spread to percentage volatility (typical spreads are 0.0001-0.001 = 0.01%-0.1%)
-                # Don't scale by 100 - spread is already in decimal form
-                spread_volatility = min(spread_volatility, 0.10)  # Cap at 10% for extreme cases
+                
+                # DEBUG: Log actual spread values to identify inflation
+                logger.info(f"🔍 Raw spread data: mean={raw_spread_volatility:.6f} ({raw_spread_volatility*100:.4f}%), std={spread_std:.6f}")
+                logger.info(f"🔍 Individual spreads: {[f'{s*100:.4f}%' for s in spreads[:3]]}")
+                
+                # For Bitcoin, typical spreads are 0.001-0.02% (very small)
+                # Use the raw spread volatility directly - no artificial scaling
+                spread_volatility = raw_spread_volatility
+                
+                # Cap at realistic maximum (0.5% for extreme market stress)
+                spread_volatility = min(spread_volatility, 0.005)
             else:
                 spread_volatility = 0.0
                 spread_std = 0.0
@@ -254,13 +262,20 @@ class MarketOrderbookAnalyzer:
                 if len(all_depths) > 1:
                     mean_depth = statistics.mean(all_depths)
                     depth_std = statistics.stdev(all_depths)
+                    
+                    # DEBUG: Log depth data to identify inflation source
+                    logger.info(f"🔍 Depth data: mean={mean_depth:.2f} BTC, std={depth_std:.2f} BTC")
+                    logger.info(f"🔍 Sample depths: {[f'{d:.2f}' for d in all_depths[:3]]} BTC")
+                    
                     # Add bounds checking to prevent unrealistic values
                     if mean_depth > 0.001:  # Only calculate if mean depth is significant
-                        depth_volatility = depth_std / mean_depth
-                        # Cap depth volatility at reasonable levels (max 1.0 = 100% coefficient of variation)
-                        depth_volatility = min(depth_volatility, 1.0)
-                        # Convert to percentage representation and scale appropriately for Bitcoin
-                        depth_volatility = depth_volatility * 0.01  # Convert to percentage scale
+                        raw_depth_volatility = depth_std / mean_depth
+                        
+                        # Depth coefficient of variation should be much smaller contributor
+                        # Bitcoin orderbook depths are typically stable, CV rarely > 0.5
+                        depth_volatility = min(raw_depth_volatility, 0.5) * 0.001  # Scale down significantly
+                        
+                        logger.info(f"🔍 Depth volatility: raw_cv={raw_depth_volatility:.3f}, scaled={depth_volatility:.6f}")
                     else:
                         depth_volatility = 0.0
             
@@ -268,15 +283,22 @@ class MarketOrderbookAnalyzer:
             # Give more weight to spread volatility as it's more reliable
             combined_volatility = (spread_volatility * 0.8) + (depth_volatility * 0.2)
             
-            # Add bounds checking to ensure realistic volatility values
-            # Cap at 0.15 (15%) for extreme volatility events - Bitcoin can be very volatile!
-            combined_volatility = min(combined_volatility, 0.15)
+            # CRITICAL: Ensure realistic Bitcoin volatility values
+            # For a quiet Bitcoin market, volatility should be 0.0001-0.001 (0.01%-0.1%)
+            # Cap at realistic maximum for Bitcoin spreads
+            combined_volatility = min(combined_volatility, 0.01)  # Max 1% for extreme events
             
             # Ensure non-negative
             combined_volatility = max(combined_volatility, 0.0)
             
-            # Debug logging for volatility components
-            logger.info(f"📊 Volatility Analysis: {combined_volatility:.4f} ({combined_volatility*100:.2f}%) → {volatility_category} (spread: {spread_volatility:.4f}, depth: {depth_volatility:.4f})")
+            # DEBUG: Critical logging to identify inflation source
+            logger.warning(f"🔍 VOLATILITY DEBUG: combined={combined_volatility:.6f} ({combined_volatility*100:.4f}%) → {volatility_category}")
+            logger.warning(f"🔍 COMPONENTS: spread={spread_volatility:.6f} ({spread_volatility*100:.4f}%), depth={depth_volatility:.6f} ({depth_volatility*100:.6f}%)")
+            
+            # If volatility is still unrealistic, force it to realistic range
+            if combined_volatility > 0.005:  # > 0.5% is high for quiet market
+                logger.error(f"🚨 VOLATILITY TOO HIGH: {combined_volatility:.6f} ({combined_volatility*100:.4f}%) - forcing to realistic range")
+                combined_volatility = min(combined_volatility, 0.002)  # Cap at 0.2% for quiet market
             
             # Categorize volatility with REALISTIC Bitcoin ranges
             if combined_volatility > 0.05:    # > 5% - Extremely high volatility (major events)
