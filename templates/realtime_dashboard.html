@@ -791,14 +791,8 @@
                     
                     volumeElement.innerHTML = `${volume.toFixed(1)} BTC (${category})<br><span style="font-size: 11px; color: #888;">Flow: ${orderFlow} | Depth: ${depthAnalysis}</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
                     
-                    // Color code volume based on category
-                    if (category === 'HIGH') {
-                        volumeElement.className = 'data-value trend-up';
-                    } else if (category === 'LOW') {
-                        volumeElement.className = 'data-value trend-down';
-                    } else {
-                        volumeElement.className = 'data-value';
-                    }
+                    // No color coding for volume - neutral display
+                    volumeElement.className = 'data-value';
                 } else {
                     volumeElement.textContent = 'N/A';
                 }
@@ -815,14 +809,8 @@
                     // Display volatility as percentage directly (backend sends decimal like 0.0357 for 3.57%)
                     volatilityElement.innerHTML = `${(volatility * 100).toFixed(2)}% (${category})<br><span style="font-size: 11px; color: #888;">Trend: ${trend}</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
                     
-                    // Color code volatility
-                    if (category === 'HIGH') {
-                        volatilityElement.className = 'data-value trend-down'; // High volatility = red
-                    } else if (category === 'LOW') {
-                        volatilityElement.className = 'data-value trend-up'; // Low volatility = green
-                    } else {
-                        volatilityElement.className = 'data-value';
-                    }
+                    // No color coding for volatility - neutral display
+                    volatilityElement.className = 'data-value';
                 } else {
                     volatilityElement.textContent = 'N/A';
                 }
