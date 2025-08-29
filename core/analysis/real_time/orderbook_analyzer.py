@@ -26,10 +26,16 @@ class MarketOrderbookAnalyzer:
             if not market_data or 'levels' not in market_data:
                 return {
                     "current_volume": 0.0,
+                    "volume_depth": 0.0,
                     "volume_category": "UNKNOWN",
                     "volume_trend": "UNKNOWN",
-                    "order_flow": "NEUTRAL",
+                    "order_flow": "NEUTRAL", 
                     "depth_analysis": "INSUFFICIENT_DATA",
+                    "bid_depth_5": 0.0,
+                    "ask_depth_5": 0.0,
+                    "total_depth_5": 0.0,
+                    "bid_ask_ratio": 1.0,
+                    "depth_imbalance": 0.0,
                     "data_source": "no_market_data"
                 }
             
@@ -37,10 +43,16 @@ class MarketOrderbookAnalyzer:
             if len(levels) < 2:
                 return {
                     "current_volume": 0.0,
+                    "volume_depth": 0.0,
                     "volume_category": "UNKNOWN", 
                     "volume_trend": "UNKNOWN",
                     "order_flow": "NEUTRAL",
                     "depth_analysis": "INSUFFICIENT_DATA",
+                    "bid_depth_5": 0.0,
+                    "ask_depth_5": 0.0,
+                    "total_depth_5": 0.0,
+                    "bid_ask_ratio": 1.0,
+                    "depth_imbalance": 0.0,
                     "data_source": "insufficient_levels"
                 }
             
@@ -50,10 +62,16 @@ class MarketOrderbookAnalyzer:
             if not bids or not asks:
                 return {
                     "current_volume": 0.0,
+                    "volume_depth": 0.0,
                     "volume_category": "UNKNOWN",
                     "volume_trend": "UNKNOWN", 
                     "order_flow": "NEUTRAL",
                     "depth_analysis": "NO_ORDERBOOK",
+                    "bid_depth_5": 0.0,
+                    "ask_depth_5": 0.0,
+                    "total_depth_5": 0.0,
+                    "bid_ask_ratio": 1.0,
+                    "depth_imbalance": 0.0,
                     "data_source": "no_orderbook_data"
                 }
             
@@ -66,9 +84,9 @@ class MarketOrderbookAnalyzer:
             total_depth_5 = bid_depth_5 + ask_depth_5
             total_depth_10 = bid_depth_10 + ask_depth_10
             
-            # Calculate volume from order book depth (more accurate than trade history)
-            # Use depth as a proxy for recent trading activity
-            estimated_volume = total_depth_5 * 0.15  # 15% of depth as recent volume
+            # Calculate volume from order book depth (proxy for trading activity)
+            # Note: This is estimated volume since Hyperliquid doesn't provide real-time trade volume
+            estimated_volume = total_depth_5 * 0.1  # 10% of depth as conservative estimate
             
             # Analyze order flow imbalance
             bid_ask_ratio = bid_depth_5 / ask_depth_5 if ask_depth_5 > 0 else 1.0
@@ -112,27 +130,35 @@ class MarketOrderbookAnalyzer:
                 depth_analysis = "THIN"
             
             return {
-                "current_volume": estimated_volume,
+                "current_volume": round(estimated_volume, 4),
+                "volume_depth": round(total_depth_5, 2),  # Add volume_depth field for dashboard
                 "volume_category": volume_category,
                 "volume_trend": volume_trend,
                 "order_flow": order_flow,
                 "depth_analysis": depth_analysis,
-                "bid_depth_5": bid_depth_5,
-                "ask_depth_5": ask_depth_5,
-                "total_depth_5": total_depth_5,
-                "bid_ask_ratio": bid_ask_ratio,
-                "depth_imbalance": depth_imbalance,
-                "data_source": "orderbook_depth_analysis"
+                "bid_depth_5": round(bid_depth_5, 2),
+                "ask_depth_5": round(ask_depth_5, 2),
+                "total_depth_5": round(total_depth_5, 2),
+                "bid_ask_ratio": round(bid_ask_ratio, 3),
+                "depth_imbalance": round(depth_imbalance, 3),
+                "data_source": "orderbook_depth_analysis",
+                "estimation_note": "Volume estimated from orderbook depth (Hyperliquid limitation)"
             }
             
         except Exception as e:
             logger.error(f"Volume analysis failed: {e}")
             return {
                 "current_volume": 0.0,
+                "volume_depth": 0.0,
                 "volume_category": "ERROR",
-                "volume_trend": "ERROR",
+                "volume_trend": "ERROR", 
                 "order_flow": "NEUTRAL",
                 "depth_analysis": "ERROR",
+                "bid_depth_5": 0.0,
+                "ask_depth_5": 0.0,
+                "total_depth_5": 0.0,
+                "bid_ask_ratio": 1.0,
+                "depth_imbalance": 0.0,
                 "error": str(e),
                 "data_source": "error"
             }
