@@ -720,6 +720,10 @@ class YahooHyperliquidPaperTradingBot:
                 # Update bot heartbeat
                 self._update_heartbeat()
                 
+                # Update session time periodically
+                if hasattr(self, 'session_manager') and self.session_manager:
+                    self.session_manager.update_session_time_if_active()
+                
                 # Test SimpleRTM activity at loop start
                 self._update_simple_rtm_activity("🔄 Main trading loop iteration", "INFO")
                 

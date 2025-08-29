@@ -278,7 +278,12 @@ class EventDrivenTradingDashboard:
         except Exception as e:
             logger.error(f"❌ Failed to get dashboard data: {e}")
             return {
-                "session": {"error": str(e)},
+                "session": {
+                    "session_id": "error",
+                    "status": "ERROR", 
+                    "session_time": "0s",
+                    "error": str(e)
+                },
                 "market": {"error": str(e)},
                 "logs": [],
                 "predictions": [],

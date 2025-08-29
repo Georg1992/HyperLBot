@@ -336,21 +336,51 @@ class SessionManager:
                 try:
                     start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
                     elapsed = datetime.now() - start_dt
-                    hours = int(elapsed.total_seconds() // 3600)
-                    minutes = int((elapsed.total_seconds() % 3600) // 60)
+                    total_seconds = elapsed.total_seconds()
+                    hours = int(total_seconds // 3600)
+                    minutes = int((total_seconds % 3600) // 60)
+                    seconds = int(total_seconds % 60)
+                    
+                    # More granular time display for better user experience
                     if hours > 0:
                         session_time = f"{hours}h {minutes}m"
+                    elif minutes > 0:
+                        session_time = f"{minutes}m {seconds}s"
                     else:
-                        session_time = f"{minutes}m"
+                        session_time = f"{seconds}s"
                     
                     self.current_session_data["session_time"] = session_time
-                except:
-                    self.current_session_data["session_time"] = "0m"
+                except Exception as e:
+                    logger.error(f"Session time calculation error: {e}")
+                    self.current_session_data["session_time"] = "0s"
             else:
                 self.current_session_data["session_time"] = "0m"
                 
         except Exception as e:
             logger.error(f"Error updating session time: {e}")
+    
+    def update_session_time_if_active(self):
+        """Update session time if session is active - called periodically by bot"""
+        with self.session_lock:
+            try:
+                if not self.current_session_id or not hasattr(self, 'current_session_data'):
+                    return False
+                    
+                if self.current_session_data.get("status") != "ACTIVE":
+                    return False
+                
+                # Update session time
+                self._update_session_time()
+                
+                # Sync to RTM
+                from core.data.real_time_manager import simple_rtm
+                simple_rtm.sync_from_session_manager(self.current_session_data)
+                
+                return True
+                
+            except Exception as e:
+                logger.error(f"Error updating session time: {e}")
+                return False
     
     def coordinate_with_account_data(self):
         """Coordinate session data with current account data for balance consistency"""
