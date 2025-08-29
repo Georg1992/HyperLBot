@@ -190,6 +190,7 @@ class EventDrivenTradingDashboard:
                 'price': data.get('market', {}).get('current_price', 0),
                 'rsi': data.get('market', {}).get('rsi', 0),
                 'volume': data.get('market', {}).get('volume_depth', 0),
+                'volume_category': data.get('market', {}).get('volume_category', 'UNKNOWN'),
                 'balance': data.get('session', {}).get('current_balance', 0),
                 'trades': data.get('session', {}).get('total_trades', 0),
                 'session_id': data.get('session', {}).get('session_id', ''),

@@ -104,17 +104,26 @@ class MarketOrderbookAnalyzer:
             else:
                 order_flow = "NEUTRAL"
             
-            # Categorize volume based on realistic Bitcoin orderbook depth
-            if total_depth_5 > 40.0:  # Very high liquidity
+            # Categorize volume based on REALISTIC Bitcoin orderbook depth (fixed thresholds)
+            # Bitcoin typically has 100-1000+ BTC in top 5 levels during normal trading
+            if total_depth_5 > 800.0:    # Extremely high liquidity (800+ BTC)
+                volume_category = "EXTREMELY_HIGH"
+            elif total_depth_5 > 400.0:  # Very high liquidity (400-800 BTC)
                 volume_category = "VERY_HIGH"
-            elif total_depth_5 > 25.0:  # High liquidity
+            elif total_depth_5 > 200.0:  # High liquidity (200-400 BTC)
                 volume_category = "HIGH"
-            elif total_depth_5 > 15.0:  # Medium liquidity
-                volume_category = "MEDIUM"
-            elif total_depth_5 > 5.0:   # Low liquidity
+            elif total_depth_5 > 100.0:  # Above average liquidity (100-200 BTC)
+                volume_category = "ABOVE_AVERAGE"
+            elif total_depth_5 > 50.0:   # Normal liquidity (50-100 BTC)
+                volume_category = "NORMAL"
+            elif total_depth_5 > 25.0:   # Below average liquidity (25-50 BTC)
+                volume_category = "BELOW_AVERAGE"
+            elif total_depth_5 > 10.0:   # Low liquidity (10-25 BTC)
                 volume_category = "LOW"
-            else:                        # Very low liquidity
+            elif total_depth_5 > 5.0:    # Very low liquidity (5-10 BTC)
                 volume_category = "VERY_LOW"
+            else:                        # Extremely low liquidity (<5 BTC)
+                volume_category = "EXTREMELY_LOW"
             
             # Analyze depth distribution for volume trend
             depth_ratio = total_depth_5 / total_depth_10 if total_depth_10 > 0 else 1.0
@@ -132,6 +141,9 @@ class MarketOrderbookAnalyzer:
                 depth_analysis = "MODERATE"
             else:
                 depth_analysis = "THIN"
+            
+            # Debug log for volume categorization
+            logger.debug(f"📊 Volume Analysis: {total_depth_5:.2f} BTC depth → {volume_category} (bid: {bid_depth_5:.2f}, ask: {ask_depth_5:.2f})")
             
             return {
                 "current_volume": round(estimated_volume, 4),
