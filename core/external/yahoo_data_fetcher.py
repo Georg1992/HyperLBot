@@ -727,19 +727,6 @@ class YahooDataFetcher:
             
             return result
             
-            return {
-                "momentum": momentum,
-                "direction": direction,
-                "strength": round(strength, 3),
-                "price_change_1": round(price_change_1 * 100, 3),  # Percentage
-                "price_change_2": round(price_change_2 * 100, 3),  # Percentage
-                "momentum_acceleration": round(momentum_acceleration * 100, 3),  # Percentage
-                "volatility": round(volatility * 100, 3),  # Percentage
-                "current_price": current_price,
-                "timestamp": time.time(),
-                "data_points": len(recent_closes)
-            }
-            
         except Exception as e:
             logger.error(f"❌ Failed to calculate real-time momentum: {e}")
             return {"momentum": "NEUTRAL", "strength": 0, "direction": 0, "error": str(e)}

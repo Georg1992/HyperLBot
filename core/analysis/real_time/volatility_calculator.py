@@ -123,9 +123,18 @@ class VolatilityCalculator:
             current_volume = recent_volumes[-1]
             volume_surge = current_volume / avg_volume if avg_volume > 0 else 1.0
             
-            # Calculate momentum volatility
-            momentum_volatility = abs(price_momentum) * volume_surge
+            # Calculate momentum volatility - FIX: prevent volume surge inflation
+            # Cap volume surge impact to prevent artificial volatility inflation
+            volume_surge_capped = min(volume_surge, 3.0)  # Cap at 3x normal volume
+            momentum_volatility = abs(price_momentum) * min(volume_surge_capped, 2.0)  # Further cap momentum impact
+            
+            # Cap momentum volatility at realistic levels for Bitcoin
+            momentum_volatility = min(momentum_volatility, 0.02)  # Max 2% momentum volatility
+            
             momentum_strength = min(1.0, abs(price_momentum) * 100 + (volume_surge - 1.0) * 0.5)
+            
+            # DEBUG: Log momentum volatility calculation
+            logger.info(f"🔍 Momentum calc: price_momentum={price_momentum:.6f}, volume_surge={volume_surge:.2f}, result={momentum_volatility:.6f}")
             
             return {
                 "momentum_volatility": momentum_volatility,
@@ -139,14 +148,14 @@ class VolatilityCalculator:
             return {"momentum_volatility": 0.0, "momentum_strength": 0.0}
     
     def _get_default_volatility(self, timeframe: str) -> float:
-        """Get default volatility values for different timeframes"""
+        """Get default volatility values for different timeframes - REALISTIC Bitcoin ranges"""
         defaults = {
-            "1m": 0.002,
-            "5m": 0.003,
-            "1h": 0.005,
-            "1d": 0.008
+            "1m": 0.0005,    # 0.05% - very quiet Bitcoin 1-min
+            "5m": 0.001,     # 0.1% - quiet Bitcoin 5-min  
+            "1h": 0.002,     # 0.2% - normal Bitcoin 1-hour
+            "1d": 0.005      # 0.5% - normal Bitcoin daily
         }
-        return defaults.get(timeframe, 0.003)
+        return defaults.get(timeframe, 0.001)
     
     def _get_default_orderbook_volatility(self) -> Dict[str, Any]:
         """Get default orderbook volatility structure"""

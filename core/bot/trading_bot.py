@@ -969,6 +969,26 @@ class YahooHyperliquidPaperTradingBot:
             logger.error(f"Error checking for ongoing session: {e}")
             return None
 
+    def _sanitize_volatility(self, volatility_value: float) -> float:
+        """Sanitize volatility values to prevent inflation bugs - defensive measure"""
+        try:
+            if volatility_value is None or volatility_value <= 0:
+                return 0.0
+            
+            # CRITICAL: Cap volatility at realistic Bitcoin levels
+            # For a quiet Bitcoin market, 5-minute volatility should be 0.0001-0.01%
+            if volatility_value > 0.01:  # > 1% is very high for 5-minute Bitcoin
+                logger.error(f"🚨 VOLATILITY INFLATION DETECTED: {volatility_value:.6f} ({volatility_value*100:.4f}%) - capping at realistic level")
+                return min(volatility_value, 0.005)  # Cap at 0.5% for active market
+            elif volatility_value > 0.005:  # > 0.5% is high for 5-minute Bitcoin
+                logger.warning(f"⚠️ High volatility: {volatility_value:.6f} ({volatility_value*100:.4f}%) - monitoring for inflation")
+                
+            return volatility_value
+            
+        except Exception as e:
+            logger.error(f"Error sanitizing volatility: {e}")
+            return 0.0
+
     def _create_initial_heartbeat(self):
         """Create initial heartbeat file immediately when bot starts"""
         try:
@@ -1194,10 +1214,10 @@ class YahooHyperliquidPaperTradingBot:
                 "volume_category": volume_data.get("volume_category", "UNKNOWN") if volume_data else "UNKNOWN",
                 "order_flow": volume_data.get("order_flow", "NEUTRAL") if volume_data else "NEUTRAL",
                 "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN") if volume_data else "UNKNOWN",
-                "volatility_5m": volatility_data.get("volatility_5m", 0.0) if volatility_data else 0.0,
+                "volatility_5m": self._sanitize_volatility(volatility_data.get("volatility_5m", 0.0) if volatility_data else 0.0),
                 "volatility_category": volatility_data.get("volatility_category", "UNKNOWN") if volatility_data else "UNKNOWN",
                 "volatility_trend": volatility_data.get("volatility_trend", "UNKNOWN") if volatility_data else "UNKNOWN",
-                "spread_volatility": volatility_data.get("spread_volatility", 0.0) if volatility_data else 0.0,
+                "spread_volatility": self._sanitize_volatility(volatility_data.get("spread_volatility", 0.0) if volatility_data else 0.0),
                 "ultimate_pressure": {
                     "direction": ultimate_pressure_data.get("direction", "NEUTRAL") if ultimate_pressure_data else "NEUTRAL",
                     "confidence": ultimate_pressure_data.get("confidence", "50%") if ultimate_pressure_data else "50%",
