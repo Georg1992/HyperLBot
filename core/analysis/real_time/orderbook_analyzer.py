@@ -291,10 +291,6 @@ class MarketOrderbookAnalyzer:
             # Ensure non-negative
             combined_volatility = max(combined_volatility, 0.0)
             
-            # DEBUG: Critical logging to identify inflation source
-            logger.warning(f"🔍 VOLATILITY DEBUG: combined={combined_volatility:.6f} ({combined_volatility*100:.4f}%) → {volatility_category}")
-            logger.warning(f"🔍 COMPONENTS: spread={spread_volatility:.6f} ({spread_volatility*100:.4f}%), depth={depth_volatility:.6f} ({depth_volatility*100:.6f}%)")
-            
             # If volatility is still unrealistic, force it to realistic range
             if combined_volatility > 0.005:  # > 0.5% is high for quiet market
                 logger.error(f"🚨 VOLATILITY TOO HIGH: {combined_volatility:.6f} ({combined_volatility*100:.4f}%) - forcing to realistic range")
@@ -315,6 +311,10 @@ class MarketOrderbookAnalyzer:
                 volatility_category = "BELOW_AVERAGE"
             else:                             # < 0.1% - Low volatility (very quiet)
                 volatility_category = "LOW"
+                
+            # DEBUG: Critical logging to identify inflation source (AFTER categorization)
+            logger.warning(f"🔍 VOLATILITY DEBUG: combined={combined_volatility:.6f} ({combined_volatility*100:.4f}%) → {volatility_category}")
+            logger.warning(f"🔍 COMPONENTS: spread={spread_volatility:.6f} ({spread_volatility*100:.4f}%), depth={depth_volatility:.6f} ({depth_volatility*100:.6f}%)")
             
             # Determine volatility trend based on spread consistency
             if spread_std > 0.0001:  # More realistic threshold
