@@ -39,6 +39,7 @@ class SimpleRTM:
                 "win_rate": 0.0,
                 "balance_change": 0.0,
                 "balance_change_pct": 0.0,
+                "session_time": "0m",
                 "last_updated": None
             },
             "account": {
@@ -180,6 +181,7 @@ class SimpleRTM:
                         "win_rate": session_data.get("win_rate", 0.0),
                         "balance_change": session_data.get("balance_change", 0.0),
                         "balance_change_pct": session_data.get("balance_change_pct", 0.0),
+                        "session_time": session_data.get("session_time", "0m"),
                         "last_updated": datetime.now().isoformat()
                     })
                     
@@ -312,16 +314,33 @@ class SimpleRTM:
             return False
     
     def auto_cleanup_stale_sessions(self):
-        """Automatically cleanup sessions if bot has stopped running"""
+        """Automatically cleanup sessions if bot has been stopped for a while"""
         try:
-            # Check if bot is still running
-            if not self.check_bot_heartbeat():
-                # Bot is not running, check if we have an active session
-                if self._data["session"]["status"] == "ACTIVE":
-                    logger.warning("🛑 Bot has stopped running - automatically ending active session")
-                    self.clear_session_data()
-                    logger.info("✅ Stale session automatically cleaned up")
-                    return True
+            # Only cleanup if session has been running for more than 60 seconds without bot heartbeat
+            # This prevents immediate cleanup of fresh sessions
+            session_start_time = self._data["session"].get("start_time")
+            if not session_start_time:
+                return False
+                
+            try:
+                from datetime import datetime
+                start_dt = datetime.fromisoformat(session_start_time.replace('Z', '+00:00'))
+                session_age_seconds = (datetime.now() - start_dt).total_seconds()
+                
+                # Only cleanup sessions older than 60 seconds with no bot heartbeat
+                if session_age_seconds > 60 and not self.check_bot_heartbeat():
+                    if self._data["session"]["status"] == "ACTIVE":
+                        logger.warning("🛑 Bot has been stopped for >60s - automatically ending stale session")
+                        self.clear_session_data()
+                        logger.info("✅ Stale session automatically cleaned up")
+                        return True
+            except:
+                # If we can't parse start time, use conservative cleanup
+                if not self.check_bot_heartbeat():
+                    if self._data["session"]["status"] == "ACTIVE":
+                        logger.warning("🛑 Bot heartbeat missing - ending session")
+                        self.clear_session_data()
+                        return True
             
             return False
             
@@ -378,6 +397,7 @@ class SimpleRTM:
                 "win_rate": 0.0,
                 "balance_change": 0.0,
                 "balance_change_pct": 0.0,
+                "session_time": "0m",
                 "last_updated": None
             }
             self._data["data_sources"]["session_manager_synced"] = False

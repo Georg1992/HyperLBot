@@ -69,8 +69,12 @@ class SessionManager:
                     "total_pnl": 0.0,
                     "win_rate": 0.0,
                     "balance_change": 0.0,
-                    "balance_change_pct": 0.0
+                    "balance_change_pct": 0.0,
+                    "session_time": "0m"  # Pre-calculated session time
                 }
+                
+                # Calculate and update session time before syncing
+                self._update_session_time()
                 
                 # Sync to RTM immediately
                 simple_rtm.sync_from_session_manager(self.current_session_data)
@@ -153,8 +157,11 @@ class SessionManager:
                 # Update internal session data
                 self.current_session_data = session_data
                 
+                # Update final session time
+                self._update_session_time()
+                
                 # Sync to RTM
-                simple_rtm.sync_from_session_manager(session_data)
+                simple_rtm.sync_from_session_manager(self.current_session_data)
                 
                 # Add completion activity
                 simple_rtm.add_activity(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes", "SUCCESS", "session")
@@ -264,6 +271,9 @@ class SessionManager:
                     self.current_session_data["balance_change"] = balance_change
                     self.current_session_data["balance_change_pct"] = (balance_change / self.current_session_data.get("initial_balance", 1)) * 100
                 
+                # Update session time before syncing
+                self._update_session_time()
+                
                 # Sync to RTM
                 simple_rtm.sync_from_session_manager(self.current_session_data)
                 
@@ -292,10 +302,13 @@ class SessionManager:
                     else:
                         self.current_session_data["losing_trades"] = self.current_session_data.get("losing_trades", 0) + 1
                     
-                    # Update win rate
-                    total_trades = self.current_session_data["total_trades"]
-                    winning_trades = self.current_session_data["winning_trades"]
-                    self.current_session_data["win_rate"] = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+                                    # Update win rate
+                total_trades = self.current_session_data["total_trades"]
+                winning_trades = self.current_session_data["winning_trades"]
+                self.current_session_data["win_rate"] = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+                
+                # Update session time before syncing
+                self._update_session_time()
                 
                 # Sync to RTM
                 simple_rtm.sync_from_session_manager(self.current_session_data)
@@ -311,6 +324,33 @@ class SessionManager:
                 
             except Exception as e:
                 logger.error(f"Error adding trade to session: {e}")
+    
+    def _update_session_time(self):
+        """Calculate and update session time - SessionManager responsibility, NOT dashboard"""
+        try:
+            if not hasattr(self, 'current_session_data') or not self.current_session_data:
+                return
+                
+            start_time = self.current_session_data.get("start_time")
+            if start_time:
+                try:
+                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                    elapsed = datetime.now() - start_dt
+                    hours = int(elapsed.total_seconds() // 3600)
+                    minutes = int((elapsed.total_seconds() % 3600) // 60)
+                    if hours > 0:
+                        session_time = f"{hours}h {minutes}m"
+                    else:
+                        session_time = f"{minutes}m"
+                    
+                    self.current_session_data["session_time"] = session_time
+                except:
+                    self.current_session_data["session_time"] = "0m"
+            else:
+                self.current_session_data["session_time"] = "0m"
+                
+        except Exception as e:
+            logger.error(f"Error updating session time: {e}")
     
     def coordinate_with_account_data(self):
         """Coordinate session data with current account data for balance consistency"""

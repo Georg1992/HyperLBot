@@ -194,6 +194,7 @@ class EventDrivenTradingDashboard:
                 'trades': data.get('session', {}).get('total_trades', 0),
                 'session_id': data.get('session', {}).get('session_id', ''),
                 'status': data.get('session', {}).get('status', ''),
+                'session_time': data.get('session', {}).get('session_time', '0m'),
                 'timestamp': data.get('timestamp', '')
             }
             return str(hash(json.dumps(hash_data, sort_keys=True)))
@@ -242,36 +243,22 @@ class EventDrivenTradingDashboard:
             # Get ALL data from SimpleRTM - SINGLE SOURCE OF TRUTH
             rtm_data = simple_rtm.get_data()
             
-            # Calculate session time from RTM data
-            start_time = rtm_data.get("session", {}).get("start_time")
-            session_time = "0m"
-            if start_time:
-                try:
-                    from datetime import datetime
-                    start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
-                    elapsed = datetime.now() - start_dt
-                    hours = int(elapsed.total_seconds() // 3600)
-                    minutes = int((elapsed.total_seconds() % 3600) // 60)
-                    if hours > 0:
-                        session_time = f"{hours}h {minutes}m"
-                    else:
-                        session_time = f"{minutes}m"
-                except:
-                    session_time = "0m"
+            # Dashboard ONLY displays data - NO calculations
+            session_data = rtm_data.get("session", {})
             
             # Format data for dashboard - RTM ONLY
             dashboard_data = {
                 "session": {
-                    "session_id": rtm_data.get("session", {}).get("session_id", "no_session"),
-                    "status": rtm_data.get("session", {}).get("status", "INACTIVE"),
-                    "strategy": rtm_data.get("session", {}).get("strategy", "standard"),
-                    "session_time": session_time,
-                    "start_time": rtm_data.get("session", {}).get("start_time"),
-                    "current_balance": rtm_data.get("session", {}).get("current_balance", 0.0),
-                    "initial_balance": rtm_data.get("session", {}).get("initial_balance", 0.0),
-                    "total_pnl": rtm_data.get("session", {}).get("total_pnl", 0.0),
-                    "win_rate": rtm_data.get("session", {}).get("win_rate", 0.0),
-                    "total_trades": rtm_data.get("session", {}).get("total_trades", 0)
+                    "session_id": session_data.get("session_id", "no_session"),
+                    "status": session_data.get("status", "INACTIVE"),
+                    "strategy": session_data.get("strategy", "standard"),
+                    "session_time": session_data.get("session_time", "0m"),  # Pre-calculated by SessionManager
+                    "start_time": session_data.get("start_time"),
+                    "current_balance": session_data.get("current_balance", 0.0),
+                    "initial_balance": session_data.get("initial_balance", 0.0),
+                    "total_pnl": session_data.get("total_pnl", 0.0),
+                    "win_rate": session_data.get("win_rate", 0.0),
+                    "total_trades": session_data.get("total_trades", 0)
                 },
                 "market": rtm_data.get("market", {}),
                 "logs": rtm_data.get("logs", []),

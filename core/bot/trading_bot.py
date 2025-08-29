@@ -685,6 +685,9 @@ class YahooHyperliquidPaperTradingBot:
             # SessionManager will handle cleanup internally
             logger.info("✅ SessionManager initialized")
             
+            # Create initial heartbeat immediately so dashboard knows bot is running
+            self._create_initial_heartbeat()
+            
             session_id = self.session_manager.start_session(
                 session_id=f"bot_session_{int(time.time())}",
                 strategy=self.strategy_name,
@@ -961,6 +964,30 @@ class YahooHyperliquidPaperTradingBot:
         except Exception as e:
             logger.error(f"Error checking for ongoing session: {e}")
             return None
+
+    def _create_initial_heartbeat(self):
+        """Create initial heartbeat file immediately when bot starts"""
+        try:
+            current_time = time.time()
+            heartbeat_data = {
+                "bot_running": True,
+                "last_heartbeat": current_time,
+                "session_id": None,  # Will be updated after session starts
+                "strategy": self.strategy_name,
+                "balance": self.paper_balance
+            }
+            
+            # Ensure temp directory exists
+            os.makedirs(os.path.dirname(self.heartbeat_file), exist_ok=True)
+            
+            with open(self.heartbeat_file, 'w') as f:
+                json.dump(heartbeat_data, f, indent=2)
+            
+            self.last_heartbeat = current_time
+            logger.info("💓 Initial bot heartbeat created")
+            
+        except Exception as e:
+            logger.error(f"❌ Could not create initial heartbeat: {e}")
 
     def _update_heartbeat(self):
         """Update bot heartbeat to indicate it's still running"""
