@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Simple RTM for existing dashboard
-Provides the exact data structure the dashboard expects
-Clear data flow: Bot → SimpleRTM → Dashboard
+Enhanced Simple RTM - Ultimate Central Data Hub
+Single source of truth for all dashboard data
+Clear data flow: AccountManager + SessionManager → SimpleRTM → Dashboard
 """
 
 import json
@@ -14,7 +14,7 @@ from typing import Dict, List, Any, Optional
 from loguru import logger
 
 class SimpleRTM:
-    """Simple Real-Time Manager - Single source of truth for dashboard data"""
+    """Enhanced Real-Time Manager - Single source of truth for all dashboard data"""
     
     def __init__(self):
         self._lock = threading.RLock()
@@ -23,7 +23,7 @@ class SimpleRTM:
         # Ensure temp directory exists
         os.makedirs(os.path.dirname(self._data_file), exist_ok=True)
         
-        # Initialize with default data
+        # Initialize with comprehensive data structure
         self._data = {
             "session": {
                 "session_id": "no_session",
@@ -37,12 +37,27 @@ class SimpleRTM:
                 "losing_trades": 0,
                 "total_pnl": 0.0,
                 "win_rate": 0.0,
+                "balance_change": 0.0,
+                "balance_change_pct": 0.0,
+                "last_updated": None
+            },
+            "account": {
+                "account_id": None,
+                "current_balance": 0.0,
+                "initial_balance": 0.0,
+                "total_pnl": 0.0,
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "win_rate": 0.0,
+                "open_positions_count": 0,
+                "created_at": None,
                 "last_updated": None
             },
             "market": {
                 "current_price": 97500.0,
                 "trend": "NEUTRAL",
-                "rsi": None,  # Use None instead of 50.0 for proper N/A handling
+                "rsi": None,
                 "volume_depth": 0.0,
                 "volume_category": "UNKNOWN",
                 "order_flow": "NEUTRAL",
@@ -82,13 +97,18 @@ class SimpleRTM:
             "logs": [],
             "predictions": [],
             "trades": [],
+            "data_sources": {
+                "account_manager_synced": False,
+                "session_manager_synced": False,
+                "last_sync_time": None
+            },
             "timestamp": datetime.now().isoformat()
         }
         
         # Load existing data if file exists
         self._load_data()
         
-        logger.info("🚀 Simple RTM initialized - File-based storage for cross-process sharing")
+        logger.info("🚀 Enhanced Simple RTM initialized - Ultimate central data hub")
     
     def _load_data(self):
         """Load data from file"""
@@ -109,7 +129,91 @@ class SimpleRTM:
         except Exception as e:
             logger.error(f"❌ Failed to save data: {e}")
     
-
+    def sync_from_account_manager(self, account_data: Dict[str, Any]):
+        """Sync data from AccountManager - PERSISTENT DATA"""
+        with self._lock:
+            try:
+                if account_data:
+                    self._data["account"].update({
+                        "account_id": account_data.get("account_id"),
+                        "current_balance": account_data.get("current_balance", 0.0),
+                        "initial_balance": account_data.get("initial_balance", 0.0),
+                        "total_pnl": account_data.get("total_pnl", 0.0),
+                        "total_trades": account_data.get("total_trades", 0),
+                        "winning_trades": account_data.get("winning_trades", 0),
+                        "losing_trades": account_data.get("losing_trades", 0),
+                        "win_rate": account_data.get("win_rate", 0.0),
+                        "open_positions_count": account_data.get("open_positions_count", 0),
+                        "created_at": account_data.get("created_at"),
+                        "last_updated": datetime.now().isoformat()
+                    })
+                    
+                    # Update session data with account data if session is active AND not a stale session
+                    # AND bot is still running (check heartbeat)
+                    if (self._data["session"]["status"] == "ACTIVE" and 
+                        self._data["session"]["session_id"] != "no_session" and
+                        self.check_bot_heartbeat()):
+                        self._data["session"]["current_balance"] = account_data.get("current_balance", 0.0)
+                        self._data["session"]["initial_balance"] = account_data.get("initial_balance", 0.0)
+                        self._data["session"]["total_pnl"] = account_data.get("total_pnl", 0.0)
+                        self._data["session"]["total_trades"] = account_data.get("total_trades", 0)
+                        self._data["session"]["winning_trades"] = account_data.get("winning_trades", 0)
+                        self._data["session"]["losing_trades"] = account_data.get("losing_trades", 0)
+                        self._data["session"]["win_rate"] = account_data.get("win_rate", 0.0)
+                        
+                        # Calculate balance change
+                        current_balance = account_data.get("current_balance", 0.0)
+                        initial_balance = account_data.get("initial_balance", 0.0)
+                        balance_change = current_balance - initial_balance
+                        balance_change_pct = (balance_change / initial_balance * 100) if initial_balance > 0 else 0
+                        
+                        self._data["session"]["balance_change"] = balance_change
+                        self._data["session"]["balance_change_pct"] = balance_change_pct
+                    else:
+                        # Bot is not running or session is inactive, don't update session data
+                        logger.debug("🛑 Bot not running or session inactive - skipping session data update")
+                    
+                    self._data["data_sources"]["account_manager_synced"] = True
+                    self._data["data_sources"]["last_sync_time"] = datetime.now().isoformat()
+                    self._data["timestamp"] = datetime.now().isoformat()
+                    self._save_data()
+                    
+                    logger.debug(f"✅ AccountManager data synced: ${account_data.get('current_balance', 0.0):.2f}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error syncing from AccountManager: {e}")
+    
+    def sync_from_session_manager(self, session_data: Dict[str, Any]):
+        """Sync data from SessionManager - SESSION DATA"""
+        with self._lock:
+            try:
+                if session_data:
+                    self._data["session"].update({
+                        "session_id": session_data.get("session_id", "no_session"),
+                        "status": session_data.get("status", "INACTIVE"),
+                        "start_time": session_data.get("start_time"),
+                        "strategy": session_data.get("strategy", "standard"),
+                        "current_balance": session_data.get("current_balance", 0.0),
+                        "initial_balance": session_data.get("initial_balance", 0.0),
+                        "total_trades": session_data.get("total_trades", 0),
+                        "winning_trades": session_data.get("winning_trades", 0),
+                        "losing_trades": session_data.get("losing_trades", 0),
+                        "total_pnl": session_data.get("total_pnl", 0.0),
+                        "win_rate": session_data.get("win_rate", 0.0),
+                        "balance_change": session_data.get("balance_change", 0.0),
+                        "balance_change_pct": session_data.get("balance_change_pct", 0.0),
+                        "last_updated": datetime.now().isoformat()
+                    })
+                    
+                    self._data["data_sources"]["session_manager_synced"] = True
+                    self._data["data_sources"]["last_sync_time"] = datetime.now().isoformat()
+                    self._data["timestamp"] = datetime.now().isoformat()
+                    self._save_data()
+                    
+                    logger.debug(f"✅ SessionManager data synced: {session_data.get('session_id')} - {session_data.get('status')}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Error syncing from SessionManager: {e}")
     
     def update_market(self, market_data: Dict[str, Any]):
         """Update market data"""
@@ -195,10 +299,77 @@ class SimpleRTM:
             size = trade_data.get('size', 0) or 0
             logger.debug(f"✅ Trade added: {trade_data.get('side', 'UNKNOWN')} {size} BTC")
     
+    def check_bot_heartbeat(self) -> bool:
+        """Check if the bot is still running by monitoring heartbeat file"""
+        try:
+            heartbeat_file = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'temp', 'bot_heartbeat.json')
+            
+            if not os.path.exists(heartbeat_file):
+                return False
+            
+            # Check if heartbeat file is recent (within last 60 seconds)
+            file_mtime = os.path.getmtime(heartbeat_file)
+            current_time = time.time()
+            
+            if current_time - file_mtime > 60:  # Bot hasn't updated heartbeat in 60 seconds
+                logger.warning("⚠️ Bot heartbeat is stale - bot may have stopped")
+                return False
+            
+            # Read heartbeat data
+            with open(heartbeat_file, 'r') as f:
+                heartbeat_data = json.load(f)
+            
+            bot_running = heartbeat_data.get("bot_running", False)
+            last_heartbeat = heartbeat_data.get("last_heartbeat", 0)
+            
+            # Check if heartbeat is recent
+            if current_time - last_heartbeat > 60:
+                logger.warning("⚠️ Bot heartbeat is stale - bot may have stopped")
+                return False
+            
+            return bot_running
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking bot heartbeat: {e}")
+            return False
+    
+    def auto_cleanup_stale_sessions(self):
+        """Automatically cleanup sessions if bot has stopped running"""
+        try:
+            # Check if bot is still running
+            if not self.check_bot_heartbeat():
+                # Bot is not running, check if we have an active session
+                if self._data["session"]["status"] == "ACTIVE":
+                    logger.warning("🛑 Bot has stopped running - automatically ending active session")
+                    self.clear_session_data()
+                    logger.info("✅ Stale session automatically cleaned up")
+                    return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Error in auto cleanup: {e}")
+            return False
+
     def get_data(self) -> Dict[str, Any]:
-        """Get raw data - Dashboard reads directly from this"""
+        """Get comprehensive data - Dashboard reads ONLY from this"""
         with self._lock:
             return self._data.copy()
+    
+    def get_session_data(self) -> Dict[str, Any]:
+        """Get session data specifically"""
+        with self._lock:
+            return self._data["session"].copy()
+    
+    def get_account_data(self) -> Dict[str, Any]:
+        """Get account data specifically"""
+        with self._lock:
+            return self._data["account"].copy()
+    
+    def get_market_data(self) -> Dict[str, Any]:
+        """Get market data specifically"""
+        with self._lock:
+            return self._data["market"].copy()
     
     def clear_presentation_data(self):
         """Clear only presentation data (logs, predictions, trades) - NOT account/session data or market data"""
@@ -211,6 +382,30 @@ class SimpleRTM:
             self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()
             logger.info("🧹 SimpleRTM presentation data cleared (logs, predictions, trades only - market data preserved)")
+    
+    def clear_session_data(self):
+        """Clear session-specific data when session ends"""
+        with self._lock:
+            self._data["session"] = {
+                "session_id": "no_session",
+                "status": "INACTIVE",
+                "start_time": None,
+                "strategy": "standard",
+                "current_balance": 0.0,
+                "initial_balance": 0.0,
+                "total_trades": 0,
+                "winning_trades": 0,
+                "losing_trades": 0,
+                "total_pnl": 0.0,
+                "win_rate": 0.0,
+                "balance_change": 0.0,
+                "balance_change_pct": 0.0,
+                "last_updated": None
+            }
+            self._data["data_sources"]["session_manager_synced"] = False
+            self._data["timestamp"] = datetime.now().isoformat()
+            self._save_data()
+            logger.info("🧹 Session data cleared - session ended")
 
 # Global instance
 simple_rtm = SimpleRTM()

@@ -47,6 +47,11 @@ class YahooHyperliquidPaperTradingBot:
         self.closed_positions = []
         self.trade_history = []
         
+        # Bot heartbeat tracking
+        self.heartbeat_file = os.path.join("data", "temp", "bot_heartbeat.json")
+        self.last_heartbeat = time.time()
+        self.heartbeat_interval = 30  # Update heartbeat every 30 seconds
+        
         # Initialize current account ID
         self.current_account_id = None
         
@@ -348,7 +353,7 @@ class YahooHyperliquidPaperTradingBot:
             self.hyperliquid_api = HyperliquidAPI()
             
             # Initialize enhanced Hyperliquid simulator
-            from core.hyperliquid_simulator import hyperliquid_simulator
+            from core.api.hyperliquid_simulator import hyperliquid_simulator
             self.hyperliquid_simulator = hyperliquid_simulator
             
             # Test market data connection
@@ -665,8 +670,22 @@ class YahooHyperliquidPaperTradingBot:
             self.rtm_updater.clear_rtm_cache()
             logger.info("🧹 RTM cache cleared - Fresh session data")
             
+            # Check for ongoing sessions before starting new one
+            logger.info("🔍 Checking for ongoing sessions...")
+            ongoing_session = self._check_for_ongoing_session()
+            if ongoing_session:
+                logger.warning(f"⚠️ Found ongoing session: {ongoing_session['session_id']}")
+                logger.info(f"   Status: {ongoing_session['status']}")
+                logger.info(f"   Balance: ${ongoing_session['current_balance']:.2f}")
+                logger.info("🔄 Closing ongoing session to start fresh...")
+            
             # Start session via SessionManager
             self.session_manager = SessionManager()
+            
+            # Close any existing sessions
+            self.session_manager._close_existing_session()
+            logger.info("✅ Session cleanup completed")
+            
             session_id = self.session_manager.start_session(
                 session_id=f"bot_session_{int(time.time())}",
                 strategy=self.strategy_name,
@@ -695,6 +714,9 @@ class YahooHyperliquidPaperTradingBot:
         while trades_placed < max_trades:
             try:
                 current_time = time.time()
+                
+                # Update bot heartbeat
+                self._update_heartbeat()
                 
                 # Test SimpleRTM activity at loop start
                 self._update_simple_rtm_activity("🔄 Main trading loop iteration", "INFO")
@@ -919,6 +941,61 @@ class YahooHyperliquidPaperTradingBot:
         # Export data to CSV for external analysis
         self.trading_logger.export_to_csv()
     
+    def _check_for_ongoing_session(self) -> Optional[Dict]:
+        """Check if there's an ongoing session in RTM"""
+        try:
+            from core.data.real_time_manager import simple_rtm
+            rtm_data = simple_rtm.get_data()
+            rtm_session = rtm_data.get("session", {})
+            
+            if rtm_session.get("status") == "ACTIVE" and rtm_session.get("session_id") != "no_session":
+                return {
+                    "session_id": rtm_session.get("session_id"),
+                    "status": rtm_session.get("status"),
+                    "current_balance": rtm_session.get("current_balance", 0.0),
+                    "strategy": rtm_session.get("strategy", "unknown"),
+                    "start_time": rtm_session.get("start_time")
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error checking for ongoing session: {e}")
+            return None
+
+    def _update_heartbeat(self):
+        """Update bot heartbeat to indicate it's still running"""
+        try:
+            current_time = time.time()
+            if current_time - self.last_heartbeat >= self.heartbeat_interval:
+                heartbeat_data = {
+                    "bot_running": True,
+                    "last_heartbeat": current_time,
+                    "session_id": getattr(self, 'session_manager', None) and self.session_manager.current_session_id,
+                    "strategy": self.strategy_name,
+                    "balance": self.paper_balance
+                }
+                
+                # Ensure temp directory exists
+                os.makedirs(os.path.dirname(self.heartbeat_file), exist_ok=True)
+                
+                with open(self.heartbeat_file, 'w') as f:
+                    json.dump(heartbeat_data, f, indent=2)
+                
+                self.last_heartbeat = current_time
+                logger.debug("💓 Bot heartbeat updated")
+                
+        except Exception as e:
+            logger.error(f"❌ Could not update heartbeat: {e}")
+    
+    def _cleanup_heartbeat(self):
+        """Clean up heartbeat file when bot stops"""
+        try:
+            if os.path.exists(self.heartbeat_file):
+                os.remove(self.heartbeat_file)
+                logger.debug("🧹 Bot heartbeat cleaned up")
+        except Exception as e:
+            logger.error(f"❌ Could not cleanup heartbeat: {e}")
+
     def close_session(self):
         """Close the current trading session gracefully"""
         try:
@@ -939,7 +1016,15 @@ class YahooHyperliquidPaperTradingBot:
                 for position in self.open_positions[:]:  # Copy list to avoid modification during iteration
                     self.close_paper_position(position, "GRACEFUL_SHUTDOWN", hyperliquid_price)
             
-            # Advanced monitoring systems cleanup removed for simplicity
+            # End session via SessionManager
+            try:
+                if hasattr(self, 'session_manager') and self.session_manager:
+                    self.session_manager.end_session()
+                    logger.info("📅 SessionManager session ended")
+                else:
+                    logger.warning("⚠️ No SessionManager available for session cleanup")
+            except Exception as e:
+                logger.error(f"❌ Could not end SessionManager session: {e}")
             
             # End RTM session
             try:
@@ -951,6 +1036,9 @@ class YahooHyperliquidPaperTradingBot:
             # Update final balance
             if self.trading_logger:
                 self.trading_logger.update_current_balance(self.paper_balance)
+            
+            # Cleanup heartbeat
+            self._cleanup_heartbeat()
             
             logger.success(f"✅ Trading session closed gracefully!")
             logger.info(f"   Final Balance: ${self.paper_balance:.2f}")

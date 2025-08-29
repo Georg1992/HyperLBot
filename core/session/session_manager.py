@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Session Manager
+Enhanced Session Manager
 Handles trading session lifecycle management
+Automatically syncs with SimpleRTM for real-time dashboard updates
 Single Responsibility: Session lifecycle and state management
 """
 
@@ -16,7 +17,7 @@ from core.data.real_time_manager import simple_rtm
 
 class SessionManager:
     """
-    Manages trading session lifecycle
+    Manages trading session lifecycle with RTM integration
     Single Responsibility: Session creation, management, and cleanup
     """
     
@@ -39,7 +40,7 @@ class SessionManager:
         self.session_lock = threading.RLock()
         self.current_session_id = None
         
-        logger.success("📅 Session Manager initialized")
+        logger.success("📅 Enhanced Session Manager initialized")
     
     def start_session(self, session_id: str = None, strategy: str = "standard", initial_balance: float = 120.0) -> str:
         """Start a new trading session"""
@@ -51,10 +52,6 @@ class SessionManager:
                 
                 # Close any existing session first
                 self._close_existing_session()
-                
-                # Session data is managed by SessionManager (source of truth)
-                # Account data is managed by AccountManager (source of truth)
-                # SimpleRTM will read from them automatically
                 
                 self.current_session_id = session_id
                 
@@ -70,17 +67,16 @@ class SessionManager:
                     "winning_trades": 0,
                     "losing_trades": 0,
                     "total_pnl": 0.0,
-                    "win_rate": 0.0
+                    "win_rate": 0.0,
+                    "balance_change": 0.0,
+                    "balance_change_pct": 0.0
                 }
+                
+                # Sync to RTM immediately
+                simple_rtm.sync_from_session_manager(self.current_session_data)
                 
                 # Add startup activity to SimpleRTM
                 simple_rtm.add_activity(f"🚀 Trading session started - {strategy} strategy initialized", "SUCCESS", "session")
-                
-                # DO NOT initialize market data - it should be updated by the bot during operation
-                # Market data is real-time and should not be reset when starting sessions
-                
-                # Session data is managed by SessionManager (source of truth)
-                # SimpleRTM reads from SessionManager automatically
                 
                 logger.success(f"🚀 Trading session started: {session_id} ({strategy})")
                 return session_id
@@ -92,12 +88,29 @@ class SessionManager:
     def _close_existing_session(self):
         """Close any existing active session"""
         try:
+            # Check RTM for any active sessions
+            from core.data.real_time_manager import simple_rtm
+            rtm_data = simple_rtm.get_data()
+            rtm_session = rtm_data.get("session", {})
+            
+            if rtm_session.get("status") == "ACTIVE" and rtm_session.get("session_id") != "no_session":
+                logger.info(f"🔄 Found active session in RTM: {rtm_session.get('session_id')}")
+                logger.info(f"   Status: {rtm_session.get('status')}")
+                logger.info(f"   Balance: ${rtm_session.get('current_balance', 0):.2f}")
+                
+                # Clear the active session in RTM
+                simple_rtm.clear_session_data()
+                logger.info("✅ Cleared active session from RTM")
+            
+            # Close current session if exists
             if self.current_session_id:
                 logger.info(f"🔄 Closing existing session: {self.current_session_id}")
                 self.end_session()
                 
             # Also check for orphaned sessions in database
             self._close_orphaned_sessions()
+            
+            logger.info("✅ Session cleanup completed - ready for new session")
             
         except Exception as e:
             logger.error(f"Error closing existing session: {e}")
@@ -138,6 +151,9 @@ class SessionManager:
                 
                 # Update internal session data
                 self.current_session_data = session_data
+                
+                # Sync to RTM
+                simple_rtm.sync_from_session_manager(session_data)
                 
                 # Add completion activity
                 simple_rtm.add_activity(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes", "SUCCESS", "session")
@@ -240,9 +256,6 @@ class SessionManager:
                     logger.warning("⚠️ No active session to update balance")
                     return
                 
-                # Balance updates are handled by AccountManager (source of truth)
-                # SimpleRTM will read the updated balance automatically
-                
                 # Update internal session data
                 if hasattr(self, 'current_session_data') and self.current_session_data:
                     self.current_session_data["current_balance"] = new_balance
@@ -250,10 +263,11 @@ class SessionManager:
                     self.current_session_data["balance_change"] = balance_change
                     self.current_session_data["balance_change_pct"] = (balance_change / self.current_session_data.get("initial_balance", 1)) * 100
                 
+                # Sync to RTM
+                simple_rtm.sync_from_session_manager(self.current_session_data)
+                
                 # Add activity record to SimpleRTM
                 simple_rtm.add_activity(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}", "INFO", "account")
-                
-        
                 
             except Exception as e:
                 logger.error(f"Error updating session balance: {e}")
@@ -282,6 +296,9 @@ class SessionManager:
                     winning_trades = self.current_session_data["winning_trades"]
                     self.current_session_data["win_rate"] = (winning_trades / total_trades * 100) if total_trades > 0 else 0
                 
+                # Sync to RTM
+                simple_rtm.sync_from_session_manager(self.current_session_data)
+                
                 # Add trade activity
                 side = trade_data.get("side", "UNKNOWN")
                 pnl = trade_data.get("pnl", 0)
@@ -294,9 +311,31 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"Error adding trade to session: {e}")
     
-    # Session data is managed by SessionManager (source of truth)
-    # SimpleRTM reads from SessionManager automatically
-
+    def sync_with_account_manager(self):
+        """Sync session data with account manager data"""
+        with self.session_lock:
+            try:
+                if not self.current_session_id:
+                    return
+                
+                # Get current account data
+                from core.account_manager import account_manager
+                account_data = account_manager.get_account_summary()
+                
+                if account_data:
+                    # Update session data with account data
+                    self.current_session_data["current_balance"] = account_data.get("current_balance", 0.0)
+                    balance_change = account_data.get("current_balance", 0.0) - self.current_session_data.get("initial_balance", 0.0)
+                    self.current_session_data["balance_change"] = balance_change
+                    self.current_session_data["balance_change_pct"] = (balance_change / self.current_session_data.get("initial_balance", 1)) * 100
+                    
+                    # Sync to RTM
+                    simple_rtm.sync_from_session_manager(self.current_session_data)
+                    
+                    logger.debug(f"✅ Session synced with account manager: ${account_data.get('current_balance', 0.0):.2f}")
+                
+            except Exception as e:
+                logger.error(f"Error syncing with account manager: {e}")
 
 # Global instance (singleton)
 session_manager = SessionManager()

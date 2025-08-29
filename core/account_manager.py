@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
-Simulated Account Manager
+Enhanced Simulated Account Manager
 Handles creation, loading, and persistence of simulated trading accounts
+Automatically syncs with SimpleRTM for real-time dashboard updates
 """
 
 import os
@@ -12,13 +13,21 @@ from typing import Dict, Any, Optional
 from loguru import logger
 
 class SimulatedAccountManager:
-    """Manages simulated trading account data and persistence"""
+    """Manages simulated trading account data and persistence with RTM integration"""
     
     def __init__(self):
         # Ensure data directories exist
         os.makedirs("data/sessions", exist_ok=True)
         self.account_file = "data/sessions/simulated_account.json"
         self.account_data = None
+        
+        # Import RTM for integration
+        try:
+            from core.data.real_time_manager import simple_rtm
+            self.rtm = simple_rtm
+        except ImportError:
+            self.rtm = None
+            logger.warning("⚠️ SimpleRTM not available - AccountManager will work independently")
     
     def account_exists(self) -> bool:
         """Check if a simulated account file exists"""
@@ -48,6 +57,11 @@ class SimulatedAccountManager:
         
         self.account_data = account_data
         self._save_account()
+        
+        # Sync to RTM
+        if self.rtm:
+            self.rtm.sync_from_account_manager(self.get_account_summary())
+        
         logger.success(f"✅ Created new simulated account with balance: ${initial_balance:.2f}")
         return account_data
     
@@ -60,6 +74,10 @@ class SimulatedAccountManager:
             with open(self.account_file, 'r') as f:
                 self.account_data = json.load(f)
             
+            # Sync to RTM
+            if self.rtm:
+                self.rtm.sync_from_account_manager(self.get_account_summary())
+            
             logger.success(f"✅ Loaded existing simulated account (Balance: ${self.account_data['current_balance']:.2f})")
             return self.account_data
             
@@ -71,6 +89,10 @@ class SimulatedAccountManager:
         """Save current account data to file"""
         if self.account_data:
             self._save_account()
+            
+            # Sync to RTM
+            if self.rtm:
+                self.rtm.sync_from_account_manager(self.get_account_summary())
     
     def _save_account(self):
         """Internal method to save account data"""
@@ -96,8 +118,9 @@ class SimulatedAccountManager:
             logger.info(f"💰 Account balance updated: ${old_balance:.2f} → ${new_balance:.2f} (PnL: ${pnl_change:.2f})")
             self._save_account()
             
-            # Account data is managed by AccountManager (source of truth)
-            # SimpleRTM reads from AccountManager automatically
+            # Sync to RTM
+            if self.rtm:
+                self.rtm.sync_from_account_manager(self.get_account_summary())
     
     def add_trade(self, trade_data: Dict[str, Any]):
         """Add a completed trade to account history"""
@@ -120,8 +143,9 @@ class SimulatedAccountManager:
             
             self._save_account()
             
-            # Trade data is managed by AccountManager (source of truth)
-            # SimpleRTM reads from AccountManager automatically
+            # Sync to RTM
+            if self.rtm:
+                self.rtm.sync_from_account_manager(self.get_account_summary())
     
     def add_session(self, session_data: Dict[str, Any]):
         """Add session data to account history"""
@@ -142,6 +166,10 @@ class SimulatedAccountManager:
         if self.account_data:
             self.account_data["open_positions"] = positions
             self._save_account()
+            
+            # Sync to RTM
+            if self.rtm:
+                self.rtm.sync_from_account_manager(self.get_account_summary())
     
     def reset_account(self) -> bool:
         """Delete existing account file to allow creation of new account"""
@@ -149,6 +177,11 @@ class SimulatedAccountManager:
             if self.account_exists():
                 os.remove(self.account_file)
                 self.account_data = None
+                
+                # Clear RTM session data when account is reset
+                if self.rtm:
+                    self.rtm.clear_session_data()
+                
                 logger.success("✅ Existing account deleted - ready for new account creation")
                 return True
             else:
@@ -180,8 +213,11 @@ class SimulatedAccountManager:
             "last_updated": self.account_data["last_updated"]
         }
     
-    # Account data is managed by AccountManager (source of truth)
-    # SimpleRTM reads from AccountManager automatically
+    def sync_with_rtm(self):
+        """Manual sync with RTM - useful for ensuring consistency"""
+        if self.rtm and self.account_data:
+            self.rtm.sync_from_account_manager(self.get_account_summary())
+            logger.debug("🔄 AccountManager synced with RTM")
 
 # Global instance
 account_manager = SimulatedAccountManager()

@@ -224,24 +224,19 @@ class EventDrivenTradingDashboard:
             logger.error(f"❌ Failed to emit data update: {e}")
     
     def _get_dashboard_data(self) -> Dict[str, Any]:
-        """Get dashboard data from SimpleRTM - PRESENTATION LAYER ONLY"""
+        """Get dashboard data from SimpleRTM - SINGLE SOURCE OF TRUTH"""
         try:
+            # Use the global RTM instance - SINGLE SOURCE OF TRUTH
             from core.data.real_time_manager import simple_rtm
-            from core.session.session_manager import SessionManager
-            from core.account_manager import account_manager
             
-            # Get raw data from SimpleRTM
+            # Check for stale sessions and auto-cleanup
+            simple_rtm.auto_cleanup_stale_sessions()
+            
+            # Get ALL data from SimpleRTM - SINGLE SOURCE OF TRUTH
             rtm_data = simple_rtm.get_data()
             
-            # Get session data from SessionManager (source of truth)
-            session_manager = SessionManager()
-            session_data = session_manager.get_current_session_data()
-            
-            # Get account data from AccountManager (source of truth)
-            account_data = account_manager.get_account_summary()
-            
-            # Calculate session time
-            start_time = session_data.get("start_time")
+            # Calculate session time from RTM data
+            start_time = rtm_data.get("session", {}).get("start_time")
             session_time = "0m"
             if start_time:
                 try:
@@ -257,19 +252,19 @@ class EventDrivenTradingDashboard:
                 except:
                     session_time = "0m"
             
-            # Format data for dashboard - PRESENTATION LAYER ONLY
+            # Format data for dashboard - RTM ONLY
             dashboard_data = {
                 "session": {
-                    "session_id": session_data.get("session_id", "no_session"),
-                    "status": session_data.get("status", "INACTIVE"),
-                    "strategy": session_data.get("strategy", "standard"),
+                    "session_id": rtm_data.get("session", {}).get("session_id", "no_session"),
+                    "status": rtm_data.get("session", {}).get("status", "INACTIVE"),
+                    "strategy": rtm_data.get("session", {}).get("strategy", "standard"),
                     "session_time": session_time,
-                    "start_time": session_data.get("start_time"),
-                    "current_balance": account_data.get("current_balance", 0.0),
-                    "initial_balance": account_data.get("initial_balance", 0.0),
-                    "total_pnl": account_data.get("total_pnl", 0.0),
-                    "win_rate": account_data.get("win_rate", 0.0),
-                    "total_trades": account_data.get("total_trades", 0)
+                    "start_time": rtm_data.get("session", {}).get("start_time"),
+                    "current_balance": rtm_data.get("session", {}).get("current_balance", 0.0),
+                    "initial_balance": rtm_data.get("session", {}).get("initial_balance", 0.0),
+                    "total_pnl": rtm_data.get("session", {}).get("total_pnl", 0.0),
+                    "win_rate": rtm_data.get("session", {}).get("win_rate", 0.0),
+                    "total_trades": rtm_data.get("session", {}).get("total_trades", 0)
                 },
                 "market": rtm_data.get("market", {}),
                 "logs": rtm_data.get("logs", []),
@@ -278,11 +273,11 @@ class EventDrivenTradingDashboard:
                 "orderbook": {"bids": [], "asks": []},  # Placeholder
                 "global_volume": {"volume": 0.0},  # Placeholder
                 "timestamp": rtm_data.get("timestamp", ""),
-                "data_source": "Presentation Layer",
+                "data_source": "SimpleRTM - Single Source of Truth",
                 "connection_status": "✅ Connected"
             }
             
-            logger.debug(f"✅ Dashboard data - Balance: ${dashboard_data['session']['current_balance']:.2f}, Session: {dashboard_data['session']['session_id']}")
+            logger.debug(f"✅ Dashboard data from RTM - Balance: ${dashboard_data['session']['current_balance']:.2f}, Session: {dashboard_data['session']['session_id']}")
             return dashboard_data
             
         except Exception as e:
