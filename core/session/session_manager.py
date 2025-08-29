@@ -310,31 +310,29 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"Error adding trade to session: {e}")
     
-    def sync_with_account_manager(self):
-        """Sync session data with account manager data"""
+    def coordinate_with_account_data(self):
+        """Coordinate session data with current account data for balance consistency"""
         with self.session_lock:
             try:
                 if not self.current_session_id:
                     return
                 
-                # Get current account data
+                # Get current account data for coordination (not overwriting)
                 from core.account_manager import account_manager
                 account_data = account_manager.get_account_summary()
                 
-                if account_data:
-                    # Update session data with account data
-                    self.current_session_data["current_balance"] = account_data.get("current_balance", 0.0)
-                    balance_change = account_data.get("current_balance", 0.0) - self.current_session_data.get("initial_balance", 0.0)
-                    self.current_session_data["balance_change"] = balance_change
-                    self.current_session_data["balance_change_pct"] = (balance_change / self.current_session_data.get("initial_balance", 1)) * 100
+                if account_data and hasattr(self, 'current_session_data'):
+                    # Only update balance if account balance differs significantly
+                    account_balance = account_data.get("current_balance", 0.0)
+                    session_balance = self.current_session_data.get("current_balance", 0.0)
                     
-                    # Sync to RTM
-                    simple_rtm.sync_from_session_manager(self.current_session_data)
+                    # Small tolerance for floating point differences
+                    if abs(account_balance - session_balance) > 0.01:
+                        logger.info(f"🔄 Coordinating session balance: ${session_balance:.2f} → ${account_balance:.2f}")
+                        self.update_session_balance(account_balance, "Account data coordination")
                     
-                    logger.debug(f"✅ Session synced with account manager: ${account_data.get('current_balance', 0.0):.2f}")
-                
             except Exception as e:
-                logger.error(f"Error syncing with account manager: {e}")
+                logger.error(f"Error coordinating with account data: {e}")
 
 # Global instance (singleton)
 session_manager = SessionManager()

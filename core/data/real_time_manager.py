@@ -148,30 +148,8 @@ class SimpleRTM:
                         "last_updated": datetime.now().isoformat()
                     })
                     
-                    # Update session data with account data if session is active AND not a stale session
-                    # AND bot is still running (check heartbeat)
-                    if (self._data["session"]["status"] == "ACTIVE" and 
-                        self._data["session"]["session_id"] != "no_session" and
-                        self.check_bot_heartbeat()):
-                        self._data["session"]["current_balance"] = account_data.get("current_balance", 0.0)
-                        self._data["session"]["initial_balance"] = account_data.get("initial_balance", 0.0)
-                        self._data["session"]["total_pnl"] = account_data.get("total_pnl", 0.0)
-                        self._data["session"]["total_trades"] = account_data.get("total_trades", 0)
-                        self._data["session"]["winning_trades"] = account_data.get("winning_trades", 0)
-                        self._data["session"]["losing_trades"] = account_data.get("losing_trades", 0)
-                        self._data["session"]["win_rate"] = account_data.get("win_rate", 0.0)
-                        
-                        # Calculate balance change
-                        current_balance = account_data.get("current_balance", 0.0)
-                        initial_balance = account_data.get("initial_balance", 0.0)
-                        balance_change = current_balance - initial_balance
-                        balance_change_pct = (balance_change / initial_balance * 100) if initial_balance > 0 else 0
-                        
-                        self._data["session"]["balance_change"] = balance_change
-                        self._data["session"]["balance_change_pct"] = balance_change_pct
-                    else:
-                        # Bot is not running or session is inactive, don't update session data
-                        logger.debug("🛑 Bot not running or session inactive - skipping session data update")
+                    # AccountManager only updates account data - SessionManager handles session data
+                    # This prevents race conditions and maintains clean data separation
                     
                     self._data["data_sources"]["account_manager_synced"] = True
                     self._data["data_sources"]["last_sync_time"] = datetime.now().isoformat()
