@@ -464,28 +464,44 @@
 
                 <!-- Trading Predictions Card -->
                 <div class="card">
-                    <h2>🔮 Trading Predictions</h2>
+                    <h2>🎯 Trading Predictions</h2>
                     <div id="predictions-container">
                         <div class="prediction-status">
                             <div class="data-item">
-                                <span class="data-label">Status:</span>
-                                <span class="data-value" id="prediction-status">Waiting for bot...</span>
+                                <span class="data-label">Direction:</span>
+                                <span class="data-value" id="prediction-direction">Waiting...</span>
                             </div>
                             <div class="data-item">
-                                <span class="data-label">Latest Signal:</span>
-                                <span class="data-value" id="latest-signal">None yet</span>
+                                <span class="data-label">Size (BTC):</span>
+                                <span class="data-value" id="prediction-size-btc">N/A</span>
+                            </div>
+                            <div class="data-item">
+                                <span class="data-label">Size (USD):</span>
+                                <span class="data-value" id="prediction-size-usd">N/A</span>
+                            </div>
+                            <div class="data-item">
+                                <span class="data-label">Entry Price:</span>
+                                <span class="data-value" id="prediction-entry-price">N/A</span>
+                            </div>
+                            <div class="data-item">
+                                <span class="data-label">RSI (at prediction):</span>
+                                <span class="data-value" id="prediction-rsi">N/A</span>
+                            </div>
+                            <div class="data-item">
+                                <span class="data-label">TREND (at prediction):</span>
+                                <span class="data-value" id="prediction-trend">N/A</span>
                             </div>
                             <div class="data-item">
                                 <span class="data-label">Confidence:</span>
-                                <span class="data-value" id="signal-confidence">N/A</span>
+                                <span class="data-value" id="prediction-confidence">N/A</span>
                             </div>
                             <div class="data-item">
-                                <span class="data-label">Direction:</span>
-                                <span class="data-value" id="signal-direction">-</span>
+                                <span class="data-label">Reasoning:</span>
+                                <span class="data-value" id="prediction-reasoning" style="font-size: 11px; color: #888;">Waiting for bot...</span>
                             </div>
                         </div>
                         <div class="prediction-info" style="margin-top: 10px; padding: 10px; background: rgba(255,165,0,0.1); border-left: 3px solid #FFA500; font-size: 12px;">
-                            💡 <strong>Tip:</strong> Start the trading bot to see live prediction signals from ML engines, pattern recognition, and technical analysis.
+                            🎯 <strong>Live Predictions:</strong> Shows structured trading predictions updated every 5s with exact BUY/SELL signals, position sizing, entry prices, and market context.
                         </div>
                     </div>
                 </div>
@@ -956,45 +972,66 @@
             updatePredictions(predictions) {
                 if (predictions && predictions.length > 0) {
                     const latest = predictions[0];
-                    // Update prediction status elements
-                    this.updateElement('prediction-status', '🔴 Active Predictions');
-                    this.updateElement('latest-signal', latest.type || 'N/A');
-                    this.updateElement('signal-confidence', `${latest.confidence || 0}%`);
-                    this.updateElement('signal-direction', latest.type || 'N/A');
+                    const predictionData = latest.prediction_data || latest;
+                    
+                    // Update structured prediction fields with exact format
+                    this.updateElement('prediction-direction', predictionData.direction || latest.type || 'N/A');
+                    this.updateElement('prediction-size-btc', predictionData.size_btc ? predictionData.size_btc.toFixed(6) : 'N/A');
+                    this.updateElement('prediction-size-usd', predictionData.size_usd ? `$${predictionData.size_usd.toFixed(0)}` : 'N/A');
+                    this.updateElement('prediction-entry-price', predictionData.entry_price ? `$${predictionData.entry_price.toFixed(2)}` : 'N/A');
+                    this.updateElement('prediction-rsi', predictionData.rsi_at_prediction ? predictionData.rsi_at_prediction.toFixed(1) : (predictionData.rsi || 'N/A'));
+                    this.updateElement('prediction-trend', predictionData.trend_at_prediction || predictionData.trend || 'N/A');
+                    this.updateElement('prediction-confidence', predictionData.confidence ? `${(predictionData.confidence * 100).toFixed(1)}%` : `${latest.confidence || 0}%`);
+                    this.updateElement('prediction-reasoning', predictionData.reasoning || latest.reason || 'No reasoning available');
+                    
+                    // Update direction color
+                    const directionElement = document.getElementById('prediction-direction');
+                    if (directionElement) {
+                        const direction = (predictionData.direction || latest.type || '').toUpperCase();
+                        if (direction.includes('BUY')) {
+                            directionElement.className = 'data-value trend-up';
+                        } else if (direction.includes('SELL')) {
+                            directionElement.className = 'data-value trend-down';
+                        } else {
+                            directionElement.className = 'data-value trend-neutral';
+                        }
+                    }
                     
                     // Update confidence color
-                    const confidenceElement = document.getElementById('signal-confidence');
+                    const confidenceElement = document.getElementById('prediction-confidence');
                     if (confidenceElement) {
-                        const confidence = parseFloat(latest.confidence || 0);
-                        if (confidence > 80) {
+                        const confidence = parseFloat(predictionData.confidence ? predictionData.confidence * 100 : latest.confidence || 0);
+                        if (confidence > 70) {
                             confidenceElement.className = 'data-value trend-up';
-                        } else if (confidence > 60) {
+                        } else if (confidence > 50) {
                             confidenceElement.className = 'data-value';
                         } else {
                             confidenceElement.className = 'data-value trend-down';
                         }
                     }
                     
-                    // Update direction color
-                    const directionElement = document.getElementById('signal-direction');
-                    if (directionElement) {
-                        const direction = (latest.type || '').toUpperCase();
-                        if (direction.includes('BUY') || direction.includes('UPTREND') || direction.includes('UP')) {
-                            directionElement.className = 'data-value trend-up';
-                        } else if (direction.includes('SELL') || direction.includes('DOWNTREND') || direction.includes('DOWN')) {
-                            directionElement.className = 'data-value trend-down';
-                        } else if (direction.includes('HOLD')) {
-                            directionElement.className = 'data-value trend-neutral';
+                    // Update trend color
+                    const trendElement = document.getElementById('prediction-trend');
+                    if (trendElement) {
+                        const trend = (predictionData.trend_at_prediction || predictionData.trend || '').toUpperCase();
+                        if (trend.includes('UP')) {
+                            trendElement.className = 'data-value trend-up';
+                        } else if (trend.includes('DOWN')) {
+                            trendElement.className = 'data-value trend-down';
                         } else {
-                            directionElement.className = 'data-value';
+                            trendElement.className = 'data-value trend-neutral';
                         }
                     }
                 } else {
-                    // No predictions available
-                    this.updateElement('prediction-status', '⚪ Waiting for signals');
-                    this.updateElement('latest-signal', 'None yet');
-                    this.updateElement('signal-confidence', 'N/A');
-                    this.updateElement('signal-direction', '-');
+                    // No predictions available - update new structured fields
+                    this.updateElement('prediction-direction', '⚪ Waiting...');
+                    this.updateElement('prediction-size-btc', 'N/A');
+                    this.updateElement('prediction-size-usd', 'N/A');
+                    this.updateElement('prediction-entry-price', 'N/A');
+                    this.updateElement('prediction-rsi', 'N/A');
+                    this.updateElement('prediction-trend', 'N/A');
+                    this.updateElement('prediction-confidence', 'N/A');
+                    this.updateElement('prediction-reasoning', 'Waiting for bot...');
                 }
             }
             
