@@ -752,10 +752,10 @@ class YahooHyperliquidPaperTradingBot:
                     return self._get_default_rsi_data(error="no_price")
             
             # Update RSI calculator with current price
-            real_time_rsi_calculator.add_price(hyperliquid_price)
+            real_time_rsi_calculator.update_price(hyperliquid_price)
             
             # Get RSI calculation
-            rsi_result = real_time_rsi_calculator.calculate_rsi()
+            rsi_result = real_time_rsi_calculator.get_rsi()
             
             logger.info(f"📊 RSI Data: {rsi_result.get('rsi', 'N/A')} | Signal: {rsi_result.get('signal', 'N/A')}")
             return rsi_result
