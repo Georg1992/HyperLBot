@@ -16,6 +16,7 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from core.api.hyperliquid_api import HyperliquidAPI
+from core.api.hyperliquid_websocket import HyperliquidWebSocket
 from config.config import TradingConfig
 from core.constants import constants, strategy_constants, ui_constants, magic_numbers
 from core.state.trade_state_manager import trade_state_manager
@@ -35,6 +36,7 @@ class YahooHyperliquidPaperTradingBot:
         self.strategy_name = strategy_name or constants.DEFAULT_STRATEGY
         self.strategy_config = self.config.STRATEGY_CONFIGS.get(self.strategy_name, strategy_constants.STANDARD_STRATEGY)
         self.hyperliquid_api = None
+        self.hyperliquid_websocket = None  # WebSocket for real-time price updates
         self.connected = False
         self.balance_mode = balance_mode  # "real" or "simulated"
         
@@ -112,12 +114,82 @@ class YahooHyperliquidPaperTradingBot:
         # Initialize WebSocket for real-time price streaming
         self._initialize_websocket()
         
-        # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
-        self._test_api_connections()
+        # Initialize candle buffers
+        self._initialize_candle_buffers()
         
         # Override trade manager's get_open_positions method
         self.trade_manager.get_open_positions = self.get_open_positions
         
+        # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
+        self._test_api_connections()
+    
+    def _initialize_websocket(self):
+        """Initialize Hyperliquid WebSocket for real-time price updates - SINGLE SOURCE OF TRUTH"""
+        try:
+            self.hyperliquid_websocket = HyperliquidWebSocket(symbol="BTC")
+            
+            # Set up price callback for real-time updates
+            def on_price_update(price_data):
+                """Handle real-time price updates from WebSocket - SINGLE SOURCE OF TRUTH"""
+                try:
+                    current_price = price_data.get("current_price", 0)
+                    if current_price > 0:
+                        logger.debug(f"🔴 WebSocket price update: ${current_price:.2f}")
+                        
+                        # Update RSI calculator with real-time WebSocket price
+                        from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+                        rsi_updated = real_time_rsi_calculator.update_price(current_price)
+                        if rsi_updated:
+                            logger.debug(f"📊 RSI updated from WebSocket price: ${current_price:.2f}")
+                            
+                        # Cache price for use in trading loop
+                        self._cached_websocket_price = current_price
+                        self._last_price_update = time.time()
+                        
+                except Exception as e:
+                    logger.error(f"❌ WebSocket price callback error: {e}")
+            
+            # Register callback
+            self.hyperliquid_websocket.add_price_callback(on_price_update)
+            logger.info("🔴 Hyperliquid WebSocket initialized - READY FOR REAL-TIME PRICE STREAM")
+            
+            # Initialize cache variables
+            self._cached_websocket_price = None
+            self._last_price_update = 0
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize WebSocket: {e}")
+            self.hyperliquid_websocket = None
+    
+    def connect(self) -> bool:
+        """Connect to Hyperliquid API and start WebSocket for real-time data"""
+        try:
+            # Initialize Hyperliquid API for trading operations
+            self.hyperliquid_api = HyperliquidAPI()
+            logger.info("✅ Connected to Hyperliquid API")
+            
+            # Start WebSocket for real-time price stream - SINGLE SOURCE OF TRUTH
+            if self.hyperliquid_websocket:
+                self.hyperliquid_websocket.start()
+                logger.info("🔴 Starting Hyperliquid WebSocket connection...")
+                
+                # Wait for initial connection
+                time.sleep(3)
+                
+                if self.hyperliquid_websocket.is_connected():
+                    logger.success("🔴 WebSocket connected - REAL-TIME PRICE STREAM ACTIVE")
+                else:
+                    logger.warning("⚠️ WebSocket connection failed - using HTTP API fallback")
+            
+            self.connected = True
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to connect to Hyperliquid: {e}")
+            return False
+    
+    def _initialize_candle_buffers(self):
+        """Initialize candle buffer management"""
         # Simple candle management
         self.candles_1m_buffer = []   # Rolling buffer of 120 most recent 1m candles (2h)
         self.candles_5m_buffer = []   # Rolling buffer of 60 most recent 5m candles (5h) 
@@ -489,21 +561,30 @@ class YahooHyperliquidPaperTradingBot:
             return {}
     
     def get_hyperliquid_price(self) -> Optional[float]:
-        """Get current price from Hyperliquid"""
+        """Get current price from Hyperliquid WebSocket - SINGLE SOURCE OF TRUTH"""
         try:
-            # Use centralized market data manager
+            # PRIMARY: WebSocket cached price (real-time stream) 
+            if (hasattr(self, '_cached_websocket_price') and 
+                self._cached_websocket_price is not None and
+                time.time() - self._last_price_update < 30):  # Price must be recent (30s)
+                return self._cached_websocket_price
+            
+            # SECONDARY: Direct WebSocket query
+            if hasattr(self, 'hyperliquid_websocket') and self.hyperliquid_websocket:
+                ws_price = self.hyperliquid_websocket.get_current_price()
+                if ws_price and ws_price > 0:
+                    logger.debug(f"🔴 Direct WebSocket price: ${ws_price:.2f}")
+                    return ws_price
+            
+            # FALLBACK: HTTP API call only if WebSocket unavailable
+            logger.warning("⚠️ WebSocket price unavailable - using HTTP API fallback")
             from core.market_data_manager import market_data_manager
             hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
-            mid_price = hyperliquid_data.get("current_price")
+            api_price = hyperliquid_data.get("current_price")
             
-            if mid_price:
-                # Update variability analyzer with new price data
-                volume_data = hyperliquid_data.get("volume_data", {})
-                real_volume = volume_data.get("current_volume", 100)  # Fallback to 100 if no data
-                
-                self.variability_analyzer.add_price_data(mid_price, volume=real_volume)
-                
-                return mid_price
+            if api_price:
+                logger.warning(f"📡 HTTP API price: ${api_price:.2f} (WebSocket fallback)")
+                return api_price
             
             return None
         except Exception as e:
