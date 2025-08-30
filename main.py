@@ -122,7 +122,19 @@ def start_dashboard():
         ):
             logger.info("✅ Dashboard is already running!")
             logger.info(f"🌐 Dashboard is available at: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
-            logger.info("💡 No need to start a new dashboard instance")
+            
+            # Check if there are active browser connections
+            if EventDrivenTradingDashboard.has_active_browser_connections(
+                host=constants.DEFAULT_DASHBOARD_HOST, 
+                port=constants.DEFAULT_DASHBOARD_PORT
+            ):
+                logger.info("🔗 Dashboard is already open in browser - bot will connect automatically")
+                logger.info("💡 Data will start flowing to your existing dashboard")
+            else:
+                logger.info("🔗 Bot will connect to existing dashboard automatically")
+                logger.info("💡 Please open the dashboard in your browser to see the data")
+                logger.info(f"   URL: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
+            
             return True
         
         def run_dashboard():

@@ -100,6 +100,21 @@ class EventDrivenTradingDashboard:
             time.sleep(magic_numbers.DASHBOARD_SLEEP_INTERVAL)
         return False
     
+    @staticmethod
+    def has_active_browser_connections(host='localhost', port=5002) -> bool:
+        """Check if there are active browser connections to the dashboard"""
+        try:
+            # Try to get the health endpoint which includes active connections
+            response = requests.get(f'http://{host}:{port}/health', timeout=2)
+            if response.status_code == 200:
+                health_data = response.json()
+                active_connections = health_data.get('active_connections', 0)
+                logger.info(f"📊 Dashboard has {active_connections} active browser connections")
+                return active_connections > 0
+        except requests.exceptions.RequestException:
+            pass
+        return False
+    
     def _setup_websocket_handlers(self):
         """Setup WebSocket connection handlers"""
         
@@ -146,8 +161,19 @@ class EventDrivenTradingDashboard:
             return {
                 "status": "healthy",
                 "active_connections": len(self.active_connections),
-                "timestamp": datetime.now().isoformat()
+                "timestamp": datetime.now().isoformat(),
+                "dashboard_url": f"http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}",
+                "connection_status": "connected" if self.active_connections else "waiting_for_connections"
             }
+    
+    def get_connection_status(self) -> Dict[str, Any]:
+        """Get current connection status"""
+        return {
+            "active_connections": len(self.active_connections),
+            "has_browser_connections": len(self.active_connections) > 0,
+            "last_update": datetime.now().isoformat(),
+            "dashboard_url": f"http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}"
+        }
     
     def _start_data_monitoring(self):
         """Start background thread to monitor for data changes"""
