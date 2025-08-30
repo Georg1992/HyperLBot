@@ -29,8 +29,10 @@ class RealTimeRSICalculator:
         # Track last price for incremental updates
         self.last_price = None
         
-        # Price filtering for Bitcoin - adjusted for stability
-        self.min_price_change_threshold = 2.0  # $2.00 threshold for meaningful Bitcoin movements
+        # Price filtering for Bitcoin - meaningful movement threshold
+        self.min_price_change_threshold = 5.0  # $5.00 threshold for meaningful Bitcoin movements
+        self.last_meaningful_update = 0  # Track when we last updated RSI
+        self.min_update_interval = 30  # Minimum 30 seconds between RSI updates
         
         # Track update timing for diagnostics
         self.last_update_time = time.time()
@@ -50,16 +52,22 @@ class RealTimeRSICalculator:
         # Calculate RSI incrementally if we have a previous price
         if self.last_price is not None and self.is_initialized:
             price_change = price - self.last_price
+            time_since_update = timestamp - self.last_meaningful_update
             
-            # Skip tiny price changes that add noise
-            if abs(price_change) < self.min_price_change_threshold:
-                logger.debug(f"📊 Skipping tiny price change: {price_change:+.2f} (threshold: {self.min_price_change_threshold})")
-                # DON'T update last_price - keep RSI baseline intact!
-                # Store price in history but don't affect RSI calculation
+            # Update RSI only for meaningful changes OR after time interval
+            should_update_rsi = (
+                abs(price_change) >= self.min_price_change_threshold or  # Significant price move
+                time_since_update >= self.min_update_interval  # Enough time passed
+            )
+            
+            if not should_update_rsi:
+                logger.debug(f"📊 Skipping RSI update: change {price_change:+.2f}, time {time_since_update:.0f}s")
+                # Still track price but don't update RSI calculation
                 self.price_history.append({
                     'price': price,
                     'timestamp': timestamp
                 })
+                self.last_price = price  # Update for next comparison
                 return
             
             # Calculate gain/loss from this single price change
@@ -81,8 +89,9 @@ class RealTimeRSICalculator:
             self.cached_rsi = round(new_rsi, 2)
             self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(new_rsi)
             self.last_update_time = timestamp
+            self.last_meaningful_update = timestamp  # Track meaningful update
             
-            logger.debug(f"📊 RSI updated: {price} → RSI {self.cached_rsi:.2f} (change: {price_change:+.2f})")
+            logger.info(f"📊 RSI updated: ${price} → RSI {self.cached_rsi:.2f} (change: {price_change:+.2f}, interval: {time_since_update:.0f}s)")
         
         # Store the price and update last_price
         self.price_history.append({
@@ -188,6 +197,7 @@ class RealTimeRSICalculator:
             self.cached_rsi = round(rsi, 2)
             self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(rsi)
             self.last_calculation = time.time()
+            self.last_meaningful_update = time.time()  # Initialize meaningful update timer
             
             logger.info(f"📊 RSI initialized: {self.cached_rsi:.2f} from {len(changes)} price changes")
             
