@@ -193,5 +193,5 @@ class RealTimeRSICalculator:
         
         return trend, signal
 
-# Professional singleton instance for trading bot - optimized for trading frequency
-real_time_rsi_calculator = RealTimeRSICalculator(periods=14, sample_interval=15)
+# Professional singleton instance for trading bot - optimized for maximum trading responsiveness
+real_time_rsi_calculator = RealTimeRSICalculator(periods=14, sample_interval=5)
