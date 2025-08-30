@@ -1182,6 +1182,7 @@ class YahooHyperliquidPaperTradingBot:
                 logger.info("💓 Initial bot heartbeat created")
             else:
                 # Reduced logging frequency - no additional action needed
+                pass
                 
         except Exception as e:
             logger.error(f"❌ Could not {'create' if is_initial else 'update'} heartbeat: {e}")
@@ -1248,6 +1249,7 @@ class YahooHyperliquidPaperTradingBot:
                 logger.info("📊 RTM session ended")
             except Exception as e:
                 # Reduced logging frequency - no additional action needed
+                pass
             
             # Update final balance
             if self.trading_logger:
