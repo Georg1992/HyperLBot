@@ -133,16 +133,19 @@ class RealTimeRSICalculator:
         # Update current price
         self.current_price = price
         
+        # Need at least 1 price in history to calculate change
+        if len(self.price_history) < 1:
+            self.price_history.append(price)
+            return False
+        
+        # Get previous price BEFORE adding new price to history
+        previous_price = self.price_history[-1]
+        
         # Add to price history
         self.price_history.append(price)
         
-        # Need at least 2 prices to calculate change
-        if len(self.price_history) < 2:
-            return False
-        
         # Calculate price change
         current_price = price
-        previous_price = self.price_history[-2]
         price_change = current_price - previous_price
         
         # Only update RSI if change is significant enough (more stable)

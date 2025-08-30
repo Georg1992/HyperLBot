@@ -17,156 +17,46 @@ class MarketDataAnalyzer:
         self.yahoo_fetcher = YahooDataFetcher()
         logger.info("📊 Market Data Analyzer initialized")
     
-    def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
-        """Get historical RSI data from Yahoo Finance candles (not real-time)"""
-        try:
-            # Calculate RSI from Yahoo Finance historical data (proper historical analysis)
-            candles_5m = self.get_5m_candles("BTC", 50)  # Get enough data for RSI calculation
-            
-            if not candles_5m or len(candles_5m) < 15:
-                logger.warning("⚠️ Insufficient Yahoo candle data for RSI calculation")
-                return self._get_default_rsi_data(hyperliquid_price, "insufficient_data")
-            
-            # Calculate RSI from Yahoo closing prices
-            rsi_data = self._calculate_historical_rsi(candles_5m)
-            
-            # Transform the data structure to match what the bot expects
-            transformed_data = {
-                "rsi_value": rsi_data.get("rsi"),  # Historical Yahoo RSI
-                "trend": rsi_data.get("trend", "NEUTRAL"),
-                "advanced_signal": rsi_data.get("signal", "NEUTRAL"),
-                "momentum": "NEUTRAL",  # Default momentum
-                "confidence": 0.5,  # Default confidence
-                "hyperliquid_price": hyperliquid_price,
-                "price_context": "yahoo_historical"  # Always historical for this analyzer
-            }
-            
-            # Calculate confidence based on RSI value
-            rsi_value = rsi_data.get("rsi")
-            if rsi_value is not None:
-                if rsi_value < 30 or rsi_value > 70:
-                    transformed_data["confidence"] = 0.8  # High confidence for extreme values
-                elif rsi_value < 40 or rsi_value > 60:
-                    transformed_data["confidence"] = 0.6  # Medium confidence for moderate values
-                else:
-                    transformed_data["confidence"] = 0.4  # Low confidence for neutral values
-                
-                # Determine momentum based on RSI trend
-                if rsi_value > 70:
-                    transformed_data["momentum"] = "OVERBOUGHT"
-                elif rsi_value < 30:
-                    transformed_data["momentum"] = "OVERSOLD"
-                elif rsi_value > 60:
-                    transformed_data["momentum"] = "BULLISH"
-                elif rsi_value < 40:
-                    transformed_data["momentum"] = "BEARISH"
-                else:
-                    transformed_data["momentum"] = "NEUTRAL"
-            
-            return transformed_data
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get historical RSI data: {e}")
-            return self._get_default_rsi_data(hyperliquid_price, str(e))
-    
-    def _calculate_historical_rsi(self, candles: List[Dict], periods: int = 14) -> Dict[str, Any]:
-        """Calculate RSI from historical Yahoo Finance candle data"""
-        if len(candles) < periods + 1:
-            return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
-        
-        # Extract closing prices
-        closes = [candle['close'] for candle in candles[-periods-1:]]
-        
-        # Calculate price changes
-        changes = []
-        for i in range(1, len(closes)):
-            changes.append(closes[i] - closes[i-1])
-        
-        if len(changes) < periods:
-            return {"rsi": None, "trend": "NEUTRAL", "signal": "NEUTRAL"}
-        
-        # Calculate gains and losses
-        gains = [change if change > 0 else 0 for change in changes[-periods:]]
-        losses = [-change if change < 0 else 0 for change in changes[-periods:]]
-        
-        # Calculate average gain and loss (Wilder's smoothing for historical)
-        avg_gain = sum(gains) / periods
-        avg_loss = sum(losses) / periods
-        
-        # Calculate RSI
-        if avg_loss == 0:
-            rsi = 100.0
-        else:
-            rs = avg_gain / avg_loss
-            rsi = 100.0 - (100.0 / (1.0 + rs))
-        
-        # Determine trend and signal
-        if rsi >= 70:
-            trend, signal = "OVERBOUGHT", "SELL"
-        elif rsi <= 30:
-            trend, signal = "OVERSOLD", "BUY"
-        elif rsi >= 60:
-            trend, signal = "STRONG", "NEUTRAL"
-        elif rsi <= 40:
-            trend, signal = "WEAK", "NEUTRAL"
-        else:
-            trend, signal = "NEUTRAL", "NEUTRAL"
-        
-        return {
-            "rsi": round(rsi, 2),
-            "trend": trend,
-            "signal": signal,
-            "avg_gain": avg_gain,
-            "avg_loss": avg_loss
-        }
-    
-    def _get_default_rsi_data(self, hyperliquid_price: float = None, error: str = "unknown") -> Dict[str, Any]:
-        """Get default RSI data when calculation fails"""
-        return {
-            "rsi_value": 50.0,  # Neutral RSI value
-            "trend": "NEUTRAL",
-            "advanced_signal": "NEUTRAL",
-            "momentum": "NEUTRAL",
-            "confidence": 0.5,
-            "hyperliquid_price": hyperliquid_price,
-            "price_context": "yahoo_historical",
-            "error": error
-        }
-    
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get comprehensive Yahoo Finance market analysis"""
         try:
-            # Get market analysis from Yahoo fetcher
-            analysis = self.yahoo_fetcher.get_optimized_market_analysis("BTC", hyperliquid_price)
+            # Get current market data
+            current_price = self.get_current_price()
+            if not current_price:
+                return {"error": "No current price available"}
             
-            # Add Hyperliquid price context
-            if hyperliquid_price and hyperliquid_price > 0:
-                analysis["hyperliquid_price"] = hyperliquid_price
-                analysis["price_context"] = "hyperliquid_real_time"
-                
-                # Calculate price difference
-                yahoo_price = analysis.get("current_price", 0)
-                if yahoo_price > 0:
-                    price_diff = abs(hyperliquid_price - yahoo_price)
-                    price_diff_pct = (price_diff / yahoo_price) * 100
-                    analysis["price_difference"] = {
-                        "absolute": price_diff,
-                        "percentage": price_diff_pct,
-                        "yahoo_price": yahoo_price,
-                        "hyperliquid_price": hyperliquid_price
-                    }
-            else:
-                analysis["price_context"] = "yahoo_historical"
+            # Get 5-minute candles for analysis
+            candles_5m = self.get_5m_candles("BTC", 20)
+            if not candles_5m:
+                return {"error": "No 5-minute candle data available"}
             
-            return analysis
+            # Calculate basic indicators
+            sma_5m = self._calculate_sma(candles_5m, 5)
+            sma_20m = self._calculate_sma(candles_5m, 20)
+            
+            # Determine market condition
+            market_condition = self._determine_market_condition(sma_5m, sma_20m, current_price)
+            
+            # Get volume analysis
+            volume_data = self.volume_analyzer.analyze_volume(candles_5m)
+            
+            # Get momentum analysis
+            momentum_data = self.momentum_analyzer.analyze_momentum(candles_5m)
+            
+            return {
+                "current_price": current_price,
+                "market_condition": market_condition,
+                "sma_5m": sma_5m,
+                "sma_20m": sma_20m,
+                "volume_analysis": volume_data,
+                "momentum_analysis": momentum_data,
+                "data_source": "yahoo_finance",
+                "timestamp": time.time()
+            }
             
         except Exception as e:
             logger.error(f"❌ Failed to get Yahoo analysis: {e}")
-            return {
-                "error": str(e),
-                "price_context": "error",
-                "hyperliquid_price": hyperliquid_price
-            }
+            return {"error": str(e)}
     
     def get_candles(self, symbol: str, interval: str, count: int) -> List[Dict[str, Any]]:
         """Get candles for any timeframe"""

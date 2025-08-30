@@ -759,14 +759,21 @@ class YahooDataFetcher:
                 change = prices[i] - prices[i-1]
                 changes.append(change)
             
-            # Separate gains and losses for the period
-            recent_changes = changes[-periods:]
-            gains = [c if c > 0 else 0.0 for c in recent_changes]
-            losses = [-c if c < 0 else 0.0 for c in recent_changes]
+            # Calculate gains and losses
+            gains = [c if c > 0 else 0.0 for c in changes]
+            losses = [-c if c < 0 else 0.0 for c in changes]
             
-            # Calculate average gain and loss
-            avg_gain = sum(gains) / periods
-            avg_loss = sum(losses) / periods
+            # Use Wilder's smoothing (same as incremental calculation)
+            alpha = 1.0 / periods
+            
+            # Initialize with first period's simple average
+            avg_gain = sum(gains[:periods]) / periods
+            avg_loss = sum(losses[:periods]) / periods
+            
+            # Apply Wilder's smoothing to remaining periods
+            for i in range(periods, len(gains)):
+                avg_gain = (1 - alpha) * avg_gain + alpha * gains[i]
+                avg_loss = (1 - alpha) * avg_loss + alpha * losses[i]
             
             # Calculate RSI
             if avg_loss == 0:
