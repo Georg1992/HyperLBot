@@ -106,20 +106,22 @@ class MarketOrderbookAnalyzer:
             
             # Categorize volume based on REALISTIC Bitcoin orderbook depth (fixed thresholds)
             # Bitcoin typically has 100-1000+ BTC in top 5 levels during normal trading
-            if total_depth_5 > 800.0:    # Extremely high liquidity (800+ BTC)
-                volume_category = "EXTREMELY_HIGH"
-            elif total_depth_5 > 400.0:  # Very high liquidity (400-800 BTC)
-                volume_category = "VERY_HIGH"
-            elif total_depth_5 > 200.0:  # High liquidity (200-400 BTC)
-                volume_category = "HIGH"
-            elif total_depth_5 > 100.0:  # Above average liquidity (100-200 BTC)
-                volume_category = "ABOVE_AVERAGE"
-            elif total_depth_5 > 50.0:   # Normal liquidity (50-100 BTC)
-                volume_category = "NORMAL"
-            elif total_depth_5 > 25.0:   # Below average liquidity (25-50 BTC)
-                volume_category = "BELOW_AVERAGE"
-            elif total_depth_5 > 10.0:   # Low liquidity (10-25 BTC)
-                volume_category = "LOW"
+                    from core.constants import MagicNumbers
+        
+        if total_depth_5 > MagicNumbers.VOLUME_EXTREMELY_HIGH:    # Extremely high liquidity (800+ BTC)
+            volume_category = "EXTREMELY_HIGH"
+        elif total_depth_5 > MagicNumbers.VOLUME_VERY_HIGH:  # Very high liquidity (400-800 BTC)
+            volume_category = "VERY_HIGH"
+        elif total_depth_5 > MagicNumbers.VOLUME_HIGH:  # High liquidity (200-400 BTC)
+            volume_category = "HIGH"
+        elif total_depth_5 > MagicNumbers.VOLUME_ABOVE_AVERAGE:  # Above average liquidity (100-200 BTC)
+            volume_category = "ABOVE_AVERAGE"
+        elif total_depth_5 > MagicNumbers.VOLUME_NORMAL:   # Normal liquidity (50-100 BTC)
+            volume_category = "NORMAL"
+        elif total_depth_5 > MagicNumbers.VOLUME_BELOW_AVERAGE:   # Below average liquidity (25-50 BTC)
+            volume_category = "BELOW_AVERAGE"
+        elif total_depth_5 > MagicNumbers.VOLUME_LOW:   # Low liquidity (10-25 BTC)
+            volume_category = "LOW"
             elif total_depth_5 > 5.0:    # Very low liquidity (5-10 BTC)
                 volume_category = "VERY_LOW"
             else:                        # Extremely low liquidity (<5 BTC)

@@ -134,7 +134,7 @@ class YahooHyperliquidPaperTradingBot:
                 try:
                     current_price = price_data.get("current_price", 0)
                     if current_price > 0:
-                        logger.debug(f"🔴 WebSocket price update: ${current_price:.2f}")
+                        # Reduced logging frequency
                         
                         # Update RSI calculator with real-time WebSocket price
                         from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
@@ -397,17 +397,19 @@ class YahooHyperliquidPaperTradingBot:
                         logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
                     else:
                         logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
-                        real_time_rsi_calculator.cached_rsi = 50.0
+                        from core.constants import MagicNumbers
+                        real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
                 else:
                     logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
-                    real_time_rsi_calculator.cached_rsi = 50.0
+                    from core.constants import MagicNumbers
+                    real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
             
             # Update with current Hyperliquid price
             rsi_updated = False
             if hyperliquid_price:
                 rsi_updated = real_time_rsi_calculator.update_price(hyperliquid_price)
                 if rsi_updated:
-                    logger.debug(f"📊 RSI updated with Hyperliquid price: ${hyperliquid_price:.2f}")
+                    # Reduced logging frequency
             
             # Get current RSI for trading decisions
             rsi_data = real_time_rsi_calculator.get_rsi()
@@ -461,7 +463,7 @@ class YahooHyperliquidPaperTradingBot:
             if hasattr(self, 'hyperliquid_websocket') and self.hyperliquid_websocket:
                 ws_price = self.hyperliquid_websocket.get_current_price()
                 if ws_price and ws_price > 0:
-                    logger.debug(f"🔴 Direct WebSocket price: ${ws_price:.2f}")
+                    # Reduced logging frequency
                     return ws_price
             
             # FALLBACK: HTTP API call only if WebSocket unavailable
@@ -652,7 +654,7 @@ class YahooHyperliquidPaperTradingBot:
     def _get_default_rsi_data(self, hyperliquid_price: float = None, error: str = "unknown") -> Dict[str, Any]:
         """Get default RSI data structure when calculation fails"""
         return {
-            "rsi": 50.0,  # Neutral RSI
+                            "rsi": MagicNumbers.RSI_NEUTRAL,  # Neutral RSI
             "rsi_trend": "NEUTRAL",
             "rsi_signal": "HOLD", 
             "periods_analyzed": 0,
@@ -748,7 +750,7 @@ class YahooHyperliquidPaperTradingBot:
             size_btc = prediction.get("size_btc", 0)
             size_usd = prediction.get("size_usd", 0)
             entry_price = prediction.get("entry_price", current_price)
-            rsi_value = prediction.get("rsi_at_prediction", 50.0)
+            rsi_value = prediction.get("rsi_at_prediction", MagicNumbers.RSI_NEUTRAL)
             trend_value = prediction.get("trend_at_prediction", "NEUTRAL")
             confidence = prediction.get("confidence", 0.3)
             reasoning = prediction.get("reasoning", "Standard prediction")
@@ -837,7 +839,7 @@ class YahooHyperliquidPaperTradingBot:
             logger.info("✅ SessionManager initialized")
             
             # Start session tracking for enhanced analysis
-            initial_price = self.get_hyperliquid_price() or 50000.0  # Fallback price
+            initial_price = self.get_hyperliquid_price() or MagicNumbers.FALLBACK_BTC_PRICE  # Fallback price
             self.market_data_analyzer.start_session_tracking(initial_price)
             logger.info(f"📊 Session tracking started at ${initial_price:.2f}")
             
@@ -1180,7 +1182,7 @@ class YahooHyperliquidPaperTradingBot:
             if is_initial:
                 logger.info("💓 Initial bot heartbeat created")
             else:
-                logger.debug("💓 Bot heartbeat updated")
+                                    # Reduced logging frequency
                 
         except Exception as e:
             logger.error(f"❌ Could not {'create' if is_initial else 'update'} heartbeat: {e}")
@@ -1200,7 +1202,7 @@ class YahooHyperliquidPaperTradingBot:
         try:
             if os.path.exists(self.heartbeat_file):
                 os.remove(self.heartbeat_file)
-                logger.debug("🧹 Bot heartbeat cleaned up")
+                # Reduced logging frequency
         except Exception as e:
             logger.error(f"❌ Could not cleanup heartbeat: {e}")
 
@@ -1246,7 +1248,7 @@ class YahooHyperliquidPaperTradingBot:
                 self._update_simple_rtm_activity("🏁 Trading session closed gracefully", "SUCCESS")
                 logger.info("📊 RTM session ended")
             except Exception as e:
-                logger.debug(f"❌ Could not end RTM session: {e}")
+                # Reduced logging frequency
             
             # Update final balance
             if self.trading_logger:
@@ -1380,7 +1382,7 @@ class YahooHyperliquidPaperTradingBot:
             volatility_value = self._sanitize_volatility(volatility_data.get("volatility_5m", 0.0))
             
             analysis = self.market_data_analyzer.get_analysis(
-                current_price, volume_value, rsi_value or 50.0, volatility_value
+                current_price, volume_value, rsi_value or MagicNumbers.RSI_NEUTRAL, volatility_value
             )
             
             # Prepare market data with analysis
@@ -1444,7 +1446,8 @@ def main():
     logger.info("🚀 Yahoo + Hyperliquid Paper Trading Bot Starting...")
     
     # Initialize Yahoo + Hyperliquid paper trading bot with $120 starting balance
-    bot = YahooHyperliquidPaperTradingBot(initial_balance=120.0)
+            from core.constants import MagicNumbers
+        bot = YahooHyperliquidPaperTradingBot(initial_balance=MagicNumbers.FALLBACK_BALANCE)
     
     # Connect to Hyperliquid
     if not bot.connect():

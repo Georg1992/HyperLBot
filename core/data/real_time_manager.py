@@ -96,7 +96,7 @@ class SimpleRTM:
                     self._data["timestamp"] = datetime.now().isoformat()
                     self._save_data()
                     
-                    logger.debug(f"✅ AccountManager data synced: ${account_data.get('current_balance', 0.0):.2f}")
+                    # Reduced logging frequency
                     
             except Exception as e:
                 logger.error(f"❌ Error syncing from AccountManager: {e}")
@@ -129,7 +129,7 @@ class SimpleRTM:
                     self._data["timestamp"] = datetime.now().isoformat()
                     self._save_data()
                     
-                    logger.debug(f"✅ SessionManager data synced: {session_data.get('session_id')} - {session_data.get('status')}")
+                    # Reduced logging frequency
                     
             except Exception as e:
                 logger.error(f"❌ Error syncing from SessionManager: {e}")
@@ -199,7 +199,7 @@ class SimpleRTM:
             self._save_data()
             
             confidence = signal_data.get('confidence', 0) or 0
-            logger.debug(f"✅ Signal added: {signal_data.get('type', 'UNKNOWN')} {confidence}%")
+            # Reduced logging frequency
     
     def add_trade(self, trade_data: Dict[str, Any]):
         """Add trade entry"""
@@ -222,7 +222,7 @@ class SimpleRTM:
             self._save_data()
             
             size = trade_data.get('size', 0) or 0
-            logger.debug(f"✅ Trade added: {trade_data.get('side', 'UNKNOWN')} {size} BTC")
+            # Reduced logging frequency
     
     def check_bot_heartbeat(self) -> bool:
         """Check if the bot is still running by monitoring heartbeat file"""

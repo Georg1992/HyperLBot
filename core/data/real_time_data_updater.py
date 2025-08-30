@@ -24,7 +24,7 @@ class RTMUpdater:
             
             # Log update
             current_price = market_data.get('current_price', 0)
-            logger.debug(f"📊 RTM Market Data Updated: ${current_price:,.2f}")
+            # Reduced logging frequency
             
         except Exception as e:
             logger.error(f"❌ Failed to update RTM market data: {e}")
@@ -46,7 +46,7 @@ class RTMUpdater:
                 # Log update
                 side = best_prediction.get("side", "UNKNOWN")
                 confidence = best_prediction.get("confidence", 0)
-                logger.debug(f"🎯 RTM Prediction Updated: {side} @ {confidence}%")
+                # Reduced logging frequency
             
         except Exception as e:
             logger.error(f"❌ Failed to update RTM prediction data: {e}")
@@ -62,7 +62,7 @@ class RTMUpdater:
                 # Log update
                 side = trade_data.get("side", "UNKNOWN")
                 size = trade_data.get("size", 0)
-                logger.debug(f"💰 RTM Trading Data Updated: {side} {size} BTC")
+                # Reduced logging frequency
             
         except Exception as e:
             logger.error(f"❌ Failed to update RTM trading data: {e}")
@@ -73,7 +73,7 @@ class RTMUpdater:
             # Session data is handled by the session manager, not directly by RTM
             # Just log the update
             status = session_data.get("status", "UNKNOWN")
-            logger.debug(f"🔄 RTM Session Data Updated: {status}")
+            # Reduced logging frequency
             
         except Exception as e:
             logger.error(f"❌ Failed to update RTM session data: {e}")
@@ -84,7 +84,7 @@ class RTMUpdater:
             # Account data is handled by the account manager, not directly by RTM
             # Just log the update
             balance = account_data.get("balance", 0)
-            logger.debug(f"💳 RTM Account Data Updated: ${balance:,.2f}")
+            # Reduced logging frequency
             
         except Exception as e:
             logger.error(f"❌ Failed to update RTM account data: {e}")
@@ -99,7 +99,7 @@ class RTMUpdater:
             rsi = analysis_data.get("rsi_value", analysis_data.get("rsi", 0))
             # Handle None RSI values gracefully
             rsi_display = f"{rsi:.1f}" if rsi is not None else "N/A"
-            logger.debug(f"📈 RTM Analysis Data Updated: {trend} | RSI: {rsi_display}")
+            # Reduced logging frequency
             
         except Exception as e:
             logger.error(f"❌ Failed to update RTM analysis data: {e}")
@@ -108,7 +108,7 @@ class RTMUpdater:
         """Update RTM with activity"""
         try:
             self.rtm.add_activity(message, level, "bot")
-            logger.debug(f"📝 RTM Activity Added: {message}")
+            # Reduced logging frequency
         except Exception as e:
             logger.error(f"❌ Failed to update RTM activity: {e}")
     

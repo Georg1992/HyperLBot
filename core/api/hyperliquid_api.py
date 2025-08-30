@@ -739,7 +739,7 @@ class HyperliquidAPI:
         """Get volume analysis using order book dynamics and trade flow"""
         try:
             result = self.analysis.get_volume_analysis(symbol)
-            logger.debug(f"📊 HyperliquidAPI Volume Analysis: {result.get('volume_category', 'UNKNOWN') if result else 'None'}")
+            # Debug logging removed for cleaner output
             return result
         except Exception as e:
             logger.error(f"❌ Volume analysis failed: {e}")
@@ -749,7 +749,7 @@ class HyperliquidAPI:
         """Get volatility analysis using order book dynamics and spread analysis"""
         try:
             result = self.analysis.get_volatility_analysis(symbol)
-            logger.debug(f"📊 HyperliquidAPI Volatility Analysis: {result.get('volatility_category', 'UNKNOWN') if result else 'None'}")
+            # Debug logging removed for cleaner output
             return result
         except Exception as e:
             logger.error(f"❌ Volatility analysis failed: {e}")
@@ -759,7 +759,7 @@ class HyperliquidAPI:
         """Get pressure analysis for symbol"""
         try:
             result = self.analysis.get_pressure(symbol)
-            logger.debug(f"📊 HyperliquidAPI Pressure Analysis: {result.get('direction', 'UNKNOWN') if result else 'None'}")
+            # Debug logging removed for cleaner output
             return result
         except Exception as e:
             logger.error(f"❌ Pressure analysis failed: {e}")

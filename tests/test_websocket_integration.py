@@ -24,7 +24,8 @@ def test_websocket_integration():
         logger.info("🚀 Testing WebSocket integration...")
         
         # Initialize bot with small balance
-        bot = YahooHyperliquidPaperTradingBot(initial_balance=100.0)
+        from core.constants import MagicNumbers
+    bot = YahooHyperliquidPaperTradingBot(initial_balance=MagicNumbers.TEST_BALANCE)
         
         # Connect to APIs
         if not bot.connect():

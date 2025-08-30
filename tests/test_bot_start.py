@@ -24,7 +24,8 @@ def test_bot_start():
         logger.info("🚀 Starting bot test...")
         
         # Initialize bot with small balance and short session
-        bot = YahooHyperliquidPaperTradingBot(initial_balance=100.0)
+        from core.constants import MagicNumbers
+    bot = YahooHyperliquidPaperTradingBot(initial_balance=MagicNumbers.TEST_BALANCE)
         
         # Connect to APIs
         if not bot.connect():

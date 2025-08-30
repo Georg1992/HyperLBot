@@ -37,7 +37,8 @@ class PredictionEngine:
             # GET REAL RSI FROM RSI CALCULATOR - NOT FROM MARKET DATA!
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
             real_rsi_data = real_time_rsi_calculator.get_rsi()
-            rsi_value = real_rsi_data.get("rsi", 50.0)  # Use real RSI, fallback to 50 if not available
+            from core.constants import MagicNumbers
+        rsi_value = real_rsi_data.get("rsi", MagicNumbers.RSI_NEUTRAL)  # Use real RSI, fallback to neutral if not available
             
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
@@ -250,7 +251,7 @@ class PredictionEngine:
         """Calculate position size based on confidence and market volatility"""
         try:
             # Base position size (conservative for testing)
-            base_usd = 100.0  # $100 base position
+            base_usd = MagicNumbers.DEFAULT_POSITION_SIZE_USD  # Default position size
             
             # Adjust for confidence (0.3-1.0 range)
             confidence_multiplier = max(0.5, confidence)  # Minimum 0.5x, maximum 1.0x
@@ -268,14 +269,14 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ Position size calculation failed: {e}")
-            return 0.001, 50.0  # Safe defaults
+            return MagicNumbers.DEFAULT_POSITION_SIZE_BTC, MagicNumbers.DEFAULT_POSITION_SIZE_USD  # Safe defaults
     
     def _calculate_confidence(self, market_data: Dict[str, Any], historical_analysis: Dict[str, Any]) -> float:
         """Calculate confidence using both real-time and historical data"""
         try:
             base_confidence = 0.3  # Start low as requested
             
-            rsi = market_data.get("rsi", 50.0)
+            rsi = market_data.get("rsi", MagicNumbers.RSI_NEUTRAL)
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
             
@@ -321,9 +322,9 @@ class PredictionEngine:
         return {
             "direction": "BUY",
             "size_btc": 0.001,
-            "size_usd": 50.0,
+            "size_usd": MagicNumbers.DEFAULT_POSITION_SIZE_USD,
             "entry_price": current_price * 0.999 if current_price > 0 else 18500,
-            "rsi_at_prediction": 50.0,
+            "rsi_at_prediction": MagicNumbers.RSI_NEUTRAL,
             "trend_at_prediction": "NEUTRAL",
             "confidence": 0.1,
             "reasoning": "Default low-confidence prediction",

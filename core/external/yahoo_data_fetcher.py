@@ -748,7 +748,8 @@ class YahooDataFetcher:
         try:
             if len(candles) < periods + 1:
                 logger.warning(f"⚠️ Not enough candles for RSI calculation: {len(candles)} < {periods + 1}")
-                return 50.0  # Neutral RSI
+                from core.constants import MagicNumbers
+                return MagicNumbers.RSI_NEUTRAL  # Neutral RSI
             
             # Extract close prices
             prices = [candle['close'] for candle in candles]
@@ -785,7 +786,8 @@ class YahooDataFetcher:
                 
         except Exception as e:
             logger.error(f"❌ Failed to calculate RSI from candles: {e}")
-            return 50.0  # Neutral RSI
+            from core.constants import MagicNumbers
+            return MagicNumbers.RSI_NEUTRAL  # Neutral RSI
 
 
 def main():
@@ -802,7 +804,8 @@ def main():
     
     # Test market analysis with mock Hyperliquid price
     logger.info("📊 Getting market analysis...")
-    mock_hyperliquid_price = 45000.0  # Mock price for testing
+    from core.constants import MagicNumbers
+    mock_hyperliquid_price = MagicNumbers.TEST_BTC_PRICE  # Mock price for testing
     analysis = fetcher.get_market_analysis("BTC", hyperliquid_price=mock_hyperliquid_price)
     
     if "error" not in analysis:

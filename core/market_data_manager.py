@@ -68,10 +68,7 @@ class MarketDataManager:
             volatility_data = hyperliquid_api.get_volatility_analysis(symbol)
             pressure_data = hyperliquid_api.get_pressure(symbol)
             
-            # Debug logging to see what data we're getting
-            logger.debug(f"📊 Market Data Manager - Volume: {volume_data.get('volume_category', 'UNKNOWN') if volume_data else 'None'}")
-            logger.debug(f"📊 Market Data Manager - Volatility: {volatility_data.get('volatility_category', 'UNKNOWN') if volatility_data else 'None'}")
-            logger.debug(f"📊 Market Data Manager - Pressure: {pressure_data.get('direction', 'UNKNOWN') if pressure_data else 'None'}")
+            # Debug logging removed for cleaner output
             
             return {
                 "volume_data": volume_data or {},

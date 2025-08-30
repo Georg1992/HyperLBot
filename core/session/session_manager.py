@@ -42,7 +42,10 @@ class SessionManager:
         
         logger.success("📅 Enhanced Session Manager initialized")
     
-    def start_session(self, session_id: str = None, strategy: str = "standard", initial_balance: float = 120.0) -> str:
+    def start_session(self, session_id: str = None, strategy: str = "standard", initial_balance: float = None) -> str:
+        from core.constants import MagicNumbers
+        if initial_balance is None:
+            initial_balance = MagicNumbers.FALLBACK_BALANCE
         """Start a new trading session"""
         with self.session_lock:
             try:

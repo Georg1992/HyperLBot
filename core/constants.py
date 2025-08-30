@@ -199,6 +199,32 @@ class MagicNumbers:
     # Imbalance thresholds
     ORDERBOOK_IMBALANCE_THRESHOLD = 0.3  # 30% imbalance
     
+    # Volume analysis thresholds (BTC)
+    VOLUME_EXTREMELY_HIGH = 800.0
+    VOLUME_VERY_HIGH = 400.0
+    VOLUME_HIGH = 200.0
+    VOLUME_ABOVE_AVERAGE = 100.0
+    VOLUME_NORMAL = 50.0
+    VOLUME_BELOW_AVERAGE = 25.0
+    VOLUME_LOW = 10.0
+    
+    # RSI thresholds
+    RSI_OVERSOLD = 30.0
+    RSI_OVERBOUGHT = 70.0
+    RSI_NEUTRAL = 50.0
+    
+    # Price fallbacks
+    FALLBACK_BTC_PRICE = 50000.0
+    FALLBACK_BALANCE = 100.0
+    
+    # Position size defaults
+    DEFAULT_POSITION_SIZE_BTC = 0.001
+    DEFAULT_POSITION_SIZE_USD = 50.0
+    
+    # Test values
+    TEST_BALANCE = 100.0
+    TEST_BTC_PRICE = 45000.0
+    
     # Volatility thresholds - REALISTIC Bitcoin ranges
     LOW_VOLATILITY_CAP = 0.002       # 0.2% - quiet Bitcoin market
     MEDIUM_VOLATILITY_CAP = 0.01     # 1.0% - normal Bitcoin trading
