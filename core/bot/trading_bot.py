@@ -6,8 +6,6 @@ Uses Yahoo Finance for historical market data analysis and Hyperliquid API for r
 
 import time
 import json
-import random
-import statistics
 import os
 from datetime import datetime
 from typing import Dict, Any, Optional, List
@@ -609,30 +607,7 @@ class YahooHyperliquidPaperTradingBot:
         return signal_data
     
 
-    def _build_price_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Build price prediction using PredictionEngine"""
-        return self.prediction_engine.build_price_prediction(yahoo_analysis, current_price, self.strategy_name)
-    def _analyze_entry_point(self, prediction_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Analyze entry point using PredictionEngine"""
-        return self.prediction_engine.analyze_entry_point(prediction_analysis, current_price)
-    def _is_prediction_valid(self, prediction: Dict[str, Any], current_price: float) -> bool:
-        """Simple prediction validation"""
-        return prediction.get("confidence", 0) > magic_numbers.DEFAULT_CONFIDENCE and prediction.get("has_prediction", False)
-    def _calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
-        """Get win probability from prediction engine"""
-        return self.prediction_engine.calculate_win_probability(prediction, prediction_analysis)
 
-    def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
-        """Place a PREDICTIVE paper trade using predicted entry points and time-based order management"""
-        return self.trading_execution.place_paper_trade(side, size, leverage, signal_data)
-    
-    def check_position_exits(self, hyperliquid_price: float, current_analysis: Dict[str, Any] = None):
-        """Advanced position management with dynamic stops and intelligent exits"""
-        self.trading_execution.check_position_exits(hyperliquid_price, current_analysis)
-    
-    def close_paper_position(self, position: Dict, exit_reason: str, exit_price: float):
-        """Close a paper trading position using enhanced Hyperliquid simulator"""
-        self.trading_execution.close_paper_position(position, exit_reason, exit_price)
     
     def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
         """Run the Hyperliquid paper trading bot"""
@@ -989,14 +964,14 @@ class YahooHyperliquidPaperTradingBot:
             logger.error(f"Error sanitizing volatility: {e}")
             return 0.0
 
-    def _create_initial_heartbeat(self):
-        """Create initial heartbeat file immediately when bot starts"""
+    def _write_heartbeat(self, is_initial: bool = False):
+        """Write heartbeat file - consolidated logic"""
         try:
             current_time = time.time()
             heartbeat_data = {
                 "bot_running": True,
                 "last_heartbeat": current_time,
-                "session_id": None,  # Will be updated after session starts
+                "session_id": getattr(self, 'session_manager', None) and self.session_manager.current_session_id,
                 "strategy": self.strategy_name,
                 "balance": self.paper_balance
             }
@@ -1008,35 +983,24 @@ class YahooHyperliquidPaperTradingBot:
                 json.dump(heartbeat_data, f, indent=2)
             
             self.last_heartbeat = current_time
-            logger.info("💓 Initial bot heartbeat created")
             
-        except Exception as e:
-            logger.error(f"❌ Could not create initial heartbeat: {e}")
-
-    def _update_heartbeat(self):
-        """Update bot heartbeat to indicate it's still running"""
-        try:
-            current_time = time.time()
-            if current_time - self.last_heartbeat >= self.heartbeat_interval:
-                heartbeat_data = {
-                    "bot_running": True,
-                    "last_heartbeat": current_time,
-                    "session_id": getattr(self, 'session_manager', None) and self.session_manager.current_session_id,
-                    "strategy": self.strategy_name,
-                    "balance": self.paper_balance
-                }
-                
-                # Ensure temp directory exists
-                os.makedirs(os.path.dirname(self.heartbeat_file), exist_ok=True)
-                
-                with open(self.heartbeat_file, 'w') as f:
-                    json.dump(heartbeat_data, f, indent=2)
-                
-                self.last_heartbeat = current_time
+            if is_initial:
+                logger.info("💓 Initial bot heartbeat created")
+            else:
                 logger.debug("💓 Bot heartbeat updated")
                 
         except Exception as e:
-            logger.error(f"❌ Could not update heartbeat: {e}")
+            logger.error(f"❌ Could not {'create' if is_initial else 'update'} heartbeat: {e}")
+
+    def _create_initial_heartbeat(self):
+        """Create initial heartbeat file immediately when bot starts"""
+        self._write_heartbeat(is_initial=True)
+
+    def _update_heartbeat(self):
+        """Update bot heartbeat to indicate it's still running"""
+        current_time = time.time()
+        if current_time - self.last_heartbeat >= self.heartbeat_interval:
+            self._write_heartbeat(is_initial=False)
     
     def _cleanup_heartbeat(self):
         """Clean up heartbeat file when bot stops"""
@@ -1201,28 +1165,29 @@ class YahooHyperliquidPaperTradingBot:
             from core.market_data_manager import market_data_manager
             hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
             
-            volume_data = hyperliquid_data.get("volume_data", {})
-            volatility_data = hyperliquid_data.get("volatility_data", {})
-            ultimate_pressure_data = hyperliquid_data.get("ultimate_pressure_data", {})
+            # Extract data with cleaner fallback pattern
+            volume_data = hyperliquid_data.get("volume_data") or {}
+            volatility_data = hyperliquid_data.get("volatility_data") or {}
+            ultimate_pressure_data = hyperliquid_data.get("ultimate_pressure_data") or {}
             
-            # Prepare market data with proper fallbacks
+            # Prepare market data with simplified extraction
             market_data = {
                 "current_price": current_price,
                 "trend": trend_value,
                 "rsi": rsi_value,
-                "volume_depth": volume_data.get("volume_depth", 0.0) if volume_data else 0.0,
-                "volume_category": volume_data.get("volume_category", "UNKNOWN") if volume_data else "UNKNOWN",
-                "order_flow": volume_data.get("order_flow", "NEUTRAL") if volume_data else "NEUTRAL",
-                "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN") if volume_data else "UNKNOWN",
-                "volatility_5m": self._sanitize_volatility(volatility_data.get("volatility_5m", 0.0) if volatility_data else 0.0),
-                "volatility_category": volatility_data.get("volatility_category", "UNKNOWN") if volatility_data else "UNKNOWN",
-                "volatility_trend": volatility_data.get("volatility_trend", "UNKNOWN") if volatility_data else "UNKNOWN",
-                "spread_volatility": self._sanitize_volatility(volatility_data.get("spread_volatility", 0.0) if volatility_data else 0.0),
+                "volume_depth": volume_data.get("volume_depth", 0.0),
+                "volume_category": volume_data.get("volume_category", "UNKNOWN"),
+                "order_flow": volume_data.get("order_flow", "NEUTRAL"),
+                "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN"),
+                "volatility_5m": self._sanitize_volatility(volatility_data.get("volatility_5m", 0.0)),
+                "volatility_category": volatility_data.get("volatility_category", "UNKNOWN"),
+                "volatility_trend": volatility_data.get("volatility_trend", "UNKNOWN"),
+                "spread_volatility": self._sanitize_volatility(volatility_data.get("spread_volatility", 0.0)),
                 "ultimate_pressure": {
-                    "direction": ultimate_pressure_data.get("direction", "NEUTRAL") if ultimate_pressure_data else "NEUTRAL",
-                    "confidence": ultimate_pressure_data.get("confidence", "50%") if ultimate_pressure_data else "50%",
-                    "strength": ultimate_pressure_data.get("strength", magic_numbers.DEFAULT_STRENGTH) if ultimate_pressure_data else magic_numbers.DEFAULT_STRENGTH,
-                    "trend": ultimate_pressure_data.get("trend", "NEUTRAL") if ultimate_pressure_data else "NEUTRAL"
+                    "direction": ultimate_pressure_data.get("direction", "NEUTRAL"),
+                    "confidence": ultimate_pressure_data.get("confidence", "50%"),
+                    "strength": ultimate_pressure_data.get("strength", magic_numbers.DEFAULT_STRENGTH),
+                    "trend": ultimate_pressure_data.get("trend", "NEUTRAL")
                 },
                 "trend_analysis": trend_data
             }

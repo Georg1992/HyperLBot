@@ -58,9 +58,7 @@ class SimulatedAccountManager:
         self.account_data = account_data
         self._save_account()
         
-        # Sync to RTM
-        if self.rtm:
-            self.rtm.sync_from_account_manager(self.get_account_summary())
+        self._sync_to_rtm()
         
         logger.success(f"✅ Created new simulated account with balance: ${initial_balance:.2f}")
         return account_data
@@ -74,9 +72,7 @@ class SimulatedAccountManager:
             with open(self.account_file, 'r') as f:
                 self.account_data = json.load(f)
             
-            # Sync to RTM
-            if self.rtm:
-                self.rtm.sync_from_account_manager(self.get_account_summary())
+            self._sync_to_rtm()
             
             logger.success(f"✅ Loaded existing simulated account (Balance: ${self.account_data['current_balance']:.2f})")
             return self.account_data
@@ -85,14 +81,16 @@ class SimulatedAccountManager:
             logger.error(f"❌ Error loading account: {e}")
             return None
     
+    def _sync_to_rtm(self):
+        """Simple helper to sync account data to RTM - reduces code duplication"""
+        if self.rtm and self.account_data:
+            self.rtm.sync_from_account_manager(self.get_account_summary())
+    
     def save_account(self):
         """Save current account data to file"""
         if self.account_data:
             self._save_account()
-            
-            # Sync to RTM
-            if self.rtm:
-                self.rtm.sync_from_account_manager(self.get_account_summary())
+            self._sync_to_rtm()
     
     def _save_account(self):
         """Internal method to save account data"""
@@ -117,10 +115,7 @@ class SimulatedAccountManager:
             
             logger.info(f"💰 Account balance updated: ${old_balance:.2f} → ${new_balance:.2f} (PnL: ${pnl_change:.2f})")
             self._save_account()
-            
-            # Sync to RTM
-            if self.rtm:
-                self.rtm.sync_from_account_manager(self.get_account_summary())
+            self._sync_to_rtm()
     
     def add_trade(self, trade_data: Dict[str, Any]):
         """Add a completed trade to account history"""
@@ -143,9 +138,7 @@ class SimulatedAccountManager:
             
             self._save_account()
             
-            # Sync to RTM
-            if self.rtm:
-                self.rtm.sync_from_account_manager(self.get_account_summary())
+            self._sync_to_rtm()
     
     def add_session(self, session_data: Dict[str, Any]):
         """Add session data to account history"""
@@ -167,9 +160,7 @@ class SimulatedAccountManager:
             self.account_data["open_positions"] = positions
             self._save_account()
             
-            # Sync to RTM
-            if self.rtm:
-                self.rtm.sync_from_account_manager(self.get_account_summary())
+            self._sync_to_rtm()
     
     def reset_account(self) -> bool:
         """Delete existing account file to allow creation of new account"""

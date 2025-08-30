@@ -265,8 +265,8 @@ class EventDrivenTradingDashboard:
                 "logs": rtm_data.get("logs", []),
                 "predictions": rtm_data.get("predictions", []),
                 "trades": rtm_data.get("trades", []),
-                "orderbook": {"bids": [], "asks": []},  # Placeholder
-                "global_volume": {"volume": 0.0},  # Placeholder
+                "orderbook": {"bids": [], "asks": []},
+                "global_volume": {"volume": 0.0},
                 "timestamp": rtm_data.get("timestamp", ""),
                 "data_source": "SimpleRTM - Single Source of Truth",
                 "connection_status": "✅ Connected"

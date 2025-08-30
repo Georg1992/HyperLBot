@@ -256,12 +256,18 @@ class SessionManager:
                 logger.error(f"Error getting session statistics: {e}")
                 return {"error": str(e)}
     
+    def _check_active_session(self, operation_name: str = "operation") -> bool:
+        """Check if session is active - simple helper to reduce code duplication"""
+        if not self.current_session_id:
+            logger.warning(f"⚠️ No active session to {operation_name}")
+            return False
+        return True
+    
     def update_session_balance(self, new_balance: float, reason: str = "Trade execution"):
         """Update session balance"""
         with self.session_lock:
             try:
-                if not self.current_session_id:
-                    logger.warning("⚠️ No active session to update balance")
+                if not self._check_active_session("update balance"):
                     return
                 
                 # Update internal session data

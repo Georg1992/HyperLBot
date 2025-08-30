@@ -136,28 +136,13 @@ class MarketDataManager:
             return {"support": 0.0, "resistance": 0.0}
     
     def get_cache_status(self) -> Dict[str, Any]:
-        """Get cache status for monitoring"""
-        current_time = time.time()
-        status = {
-            "market_data_cache": {},
-            "indicator_cache": {},
-            "total_cached_items": len(self._market_data_cache) + len(self._indicator_cache)
+        """Get simplified cache status for monitoring"""
+        return {
+            "market_data_entries": len(self._market_data_cache),
+            "indicator_entries": len(self._indicator_cache),
+            "total_entries": len(self._market_data_cache) + len(self._indicator_cache),
+            "cache_age_range": f"{min(time.time() - t for t in self._cache_timestamps.values()):.1f}-{max(time.time() - t for t in self._cache_timestamps.values()):.1f}s" if self._cache_timestamps else "empty"
         }
-        
-        for key, timestamp in self._cache_timestamps.items():
-            age = current_time - timestamp
-            if key in self._market_data_cache:
-                status["market_data_cache"][key] = {
-                    "age_seconds": round(age, 1),
-                    "valid": age < self._cache_duration
-                }
-            else:
-                status["indicator_cache"][key] = {
-                    "age_seconds": round(age, 1),
-                    "valid": age < self._indicator_cache_duration
-                }
-        
-        return status
 
 # Global instance
 market_data_manager = MarketDataManager()

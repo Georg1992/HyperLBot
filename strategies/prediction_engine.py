@@ -124,27 +124,22 @@ class PredictionEngine:
             trend_5m_type = trend_5m.get("trend", "SIDEWAYS")
             trend_1h_type = trend_1h.get("trend", "SIDEWAYS")
             
-            # Check for strong trend alignment
-            if trend_5m_type in ["UPTREND", "STRONG_UPTREND"] and trend_1h_type in ["UPTREND", "STRONG_UPTREND"]:
-                prediction["side"] = "BUY"
-                prediction["confidence"] = 0.7
-                prediction["reason"] = "Strong uptrend alignment (5m + 1h)"
-            elif trend_5m_type in ["DOWNTREND", "STRONG_DOWNTREND"] and trend_1h_type in ["DOWNTREND", "STRONG_DOWNTREND"]:
-                prediction["side"] = "SELL"
-                prediction["confidence"] = 0.7
-                prediction["reason"] = "Strong downtrend alignment (5m + 1h)"
-            elif trend_5m_type in ["UPTREND", "STRONG_UPTREND"]:
-                prediction["side"] = "BUY"
-                prediction["confidence"] = 0.6
-                prediction["reason"] = "5m uptrend"
-            elif trend_5m_type in ["DOWNTREND", "STRONG_DOWNTREND"]:
-                prediction["side"] = "SELL"
-                prediction["confidence"] = 0.6
-                prediction["reason"] = "5m downtrend"
+            # Simplified trend alignment logic
+            is_5m_up = trend_5m_type in ["UPTREND", "STRONG_UPTREND"]
+            is_5m_down = trend_5m_type in ["DOWNTREND", "STRONG_DOWNTREND"]
+            is_1h_up = trend_1h_type in ["UPTREND", "STRONG_UPTREND"]
+            is_1h_down = trend_1h_type in ["DOWNTREND", "STRONG_DOWNTREND"]
+            
+            if is_5m_up and is_1h_up:
+                prediction.update({"side": "BUY", "confidence": 0.7, "reason": "Strong uptrend alignment (5m + 1h)"})
+            elif is_5m_down and is_1h_down:
+                prediction.update({"side": "SELL", "confidence": 0.7, "reason": "Strong downtrend alignment (5m + 1h)"})
+            elif is_5m_up:
+                prediction.update({"side": "BUY", "confidence": 0.6, "reason": "5m uptrend"})
+            elif is_5m_down:
+                prediction.update({"side": "SELL", "confidence": 0.6, "reason": "5m downtrend"})
             else:
-                prediction["side"] = "HOLD"
-                prediction["confidence"] = 0.3
-                prediction["reason"] = "No clear trend direction"
+                prediction.update({"side": "HOLD", "confidence": 0.3, "reason": "No clear trend direction"})
             
             # Adjust targets based on side
             if prediction["side"] == "BUY":
