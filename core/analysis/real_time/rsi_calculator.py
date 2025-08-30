@@ -145,17 +145,10 @@ class RealTimeRSICalculator:
         previous_price = self.price_history[-2]
         price_change = current_price - previous_price
         
-        # Calculate percentage change for stability check
-        if previous_price > 0:
-            percentage_change = abs(price_change) / previous_price * 100
-        else:
-            percentage_change = 0
-        
         # Only update RSI if change is significant enough (more stable)
         # This prevents overreaction to tiny price movements
-        min_change_threshold = 0.01  # 0.01% minimum change
-        if percentage_change < min_change_threshold:
-            logger.debug(f"📊 Price change too small ({percentage_change:.4f}%) - skipping RSI update")
+        if not self._is_significant_change(price_change, previous_price):
+            logger.debug(f"📊 Price change too small ({abs(price_change / previous_price * 100):.4f}%) - skipping RSI update")
             return False
         
         # Calculate gain and loss
@@ -174,18 +167,12 @@ class RealTimeRSICalculator:
             rs = self.avg_gain / self.avg_loss
             new_rsi = 100.0 - (100.0 / (1.0 + rs))
         
-        # Apply additional smoothing to prevent dramatic jumps
-        # Blend new RSI with previous RSI for stability (while keeping Wilder's core)
-        if self.cached_rsi is not None:
-            smoothing_factor = 0.8  # 80% previous, 20% new for stability
-            new_rsi = (smoothing_factor * self.cached_rsi) + ((1 - smoothing_factor) * new_rsi)
-        
-        # Update cached values
+        # Update cached values (no arbitrary smoothing)
         self.cached_rsi = round(new_rsi, 2)
         self.cached_trend, self.cached_signal = self._determine_rsi_signals(new_rsi)
         self.last_calculation_time = time.time()
         
-        logger.debug(f"📊 RSI updated: {self.cached_rsi:.2f} (price: ${price:.2f}, change: {price_change:+.2f}, {percentage_change:.4f}%)")
+        logger.debug(f"📊 RSI updated: {self.cached_rsi:.2f} (price: ${price:.2f}, change: {price_change:+.2f}, {abs(price_change / previous_price * 100):.4f}%)")
         return True
     
     def get_rsi(self) -> Dict[str, Any]:
@@ -238,6 +225,49 @@ class RealTimeRSICalculator:
             signal = "NEUTRAL"
         
         return trend, signal
+
+    def _calculate_volatility_threshold(self) -> float:
+        """
+        Calculate adaptive volatility threshold based on recent price changes
+        Uses average percentage change of recent movements as the threshold
+        """
+        if len(self.price_history) < 3:
+            return 0.001  # Default 0.1% if not enough data
+        
+        # Calculate percentage changes from recent price history
+        percentage_changes = []
+        for i in range(1, len(self.price_history)):
+            prev_price = self.price_history[i-1]
+            curr_price = self.price_history[i]
+            if prev_price > 0:
+                percentage_change = abs(curr_price - prev_price) / prev_price
+                percentage_changes.append(percentage_change)
+        
+        if len(percentage_changes) < 3:
+            return 0.001  # Default 0.1% if not enough data
+        
+        # Use average percentage change as threshold
+        avg_change = sum(percentage_changes) / len(percentage_changes)
+        threshold = avg_change * 0.5  # Use half the average change as threshold
+        
+        return max(threshold, 0.0001)  # Minimum 0.01% threshold
+    
+    def _is_significant_change(self, price_change: float, previous_price: float) -> bool:
+        """
+        Determine if price change is statistically significant
+        Based on recent volatility patterns
+        """
+        if previous_price <= 0:
+            return False
+        
+        # Calculate percentage change
+        percentage_change = abs(price_change) / previous_price
+        
+        # Get adaptive threshold based on recent volatility
+        volatility_threshold = self._calculate_volatility_threshold()
+        
+        # Change is significant if it exceeds the volatility threshold
+        return percentage_change >= volatility_threshold
 
 # Global instance
 real_time_rsi_calculator = RealTimeRSICalculator(periods=14)
