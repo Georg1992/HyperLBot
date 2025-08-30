@@ -138,7 +138,10 @@ class RealTimeRSICalculator:
             self.cached_trend, self.cached_signal = self._determine_rsi_signals(rsi)
             self.last_calculation_time = time.time()
             
-            logger.debug(f"📊 RSI calculated: {self.cached_rsi:.2f} (price: ${self.current_price:.2f})")
+            # Safe formatting for None values
+            rsi_display = f"{self.cached_rsi:.2f}" if self.cached_rsi is not None else "N/A"
+            price_display = f"${self.current_price:.2f}" if self.current_price is not None else "N/A"
+            logger.debug(f"📊 RSI calculated: {rsi_display} (price: {price_display})")
             
         except Exception as e:
             logger.error(f"❌ RSI calculation failed: {e}")
