@@ -232,9 +232,9 @@ class YahooHyperliquidPaperTradingBot:
         }
         
         # Update session metadata with initial balance
-        self.trading_logger.update_initial_balance(initial_balance)
+        self.trading_logger.update_initial_balance(self.initial_balance)
         
-        initial_balance_safe = initial_balance or 0.0
+        initial_balance_safe = self.initial_balance or 0.0
         logger.info(f"[CHART] Hybrid Paper Trading Bot initialized with ${initial_balance_safe:.2f} balance")
         # Whale integration removed during cleanup
         logger.info("🐋 Whale analytics integration disabled (removed)")
