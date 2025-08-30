@@ -168,9 +168,19 @@ class YahooHyperliquidPaperTradingBot:
     def connect(self) -> bool:
         """Connect to Hyperliquid API and start WebSocket for real-time data"""
         try:
+            # Ensure .env file exists before connecting
+            self._ensure_env_file()
+            
             # Initialize Hyperliquid API for trading operations
-            self.hyperliquid_api = HyperliquidAPI()
-            logger.info("✅ Connected to Hyperliquid API")
+            try:
+                self.hyperliquid_api = HyperliquidAPI()
+                logger.info("✅ Connected to Hyperliquid API")
+            except Exception as e:
+                logger.error(f"❌ Failed to create HyperliquidAPI instance: {e}")
+                logger.warning("💡 Check your wallet credentials in .env file for real trading")
+                self.hyperliquid_api = None
+                self.connected = False
+                return False
             
             # Start WebSocket for real-time price stream - SINGLE SOURCE OF TRUTH
             if self.hyperliquid_websocket:
@@ -190,6 +200,8 @@ class YahooHyperliquidPaperTradingBot:
             
         except Exception as e:
             logger.error(f"❌ Failed to connect to Hyperliquid: {e}")
+            self.hyperliquid_api = None
+            self.connected = False
             return False
     
     def _initialize_candle_buffers(self):
@@ -1002,8 +1014,14 @@ class YahooHyperliquidPaperTradingBot:
                         logger.warning(f"   Total Depth: {total_depth:.2f} BTC, Bid: {volume_data.get('bid_depth_5', 0):.2f} BTC, Ask: {volume_data.get('ask_depth_5', 0):.2f} BTC")
                 else:
                     # Fallback: get volume data if not available from WebSocket
-                    volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
-                    self.hyperliquid_volume_data = volume_data
+                    if self.hyperliquid_api is not None:
+                        volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
+                        self.hyperliquid_volume_data = volume_data
+                    else:
+                        # API not available - use empty volume data
+                        volume_data = {}
+                        self.hyperliquid_volume_data = volume_data
+                        logger.warning("⚠️ Cannot get volume data - HyperliquidAPI not available")
                 
                 # Check for position exits with advanced management
                 self._update_simple_rtm_activity("🔍 Checking position exits", "INFO")
