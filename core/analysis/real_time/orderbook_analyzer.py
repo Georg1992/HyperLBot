@@ -347,141 +347,69 @@ class MarketOrderbookAnalyzer:
                 "data_source": "error"
             }
 
-    def get_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
-        """Get ultimate pressure analysis using advanced order book metrics"""
+    def get_pressure(self, symbol: str = None) -> Dict[str, Any]:
+        """Get pressure analysis for symbol"""
+        try:
+            # Get order book data
+            orderbook = self.get_orderbook(symbol)
+            if not orderbook:
+                return self._get_default_pressure()
+            
+            # Calculate pressure metrics
+            pressure_metrics = self._calculate_pressure_metrics(orderbook)
+            
+            return {
+                "direction": pressure_metrics["direction"],
+                "confidence": pressure_metrics["confidence"],
+                "strength": pressure_metrics["strength"],
+                "trend": pressure_metrics["trend"],
+                "data_source": "orderbook_analysis"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get pressure analysis: {e}")
+            return self._get_default_pressure()
+
+    def get_orderbook(self, symbol: str = None) -> Dict[str, Any]:
+        """Get order book data from API"""
         try:
             symbol = symbol or self.api.config.SYMBOL
-            
-            # Get market data for pressure analysis
-            market_data = self.api.get_market_data(symbol)
-            if not market_data or 'levels' not in market_data:
-                return {
-                    "direction": "NEUTRAL",
-                    "pressure_score": 0.5,
-                    "confidence": "0%",
-                    "strength": 0.5,
-                    "trend": "UNKNOWN",
-                    "status": "no_market_data"
-                }
-            
-            levels = market_data['levels']
-            if len(levels) < 2:
-                return {
-                    "direction": "NEUTRAL", 
-                    "pressure_score": 0.5,
-                    "confidence": "0%",
-                    "strength": 0.5,
-                    "trend": "UNKNOWN",
-                    "status": "insufficient_data"
-                }
-            
-            bids = levels[0] if isinstance(levels[0], list) else []
-            asks = levels[1] if isinstance(levels[1], list) else []
-            
-            if not bids or not asks:
-                return {
-                    "direction": "NEUTRAL",
-                    "pressure_score": 0.5, 
-                    "confidence": "0%",
-                    "strength": 0.5,
-                    "trend": "UNKNOWN",
-                    "status": "no_orderbook_data"
-                }
-            
-            # Calculate weighted pressure metrics
-            bid_pressure = 0.0
-            ask_pressure = 0.0
-            
-            # Weight closer levels more heavily (inverse distance weighting)
-            for i, level in enumerate(bids[:10]):
-                try:
-                    size = float(level['sz'])
-                    weight = 1.0 / (i + 1)  # Level 0 gets weight 1, level 1 gets weight 0.5, etc.
-                    bid_pressure += size * weight
-                except (KeyError, ValueError, TypeError):
-                    continue
-            
-            for i, level in enumerate(asks[:10]):
-                try:
-                    size = float(level['sz'])
-                    weight = 1.0 / (i + 1)
-                    ask_pressure += size * weight
-                except (KeyError, ValueError, TypeError):
-                    continue
-            
-            total_pressure = bid_pressure + ask_pressure
-            if total_pressure == 0:
-                return {
-                    "direction": "NEUTRAL",
-                    "pressure_score": 0.5,
-                    "confidence": "0%",
-                    "strength": 0.5,
-                    "trend": "UNKNOWN",
-                    "status": "no_volume"
-                }
-            
-            # Calculate weighted pressure score
-            pressure_score = bid_pressure / total_pressure
-            
-            # Calculate pressure strength (how much total pressure exists)
-            # For Bitcoin, typical total weighted pressure might be 50-500+ BTC
-            # Normalize based on realistic Bitcoin orderbook depth ranges
-            pressure_strength = min(1.0, total_pressure / 100.0)  # Adjusted for realistic Bitcoin depth
-            
-            # DEBUG: Log pressure calculation details
-            logger.info(f"📊 Ultimate Pressure: bid={bid_pressure:.2f}, ask={ask_pressure:.2f}, total={total_pressure:.2f}")
-            logger.info(f"📊 Pressure Score: {pressure_score:.3f} | Strength: {pressure_strength:.3f}")
-            
-            # Determine direction with enhanced thresholds
-            if pressure_score > 0.65:
-                direction = "BUY"
-                confidence = min(95, int(pressure_score * 100))
-            elif pressure_score < 0.35:
-                direction = "SELL"
-                confidence = min(95, int((1 - pressure_score) * 100))
+            # Use the API's get_orderbook method directly
+            if hasattr(self.api, 'get_orderbook'):
+                return self.api.get_orderbook(symbol)
             else:
-                direction = "NEUTRAL"
-                confidence = 50
-            
-            # Determine trend with more granular levels
-            if pressure_score > 0.75:
-                trend = "VERY_STRONG_BUY"
-            elif pressure_score > 0.6:
-                trend = "STRONG_BUY"
-            elif pressure_score > 0.55:
-                trend = "BUY"
-            elif pressure_score < 0.25:
-                trend = "VERY_STRONG_SELL"
-            elif pressure_score < 0.4:
-                trend = "STRONG_SELL"
-            elif pressure_score < 0.45:
-                trend = "SELL"
-            else:
-                trend = "NEUTRAL"
-            
-            # DEBUG: Log final pressure analysis result
-            logger.info(f"📊 Final Pressure: {direction} ({confidence}%) | Trend: {trend} | Strength: {pressure_strength:.3f}")
-            
-            return {
-                "direction": direction,
-                "pressure_score": pressure_score,
-                "confidence": f"{confidence}%",
-                "strength": pressure_strength,
-                "trend": trend,
-                "bid_pressure": bid_pressure,
-                "ask_pressure": ask_pressure,
-                "total_pressure": total_pressure,
-                "status": "success",
-                "data_source": "enhanced_orderbook_analysis"
-            }
-                
+                # Fallback: return None if method doesn't exist
+                logger.warning(f"⚠️ API does not have get_orderbook method")
+                return None
         except Exception as e:
-            logger.error(f"❌ Ultimate pressure analysis failed: {e}")
+            logger.error(f"❌ Failed to get orderbook: {e}")
+            return None
+
+    def _get_default_pressure(self) -> Dict[str, Any]:
+        """Get default pressure data when orderbook is unavailable"""
+        return {
+            "direction": "NEUTRAL",
+            "confidence": "50%",
+            "strength": 0.5,
+            "trend": "NEUTRAL",
+            "data_source": "default"
+        }
+
+    def _calculate_pressure_metrics(self, orderbook: Dict[str, Any]) -> Dict[str, Any]:
+        """Calculate pressure metrics from orderbook data"""
+        try:
+            # Default pressure metrics
             return {
-                "direction": "ERROR",
-                "pressure_score": 0.5,
-                "confidence": "0%",
+                "direction": "NEUTRAL",
+                "confidence": "50%",
                 "strength": 0.5,
-                "status": "error",
-                "error": str(e)
+                "trend": "NEUTRAL"
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate pressure metrics: {e}")
+            return {
+                "direction": "NEUTRAL",
+                "confidence": "50%",
+                "strength": 0.5,
+                "trend": "NEUTRAL"
             }

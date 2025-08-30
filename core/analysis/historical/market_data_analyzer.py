@@ -11,15 +11,17 @@ from core.constants import magic_numbers
 from core.external.yahoo_data_fetcher import YahooDataFetcher
 from core.external.yahoo_volume_analyzer import YahooVolumeAnalyzer
 from core.external.yahoo_momentum_analyzer import YahooMomentumAnalyzer
+from core.analysis.session.session_historical_data_manager import SessionHistoricalDataManager
 
 class MarketDataAnalyzer:
-    """Handles market data analysis and RSI calculations"""
+    """Handles market data analysis and RSI calculations with session context"""
     
     def __init__(self):
         self.yahoo_fetcher = YahooDataFetcher()
         self.volume_analyzer = YahooVolumeAnalyzer()
         self.momentum_analyzer = YahooMomentumAnalyzer()
-        logger.info("📊 Market Data Analyzer initialized")
+        self.session_manager = SessionHistoricalDataManager()
+        logger.info("📊 Market Data Analyzer initialized with session tracking")
     
     def get_current_price(self) -> Optional[float]:
         """Get current price from Yahoo Finance (historical context only)"""
@@ -293,3 +295,121 @@ class MarketDataAnalyzer:
                 "status": "ERROR",
                 "error": str(e)
             }
+    
+    def start_session_tracking(self, start_price: float):
+        """Start session tracking for analysis"""
+        self.session_manager.start_session(start_price)
+        logger.info(f"🚀 Session tracking started at ${start_price:.2f}")
+    
+    def add_session_data_point(self, price: float, volume: float, rsi: float, volatility: float):
+        """Add real-time data point to session tracking"""
+        self.session_manager.add_data_point(price, volume, rsi, volatility)
+    
+    def get_session_analysis(self) -> Dict[str, Any]:
+        """Get session-specific analysis for predictions"""
+        return self.session_manager.get_session_context()
+    
+    def get_analysis(self, current_price: float, volume: float, rsi: float, volatility: float) -> Dict[str, Any]:
+        """Get analysis combining Yahoo and session data"""
+        try:
+            # Add to session tracking
+            self.add_session_data_point(current_price, volume, rsi, volatility)
+            
+            # Get Yahoo analysis
+            yahoo_analysis = self.get_yahoo_analysis(current_price)
+            
+            # Get session context
+            session_context = self.get_session_analysis()
+            
+            # Build analysis with exact fields prediction engine needs
+            analysis = {
+                # Core fields required by prediction engine
+                "current_price": current_price,
+                "rsi": rsi,  # Use the actual RSI value passed in
+                "trend": self._get_trend(yahoo_analysis, session_context),
+                "volume_category": self._get_volume_category(yahoo_analysis, session_context),
+                "volatility_5m": volatility,  # Use the actual volatility value passed in
+                
+                # Additional context fields
+                "session_context": session_context,
+                "yahoo_context": {
+                    "market_condition": yahoo_analysis.get("market_condition", "NEUTRAL"),
+                    "last_update": yahoo_analysis.get("timestamp", 0)
+                },
+                "analysis_type": "hybrid",
+                "data_source": "yahoo_finance + session_tracking",
+                "timestamp": time.time()
+            }
+            
+            # Add Yahoo fields if available
+            if "error" not in yahoo_analysis:
+                analysis.update({
+                    "market_condition": yahoo_analysis.get("market_condition", "NEUTRAL"),
+                    "sma_5m": yahoo_analysis.get("sma_5m", 0),
+                    "sma_20m": yahoo_analysis.get("sma_20m", 0),
+                    "volume_analysis": yahoo_analysis.get("volume_analysis", {}),
+                    "momentum_analysis": yahoo_analysis.get("momentum_analysis", {})
+                })
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get analysis: {e}")
+            # Return fallback with required fields
+            return {
+                "current_price": current_price,
+                "rsi": rsi,
+                "trend": "NEUTRAL",
+                "volume_category": "NORMAL",
+                "volatility_5m": volatility,
+                "market_condition": "NEUTRAL",
+                "analysis_type": "fallback",
+                "data_source": "fallback",
+                "timestamp": time.time()
+            }
+    
+    def _get_trend(self, yahoo_analysis: Dict[str, Any], session_context: Dict[str, Any]) -> str:
+        """Get trend combining Yahoo and session data"""
+        try:
+            # Use session trend if available and session is mature
+            if session_context.get("data_points", 0) >= 20:
+                session_trend = session_context.get("session_trend", "NEUTRAL")
+                if session_trend != "UNKNOWN":
+                    return session_trend
+            
+            # Fall back to Yahoo trend
+            return yahoo_analysis.get("market_condition", "NEUTRAL")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get trend: {e}")
+            return "NEUTRAL"
+    
+    def _get_volume_category(self, yahoo_analysis: Dict[str, Any], session_context: Dict[str, Any]) -> str:
+        """Get volume category combining Yahoo and session data"""
+        try:
+            # Use session volume trend if available
+            if session_context.get("data_points", 0) >= 10:
+                session_volume_trend = session_context.get("session_volume_trend", "STABLE")
+                return self._categorize_session_volume(session_volume_trend)
+            
+            # Fall back to Yahoo volume analysis
+            yahoo_volume = yahoo_analysis.get("volume_analysis", {}).get("volume_category", "NORMAL")
+            return yahoo_volume
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get volume category: {e}")
+            return "NORMAL"
+    
+    def _categorize_session_volume(self, volume_trend: str) -> str:
+        """Categorize session volume trend into volume category"""
+        if volume_trend == "INCREASING":
+            return "HIGH"
+        elif volume_trend == "DECREASING":
+            return "LOW"
+        else:
+            return "NORMAL"
+    
+    def end_session_tracking(self):
+        """End session tracking"""
+        self.session_manager.end_session()
+        logger.info("🛑 Session tracking ended")

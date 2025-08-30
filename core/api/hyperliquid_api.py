@@ -737,12 +737,30 @@ class HyperliquidAPI:
 
     def get_volume_analysis(self, symbol: str = None) -> Dict[str, Any]:
         """Get volume analysis using order book dynamics and trade flow"""
-        return self.analysis.get_volume_analysis(symbol)
+        try:
+            result = self.analysis.get_volume_analysis(symbol)
+            logger.debug(f"📊 HyperliquidAPI Volume Analysis: {result.get('volume_category', 'UNKNOWN') if result else 'None'}")
+            return result
+        except Exception as e:
+            logger.error(f"❌ Volume analysis failed: {e}")
+            return {}
 
     def get_volatility_analysis(self, symbol: str = None) -> Dict[str, Any]:
         """Get volatility analysis using order book dynamics and spread analysis"""
-        return self.analysis.get_volatility_analysis(symbol)
+        try:
+            result = self.analysis.get_volatility_analysis(symbol)
+            logger.debug(f"📊 HyperliquidAPI Volatility Analysis: {result.get('volatility_category', 'UNKNOWN') if result else 'None'}")
+            return result
+        except Exception as e:
+            logger.error(f"❌ Volatility analysis failed: {e}")
+            return {}
 
-    def get_ultimate_pressure(self, symbol: str = None) -> Dict[str, Any]:
-        """Get ultimate pressure analysis using advanced order book metrics"""
-        return self.analysis.get_ultimate_pressure(symbol)
+    def get_pressure(self, symbol: str = None) -> Dict[str, Any]:
+        """Get pressure analysis for symbol"""
+        try:
+            result = self.analysis.get_pressure(symbol)
+            logger.debug(f"📊 HyperliquidAPI Pressure Analysis: {result.get('direction', 'UNKNOWN') if result else 'None'}")
+            return result
+        except Exception as e:
+            logger.error(f"❌ Pressure analysis failed: {e}")
+            return {}

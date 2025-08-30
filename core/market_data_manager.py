@@ -50,7 +50,7 @@ class MarketDataManager:
             return {
                 "volume_data": {},
                 "volatility_data": {},
-                "ultimate_pressure_data": {},
+                "pressure_data": {},
                 "current_price": None,
                 "timestamp": time.time(),
                 "error": "HyperliquidAPI not initialized"
@@ -63,29 +63,29 @@ class MarketDataManager:
             return cached_data
         
         try:
-            # Fetch all Hyperliquid data in one call
+            # Get Hyperliquid data
             volume_data = hyperliquid_api.get_volume_analysis(symbol)
             volatility_data = hyperliquid_api.get_volatility_analysis(symbol)
-            ultimate_pressure_data = hyperliquid_api.get_ultimate_pressure(symbol)
-            current_price = hyperliquid_api.get_current_price(symbol)
+            pressure_data = hyperliquid_api.get_pressure(symbol)
             
-            data = {
+            # Debug logging to see what data we're getting
+            logger.debug(f"📊 Market Data Manager - Volume: {volume_data.get('volume_category', 'UNKNOWN') if volume_data else 'None'}")
+            logger.debug(f"📊 Market Data Manager - Volatility: {volatility_data.get('volatility_category', 'UNKNOWN') if volatility_data else 'None'}")
+            logger.debug(f"📊 Market Data Manager - Pressure: {pressure_data.get('direction', 'UNKNOWN') if pressure_data else 'None'}")
+            
+            return {
                 "volume_data": volume_data or {},
                 "volatility_data": volatility_data or {},
-                "ultimate_pressure_data": ultimate_pressure_data or {},
-                "current_price": current_price,
+                "pressure_data": pressure_data or {},
                 "timestamp": time.time()
             }
-            
-            self._cache_data(cache_key, data, self._cache_duration)
-            return data
             
         except Exception as e:
             logger.error(f"❌ Failed to get Hyperliquid data: {e}")
             return {
                 "volume_data": {},
                 "volatility_data": {},
-                "ultimate_pressure_data": {},
+                "pressure_data": {},
                 "current_price": None,
                 "timestamp": time.time()
             }

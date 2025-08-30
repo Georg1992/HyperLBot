@@ -52,10 +52,10 @@ class TradingExecution:
                 # Use predicted entry price as limit price
                 limit_price = predicted_entry_price
             else:
-                # Fallback to smart limit price calculation
-                limit_price = self._calculate_smart_limit_price(side, hyperliquid_price)
+                # Fallback to limit price calculation
+                limit_price = self._calculate_limit_price(side, hyperliquid_price)
                 entry_timeframe = 20
-                prediction_type = "SMART_LIMIT"
+                prediction_type = "LIMIT"
                 prediction_confidence = self.magic_numbers.DEFAULT_CONFIDENCE
                 
                 logger.info(f"📝 Placing HYBRID PAPER {side} LIMIT trade:")
@@ -230,8 +230,8 @@ class TradingExecution:
             })
             return False
     
-    def _calculate_smart_limit_price(self, side: str, current_price: float) -> float:
-        """Calculate smart limit price based on side and current price"""
+    def _calculate_limit_price(self, side: str, current_price: float) -> float:
+        """Calculate limit price based on side and current price"""
         if side == "BUY":
             # For buy orders, set limit slightly below current price
             return current_price * trading_constants.BUY_PRICE_ADJUSTMENT  # 0.1% below current price

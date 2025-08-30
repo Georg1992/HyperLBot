@@ -384,21 +384,22 @@ class YahooHyperliquidPaperTradingBot:
             # Initialize with Yahoo RSI if not already done
             if not real_time_rsi_calculator.is_initialized:
                 logger.info("📊 Initializing RSI with Yahoo Finance baseline...")
-                candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 20)
+                # Use 5-minute data for RSI baseline
+                candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
                 if candles_5m and len(candles_5m) >= 15:
-                    # Calculate RSI from Yahoo data
+                    # Calculate RSI from Yahoo 5m data
                     yahoo_rsi = self.market_data_analyzer.yahoo_fetcher.calculate_rsi_from_candles(candles_5m)
                     yahoo_prices = [c['close'] for c in candles_5m[-15:]]
                     
-                    # Initialize RSI calculator with Yahoo data
+                    # Initialize RSI calculator with Yahoo 5m data
                     success = real_time_rsi_calculator.initialize_with_yahoo_rsi(yahoo_rsi, yahoo_prices)
                     if success:
-                        logger.success(f"📊 RSI initialized with Yahoo baseline: {yahoo_rsi:.2f}")
+                        logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
                     else:
                         logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
                         real_time_rsi_calculator.cached_rsi = 50.0
                 else:
-                    logger.warning("⚠️ Not enough Yahoo data for RSI initialization, using default")
+                    logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
                     real_time_rsi_calculator.cached_rsi = 50.0
             
             # Update with current Hyperliquid price
@@ -503,7 +504,7 @@ class YahooHyperliquidPaperTradingBot:
         
         volume_data = hyperliquid_data.get("volume_data", {})
         volatility_data = hyperliquid_data.get("volatility_data", {})
-        pressure_data = hyperliquid_data.get("ultimate_pressure_data", {})
+        pressure_data = hyperliquid_data.get("pressure_data", {})
         
         # Get optimized RSI data (already updated in price callback)
         hybrid_rsi_analysis = self.get_optimized_rsi_data()
@@ -516,18 +517,17 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"📊 Momentum: {hybrid_rsi_analysis.get('momentum', 'N/A')} | Volume: {volume_data.get('current_volume', 0):.1f} BTC ({volume_data.get('volume_category', 'UNKNOWN')})")
         
         # 4. BUILD COMPREHENSIVE ENHANCED ANALYSIS
-        enhanced_analysis = yahoo_analysis.copy()
-        enhanced_analysis["hyperliquid_volume"] = volume_data
-        enhanced_analysis["hyperliquid_volatility"] = volatility_data
-        enhanced_analysis["hyperliquid_pressure"] = pressure_data
-        enhanced_analysis["hybrid_rsi_analysis"] = hybrid_rsi_analysis
-        enhanced_analysis["timestamp"] = current_time
+        # Combine Yahoo and Hyperliquid data
+        analysis = yahoo_analysis.copy()
+        analysis["hyperliquid_volume"] = volume_data
+        analysis["hyperliquid_volatility"] = volatility_data
+        analysis["hyperliquid_pressure"] = pressure_data
+        analysis["hybrid_rsi_analysis"] = hybrid_rsi_analysis
+        analysis["timestamp"] = current_time
         
-        # Enhanced analysis components removed for simplicity
-        
-        # Get traditional prediction for fallback
-        prediction_analysis = self.prediction_engine.build_price_prediction(enhanced_analysis, hyperliquid_price, self.strategy_name)
-        enhanced_analysis["prediction_analysis"] = prediction_analysis
+        # Generate prediction
+        prediction_analysis = self.prediction_engine.build_price_prediction(analysis, hyperliquid_price, self.strategy_name)
+        analysis["prediction_analysis"] = prediction_analysis
         logger.info(f"🔮 PREDICTION ENGINE: Generated analysis with keys: {list(prediction_analysis.keys()) if prediction_analysis else 'None'}")
         
         # 5. PREDICTION ENGINE ANALYSIS
@@ -568,12 +568,12 @@ class YahooHyperliquidPaperTradingBot:
             "optimal_params": variability_decision["optimal_trading_params"],
             "strategy_name": self.strategy_name,
             # Add market analysis data for logging (using correct field names from Yahoo analysis)
-            "support_5m": enhanced_analysis.get("support_resistance_5m", {}).get("support"),
-            "resistance_5m": enhanced_analysis.get("support_resistance_5m", {}).get("resistance"),
-            "trend_5m": enhanced_analysis.get("trend_5m", {}).get("trend"),
-            "trend_1h": enhanced_analysis.get("trend_1h", {}).get("trend"),
-            "volatility_5m": enhanced_analysis.get("volatility_5m"),
-            "market_condition": enhanced_analysis.get("market_condition"),
+            "support_5m": analysis.get("support_resistance_5m", {}).get("support"),
+            "resistance_5m": analysis.get("support_resistance_5m", {}).get("resistance"),
+            "trend_5m": analysis.get("trend_5m", {}).get("trend"),
+            "trend_1h": analysis.get("trend_1h", {}).get("trend"),
+            "volatility_5m": analysis.get("volatility_5m"),
+            "market_condition": analysis.get("market_condition"),
             "rsi_value": hybrid_rsi_analysis.get("rsi"),
             "momentum": hybrid_rsi_analysis.get("momentum"),
             "rsi_signal": hybrid_rsi_analysis.get("rsi_signal")
@@ -685,7 +685,7 @@ class YahooHyperliquidPaperTradingBot:
             # Extract Hyperliquid data
             volume_data = hyperliquid_data.get("volume_data") or {}
             volatility_data = hyperliquid_data.get("volatility_data") or {}
-            ultimate_pressure_data = hyperliquid_data.get("ultimate_pressure_data") or {}
+            pressure_data = hyperliquid_data.get("pressure_data") or {}
             
             # Prepare market data for SimpleRTM
             market_data = {
@@ -700,11 +700,11 @@ class YahooHyperliquidPaperTradingBot:
                 "volatility_category": volatility_data.get("volatility_category", "UNKNOWN"),
                 "volatility_trend": volatility_data.get("volatility_trend", "UNKNOWN"),
                 "spread_volatility": volatility_data.get("spread_volatility", 0.0),
-                "ultimate_pressure": {
-                    "direction": ultimate_pressure_data.get("direction", "NEUTRAL"),
-                    "confidence": ultimate_pressure_data.get("confidence", "50%"),
-                    "strength": ultimate_pressure_data.get("strength", 0.5),
-                    "trend": ultimate_pressure_data.get("trend", "NEUTRAL")
+                "pressure": {
+                    "direction": pressure_data.get("direction", "NEUTRAL"),
+                    "confidence": pressure_data.get("confidence", "50%"),
+                    "strength": pressure_data.get("strength", 0.5),
+                    "trend": pressure_data.get("trend", "NEUTRAL")
                 },
                 "trend_analysis": trend_data
             }
@@ -813,7 +813,7 @@ class YahooHyperliquidPaperTradingBot:
         logger.info(f"   Weekly Context: {self.weekly_trend_analysis.get('weekly_trend', 'UNKNOWN')} ({self.weekly_trend_analysis.get('weekly_change_pct', 0):.2f}%)")
         logger.info(f"   Logging: Comprehensive Yahoo + Hyperliquid paper trading logs enabled")
         
-        # Start session with RTM integration
+        # Start session with RTM integration and session tracking
         try:
             from core.session.session_manager import SessionManager
             
@@ -836,6 +836,11 @@ class YahooHyperliquidPaperTradingBot:
             # SessionManager will handle cleanup internally
             logger.info("✅ SessionManager initialized")
             
+            # Start session tracking for enhanced analysis
+            initial_price = self.get_hyperliquid_price() or 50000.0  # Fallback price
+            self.market_data_analyzer.start_session_tracking(initial_price)
+            logger.info(f"📊 Session tracking started at ${initial_price:.2f}")
+            
             # Create initial heartbeat immediately so dashboard knows bot is running
             self._create_initial_heartbeat()
             
@@ -853,6 +858,7 @@ class YahooHyperliquidPaperTradingBot:
             
             logger.success("🔥 RTM integration active - Dashboard connection established")
             logger.info(f"   📊 Dashboard will receive live predictions and market data")
+            logger.info(f"   📈 Session tracking enabled for enhanced analysis")
             
         except Exception as e:
             logger.error(f"❌ Failed to start session with RTM: {e}")
@@ -1228,6 +1234,13 @@ class YahooHyperliquidPaperTradingBot:
             except Exception as e:
                 logger.error(f"❌ Could not end SessionManager session: {e}")
             
+            # End session tracking
+            try:
+                self.market_data_analyzer.end_session_tracking()
+                logger.info("📊 Session tracking ended")
+            except Exception as e:
+                logger.error(f"❌ Could not end session tracking: {e}")
+            
             # End RTM session
             try:
                 self._update_simple_rtm_activity("🏁 Trading session closed gracefully", "SUCCESS")
@@ -1325,7 +1338,7 @@ class YahooHyperliquidPaperTradingBot:
 
 
     def _update_market_data_centralized(self, current_price: float, force_update: bool = False):
-        """Centralized market data update with optimized periodic updates"""
+        """Centralized market data update with optimized periodic updates and session tracking"""
         try:
             
             # Get advanced RSI data (already updated with current price)
@@ -1338,12 +1351,17 @@ class YahooHyperliquidPaperTradingBot:
             candles_1h = self.market_data_analyzer.get_1h_candles("BTC", 10)
             
             if candles_1m and candles_5m and candles_1h:
-                trend_data = trend_manager.get_multi_timeframe_trend(candles_1m, candles_5m, candles_1h)
-                trend_value = trend_data.get("overall_trend", "UNKNOWN")
-                logger.info(f"📊 Trend Analysis: {trend_data.get('overall_trend', 'UNKNOWN')} | Alignment: {trend_data.get('alignment_score', 0)*100:.1f}%")
+                try:
+                    trend_data = trend_manager.get_multi_timeframe_trend(candles_1m, candles_5m, candles_1h)
+                    trend_value = trend_data.get("overall_trend", "NEUTRAL")
+                    logger.info(f"📊 Trend Analysis: {trend_data.get('overall_trend', 'NEUTRAL')} | Alignment: {trend_data.get('alignment_score', 0)*100:.1f}%")
+                except Exception as e:
+                    logger.error(f"❌ Trend analysis failed: {e}")
+                    trend_data = {"overall_trend": "NEUTRAL", "alignment_score": 0.5}
+                    trend_value = "NEUTRAL"
             else:
-                trend_data = {"overall_trend": "UNKNOWN", "alignment_score": 0}
-                trend_value = "UNKNOWN"
+                trend_data = {"overall_trend": "NEUTRAL", "alignment_score": 0.5}
+                trend_value = "NEUTRAL"
                 logger.warning(f"⚠️ Missing candle data: 1m={len(candles_1m) if candles_1m else 0}, 5m={len(candles_5m) if candles_5m else 0}, 1h={len(candles_1h) if candles_1h else 0}")
             
             rsi_value = hybrid_rsi_analysis.get("rsi", None)
@@ -1355,28 +1373,38 @@ class YahooHyperliquidPaperTradingBot:
             # Extract data with cleaner fallback pattern
             volume_data = hyperliquid_data.get("volume_data") or {}
             volatility_data = hyperliquid_data.get("volatility_data") or {}
-            ultimate_pressure_data = hyperliquid_data.get("ultimate_pressure_data") or {}
+            pressure_data = hyperliquid_data.get("pressure_data") or {}
             
-            # Prepare market data with simplified extraction
+            # Get analysis with session tracking
+            volume_value = volume_data.get("volume_depth", 0.0)
+            volatility_value = self._sanitize_volatility(volatility_data.get("volatility_5m", 0.0))
+            
+            analysis = self.market_data_analyzer.get_analysis(
+                current_price, volume_value, rsi_value or 50.0, volatility_value
+            )
+            
+            # Prepare market data with analysis
             market_data = {
                 "current_price": current_price,
                 "trend": trend_value,
                 "rsi": rsi_value,
                 "volume_depth": volume_data.get("volume_depth", 0.0),
-                "volume_category": volume_data.get("volume_category", "UNKNOWN"),
+                "volume_category": analysis.get("volume_category", volume_data.get("volume_category", "NORMAL")),
                 "order_flow": volume_data.get("order_flow", "NEUTRAL"),
-                "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN"),
-                "volatility_5m": self._sanitize_volatility(volatility_data.get("volatility_5m", 0.0)),
-                "volatility_category": volatility_data.get("volatility_category", "UNKNOWN"),
-                "volatility_trend": volatility_data.get("volatility_trend", "UNKNOWN"),
+                "depth_analysis": volume_data.get("depth_analysis", "NORMAL"),
+                "volatility_5m": volatility_value,
+                "volatility_category": volatility_data.get("volatility_category", "NORMAL"),
+                "volatility_trend": volatility_data.get("volatility_trend", "STABLE"),
                 "spread_volatility": self._sanitize_volatility(volatility_data.get("spread_volatility", 0.0)),
-                "ultimate_pressure": {
-                    "direction": ultimate_pressure_data.get("direction", "NEUTRAL"),
-                    "confidence": ultimate_pressure_data.get("confidence", "50%"),
-                    "strength": ultimate_pressure_data.get("strength", magic_numbers.DEFAULT_STRENGTH),
-                    "trend": ultimate_pressure_data.get("trend", "NEUTRAL")
+                "pressure": {
+                    "direction": pressure_data.get("direction", "NEUTRAL"),
+                    "confidence": pressure_data.get("confidence", "50%"),
+                    "strength": pressure_data.get("strength", magic_numbers.DEFAULT_STRENGTH),
+                    "trend": pressure_data.get("trend", "NEUTRAL")
                 },
-                "trend_analysis": trend_data
+                "trend_analysis": trend_data,
+                "session_analysis": analysis.get("session_context", {}),
+                "analysis_type": analysis.get("analysis_type", "unknown")
             }
             
             # Debug log the trend data being sent

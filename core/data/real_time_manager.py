@@ -14,7 +14,7 @@ from typing import Dict, List, Any, Optional
 from loguru import logger
 
 class SimpleRTM:
-    """Enhanced Real-Time Manager - Single source of truth for all dashboard data"""
+    """Real-Time Manager - Single source of truth for all dashboard data"""
     
     def __init__(self):
         self._lock = threading.RLock()
@@ -23,93 +23,32 @@ class SimpleRTM:
         # Ensure temp directory exists
         os.makedirs(os.path.dirname(self._data_file), exist_ok=True)
         
-        # Initialize with comprehensive data structure
+        # Initialize data structure
         self._data = {
-            "session": {
-                "session_id": "no_session",
-                "status": "INACTIVE",
-                "start_time": None,
-                "strategy": "standard",
-                "current_balance": 0.0,
-                "initial_balance": 0.0,
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "total_pnl": 0.0,
-                "win_rate": 0.0,
-                "balance_change": 0.0,
-                "balance_change_pct": 0.0,
-                "session_time": "0m",
-                "last_updated": None
-            },
-            "account": {
-                "account_id": None,
-                "current_balance": 0.0,
-                "initial_balance": 0.0,
-                "total_pnl": 0.0,
-                "total_trades": 0,
-                "winning_trades": 0,
-                "losing_trades": 0,
-                "win_rate": 0.0,
-                "open_positions_count": 0,
-                "created_at": None,
-                "last_updated": None
-            },
-            "market": {
-                "current_price": 97500.0,
-                "trend": "NEUTRAL",
-                "rsi": None,
-                "volume_depth": 0.0,
-                "volume_category": "UNKNOWN",
-                "order_flow": "NEUTRAL",
-                "depth_analysis": "UNKNOWN",
-                "volatility_5m": 0.0,
-                "volatility_category": "UNKNOWN",
-                "volatility_trend": "UNKNOWN",
-                "spread_volatility": 0.0,
-                "ultimate_pressure": {
-                    "direction": "NEUTRAL",
-                    "confidence": "50%",
-                    "strength": 0.5,
-                    "trend": "NEUTRAL"
-                },
-                "trend_analysis": {
-                    "overall_trend": "UNKNOWN",
-                    "alignment_score": 0.0,
-                    "timeframes": {
-                        "1m": {"trend": "UNKNOWN", "strength": 0, "confidence": 0},
-                        "5m": {"trend": "UNKNOWN", "strength": 0, "confidence": 0},
-                        "1h": {"trend": "UNKNOWN", "strength": 0, "confidence": 0}
-                    },
-                    "reversal_analysis": {
-                        "reversal_probability": 0.0,
-                        "signals": []
-                    }
-                },
-                "data_update_status": {
-                    "yahoo_analysis": {"last_update": 0, "next_update": 0, "time_until_update": 0},
-                    "rsi_data": {"last_update": 0, "next_update": 0, "time_until_update": 0},
-                    "trend_data": {"last_update": 0, "next_update": 0, "time_until_update": 0},
-                    "hourly_data": {"last_update": 0, "next_update": 0, "time_until_update": 0},
-                    "daily_data": {"last_update": 0, "next_update": 0, "time_until_update": 0}
-                },
-                "last_updated": None
-            },
-            "logs": [],
+            "session": {},
+            "account": {},
+            "market_data": {},
             "predictions": [],
             "trades": [],
+            "logs": [],
             "data_sources": {
                 "account_manager_synced": False,
                 "session_manager_synced": False,
-                "last_sync_time": None
+                "last_sync_time": datetime.now().isoformat()
             },
-            "timestamp": datetime.now().isoformat()
+            "pressure": {
+                "direction": "NEUTRAL",
+                "confidence": "50%",
+                "strength": 0.5,
+                "trend": "NEUTRAL"
+            },
+            "last_update": datetime.now().isoformat()
         }
         
         # Load existing data if file exists
         self._load_data()
         
-        logger.info("🚀 Enhanced Simple RTM initialized - Ultimate central data hub")
+        logger.info("🚀 Simple RTM initialized - Central data hub")
     
     def _load_data(self):
         """Load data from file"""
@@ -199,20 +138,20 @@ class SimpleRTM:
         """Update market data"""
         with self._lock:
             # Update basic market data
-            self._data["market"].update(market_data)
+            self._data["market_data"].update(market_data)
             
             # Handle trend analysis data separately
             if "trend_analysis" in market_data:
-                self._data["market"]["trend_analysis"] = market_data["trend_analysis"]
+                self._data["market_data"]["trend_analysis"] = market_data["trend_analysis"]
             
-            self._data["market"]["last_updated"] = datetime.now().isoformat()
+            self._data["market_data"]["last_updated"] = datetime.now().isoformat()
             self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()
     
     def update_data_status(self, data_status: Dict[str, Any]):
         """Update data update status"""
         with self._lock:
-            self._data["market"]["data_update_status"] = data_status
+            self._data["market_data"]["data_update_status"] = data_status
             self._data["timestamp"] = datetime.now().isoformat()
             self._save_data()
     
@@ -242,7 +181,13 @@ class SimpleRTM:
                 "type": signal_data.get("type", "UNKNOWN"),
                 "confidence": signal_data.get("confidence", 0) or 0,
                 "reason": signal_data.get("reason", ""),
-                "price": signal_data.get("price", 0) or 0
+                "price": signal_data.get("price", 0) or 0,
+                # Store additional prediction data for dashboard display
+                "size_btc": signal_data.get("size_btc", 0),
+                "size_usd": signal_data.get("size_usd", 0),
+                "rsi": signal_data.get("rsi", 50),
+                "trend": signal_data.get("trend", "NEUTRAL"),
+                "prediction_data": signal_data.get("prediction_data", {})
             }
             self._data["predictions"].append(signal)
             
@@ -351,7 +296,13 @@ class SimpleRTM:
     def get_data(self) -> Dict[str, Any]:
         """Get comprehensive data - Dashboard reads ONLY from this"""
         with self._lock:
-            return self._data.copy()
+            data = self._data.copy()
+            
+            # Map market_data to market for dashboard compatibility
+            if "market_data" in data:
+                data["market"] = data["market_data"]
+            
+            return data
     
     def get_session_data(self) -> Dict[str, Any]:
         """Get session data specifically"""
@@ -366,7 +317,7 @@ class SimpleRTM:
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data specifically"""
         with self._lock:
-            return self._data["market"].copy()
+            return self._data["market_data"].copy()
     
     def clear_presentation_data(self):
         """Clear only presentation data (logs, predictions, trades) - NOT account/session data or market data"""

@@ -152,6 +152,38 @@
             color: #FF9800;
         }
 
+        /* Prediction Card Styles */
+        .prediction-main-card {
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .prediction-main-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .prediction-trade-details,
+        .prediction-market-context {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .prediction-trade-details h3,
+        .prediction-market-context h3 {
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        }
+
+        .prediction-info {
+            transition: all 0.3s ease;
+        }
+
+        .prediction-info:hover {
+            background: rgba(255, 165, 0, 0.15) !important;
+        }
+
         .log-container {
             max-height: 300px;
             overflow-y: auto;
@@ -456,7 +488,7 @@
                             <span class="data-value" id="market-volatility">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Ultimate Pressure:</span>
+                            <span class="data-label">Pressure:</span>
                             <span class="data-value" id="market-pressure">Loading...</span>
                         </div>
                     </div>
@@ -464,43 +496,65 @@
 
                 <!-- Trading Predictions Card -->
                 <div class="card">
-                    <h2>🎯 Trading Predictions</h2>
+                    <h2>🎯 Trading Predictions <span style="font-size: 14px; color: #4CAF50; font-weight: normal;">(Best Confidence)</span></h2>
+                    <div style="font-size: 12px; color: #666; margin-bottom: 15px; font-style: italic;">
+                        Shows the prediction with the highest confidence score from all available predictions
+                    </div>
                     <div id="predictions-container">
-                        <div class="prediction-status">
-                            <div class="data-item">
-                                <span class="data-label">Direction:</span>
-                                <span class="data-value" id="prediction-direction">Waiting...</span>
+                        <!-- Main Prediction Card -->
+                        <div class="prediction-main-card" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 15px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <!-- Left Column: Trade Details -->
+                                <div class="prediction-trade-details">
+                                    <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #FFD700;">Trade Details</h3>
+                                    <div class="data-item">
+                                        <span class="data-label">Direction:</span>
+                                        <span class="data-value" id="prediction-direction">Waiting...</span>
+                                    </div>
+                                    <div class="data-item">
+                                        <span class="data-label">Entry Price:</span>
+                                        <span class="data-value" id="prediction-entry-price">N/A</span>
+                                    </div>
+                                    <div class="data-item">
+                                        <span class="data-label">Size (BTC):</span>
+                                        <span class="data-value" id="prediction-size-btc">N/A</span>
+                                    </div>
+                                    <div class="data-item">
+                                        <span class="data-label">Size (USD):</span>
+                                        <span class="data-value" id="prediction-size-usd">N/A</span>
+                                    </div>
+                                </div>
+                                
+                                <!-- Right Column: Market Context -->
+                                <div class="prediction-market-context">
+                                    <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #FFD700;">Market Context</h3>
+                                    <div class="data-item">
+                                        <span class="data-label">RSI:</span>
+                                        <span class="data-value" id="prediction-rsi">N/A</span>
+                                    </div>
+                                    <div class="data-item">
+                                        <span class="data-label">Trend:</span>
+                                        <span class="data-value" id="prediction-trend">N/A</span>
+                                    </div>
+                                    <div class="data-item">
+                                        <span class="data-label">Confidence:</span>
+                                        <span class="data-value" id="prediction-confidence">N/A</span>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="data-item">
-                                <span class="data-label">Size (BTC):</span>
-                                <span class="data-value" id="prediction-size-btc">N/A</span>
-                            </div>
-                            <div class="data-item">
-                                <span class="data-label">Size (USD):</span>
-                                <span class="data-value" id="prediction-size-usd">N/A</span>
-                            </div>
-                            <div class="data-item">
-                                <span class="data-label">Entry Price:</span>
-                                <span class="data-value" id="prediction-entry-price">N/A</span>
-                            </div>
-                            <div class="data-item">
-                                <span class="data-label">RSI (at prediction):</span>
-                                <span class="data-value" id="prediction-rsi">N/A</span>
-                            </div>
-                            <div class="data-item">
-                                <span class="data-label">TREND (at prediction):</span>
-                                <span class="data-value" id="prediction-trend">N/A</span>
-                            </div>
-                            <div class="data-item">
-                                <span class="data-label">Confidence:</span>
-                                <span class="data-value" id="prediction-confidence">N/A</span>
-                            </div>
-                            <div class="data-item">
-                                <span class="data-label">Reasoning:</span>
-                                <span class="data-value" id="prediction-reasoning" style="font-size: 11px; color: #888;">Waiting for bot...</span>
+                            
+                            <!-- Full Width: Reasoning -->
+                            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
+                                <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #FFD700;">Analysis</h3>
+                                <div class="data-item">
+                                    <span class="data-label">Reasoning:</span>
+                                    <span class="data-value" id="prediction-reasoning" style="font-size: 12px; color: #ccc; line-height: 1.4;">Waiting for bot...</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="prediction-info" style="margin-top: 10px; padding: 10px; background: rgba(255,165,0,0.1); border-left: 3px solid #FFA500; font-size: 12px;">
+                        
+                        <!-- Info Card -->
+                        <div class="prediction-info" style="padding: 12px; background: rgba(255,165,0,0.1); border-radius: 8px; border-left: 4px solid #FFA500; font-size: 12px;">
                             🎯 <strong>Live Predictions:</strong> Shows structured trading predictions updated every 5s with exact BUY/SELL signals, position sizing, entry prices, and market context.
                         </div>
                     </div>
@@ -840,13 +894,13 @@
                     volatilityElement.textContent = 'N/A';
                 }
                 
-                // Update Ultimate Pressure with enhanced display
+                // Update Pressure with enhanced display
                 const pressureElement = document.getElementById('market-pressure');
-                if (market.ultimate_pressure && market.ultimate_pressure.direction && market.ultimate_pressure.direction !== 'N/A') {
-                    const direction = market.ultimate_pressure.direction || 'NEUTRAL';
-                    const confidence = market.ultimate_pressure.confidence || '0%';
-                    const strength = market.ultimate_pressure.strength || 0.5;
-                    const trend = market.ultimate_pressure.trend || 'NEUTRAL';
+                if (market.pressure && market.pressure.direction && market.pressure.direction !== 'N/A') {
+                    const direction = market.pressure.direction || 'NEUTRAL';
+                    const confidence = market.pressure.confidence || '0%';
+                    const strength = market.pressure.strength || 0.5;
+                    const trend = market.pressure.trend || 'NEUTRAL';
                     const timestamp = new Date().toLocaleTimeString();
                     
                     pressureElement.innerHTML = `${direction} (${confidence})<br><span style="font-size: 11px; color: #888;">Strength: ${(strength * 100).toFixed(0)}% | Trend: ${trend}</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
@@ -971,23 +1025,57 @@
             
             updatePredictions(predictions) {
                 if (predictions && predictions.length > 0) {
-                    const latest = predictions[0];
-                    const predictionData = latest.prediction_data || latest;
+                    // Sort predictions by confidence (highest first) and select the best one
+                    const sortedPredictions = predictions.sort((a, b) => {
+                        // Handle different confidence formats (0-1 scale vs 0-100 scale)
+                        let confidenceA = parseFloat(a.confidence || 0);
+                        let confidenceB = parseFloat(b.confidence || 0);
+                        
+                        // If confidence is in 0-1 scale, convert to 0-100 for comparison
+                        if (confidenceA <= 1 && confidenceB <= 1) {
+                            confidenceA *= 100;
+                            confidenceB *= 100;
+                        }
+                        
+                        return confidenceB - confidenceA; // Highest confidence first
+                    });
+                    
+                    const bestPrediction = sortedPredictions[0];
+                    const predictionData = bestPrediction.prediction_data || bestPrediction;
                     
                     // Update structured prediction fields with exact format
-                    this.updateElement('prediction-direction', predictionData.direction || latest.type || 'N/A');
-                    this.updateElement('prediction-size-btc', predictionData.size_btc ? predictionData.size_btc.toFixed(6) : 'N/A');
-                    this.updateElement('prediction-size-usd', predictionData.size_usd ? `$${predictionData.size_usd.toFixed(0)}` : 'N/A');
-                    this.updateElement('prediction-entry-price', predictionData.entry_price ? `$${predictionData.entry_price.toFixed(2)}` : 'N/A');
-                    this.updateElement('prediction-rsi', predictionData.rsi_at_prediction ? predictionData.rsi_at_prediction.toFixed(1) : (predictionData.rsi || 'N/A'));
-                    this.updateElement('prediction-trend', predictionData.trend_at_prediction || predictionData.trend || 'N/A');
-                    this.updateElement('prediction-confidence', predictionData.confidence ? `${(predictionData.confidence * 100).toFixed(1)}%` : `${latest.confidence || 0}%`);
-                    this.updateElement('prediction-reasoning', predictionData.reasoning || latest.reason || 'No reasoning available');
+                    this.updateElement('prediction-direction', predictionData.direction || bestPrediction.type || 'N/A');
+                    this.updateElement('prediction-size-btc', predictionData.size_btc ? predictionData.size_btc.toFixed(6) : (bestPrediction.size_btc ? bestPrediction.size_btc.toFixed(6) : 'N/A'));
+                    this.updateElement('prediction-size-usd', predictionData.size_usd ? `$${predictionData.size_usd.toFixed(0)}` : (bestPrediction.size_usd ? `$${bestPrediction.size_usd.toFixed(0)}` : 'N/A'));
+                    this.updateElement('prediction-entry-price', predictionData.entry_price ? `$${predictionData.entry_price.toFixed(2)}` : (bestPrediction.price ? `$${bestPrediction.price.toFixed(2)}` : 'N/A'));
+                    this.updateElement('prediction-rsi', predictionData.rsi_at_prediction ? predictionData.rsi_at_prediction.toFixed(1) : (predictionData.rsi || bestPrediction.rsi || 'N/A'));
+                    this.updateElement('prediction-trend', predictionData.trend_at_prediction || predictionData.trend || bestPrediction.trend || 'N/A');
+                    // Convert confidence to percentage (0.0-1.0 scale to 0-100%)
+                    const confidenceValue = predictionData.confidence || bestPrediction.confidence || 0;
+                    const confidencePercent = confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue;
+                    this.updateElement('prediction-confidence', `${confidencePercent.toFixed(1)}%`);
+                    this.updateElement('prediction-reasoning', predictionData.reasoning || bestPrediction.reason || 'No reasoning available');
+                    
+                    // Log the best prediction selection for debugging
+                    const bestConfidence = parseFloat(bestPrediction.confidence || 0);
+                    const normalizedConfidence = bestConfidence <= 1 ? bestConfidence * 100 : bestConfidence;
+                    console.log(`🎯 Dashboard: Selected best prediction with ${normalizedConfidence.toFixed(1)}% confidence from ${predictions.length} available predictions`);
+                    if (predictions.length > 1) {
+                        console.log(`📊 Available predictions:`, predictions.map(p => {
+                            const conf = parseFloat(p.confidence || 0);
+                            const normConf = conf <= 1 ? conf * 100 : conf;
+                            return {
+                                type: p.type || p.direction,
+                                confidence: normConf.toFixed(1) + '%',
+                                reason: p.reason || p.reasoning
+                            };
+                        }));
+                    }
                     
                     // Update direction color
                     const directionElement = document.getElementById('prediction-direction');
                     if (directionElement) {
-                        const direction = (predictionData.direction || latest.type || '').toUpperCase();
+                        const direction = (predictionData.direction || bestPrediction.type || '').toUpperCase();
                         if (direction.includes('BUY')) {
                             directionElement.className = 'data-value trend-up';
                         } else if (direction.includes('SELL')) {
@@ -1000,7 +1088,7 @@
                     // Update confidence color
                     const confidenceElement = document.getElementById('prediction-confidence');
                     if (confidenceElement) {
-                        const confidence = parseFloat(predictionData.confidence ? predictionData.confidence * 100 : latest.confidence || 0);
+                        const confidence = parseFloat(predictionData.confidence ? predictionData.confidence : bestPrediction.confidence || 0);
                         if (confidence > 70) {
                             confidenceElement.className = 'data-value trend-up';
                         } else if (confidence > 50) {

@@ -1,24 +1,30 @@
 #!/usr/bin/env python3
 """
-Advanced Trend Manager
-Replaces the basic trend calculation with sophisticated multi-timeframe trend recognition
+Trend Manager
+Replaces the basic trend calculation with multi-timeframe trend recognition
 """
 
-import time
-import statistics
-from typing import Dict, List, Any, Optional
+import numpy as np
+from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
+from collections import deque
+import time
 
 class TrendManager:
-    """Advanced trend manager with multi-timeframe analysis and reversal detection"""
+    """Trend manager with multi-timeframe analysis and reversal detection"""
     
     def __init__(self):
-        # Cache for trend calculations
+        """Initialize trend manager"""
+        self.trend_history = deque(maxlen=100)
+        self.reversal_signals = deque(maxlen=50)
+        self.last_update = 0
+        
+        # Add missing cache attributes
         self._trend_cache = {}
         self._cache_timestamps = {}
         self._cache_duration = 30  # 30 seconds cache for trend data
         
-        logger.info("📈 Trend Manager initialized - Advanced trend recognition system")
+        logger.info("📈 Trend Manager initialized - Multi-timeframe trend recognition system")
     
     def _get_cached_data(self, key: str) -> Optional[Dict]:
         """Get cached data if still valid"""
@@ -33,20 +39,20 @@ class TrendManager:
         self._trend_cache[key] = data
         self._cache_timestamps[key] = time.time()
     
-    def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
-        """Calculate trend with advanced analysis"""
-        cache_key = f"trend_{periods}_{hash(str(candles[-periods:]))}"
+    def calculate_trend(self, candles: List[Dict], timeframe: str = "5m") -> Dict[str, Any]:
+        """Calculate trend with multi-timeframe analysis"""
+        cache_key = f"trend_{timeframe}_{hash(str(candles[-5:]))}" # Changed to 5 for consistency with other methods
         cached_result = self._get_cached_data(cache_key)
         
         if cached_result:
             return cached_result
         
         try:
-            if len(candles) < periods:
+            if len(candles) < 5: # Changed to 5 for consistency with other methods
                 return {"trend": "SIDEWAYS", "strength": 0, "direction": 0, "confidence": 0}
             
             # Get recent closes
-            recent_closes = [candle["close"] for candle in candles[-periods:]]
+            recent_closes = [candle["close"] for candle in candles[-5:]] # Changed to 5 for consistency with other methods
             
             # Calculate basic trend metrics
             first_price = recent_closes[0]
@@ -74,7 +80,7 @@ class TrendManager:
             momentum = self._calculate_momentum(recent_closes)
             
             # Calculate volume confirmation (if available)
-            volume_confirmation = self._check_volume_confirmation(candles[-periods:])
+            volume_confirmation = self._check_volume_confirmation(candles[-5:]) # Changed to 5 for consistency with other methods
             
             # Determine trend with LESS CONSERVATIVE thresholds for Bitcoin
             # Bitcoin 5-min movements: 0.1-0.5% is normal, 0.5%+ is significant
@@ -117,7 +123,7 @@ class TrendManager:
                 "confidence": round(confidence, 3),
                 "up_moves": up_moves,
                 "down_moves": down_moves,
-                "periods_analyzed": periods
+                "periods_analyzed": 5 # Changed to 5 for consistency with other methods
             }
             
             self._cache_data(cache_key, result)
@@ -297,9 +303,9 @@ class TrendManager:
         """Get comprehensive multi-timeframe trend analysis"""
         try:
             # Calculate trends for each timeframe
-            trend_1m = self.calculate_trend(candles_1m, 5)  # 5 minutes
-            trend_5m = self.calculate_trend(candles_5m, 6)  # 30 minutes
-            trend_1h = self.calculate_trend(candles_1h, 12)  # 12 hours
+            trend_1m = self.calculate_trend(candles_1m, "5m")  # 5 minutes
+            trend_5m = self.calculate_trend(candles_5m, "6m")  # 30 minutes
+            trend_1h = self.calculate_trend(candles_1h, "12h")  # 12 hours
             
             # Calculate alignment score
             alignment_score = self._calculate_alignment_score(trend_1m, trend_5m, trend_1h)
