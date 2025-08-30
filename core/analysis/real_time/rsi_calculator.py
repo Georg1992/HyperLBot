@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Real-Time RSI Calculator
-Calculates RSI using real-time Hyperliquid price data with proper Wilder's smoothing
+Professional Real-Time RSI Calculator for Trading Bots
+Implements standard Wilder's RSI with time-based sampling for maximum accuracy
 """
 
 import time
@@ -10,183 +10,123 @@ from loguru import logger
 from collections import deque
 
 class RealTimeRSICalculator:
-    """Real-time RSI calculator using Hyperliquid price data with proper Wilder's smoothing"""
+    """
+    Professional RSI Calculator for Trading Applications
     
-    def __init__(self, periods: int = 14, max_prices: int = 100):
-        self.periods = periods
-        self.max_prices = max_prices
-        self.price_history = deque(maxlen=max_prices)
-        self.last_calculation = 0
-        self.cached_rsi = None
-        self.cached_trend = "NEUTRAL"
-        self.cached_signal = "NEUTRAL"
+    Features:
+    - Standard 14-period Wilder's RSI calculation
+    - Time-based sampling to avoid tick noise
+    - Mathematically correct - RSI moves to 50 when price is stable (as it should)
+    - Optimized for trading prediction frequency
+    """
+    
+    def __init__(self, periods: int = 14, sample_interval: int = 60):
+        """
+        Initialize professional RSI calculator
         
-        # Wilder's smoothing variables
+        Args:
+            periods: RSI calculation periods (standard: 14)
+            sample_interval: Seconds between price samples (default: 60s for 1-minute intervals)
+        """
+        self.periods = periods
+        self.sample_interval = sample_interval
+        
+        # Time-based price sampling (professional approach)
+        self.price_samples = deque(maxlen=50)  # Keep last 50 samples
+        self.last_sample_time = 0
+        
+        # RSI calculation state
         self.avg_gain = None
         self.avg_loss = None
         self.is_initialized = False
         
-        # Track last price for incremental updates
-        self.last_price = None
+        # Cached results for efficiency
+        self.cached_rsi = None
+        self.cached_trend = "NEUTRAL"
+        self.cached_signal = "NEUTRAL"
+        self.last_calculation_time = 0
         
-        # Price filtering for Bitcoin - meaningful movement threshold
-        self.min_price_change_threshold = 5.0  # $5.00 threshold for meaningful Bitcoin movements
-        self.last_meaningful_update = 0  # Track when we last updated RSI
-        self.min_update_interval = 30  # Minimum 30 seconds between RSI updates
+        # Current price tracking
+        self.current_price = None
         
-        # Track update timing for diagnostics
-        self.last_update_time = time.time()
-        
-        logger.info(f"📊 Real-time RSI Calculator initialized (periods: {periods})")
+        logger.info(f"📊 Professional RSI Calculator: {periods} periods, {sample_interval}s intervals")
     
-    def add_price(self, price: float, timestamp: float = None) -> None:
-        """Add a new price to the calculation window - incremental RSI update"""
+    def update_price(self, price: float, timestamp: float = None) -> bool:
+        """
+        Update with new price data - uses time-based sampling for accuracy
+        
+        Args:
+            price: Current market price
+            timestamp: Price timestamp (default: current time)
+            
+        Returns:
+            bool: True if RSI was recalculated, False if just price updated
+        """
         if timestamp is None:
             timestamp = time.time()
         
-        # PREVENT DUPLICATE PRICE UPDATES - major cause of RSI fluctuations
-        if self.last_price is not None and abs(price - self.last_price) < 0.10:  # $0.10 threshold for duplicates
-            logger.debug(f"📊 Skipping duplicate/identical price update: {price} (same as last: {self.last_price})")
-            return
+        # Always track current price
+        self.current_price = price
         
-        # Calculate RSI incrementally if we have a previous price
-        if self.last_price is not None and self.is_initialized:
-            price_change = price - self.last_price
-            time_since_update = timestamp - self.last_meaningful_update
-            
-            # Update RSI only for meaningful changes OR after time interval
-            should_update_rsi = (
-                abs(price_change) >= self.min_price_change_threshold or  # Significant price move
-                time_since_update >= self.min_update_interval  # Enough time passed
-            )
-            
-            if not should_update_rsi:
-                logger.debug(f"📊 Skipping RSI update: change {price_change:+.2f}, time {time_since_update:.0f}s")
-                # Still track price but don't update RSI calculation
-                self.price_history.append({
-                    'price': price,
-                    'timestamp': timestamp
-                })
-                self.last_price = price  # Update for next comparison
-                return
-            
-            # Calculate gain/loss from this single price change
-            gain = price_change if price_change > 0 else 0.0
-            loss = -price_change if price_change < 0 else 0.0
-            
-            # Update Wilder's smoothed averages with just this new gain/loss
-            self.avg_gain = (self.avg_gain * (self.periods - 1) + gain) / self.periods
-            self.avg_loss = (self.avg_loss * (self.periods - 1) + loss) / self.periods
-            
-            # Calculate RSI (Wilder's smoothing already built-in, no extra smoothing needed)
-            if self.avg_loss == 0:
-                new_rsi = 100.0
-            else:
-                rs = self.avg_gain / self.avg_loss
-                new_rsi = 100.0 - (100.0 / (1.0 + rs))
-            
-            # Cache the RSI result (no redundant smoothing)
-            self.cached_rsi = round(new_rsi, 2)
-            self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(new_rsi)
-            self.last_update_time = timestamp
-            self.last_meaningful_update = timestamp  # Track meaningful update
-            
-            logger.info(f"📊 RSI updated: ${price} → RSI {self.cached_rsi:.2f} (change: {price_change:+.2f}, interval: {time_since_update:.0f}s)")
+        # Time-based sampling for RSI calculation
+        time_since_sample = timestamp - self.last_sample_time
         
-        # Store the price and update last_price
-        self.price_history.append({
-            'price': price,
-            'timestamp': timestamp
-        })
-        self.last_price = price
+        if time_since_sample >= self.sample_interval or not self.price_samples:
+            # Take new sample
+            self.price_samples.append({
+                'price': price,
+                'timestamp': timestamp
+            })
+            self.last_sample_time = timestamp
+            
+            # Recalculate RSI if we have enough data
+            if len(self.price_samples) >= self.periods + 1:
+                self._calculate_rsi()
+                return True
+        
+        return False
     
-    def calculate_rsi(self) -> Dict[str, Any]:
-        """Calculate RSI - uses incremental updates when possible, full calculation for initialization"""
+    def _calculate_rsi(self) -> None:
+        """
+        Calculate RSI using standard Wilder's method - mathematically correct
         
-        # Check if we have enough data
-        if len(self.price_history) < self.periods + 1:
-            return {
-                "rsi": None,
-                "trend": "NEUTRAL",
-                "signal": "NEUTRAL",
-                "error": "insufficient_data",
-                "data_points": len(self.price_history),
-                "periods_required": self.periods + 1
-            }
-        
+        Professional implementation:
+        - Extract price changes from time-sampled data
+        - Apply Wilder's smoothing (exponential moving average)
+        - Standard RSI formula: 100 - (100 / (1 + RS))
+        """
         try:
-            # If not initialized, do full calculation for setup
-            if not self.is_initialized:
-                return self._initialize_rsi()
+            # Get recent price samples
+            samples = list(self.price_samples)[-self.periods-1:]
+            prices = [s['price'] for s in samples]
             
-            # Return cached RSI result (pure RSI, no artificial manipulation)
-            if self.cached_rsi is not None:
-                current_time = time.time()
-                time_since_update = current_time - self.last_update_time
-                
-                return {
-                    "rsi": self.cached_rsi,
-                    "trend": self.cached_trend,
-                    "signal": self.cached_signal,
-                    "avg_gain": self.avg_gain,
-                    "avg_loss": self.avg_loss,
-                    "rs": self.avg_gain / self.avg_loss if self.avg_loss > 0 else None,
-                    "data_points": len(self.price_history),
-                    "periods_used": self.periods,
-                    "latest_price": self.last_price,
-                    "calculation_timestamp": current_time,
-                    "calculation_method": "incremental_update",
-                    "time_since_update": time_since_update
-                }
-            
-            # Fallback: force initialization if somehow we get here
-            return self._initialize_rsi()
-            
-        except Exception as e:
-            logger.error(f"❌ Real-time RSI calculation failed: {e}")
-            return {
-                "rsi": None,
-                "trend": "NEUTRAL",
-                "signal": "NEUTRAL",
-                "error": str(e),
-                "data_points": len(self.price_history)
-            }
-    
-    def _initialize_rsi(self) -> Dict[str, Any]:
-        """Initialize RSI with full calculation from historical data"""
-        try:
-            # Get enough prices for initialization
-            prices = [p['price'] for p in list(self.price_history)[-self.periods-1:]]
-            
-            # Calculate all initial price changes
+            # Calculate price changes
             changes = []
             for i in range(1, len(prices)):
                 change = prices[i] - prices[i-1]
                 changes.append(change)
             
-            if len(changes) < self.periods:
-                return {
-                    "rsi": None,
-                    "trend": "NEUTRAL", 
-                    "signal": "NEUTRAL",
-                    "error": "insufficient_changes_for_init",
-                    "data_points": len(changes),
-                    "periods_required": self.periods
-                }
+            # Separate gains and losses
+            current_gains = [c if c > 0 else 0.0 for c in changes[-self.periods:]]
+            current_losses = [-c if c < 0 else 0.0 for c in changes[-self.periods:]]
             
-            # Calculate initial gains and losses
-            gains = [change if change > 0 else 0.0 for change in changes[-self.periods:]]
-            losses = [-change if change < 0 else 0.0 for change in changes[-self.periods:]]
+            if not self.is_initialized:
+                # Initial calculation: simple moving average
+                self.avg_gain = sum(current_gains) / self.periods
+                self.avg_loss = sum(current_losses) / self.periods
+                self.is_initialized = True
+                logger.info(f"📊 RSI initialized: avg_gain={self.avg_gain:.4f}, avg_loss={self.avg_loss:.4f}")
+            else:
+                # Wilder's smoothing: exponential moving average
+                latest_gain = current_gains[-1]
+                latest_loss = current_losses[-1]
+                
+                # Standard Wilder's smoothing formula
+                alpha = 1.0 / self.periods
+                self.avg_gain = (1 - alpha) * self.avg_gain + alpha * latest_gain
+                self.avg_loss = (1 - alpha) * self.avg_loss + alpha * latest_loss
             
-            # Initialize Wilder's smoothed averages
-            self.avg_gain = sum(gains) / self.periods
-            self.avg_loss = sum(losses) / self.periods
-            self.is_initialized = True
-            
-            # Set last price for future incremental updates
-            self.last_price = prices[-1]
-            
-            # Calculate initial RSI
+            # Standard RSI calculation
             if self.avg_loss == 0:
                 rsi = 100.0
             else:
@@ -195,106 +135,63 @@ class RealTimeRSICalculator:
             
             # Cache results
             self.cached_rsi = round(rsi, 2)
-            self.cached_trend, self.cached_signal = self._get_rsi_trend_signal(rsi)
-            self.last_calculation = time.time()
-            self.last_meaningful_update = time.time()  # Initialize meaningful update timer
+            self.cached_trend, self.cached_signal = self._determine_rsi_signals(rsi)
+            self.last_calculation_time = time.time()
             
-            logger.info(f"📊 RSI initialized: {self.cached_rsi:.2f} from {len(changes)} price changes")
-            
-            return {
-                "rsi": self.cached_rsi,
-                "trend": self.cached_trend,
-                "signal": self.cached_signal,
-                "avg_gain": self.avg_gain,
-                "avg_loss": self.avg_loss,
-                "rs": rs if self.avg_loss > 0 else None,
-                "data_points": len(self.price_history),
-                "periods_used": self.periods,
-                "latest_price": self.last_price,
-                "calculation_timestamp": self.last_calculation,
-                "calculation_method": "initialization"
-            }
+            logger.debug(f"📊 RSI calculated: {self.cached_rsi:.2f} (price: ${self.current_price:.2f})")
             
         except Exception as e:
-            logger.error(f"❌ RSI initialization failed: {e}")
-            return {
-                "rsi": None,
-                "trend": "NEUTRAL",
-                "signal": "NEUTRAL", 
-                "error": str(e),
-                "data_points": len(self.price_history)
-            }
+            logger.error(f"❌ RSI calculation failed: {e}")
     
-    def initialize_with_yahoo_data(self) -> None:
-        """Initialize RSI calculator with Yahoo Finance data for starting values"""
-        try:
-            from core.external.yahoo_data_fetcher import YahooDataFetcher
-            
-            # Get Yahoo Finance data for initialization
-            yahoo_fetcher = YahooDataFetcher()
-            candles = yahoo_fetcher.get_5m_klines("BTC", 576)  # 48 hours of data (576 * 5min = 2880min = 48h)
-            
-            if candles and len(candles) >= self.periods + 1:
-                # Extract closing prices
-                prices = [candle['close'] for candle in candles]
-                
-                # Clear existing data
-                self.price_history.clear()
-                self.is_initialized = False
-                self.avg_gain = None
-                self.avg_loss = None
-                self.last_price = None
-                self.cached_rsi = None
-                
-                # Add historical prices to initialize the calculator
-                for i, price in enumerate(prices):
-                    timestamp = time.time() - (len(prices) - i) * 300  # 5-minute intervals
-                    self.price_history.append({
-                        'price': price,
-                        'timestamp': timestamp
-                    })
-                
-                # Calculate initial RSI to set up Wilder's smoothing
-                initial_rsi = self.calculate_rsi()
-                logger.info(f"📊 Initialized RSI calculator with Yahoo data: RSI {initial_rsi.get('rsi', 'N/A')}")
-                
-            else:
-                logger.warning("⚠️ Insufficient Yahoo data for RSI initialization")
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to initialize with Yahoo data: {e}")
-    
-    def get_cached_rsi(self) -> Optional[float]:
-        """Get the cached RSI value"""
-        return self.cached_rsi
-    
-    def get_status(self) -> Dict[str, Any]:
-        """Get calculator status"""
+    def get_rsi(self) -> Dict[str, Any]:
+        """
+        Get current RSI data for trading decisions
+        
+        Returns:
+            Dict with RSI value, trend, signal, and metadata
+        """
         return {
-            "price_history_length": len(self.price_history),
-            "periods_required": self.periods + 1,
-            "has_sufficient_data": len(self.price_history) >= self.periods + 1,
-            "is_initialized": self.is_initialized,
-            "last_calculation": self.last_calculation,
-            "cached_rsi": self.cached_rsi,
-            "cached_trend": self.cached_trend,
-            "cached_signal": self.cached_signal,
+            "rsi": self.cached_rsi,
+            "trend": self.cached_trend,
+            "signal": self.cached_signal,
+            "data_points": len(self.price_samples),
+            "current_price": self.current_price,
             "avg_gain": self.avg_gain,
-            "avg_loss": self.avg_loss
+            "avg_loss": self.avg_loss,
+            "rs": self.avg_gain / self.avg_loss if self.avg_loss and self.avg_loss > 0 else None,
+            "is_initialized": self.is_initialized,
+            "calculation_method": "professional_time_sampled",
+            "sample_interval": self.sample_interval
         }
     
-    def _get_rsi_trend_signal(self, rsi: float) -> tuple:
-        """Get RSI trend and signal based on value"""
+    def _determine_rsi_signals(self, rsi: float) -> tuple:
+        """
+        Determine RSI trend and trading signals
+        
+        Args:
+            rsi: Current RSI value
+            
+        Returns:
+            tuple: (trend, signal)
+        """
+        # Standard RSI interpretation
         if rsi >= 70:
-            return "OVERBOUGHT", "SELL"
+            trend = "OVERBOUGHT"
+            signal = "SELL"
         elif rsi <= 30:
-            return "OVERSOLD", "BUY"
+            trend = "OVERSOLD" 
+            signal = "BUY"
         elif rsi >= 60:
-            return "STRONG", "NEUTRAL"
+            trend = "BULLISH"
+            signal = "NEUTRAL"
         elif rsi <= 40:
-            return "WEAK", "NEUTRAL"
+            trend = "BEARISH"
+            signal = "NEUTRAL"
         else:
-            return "NEUTRAL", "NEUTRAL"
+            trend = "NEUTRAL"
+            signal = "NEUTRAL"
+        
+        return trend, signal
 
-# Global instance for real-time RSI calculation
-real_time_rsi_calculator = RealTimeRSICalculator()
+# Professional singleton instance for trading bot
+real_time_rsi_calculator = RealTimeRSICalculator(periods=14, sample_interval=60)

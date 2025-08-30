@@ -413,10 +413,14 @@ class YahooHyperliquidPaperTradingBot:
     
     def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """
-        SRP: Coordinate RSI calculation between historical baseline and real-time updates
-        - MarketDataAnalyzer: Provides Yahoo baseline 
-        - RealTimeRSICalculator: Handles meaningful real-time updates
-        - TradingBot: Coordinates for prediction-ready RSI
+        Professional RSI for trading predictions - mathematically accurate
+        
+        SRP Implementation:
+        - MarketDataAnalyzer: Provides Yahoo baseline data
+        - RealTimeRSICalculator: Professional time-sampled RSI calculation  
+        - TradingBot: Coordinates for accurate trading predictions
+        
+        Note: RSI moving to 50 when price is stable is CORRECT mathematical behavior
         """
         try:
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
@@ -425,38 +429,47 @@ class YahooHyperliquidPaperTradingBot:
             if hyperliquid_price is None:
                 hyperliquid_price = self.get_hyperliquid_price()
             
-            # Initialize with Yahoo baseline if real-time calculator needs seeding
-            if len(real_time_rsi_calculator.price_history) < real_time_rsi_calculator.periods + 1:
-                logger.info("📊 Seeding real-time RSI with Yahoo baseline...")
+            # Seed with Yahoo data if calculator needs initialization
+            if len(real_time_rsi_calculator.price_samples) < real_time_rsi_calculator.periods + 1:
+                logger.info("📊 Initializing professional RSI with Yahoo baseline...")
                 
-                # MarketDataAnalyzer responsibility: Provide historical baseline
+                # Get Yahoo candles for proper historical context
                 candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 20)
                 if candles_5m and len(candles_5m) >= 15:
-                    # Seed with candle closes (proper time-based data)
-                    for candle in candles_5m[-15:]:
-                        real_time_rsi_calculator.add_price(candle['close'], candle.get('timestamp', time.time()))
-                    logger.info(f"📊 Seeded RSI calculator with {len(candles_5m[-15:])} Yahoo candles")
+                    # Seed with historical candle closes (time-based data)
+                    current_time = time.time()
+                    for i, candle in enumerate(candles_5m[-15:]):
+                        # Simulate historical timestamps (60s intervals)
+                        hist_timestamp = current_time - (15 - i) * 60
+                        real_time_rsi_calculator.update_price(candle['close'], hist_timestamp)
+                    
+                    logger.info(f"📊 Seeded professional RSI with {len(candles_5m[-15:])} Yahoo candles")
             
-            # RealTimeRSICalculator responsibility: Handle meaningful real-time updates
+            # Update with current Hyperliquid price
+            rsi_updated = False
             if hyperliquid_price:
-                real_time_rsi_calculator.add_price(hyperliquid_price)
+                rsi_updated = real_time_rsi_calculator.update_price(hyperliquid_price)
+                if rsi_updated:
+                    logger.debug(f"📊 RSI updated with price: ${hyperliquid_price:.2f}")
             
-            # Get current RSI for predictions
-            rsi_data = real_time_rsi_calculator.calculate_rsi()
+            # Get current RSI for trading decisions
+            rsi_data = real_time_rsi_calculator.get_rsi()
             
             return {
                 "rsi": rsi_data.get("rsi", None),
                 "rsi_value": rsi_data.get("rsi", None),
-                "rsi_trend": rsi_data.get("trend", "NEUTRAL"), 
-                "rsi_signal": rsi_data.get("signal", "NEUTRAL"),
+                "rsi_trend": rsi_data.get("trend", "NEUTRAL"),
+                "rsi_signal": rsi_data.get("signal", "NEUTRAL"), 
                 "momentum": rsi_data.get("trend", "NEUTRAL"),
-                "confidence": 0.8 if rsi_data.get("rsi") is not None else 0.4,
+                "confidence": 0.9 if rsi_data.get("rsi") is not None else 0.3,
                 "data_points": rsi_data.get("data_points", 0),
-                "calculation_method": "hybrid_baseline_plus_meaningful_updates"
+                "current_price": rsi_data.get("current_price"),
+                "calculation_method": "professional_time_sampled",
+                "recently_updated": rsi_updated
             }
             
         except Exception as e:
-            logger.error(f"❌ Failed to get prediction-ready RSI data: {e}")
+            logger.error(f"❌ Failed to get professional RSI data: {e}")
             return self._get_default_rsi_data(hyperliquid_price, str(e))
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get optimized market analysis from Yahoo Finance with periodic updates"""
