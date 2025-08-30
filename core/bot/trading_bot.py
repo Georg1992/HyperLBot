@@ -439,7 +439,7 @@ class YahooHyperliquidPaperTradingBot:
                     # Seed with historical candle closes (time-based data)
                     current_time = time.time()
                     for i, candle in enumerate(candles_5m[-15:]):
-                        # Simulate historical timestamps (5s intervals for responsiveness)
+                        # Simulate historical timestamps (5s intervals for max responsiveness)
                         hist_timestamp = current_time - (15 - i) * 5
                         real_time_rsi_calculator.update_price(candle['close'], hist_timestamp)
                     
