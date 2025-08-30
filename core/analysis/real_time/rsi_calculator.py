@@ -29,8 +29,8 @@ class RealTimeRSICalculator:
         # Track last price for incremental updates
         self.last_price = None
         
-        # Price filtering for Bitcoin - much more sensitive thresholds
-        self.min_price_change_threshold = 0.50  # $0.50 threshold for Bitcoin movements
+        # Price filtering for Bitcoin - adjusted for stability
+        self.min_price_change_threshold = 2.0  # $2.00 threshold for meaningful Bitcoin movements
         
         # Track update timing for diagnostics
         self.last_update_time = time.time()
@@ -43,8 +43,8 @@ class RealTimeRSICalculator:
             timestamp = time.time()
         
         # PREVENT DUPLICATE PRICE UPDATES - major cause of RSI fluctuations
-        if self.last_price is not None and abs(price - self.last_price) < 0.01:
-            logger.debug(f"📊 Skipping duplicate price update: {price} (same as last: {self.last_price})")
+        if self.last_price is not None and abs(price - self.last_price) < 0.10:  # $0.10 threshold for duplicates
+            logger.debug(f"📊 Skipping duplicate/identical price update: {price} (same as last: {self.last_price})")
             return
         
         # Calculate RSI incrementally if we have a previous price
@@ -54,8 +54,12 @@ class RealTimeRSICalculator:
             # Skip tiny price changes that add noise
             if abs(price_change) < self.min_price_change_threshold:
                 logger.debug(f"📊 Skipping tiny price change: {price_change:+.2f} (threshold: {self.min_price_change_threshold})")
-                # Still update last_price but don't recalculate RSI
-                self.last_price = price
+                # DON'T update last_price - keep RSI baseline intact!
+                # Store price in history but don't affect RSI calculation
+                self.price_history.append({
+                    'price': price,
+                    'timestamp': timestamp
+                })
                 return
             
             # Calculate gain/loss from this single price change
