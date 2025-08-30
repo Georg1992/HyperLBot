@@ -435,12 +435,18 @@ class YahooHyperliquidPaperTradingBot:
                 # Get Yahoo candles for proper historical context
                 candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 20)
                 if candles_5m and len(candles_5m) >= 15:
-                    # Seed with historical candle closes (time-based data)
+                    # Force seed historical data (bypass time sampling for initialization)
                     current_time = time.time()
                     for i, candle in enumerate(candles_5m[-15:]):
-                        # Simulate historical timestamps (5s intervals for max responsiveness)
                         hist_timestamp = current_time - (15 - i) * 5
-                        real_time_rsi_calculator.update_price(candle['close'], hist_timestamp)
+                        real_time_rsi_calculator.price_samples.append({
+                            'price': candle['close'],
+                            'timestamp': hist_timestamp
+                        })
+                    # Set last sample time to enable future real-time updates
+                    real_time_rsi_calculator.last_sample_time = current_time - 5
+                    # Force RSI calculation with seeded data
+                    real_time_rsi_calculator._calculate_rsi()
                     
                     logger.info(f"📊 Seeded professional RSI with {len(candles_5m[-15:])} Yahoo candles")
             
