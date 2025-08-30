@@ -364,16 +364,31 @@ class YahooHyperliquidPaperTradingBot:
             logger.info("🔗 Testing API connections...")
             
             # Initialize Hyperliquid API
-            self.hyperliquid_api = HyperliquidAPI()
+            try:
+                self.hyperliquid_api = HyperliquidAPI()
+                logger.info("✅ HyperliquidAPI instance created")
+            except Exception as e:
+                logger.error(f"❌ Failed to create HyperliquidAPI instance: {e}")
+                self.hyperliquid_api = None
+                hyperliquid_ok = False
             
-            # Test Hyperliquid connection
-            current_price = self.hyperliquid_api.get_current_price("BTC")
-            if current_price and current_price > 0:
-                current_price_safe = current_price or 0
-                logger.success(f"✅ Hyperliquid API connected - BTC: ${current_price_safe:,.2f}")
-                hyperliquid_ok = True
+            # Test Hyperliquid connection if instance was created
+            if self.hyperliquid_api is not None:
+                try:
+                    current_price = self.hyperliquid_api.get_current_price("BTC")
+                    if current_price and current_price > 0:
+                        current_price_safe = current_price or 0
+                        logger.success(f"✅ Hyperliquid API connected - BTC: ${current_price_safe:,.2f}")
+                        hyperliquid_ok = True
+                    else:
+                        logger.error("❌ Hyperliquid API connection failed")
+                        hyperliquid_ok = False
+                        self.hyperliquid_api = None  # Clean up failed instance
+                except Exception as e:
+                    logger.error(f"❌ Hyperliquid API test failed: {e}")
+                    hyperliquid_ok = False
+                    self.hyperliquid_api = None  # Clean up failed instance
             else:
-                logger.error("❌ Hyperliquid API connection failed")
                 hyperliquid_ok = False
             
             # Test Yahoo Finance connection
