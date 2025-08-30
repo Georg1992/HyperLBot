@@ -51,6 +51,11 @@ class RealTimeRSICalculator:
         self.yahoo_baseline_avg_gain = None
         self.yahoo_baseline_avg_loss = None
         
+        # Time-based decay for platform-like behavior
+        self.last_price_update_time = 0
+        self.decay_rate = 0.1  # RSI decay per second during low volatility
+        self.decay_threshold = 30  # Seconds without significant price change before decay starts
+        
         logger.info(f"📊 Hyperliquid-Style RSI Calculator: {periods} periods")
     
     def initialize_with_yahoo_rsi(self, yahoo_rsi: float, yahoo_prices: List[float]) -> bool:
@@ -149,7 +154,11 @@ class RealTimeRSICalculator:
         # This prevents overreaction to tiny price movements
         if not self._is_significant_change(price_change, previous_price):
             logger.debug(f"📊 Price change too small ({abs(price_change / previous_price * 100):.4f}%) - skipping RSI update")
-            return False
+            # Apply time-based decay instead
+            return self._apply_time_based_decay()
+        
+        # Update last price update time for decay tracking
+        self.last_price_update_time = time.time()
         
         # Calculate gain and loss
         gain = price_change if price_change > 0 else 0.0
@@ -182,6 +191,9 @@ class RealTimeRSICalculator:
         Returns:
             Dict with RSI value, trend, signal, and metadata
         """
+        # Apply time-based decay if needed
+        self._apply_time_based_decay()
+        
         return {
             "rsi": self.cached_rsi,
             "trend": self.cached_trend,
@@ -268,6 +280,38 @@ class RealTimeRSICalculator:
         
         # Change is significant if it exceeds the volatility threshold
         return percentage_change >= volatility_threshold
+
+    def _apply_time_based_decay(self) -> bool:
+        """
+        Apply time-based decay to RSI during low volatility periods
+        This makes RSI behave more like real trading platforms
+        """
+        current_time = time.time()
+        time_since_update = current_time - self.last_price_update_time
+        
+        # Only apply decay if enough time has passed without significant price changes
+        if time_since_update > self.decay_threshold and self.cached_rsi is not None:
+            # Calculate decay amount
+            decay_amount = self.decay_rate * time_since_update
+            
+            # Apply decay toward 50 (neutral)
+            if self.cached_rsi > 50:
+                new_rsi = max(50, self.cached_rsi - decay_amount)
+            elif self.cached_rsi < 50:
+                new_rsi = min(50, self.cached_rsi + decay_amount)
+            else:
+                new_rsi = 50
+            
+            # Only update if there's meaningful change
+            if abs(new_rsi - self.cached_rsi) > 0.1:
+                self.cached_rsi = round(new_rsi, 2)
+                self.cached_trend, self.cached_signal = self._determine_rsi_signals(new_rsi)
+                self.last_calculation_time = current_time
+                
+                logger.debug(f"📊 RSI decay applied: {self.cached_rsi:.2f} (time: {time_since_update:.1f}s)")
+                return True
+        
+        return False
 
 # Global instance
 real_time_rsi_calculator = RealTimeRSICalculator(periods=14)
