@@ -412,30 +412,10 @@ class YahooHyperliquidPaperTradingBot:
             return False
     
     def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
-        """Get real-time RSI data with proper price updates"""
+        """Get RSI data using Yahoo candles for proper baseline calculation"""
         try:
-            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
-            
-            # UPDATE RSI with current price (this was missing!)
-            if hyperliquid_price is None:
-                hyperliquid_price = self.get_hyperliquid_price()
-            
-            if hyperliquid_price:
-                # Add current price to RSI calculator
-                real_time_rsi_calculator.add_price(hyperliquid_price)
-                logger.debug(f"📊 Updated RSI calculator with price: ${hyperliquid_price:.2f}")
-            
-            # Get RSI calculation
-            rsi_data = real_time_rsi_calculator.calculate_rsi()
-            
-            return {
-                "rsi": rsi_data.get("rsi", None),
-                "rsi_trend": rsi_data.get("trend", "NEUTRAL"),
-                "rsi_signal": rsi_data.get("signal", "NEUTRAL"),
-                "momentum": rsi_data.get("trend", "NEUTRAL"),
-                "confidence": 0.8 if rsi_data.get("rsi") is not None else magic_numbers.DEFAULT_CONFIDENCE,
-                "data_points": len(real_time_rsi_calculator.price_history)
-            }
+            # Use market data analyzer for proper Yahoo-based RSI calculation
+            return self.market_data_analyzer.get_optimized_rsi_data(hyperliquid_price)
             
         except Exception as e:
             logger.error(f"❌ Failed to get RSI data: {e}")
@@ -714,7 +694,7 @@ class YahooHyperliquidPaperTradingBot:
             market_data = {
                 "current_price": current_price,
                 "trend": trend_data.get("overall_trend", "UNKNOWN"),
-                "rsi": rsi_data.get("rsi"),
+                "rsi": rsi_data.get("rsi") or rsi_data.get("rsi_value"),  # Support both field names
                 "volume_depth": volume_data.get("volume_depth", 0.0),
                 "volume_category": volume_data.get("volume_category", "UNKNOWN"),
                 "order_flow": volume_data.get("order_flow", "NEUTRAL"),
