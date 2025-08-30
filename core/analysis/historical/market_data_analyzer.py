@@ -9,13 +9,53 @@ from typing import Dict, Any, List, Optional
 from loguru import logger
 from core.constants import magic_numbers
 from core.external.yahoo_data_fetcher import YahooDataFetcher
+from core.external.yahoo_volume_analyzer import YahooVolumeAnalyzer
+from core.external.yahoo_momentum_analyzer import YahooMomentumAnalyzer
 
 class MarketDataAnalyzer:
     """Handles market data analysis and RSI calculations"""
     
     def __init__(self):
         self.yahoo_fetcher = YahooDataFetcher()
+        self.volume_analyzer = YahooVolumeAnalyzer()
+        self.momentum_analyzer = YahooMomentumAnalyzer()
         logger.info("📊 Market Data Analyzer initialized")
+    
+    def get_current_price(self) -> Optional[float]:
+        """Get current price from Yahoo Finance (historical context only)"""
+        try:
+            # Get the most recent 5-minute candle
+            candles = self.get_5m_candles("BTC", 1)
+            if candles and len(candles) > 0:
+                return candles[0]['close']
+            return None
+        except Exception as e:
+            logger.error(f"❌ Failed to get current price: {e}")
+            return None
+    
+    def _calculate_sma(self, candles: List[Dict], period: int) -> float:
+        """Calculate Simple Moving Average"""
+        if len(candles) < period:
+            return 0.0
+        
+        prices = [c['close'] for c in candles[-period:]]
+        return sum(prices) / len(prices)
+    
+    def _determine_market_condition(self, sma_5m: float, sma_20m: float, current_price: float) -> str:
+        """Determine market condition based on moving averages and current price"""
+        if sma_5m == 0 or sma_20m == 0:
+            return "NEUTRAL"
+        
+        if current_price > sma_5m > sma_20m:
+            return "BULLISH"
+        elif current_price < sma_5m < sma_20m:
+            return "BEARISH"
+        elif sma_5m > sma_20m:
+            return "BULLISH"
+        elif sma_5m < sma_20m:
+            return "BEARISH"
+        else:
+            return "SIDEWAYS"
     
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get comprehensive Yahoo Finance market analysis"""
@@ -38,7 +78,7 @@ class MarketDataAnalyzer:
             market_condition = self._determine_market_condition(sma_5m, sma_20m, current_price)
             
             # Get volume analysis
-            volume_data = self.volume_analyzer.analyze_volume(candles_5m)
+            volume_data = self.volume_analyzer.analyze_volume_data(candles_5m)
             
             # Get momentum analysis
             momentum_data = self.momentum_analyzer.analyze_momentum(candles_5m)
