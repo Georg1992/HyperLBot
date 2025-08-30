@@ -145,28 +145,47 @@ class RealTimeRSICalculator:
         previous_price = self.price_history[-2]
         price_change = current_price - previous_price
         
+        # Calculate percentage change for stability check
+        if previous_price > 0:
+            percentage_change = abs(price_change) / previous_price * 100
+        else:
+            percentage_change = 0
+        
+        # Only update RSI if change is significant enough (more stable)
+        # This prevents overreaction to tiny price movements
+        min_change_threshold = 0.01  # 0.01% minimum change
+        if percentage_change < min_change_threshold:
+            logger.debug(f"📊 Price change too small ({percentage_change:.4f}%) - skipping RSI update")
+            return False
+        
         # Calculate gain and loss
         gain = price_change if price_change > 0 else 0.0
         loss = -price_change if price_change < 0 else 0.0
         
-        # Update averages using Wilder's smoothing
-        alpha = 1.0 / self.periods
+        # Use proper Wilder's smoothing (standard RSI calculation)
+        alpha = 1.0 / self.periods  # Standard Wilder's alpha
         self.avg_gain = (1 - alpha) * self.avg_gain + alpha * gain
         self.avg_loss = (1 - alpha) * self.avg_loss + alpha * loss
         
-        # Calculate new RSI
+        # Calculate new RSI using standard formula
         if self.avg_loss == 0:
             new_rsi = 100.0
         else:
             rs = self.avg_gain / self.avg_loss
             new_rsi = 100.0 - (100.0 / (1.0 + rs))
         
+        # Apply additional smoothing to prevent dramatic jumps
+        # Blend new RSI with previous RSI for stability (while keeping Wilder's core)
+        if self.cached_rsi is not None:
+            smoothing_factor = 0.8  # 80% previous, 20% new for stability
+            new_rsi = (smoothing_factor * self.cached_rsi) + ((1 - smoothing_factor) * new_rsi)
+        
         # Update cached values
         self.cached_rsi = round(new_rsi, 2)
         self.cached_trend, self.cached_signal = self._determine_rsi_signals(new_rsi)
         self.last_calculation_time = time.time()
         
-        logger.debug(f"📊 RSI updated: {self.cached_rsi:.2f} (price: ${price:.2f}, change: {price_change:+.2f})")
+        logger.debug(f"📊 RSI updated: {self.cached_rsi:.2f} (price: ${price:.2f}, change: {price_change:+.2f}, {percentage_change:.4f}%)")
         return True
     
     def get_rsi(self) -> Dict[str, Any]:
