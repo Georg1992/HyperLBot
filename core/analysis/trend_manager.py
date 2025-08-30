@@ -76,29 +76,36 @@ class TrendManager:
             # Calculate volume confirmation (if available)
             volume_confirmation = self._check_volume_confirmation(candles[-periods:])
             
-            # Determine trend with enhanced logic
-            if price_change_pct > 0.5 and strength > 0.6 and momentum > 0:
+            # Determine trend with LESS CONSERVATIVE thresholds for Bitcoin
+            # Bitcoin 5-min movements: 0.1-0.5% is normal, 0.5%+ is significant
+            if price_change_pct > 0.2 and strength > 0.5 and momentum > 0:  # Lowered from 0.5% and 0.6
                 trend = "UPTREND"
                 direction = 1
-            elif price_change_pct < -0.5 and strength > 0.6 and momentum < 0:
+            elif price_change_pct < -0.2 and strength > 0.5 and momentum < 0:  # Lowered from -0.5% and 0.6
                 trend = "DOWNTREND"
                 direction = -1
-            elif abs(price_change_pct) < 0.2:
+            elif abs(price_change_pct) < 0.1:  # Lowered from 0.2%
                 trend = "SIDEWAYS"
                 direction = 0
             else:
-                # Weak trend
-                if price_change_pct > 0:
+                # Weak trend - more permissive for Bitcoin volatility
+                if price_change_pct > 0.05 and momentum > 0:  # Lowered threshold
                     trend = "WEAK_UPTREND"
                     direction = 1
-                else:
+                elif price_change_pct < -0.05 and momentum < 0:  # Lowered threshold
                     trend = "WEAK_DOWNTREND"
                     direction = -1
+                else:
+                    trend = "SIDEWAYS"  # Default when unclear
+                    direction = 0
             
             # Calculate confidence score
             confidence = self._calculate_confidence_score(
                 strength, momentum, volume_confirmation, abs(price_change_pct)
             )
+            
+            # DEBUG: Log trend calculation details to help identify MIXED trend causes
+            logger.info(f"📊 Trend Analysis: {trend} | Price: {price_change_pct:.3f}% | Strength: {strength:.3f} | Momentum: {momentum:.3f}")
             
             result = {
                 "trend": trend,
@@ -300,6 +307,10 @@ class TrendManager:
             # Determine overall trend
             overall_trend = self._determine_overall_trend(trend_1m, trend_5m, trend_1h, alignment_score)
             
+            # DEBUG: Log multi-timeframe analysis to understand MIXED trend frequency
+            logger.info(f"📊 Multi-Timeframe Trends: 1m={trend_1m.get('trend', 'N/A')} | 5m={trend_5m.get('trend', 'N/A')} | 1h={trend_1h.get('trend', 'N/A')}")
+            logger.info(f"📊 Alignment: {alignment_score:.3f} → Overall: {overall_trend}")
+            
             # Check for reversals
             reversal_analysis = self.detect_trend_reversal(candles_5m, 10)
             
@@ -325,53 +336,90 @@ class TrendManager:
             }
     
     def _calculate_alignment_score(self, trend_1m: Dict, trend_5m: Dict, trend_1h: Dict) -> float:
-        """Calculate how well trends align across timeframes"""
+        """Calculate how well trends align across timeframes - MORE PERMISSIVE for Bitcoin"""
         alignment_score = 0.0
         
-        # Short-term alignment (1m + 5m)
+        # Short-term alignment (1m + 5m) - most important for Bitcoin trading
         if trend_1m["direction"] == trend_5m["direction"]:
-            alignment_score += 0.4
+            alignment_score += 0.5  # Increased weight
+        elif trend_1m["direction"] * trend_5m["direction"] > 0:  # Same sign (both positive or negative)
+            alignment_score += 0.25  # Partial credit for same direction
         
         # Medium-term alignment (5m + 1h)
         if trend_5m["direction"] == trend_1h["direction"]:
             alignment_score += 0.3
+        elif trend_5m["direction"] * trend_1h["direction"] > 0:  # Same sign
+            alignment_score += 0.15  # Partial credit
         
-        # Long-term alignment (1m + 1h)
+        # Long-term alignment (1m + 1h) - less critical for Bitcoin 5-min trading
         if trend_1m["direction"] == trend_1h["direction"]:
-            alignment_score += 0.3
+            alignment_score += 0.2  # Reduced weight
+        elif trend_1m["direction"] * trend_1h["direction"] > 0:  # Same sign
+            alignment_score += 0.1  # Partial credit
         
-        return alignment_score
+        return min(alignment_score, 1.0)  # Cap at 1.0
     
     def _determine_overall_trend(self, trend_1m: Dict, trend_5m: Dict, 
                                 trend_1h: Dict, alignment_score: float) -> str:
-        """Determine overall trend based on multi-timeframe analysis"""
+        """Determine overall trend based on multi-timeframe analysis - LESS MIXED results"""
         
-        # If strong alignment, follow the majority
-        if alignment_score > 0.7:
+        # PRIORITIZE 5m timeframe for Bitcoin trading (most relevant for bot decisions)
+        primary_direction = trend_5m.get("direction", 0)
+        primary_strength = trend_5m.get("strength", 0)
+        
+        # If strong alignment, follow the majority but be less strict about MIXED
+        if alignment_score > 0.6:  # Lowered from 0.7
             directions = [trend_1m["direction"], trend_5m["direction"], trend_1h["direction"]]
             up_count = sum(1 for d in directions if d > 0)
             down_count = sum(1 for d in directions if d < 0)
             
-            if up_count > down_count:
+            if up_count >= 2:  # 2 out of 3 timeframes agree
                 return "STRONG_UPTREND"
-            elif down_count > up_count:
+            elif down_count >= 2:  # 2 out of 3 timeframes agree  
                 return "STRONG_DOWNTREND"
             else:
-                return "MIXED"
-        
-        # If weak alignment, prioritize shorter timeframes
-        elif alignment_score > 0.4:
-            if trend_1m["direction"] == trend_5m["direction"]:
-                if trend_1m["direction"] > 0:
-                    return "UPTREND"
+                # Even with mixed timeframes, follow 5m trend if it's strong
+                if primary_strength > 0.6:
+                    return "UPTREND" if primary_direction > 0 else "DOWNTREND"
                 else:
-                    return "DOWNTREND"
-            else:
-                return "MIXED"
+                    # Follow 5m trend even with mixed timeframes if it shows direction
+                    if abs(primary_direction) > 0 and primary_strength > 0.3:
+                        return "WEAK_UPTREND" if primary_direction > 0 else "WEAK_DOWNTREND"
+                    else:
+                        return "SIDEWAYS"  # Avoid MIXED, use SIDEWAYS instead
         
-        # No alignment - sideways
+        # If moderate alignment, prioritize 5m and 1m (shorter timeframes for Bitcoin)
+        elif alignment_score > 0.3:  # Lowered from 0.4
+            if trend_1m["direction"] == trend_5m["direction"] and trend_1m["direction"] != 0:
+                strength_avg = (trend_1m.get("strength", 0) + trend_5m.get("strength", 0)) / 2
+                if strength_avg > 0.4:  # Lowered from implicit higher threshold
+                    return "UPTREND" if trend_1m["direction"] > 0 else "DOWNTREND"
+                else:
+                    return "WEAK_UPTREND" if trend_1m["direction"] > 0 else "WEAK_DOWNTREND"
+            else:
+                # Follow the stronger trend instead of defaulting to MIXED
+                strongest_trend = max([trend_1m, trend_5m, trend_1h], key=lambda t: t.get("strength", 0))
+                if strongest_trend.get("strength", 0) > 0.4:
+                    if strongest_trend["direction"] > 0:
+                        return "WEAK_UPTREND"
+                    elif strongest_trend["direction"] < 0:
+                        return "WEAK_DOWNTREND"
+                    else:
+                        return "SIDEWAYS"
+                else:
+                    return "SIDEWAYS"
+        
+        # Low alignment - use 5m trend as primary indicator
         else:
-            return "SIDEWAYS"
+            if primary_strength > 0.3:  # Follow 5m trend if it has some strength
+                if primary_direction > 0:
+                    return "WEAK_UPTREND"
+                elif primary_direction < 0:
+                    return "WEAK_DOWNTREND"
+                else:
+                    return "SIDEWAYS"
+            else:
+                return "SIDEWAYS"
 
 # Global instance
 trend_manager = TrendManager()
