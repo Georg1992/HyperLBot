@@ -53,8 +53,8 @@ class RealTimeRSICalculator:
         
         # Time-based decay for platform-like behavior
         self.last_price_update_time = 0
-        self.decay_rate = 0.1  # RSI decay per second during low volatility
-        self.decay_threshold = 30  # Seconds without significant price change before decay starts
+        self.decay_rate = 0.01  # Much slower decay: 0.01 RSI points per second
+        self.decay_threshold = 300  # 5 minutes without significant price change before decay starts
         
         logger.info(f"📊 Hyperliquid-Style RSI Calculator: {periods} periods")
     
@@ -291,14 +291,14 @@ class RealTimeRSICalculator:
         
         # Only apply decay if enough time has passed without significant price changes
         if time_since_update > self.decay_threshold and self.cached_rsi is not None:
-            # Calculate decay amount
-            decay_amount = self.decay_rate * time_since_update
+            # Calculate decay amount (capped to prevent over-decay)
+            decay_amount = min(self.decay_rate * time_since_update, 5.0)  # Max 5 RSI points
             
-            # Apply decay toward 50 (neutral)
+            # Apply decay toward 50 (neutral) but don't force it exactly to 50
             if self.cached_rsi > 50:
-                new_rsi = max(50, self.cached_rsi - decay_amount)
+                new_rsi = max(45, self.cached_rsi - decay_amount)  # Don't go below 45
             elif self.cached_rsi < 50:
-                new_rsi = min(50, self.cached_rsi + decay_amount)
+                new_rsi = min(55, self.cached_rsi + decay_amount)  # Don't go above 55
             else:
                 new_rsi = 50
             
