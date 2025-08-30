@@ -29,8 +29,8 @@ class RealTimeRSICalculator:
         # Track last price for incremental updates
         self.last_price = None
         
-        # Price filtering (keep this - prevents noise from tiny changes)
-        self.min_price_change_threshold = 5.0  # Lower threshold to catch smaller moves like the chart
+        # Price filtering for Bitcoin - much more sensitive thresholds
+        self.min_price_change_threshold = 0.50  # $0.50 threshold for Bitcoin movements
         
         # Track update timing for diagnostics
         self.last_update_time = time.time()
