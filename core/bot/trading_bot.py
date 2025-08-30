@@ -295,12 +295,9 @@ class YahooHyperliquidPaperTradingBot:
             # Update RSI calculator with real-time price (SINGLE UPDATE PER CYCLE)
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
             
-            # Initialize RSI calculator if needed
-            if not real_time_rsi_calculator.is_initialized:
-                real_time_rsi_calculator.initialize_with_yahoo_data()
-            
-            # Add the current price to RSI calculator ONCE per cycle
-            real_time_rsi_calculator.add_price(current_price)
+            # Update RSI calculator with current WebSocket price
+            # The new professional RSI calculator handles initialization automatically
+            real_time_rsi_calculator.update_price(current_price)
             
             # Get volume data from order book analysis (real-time via WebSocket)
             try:
@@ -321,7 +318,7 @@ class YahooHyperliquidPaperTradingBot:
                 self.hyperliquid_volume_data = None
             
             # RSI calculation is now handled in real-time with each price update
-            rsi_data = real_time_rsi_calculator.calculate_rsi()
+            rsi_data = real_time_rsi_calculator.get_rsi()
             rsi_value = rsi_data.get("rsi")
             trend_value = rsi_data.get("trend", "NEUTRAL")
             
