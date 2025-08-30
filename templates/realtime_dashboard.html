@@ -420,10 +420,7 @@
                     <span class="data-label">Overall Trend:</span>
                     <span class="data-value" id="market-overall-trend">Loading...</span>
                 </div>
-                <div class="data-item">
-                    <span class="data-label">Alignment Score:</span>
-                    <span class="data-value" id="market-alignment-score">Loading...</span>
-                </div>
+
                 <div class="data-item">
                     <span class="data-label">RSI:</span>
                     <span class="data-value" id="market-rsi">Loading...</span>
@@ -761,17 +758,7 @@
                     overallTrendElement.className = 'data-value trend-neutral';
                 }
                 
-                // Update Alignment Score from trend_analysis
-                const alignmentElement = document.getElementById('market-alignment-score');
-                if (market.trend_analysis && market.trend_analysis.alignment_score !== undefined) {
-                    const alignmentScore = market.trend_analysis.alignment_score || 0;
-                    alignmentElement.textContent = `${(alignmentScore * 100).toFixed(1)}%`;
-                    alignmentElement.className = 'data-value ' + (alignmentScore > 0.7 ? 'trend-up' : alignmentScore > 0.4 ? 'trend-neutral' : 'trend-down');
-                } else {
-                    alignmentElement.textContent = 'N/A';
-                    alignmentElement.className = 'data-value trend-neutral';
-                }
-                
+
                 // Update RSI
                 const rsiElement = document.getElementById('market-rsi');
                 if (market.rsi && market.rsi !== 'N/A' && !isNaN(parseFloat(market.rsi))) {
