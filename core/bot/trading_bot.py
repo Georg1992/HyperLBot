@@ -606,8 +606,17 @@ class YahooHyperliquidPaperTradingBot:
         
         return signal_data
     
-
-
+    def check_position_exits(self, hyperliquid_price: float, current_analysis: Dict[str, Any] = None):
+        """Check positions for exit conditions"""
+        self.trading_execution.check_position_exits(hyperliquid_price, current_analysis)
+    
+    def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
+        """Place a paper trade"""
+        return self.trading_execution.place_paper_trade(side, size, leverage, signal_data)
+    
+    def close_paper_position(self, position: Dict, exit_reason: str, exit_price: float):
+        """Close a paper position"""
+        self.trading_execution.close_paper_position(position, exit_reason, exit_price)
     
     def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
         """Run the Hyperliquid paper trading bot"""
