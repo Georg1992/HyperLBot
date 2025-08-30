@@ -58,13 +58,35 @@
             100% { transform: scale(1); }
         }
 
-        .dashboard-grid {
+        .dashboard-container {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            grid-template-columns: 400px 1fr;
             gap: 20px;
             padding: 20px;
-            max-width: 1400px;
+            max-width: 1600px;
             margin: 0 auto;
+            min-height: calc(100vh - 140px);
+        }
+
+        .left-sidebar {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .right-content {
+            display: grid;
+            grid-template-rows: auto auto 1fr;
+            gap: 20px;
+        }
+
+        .top-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .full-width-row {
+            grid-column: 1 / -1;
         }
 
         .card {
@@ -309,26 +331,22 @@
             color: #9E9E9E;
         }
 
-        .large-card {
-            grid-column: span 2;
-        }
-
-        .wide-card {
-            grid-column: span 3;
-        }
-
-        .medium-card {
-            grid-column: span 2;
+        .left-sidebar .card {
+            height: fit-content;
         }
 
         @media (max-width: 768px) {
-            .large-card, .wide-card, .medium-card {
-                grid-column: span 1;
-            }
-            
-            .dashboard-grid {
+            .dashboard-container {
                 grid-template-columns: 1fr;
                 padding: 10px;
+            }
+            
+            .left-sidebar {
+                order: -1;
+            }
+            
+            .top-row {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -346,14 +364,15 @@
         ⏳ Initializing WebSocket connection...
     </div>
 
-    <div class="dashboard-grid">
-        <!-- Trading Overview Card (Combined Session + Summary) -->
-        <div class="card large-card">
-            <h2>🚀 Trading Overview</h2>
-            <div class="overview-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div class="dashboard-container">
+        <!-- Left Sidebar: Trading Overview -->
+        <div class="left-sidebar">
+            <div class="card">
+                <h2>🚀 Trading Overview</h2>
+                
                 <!-- Session Status Section -->
-                <div>
-                    <h3 style="color: #FFD700; margin-bottom: 10px;">📊 Session Status</h3>
+                <div style="margin-bottom: 30px;">
+                    <h3 style="color: #FFD700; margin-bottom: 15px;">📊 Session Status</h3>
                     <div id="session-data">
                         <div class="data-item">
                             <span class="data-label">Status:</span>
@@ -374,9 +393,9 @@
                     </div>
                 </div>
                 
-                <!-- Trading Performance Section -->
+                <!-- Performance Section -->
                 <div>
-                    <h3 style="color: #FFD700; margin-bottom: 10px;">💰 Performance</h3>
+                    <h3 style="color: #FFD700; margin-bottom: 15px;">💰 Performance</h3>
                     <div id="trading-summary">
                         <div class="data-item">
                             <span class="data-label">Total Trades:</span>
@@ -411,117 +430,120 @@
             </div>
         </div>
 
-        <!-- Market Data Card -->
-        <div class="card">
-            <h2>📈 Market Data</h2>
-            <div class="price-big" id="current-price">Loading...</div>
-            <div id="market-data">
-                <div class="data-item">
-                    <span class="data-label">Overall Trend:</span>
-                    <span class="data-value" id="market-overall-trend">Loading...</span>
-                </div>
-
-                <div class="data-item">
-                    <span class="data-label">RSI:</span>
-                    <span class="data-value" id="market-rsi">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Volume:</span>
-                    <span class="data-value" id="market-volume">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Volatility 5m:</span>
-                    <span class="data-value" id="market-volatility">Loading...</span>
-                </div>
-                <div class="data-item">
-                    <span class="data-label">Ultimate Pressure:</span>
-                    <span class="data-value" id="market-pressure">Loading...</span>
-                </div>
-            </div>
-        </div>
-
-
-
-        <!-- Activity Logs Card -->
-        <div class="card medium-card">
-            <h2>📝 Real-Time Activity</h2>
-            <div class="log-container" id="activity-logs">
-                <div class="log-entry">Connecting to real-time data stream...</div>
-            </div>
-        </div>
-
-        <!-- Predictions Card -->
-        <div class="card">
-            <h2>🔮 Trading Predictions</h2>
-            <div id="predictions-container">
-                <div class="prediction-status">
-                    <div class="data-item">
-                        <span class="data-label">Status:</span>
-                        <span class="data-value" id="prediction-status">Waiting for bot...</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Latest Signal:</span>
-                        <span class="data-value" id="latest-signal">None yet</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Confidence:</span>
-                        <span class="data-value" id="signal-confidence">N/A</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Direction:</span>
-                        <span class="data-value" id="signal-direction">-</span>
+        <!-- Right Content Area -->
+        <div class="right-content">
+            <!-- Top Row: Market Data and Trading Predictions -->
+            <div class="top-row">
+                <!-- Market Data Card -->
+                <div class="card">
+                    <h2>📈 Market Data</h2>
+                    <div class="price-big" id="current-price">Loading...</div>
+                    <div id="market-data">
+                        <div class="data-item">
+                            <span class="data-label">Overall Trend:</span>
+                            <span class="data-value" id="market-overall-trend">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">RSI:</span>
+                            <span class="data-value" id="market-rsi">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Volume:</span>
+                            <span class="data-value" id="market-volume">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Volatility 5m:</span>
+                            <span class="data-value" id="market-volatility">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Ultimate Pressure:</span>
+                            <span class="data-value" id="market-pressure">Loading...</span>
+                        </div>
                     </div>
                 </div>
-                <div class="prediction-info" style="margin-top: 10px; padding: 10px; background: rgba(255,165,0,0.1); border-left: 3px solid #FFA500; font-size: 12px;">
-                    💡 <strong>Tip:</strong> Start the trading bot to see live prediction signals from ML engines, pattern recognition, and technical analysis.
-                </div>
-            </div>
-        </div>
 
-        <!-- Trade History Card (NEW) -->
-        <div class="card wide-card">
-            <h2>📋 Trade History & Status</h2>
-            <div class="trade-tabs" style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <button class="trade-tab active" onclick="switchTradeTab('all')" id="tab-all">All Trades</button>
-                <button class="trade-tab" onclick="switchTradeTab('open')" id="tab-open">Open Positions</button>
-                <button class="trade-tab" onclick="switchTradeTab('pending')" id="tab-pending">Pending Orders</button>
-                <button class="trade-tab" onclick="switchTradeTab('closed')" id="tab-closed">Closed Trades</button>
-            </div>
-            
-            <div class="trade-container" style="max-height: 300px; overflow-y: auto;">
-                <div id="trade-content">
-                    <div class="trade-entry no-trades-message">
-                        <div class="log-entry" style="text-align: center; color: #888; padding: 20px;">
-                            <div style="font-size: 24px; margin-bottom: 10px;">📈</div>
-                            <div><strong>No trades yet</strong></div>
-                            <div style="font-size: 12px; margin-top: 8px;">
-                                Start the trading bot to see live trades appear here.<br>
-                                This panel will show all your trading activity, open positions, and trade history.
+                <!-- Trading Predictions Card -->
+                <div class="card">
+                    <h2>🔮 Trading Predictions</h2>
+                    <div id="predictions-container">
+                        <div class="prediction-status">
+                            <div class="data-item">
+                                <span class="data-label">Status:</span>
+                                <span class="data-value" id="prediction-status">Waiting for bot...</span>
                             </div>
+                            <div class="data-item">
+                                <span class="data-label">Latest Signal:</span>
+                                <span class="data-value" id="latest-signal">None yet</span>
+                            </div>
+                            <div class="data-item">
+                                <span class="data-label">Confidence:</span>
+                                <span class="data-value" id="signal-confidence">N/A</span>
+                            </div>
+                            <div class="data-item">
+                                <span class="data-label">Direction:</span>
+                                <span class="data-value" id="signal-direction">-</span>
+                            </div>
+                        </div>
+                        <div class="prediction-info" style="margin-top: 10px; padding: 10px; background: rgba(255,165,0,0.1); border-left: 3px solid #FFA500; font-size: 12px;">
+                            💡 <strong>Tip:</strong> Start the trading bot to see live prediction signals from ML engines, pattern recognition, and technical analysis.
                         </div>
                     </div>
                 </div>
             </div>
-            
-            <!-- Trade Statistics -->
-            <div class="trade-stats" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
-                <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: center;">
-                    <div>
-                        <div class="data-label">Open Positions</div>
-                        <div class="data-value" id="open-positions-count">N/A</div>
+
+            <!-- Second Row: Trade History & Status -->
+            <div class="card full-width-row">
+                <h2>📋 Trade History & Status</h2>
+                <div class="trade-tabs" style="display: flex; gap: 10px; margin-bottom: 15px;">
+                    <button class="trade-tab active" onclick="switchTradeTab('all')" id="tab-all">All Trades</button>
+                    <button class="trade-tab" onclick="switchTradeTab('open')" id="tab-open">Open Positions</button>
+                    <button class="trade-tab" onclick="switchTradeTab('pending')" id="tab-pending">Pending Orders</button>
+                    <button class="trade-tab" onclick="switchTradeTab('closed')" id="tab-closed">Closed Trades</button>
+                </div>
+                
+                <div class="trade-container" style="max-height: 300px; overflow-y: auto;">
+                    <div id="trade-content">
+                        <div class="trade-entry no-trades-message">
+                            <div class="log-entry" style="text-align: center; color: #888; padding: 20px;">
+                                <div style="font-size: 24px; margin-bottom: 10px;">📈</div>
+                                <div><strong>No trades yet</strong></div>
+                                <div style="font-size: 12px; margin-top: 8px;">
+                                    Start the trading bot to see live trades appear here.<br>
+                                    This panel will show all your trading activity, open positions, and trade history.
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div>
-                        <div class="data-label">Pending Orders</div>
-                        <div class="data-value" id="pending-orders-count">N/A</div>
+                </div>
+                
+                <!-- Trade Statistics -->
+                <div class="trade-stats" style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.2);">
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; text-align: center;">
+                        <div>
+                            <div class="data-label">Open Positions</div>
+                            <div class="data-value" id="open-positions-count">N/A</div>
+                        </div>
+                        <div>
+                            <div class="data-label">Pending Orders</div>
+                            <div class="data-value" id="pending-orders-count">N/A</div>
+                        </div>
+                        <div>
+                            <div class="data-label">Today's Trades</div>
+                            <div class="data-value" id="todays-trades-count">N/A</div>
+                        </div>
+                        <div>
+                            <div class="data-label">Avg Trade Time</div>
+                            <div class="data-value" id="avg-trade-time">N/A</div>
+                        </div>
                     </div>
-                    <div>
-                        <div class="data-label">Today's Trades</div>
-                        <div class="data-value" id="todays-trades-count">N/A</div>
-                    </div>
-                    <div>
-                        <div class="data-label">Avg Trade Time</div>
-                        <div class="data-value" id="avg-trade-time">N/A</div>
-                    </div>
+                </div>
+            </div>
+
+            <!-- Third Row: Real-Time Activity -->
+            <div class="card full-width-row">
+                <h2>📝 Real-Time Activity</h2>
+                <div class="log-container" id="activity-logs">
+                    <div class="log-entry">Connecting to real-time data stream...</div>
                 </div>
             </div>
         </div>
