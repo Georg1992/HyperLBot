@@ -358,9 +358,34 @@ class YahooHyperliquidPaperTradingBot:
         except Exception as e:
             logger.error(f"❌ Error in price update callback: {e}")
     
+    def _ensure_env_file(self):
+        """Ensure .env file exists, create from template if missing"""
+        env_file = ".env"
+        env_example = "env_example.txt"
+        
+        if not os.path.exists(env_file):
+            if os.path.exists(env_example):
+                logger.warning("📝 .env file missing - creating from template...")
+                
+                # Copy env_example.txt to .env
+                with open(env_example, 'r') as source:
+                    content = source.read()
+                
+                with open(env_file, 'w') as dest:
+                    dest.write(content)
+                    
+                logger.success("✅ .env file created from env_example.txt")
+                logger.warning("⚠️  IMPORTANT: Edit .env file with your actual wallet credentials for real trading")
+                logger.info("💡 For paper trading, you can leave wallet credentials as placeholders")
+            else:
+                logger.error("❌ No env_example.txt found to create .env")
+
     def _test_api_connections(self):
         """Test API connections and set connected status"""
         try:
+            # Ensure .env file exists before testing connections
+            self._ensure_env_file()
+            
             logger.info("🔗 Testing API connections...")
             
             # Initialize Hyperliquid API
@@ -369,6 +394,7 @@ class YahooHyperliquidPaperTradingBot:
                 logger.info("✅ HyperliquidAPI instance created")
             except Exception as e:
                 logger.error(f"❌ Failed to create HyperliquidAPI instance: {e}")
+                logger.warning("💡 This is normal if wallet credentials aren't configured in .env")
                 self.hyperliquid_api = None
                 hyperliquid_ok = False
             
