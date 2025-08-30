@@ -618,6 +618,22 @@ class YahooHyperliquidPaperTradingBot:
         """Close a paper position"""
         self.trading_execution.close_paper_position(position, exit_reason, exit_price)
     
+    def _analyze_entry_point(self, prediction_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Analyze entry point using prediction engine"""
+        return self.prediction_engine.analyze_entry_point(prediction_analysis, current_price)
+    
+    def _build_price_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Build price prediction using prediction engine"""
+        return self.prediction_engine.build_price_prediction(yahoo_analysis, current_price, self.strategy_name)
+    
+    def _is_prediction_valid(self, prediction: Dict[str, Any], current_price: float) -> bool:
+        """Simple prediction validation"""
+        return prediction.get("confidence", 0) > magic_numbers.DEFAULT_CONFIDENCE and prediction.get("has_prediction", False)
+    
+    def _calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
+        """Get win probability from prediction engine"""
+        return self.prediction_engine.calculate_win_probability(prediction, prediction_analysis)
+    
     def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
         """Run the Hyperliquid paper trading bot"""
         if not self.connected:
