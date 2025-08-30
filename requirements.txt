@@ -5,6 +5,7 @@ pandas>=2.1.0
 numpy>=1.24.0
 loguru>=0.7.2
 python-dotenv>=1.0.0
+eth_account>=0.13.0
 
 # Async HTTP
 httpx>=0.25.0
