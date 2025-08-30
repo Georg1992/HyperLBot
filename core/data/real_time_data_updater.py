@@ -97,7 +97,9 @@ class RTMUpdater:
             trend = analysis_data.get("trend", "UNKNOWN")
             # Try different possible RSI keys
             rsi = analysis_data.get("rsi_value", analysis_data.get("rsi", 0))
-            logger.debug(f"📈 RTM Analysis Data Updated: {trend} | RSI: {rsi:.1f}")
+            # Handle None RSI values gracefully
+            rsi_display = f"{rsi:.1f}" if rsi is not None else "N/A"
+            logger.debug(f"📈 RTM Analysis Data Updated: {trend} | RSI: {rsi_display}")
             
         except Exception as e:
             logger.error(f"❌ Failed to update RTM analysis data: {e}")
