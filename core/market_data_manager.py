@@ -44,6 +44,18 @@ class MarketDataManager:
     
     def get_hyperliquid_data(self, hyperliquid_api, symbol: str = "BTC") -> Dict[str, Any]:
         """Get all Hyperliquid data with caching to avoid redundant API calls"""
+        # Check if hyperliquid_api is None - show explicit error instead of crashing
+        if hyperliquid_api is None:
+            logger.error(f"❌ HyperliquidAPI is None - cannot fetch data for {symbol}")
+            return {
+                "volume_data": {},
+                "volatility_data": {},
+                "ultimate_pressure_data": {},
+                "current_price": None,
+                "timestamp": time.time(),
+                "error": "HyperliquidAPI not initialized"
+            }
+        
         cache_key = f"hyperliquid_{symbol}"
         cached_data = self._get_cached_data(cache_key, self._cache_duration)
         
