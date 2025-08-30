@@ -52,8 +52,189 @@ class PredictionEngine:
         
         logger.info("🎯 Enhanced Prediction Engine initialized with modular systems")
     
-
+    def generate_structured_prediction(self, market_data: Dict[str, Any], historical_analysis: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Generate structured trading prediction with exact format:
+        - BUY/SELL direction
+        - Size (BTC/USD)
+        - Entry Price
+        - RSI Value (at prediction time)
+        - TREND value
+        """
+        try:
+            current_price = market_data.get("current_price", 0)
+            rsi_value = market_data.get("rsi", 50.0)
+            trend = market_data.get("trend", "NEUTRAL")
+            volume_category = market_data.get("volume_category", "NORMAL")
+            volatility_5m = market_data.get("volatility_5m", 0.0)
+            
+            # Use historical context if provided for enhanced confidence
+            confidence = 0.3  # Start with low confidence as requested
+            
+            if historical_analysis:
+                confidence = self._calculate_enhanced_confidence(market_data, historical_analysis)
+            
+            # Determine trade direction based on market conditions
+            direction, entry_price, reasoning = self._determine_trade_direction(
+                current_price, rsi_value, trend, volume_category, volatility_5m
+            )
+            
+            # Calculate position size based on confidence and volatility
+            size_btc, size_usd = self._calculate_position_size(
+                current_price, confidence, volatility_5m
+            )
+            
+            # Create structured prediction
+            prediction = {
+                "direction": direction,  # BUY/SELL
+                "size_btc": round(size_btc, 6),  # Size in BTC
+                "size_usd": round(size_usd, 2),  # Size in USD
+                "entry_price": round(entry_price, 2),  # Entry Price
+                "rsi_at_prediction": round(rsi_value, 1),  # RSI at prediction time
+                "trend_at_prediction": trend,  # TREND value
+                "confidence": round(confidence, 3),
+                "reasoning": reasoning,
+                "prediction_timestamp": time.time(),
+                "prediction_time": time.strftime("%H:%M:%S"),
+                "current_price": current_price,
+                "market_context": {
+                    "volume_category": volume_category,
+                    "volatility_5m": round(volatility_5m * 100, 2),  # As percentage
+                    "market_regime": self._detect_market_regime(rsi_value, trend, volatility_5m)
+                }
+            }
+            
+            return prediction
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to generate structured prediction: {e}")
+            return self._get_default_prediction(market_data.get("current_price", 0))
     
+    def _determine_trade_direction(self, current_price: float, rsi: float, trend: str, volume_category: str, volatility: float) -> Tuple[str, float, str]:
+        """Determine optimal trade direction, entry price, and reasoning"""
+        try:
+            # RSI-based signals (classic oversold/overbought)
+            if rsi <= 30 and trend in ["UPTREND", "WEAK_UPTREND"]:
+                return "BUY", current_price * 0.999, f"RSI oversold ({rsi:.1f}) + {trend} alignment"
+            
+            if rsi >= 70 and trend in ["DOWNTREND", "WEAK_DOWNTREND"]:
+                return "SELL", current_price * 1.001, f"RSI overbought ({rsi:.1f}) + {trend} alignment"
+            
+            # Trend-following signals
+            if trend == "UPTREND" and volume_category in ["HIGH", "VERY_HIGH"]:
+                return "BUY", current_price * 0.9995, f"Strong {trend} + {volume_category} volume"
+            
+            if trend == "DOWNTREND" and volume_category in ["HIGH", "VERY_HIGH"]:
+                return "SELL", current_price * 1.0005, f"Strong {trend} + {volume_category} volume"
+            
+            # Volatility-based opportunities
+            if volatility > 0.02 and rsi < 50:  # High volatility + bearish RSI
+                return "SELL", current_price * 1.0003, f"High volatility ({volatility*100:.1f}%) + bearish RSI"
+            
+            if volatility > 0.02 and rsi > 50:  # High volatility + bullish RSI
+                return "BUY", current_price * 0.9997, f"High volatility ({volatility*100:.1f}%) + bullish RSI"
+            
+            # Default: Neutral with slight bias based on RSI
+            if rsi < 50:
+                return "BUY", current_price * 0.9998, f"Slight RSI bias ({rsi:.1f}) - waiting for opportunity"
+            else:
+                return "SELL", current_price * 1.0002, f"Slight RSI bias ({rsi:.1f}) - waiting for opportunity"
+            
+        except Exception as e:
+            logger.error(f"❌ Trade direction determination failed: {e}")
+            return "BUY", current_price, "Default prediction due to error"
+    
+    def _calculate_position_size(self, current_price: float, confidence: float, volatility: float) -> Tuple[float, float]:
+        """Calculate position size based on confidence and market volatility"""
+        try:
+            # Base position size (conservative for testing)
+            base_usd = 100.0  # $100 base position
+            
+            # Adjust for confidence (0.3-1.0 range)
+            confidence_multiplier = max(0.5, confidence)  # Minimum 0.5x, maximum 1.0x
+            
+            # Adjust for volatility (reduce size in high volatility)
+            volatility_multiplier = max(0.5, 1.0 - volatility * 2)  # Reduce size if volatile
+            
+            # Calculate final USD size
+            size_usd = base_usd * confidence_multiplier * volatility_multiplier
+            
+            # Convert to BTC
+            size_btc = size_usd / current_price if current_price > 0 else 0
+            
+            return size_btc, size_usd
+            
+        except Exception as e:
+            logger.error(f"❌ Position size calculation failed: {e}")
+            return 0.001, 50.0  # Safe defaults
+    
+    def _calculate_enhanced_confidence(self, market_data: Dict[str, Any], historical_analysis: Dict[str, Any]) -> float:
+        """Calculate enhanced confidence using both real-time and historical data"""
+        try:
+            base_confidence = 0.3  # Start low as requested
+            
+            rsi = market_data.get("rsi", 50.0)
+            trend = market_data.get("trend", "NEUTRAL")
+            volume_category = market_data.get("volume_category", "NORMAL")
+            
+            # RSI extreme values increase confidence
+            if rsi <= 25 or rsi >= 75:
+                base_confidence += 0.3  # Strong RSI signal
+            elif rsi <= 30 or rsi >= 70:
+                base_confidence += 0.2  # Moderate RSI signal
+            
+            # Trend alignment increases confidence
+            if trend in ["UPTREND", "DOWNTREND"]:
+                base_confidence += 0.2
+            elif trend in ["WEAK_UPTREND", "WEAK_DOWNTREND"]:
+                base_confidence += 0.1
+            
+            # Volume confirmation increases confidence
+            if volume_category in ["HIGH", "VERY_HIGH"]:
+                base_confidence += 0.15
+            
+            # Cap confidence at 0.85 (conservative maximum)
+            return min(0.85, base_confidence)
+            
+        except Exception as e:
+            logger.error(f"❌ Enhanced confidence calculation failed: {e}")
+            return 0.3  # Safe default
+    
+    def _detect_market_regime(self, rsi: float, trend: str, volatility: float) -> str:
+        """Detect current market regime for prediction context"""
+        try:
+            if volatility > 0.03:  # > 3% volatility
+                return "VOLATILE"
+            elif trend in ["UPTREND", "DOWNTREND"]:
+                return "TRENDING"
+            elif rsi > 45 and rsi < 55:
+                return "RANGING"
+            else:
+                return "TRANSITIONAL"
+        except:
+            return "UNKNOWN"
+    
+    def _get_default_prediction(self, current_price: float) -> Dict[str, Any]:
+        """Generate safe default prediction when analysis fails"""
+        return {
+            "direction": "BUY",
+            "size_btc": 0.001,
+            "size_usd": 50.0,
+            "entry_price": current_price * 0.999 if current_price > 0 else 18500,
+            "rsi_at_prediction": 50.0,
+            "trend_at_prediction": "NEUTRAL",
+            "confidence": 0.1,
+            "reasoning": "Default low-confidence prediction",
+            "prediction_timestamp": time.time(),
+            "prediction_time": time.strftime("%H:%M:%S"),
+            "current_price": current_price,
+            "market_context": {
+                "volume_category": "UNKNOWN",
+                "volatility_5m": 0.0,
+                "market_regime": "UNKNOWN"
+            }
+        }
+
     def _add_prediction_metadata(self, prediction: Dict[str, Any], current_price: float, support_5m: float = 0, resistance_5m: float = 0, candles_5m: List = None, market_condition: str = "UNKNOWN", trend_1h: Dict = None, trend_5m: Dict = None, volatility_5m: float = 0, current_rsi: float = 50.0, total_depth: float = 0, depth_imbalance: float = 0, trend_1d: Dict = None, volume_data: Dict = None) -> Dict[str, Any]:
         """Add standard metadata to all predictions including RSI context"""
         prediction["current_price"] = current_price

@@ -157,6 +157,10 @@ class YahooHyperliquidPaperTradingBot:
             self._cached_websocket_price = None
             self._last_price_update = 0
             
+            # Prediction timing control
+            self._last_prediction_time = 0
+            self._prediction_interval = 5  # Generate predictions every 5 seconds
+            
         except Exception as e:
             logger.error(f"❌ Failed to initialize WebSocket: {e}")
             self.hyperliquid_websocket = None
@@ -853,6 +857,73 @@ class YahooHyperliquidPaperTradingBot:
         except Exception as e:
             logger.error(f"❌ Failed to update centralized market data: {e}")
     
+    def _generate_and_log_prediction(self, current_price: float, historical_analysis: Dict[str, Any] = None):
+        """
+        Generate structured prediction and log to real-time activity for dashboard display
+        
+        Creates prediction with: BUY/SELL, Size, Entry Price, RSI, TREND
+        Updates every 5 seconds (throttled for optimal frequency)
+        """
+        try:
+            # Throttle predictions to every 5 seconds (aligned with RSI updates)
+            current_time = time.time()
+            if current_time - self._last_prediction_time < self._prediction_interval:
+                return  # Skip prediction generation - too soon
+            
+            self._last_prediction_time = current_time
+            # Get current market data from SimpleRTM for prediction
+            from core.data.real_time_manager import simple_rtm
+            rtm_data = simple_rtm.get_data()
+            market_data = rtm_data.get("market", {})
+            
+            # Generate structured prediction using enhanced prediction engine
+            prediction = self.prediction_engine.generate_structured_prediction(
+                market_data=market_data,
+                historical_analysis=historical_analysis
+            )
+            
+            # Format prediction for activity log display
+            direction = prediction.get("direction", "BUY")
+            size_btc = prediction.get("size_btc", 0)
+            size_usd = prediction.get("size_usd", 0)
+            entry_price = prediction.get("entry_price", current_price)
+            rsi_value = prediction.get("rsi_at_prediction", 50.0)
+            trend_value = prediction.get("trend_at_prediction", "NEUTRAL")
+            confidence = prediction.get("confidence", 0.3)
+            reasoning = prediction.get("reasoning", "Standard prediction")
+            
+            # Create activity log message for dashboard
+            activity_message = (
+                f"🎯 PREDICTION: {direction} | "
+                f"Size: {size_btc:.4f} BTC (${size_usd:.0f}) | "
+                f"Entry: ${entry_price:.2f} | "
+                f"RSI: {rsi_value} | "
+                f"TREND: {trend_value} | "
+                f"Confidence: {confidence:.1%} | "
+                f"{reasoning}"
+            )
+            
+            # Log to real-time activity (shows in dashboard)
+            self._update_simple_rtm_activity(activity_message, "PREDICTION")
+            
+            # Store prediction in SimpleRTM for dashboard predictions panel
+            simple_rtm.add_signal({
+                "type": direction,
+                "confidence": confidence * 100,  # Convert to percentage
+                "reason": reasoning,
+                "price": entry_price,
+                "size_btc": size_btc,
+                "size_usd": size_usd,
+                "rsi": rsi_value,
+                "trend": trend_value,
+                "prediction_data": prediction
+            })
+            
+            logger.debug(f"🎯 Generated prediction: {direction} @ ${entry_price:.2f} (RSI: {rsi_value}, Trend: {trend_value})")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to generate and log prediction: {e}")
+    
     def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
         """Run the Hyperliquid paper trading bot"""
         if not self.connected:
@@ -1000,12 +1071,17 @@ class YahooHyperliquidPaperTradingBot:
                         
                         # Update centralized market data
                         self._update_market_data_centralized(hyperliquid_price)
+                        
+                        # Generate structured prediction every 5s (aligned with RSI updates)
+                        self._generate_and_log_prediction(hyperliquid_price, yahoo_analysis)
                     else:
                         # No Yahoo analysis available, using fallback
                         self._update_market_data_centralized(hyperliquid_price)
+                        self._generate_and_log_prediction(hyperliquid_price, None)
                 except Exception as e:
                     # Optimized market data update failed
                     self._update_market_data_centralized(hyperliquid_price)
+                    self._generate_and_log_prediction(hyperliquid_price, None)
                 
                 # Check for signals
                 if not self.yahoo_analysis or not self.yahoo_analysis.get("market_condition"):
