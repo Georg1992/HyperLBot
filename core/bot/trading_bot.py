@@ -412,20 +412,34 @@ class YahooHyperliquidPaperTradingBot:
             return False
     
     def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
-        """Get real-time RSI data from already-updated calculator (NO DUPLICATE UPDATES)"""
-        from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
-        
-        # NO PRICE UPDATE HERE - RSI already updated in price callback
-        # Just get the current cached RSI data
-        rsi_data = real_time_rsi_calculator.calculate_rsi()
-        
-        return {
-            "rsi": rsi_data.get("rsi", None),
-            "rsi_trend": rsi_data.get("trend", "NEUTRAL"),
-            "rsi_signal": rsi_data.get("signal", "NEUTRAL"),
-            "momentum": rsi_data.get("trend", "NEUTRAL"),  # Use trend as momentum
-            "confidence": 0.8 if rsi_data.get("rsi") is not None else magic_numbers.DEFAULT_CONFIDENCE
-        }
+        """Get real-time RSI data with proper price updates"""
+        try:
+            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+            
+            # UPDATE RSI with current price (this was missing!)
+            if hyperliquid_price is None:
+                hyperliquid_price = self.get_hyperliquid_price()
+            
+            if hyperliquid_price:
+                # Add current price to RSI calculator
+                real_time_rsi_calculator.add_price(hyperliquid_price)
+                logger.debug(f"📊 Updated RSI calculator with price: ${hyperliquid_price:.2f}")
+            
+            # Get RSI calculation
+            rsi_data = real_time_rsi_calculator.calculate_rsi()
+            
+            return {
+                "rsi": rsi_data.get("rsi", None),
+                "rsi_trend": rsi_data.get("trend", "NEUTRAL"),
+                "rsi_signal": rsi_data.get("signal", "NEUTRAL"),
+                "momentum": rsi_data.get("trend", "NEUTRAL"),
+                "confidence": 0.8 if rsi_data.get("rsi") is not None else magic_numbers.DEFAULT_CONFIDENCE,
+                "data_points": len(real_time_rsi_calculator.price_history)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get RSI data: {e}")
+            return self._get_default_rsi_data(hyperliquid_price, str(e))
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get optimized market analysis from Yahoo Finance with periodic updates"""
         try:
