@@ -634,6 +634,63 @@ class YahooHyperliquidPaperTradingBot:
         """Get win probability from prediction engine"""
         return self.prediction_engine.calculate_win_probability(prediction, prediction_analysis)
     
+    def _update_market_data_centralized(self, current_price: float):
+        """Update SimpleRTM with current market data including volatility"""
+        try:
+            # Get real-time data from Hyperliquid API
+            from core.market_data_manager import market_data_manager
+            hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
+            
+            # Get trend analysis
+            from core.analysis.trend_manager import trend_manager
+            candles_1m = self.market_data_analyzer.get_1m_candles("BTC", 10)
+            candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 10)
+            candles_1h = self.market_data_analyzer.get_1h_candles("BTC", 10)
+            
+            if candles_1m and candles_5m and candles_1h:
+                trend_data = trend_manager.get_multi_timeframe_trend(candles_1m, candles_5m, candles_1h)
+            else:
+                trend_data = {"overall_trend": "UNKNOWN", "alignment_score": 0}
+            
+            # Get RSI data
+            rsi_data = self.get_optimized_rsi_data(current_price)
+            
+            # Extract Hyperliquid data
+            volume_data = hyperliquid_data.get("volume_data") or {}
+            volatility_data = hyperliquid_data.get("volatility_data") or {}
+            ultimate_pressure_data = hyperliquid_data.get("ultimate_pressure_data") or {}
+            
+            # Prepare market data for SimpleRTM
+            market_data = {
+                "current_price": current_price,
+                "trend": trend_data.get("overall_trend", "UNKNOWN"),
+                "rsi": rsi_data.get("rsi"),
+                "volume_depth": volume_data.get("volume_depth", 0.0),
+                "volume_category": volume_data.get("volume_category", "UNKNOWN"),
+                "order_flow": volume_data.get("order_flow", "NEUTRAL"),
+                "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN"),
+                "volatility_5m": volatility_data.get("volatility_5m", 0.0),
+                "volatility_category": volatility_data.get("volatility_category", "UNKNOWN"),
+                "volatility_trend": volatility_data.get("volatility_trend", "UNKNOWN"),
+                "spread_volatility": volatility_data.get("spread_volatility", 0.0),
+                "ultimate_pressure": {
+                    "direction": ultimate_pressure_data.get("direction", "NEUTRAL"),
+                    "confidence": ultimate_pressure_data.get("confidence", "50%"),
+                    "strength": ultimate_pressure_data.get("strength", 0.5),
+                    "trend": ultimate_pressure_data.get("trend", "NEUTRAL")
+                },
+                "trend_analysis": trend_data
+            }
+            
+            # Update SimpleRTM with market data
+            from core.data.real_time_manager import simple_rtm
+            simple_rtm.update_market(market_data)
+            
+            logger.info(f"📊 Market data updated to RTM - Price: ${current_price:.2f}, Volatility: {volatility_data.get('volatility_5m', 0)*100:.2f}%")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update centralized market data: {e}")
+    
     def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
         """Run the Hyperliquid paper trading bot"""
         if not self.connected:

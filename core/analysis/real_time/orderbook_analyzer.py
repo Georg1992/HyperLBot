@@ -283,18 +283,18 @@ class MarketOrderbookAnalyzer:
             # Give more weight to spread volatility as it's more reliable
             combined_volatility = (spread_volatility * 0.8) + (depth_volatility * 0.2)
             
-            # CRITICAL: Ensure realistic Bitcoin volatility values
-            # For a quiet Bitcoin market, volatility should be 0.0001-0.001 (0.01%-0.1%)
-            # Cap at realistic maximum for Bitcoin spreads
-            combined_volatility = min(combined_volatility, 0.01)  # Max 1% for extreme events
+            # Allow full range of Bitcoin volatility - don't artificially suppress
+            # Bitcoin can be very volatile during active trading periods
+            # Only cap at truly unrealistic levels (15%+ which would indicate calculation error)
+            combined_volatility = min(combined_volatility, 0.15)  # Cap only at calculation error levels
             
             # Ensure non-negative
             combined_volatility = max(combined_volatility, 0.0)
             
-            # If volatility is still unrealistic, force it to realistic range
-            if combined_volatility > 0.005:  # > 0.5% is high for quiet market
-                logger.error(f"🚨 VOLATILITY TOO HIGH: {combined_volatility:.6f} ({combined_volatility*100:.4f}%) - forcing to realistic range")
-                combined_volatility = min(combined_volatility, 0.002)  # Cap at 0.2% for quiet market
+            # Allow realistic Bitcoin volatility - don't artificially suppress high volatility
+            if combined_volatility > 0.10:  # Only cap at extremely unrealistic levels (10%+)
+                logger.warning(f"⚠️ Very high volatility detected: {combined_volatility:.6f} ({combined_volatility*100:.2f}%) - this may indicate unusual market conditions")
+                # Don't cap - let high volatility be shown when market is actually volatile
             
             # Categorize volatility with REALISTIC Bitcoin ranges
             if combined_volatility > 0.05:    # > 5% - Extremely high volatility (major events)
