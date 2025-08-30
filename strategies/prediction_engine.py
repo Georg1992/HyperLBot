@@ -38,7 +38,7 @@ class PredictionEngine:
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
             real_rsi_data = real_time_rsi_calculator.get_rsi()
             from core.constants import MagicNumbers
-        rsi_value = real_rsi_data.get("rsi", MagicNumbers.RSI_NEUTRAL)  # Use real RSI, fallback to neutral if not available
+            rsi_value = real_rsi_data.get("rsi", MagicNumbers.RSI_NEUTRAL)  # Use real RSI, fallback to neutral if not available
             
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
