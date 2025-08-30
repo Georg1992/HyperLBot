@@ -330,27 +330,12 @@ class YahooHyperliquidPaperTradingBot:
             if hyperliquid_price is None:
                 hyperliquid_price = self.get_hyperliquid_price()
             
-            # Seed with Yahoo data if calculator needs initialization
+            # Build RSI from session data only - consistent 5-second intervals
+            # Let WebSocket price stream naturally accumulate data for proper RSI calculation
             if len(real_time_rsi_calculator.price_samples) < real_time_rsi_calculator.periods + 1:
-                logger.info("📊 Initializing professional RSI with Yahoo baseline...")
-                
-                # Get Yahoo candles for proper historical context
-                candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 20)
-                if candles_5m and len(candles_5m) >= 15:
-                    # Force seed historical data (bypass time sampling for initialization)
-                    current_time = time.time()
-                    for i, candle in enumerate(candles_5m[-15:]):
-                        hist_timestamp = current_time - (15 - i) * 5
-                        real_time_rsi_calculator.price_samples.append({
-                            'price': candle['close'],
-                            'timestamp': hist_timestamp
-                        })
-                    # Set last sample time to enable future real-time updates
-                    real_time_rsi_calculator.last_sample_time = current_time - 5
-                    # Force RSI calculation with seeded data
-                    real_time_rsi_calculator._calculate_rsi()
-                    
-                    logger.info(f"📊 Seeded professional RSI with {len(candles_5m[-15:])} Yahoo candles")
+                samples_needed = real_time_rsi_calculator.periods + 1 - len(real_time_rsi_calculator.price_samples)
+                time_needed = samples_needed * real_time_rsi_calculator.sample_interval
+                logger.info(f"📊 Building RSI from session data: {len(real_time_rsi_calculator.price_samples)}/{real_time_rsi_calculator.periods + 1} samples, {time_needed}s remaining")
             
             # Update with current Hyperliquid price
             rsi_updated = False
