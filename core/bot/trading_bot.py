@@ -687,29 +687,7 @@ class YahooHyperliquidPaperTradingBot:
         """Get win probability from prediction engine"""
         return self.prediction_engine.calculate_win_probability(prediction, prediction_analysis)
     
-    def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
-        """Get real-time RSI data with price updates"""
-        try:
-            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
-            
-            # Use provided price or get current price
-            if hyperliquid_price is None:
-                hyperliquid_price = self.get_hyperliquid_price()
-                if not hyperliquid_price:
-                    return self._get_default_rsi_data(error="no_price")
-            
-            # Update RSI calculator with current price
-            real_time_rsi_calculator.update_price(hyperliquid_price)
-            
-            # Get RSI calculation
-            rsi_result = real_time_rsi_calculator.get_rsi()
-            
-            logger.info(f"📊 RSI Data: {rsi_result.get('rsi', 'N/A')} | Signal: {rsi_result.get('signal', 'N/A')}")
-            return rsi_result
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get RSI data: {e}")
-            return self._get_default_rsi_data(hyperliquid_price, str(e))
+
     
     def _get_default_rsi_data(self, hyperliquid_price: float = None, error: str = "unknown") -> Dict[str, Any]:
         """Get default RSI data structure when calculation fails"""
