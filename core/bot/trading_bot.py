@@ -367,14 +367,12 @@ class YahooHyperliquidPaperTradingBot:
     
     def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """
-        Professional RSI for trading predictions - mathematically accurate
+        Hyperliquid-Style RSI: Fetch from Yahoo, build incrementally
         
-        SRP Implementation:
-        - MarketDataAnalyzer: Provides Yahoo baseline data
-        - RealTimeRSICalculator: Professional time-sampled RSI calculation  
+        Implementation:
+        - Yahoo Finance: Provides initial RSI baseline
+        - RealTimeRSICalculator: Builds RSI incrementally with Hyperliquid prices
         - TradingBot: Coordinates for accurate trading predictions
-        
-        Note: RSI moving to 50 when price is stable is CORRECT mathematical behavior
         """
         try:
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
@@ -383,35 +381,32 @@ class YahooHyperliquidPaperTradingBot:
             if hyperliquid_price is None:
                 hyperliquid_price = self.get_hyperliquid_price()
             
-            # Initialize with Yahoo baseline RSI, then build session data
-            if len(real_time_rsi_calculator.price_samples) < real_time_rsi_calculator.periods + 1:
-                # Calculate initial RSI from Yahoo 5m data for immediate baseline
-                if not hasattr(real_time_rsi_calculator, 'baseline_rsi'):
-                    logger.info("📊 Calculating initial RSI baseline from Yahoo data...")
-                    candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 20)
-                    if candles_5m and len(candles_5m) >= 15:
-                        # Calculate proper RSI from Yahoo 5m data
-                        yahoo_prices = [c['close'] for c in candles_5m[-15:]]
-                        baseline_rsi = self._calculate_simple_rsi(yahoo_prices, 14)
-                        real_time_rsi_calculator.baseline_rsi = baseline_rsi
-                        real_time_rsi_calculator.cached_rsi = baseline_rsi
-                        real_time_rsi_calculator.cached_trend, real_time_rsi_calculator.cached_signal = real_time_rsi_calculator._determine_rsi_signals(baseline_rsi)
-                        logger.success(f"📊 Yahoo baseline RSI: {baseline_rsi:.2f}")
+            # Initialize with Yahoo RSI if not already done
+            if not real_time_rsi_calculator.is_initialized:
+                logger.info("📊 Initializing RSI with Yahoo Finance baseline...")
+                candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 20)
+                if candles_5m and len(candles_5m) >= 15:
+                    # Calculate RSI from Yahoo data
+                    yahoo_rsi = self.market_data_analyzer.yahoo_fetcher.calculate_rsi_from_candles(candles_5m)
+                    yahoo_prices = [c['close'] for c in candles_5m[-15:]]
+                    
+                    # Initialize RSI calculator with Yahoo data
+                    success = real_time_rsi_calculator.initialize_with_yahoo_rsi(yahoo_rsi, yahoo_prices)
+                    if success:
+                        logger.success(f"📊 RSI initialized with Yahoo baseline: {yahoo_rsi:.2f}")
                     else:
-                        real_time_rsi_calculator.baseline_rsi = 50.0
+                        logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
                         real_time_rsi_calculator.cached_rsi = 50.0
-                
-                # Show session building progress
-                samples_needed = real_time_rsi_calculator.periods + 1 - len(real_time_rsi_calculator.price_samples)
-                time_needed = samples_needed * real_time_rsi_calculator.sample_interval
-                logger.info(f"📊 Building session RSI: {len(real_time_rsi_calculator.price_samples)}/{real_time_rsi_calculator.periods + 1} samples, {time_needed}s remaining")
+                else:
+                    logger.warning("⚠️ Not enough Yahoo data for RSI initialization, using default")
+                    real_time_rsi_calculator.cached_rsi = 50.0
             
             # Update with current Hyperliquid price
             rsi_updated = False
             if hyperliquid_price:
                 rsi_updated = real_time_rsi_calculator.update_price(hyperliquid_price)
                 if rsi_updated:
-                    logger.debug(f"📊 RSI updated with price: ${hyperliquid_price:.2f}")
+                    logger.debug(f"📊 RSI updated with Hyperliquid price: ${hyperliquid_price:.2f}")
             
             # Get current RSI for trading decisions
             rsi_data = real_time_rsi_calculator.get_rsi()
@@ -425,40 +420,16 @@ class YahooHyperliquidPaperTradingBot:
                 "confidence": 0.9 if rsi_data.get("rsi") is not None else 0.3,
                 "data_points": rsi_data.get("data_points", 0),
                 "current_price": rsi_data.get("current_price"),
-                "calculation_method": "professional_time_sampled",
+                "calculation_method": "hyperliquid_style",
+                "yahoo_baseline": rsi_data.get("yahoo_baseline_rsi"),
                 "recently_updated": rsi_updated
             }
             
         except Exception as e:
-            logger.error(f"❌ Failed to get professional RSI data: {e}")
+            logger.error(f"❌ Failed to get Hyperliquid-style RSI data: {e}")
             return self._get_default_rsi_data(hyperliquid_price, str(e))
     
-    def _calculate_simple_rsi(self, prices: list, periods: int = 14) -> float:
-        """Calculate simple RSI from price list for Yahoo baseline"""
-        if len(prices) < periods + 1:
-            return 50.0
-        
-        # Calculate price changes
-        changes = []
-        for i in range(1, len(prices)):
-            changes.append(prices[i] - prices[i-1])
-        
-        # Separate gains and losses for the period
-        recent_changes = changes[-periods:]
-        gains = [c if c > 0 else 0.0 for c in recent_changes]
-        losses = [-c if c < 0 else 0.0 for c in recent_changes]
-        
-        # Calculate average gain and loss
-        avg_gain = sum(gains) / periods
-        avg_loss = sum(losses) / periods
-        
-        # Calculate RSI
-        if avg_loss == 0:
-            return 100.0
-        else:
-            rs = avg_gain / avg_loss
-            rsi = 100.0 - (100.0 / (1.0 + rs))
-            return round(rsi, 2)
+
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get optimized market analysis from Yahoo Finance with periodic updates"""
         try:

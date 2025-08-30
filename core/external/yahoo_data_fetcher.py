@@ -719,9 +719,12 @@ class YahooDataFetcher:
             # Use momentum analyzer for analysis
             momentum_data = momentum_analyzer.analyze_momentum(candles_5m, symbol)
             
-            # RSI is now handled by real-time calculator only
+            # Calculate RSI from Yahoo data
+            yahoo_rsi = self.calculate_rsi_from_candles(candles_5m)
+            
             result = {
                 **momentum_data,
+                "rsi": yahoo_rsi,
                 "data_source": "yahoo_finance_momentum_analysis"
             }
             
@@ -730,6 +733,52 @@ class YahooDataFetcher:
         except Exception as e:
             logger.error(f"❌ Failed to calculate real-time momentum: {e}")
             return {"momentum": "NEUTRAL", "strength": 0, "direction": 0, "error": str(e)}
+    
+    def calculate_rsi_from_candles(self, candles: List[Dict], periods: int = 14) -> float:
+        """
+        Calculate RSI from Yahoo Finance candles using Wilder's method
+        
+        Args:
+            candles: List of candle data with 'close' prices
+            periods: RSI calculation periods (default: 14)
+            
+        Returns:
+            float: RSI value
+        """
+        try:
+            if len(candles) < periods + 1:
+                logger.warning(f"⚠️ Not enough candles for RSI calculation: {len(candles)} < {periods + 1}")
+                return 50.0  # Neutral RSI
+            
+            # Extract close prices
+            prices = [candle['close'] for candle in candles]
+            
+            # Calculate price changes
+            changes = []
+            for i in range(1, len(prices)):
+                change = prices[i] - prices[i-1]
+                changes.append(change)
+            
+            # Separate gains and losses for the period
+            recent_changes = changes[-periods:]
+            gains = [c if c > 0 else 0.0 for c in recent_changes]
+            losses = [-c if c < 0 else 0.0 for c in recent_changes]
+            
+            # Calculate average gain and loss
+            avg_gain = sum(gains) / periods
+            avg_loss = sum(losses) / periods
+            
+            # Calculate RSI
+            if avg_loss == 0:
+                return 100.0
+            else:
+                rs = avg_gain / avg_loss
+                rsi = 100.0 - (100.0 / (1.0 + rs))
+                return round(rsi, 2)
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate RSI from candles: {e}")
+            return 50.0  # Neutral RSI
 
 
 def main():
