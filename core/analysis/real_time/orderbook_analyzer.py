@@ -424,7 +424,13 @@ class MarketOrderbookAnalyzer:
             pressure_score = bid_pressure / total_pressure
             
             # Calculate pressure strength (how much total pressure exists)
-            pressure_strength = min(1.0, total_pressure / 10.0)  # Normalize to 0-1
+            # For Bitcoin, typical total weighted pressure might be 50-500+ BTC
+            # Normalize based on realistic Bitcoin orderbook depth ranges
+            pressure_strength = min(1.0, total_pressure / 100.0)  # Adjusted for realistic Bitcoin depth
+            
+            # DEBUG: Log pressure calculation details
+            logger.info(f"📊 Ultimate Pressure: bid={bid_pressure:.2f}, ask={ask_pressure:.2f}, total={total_pressure:.2f}")
+            logger.info(f"📊 Pressure Score: {pressure_score:.3f} | Strength: {pressure_strength:.3f}")
             
             # Determine direction with enhanced thresholds
             if pressure_score > 0.65:
@@ -452,6 +458,9 @@ class MarketOrderbookAnalyzer:
                 trend = "SELL"
             else:
                 trend = "NEUTRAL"
+            
+            # DEBUG: Log final pressure analysis result
+            logger.info(f"📊 Final Pressure: {direction} ({confidence}%) | Trend: {trend} | Strength: {pressure_strength:.3f}")
             
             return {
                 "direction": direction,
