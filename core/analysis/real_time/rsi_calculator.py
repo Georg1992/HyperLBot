@@ -51,11 +51,6 @@ class RealTimeRSICalculator:
         self.yahoo_baseline_avg_gain = None
         self.yahoo_baseline_avg_loss = None
         
-        # Time-based decay for platform-like behavior
-        self.last_price_update_time = 0
-        self.decay_rate = 0.01  # Much slower decay: 0.01 RSI points per second
-        self.decay_threshold = 300  # 5 minutes without significant price change before decay starts
-        
         logger.info(f"📊 Hyperliquid-Style RSI Calculator: {periods} periods")
     
     def initialize_with_yahoo_rsi(self, yahoo_rsi: float, yahoo_prices: List[float]) -> bool:
@@ -154,11 +149,7 @@ class RealTimeRSICalculator:
         # This prevents overreaction to tiny price movements
         if not self._is_significant_change(price_change, previous_price):
             logger.debug(f"📊 Price change too small ({abs(price_change / previous_price * 100):.4f}%) - skipping RSI update")
-            # Apply time-based decay instead
-            return self._apply_time_based_decay()
-        
-        # Update last price update time for decay tracking
-        self.last_price_update_time = time.time()
+            return False
         
         # Calculate gain and loss
         gain = price_change if price_change > 0 else 0.0
@@ -191,9 +182,6 @@ class RealTimeRSICalculator:
         Returns:
             Dict with RSI value, trend, signal, and metadata
         """
-        # Apply time-based decay if needed
-        self._apply_time_based_decay()
-        
         return {
             "rsi": self.cached_rsi,
             "trend": self.cached_trend,
@@ -244,7 +232,7 @@ class RealTimeRSICalculator:
         Uses average percentage change of recent movements as the threshold
         """
         if len(self.price_history) < 3:
-            return 0.001  # Default 0.1% if not enough data
+            return 0.0005  # More sensitive default: 0.05% if not enough data
         
         # Calculate percentage changes from recent price history
         percentage_changes = []
@@ -256,11 +244,11 @@ class RealTimeRSICalculator:
                 percentage_changes.append(percentage_change)
         
         if len(percentage_changes) < 3:
-            return 0.001  # Default 0.1% if not enough data
+            return 0.0005  # More sensitive default: 0.05% if not enough data
         
-        # Use average percentage change as threshold
+        # Use average percentage change as threshold (more sensitive)
         avg_change = sum(percentage_changes) / len(percentage_changes)
-        threshold = avg_change * 0.5  # Use half the average change as threshold
+        threshold = avg_change * 0.3  # Use 30% of average change for more sensitivity
         
         return max(threshold, 0.0001)  # Minimum 0.01% threshold
     
@@ -280,38 +268,6 @@ class RealTimeRSICalculator:
         
         # Change is significant if it exceeds the volatility threshold
         return percentage_change >= volatility_threshold
-
-    def _apply_time_based_decay(self) -> bool:
-        """
-        Apply time-based decay to RSI during low volatility periods
-        This makes RSI behave more like real trading platforms
-        """
-        current_time = time.time()
-        time_since_update = current_time - self.last_price_update_time
-        
-        # Only apply decay if enough time has passed without significant price changes
-        if time_since_update > self.decay_threshold and self.cached_rsi is not None:
-            # Calculate decay amount (capped to prevent over-decay)
-            decay_amount = min(self.decay_rate * time_since_update, 5.0)  # Max 5 RSI points
-            
-            # Apply decay toward 50 (neutral) but don't force it exactly to 50
-            if self.cached_rsi > 50:
-                new_rsi = max(45, self.cached_rsi - decay_amount)  # Don't go below 45
-            elif self.cached_rsi < 50:
-                new_rsi = min(55, self.cached_rsi + decay_amount)  # Don't go above 55
-            else:
-                new_rsi = 50
-            
-            # Only update if there's meaningful change
-            if abs(new_rsi - self.cached_rsi) > 0.1:
-                self.cached_rsi = round(new_rsi, 2)
-                self.cached_trend, self.cached_signal = self._determine_rsi_signals(new_rsi)
-                self.last_calculation_time = current_time
-                
-                logger.debug(f"📊 RSI decay applied: {self.cached_rsi:.2f} (time: {time_since_update:.1f}s)")
-                return True
-        
-        return False
 
 # Global instance
 real_time_rsi_calculator = RealTimeRSICalculator(periods=14)
