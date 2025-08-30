@@ -1447,8 +1447,8 @@ def main():
     logger.info("🚀 Yahoo + Hyperliquid Paper Trading Bot Starting...")
     
     # Initialize Yahoo + Hyperliquid paper trading bot with $120 starting balance
-            from core.constants import MagicNumbers
-        bot = YahooHyperliquidPaperTradingBot(initial_balance=MagicNumbers.FALLBACK_BALANCE)
+    from core.constants import MagicNumbers
+    bot = YahooHyperliquidPaperTradingBot(initial_balance=MagicNumbers.FALLBACK_BALANCE)
     
     # Connect to Hyperliquid
     if not bot.connect():
