@@ -72,20 +72,24 @@ class RealTimeRSICalculator:
             # Store Yahoo baseline
             self.yahoo_baseline_rsi = yahoo_rsi
             
-            # Calculate Yahoo's avg_gain and avg_loss from the RSI value
+            # Calculate realistic base values based on price scale
+            avg_price = sum(yahoo_prices) / len(yahoo_prices)
+            price_volatility = max(yahoo_prices) - min(yahoo_prices)
+            base_change = price_volatility / len(yahoo_prices)  # Average price change
+            
+            # Use price-appropriate base values instead of tiny fixed values
             if yahoo_rsi == 100:
-                self.yahoo_baseline_avg_gain = 1.0
+                self.yahoo_baseline_avg_gain = base_change
                 self.yahoo_baseline_avg_loss = 0.0
             elif yahoo_rsi == 0:
                 self.yahoo_baseline_avg_gain = 0.0
-                self.yahoo_baseline_avg_loss = 1.0
+                self.yahoo_baseline_avg_loss = base_change
             else:
                 # Reverse calculate RS from RSI
                 rs = (100.0 - yahoo_rsi) / yahoo_rsi
-                # We need to estimate avg_gain and avg_loss
-                # For initialization, we'll use a reasonable ratio
-                self.yahoo_baseline_avg_gain = rs * 0.01  # Small base value
-                self.yahoo_baseline_avg_loss = 0.01
+                # Use price-appropriate base values
+                self.yahoo_baseline_avg_gain = rs * base_change
+                self.yahoo_baseline_avg_loss = base_change
             
             # Initialize with Yahoo values
             self.avg_gain = self.yahoo_baseline_avg_gain
@@ -103,6 +107,7 @@ class RealTimeRSICalculator:
             logger.success(f"📊 RSI initialized with Yahoo baseline: {yahoo_rsi:.2f}")
             logger.info(f"   Yahoo avg_gain: {self.yahoo_baseline_avg_gain:.6f}")
             logger.info(f"   Yahoo avg_loss: {self.yahoo_baseline_avg_loss:.6f}")
+            logger.info(f"   Base change: {base_change:.6f}")
             logger.info(f"   Price history: {len(self.price_history)} prices")
             
             return True
