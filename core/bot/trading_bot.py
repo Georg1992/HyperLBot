@@ -408,8 +408,7 @@ class YahooHyperliquidPaperTradingBot:
             rsi_updated = False
             if hyperliquid_price:
                 rsi_updated = real_time_rsi_calculator.update_price(hyperliquid_price)
-                if rsi_updated:
-                    # Reduced logging frequency
+                # Reduced logging frequency - no additional action needed
             
             # Get current RSI for trading decisions
             rsi_data = real_time_rsi_calculator.get_rsi()
@@ -463,7 +462,7 @@ class YahooHyperliquidPaperTradingBot:
             if hasattr(self, 'hyperliquid_websocket') and self.hyperliquid_websocket:
                 ws_price = self.hyperliquid_websocket.get_current_price()
                 if ws_price and ws_price > 0:
-                    # Reduced logging frequency
+                    # Reduced logging frequency - no additional action needed
                     return ws_price
             
             # FALLBACK: HTTP API call only if WebSocket unavailable
@@ -1182,7 +1181,7 @@ class YahooHyperliquidPaperTradingBot:
             if is_initial:
                 logger.info("💓 Initial bot heartbeat created")
             else:
-                                    # Reduced logging frequency
+                # Reduced logging frequency - no additional action needed
                 
         except Exception as e:
             logger.error(f"❌ Could not {'create' if is_initial else 'update'} heartbeat: {e}")
@@ -1202,7 +1201,7 @@ class YahooHyperliquidPaperTradingBot:
         try:
             if os.path.exists(self.heartbeat_file):
                 os.remove(self.heartbeat_file)
-                # Reduced logging frequency
+                # Reduced logging frequency - no additional action needed
         except Exception as e:
             logger.error(f"❌ Could not cleanup heartbeat: {e}")
 
@@ -1248,7 +1247,7 @@ class YahooHyperliquidPaperTradingBot:
                 self._update_simple_rtm_activity("🏁 Trading session closed gracefully", "SUCCESS")
                 logger.info("📊 RTM session ended")
             except Exception as e:
-                # Reduced logging frequency
+                # Reduced logging frequency - no additional action needed
             
             # Update final balance
             if self.trading_logger:
