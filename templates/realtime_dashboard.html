@@ -853,10 +853,14 @@
 
                 // Update RSI
                 const rsiElement = document.getElementById('market-rsi');
+                console.log('📊 Dashboard received RSI:', market.rsi, 'Type:', typeof market.rsi);
                 if (market.rsi && market.rsi !== 'N/A' && !isNaN(parseFloat(market.rsi))) {
-                    rsiElement.textContent = `${parseFloat(market.rsi).toFixed(1)}`;
+                    const rsiValue = parseFloat(market.rsi).toFixed(1);
+                    rsiElement.textContent = rsiValue;
+                    console.log('📊 RSI displayed:', rsiValue);
                 } else {
                     rsiElement.textContent = 'N/A';
+                    console.log('📊 RSI set to N/A');
                 }
                 
                 // Update Volume with enhanced display and timestamps

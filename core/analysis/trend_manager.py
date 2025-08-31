@@ -84,21 +84,21 @@ class TrendManager:
             
             # Determine trend with LESS CONSERVATIVE thresholds for Bitcoin
             # Bitcoin 5-min movements: 0.1-0.5% is normal, 0.5%+ is significant
-            if price_change_pct > 0.2 and strength > 0.5 and momentum > 0:  # Lowered from 0.5% and 0.6
+            if price_change_pct > 0.1 and strength > 0.4 and momentum > 0:  # More sensitive: lowered from 0.2% and 0.5
                 trend = "UPTREND"
                 direction = 1
-            elif price_change_pct < -0.2 and strength > 0.5 and momentum < 0:  # Lowered from -0.5% and 0.6
+            elif price_change_pct < -0.1 and strength > 0.4 and momentum < 0:  # More sensitive: lowered from -0.2% and 0.5
                 trend = "DOWNTREND"
                 direction = -1
-            elif abs(price_change_pct) < 0.1:  # Lowered from 0.2%
+            elif abs(price_change_pct) < 0.05:  # More sensitive: lowered from 0.1%
                 trend = "SIDEWAYS"
                 direction = 0
             else:
-                # Weak trend - more permissive for Bitcoin volatility
-                if price_change_pct > 0.05 and momentum > 0:  # Lowered threshold
+                # Weak trend - more sensitive for Bitcoin volatility
+                if price_change_pct > 0.02 and momentum > 0:  # More sensitive: lowered from 0.05%
                     trend = "WEAK_UPTREND"
                     direction = 1
-                elif price_change_pct < -0.05 and momentum < 0:  # Lowered threshold
+                elif price_change_pct < -0.02 and momentum < 0:  # More sensitive: lowered from -0.05%
                     trend = "WEAK_DOWNTREND"
                     direction = -1
                 else:
@@ -374,7 +374,7 @@ class TrendManager:
         primary_strength = trend_5m.get("strength", 0)
         
         # If strong alignment, follow the majority but be less strict about MIXED
-        if alignment_score > 0.6:  # Lowered from 0.7
+        if alignment_score > 0.5:  # More sensitive: lowered from 0.6
             directions = [trend_1m["direction"], trend_5m["direction"], trend_1h["direction"]]
             up_count = sum(1 for d in directions if d > 0)
             down_count = sum(1 for d in directions if d < 0)
@@ -385,27 +385,27 @@ class TrendManager:
                 return "STRONG_DOWNTREND"
             else:
                 # Even with mixed timeframes, follow 5m trend if it's strong
-                if primary_strength > 0.6:
+                if primary_strength > 0.5:  # More sensitive: lowered from 0.6
                     return "UPTREND" if primary_direction > 0 else "DOWNTREND"
                 else:
                     # Follow 5m trend even with mixed timeframes if it shows direction
-                    if abs(primary_direction) > 0 and primary_strength > 0.3:
+                    if abs(primary_direction) > 0 and primary_strength > 0.2:  # More sensitive: lowered from 0.3
                         return "WEAK_UPTREND" if primary_direction > 0 else "WEAK_DOWNTREND"
                     else:
                         return "SIDEWAYS"  # Avoid MIXED, use SIDEWAYS instead
         
         # If moderate alignment, prioritize 5m and 1m (shorter timeframes for Bitcoin)
-        elif alignment_score > 0.3:  # Lowered from 0.4
+        elif alignment_score > 0.2:  # More sensitive: lowered from 0.3
             if trend_1m["direction"] == trend_5m["direction"] and trend_1m["direction"] != 0:
                 strength_avg = (trend_1m.get("strength", 0) + trend_5m.get("strength", 0)) / 2
-                if strength_avg > 0.4:  # Lowered from implicit higher threshold
+                if strength_avg > 0.3:  # More sensitive: lowered from 0.4
                     return "UPTREND" if trend_1m["direction"] > 0 else "DOWNTREND"
                 else:
                     return "WEAK_UPTREND" if trend_1m["direction"] > 0 else "WEAK_DOWNTREND"
             else:
                 # Follow the stronger trend instead of defaulting to MIXED
                 strongest_trend = max([trend_1m, trend_5m, trend_1h], key=lambda t: t.get("strength", 0))
-                if strongest_trend.get("strength", 0) > 0.4:
+                if strongest_trend.get("strength", 0) > 0.3:  # More sensitive: lowered from 0.4
                     if strongest_trend["direction"] > 0:
                         return "WEAK_UPTREND"
                     elif strongest_trend["direction"] < 0:
@@ -417,7 +417,7 @@ class TrendManager:
         
         # Low alignment - use 5m trend as primary indicator
         else:
-            if primary_strength > 0.3:  # Follow 5m trend if it has some strength
+            if primary_strength > 0.2:  # More sensitive: lowered from 0.3
                 if primary_direction > 0:
                     return "WEAK_UPTREND"
                 elif primary_direction < 0:

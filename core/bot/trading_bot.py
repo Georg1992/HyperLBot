@@ -172,11 +172,9 @@ class YahooHyperliquidPaperTradingBot:
                     if current_price > 0:
                         # Reduced logging frequency
                         
-                        # Update RSI calculator with real-time WebSocket price
-                        from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
-                        rsi_updated = real_time_rsi_calculator.update_price(current_price)
-                        if rsi_updated:
-                            logger.debug(f"📊 RSI updated from WebSocket price: ${current_price:.2f}")
+                        # RSI stays at Yahoo baseline - no real-time updates needed
+                        # from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+                        # real_time_rsi_calculator.update_price(current_price)
                             
                         # Cache price for use in trading loop
                         self._cached_websocket_price = current_price
@@ -401,14 +399,14 @@ class YahooHyperliquidPaperTradingBot:
         """Get list of open positions for trade manager"""
         return self.trading_execution.get_open_positions()
     
-    def get_optimized_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
+    def get_yahoo_baseline_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """
-        Hyperliquid-Style RSI: Fetch from Yahoo, build incrementally
+        Yahoo Baseline RSI: Static RSI from Yahoo Finance
         
         Implementation:
         - Yahoo Finance: Provides initial RSI baseline
-        - RealTimeRSICalculator: Builds RSI incrementally with Hyperliquid prices
-        - TradingBot: Coordinates for accurate trading predictions
+        - RealTimeRSICalculator: Maintains static Yahoo baseline
+        - TradingBot: Uses static baseline for trading decisions
         """
         try:
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
@@ -440,11 +438,11 @@ class YahooHyperliquidPaperTradingBot:
                     from core.constants import MagicNumbers
                     real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
             
-            # Update with current Hyperliquid price
+            # RSI stays at Yahoo baseline - no real-time updates needed
             rsi_updated = False
             if hyperliquid_price:
-                rsi_updated = real_time_rsi_calculator.update_price(hyperliquid_price)
-                # Reduced logging frequency - no additional action needed
+                # real_time_rsi_calculator.update_price(hyperliquid_price)  # Removed real-time calculation
+                pass
             
             # Get current RSI for trading decisions
             rsi_data = real_time_rsi_calculator.get_rsi()
@@ -458,7 +456,7 @@ class YahooHyperliquidPaperTradingBot:
                 "confidence": 0.9 if rsi_data.get("rsi") is not None else 0.3,
                 "data_points": rsi_data.get("data_points", 0),
                 "current_price": rsi_data.get("current_price"),
-                "calculation_method": "hyperliquid_style",
+                "calculation_method": "yahoo_baseline",
                 "yahoo_baseline": rsi_data.get("yahoo_baseline_rsi"),
                 "recently_updated": rsi_updated
             }
@@ -543,8 +541,8 @@ class YahooHyperliquidPaperTradingBot:
         volatility_data = hyperliquid_data.get("volatility_data", {})
         pressure_data = hyperliquid_data.get("pressure_data", {})
         
-        # Get optimized RSI data (already updated in price callback)
-        hybrid_rsi_analysis = self.get_optimized_rsi_data()
+        # Get Yahoo baseline RSI data (static)
+        hybrid_rsi_analysis = self.get_yahoo_baseline_rsi_data()
         
         # Update variability analyzer
         real_volume = volume_data.get("current_volume", 100)
@@ -717,7 +715,7 @@ class YahooHyperliquidPaperTradingBot:
                 trend_data = {"overall_trend": "UNKNOWN", "alignment_score": 0}
             
             # Get RSI data
-            rsi_data = self.get_optimized_rsi_data(current_price)
+            rsi_data = self.get_yahoo_baseline_rsi_data(current_price)
             
             # Extract Hyperliquid data
             volume_data = hyperliquid_data.get("volume_data") or {}
@@ -1382,8 +1380,8 @@ class YahooHyperliquidPaperTradingBot:
         """Centralized market data update with optimized periodic updates and session tracking"""
         try:
             
-            # Get advanced RSI data (already updated with current price)
-            hybrid_rsi_analysis = self.get_optimized_rsi_data()
+            # Get Yahoo baseline RSI data (static)
+            hybrid_rsi_analysis = self.get_yahoo_baseline_rsi_data()
             
             # Get advanced trend analysis using trend manager
             from core.analysis.trend_manager import trend_manager
@@ -1464,6 +1462,7 @@ class YahooHyperliquidPaperTradingBot:
             
             # Log successful update
             rsi_display = f"{rsi_value:.1f}" if rsi_value is not None else "N/A"
+            logger.info(f"📊 RSI being sent to dashboard: {rsi_display} (raw: {rsi_value})")
     
             
         except Exception as e:

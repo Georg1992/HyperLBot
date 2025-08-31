@@ -51,6 +51,8 @@ class RealTimeRSICalculator:
         self.yahoo_baseline_avg_gain = None
         self.yahoo_baseline_avg_loss = None
         
+
+        
         logger.info(f"📊 Hyperliquid-Style RSI Calculator: {periods} periods")
     
     def initialize_with_yahoo_rsi(self, yahoo_rsi: float, yahoo_prices: List[float]) -> bool:
@@ -72,8 +74,10 @@ class RealTimeRSICalculator:
             # Store Yahoo baseline
             self.yahoo_baseline_rsi = yahoo_rsi
             
-            # FIXED: Use Yahoo RSI directly instead of trying to reverse-engineer
-            # This prevents the RSI from drifting away from the correct value
+            # Calculate initial avg_gain and avg_loss from Yahoo prices
+            self._calculate_initial_avg_gain_loss(yahoo_prices)
+            
+            # Set initial RSI
             self.cached_rsi = yahoo_rsi
             self.is_initialized = True
             
@@ -85,7 +89,8 @@ class RealTimeRSICalculator:
             self.last_calculation_time = time.time()
             
             logger.success(f"📊 RSI initialized with Yahoo baseline: {yahoo_rsi:.2f}")
-            logger.info(f"   Using Yahoo RSI directly: {yahoo_rsi:.2f}")
+            logger.info(f"   Initial avg_gain: {self.avg_gain:.6f}")
+            logger.info(f"   Initial avg_loss: {self.avg_loss:.6f}")
             logger.info(f"   Price history: {len(self.price_history)} prices")
             
             return True
@@ -94,9 +99,37 @@ class RealTimeRSICalculator:
             logger.error(f"❌ Failed to initialize RSI with Yahoo data: {e}")
             return False
     
+    def _calculate_initial_avg_gain_loss(self, prices: List[float]):
+        """Calculate initial avg_gain and avg_loss from price history"""
+        if len(prices) < self.periods + 1:
+            return
+        
+        # Calculate price changes
+        changes = []
+        for i in range(1, len(prices)):
+            change = prices[i] - prices[i-1]
+            changes.append(change)
+        
+        # Get gains and losses for the last 'periods' changes
+        recent_changes = changes[-self.periods:]
+        gains = [max(change, 0) for change in recent_changes]
+        losses = [max(-change, 0) for change in recent_changes]
+        
+        # Calculate initial averages
+        self.avg_gain = sum(gains) / self.periods
+        self.avg_loss = sum(losses) / self.periods
+        
+        # If both are 0 (constant prices), set small values to maintain RSI stability
+        if self.avg_gain == 0 and self.avg_loss == 0:
+            self.avg_gain = 0.0001
+            self.avg_loss = 0.0001
+            logger.debug(f"📊 Constant prices detected, setting minimal avg_gain/avg_loss for stability")
+        
+        logger.debug(f"📊 Initial avg_gain: {self.avg_gain:.6f}, avg_loss: {self.avg_loss:.6f}")
+    
     def update_price(self, price: float) -> bool:
         """
-        Update with new Hyperliquid price - KEEP YAHOO RSI ONLY
+        Update current price (RSI stays at Yahoo baseline)
         
         Args:
             price: Current Hyperliquid price
@@ -114,13 +147,7 @@ class RealTimeRSICalculator:
         # Add to price history
         self.price_history.append(price)
         
-        # KEEP YAHOO RSI - NO CALCULATION
-        # RSI stays at Yahoo baseline value
-        self.cached_rsi = self.yahoo_baseline_rsi
-        self.cached_trend, self.cached_signal = self._determine_rsi_signals(self.yahoo_baseline_rsi)
-        self.last_calculation_time = time.time()
-        
-        logger.debug(f"📊 Price updated: ${price:.2f} - RSI stays at Yahoo baseline: {self.yahoo_baseline_rsi:.2f}")
+        # RSI stays at Yahoo baseline - no real-time calculation
         return True
     
     def get_rsi(self) -> Dict[str, Any]:

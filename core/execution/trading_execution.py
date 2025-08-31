@@ -152,7 +152,7 @@ class TradingExecution:
                 logger.error(f"❌ Failed to update account manager: {e}")
             
             # Save positions using trade state manager
-            from core.trade_state_manager import trade_state_manager
+            from core.state.trade_state_manager import trade_state_manager
             trade_state_manager.save_open_positions(self.bot.open_positions)
             
             # Prepare trade data for logging
@@ -411,7 +411,7 @@ class TradingExecution:
             }
             
             # Use trade state manager to close position
-            from core.trade_state_manager import trade_state_manager
+            from core.state.trade_state_manager import trade_state_manager
             trade_state_manager.close_position(position["trade_id"], exit_data)
             
             self.bot.trading_logger.update_trade_result(position["trade_id"], trade_result)
