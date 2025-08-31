@@ -236,8 +236,8 @@ def run_paper_trading():
     # Acquire instance lock
     with instance_manager:
         try:
-            from core.bot.trading_bot import YahooHyperliquidPaperTradingBot
-            from core.account_manager import account_manager
+            from core.bot.trading_orchestrator import YahooHyperliquidPaperTradingBot
+            from core.simulated_account_manager import account_manager
             
             logger.info("Starting Paper Trading Bot (Testing Mode)...")
             logger.info("This mode uses simulated trading - no real money involved")

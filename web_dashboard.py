@@ -255,7 +255,7 @@ class EventDrivenTradingDashboard:
         """Get dashboard data from SimpleRTM - SINGLE SOURCE OF TRUTH"""
         try:
             # Use the global RTM instance - SINGLE SOURCE OF TRUTH
-            from core.data.real_time_manager import simple_rtm
+            from core.dashboard.dashboard_data_manager import simple_rtm
             
             # Check for stale sessions and auto-cleanup (less aggressive)
             # Only cleanup every 30 seconds to avoid interfering with fresh sessions

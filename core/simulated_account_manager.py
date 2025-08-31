@@ -23,7 +23,7 @@ class SimulatedAccountManager:
         
         # Import RTM for integration
         try:
-            from core.data.real_time_manager import simple_rtm
+            from core.dashboard.dashboard_data_manager import simple_rtm
             self.rtm = simple_rtm
         except ImportError:
             self.rtm = None

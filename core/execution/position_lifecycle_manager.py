@@ -145,7 +145,7 @@ class TradingExecution:
             
             # Update account manager with open positions
             try:
-                from core.account_manager import account_manager
+                from core.simulated_account_manager import account_manager
                 account_manager.update_open_positions(self.bot.open_positions)
                 # Updated account manager with open positions
             except Exception as e:
@@ -392,7 +392,7 @@ class TradingExecution:
             
             # Update account manager with open positions
             try:
-                from core.account_manager import account_manager
+                from core.simulated_account_manager import account_manager
                 account_manager.update_open_positions(self.bot.open_positions)
                 account_manager.add_trade(trade_result)
                 # Updated account manager: position closed

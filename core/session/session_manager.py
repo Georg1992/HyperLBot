@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from datetime import datetime
 
-from core.data.real_time_manager import simple_rtm
+from core.dashboard.dashboard_data_manager import simple_rtm
 
 
 class SessionManager:
@@ -96,7 +96,7 @@ class SessionManager:
         """Close any existing active session"""
         try:
             # Check RTM for any active sessions
-            from core.data.real_time_manager import simple_rtm
+            from core.dashboard.dashboard_data_manager import simple_rtm
             rtm_data = simple_rtm.get_data()
             rtm_session = rtm_data.get("session", {})
             
@@ -382,7 +382,7 @@ class SessionManager:
                 self._update_session_time()
                 
                 # Sync to RTM
-                from core.data.real_time_manager import simple_rtm
+                from core.dashboard.dashboard_data_manager import simple_rtm
                 simple_rtm.sync_from_session_manager(self.current_session_data)
                 
                 return True
@@ -399,7 +399,7 @@ class SessionManager:
                     return
                 
                 # Get current account data for coordination (not overwriting)
-                from core.account_manager import account_manager
+                from core.simulated_account_manager import account_manager
                 account_data = account_manager.get_account_summary()
                 
                 if account_data and hasattr(self, 'current_session_data'):

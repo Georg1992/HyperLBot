@@ -22,19 +22,19 @@ from config.config import TradingConfig
 from core.constants import constants, ui_constants, MagicNumbers
 from core.state.trade_state_manager import trade_state_manager
 from core.execution.fee_manager import FeeManager
-from core.analysis.historical.market_volatility_analyzer import VariabilityAnalyzer
+from core.analysis.historical.variability_analyzer import VariabilityAnalyzer
 from core.logging.trading_logger import TradingLogger
 from strategies.prediction_engine import PredictionEngine
-from core.execution.trade_manager import TradeManager
-from core.execution.trading_execution import TradingExecution
-from core.analysis.historical.market_data_analyzer import MarketDataAnalyzer
-from core.data.real_time_data_updater import RTMUpdater
+from core.execution.trade_quality_manager import TradeManager
+from core.execution.position_lifecycle_manager import TradingExecution
+from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
+from core.dashboard.dashboard_data_updater import RTMUpdater
 # PositionManager removed - unused dead code (0 method calls)
-from core.account_manager import account_manager
+from core.simulated_account_manager import account_manager
 # RealTimeRSICalculator removed - replaced with simple Yahoo RSI fetch
 from core.market_data_manager import market_data_manager
 from core.constants import technical_constants
-from core.data.real_time_manager import simple_rtm
+from core.dashboard.dashboard_data_manager import simple_rtm
 from core.analysis.trend_manager import trend_manager
 from core.session.session_manager import SessionManager
 
@@ -286,7 +286,7 @@ class YahooHyperliquidPaperTradingBot:
         """Ensure account manager is properly initialized"""
         if not hasattr(self, 'account_manager') or self.account_manager is None:
             try:
-                from core.account_manager import account_manager
+                from core.simulated_account_manager import account_manager
                 self.account_manager = account_manager
                 # Account manager initialized
             except ImportError as e:

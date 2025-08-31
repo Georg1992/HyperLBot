@@ -7,7 +7,7 @@ Handles Real-Time Market data updates
 import time
 from typing import Dict, Any, Optional
 from loguru import logger
-from core.data.real_time_manager import simple_rtm
+from core.dashboard.dashboard_data_manager import simple_rtm
 
 class RTMUpdater:
     """Handles Real-Time Market data updates"""

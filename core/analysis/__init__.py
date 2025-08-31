@@ -11,8 +11,8 @@ REAL-TIME ANALYSIS (core/analysis/real_time/):
 - volatility_calculator.py: Real-time volatility calculations from live data
 
 HISTORICAL ANALYSIS (core/analysis/historical/):
-- market_data_analyzer.py: Historical data analysis and RSI calculations
-- market_volatility_analyzer.py: Historical volatility analysis from candle data
+- historical_data_coordinator.py: Historical data coordination and analysis
+- variability_analyzer.py: Historical variability analysis from candle data
 
 DATA SOURCES:
 - Real-time: Hyperliquid API, live orderbooks
@@ -34,5 +34,5 @@ __all__ = [
     'VolatilityCalculator',
     
     # Historical analysis - import directly where needed to avoid circular dependencies
-    # e.g. from core.analysis.historical.market_data_analyzer import MarketDataAnalyzer
+    # e.g. from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
 ]

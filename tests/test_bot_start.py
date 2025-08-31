@@ -6,7 +6,7 @@ Test script to start the bot directly without user input
 import time
 import signal
 import sys
-from core.bot.trading_bot import YahooHyperliquidPaperTradingBot
+from core.bot.trading_orchestrator import YahooHyperliquidPaperTradingBot
 from loguru import logger
 
 def signal_handler(signum, frame):
