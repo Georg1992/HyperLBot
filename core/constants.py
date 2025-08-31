@@ -228,10 +228,6 @@ class MagicNumbers:
     MIN_CONFIDENCE_THRESHOLD = 0.1
     CONFIDENCE_THRESHOLD_LOW = 0.3
 
-# Global magic numbers instance
-magic_numbers = MagicNumbers()
-
-
 class DataFetchingConstants:
     """Data fetching and update interval constants"""
     
@@ -437,7 +433,8 @@ class TimeConstants:
     # Note: Timeout values defined in TradingConstants to avoid duplication
 
 
-# Global instances for easy import
+# Global instances for easy import (continued from above)
+magic_numbers = MagicNumbers()
 data_constants = DataFetchingConstants()
 volume_constants = VolumeConstants()
 technical_constants = TechnicalAnalysisConstants()
