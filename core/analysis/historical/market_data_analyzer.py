@@ -10,9 +10,8 @@ from loguru import logger
 from core.constants import magic_numbers
 from core.external.yahoo_data_fetcher import yahoo_data_fetcher
 from core.external.yahoo_momentum_analyzer import momentum_analyzer
-from core.analysis.session.session_historical_data_manager import session_historical_data_manager
 from core.market_data_manager import market_data_manager
-# volume_analyzer import removed - no longer used to avoid categorization conflicts
+# Complex session tracking imports removed - over-engineered for minimal benefit
 
 class MarketDataAnalyzer:
     """Handles market data analysis and RSI calculations with session context"""
@@ -21,9 +20,8 @@ class MarketDataAnalyzer:
         # Use global instances to eliminate duplicate objects and ensure consistency
         self.yahoo_fetcher = yahoo_data_fetcher
         self.momentum_analyzer = momentum_analyzer
-        self.session_manager = session_historical_data_manager
-        # volume_analyzer removed - no longer used to avoid categorization conflicts with orderbook
-        logger.info("📊 Market Data Analyzer initialized with global shared instances (volume analysis removed)")
+        # Complex session tracking removed - over-engineered for minimal benefit
+        logger.info("📊 Market Data Analyzer initialized - simplified for essential analysis only")
     
     def get_current_price(self) -> Optional[float]:
         """Get current price from Yahoo Finance (historical context only)"""
@@ -119,42 +117,24 @@ class MarketDataAnalyzer:
                 "error": str(e)
             }
     
-    def start_session_tracking(self, start_price: float):
-        """Start session tracking for analysis"""
-        self.session_manager.start_session(start_price)
-        logger.info(f"🚀 Session tracking started at ${start_price:.2f}")
-    
-    def add_session_data_point(self, price: float, volume: float, rsi: float, volatility: float):
-        """Add real-time data point to session tracking"""
-        self.session_manager.add_data_point(price, volume, rsi, volatility)
-    
-    def get_session_analysis(self) -> Dict[str, Any]:
-        """Get session-specific analysis for predictions"""
-        return self.session_manager.get_session_context()
+    # Complex session tracking methods removed - over-engineered for minimal benefit
+    # start_session_tracking, add_session_data_point, get_session_analysis eliminated
     
     def get_analysis(self, current_price: float, volume: float, rsi: float, volatility: float) -> Dict[str, Any]:
-        """Get analysis combining Yahoo and session data"""
+        """Get minimal analysis - simplified to essential fields only"""
         try:
-            # Add to session tracking
-            self.add_session_data_point(current_price, volume, rsi, volatility)
-            
-            # Simplified analysis - session tracking only (removed duplicate Yahoo analysis)
-            # Get session context
-            session_context = self.get_session_analysis()
-            
-            # Build minimal analysis with only essential fields
+            # Minimal analysis with only fields needed by prediction engine
             analysis = {
                 # Core fields required by prediction engine
                 "current_price": current_price,
                 "rsi": rsi,  # Use the actual RSI value passed in
-                "trend": session_context.get("session_trend", "NEUTRAL"),  # Use session trend only
+                "trend": "NEUTRAL",  # Simplified - no complex session tracking needed
                 # volume_category removed - TradingBot uses orderbook depth categorization directly
                 "volatility_5m": volatility,  # Use the actual volatility value passed in
                 
-                # Session context only (no conflicting Yahoo data)
-                "session_context": session_context,
-                "analysis_type": "session_only",
-                "data_source": "session_tracking_only",
+                # Minimal context
+                "analysis_type": "simplified",
+                "data_source": "direct_params",
                 "timestamp": time.time()
             }
             

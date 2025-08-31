@@ -29,7 +29,7 @@ from core.execution.trade_manager import TradeManager
 from core.execution.trading_execution import TradingExecution
 from core.analysis.historical.market_data_analyzer import MarketDataAnalyzer
 from core.data.real_time_data_updater import RTMUpdater
-from core.management.position_manager import PositionManager
+# PositionManager removed - unused dead code (0 method calls)
 from core.account_manager import account_manager
 # RealTimeRSICalculator removed - replaced with simple Yahoo RSI fetch
 from core.market_data_manager import market_data_manager
@@ -122,10 +122,10 @@ class YahooHyperliquidPaperTradingBot:
         # Initialize new modules
         self.market_data_analyzer = MarketDataAnalyzer()
         self.rtm_updater = RTMUpdater()
-        self.position_manager = PositionManager(self)
+        # position_manager removed - unused dead code (0 method calls)
         self.hyperliquid_simulator = HyperliquidSimulator()
         
-        logger.info("🔄 New modules initialized: MarketDataAnalyzer, RTMUpdater, PositionManager, HyperliquidSimulator")
+        logger.info("🔄 New modules initialized: MarketDataAnalyzer, RTMUpdater, HyperliquidSimulator")
         
         # Initialize WebSocket for real-time price streaming
         self._initialize_websocket()
@@ -845,11 +845,8 @@ class YahooHyperliquidPaperTradingBot:
             # SessionManager will handle cleanup internally
             logger.info("✅ SessionManager initialized")
             
-            # Start session tracking for enhanced analysis
-            from core.constants import MagicNumbers
-            initial_price = self.get_hyperliquid_price() or MagicNumbers.FALLBACK_BTC_PRICE  # Fallback price
-            self.market_data_analyzer.start_session_tracking(initial_price)
-            logger.info(f"📊 Session tracking started at ${initial_price:.2f}")
+            # Session tracking removed - over-engineered for minimal benefit
+            logger.info("📊 Simplified analysis system initialized")
             
             # Create initial heartbeat immediately so dashboard knows bot is running
             self._create_initial_heartbeat()
@@ -1239,12 +1236,8 @@ class YahooHyperliquidPaperTradingBot:
             except Exception as e:
                 logger.error(f"❌ Could not end SessionManager session: {e}")
             
-            # End session tracking
-            try:
-                self.market_data_analyzer.end_session_tracking()
-                logger.info("📊 Session tracking ended")
-            except Exception as e:
-                logger.error(f"❌ Could not end session tracking: {e}")
+            # Session tracking removed - was over-engineered
+            logger.info("📊 Analysis system shutdown")
             
             # End RTM session
             try:
