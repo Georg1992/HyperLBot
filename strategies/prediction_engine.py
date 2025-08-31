@@ -104,7 +104,7 @@ class PredictionEngine:
             market_data = {
                 "current_price": current_price,
                 "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
-                "volume_category": yahoo_analysis.get("volume_category", "NORMAL"),
+                # volume_category removed - uses orderbook depth categorization from TradingBot instead
                 "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
                 "market_condition": yahoo_analysis.get("market_condition", "NEUTRAL")
             }

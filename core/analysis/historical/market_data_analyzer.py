@@ -9,10 +9,10 @@ from typing import Dict, Any, List, Optional
 from loguru import logger
 from core.constants import magic_numbers
 from core.external.yahoo_data_fetcher import yahoo_data_fetcher
-from core.external.yahoo_volume_analyzer import volume_analyzer
 from core.external.yahoo_momentum_analyzer import momentum_analyzer
 from core.analysis.session.session_historical_data_manager import session_historical_data_manager
 from core.market_data_manager import market_data_manager
+# volume_analyzer import removed - no longer used to avoid categorization conflicts
 
 class MarketDataAnalyzer:
     """Handles market data analysis and RSI calculations with session context"""
@@ -20,10 +20,10 @@ class MarketDataAnalyzer:
     def __init__(self):
         # Use global instances to eliminate duplicate objects and ensure consistency
         self.yahoo_fetcher = yahoo_data_fetcher
-        self.volume_analyzer = volume_analyzer
         self.momentum_analyzer = momentum_analyzer
         self.session_manager = session_historical_data_manager
-        logger.info("📊 Market Data Analyzer initialized with global shared instances")
+        # volume_analyzer removed - no longer used to avoid categorization conflicts with orderbook
+        logger.info("📊 Market Data Analyzer initialized with global shared instances (volume analysis removed)")
     
     def get_current_price(self) -> Optional[float]:
         """Get current price from Yahoo Finance (historical context only)"""
@@ -81,10 +81,7 @@ class MarketDataAnalyzer:
             # Determine market condition
             market_condition = self._determine_market_condition(sma_5m, sma_20m, current_price)
             
-            # Get volume analysis
-            volume_data = self.volume_analyzer.analyze_volume_data(candles_5m)
-            
-            # Get momentum analysis
+            # Get momentum analysis only (volume analysis removed - conflicts with orderbook categorization)
             momentum_data = self.momentum_analyzer.analyze_momentum(candles_5m)
             
             return {
@@ -92,7 +89,6 @@ class MarketDataAnalyzer:
                 "market_condition": market_condition,
                 "sma_5m": sma_5m,
                 "sma_20m": sma_20m,
-                "volume_analysis": volume_data,
                 "momentum_analysis": momentum_data,
                 "data_source": "yahoo_finance",
                 "timestamp": time.time()
@@ -349,8 +345,8 @@ class MarketDataAnalyzer:
                     "market_condition": yahoo_analysis.get("market_condition", "NEUTRAL"),
                     "sma_5m": yahoo_analysis.get("sma_5m", 0),
                     "sma_20m": yahoo_analysis.get("sma_20m", 0),
-                    "volume_analysis": yahoo_analysis.get("volume_analysis", {}),
                     "momentum_analysis": yahoo_analysis.get("momentum_analysis", {})
+                    # volume_analysis removed - was causing categorization conflicts
                 })
             
             return analysis
@@ -386,30 +382,8 @@ class MarketDataAnalyzer:
             logger.error(f"❌ Failed to get trend: {e}")
             return "NEUTRAL"
     
-    def _get_volume_category(self, yahoo_analysis: Dict[str, Any], session_context: Dict[str, Any]) -> str:
-        """Get volume category combining Yahoo and session data"""
-        try:
-            # Use session volume trend if available
-            if session_context.get("data_points", 0) >= 10:
-                session_volume_trend = session_context.get("session_volume_trend", "STABLE")
-                return self._categorize_session_volume(session_volume_trend)
-            
-            # Fall back to Yahoo volume analysis
-            yahoo_volume = yahoo_analysis.get("volume_analysis", {}).get("volume_category", "NORMAL")
-            return yahoo_volume
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get volume category: {e}")
-            return "NORMAL"
-    
-    def _categorize_session_volume(self, volume_trend: str) -> str:
-        """Categorize session volume trend into volume category"""
-        if volume_trend == "INCREASING":
-            return "HIGH"
-        elif volume_trend == "DECREASING":
-            return "LOW"
-        else:
-            return "NORMAL"
+    # Volume category methods removed - TradingBot now uses orderbook depth categorization directly
+    # This eliminates conflict between trading volume categorization (USD scale) and orderbook depth (BTC scale)
     
     def end_session_tracking(self):
         """End session tracking"""

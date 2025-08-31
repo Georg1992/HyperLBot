@@ -311,8 +311,7 @@ class YahooDataFetcher:
                 "candles_1d": candles_1d,  # Full 45 daily candles (6 weeks)
                 "ticker": ticker,
                 
-                # Basic volume and momentum analysis (using external analyzers, not circular)
-                "volume_category": volume_analyzer.analyze_volume_data(candles_5m).get("volume_category", "NORMAL"),
+                # Basic momentum analysis only (volume categorization removed - conflicts with orderbook)
                 "momentum_data": momentum_analyzer.analyze_momentum(candles_5m),
                 
                 # For complex indicators, use market_data_manager.get_yahoo_data_with_analysis()
