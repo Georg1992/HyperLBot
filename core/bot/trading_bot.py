@@ -95,6 +95,9 @@ class YahooHyperliquidPaperTradingBot:
         # Clean up old sessions
         self.trading_logger.cleanup_old_sessions(keep_sessions=constants.MAX_SESSIONS_TO_KEEP)
         
+        # Clear any cached market data to ensure fresh categorization with updated thresholds
+        market_data_manager.clear_cache("market_data")
+        
         # Prediction engine
         self.prediction_engine = PredictionEngine(self.strategy_config)
         
@@ -918,29 +921,23 @@ class YahooHyperliquidPaperTradingBot:
                     time.sleep(check_interval)
                     continue
                 
-                # Volume data is already updated via WebSocket callback (_on_price_update)
-                # Use cached volume data to avoid duplicate API calls
-                if hasattr(self, 'hyperliquid_volume_data') and self.hyperliquid_volume_data:
-                    volume_data = self.hyperliquid_volume_data
+                # Always get fresh volume data to ensure updated categorization thresholds are used
+                # Removed problematic caching that was causing stale categorization data
+                if self.hyperliquid_api is not None:
+                    volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
+                    
+                    # Log significant market conditions using fresh data
                     imbalance = volume_data.get("depth_imbalance", 0)
                     total_depth = volume_data.get("total_depth_5", 0)
-                    
-                    # Log significant market conditions
                     from core.constants import MagicNumbers
                     if abs(imbalance) > MagicNumbers.ORDERBOOK_IMBALANCE_THRESHOLD:  # > 30% imbalance
                         direction = "DOWNTREND (Heavy Selling)" if imbalance < -MagicNumbers.ORDERBOOK_IMBALANCE_THRESHOLD else "UPTREND (Heavy Buying)"
                         logger.warning(f"🚨 SIGNIFICANT ORDERBOOK IMBALANCE: {direction} ({imbalance*100:+.1f}%)")
                         logger.warning(f"   Total Depth: {total_depth:.2f} BTC, Bid: {volume_data.get('bid_depth_5', 0):.2f} BTC, Ask: {volume_data.get('ask_depth_5', 0):.2f} BTC")
                 else:
-                    # Fallback: get volume data if not available from WebSocket
-                    if self.hyperliquid_api is not None:
-                        volume_data = self.hyperliquid_api.get_volume_analysis("BTC")
-                        self.hyperliquid_volume_data = volume_data
-                    else:
-                        # API not available - use empty volume data
-                        volume_data = {}
-                        self.hyperliquid_volume_data = volume_data
-                        logger.warning("⚠️ Cannot get volume data - HyperliquidAPI not available")
+                    # API not available - use empty volume data
+                    volume_data = {}
+                    logger.warning("⚠️ Cannot get volume data - HyperliquidAPI not available")
                 
                 # Check for position exits with advanced management
                 self._update_simple_rtm_activity("🔍 Checking position exits", "INFO")

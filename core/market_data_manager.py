@@ -262,6 +262,18 @@ class MarketDataManager:
             logger.error(f"❌ Failed to get Yahoo data with analysis: {e}")
             return {"error": str(e)}
 
+    def clear_cache(self, cache_type: str = "all"):
+        """Clear cache to force fresh data (useful when constants change)"""
+        if cache_type in ["all", "market_data"]:
+            self._market_data_cache.clear()
+            self._cache_timestamps.clear()
+            logger.info("🧹 MarketDataManager cache cleared - will get fresh data")
+        
+        if cache_type in ["all", "indicators"]:
+            self._indicator_cache.clear()
+            self._indicator_timestamps.clear()
+            logger.info("🧹 MarketDataManager indicator cache cleared")
+
     def get_cache_status(self) -> Dict[str, Any]:
         """Get simplified cache status for monitoring"""
         return {
