@@ -142,13 +142,32 @@ class RealTimeRSICalculator:
         
         # Initialize avg_gain and avg_loss if not set (first update after Yahoo init)
         if self.avg_gain is None or self.avg_loss is None:
-            # Simple initialization: use current price change as base
-            if price_change > 0:
-                self.avg_gain = abs(price_change)
-                self.avg_loss = abs(price_change) * 0.1  # Small loss to avoid division by zero
+            # Use Yahoo baseline RSI to calculate proper initial values
+            if self.yahoo_baseline_rsi is not None:
+                # Calculate base values that would give us the Yahoo RSI
+                avg_price = sum(list(self.price_history)[-15:]) / 15
+                base_change = avg_price * 0.001  # 0.1% of average price
+                
+                if self.yahoo_baseline_rsi >= 70:
+                    # High RSI - more gains than losses
+                    self.avg_gain = base_change * 2.0
+                    self.avg_loss = base_change * 0.5
+                elif self.yahoo_baseline_rsi <= 30:
+                    # Low RSI - more losses than gains
+                    self.avg_gain = base_change * 0.5
+                    self.avg_loss = base_change * 2.0
+                else:
+                    # Neutral RSI - balanced gains and losses
+                    self.avg_gain = base_change
+                    self.avg_loss = base_change
             else:
-                self.avg_gain = abs(price_change) * 0.1  # Small gain to avoid division by zero
-                self.avg_loss = abs(price_change)
+                # Fallback initialization
+                if price_change > 0:
+                    self.avg_gain = abs(price_change)
+                    self.avg_loss = abs(price_change) * 0.5
+                else:
+                    self.avg_gain = abs(price_change) * 0.5
+                    self.avg_loss = abs(price_change)
         
         # Use proper Wilder's smoothing (standard RSI calculation)
         alpha = 1.0 / self.periods  # Standard Wilder's alpha

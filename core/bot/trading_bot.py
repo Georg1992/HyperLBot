@@ -17,6 +17,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 from core.api.hyperliquid_api import HyperliquidAPI
 from core.api.hyperliquid_websocket import HyperliquidWebSocket
+from core.api.hyperliquid_simulator import HyperliquidSimulator
 from config.config import TradingConfig
 from core.constants import constants, strategy_constants, ui_constants, MagicNumbers
 from core.state.trade_state_manager import trade_state_manager
@@ -109,7 +110,12 @@ class YahooHyperliquidPaperTradingBot:
         self.market_data_analyzer = MarketDataAnalyzer()
         self.rtm_updater = RTMUpdater()
         self.position_manager = PositionManager(self)
-        logger.info("🔄 New modules initialized: MarketDataAnalyzer, RTMUpdater, PositionManager")
+        self.hyperliquid_simulator = HyperliquidSimulator()
+        
+        # Initialize RSI calculator with Yahoo baseline
+        self._initialize_rsi_calculator()
+        
+        logger.info("🔄 New modules initialized: MarketDataAnalyzer, RTMUpdater, PositionManager, HyperliquidSimulator")
         
         # Initialize WebSocket for real-time price streaming
         self._initialize_websocket()
@@ -122,6 +128,36 @@ class YahooHyperliquidPaperTradingBot:
         
         # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
         self._test_api_connections()
+    
+    def _initialize_rsi_calculator(self):
+        """Initialize RSI calculator with Yahoo Finance baseline"""
+        try:
+            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+            
+            # Use 5-minute data for RSI baseline
+            candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
+            if candles_5m and len(candles_5m) >= 15:
+                # Calculate RSI from Yahoo 5m data
+                yahoo_rsi = self.market_data_analyzer.yahoo_fetcher.calculate_rsi_from_candles(candles_5m)
+                yahoo_prices = [c['close'] for c in candles_5m[-15:]]
+                
+                # Initialize RSI calculator with Yahoo 5m data
+                success = real_time_rsi_calculator.initialize_with_yahoo_rsi(yahoo_rsi, yahoo_prices)
+                if success:
+                    logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
+                else:
+                    logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
+                    from core.constants import MagicNumbers
+                    real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
+            else:
+                logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
+                from core.constants import MagicNumbers
+                real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize RSI calculator: {e}")
+            from core.constants import MagicNumbers
+            real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
     
     def _initialize_websocket(self):
         """Initialize Hyperliquid WebSocket for real-time price updates - SINGLE SOURCE OF TRUTH"""
