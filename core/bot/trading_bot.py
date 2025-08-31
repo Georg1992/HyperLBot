@@ -31,7 +31,7 @@ from core.analysis.historical.market_data_analyzer import MarketDataAnalyzer
 from core.data.real_time_data_updater import RTMUpdater
 from core.management.position_manager import PositionManager
 from core.account_manager import account_manager
-from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+# RealTimeRSICalculator removed - replaced with simple Yahoo RSI fetch
 from core.market_data_manager import market_data_manager
 from core.constants import technical_constants
 from core.data.real_time_manager import simple_rtm
@@ -82,6 +82,10 @@ class YahooHyperliquidPaperTradingBot:
         self.last_signal_time = 0
         self.signal_cooldown = constants.SIGNAL_COOLDOWN
         
+        # Simple Yahoo RSI storage (replaces complex RealTimeRSICalculator)
+        self.yahoo_rsi_value = None
+        self.rsi_initialized = False
+        
         # Price difference monitoring
         self.price_difference_threshold = constants.PRICE_DIFFERENCE_THRESHOLD
         self.last_price_difference_alert = 0
@@ -121,9 +125,6 @@ class YahooHyperliquidPaperTradingBot:
         self.position_manager = PositionManager(self)
         self.hyperliquid_simulator = HyperliquidSimulator()
         
-        # Initialize RSI calculator with Yahoo baseline
-        self._initialize_rsi_calculator()
-        
         logger.info("🔄 New modules initialized: MarketDataAnalyzer, RTMUpdater, PositionManager, HyperliquidSimulator")
         
         # Initialize WebSocket for real-time price streaming
@@ -132,36 +133,34 @@ class YahooHyperliquidPaperTradingBot:
         # Initialize candle buffers
         self._initialize_candle_buffers()
         
+        # Initialize simple Yahoo RSI (replaces complex RealTimeRSICalculator)
+        self._initialize_yahoo_rsi()
+        
         # Override trade manager's get_open_positions method
         self.trade_manager.get_open_positions = self.get_open_positions
         
         # TEST API CONNECTIONS AND COMPLETE INITIALIZATION
         self._test_api_connections()
     
-    def _initialize_rsi_calculator(self):
-        """Initialize RSI calculator with Yahoo Finance baseline"""
+    def _initialize_yahoo_rsi(self):
+        """Simple Yahoo Finance RSI initialization (replaces complex RealTimeRSICalculator)"""
         try:
-            # Use 5-minute data for RSI baseline - get raw data and calculate centrally
+            # Get 5-minute data for RSI calculation
             candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
             if candles_5m and len(candles_5m) >= 15:
-                # Calculate RSI using centralized MarketDataManager (eliminates circular dependency)
-                yahoo_rsi = market_data_manager.calculate_rsi_from_candles(candles_5m)
-                yahoo_prices = [c['close'] for c in candles_5m[-15:]]
-                
-                # Initialize RSI calculator with Yahoo 5m data
-                success = real_time_rsi_calculator.initialize_with_yahoo_rsi(yahoo_rsi, yahoo_prices)
-                if success:
-                    logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
-                else:
-                    logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
-                    real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
+                # Calculate RSI using centralized MarketDataManager
+                self.yahoo_rsi_value = market_data_manager.calculate_rsi_from_candles(candles_5m)
+                self.rsi_initialized = True
+                logger.success(f"📊 Yahoo RSI initialized: {self.yahoo_rsi_value:.2f}")
             else:
-                logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
-                real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
+                logger.warning("⚠️ Not enough Yahoo 5m data for RSI, using default")
+                self.yahoo_rsi_value = technical_constants.RSI_NEUTRAL
+                self.rsi_initialized = True
                 
         except Exception as e:
-            logger.error(f"❌ Failed to initialize RSI calculator: {e}")
-            real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
+            logger.error(f"❌ Failed to initialize Yahoo RSI: {e}")
+            self.yahoo_rsi_value = technical_constants.RSI_NEUTRAL
+            self.rsi_initialized = True
     
     def _initialize_websocket(self):
         """Initialize Hyperliquid WebSocket for real-time price updates - SINGLE SOURCE OF TRUTH"""
@@ -405,66 +404,56 @@ class YahooHyperliquidPaperTradingBot:
     
     def get_yahoo_baseline_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """
-        Yahoo Baseline RSI: Static RSI from Yahoo Finance
+        Simple Yahoo Finance RSI data for trading decisions
         
-        Implementation:
-        - Yahoo Finance: Provides initial RSI baseline
-        - RealTimeRSICalculator: Maintains static Yahoo baseline
-        - TradingBot: Uses static baseline for trading decisions
+        Implementation: Fetch RSI from Yahoo Finance once and use throughout session
         """
         try:
-            # Get current price
-            if hyperliquid_price is None:
-                hyperliquid_price = self.get_hyperliquid_price()
+            # Initialize Yahoo RSI if not already done
+            if not self.rsi_initialized:
+                self._initialize_yahoo_rsi()
             
-            # Initialize with Yahoo RSI if not already done
-            if not real_time_rsi_calculator.is_initialized:
-                logger.info("📊 Initializing RSI with Yahoo Finance baseline...")
-                # Use 5-minute data for RSI baseline - get raw data and calculate centrally
-                candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
-                if candles_5m and len(candles_5m) >= 15:
-                    # Calculate RSI using centralized MarketDataManager (eliminates circular dependency)
-                    yahoo_rsi = market_data_manager.calculate_rsi_from_candles(candles_5m)
-                    yahoo_prices = [c['close'] for c in candles_5m[-15:]]
-                    
-                    # Initialize RSI calculator with Yahoo 5m data
-                    success = real_time_rsi_calculator.initialize_with_yahoo_rsi(yahoo_rsi, yahoo_prices)
-                    if success:
-                        logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
-                    else:
-                        logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
-                        real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
-                else:
-                    logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
-                    real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
-            
-            # RSI stays at Yahoo baseline - no real-time updates needed
-            rsi_updated = False
-            if hyperliquid_price:
-                # real_time_rsi_calculator.update_price(hyperliquid_price)  # Removed real-time calculation
-                pass
-            
-            # Get current RSI for trading decisions
-            rsi_data = real_time_rsi_calculator.get_rsi()
-            
+            # Return simple RSI data structure
             return {
-                "rsi": rsi_data.get("rsi", None),
-                "rsi_value": rsi_data.get("rsi", None),
-                "rsi_trend": rsi_data.get("trend", "NEUTRAL"),
-                "rsi_signal": rsi_data.get("signal", "NEUTRAL"), 
-                "momentum": rsi_data.get("trend", "NEUTRAL"),
-                "confidence": 0.9 if rsi_data.get("rsi") is not None else 0.3,
-                "data_points": rsi_data.get("data_points", 0),
-                "current_price": rsi_data.get("current_price"),
-                "calculation_method": "yahoo_baseline",
-                "yahoo_baseline": rsi_data.get("yahoo_baseline_rsi"),
-                "recently_updated": rsi_updated
+                "rsi": self.yahoo_rsi_value,
+                "rsi_value": self.yahoo_rsi_value,
+                "rsi_trend": self._get_rsi_trend(self.yahoo_rsi_value),
+                "rsi_signal": self._get_rsi_signal(self.yahoo_rsi_value),
+                "momentum": self._get_rsi_trend(self.yahoo_rsi_value),
+                "confidence": 0.9 if self.yahoo_rsi_value is not None else 0.3,
+                "data_source": "yahoo_finance_simple",
+                "hyperliquid_price": hyperliquid_price or 0.0
             }
             
         except Exception as e:
-            logger.error(f"❌ Failed to get Hyperliquid-style RSI data: {e}")
+            logger.error(f"❌ Failed to get Yahoo RSI data: {e}")
             return self._get_default_rsi_data(hyperliquid_price, str(e))
     
+    def _get_rsi_trend(self, rsi_value: float) -> str:
+        """Simple RSI trend determination"""
+        if rsi_value is None:
+            return "NEUTRAL"
+        elif rsi_value >= 70:
+            return "OVERBOUGHT"
+        elif rsi_value <= 30:
+            return "OVERSOLD"
+        elif rsi_value >= 60:
+            return "BULLISH"
+        elif rsi_value <= 40:
+            return "BEARISH"
+        else:
+            return "NEUTRAL"
+    
+    def _get_rsi_signal(self, rsi_value: float) -> str:
+        """Simple RSI signal determination"""
+        if rsi_value is None:
+            return "NEUTRAL"
+        elif rsi_value >= 70:
+            return "SELL"
+        elif rsi_value <= 30:
+            return "BUY"
+        else:
+            return "NEUTRAL"
 
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get market analysis from Yahoo Finance using centralized MarketDataManager"""

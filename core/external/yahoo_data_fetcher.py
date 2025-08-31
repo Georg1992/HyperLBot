@@ -445,34 +445,8 @@ class YahooDataFetcher:
                 "data_source": "yahoo_finance"
             }
     
-    def get_realtime_momentum_analysis(self, symbol: str = "BTC", current_price: float = None) -> Dict[str, Any]:
-        """
-        Get real-time momentum analysis using the momentum analyzer module
-        """
-        try:
-            # Get recent 5-minute candles for momentum calculation
-            candles_5m = self.get_5m_klines(symbol, 10)  # Last 10 candles (50 minutes)
-            if not candles_5m or len(candles_5m) < 3:
-                return {"momentum": "NEUTRAL", "strength": 0, "direction": 0}
-            
-            # Use momentum analyzer for analysis
-            momentum_data = momentum_analyzer.analyze_momentum(candles_5m, symbol)
-            
-            # Calculate RSI using centralized MarketDataManager
-            yahoo_rsi = market_data_manager.calculate_rsi_from_candles(candles_5m)
-            
-            result = {
-                **momentum_data,
-                "rsi": yahoo_rsi,
-                "data_source": "yahoo_finance_momentum_analysis"
-            }
-            
-            return result
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to calculate real-time momentum: {e}")
-            return {"momentum": "NEUTRAL", "strength": 0, "direction": 0, "error": str(e)}
-    
+    # get_realtime_momentum_analysis removed - unused dead code with redundant RSI calculation
+
 def main():
     """Test the Yahoo Finance data fetcher"""
     logger.info("🔍 Testing Yahoo Finance Data Fetcher (HISTORICAL DATA ONLY)")
