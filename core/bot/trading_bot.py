@@ -1412,7 +1412,7 @@ class YahooHyperliquidPaperTradingBot:
                 "trend": trend_value,
                 "rsi": rsi_value,
                 "volume_depth": volume_data.get("volume_depth", 0.0),
-                "volume_category": analysis.get("volume_category", volume_data.get("volume_category", "NORMAL")),
+                "volume_category": volume_data.get("volume_category", "NORMAL"),  # Use orderbook depth categorization, not trading volume
                 "order_flow": volume_data.get("order_flow", "NEUTRAL"),
                 "depth_analysis": volume_data.get("depth_analysis", "NORMAL"),
                 "volatility_5m": volatility_value,
