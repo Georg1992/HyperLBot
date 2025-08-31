@@ -147,17 +147,17 @@ class YahooHyperliquidPaperTradingBot:
                     logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
                 else:
                     logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
-                    from core.constants import MagicNumbers
-                    real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
+                    from core.constants import technical_constants
+                    real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
             else:
                 logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
-                from core.constants import MagicNumbers
-                real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
+                from core.constants import technical_constants
+                real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
                 
         except Exception as e:
             logger.error(f"❌ Failed to initialize RSI calculator: {e}")
-            from core.constants import MagicNumbers
-            real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
+            from core.constants import technical_constants
+            real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
     
     def _initialize_websocket(self):
         """Initialize Hyperliquid WebSocket for real-time price updates - SINGLE SOURCE OF TRUTH"""
@@ -431,12 +431,12 @@ class YahooHyperliquidPaperTradingBot:
                         logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
                     else:
                         logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
-                        from core.constants import MagicNumbers
-                        real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
+                        from core.constants import technical_constants
+                        real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
                 else:
                     logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
-                    from core.constants import MagicNumbers
-                    real_time_rsi_calculator.cached_rsi = MagicNumbers.RSI_NEUTRAL
+                    from core.constants import technical_constants
+                    real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
             
             # RSI stays at Yahoo baseline - no real-time updates needed
             rsi_updated = False
@@ -686,8 +686,9 @@ class YahooHyperliquidPaperTradingBot:
     
     def _get_default_rsi_data(self, hyperliquid_price: float = None, error: str = "unknown") -> Dict[str, Any]:
         """Get default RSI data structure when calculation fails"""
+        from core.constants import technical_constants
         return {
-                            "rsi": MagicNumbers.RSI_NEUTRAL,  # Neutral RSI
+                            "rsi": technical_constants.RSI_NEUTRAL,  # Neutral RSI
             "rsi_trend": "NEUTRAL",
             "rsi_signal": "HOLD", 
             "periods_analyzed": 0,
@@ -761,6 +762,7 @@ class YahooHyperliquidPaperTradingBot:
         Updates every 5 seconds (throttled for optimal frequency)
         """
         try:
+            from core.constants import technical_constants
             # Throttle predictions to every 5 seconds (aligned with RSI updates)
             current_time = time.time()
             if current_time - self._last_prediction_time < self._prediction_interval:
@@ -783,7 +785,7 @@ class YahooHyperliquidPaperTradingBot:
             size_btc = prediction.get("size_btc", 0)
             size_usd = prediction.get("size_usd", 0)
             entry_price = prediction.get("entry_price", current_price)
-            rsi_value = prediction.get("rsi_at_prediction", MagicNumbers.RSI_NEUTRAL)
+            rsi_value = prediction.get("rsi_at_prediction", technical_constants.RSI_NEUTRAL)
             trend_value = prediction.get("trend_at_prediction", "NEUTRAL")
             confidence = prediction.get("confidence", 0.3)
             reasoning = prediction.get("reasoning", "Standard prediction")
@@ -1379,6 +1381,7 @@ class YahooHyperliquidPaperTradingBot:
     def _update_market_data_centralized(self, current_price: float, force_update: bool = False):
         """Centralized market data update with optimized periodic updates and session tracking"""
         try:
+            from core.constants import technical_constants
             
             # Get Yahoo baseline RSI data (static)
             hybrid_rsi_analysis = self.get_yahoo_baseline_rsi_data()
@@ -1419,7 +1422,7 @@ class YahooHyperliquidPaperTradingBot:
             volatility_value = self._sanitize_volatility(volatility_data.get("volatility_5m", 0.0))
             
             analysis = self.market_data_analyzer.get_analysis(
-                current_price, volume_value, rsi_value or MagicNumbers.RSI_NEUTRAL, volatility_value
+                current_price, volume_value, rsi_value or technical_constants.RSI_NEUTRAL, volatility_value
             )
             
             # Prepare market data with analysis

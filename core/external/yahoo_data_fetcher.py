@@ -749,7 +749,7 @@ class YahooDataFetcher:
             if len(candles) < periods + 1:
                 logger.warning(f"⚠️ Not enough candles for RSI calculation: {len(candles)} < {periods + 1}")
                 from core.constants import MagicNumbers
-                return MagicNumbers.RSI_NEUTRAL  # Neutral RSI
+                return technical_constants.RSI_NEUTRAL  # Neutral RSI
             
             # Extract close prices
             prices = [candle['close'] for candle in candles]

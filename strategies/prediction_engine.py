@@ -35,8 +35,8 @@ class PredictionEngine:
             current_price = market_data.get("current_price", 0)
             
             # Get RSI from market data (Yahoo baseline)
-            from core.constants import MagicNumbers
-            rsi_value = market_data.get("rsi", MagicNumbers.RSI_NEUTRAL)  # From Yahoo baseline
+            from core.constants import technical_constants
+            rsi_value = market_data.get("rsi", technical_constants.RSI_NEUTRAL)  # From Yahoo baseline
             
             # Log the RSI value being used for debugging
             logger.info(f"🎯 PREDICTION ENGINE: Using RSI from Yahoo baseline: {rsi_value}")
@@ -280,7 +280,8 @@ class PredictionEngine:
             base_confidence = 0.3  # Start low as requested
             
             # Get RSI from market data (Yahoo baseline)
-            rsi = market_data.get("rsi", MagicNumbers.RSI_NEUTRAL)
+            from core.constants import technical_constants
+            rsi = market_data.get("rsi", technical_constants.RSI_NEUTRAL)
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
             
@@ -323,13 +324,13 @@ class PredictionEngine:
     
     def _get_default_prediction(self, current_price: float) -> Dict[str, Any]:
         """Generate safe default prediction when analysis fails"""
-        from core.constants import MagicNumbers
+        from core.constants import MagicNumbers, technical_constants
         return {
             "direction": "BUY",
             "size_btc": 0.001,
             "size_usd": MagicNumbers.DEFAULT_POSITION_SIZE_USD,
             "entry_price": current_price * 0.999 if current_price > 0 else 18500,
-            "rsi_at_prediction": MagicNumbers.RSI_NEUTRAL,
+            "rsi_at_prediction": technical_constants.RSI_NEUTRAL,
             "trend_at_prediction": "NEUTRAL",
             "confidence": 0.1,
             "reasoning": "Default low-confidence prediction",
