@@ -144,6 +144,126 @@ class MarketDataManager:
             logger.error(f"❌ Support/resistance calculation failed: {e}")
             return {"support": 0.0, "resistance": 0.0}
     
+    def calculate_rsi_from_candles(self, candles: List[Dict], periods: int = 14) -> float:
+        """
+        Calculate RSI from candlestick data (moved from YahooDataFetcher for consolidation)
+        Eliminates circular dependency and centralizes calculations
+        """
+        cache_key = f"rsi_{periods}_{hash(str(candles[-periods-1:]))}"
+        cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
+        
+        if cached_result:
+            return cached_result
+        
+        try:
+            if len(candles) < periods + 1:
+                from core.constants import technical_constants
+                return technical_constants.RSI_NEUTRAL
+            
+            # Calculate price changes
+            closes = [float(candle['close']) for candle in candles[-(periods + 1):]]
+            changes = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+            
+            # Separate gains and losses
+            gains = [change if change > 0 else 0 for change in changes]
+            losses = [-change if change < 0 else 0 for change in changes]
+            
+            # Calculate average gain and loss
+            avg_gain = sum(gains) / len(gains) if gains else 0
+            avg_loss = sum(losses) / len(losses) if losses else 0
+            
+            # Avoid division by zero
+            if avg_loss == 0:
+                rsi = 100.0
+            else:
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+            
+            # Cache and return result
+            self._cache_data(cache_key, rsi, self._indicator_cache_duration)
+            return round(rsi, 2)
+            
+        except Exception as e:
+            logger.error(f"❌ RSI calculation failed: {e}")
+            from core.constants import technical_constants
+            return technical_constants.RSI_NEUTRAL
+
+    def get_yahoo_data_with_analysis(self, yahoo_fetcher, symbol: str = "BTC", hyperliquid_price: float = None) -> Dict[str, Any]:
+        """
+        Get Yahoo data with centralized analysis calculations
+        This method consolidates Yahoo data fetching with MarketDataManager calculations
+        Eliminates circular dependency by having MarketDataManager orchestrate the process
+        """
+        cache_key = f"yahoo_analysis_{symbol}_{int(time.time() / 300)}"  # 5-minute cache
+        cached_result = self._get_cached_data(cache_key, self._cache_duration)
+        
+        if cached_result:
+            return cached_result
+            
+        try:
+            # Get raw candle data from Yahoo (no calculations)
+            candles_1m = yahoo_fetcher.get_klines(f"{symbol}-USD", "1m", 120)  
+            candles_5m = yahoo_fetcher.get_klines(f"{symbol}-USD", "5m", 60)
+            candles_1h = yahoo_fetcher.get_klines(f"{symbol}-USD", "1h", 84)
+            candles_1d = yahoo_fetcher.get_klines(f"{symbol}-USD", "1d", 45)
+            
+            if not candles_5m:
+                return {"error": "No Yahoo candle data available"}
+                
+            # Do all calculations centrally here instead of in YahooDataFetcher
+            current_price = hyperliquid_price or candles_5m[-1]["close"]
+            
+            # Calculate indicators using centralized methods
+            support_resistance_5m = self.calculate_support_resistance(candles_5m)
+            support_resistance_1h = self.calculate_support_resistance(candles_1h) if candles_1h else {"support": 0, "resistance": 0}
+            support_resistance_1d = self.calculate_support_resistance(candles_1d) if candles_1d else {"support": 0, "resistance": 0}
+            
+            volatility_5m = self.calculate_volatility(candles_5m)
+            volatility_1h = self.calculate_volatility(candles_1h) if candles_1h else 0.0
+            volatility_1d = self.calculate_volatility(candles_1d) if candles_1d else 0.0
+            
+            # Get trend analysis using centralized trend manager
+            trend_5m = self.calculate_trend(candles_5m) if candles_5m else {"trend": "NEUTRAL"}
+            trend_1h = self.calculate_trend(candles_1h) if candles_1h else {"trend": "NEUTRAL"}
+            
+            # Calculate RSI using centralized method
+            rsi_5m = self.calculate_rsi_from_candles(candles_5m)
+            
+            # Build consolidated analysis
+            analysis = {
+                "timestamp": time.time(),
+                "symbol": symbol,
+                "current_price": current_price,
+                "yahoo_last_close": candles_5m[-1]["close"],
+                
+                # Raw candle data
+                "candles_1m": candles_1m or [],
+                "candles_5m": candles_5m or [],
+                "candles_1h": candles_1h or [],
+                "candles_1d": candles_1d or [],
+                
+                # Calculated indicators (centralized)
+                "support_resistance_5m": support_resistance_5m,
+                "support_resistance_1h": support_resistance_1h,
+                "support_resistance_1d": support_resistance_1d,
+                "volatility_5m": volatility_5m,
+                "volatility_1h": volatility_1h,
+                "volatility_1d": volatility_1d,
+                "trend_5m": trend_5m,
+                "trend_1h": trend_1h,
+                "rsi_5m": rsi_5m,
+                
+                "data_source": "centralized_market_data_manager"
+            }
+            
+            # Cache result and return
+            self._cache_data(cache_key, analysis, self._cache_duration)
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get Yahoo data with analysis: {e}")
+            return {"error": str(e)}
+
     def get_cache_status(self) -> Dict[str, Any]:
         """Get simplified cache status for monitoring"""
         return {

@@ -88,12 +88,11 @@ class YahooDataFetcher:
             logger.info("📊 Updating 1-hour data (15-minute interval)")
             candles_1h = self.get_1h_klines(symbol, 84)
             if candles_1h:
-                from core.market_data_manager import market_data_manager
+                # Store raw candle data only - calculations moved to MarketDataManager
+                # This eliminates circular dependency
                 self.cached_1h_data = {
                     "candles": candles_1h,
-                    "trend": market_data_manager.calculate_trend(candles_1h),
-                    "support_resistance": market_data_manager.calculate_support_resistance(candles_1h),
-                    "volatility": market_data_manager.calculate_volatility(candles_1h)
+                    "last_update": current_time
                 }
             else:
                 self.cached_1h_data = {}
@@ -111,12 +110,11 @@ class YahooDataFetcher:
             logger.info("📊 Updating daily data (1-hour interval)")
             candles_1d = self.get_klines(symbol, "1d", 45)
             if candles_1d:
-                from core.market_data_manager import market_data_manager
+                # Store raw candle data only - calculations moved to MarketDataManager  
+                # This eliminates circular dependency
                 self.cached_daily_data = {
                     "candles": candles_1d,
-                    "trend": market_data_manager.calculate_trend(candles_1d),
-                    "support_resistance": market_data_manager.calculate_support_resistance(candles_1d),
-                    "volatility": market_data_manager.calculate_volatility(candles_1d)
+                    "last_update": current_time
                 }
             else:
                 self.cached_daily_data = {}
@@ -419,28 +417,11 @@ class YahooDataFetcher:
                 price_difference_pct = 0
                 logger.warning(f"⚠️ No Hyperliquid price provided, using last close: ${current_price:,.2f}")
             
-            # Calculate indicators using centralized market data manager
-            from core.market_data_manager import market_data_manager
-            support_resistance_5m = market_data_manager.calculate_support_resistance(candles_5m)
-            support_resistance_1h = market_data_manager.calculate_support_resistance(candles_1h)
+            # NOTE: Complex analysis calculations moved to MarketDataManager to eliminate circular dependency
+            # Use market_data_manager.get_yahoo_data_with_analysis() for full analysis
+            # This method now provides raw data + basic volume/momentum analysis only
             
-            # Multi-timeframe trend analysis using advanced trend manager
-            from core.analysis.trend_manager import trend_manager
-            multi_trend_analysis = trend_manager.get_multi_timeframe_trend(
-                candles_1m, candles_5m, candles_1h
-            )
-            trend_5m = multi_trend_analysis["timeframes"]["5m"]
-            trend_1h = multi_trend_analysis["timeframes"]["1h"]
-            trend_1d = multi_trend_analysis["timeframes"]["1h"]  # Use 1h for daily context
-            
-            # Multi-timeframe volatility analysis
-            volatility_5m = market_data_manager.calculate_volatility(candles_5m)
-            volatility_1h = market_data_manager.calculate_volatility(candles_1h)
-            volatility_1d = market_data_manager.calculate_volatility(candles_1d)
-            
-            # Daily support/resistance for major levels
-            support_resistance_1d = market_data_manager.calculate_support_resistance(candles_1d)
-            
+            # Basic analysis with raw data + volume/momentum (no circular dependencies)
             analysis = {
                 "timestamp": time.time(),
                 "symbol": symbol,
@@ -448,23 +429,21 @@ class YahooDataFetcher:
                 "yahoo_last_close": yahoo_last_close,  # Yahoo Finance historical close
                 "price_difference": price_difference,  # Absolute difference
                 "price_difference_pct": price_difference_pct,  # Percentage difference
+                
+                # Raw candle data (primary responsibility of YahooDataFetcher)
                 "candles_1m": candles_1m,  # Full 120 1-min candles (2 hours)
                 "candles_5m": candles_5m,  # Full 60 5-min candles (5 hours)
                 "candles_1h": candles_1h,  # Full 84 1-hour candles (3.5 days)
                 "candles_1d": candles_1d,  # Full 45 daily candles (6 weeks)
-                "support_resistance_5m": support_resistance_5m,
-                "support_resistance_1h": support_resistance_1h,
-                "support_resistance_1d": support_resistance_1d,  # Major weekly/monthly levels
-                "trend_5m": trend_5m,     # Short-term trend (5h)
-                "trend_1h": trend_1h,     # Daily trend (3.5d)
-                "trend_1d": trend_1d,     # Weekly/monthly trend (6w)
-                "multi_trend_analysis": multi_trend_analysis,  # Advanced trend analysis
-                "volatility_5m": volatility_5m,
-                "volatility_1h": volatility_1h,
-                "volatility_1d": volatility_1d,
                 "ticker": ticker,
-                "market_condition": self._determine_market_condition(trend_5m, trend_1h, volatility_5m),
-                "data_source": "Yahoo Finance (Historical) + Hyperliquid (Real-time Price)"
+                
+                # Basic volume and momentum analysis (using external analyzers, not circular)
+                "volume_category": volume_analyzer.analyze_volume_data(candles_5m).get("volume_category", "NORMAL"),
+                "momentum_data": momentum_analyzer.analyze_momentum(candles_5m),
+                
+                # NOTE: For complex indicators (RSI, volatility, support/resistance, trends)
+                # use market_data_manager.get_yahoo_data_with_analysis() instead
+                "data_source": "yahoo_finance_raw_data"
             }
             
             logger.success(f"✅ Yahoo Finance market analysis completed for {symbol}")
@@ -719,8 +698,9 @@ class YahooDataFetcher:
             # Use momentum analyzer for analysis
             momentum_data = momentum_analyzer.analyze_momentum(candles_5m, symbol)
             
-            # Calculate RSI from Yahoo data
-            yahoo_rsi = self.calculate_rsi_from_candles(candles_5m)
+            # Calculate RSI using centralized MarketDataManager
+            from core.market_data_manager import market_data_manager
+            yahoo_rsi = market_data_manager.calculate_rsi_from_candles(candles_5m)
             
             result = {
                 **momentum_data,
@@ -734,60 +714,9 @@ class YahooDataFetcher:
             logger.error(f"❌ Failed to calculate real-time momentum: {e}")
             return {"momentum": "NEUTRAL", "strength": 0, "direction": 0, "error": str(e)}
     
-    def calculate_rsi_from_candles(self, candles: List[Dict], periods: int = 14) -> float:
-        """
-        Calculate RSI from Yahoo Finance candles using Wilder's method
-        
-        Args:
-            candles: List of candle data with 'close' prices
-            periods: RSI calculation periods (default: 14)
-            
-        Returns:
-            float: RSI value
-        """
-        try:
-            if len(candles) < periods + 1:
-                logger.warning(f"⚠️ Not enough candles for RSI calculation: {len(candles)} < {periods + 1}")
-                from core.constants import MagicNumbers
-                return technical_constants.RSI_NEUTRAL  # Neutral RSI
-            
-            # Extract close prices
-            prices = [candle['close'] for candle in candles]
-            
-            # Calculate price changes
-            changes = []
-            for i in range(1, len(prices)):
-                change = prices[i] - prices[i-1]
-                changes.append(change)
-            
-            # Calculate gains and losses
-            gains = [c if c > 0 else 0.0 for c in changes]
-            losses = [-c if c < 0 else 0.0 for c in changes]
-            
-            # Use Wilder's smoothing (same as incremental calculation)
-            alpha = 1.0 / periods
-            
-            # Initialize with first period's simple average
-            avg_gain = sum(gains[:periods]) / periods
-            avg_loss = sum(losses[:periods]) / periods
-            
-            # Apply Wilder's smoothing to remaining periods
-            for i in range(periods, len(gains)):
-                avg_gain = (1 - alpha) * avg_gain + alpha * gains[i]
-                avg_loss = (1 - alpha) * avg_loss + alpha * losses[i]
-            
-            # Calculate RSI
-            if avg_loss == 0:
-                return 100.0
-            else:
-                rs = avg_gain / avg_loss
-                rsi = 100.0 - (100.0 / (1.0 + rs))
-                return round(rsi, 2)
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to calculate RSI from candles: {e}")
-            from core.constants import MagicNumbers
-            return MagicNumbers.RSI_NEUTRAL  # Neutral RSI
+    # RSI calculation method removed - now centralized in MarketDataManager
+    # Use market_data_manager.calculate_rsi_from_candles() instead
+    # This eliminates code duplication and circular dependencies
 
 
 def main():
@@ -802,25 +731,33 @@ def main():
         logger.error("❌ Cannot connect to Yahoo Finance")
         return
     
-    # Test market analysis with mock Hyperliquid price
-    logger.info("📊 Getting market analysis...")
-    from core.constants import MagicNumbers
-    mock_hyperliquid_price = MagicNumbers.TEST_BTC_PRICE  # Mock price for testing
-    analysis = fetcher.get_market_analysis("BTC", hyperliquid_price=mock_hyperliquid_price)
+    # Test raw data fetching (YahooDataFetcher now focuses on raw data only)
+    logger.info("📊 Testing raw data fetching...")
+    candles_5m = fetcher.get_5m_klines("BTC", 10)
     
-    if "error" not in analysis:
-        logger.success("✅ Market analysis successful!")
-        logger.info(f"Current Price (Hyperliquid): ${analysis['current_price']:,.2f}")
-        logger.info(f"5m Trend: {analysis['trend_5m']['trend']} ({analysis['trend_5m']['strength']*100:.2f}%)")
-        logger.info(f"1h Trend: {analysis['trend_1h']['trend']} ({analysis['trend_1h']['strength']*100:.2f}%)")
-        logger.info(f"5m Support: ${analysis['support_resistance_5m']['support']:,.2f}")
-        logger.info(f"5m Resistance: ${analysis['support_resistance_5m']['resistance']:,.2f}")
-        logger.info(f"Market Condition: {analysis['market_condition']}")
-        logger.info(f"Data Source: {analysis['data_source']}")
-        logger.info(f"5m Candles: {len(analysis['candles_5m'])}")
-        logger.info(f"1h Candles: {len(analysis['candles_1h'])}")
+    if candles_5m:
+        logger.success("✅ Raw candle data fetched successfully!")
+        logger.info(f"5m Candles: {len(candles_5m)}")
+        logger.info(f"Latest close: ${candles_5m[-1]['close']:,.2f}")
+        
+        # Test centralized analysis via MarketDataManager
+        logger.info("📊 Testing centralized analysis...")
+        from core.market_data_manager import market_data_manager
+        from core.constants import magic_numbers
+        
+        mock_hyperliquid_price = magic_numbers.TEST_BTC_PRICE
+        analysis = market_data_manager.get_yahoo_data_with_analysis(fetcher, "BTC", mock_hyperliquid_price)
+        
+        if "error" not in analysis:
+            logger.success("✅ Centralized analysis successful!")
+            logger.info(f"Current Price: ${analysis['current_price']:,.2f}")
+            logger.info(f"RSI: {analysis.get('rsi_5m', 'N/A')}")
+            logger.info(f"Volatility: {analysis.get('volatility_5m', 'N/A')}")
+            logger.info(f"Data Source: {analysis['data_source']}")
+        else:
+            logger.error(f"❌ Centralized analysis failed: {analysis['error']}")
     else:
-        logger.error(f"❌ Market analysis failed: {analysis['error']}")
+        logger.error("❌ Failed to fetch raw candle data")
 
 
 if __name__ == "__main__":

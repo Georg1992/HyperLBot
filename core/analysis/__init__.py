@@ -19,18 +19,20 @@ DATA SOURCES:
 - Historical: Yahoo Finance, historical candlesticks
 """
 
-# Import real-time analysis modules
-from .real_time import MarketOrderbookAnalyzer, VolatilityCalculator
+# Lazy imports to prevent circular dependencies
+# Use direct imports in code instead of importing everything in __init__.py
 
-# Import historical analysis modules  
-from .historical import MarketDataAnalyzer, VariabilityAnalyzer
+# For backwards compatibility, import only essential real-time modules
+# that don't have circular dependencies
+from .real_time import VolatilityCalculator
+
+# Historical modules should be imported directly where needed to avoid
+# circular dependency chains (MarketDataAnalyzer → YahooDataFetcher)
 
 __all__ = [
-    # Real-time analysis
-    'MarketOrderbookAnalyzer',
+    # Real-time analysis (safe imports)
     'VolatilityCalculator',
     
-    # Historical analysis
-    'MarketDataAnalyzer', 
-    'VariabilityAnalyzer'
+    # Historical analysis - import directly where needed to avoid circular dependencies
+    # e.g. from core.analysis.historical.market_data_analyzer import MarketDataAnalyzer
 ]

@@ -134,11 +134,12 @@ class YahooHyperliquidPaperTradingBot:
         try:
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
             
-            # Use 5-minute data for RSI baseline
+            # Use 5-minute data for RSI baseline - get raw data and calculate centrally
+            from core.market_data_manager import market_data_manager
             candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
             if candles_5m and len(candles_5m) >= 15:
-                # Calculate RSI from Yahoo 5m data
-                yahoo_rsi = self.market_data_analyzer.yahoo_fetcher.calculate_rsi_from_candles(candles_5m)
+                # Calculate RSI using centralized MarketDataManager (eliminates circular dependency)
+                yahoo_rsi = market_data_manager.calculate_rsi_from_candles(candles_5m)
                 yahoo_prices = [c['close'] for c in candles_5m[-15:]]
                 
                 # Initialize RSI calculator with Yahoo 5m data
@@ -418,11 +419,12 @@ class YahooHyperliquidPaperTradingBot:
             # Initialize with Yahoo RSI if not already done
             if not real_time_rsi_calculator.is_initialized:
                 logger.info("📊 Initializing RSI with Yahoo Finance baseline...")
-                # Use 5-minute data for RSI baseline
+                # Use 5-minute data for RSI baseline - get raw data and calculate centrally
+                from core.market_data_manager import market_data_manager
                 candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
                 if candles_5m and len(candles_5m) >= 15:
-                    # Calculate RSI from Yahoo 5m data
-                    yahoo_rsi = self.market_data_analyzer.yahoo_fetcher.calculate_rsi_from_candles(candles_5m)
+                    # Calculate RSI using centralized MarketDataManager (eliminates circular dependency)
+                    yahoo_rsi = market_data_manager.calculate_rsi_from_candles(candles_5m)
                     yahoo_prices = [c['close'] for c in candles_5m[-15:]]
                     
                     # Initialize RSI calculator with Yahoo 5m data
