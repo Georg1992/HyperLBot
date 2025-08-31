@@ -12,6 +12,7 @@ from loguru import logger
 import core
 
 from config.config import TradingConfig
+from core.constants import volume_constants
 
 class PredictionEngine:
     """Clean prediction engine focused on generating structured trading predictions"""
@@ -19,6 +20,13 @@ class PredictionEngine:
     def __init__(self, strategy_config: Dict[str, Any]):
         self.strategy_config = strategy_config
         self.config = TradingConfig()
+        
+        # Standardized high volume categories for consistent usage
+        self.high_volume_categories = [
+            volume_constants.VOLUME_CATEGORY_HIGH,
+            volume_constants.VOLUME_CATEGORY_VERY_HIGH,
+            volume_constants.VOLUME_CATEGORY_EXTREMELY_HIGH
+        ]
         
         logger.info("🎯 Clean Prediction Engine initialized")
     
@@ -224,11 +232,11 @@ class PredictionEngine:
             if rsi >= 70 and trend in ["DOWNTREND", "WEAK_DOWNTREND"]:
                 return "SELL", current_price * 1.001, f"RSI overbought ({rsi:.1f}) + {trend} alignment"
             
-            # Trend-following signals
-            if trend == "UPTREND" and volume_category in ["HIGH", "VERY_HIGH"]:
+            # Trend-following signals using standardized volume categories
+            if trend == "UPTREND" and volume_category in self.high_volume_categories:
                 return "BUY", current_price * 0.9995, f"Strong {trend} + {volume_category} volume"
             
-            if trend == "DOWNTREND" and volume_category in ["HIGH", "VERY_HIGH"]:
+            if trend == "DOWNTREND" and volume_category in self.high_volume_categories:
                 return "SELL", current_price * 1.0005, f"Strong {trend} + {volume_category} volume"
             
             # Volatility-based opportunities
@@ -297,8 +305,8 @@ class PredictionEngine:
             elif trend in ["WEAK_UPTREND", "WEAK_DOWNTREND"]:
                 base_confidence += 0.1
             
-            # Volume confirmation increases confidence
-            if volume_category in ["HIGH", "VERY_HIGH"]:
+            # Volume confirmation increases confidence using standardized categories
+            if volume_category in self.high_volume_categories:
                 base_confidence += 0.15
             
             # Cap confidence at 0.85 (conservative maximum)

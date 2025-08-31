@@ -8,6 +8,7 @@ import time
 import statistics
 from typing import Dict, Any, List
 from loguru import logger
+from core.constants import volume_constants, technical_constants
 
 class MarketOrderbookAnalyzer:
     """Market analysis using order book data (volume, volatility, pressure)"""
@@ -108,24 +109,24 @@ class MarketOrderbookAnalyzer:
             # Bitcoin typically has 100-1000+ BTC in top 5 levels during normal trading
             from core.constants import MagicNumbers
         
-            if total_depth_5 > MagicNumbers.VOLUME_EXTREMELY_HIGH:    # Extremely high liquidity (800+ BTC)
-                volume_category = "EXTREMELY_HIGH"
-            elif total_depth_5 > MagicNumbers.VOLUME_VERY_HIGH:  # Very high liquidity (400-800 BTC)
-                volume_category = "VERY_HIGH"
-            elif total_depth_5 > MagicNumbers.VOLUME_HIGH:  # High liquidity (200-400 BTC)
-                volume_category = "HIGH"
-            elif total_depth_5 > MagicNumbers.VOLUME_ABOVE_AVERAGE:  # Above average liquidity (100-200 BTC)
-                volume_category = "ABOVE_AVERAGE"
-            elif total_depth_5 > MagicNumbers.VOLUME_NORMAL:   # Normal liquidity (50-100 BTC)
-                volume_category = "NORMAL"
-            elif total_depth_5 > MagicNumbers.VOLUME_BELOW_AVERAGE:   # Below average liquidity (25-50 BTC)
-                volume_category = "BELOW_AVERAGE"
-            elif total_depth_5 > MagicNumbers.VOLUME_LOW:   # Low liquidity (10-25 BTC)
-                volume_category = "LOW"
+            if total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_EXTREMELY_HIGH:    # Extremely high liquidity (800+ BTC)
+                volume_category = volume_constants.VOLUME_CATEGORY_EXTREMELY_HIGH
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_VERY_HIGH:  # Very high liquidity (400-800 BTC)
+                volume_category = volume_constants.VOLUME_CATEGORY_VERY_HIGH
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_HIGH:  # High liquidity (200-400 BTC)
+                volume_category = volume_constants.VOLUME_CATEGORY_HIGH
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_ABOVE_AVERAGE:  # Above average liquidity (100-200 BTC)
+                volume_category = volume_constants.VOLUME_CATEGORY_ABOVE_AVERAGE
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_NORMAL:   # Normal liquidity (50-100 BTC)
+                volume_category = volume_constants.VOLUME_CATEGORY_NORMAL
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_BELOW_AVERAGE:   # Below average liquidity (25-50 BTC)
+                volume_category = volume_constants.VOLUME_CATEGORY_BELOW_AVERAGE
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_LOW:   # Low liquidity (10-25 BTC)
+                volume_category = volume_constants.VOLUME_CATEGORY_LOW
             elif total_depth_5 > 5.0:    # Very low liquidity (5-10 BTC)
-                volume_category = "VERY_LOW"
+                volume_category = volume_constants.VOLUME_CATEGORY_VERY_LOW
             else:                        # Extremely low liquidity (<5 BTC)
-                volume_category = "EXTREMELY_LOW"
+                volume_category = volume_constants.VOLUME_CATEGORY_EXTREMELY_LOW
             
             # Analyze depth distribution for volume trend
             depth_ratio = total_depth_5 / total_depth_10 if total_depth_10 > 0 else 1.0
@@ -298,21 +299,21 @@ class MarketOrderbookAnalyzer:
                 logger.warning(f"⚠️ Very high volatility detected: {combined_volatility:.6f} ({combined_volatility*100:.2f}%) - this may indicate unusual market conditions")
                 # Don't cap - let high volatility be shown when market is actually volatile
             
-            # Categorize volatility with REALISTIC Bitcoin ranges
+            # Categorize volatility with REALISTIC Bitcoin ranges using standardized constants
             if combined_volatility > 0.05:    # > 5% - Extremely high volatility (major events)
-                volatility_category = "EXTREMELY_HIGH"
+                volatility_category = technical_constants.VOLATILITY_CATEGORY_EXTREMELY_HIGH
             elif combined_volatility > 0.02:  # > 2% - Very high volatility (active trading)
-                volatility_category = "VERY_HIGH"
+                volatility_category = technical_constants.VOLATILITY_CATEGORY_VERY_HIGH
             elif combined_volatility > 0.01:  # > 1% - High volatility (busy periods)
-                volatility_category = "HIGH"
+                volatility_category = technical_constants.VOLATILITY_CATEGORY_HIGH
             elif combined_volatility > 0.003: # > 0.3% - Above average volatility (adjusted for Bitcoin)
-                volatility_category = "ABOVE_AVERAGE"
+                volatility_category = technical_constants.VOLATILITY_CATEGORY_ABOVE_AVERAGE
             elif combined_volatility > 0.002: # > 0.2% - Normal volatility
-                volatility_category = "NORMAL"
+                volatility_category = technical_constants.VOLATILITY_CATEGORY_NORMAL
             elif combined_volatility > 0.001: # > 0.1% - Below average volatility
-                volatility_category = "BELOW_AVERAGE"
+                volatility_category = technical_constants.VOLATILITY_CATEGORY_BELOW_AVERAGE
             else:                             # < 0.1% - Low volatility (very quiet)
-                volatility_category = "LOW"
+                volatility_category = technical_constants.VOLATILITY_CATEGORY_LOW
                 
             # DEBUG: Critical logging to identify inflation source (AFTER categorization)
             logger.warning(f"🔍 VOLATILITY DEBUG: combined={combined_volatility:.6f} ({combined_volatility*100:.4f}%) → {volatility_category}")

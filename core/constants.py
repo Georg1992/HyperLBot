@@ -102,12 +102,6 @@ class UIConstants:
     CONNECTION_LAST_SESSION = "📊 Last Session Data"
     CONNECTION_MONITORING = "📊 Monitoring"
     
-    # Volume Categories
-    VOLUME_HIGH = "HIGH"
-    VOLUME_MEDIUM = "MEDIUM"
-    VOLUME_LOW = "LOW"
-    VOLUME_UNKNOWN = "UNKNOWN"
-    
     # Trend Indicators (New System)
     TREND_STRONG_UPTREND = "STRONG_UPTREND"
     TREND_STRONG_DOWNTREND = "STRONG_DOWNTREND"
@@ -151,14 +145,14 @@ class MagicNumbers:
     # Imbalance thresholds
     ORDERBOOK_IMBALANCE_THRESHOLD = 0.3  # 30% imbalance
     
-    # Volume analysis thresholds (BTC)
-    VOLUME_EXTREMELY_HIGH = 800.0
-    VOLUME_VERY_HIGH = 400.0
-    VOLUME_HIGH = 200.0
-    VOLUME_ABOVE_AVERAGE = 100.0
-    VOLUME_NORMAL = 50.0
-    VOLUME_BELOW_AVERAGE = 25.0
-    VOLUME_LOW = 10.0
+    # Orderbook depth thresholds (BTC amounts) - used by OrderbookAnalyzer
+    ORDERBOOK_DEPTH_EXTREMELY_HIGH = 800.0  # 800+ BTC depth
+    ORDERBOOK_DEPTH_VERY_HIGH = 400.0       # 400-800 BTC depth
+    ORDERBOOK_DEPTH_HIGH = 200.0            # 200-400 BTC depth  
+    ORDERBOOK_DEPTH_ABOVE_AVERAGE = 100.0   # 100-200 BTC depth
+    ORDERBOOK_DEPTH_NORMAL = 50.0           # 50-100 BTC depth
+    ORDERBOOK_DEPTH_BELOW_AVERAGE = 25.0    # 25-50 BTC depth
+    ORDERBOOK_DEPTH_LOW = 10.0              # 10-25 BTC depth
     
     # Price fallbacks
     FALLBACK_BTC_PRICE = 50000.0
@@ -249,21 +243,30 @@ class DataFetchingConstants:
 class VolumeConstants:
     """Volume analysis constants"""
     
-    # Volume Thresholds
-    VOLUME_ULTRA_HIGH = 500000       # 500K+
-    VOLUME_HIGH = 100000             # 100K+
-    VOLUME_MEDIUM = 50000            # 50K+
-    VOLUME_LOW = 10000               # 10K+
+    # Trading volume thresholds (USD/share amounts) - used by YahooDataFetcher
+    TRADING_VOLUME_EXTREMELY_HIGH = 500000    # 500K+ trading volume
+    TRADING_VOLUME_VERY_HIGH = 200000         # 200K+ trading volume  
+    TRADING_VOLUME_HIGH = 100000              # 100K+ trading volume
+    TRADING_VOLUME_ABOVE_AVERAGE = 50000      # 50K+ trading volume
+    TRADING_VOLUME_NORMAL = 20000             # 20K+ trading volume
+    TRADING_VOLUME_BELOW_AVERAGE = 10000      # 10K+ trading volume
+    TRADING_VOLUME_LOW = 5000                 # 5K+ trading volume
+    TRADING_VOLUME_VERY_LOW = 2000            # 2K+ trading volume
     
     # Volume Multipliers
     VOLUME_SURGE_MULTIPLIER = 3      # 300% of average for surge detection
     VOLUME_DEPTH_ESTIMATE = 0.15     # 15% of depth as recent volume
     
-    # Volume Categories
-    VOLUME_CATEGORY_ULTRA_HIGH = "ULTRA_HIGH"
+    # Standardized volume categories (used by all components)
+    VOLUME_CATEGORY_EXTREMELY_HIGH = "EXTREMELY_HIGH"
+    VOLUME_CATEGORY_VERY_HIGH = "VERY_HIGH"
     VOLUME_CATEGORY_HIGH = "HIGH"
-    VOLUME_CATEGORY_MEDIUM = "MEDIUM"
+    VOLUME_CATEGORY_ABOVE_AVERAGE = "ABOVE_AVERAGE"
+    VOLUME_CATEGORY_NORMAL = "NORMAL"
+    VOLUME_CATEGORY_BELOW_AVERAGE = "BELOW_AVERAGE"
     VOLUME_CATEGORY_LOW = "LOW"
+    VOLUME_CATEGORY_VERY_LOW = "VERY_LOW"
+    VOLUME_CATEGORY_EXTREMELY_LOW = "EXTREMELY_LOW"
     VOLUME_CATEGORY_UNKNOWN = "UNKNOWN"
 
 
@@ -298,6 +301,15 @@ class TechnicalAnalysisConstants:
     # Spread Analysis
     SPREAD_SIGNIFICANT = 0.001       # 0.1% significant spread
     DEPTH_SIGNIFICANT = 0.001        # 0.1% significant depth
+    
+    # Volatility Categories (separate from volume categories)
+    VOLATILITY_CATEGORY_EXTREMELY_HIGH = "EXTREMELY_HIGH"
+    VOLATILITY_CATEGORY_VERY_HIGH = "VERY_HIGH"
+    VOLATILITY_CATEGORY_HIGH = "HIGH"
+    VOLATILITY_CATEGORY_ABOVE_AVERAGE = "ABOVE_AVERAGE"
+    VOLATILITY_CATEGORY_NORMAL = "NORMAL"
+    VOLATILITY_CATEGORY_BELOW_AVERAGE = "BELOW_AVERAGE"
+    VOLATILITY_CATEGORY_LOW = "LOW"
 
 
 class TradingExecutionConstants:

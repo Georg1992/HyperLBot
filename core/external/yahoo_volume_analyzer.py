@@ -85,25 +85,25 @@ class YahooVolumeAnalyzer:
             }
     
     def _categorize_volume(self, current_volume: float) -> str:
-        """Categorize volume based on thresholds"""
-        if current_volume >= volume_constants.VOLUME_ULTRA_HIGH:  # 500K+
-            return "EXTREMELY_HIGH"
-        elif current_volume >= 200000:  # 200K+
-            return "VERY_HIGH"
-        elif current_volume >= volume_constants.VOLUME_HIGH:  # 100K+
-            return "HIGH"
-        elif current_volume >= volume_constants.VOLUME_MEDIUM:  # 50K+
-            return "ABOVE_AVERAGE"
-        elif current_volume >= 20000:  # 20K+
-            return "NORMAL"
-        elif current_volume >= volume_constants.VOLUME_LOW:  # 10K+
-            return "BELOW_AVERAGE"
-        elif current_volume >= 5000:  # 5K+
-            return "LOW"
-        elif current_volume >= 2000:  # 2K+
-            return "VERY_LOW"
+        """Categorize volume using standardized thresholds and consistent naming"""
+        if current_volume >= volume_constants.TRADING_VOLUME_EXTREMELY_HIGH:
+            return volume_constants.VOLUME_CATEGORY_EXTREMELY_HIGH
+        elif current_volume >= volume_constants.TRADING_VOLUME_VERY_HIGH:
+            return volume_constants.VOLUME_CATEGORY_VERY_HIGH
+        elif current_volume >= volume_constants.TRADING_VOLUME_HIGH:
+            return volume_constants.VOLUME_CATEGORY_HIGH
+        elif current_volume >= volume_constants.TRADING_VOLUME_ABOVE_AVERAGE:
+            return volume_constants.VOLUME_CATEGORY_ABOVE_AVERAGE
+        elif current_volume >= volume_constants.TRADING_VOLUME_NORMAL:
+            return volume_constants.VOLUME_CATEGORY_NORMAL
+        elif current_volume >= volume_constants.TRADING_VOLUME_BELOW_AVERAGE:
+            return volume_constants.VOLUME_CATEGORY_BELOW_AVERAGE
+        elif current_volume >= volume_constants.TRADING_VOLUME_LOW:
+            return volume_constants.VOLUME_CATEGORY_LOW
+        elif current_volume >= volume_constants.TRADING_VOLUME_VERY_LOW:
+            return volume_constants.VOLUME_CATEGORY_VERY_LOW
         else:
-            return "EXTREMELY_LOW"
+            return volume_constants.VOLUME_CATEGORY_EXTREMELY_LOW
     
     def _calculate_volume_trend(self, volumes: List[float]) -> str:
         """Calculate volume trend over time"""

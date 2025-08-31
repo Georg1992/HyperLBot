@@ -511,25 +511,25 @@ class YahooDataFetcher:
             current_volume = current_volume
             avg_volume = avg_volume
             
-            # Categorize volume based on actual Yahoo Finance ranges (more realistic for BTC)
-            if current_volume >= volume_constants.VOLUME_ULTRA_HIGH:  # 500K+
-                volume_category = "EXTREMELY_HIGH"
-            elif current_volume >= 200000:  # 200K+
-                volume_category = "VERY_HIGH"
-            elif current_volume >= volume_constants.VOLUME_HIGH:  # 100K+
-                volume_category = "HIGH"
-            elif current_volume >= volume_constants.VOLUME_MEDIUM:  # 50K+
-                volume_category = "ABOVE_AVERAGE"
-            elif current_volume >= 20000:  # 20K+
-                volume_category = "NORMAL"
-            elif current_volume >= volume_constants.VOLUME_LOW:  # 10K+
-                volume_category = "BELOW_AVERAGE"
-            elif current_volume >= 5000:  # 5K+
-                volume_category = "LOW"
-            elif current_volume >= 2000:  # 2K+
-                volume_category = "VERY_LOW"
+            # Categorize volume using standardized thresholds and consistent naming
+            if current_volume >= volume_constants.TRADING_VOLUME_EXTREMELY_HIGH:
+                volume_category = volume_constants.VOLUME_CATEGORY_EXTREMELY_HIGH
+            elif current_volume >= volume_constants.TRADING_VOLUME_VERY_HIGH:
+                volume_category = volume_constants.VOLUME_CATEGORY_VERY_HIGH
+            elif current_volume >= volume_constants.TRADING_VOLUME_HIGH:
+                volume_category = volume_constants.VOLUME_CATEGORY_HIGH
+            elif current_volume >= volume_constants.TRADING_VOLUME_ABOVE_AVERAGE:
+                volume_category = volume_constants.VOLUME_CATEGORY_ABOVE_AVERAGE
+            elif current_volume >= volume_constants.TRADING_VOLUME_NORMAL:
+                volume_category = volume_constants.VOLUME_CATEGORY_NORMAL
+            elif current_volume >= volume_constants.TRADING_VOLUME_BELOW_AVERAGE:
+                volume_category = volume_constants.VOLUME_CATEGORY_BELOW_AVERAGE
+            elif current_volume >= volume_constants.TRADING_VOLUME_LOW:
+                volume_category = volume_constants.VOLUME_CATEGORY_LOW
+            elif current_volume >= volume_constants.TRADING_VOLUME_VERY_LOW:
+                volume_category = volume_constants.VOLUME_CATEGORY_VERY_LOW
             else:
-                volume_category = "EXTREMELY_LOW"
+                volume_category = volume_constants.VOLUME_CATEGORY_EXTREMELY_LOW
             
             # Determine volume trend
             if len(volumes) >= 3:
