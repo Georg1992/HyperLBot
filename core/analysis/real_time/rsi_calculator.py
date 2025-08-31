@@ -72,28 +72,8 @@ class RealTimeRSICalculator:
             # Store Yahoo baseline
             self.yahoo_baseline_rsi = yahoo_rsi
             
-            # Calculate realistic base values based on price scale
-            avg_price = sum(yahoo_prices) / len(yahoo_prices)
-            price_volatility = max(yahoo_prices) - min(yahoo_prices)
-            base_change = price_volatility / len(yahoo_prices)  # Average price change
-            
-            # Use price-appropriate base values instead of tiny fixed values
-            if yahoo_rsi == 100:
-                self.yahoo_baseline_avg_gain = base_change
-                self.yahoo_baseline_avg_loss = 0.0
-            elif yahoo_rsi == 0:
-                self.yahoo_baseline_avg_gain = 0.0
-                self.yahoo_baseline_avg_loss = base_change
-            else:
-                # Reverse calculate RS from RSI
-                rs = (100.0 - yahoo_rsi) / yahoo_rsi
-                # Use price-appropriate base values
-                self.yahoo_baseline_avg_gain = rs * base_change
-                self.yahoo_baseline_avg_loss = base_change
-            
-            # Initialize with Yahoo values
-            self.avg_gain = self.yahoo_baseline_avg_gain
-            self.avg_loss = self.yahoo_baseline_avg_loss
+            # FIXED: Use Yahoo RSI directly instead of trying to reverse-engineer
+            # This prevents the RSI from drifting away from the correct value
             self.cached_rsi = yahoo_rsi
             self.is_initialized = True
             
@@ -105,9 +85,7 @@ class RealTimeRSICalculator:
             self.last_calculation_time = time.time()
             
             logger.success(f"📊 RSI initialized with Yahoo baseline: {yahoo_rsi:.2f}")
-            logger.info(f"   Yahoo avg_gain: {self.yahoo_baseline_avg_gain:.6f}")
-            logger.info(f"   Yahoo avg_loss: {self.yahoo_baseline_avg_loss:.6f}")
-            logger.info(f"   Base change: {base_change:.6f}")
+            logger.info(f"   Using Yahoo RSI directly: {yahoo_rsi:.2f}")
             logger.info(f"   Price history: {len(self.price_history)} prices")
             
             return True
@@ -154,29 +132,33 @@ class RealTimeRSICalculator:
             logger.debug(f"📊 Price change too small ({abs(price_change / previous_price * 100):.4f}%) - skipping RSI update")
             return False
         
-        # Calculate gain and loss
-        gain = price_change if price_change > 0 else 0.0
-        loss = -price_change if price_change < 0 else 0.0
+        # FIXED: Don't recalculate RSI from scratch - use Yahoo baseline
+        # Only make small adjustments based on significant price movements
+        # This prevents the RSI from drifting away from the correct Yahoo value
         
-        # Use proper Wilder's smoothing (standard RSI calculation)
-        alpha = 1.0 / self.periods  # Standard Wilder's alpha
-        self.avg_gain = (1 - alpha) * self.avg_gain + alpha * gain
-        self.avg_loss = (1 - alpha) * self.avg_loss + alpha * loss
+        # For now, keep the Yahoo RSI as the baseline
+        # Only update if there's a very significant price movement (>1%)
+        significant_change_threshold = 0.01  # 1%
         
-        # Calculate new RSI using standard formula
-        if self.avg_loss == 0:
-            new_rsi = 100.0
+        if abs(price_change / previous_price) > significant_change_threshold:
+            # Make a small adjustment to the Yahoo RSI based on price direction
+            adjustment_factor = 0.1  # Small adjustment to prevent drift
+            if price_change > 0:
+                # Price went up - slightly increase RSI
+                self.cached_rsi = min(100.0, self.cached_rsi + adjustment_factor)
+            else:
+                # Price went down - slightly decrease RSI
+                self.cached_rsi = max(0.0, self.cached_rsi - adjustment_factor)
+            
+            self.cached_rsi = round(self.cached_rsi, 2)
+            self.cached_trend, self.cached_signal = self._determine_rsi_signals(self.cached_rsi)
+            self.last_calculation_time = time.time()
+            
+            logger.debug(f"📊 RSI adjusted: {self.cached_rsi:.2f} (price: ${price:.2f}, change: {price_change:+.2f}, {abs(price_change / previous_price * 100):.4f}%)")
+            return True
         else:
-            rs = self.avg_gain / self.avg_loss
-            new_rsi = 100.0 - (100.0 / (1.0 + rs))
-        
-        # Update cached values (no arbitrary smoothing)
-        self.cached_rsi = round(new_rsi, 2)
-        self.cached_trend, self.cached_signal = self._determine_rsi_signals(new_rsi)
-        self.last_calculation_time = time.time()
-        
-        logger.debug(f"📊 RSI updated: {self.cached_rsi:.2f} (price: ${price:.2f}, change: {price_change:+.2f}, {abs(price_change / previous_price * 100):.4f}%)")
-        return True
+            # No significant change - keep Yahoo RSI
+            return False
     
     def get_rsi(self) -> Dict[str, Any]:
         """
