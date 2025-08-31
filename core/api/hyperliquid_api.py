@@ -8,8 +8,7 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 from config.config import TradingConfig
 
-# Import data modules to avoid lazy import issues
-from core.external.yahoo_data_fetcher import yahoo_data_fetcher
+# Import analysis modules
 import statistics # Added for enhanced volatility analysis
 from core.analysis.real_time.orderbook_analyzer import MarketOrderbookAnalyzer
 
@@ -606,67 +605,6 @@ class HyperliquidAPI:
         except Exception as e:
             logger.error(f"Failed to get trade history: {e}")
             raise
-    
-    def get_klines(self, symbol: str = None, interval: str = "1m", limit: int = 100) -> List[Dict[str, Any]]:
-        """Get historical kline/candlestick data from Yahoo Finance (Hyperliquid doesn't provide historical candles)"""
-        try:
-            symbol = symbol or self.config.SYMBOL
-            
-            logger.info(f"📊 Getting {interval} klines from Yahoo Finance for {symbol}")
-            return self._get_yahoo_fallback_klines(symbol, interval, limit)
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get klines: {e}")
-            return []
-    
-
-    
-    
-    
-
-    
-    def _get_yahoo_fallback_klines(self, symbol: str, interval: str, limit: int) -> List[Dict[str, Any]]:
-        """Fallback to Yahoo Finance for klines data"""
-        try:
-            # Use global instance to eliminate duplicate YahooDataFetcher objects
-            
-            # Map Hyperliquid intervals to Yahoo intervals
-            interval_mapping = {
-                "1m": "1m",
-                "5m": "5m", 
-                "1h": "1h",
-                "1d": "1d"
-            }
-            
-            yahoo_interval = interval_mapping.get(interval, "5m")
-            
-            if yahoo_interval == "1m":
-                candles = yahoo_data_fetcher.get_1m_klines(symbol, limit)
-            elif yahoo_interval == "5m":
-                candles = yahoo_data_fetcher.get_5m_klines(symbol, limit)
-            elif yahoo_interval == "1h":
-                candles = yahoo_data_fetcher.get_1h_klines(symbol, limit)
-            elif yahoo_interval == "1d":
-                candles = yahoo_data_fetcher.get_1d_klines(symbol, limit)
-            else:
-                candles = yahoo_data_fetcher.get_5m_klines(symbol, limit)
-            
-            if candles:
-                logger.info(f"📊 Retrieved {len(candles)} {interval} klines from Yahoo Finance fallback for {symbol}")
-                return candles
-            else:
-                logger.warning(f"⚠️ No kline data available from Yahoo Finance fallback for {symbol}")
-                return []
-            
-        except Exception as e:
-            logger.error(f"❌ Yahoo Finance fallback failed: {e}")
-            return []
-    
-
-    
-
-    
-
     
     def get_funding_rate(self, symbol: str = None) -> Dict[str, Any]:
         """Get current funding rate for a symbol (simplified - API endpoint has issues)"""
