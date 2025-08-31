@@ -49,7 +49,7 @@ class YahooHyperliquidPaperTradingBot:
         self.balance_mode = balance_mode  # "real" or "simulated"
         
         # Paper trading state
-        self.paper_balance = initial_balance or constants.DEFAULT_INITIAL_BALANCE
+        self.paper_balance = initial_balance or self.config.DEFAULT_INITIAL_BALANCE
         self.initial_balance = self.paper_balance
         self.open_positions = []
         self.closed_positions = []

@@ -638,51 +638,6 @@ class YahooDataFetcher:
                 "data_source": "yahoo_finance"
             }
     
-    def get_realtime_volume(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """Get real-time volume using the volume analyzer module"""
-        try:
-            cache_key = f"realtime_volume_{symbol}"
-            cached_data = self._get_cached_data(cache_key)
-            if cached_data:
-                return cached_data
-            
-            # Get 1-minute and 5-minute candles
-            candles_1m = self.get_klines(symbol, "1m", 60)
-            candles_5m = self.get_klines(symbol, "5m", 10)
-            
-            if not candles_1m or not candles_5m:
-                return {
-                    "error": "No candle data available",
-                    "data_source": "yahoo_finance"
-                }
-            
-            # Use volume analyzer for spike detection
-            volume_data = volume_analyzer.detect_volume_spike(candles_1m, candles_5m)
-            
-            # Add additional metadata
-            volume_data.update({
-                "data_source": "yahoo_finance_1m_aggregation",
-                "update_frequency": "5_seconds",
-                "yahoo_5m_volume": candles_5m[-1]["volume"] if candles_5m else 0
-            })
-            
-            # Cache for 5 seconds
-            self._cache_data(cache_key, volume_data)
-            
-            # Log immediate spike detection
-            if volume_data.get("is_immediate_spike", False):
-                logger.warning(f"🚨 IMMEDIATE VOLUME SPIKE DETECTED: {volume_data.get('spike_reason', '')}")
-                logger.warning(f"   Current: {volume_data.get('estimated_current_volume', 0):.0f}")
-            
-            return volume_data
-            
-        except Exception as e:
-            logger.error(f"Failed to get real-time volume: {e}")
-            return {
-                "error": str(e),
-                "data_source": "yahoo_finance"
-            }
-
     def get_realtime_momentum_analysis(self, symbol: str = "BTC", current_price: float = None) -> Dict[str, Any]:
         """
         Get real-time momentum analysis using the momentum analyzer module
@@ -749,6 +704,8 @@ def main():
     else:
         logger.error("❌ Failed to fetch raw candle data")
 
+# Global instance to eliminate duplicate instances across the codebase
+yahoo_data_fetcher = YahooDataFetcher()
 
 if __name__ == "__main__":
     main()

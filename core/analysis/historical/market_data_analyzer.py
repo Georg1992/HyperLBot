@@ -8,20 +8,21 @@ import time
 from typing import Dict, Any, List, Optional
 from loguru import logger
 from core.constants import magic_numbers
-from core.external.yahoo_data_fetcher import YahooDataFetcher
-from core.external.yahoo_volume_analyzer import YahooVolumeAnalyzer
-from core.external.yahoo_momentum_analyzer import YahooMomentumAnalyzer
-from core.analysis.session.session_historical_data_manager import SessionHistoricalDataManager
+from core.external.yahoo_data_fetcher import yahoo_data_fetcher
+from core.external.yahoo_volume_analyzer import volume_analyzer
+from core.external.yahoo_momentum_analyzer import momentum_analyzer
+from core.analysis.session.session_historical_data_manager import session_historical_data_manager
 
 class MarketDataAnalyzer:
     """Handles market data analysis and RSI calculations with session context"""
     
     def __init__(self):
-        self.yahoo_fetcher = YahooDataFetcher()
-        self.volume_analyzer = YahooVolumeAnalyzer()
-        self.momentum_analyzer = YahooMomentumAnalyzer()
-        self.session_manager = SessionHistoricalDataManager()
-        logger.info("📊 Market Data Analyzer initialized with session tracking")
+        # Use global instances to eliminate duplicate objects and ensure consistency
+        self.yahoo_fetcher = yahoo_data_fetcher
+        self.volume_analyzer = volume_analyzer
+        self.momentum_analyzer = momentum_analyzer
+        self.session_manager = session_historical_data_manager
+        logger.info("📊 Market Data Analyzer initialized with global shared instances")
     
     def get_current_price(self) -> Optional[float]:
         """Get current price from Yahoo Finance (historical context only)"""

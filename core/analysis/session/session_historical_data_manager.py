@@ -377,3 +377,6 @@ class SessionHistoricalDataManager:
             "session_volatility": context.get("session_volatility", 0),
             "session_market_regime": context.get("session_market_regime", "UNKNOWN")
         }
+
+# Global instance to eliminate duplicate instances across the codebase
+session_historical_data_manager = SessionHistoricalDataManager()

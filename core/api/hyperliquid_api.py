@@ -9,7 +9,7 @@ from loguru import logger
 from config.config import TradingConfig
 
 # Import data modules to avoid lazy import issues
-from core.external.yahoo_data_fetcher import YahooDataFetcher
+from core.external.yahoo_data_fetcher import yahoo_data_fetcher
 import statistics # Added for enhanced volatility analysis
 from core.analysis.real_time.orderbook_analyzer import MarketOrderbookAnalyzer
 
@@ -628,7 +628,7 @@ class HyperliquidAPI:
     def _get_yahoo_fallback_klines(self, symbol: str, interval: str, limit: int) -> List[Dict[str, Any]]:
         """Fallback to Yahoo Finance for klines data"""
         try:
-            yahoo_fetcher = YahooDataFetcher()
+            # Use global instance to eliminate duplicate YahooDataFetcher objects
             
             # Map Hyperliquid intervals to Yahoo intervals
             interval_mapping = {
@@ -641,15 +641,15 @@ class HyperliquidAPI:
             yahoo_interval = interval_mapping.get(interval, "5m")
             
             if yahoo_interval == "1m":
-                candles = yahoo_fetcher.get_1m_klines(symbol, limit)
+                candles = yahoo_data_fetcher.get_1m_klines(symbol, limit)
             elif yahoo_interval == "5m":
-                candles = yahoo_fetcher.get_5m_klines(symbol, limit)
+                candles = yahoo_data_fetcher.get_5m_klines(symbol, limit)
             elif yahoo_interval == "1h":
-                candles = yahoo_fetcher.get_1h_klines(symbol, limit)
+                candles = yahoo_data_fetcher.get_1h_klines(symbol, limit)
             elif yahoo_interval == "1d":
-                candles = yahoo_fetcher.get_1d_klines(symbol, limit)
+                candles = yahoo_data_fetcher.get_1d_klines(symbol, limit)
             else:
-                candles = yahoo_fetcher.get_5m_klines(symbol, limit)
+                candles = yahoo_data_fetcher.get_5m_klines(symbol, limit)
             
             if candles:
                 logger.info(f"📊 Retrieved {len(candles)} {interval} klines from Yahoo Finance fallback for {symbol}")
