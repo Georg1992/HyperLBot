@@ -34,11 +34,14 @@ class PredictionEngine:
         try:
             current_price = market_data.get("current_price", 0)
             
-            # GET REAL RSI FROM RSI CALCULATOR - NOT FROM MARKET DATA!
+            # SINGLE SOURCE OF TRUTH: Get RSI ONLY from real-time calculator
             from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
             real_rsi_data = real_time_rsi_calculator.get_rsi()
             from core.constants import MagicNumbers
-            rsi_value = real_rsi_data.get("rsi", MagicNumbers.RSI_NEUTRAL)  # Use real RSI, fallback to neutral if not available
+            rsi_value = real_rsi_data.get("rsi", MagicNumbers.RSI_NEUTRAL)  # SINGLE SOURCE OF TRUTH
+            
+            # Log the RSI value being used for debugging
+            logger.info(f"🎯 PREDICTION ENGINE: Using RSI from real-time calculator: {rsi_value}")
             
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
@@ -276,9 +279,12 @@ class PredictionEngine:
         """Calculate confidence using both real-time and historical data"""
         try:
             from core.constants import MagicNumbers
+            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
             base_confidence = 0.3  # Start low as requested
             
-            rsi = market_data.get("rsi", MagicNumbers.RSI_NEUTRAL)
+            # SINGLE SOURCE OF TRUTH: Get RSI from real-time calculator
+            real_rsi_data = real_time_rsi_calculator.get_rsi()
+            rsi = real_rsi_data.get("rsi", MagicNumbers.RSI_NEUTRAL)
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
             
