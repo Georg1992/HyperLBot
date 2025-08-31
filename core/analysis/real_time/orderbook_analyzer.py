@@ -105,23 +105,23 @@ class MarketOrderbookAnalyzer:
             else:
                 order_flow = "NEUTRAL"
             
-            # Categorize volume based on REALISTIC Bitcoin orderbook depth (fixed thresholds)
-            # Bitcoin typically has 100-1000+ BTC in top 5 levels during normal trading
+            # Categorize volume based on REALISTIC Bitcoin orderbook depth (updated thresholds)
+            # Updated for realistic Bitcoin market conditions: 10-50 BTC is typical range
             from core.constants import MagicNumbers
         
-            if total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_EXTREMELY_HIGH:    # Extremely high liquidity (800+ BTC)
+            if total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_EXTREMELY_HIGH:    # Extremely high liquidity (50+ BTC)
                 volume_category = volume_constants.VOLUME_CATEGORY_EXTREMELY_HIGH
-            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_VERY_HIGH:  # Very high liquidity (400-800 BTC)
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_VERY_HIGH:  # Very high liquidity (30-50 BTC)
                 volume_category = volume_constants.VOLUME_CATEGORY_VERY_HIGH
-            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_HIGH:  # High liquidity (200-400 BTC)
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_HIGH:  # High liquidity (20-30 BTC)
                 volume_category = volume_constants.VOLUME_CATEGORY_HIGH
-            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_ABOVE_AVERAGE:  # Above average liquidity (100-200 BTC)
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_ABOVE_AVERAGE:  # Above average liquidity (15-20 BTC)
                 volume_category = volume_constants.VOLUME_CATEGORY_ABOVE_AVERAGE
-            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_NORMAL:   # Normal liquidity (50-100 BTC)
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_NORMAL:   # Normal liquidity (10-15 BTC)
                 volume_category = volume_constants.VOLUME_CATEGORY_NORMAL
-            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_BELOW_AVERAGE:   # Below average liquidity (25-50 BTC)
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_BELOW_AVERAGE:   # Below average liquidity (7-10 BTC)
                 volume_category = volume_constants.VOLUME_CATEGORY_BELOW_AVERAGE
-            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_LOW:   # Low liquidity (10-25 BTC)
+            elif total_depth_5 > MagicNumbers.ORDERBOOK_DEPTH_LOW:   # Low liquidity (5-7 BTC)
                 volume_category = volume_constants.VOLUME_CATEGORY_LOW
             elif total_depth_5 > 5.0:    # Very low liquidity (5-10 BTC)
                 volume_category = volume_constants.VOLUME_CATEGORY_VERY_LOW
