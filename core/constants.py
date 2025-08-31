@@ -145,14 +145,14 @@ class MagicNumbers:
     # Imbalance thresholds
     ORDERBOOK_IMBALANCE_THRESHOLD = 0.3  # 30% imbalance
     
-    # Orderbook depth thresholds (BTC amounts) - used by OrderbookAnalyzer
-    ORDERBOOK_DEPTH_EXTREMELY_HIGH = 800.0  # 800+ BTC depth
-    ORDERBOOK_DEPTH_VERY_HIGH = 400.0       # 400-800 BTC depth
-    ORDERBOOK_DEPTH_HIGH = 200.0            # 200-400 BTC depth  
-    ORDERBOOK_DEPTH_ABOVE_AVERAGE = 100.0   # 100-200 BTC depth
-    ORDERBOOK_DEPTH_NORMAL = 50.0           # 50-100 BTC depth
-    ORDERBOOK_DEPTH_BELOW_AVERAGE = 25.0    # 25-50 BTC depth
-    ORDERBOOK_DEPTH_LOW = 10.0              # 10-25 BTC depth
+    # Orderbook depth thresholds (BTC amounts) - REALISTIC Bitcoin market levels
+    ORDERBOOK_DEPTH_EXTREMELY_HIGH = 50.0   # 50+ BTC depth (very high for Bitcoin)
+    ORDERBOOK_DEPTH_VERY_HIGH = 30.0        # 30-50 BTC depth
+    ORDERBOOK_DEPTH_HIGH = 20.0             # 20-30 BTC depth  
+    ORDERBOOK_DEPTH_ABOVE_AVERAGE = 15.0    # 15-20 BTC depth
+    ORDERBOOK_DEPTH_NORMAL = 10.0           # 10-15 BTC depth
+    ORDERBOOK_DEPTH_BELOW_AVERAGE = 7.0     # 7-10 BTC depth
+    ORDERBOOK_DEPTH_LOW = 5.0               # 5-7 BTC depth
     
     # Price fallbacks
     FALLBACK_BTC_PRICE = 50000.0
