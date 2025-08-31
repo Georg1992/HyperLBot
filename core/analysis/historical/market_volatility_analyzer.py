@@ -9,7 +9,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 from collections import deque
-from core.analysis.real_time.volatility_calculator import VolatilityCalculator
+# Removed VolatilityCalculator import - now using MarketDataManager for consolidation
 from core.constants import variability_constants, trading_constants, simulation_constants
 
 class VariabilityAnalyzer:
@@ -26,8 +26,7 @@ class VariabilityAnalyzer:
         self.volume_history = deque(maxlen=lookback_periods)
         self.variability_scores = deque(maxlen=lookback_periods)
         
-        # Initialize centralized volatility calculator
-        self.volatility_calculator = VolatilityCalculator()
+        # Note: Volatility calculations now delegated to MarketDataManager for consolidation
         
         # Variability thresholds
         self.variability_thresholds = {
@@ -62,20 +61,23 @@ class VariabilityAnalyzer:
             self.variability_scores.append(variability_score)
     
     def _calculate_volatility(self) -> float:
-        """Calculate current volatility using centralized VolatilityCalculator"""
+        """Calculate current volatility using centralized MarketDataManager"""
         if len(self.price_history) < 2:
             return 0.0
         
-        # Convert price history to candle format for volatility calculator
+        # Convert price history to candle format for MarketDataManager
         candles = []
         for price_data in self.price_history:
             candles.append({
                 "close": price_data["price"],
+                "high": price_data["price"],  # For single price points, high = close
+                "low": price_data["price"],   # For single price points, low = close
                 "volume": price_data.get("volume", 0)
             })
         
-        # Use centralized volatility calculator
-        return self.volatility_calculator.calculate_candle_volatility(candles, "1m")
+        # Use centralized MarketDataManager for volatility calculation (eliminates redundancy)
+        from core.market_data_manager import market_data_manager
+        return market_data_manager.calculate_volatility(candles, min(len(candles), 20))
     
     def _calculate_variability_score(self) -> float:
         """Calculate variability score based on multiple factors"""

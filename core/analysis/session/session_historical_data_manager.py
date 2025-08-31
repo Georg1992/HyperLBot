@@ -156,22 +156,39 @@ class SessionHistoricalDataManager:
         return session_context
     
     def _calculate_session_volatility(self, prices: List[float]) -> float:
-        """Calculate session volatility"""
+        """Calculate session volatility using centralized MarketDataManager"""
         if len(prices) < 2:
             return 0.0
         
-        # Calculate percentage changes
-        changes = []
-        for i in range(1, len(prices)):
-            if prices[i-1] > 0:
-                change = abs(prices[i] - prices[i-1]) / prices[i-1]
-                changes.append(change)
-        
-        if not changes:
-            return 0.0
-        
-        # Use standard deviation of percentage changes
-        return statistics.stdev(changes)
+        try:
+            # Convert prices to candle format for MarketDataManager
+            candles = []
+            for i, price in enumerate(prices):
+                candles.append({
+                    "close": price,
+                    "high": price,  # For price points, high = close
+                    "low": price,   # For price points, low = close
+                    "volume": 1000  # Default volume for price points
+                })
+            
+            # Use centralized MarketDataManager for consistency (eliminates calculation redundancy)
+            from core.market_data_manager import market_data_manager
+            return market_data_manager.calculate_volatility(candles, min(len(candles), 20))
+            
+        except Exception as e:
+            logger.warning(f"⚠️ MarketDataManager volatility failed, using fallback: {e}")
+            # Fallback to simple calculation if centralized fails
+            changes = []
+            for i in range(1, len(prices)):
+                if prices[i-1] > 0:
+                    change = abs(prices[i] - prices[i-1]) / prices[i-1]
+                    changes.append(change)
+            
+            if not changes:
+                return 0.0
+            
+            import statistics
+            return statistics.stdev(changes)
     
     def _calculate_volume_trend(self, volumes: List[float]) -> str:
         """Calculate volume trend"""
