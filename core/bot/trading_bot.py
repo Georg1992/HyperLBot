@@ -18,7 +18,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from core.api.hyperliquid_api import HyperliquidAPI
 from core.api.hyperliquid_websocket import HyperliquidWebSocket
 from config.config import TradingConfig
-from core.constants import constants, strategy_constants, ui_constants, magic_numbers
+from core.constants import constants, strategy_constants, ui_constants, MagicNumbers
 from core.state.trade_state_manager import trade_state_manager
 from core.execution.fee_manager import FeeManager
 from core.analysis.historical.market_volatility_analyzer import VariabilityAnalyzer
@@ -565,7 +565,7 @@ class YahooHyperliquidPaperTradingBot:
             "entry_price": entry_analysis["entry_price"],
             "current_price": hyperliquid_price,  # Add current price for logging
             "prediction_confidence": entry_analysis["confidence"],
-            "hybrid_confidence": hybrid_rsi_analysis.get("confidence", magic_numbers.DEFAULT_CONFIDENCE),
+                            "hybrid_confidence": hybrid_rsi_analysis.get("confidence", MagicNumbers.DEFAULT_CONFIDENCE),
             "optimal_params": variability_decision["optimal_trading_params"],
             "strategy_name": self.strategy_name,
             # Add market analysis data for logging (using correct field names from Yahoo analysis)
@@ -597,7 +597,7 @@ class YahooHyperliquidPaperTradingBot:
         # Update SimpleRTM with traditional prediction
         try:
             # Update SimpleRTM with signal
-            hybrid_confidence = hybrid_rsi_analysis.get("confidence", magic_numbers.DEFAULT_CONFIDENCE)
+            hybrid_confidence = hybrid_rsi_analysis.get("confidence", MagicNumbers.DEFAULT_CONFIDENCE)
             self._update_simple_rtm_signal({
                 "type": signal_data["side"],
                 "side": signal_data["side"],
@@ -642,7 +642,7 @@ class YahooHyperliquidPaperTradingBot:
     
     def _is_prediction_valid(self, prediction: Dict[str, Any], current_price: float) -> bool:
         """Simple prediction validation"""
-        return prediction.get("confidence", 0) > magic_numbers.DEFAULT_CONFIDENCE and prediction.get("has_prediction", False)
+        return prediction.get("confidence", 0) > MagicNumbers.DEFAULT_CONFIDENCE and prediction.get("has_prediction", False)
     
     def _calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
         """Get win probability from prediction engine"""
@@ -838,6 +838,7 @@ class YahooHyperliquidPaperTradingBot:
             logger.info("✅ SessionManager initialized")
             
             # Start session tracking for enhanced analysis
+            from core.constants import MagicNumbers
             initial_price = self.get_hyperliquid_price() or MagicNumbers.FALLBACK_BTC_PRICE  # Fallback price
             self.market_data_analyzer.start_session_tracking(initial_price)
             logger.info(f"📊 Session tracking started at ${initial_price:.2f}")
@@ -900,8 +901,9 @@ class YahooHyperliquidPaperTradingBot:
                     total_depth = volume_data.get("total_depth_5", 0)
                     
                     # Log significant market conditions
-                    if abs(imbalance) > magic_numbers.ORDERBOOK_IMBALANCE_THRESHOLD:  # > 30% imbalance
-                        direction = "DOWNTREND (Heavy Selling)" if imbalance < -magic_numbers.ORDERBOOK_IMBALANCE_THRESHOLD else "UPTREND (Heavy Buying)"
+                    from core.constants import MagicNumbers
+                    if abs(imbalance) > MagicNumbers.ORDERBOOK_IMBALANCE_THRESHOLD:  # > 30% imbalance
+                        direction = "DOWNTREND (Heavy Selling)" if imbalance < -MagicNumbers.ORDERBOOK_IMBALANCE_THRESHOLD else "UPTREND (Heavy Buying)"
                         logger.warning(f"🚨 SIGNIFICANT ORDERBOOK IMBALANCE: {direction} ({imbalance*100:+.1f}%)")
                         logger.warning(f"   Total Depth: {total_depth:.2f} BTC, Bid: {volume_data.get('bid_depth_5', 0):.2f} BTC, Ask: {volume_data.get('ask_depth_5', 0):.2f} BTC")
                 else:
@@ -1402,7 +1404,7 @@ class YahooHyperliquidPaperTradingBot:
                 "pressure": {
                     "direction": pressure_data.get("direction", "NEUTRAL"),
                     "confidence": pressure_data.get("confidence", "50%"),
-                    "strength": pressure_data.get("strength", magic_numbers.DEFAULT_STRENGTH),
+                    "strength": pressure_data.get("strength", MagicNumbers.DEFAULT_STRENGTH),
                     "trend": pressure_data.get("trend", "NEUTRAL")
                 },
                 "trend_analysis": trend_data,
