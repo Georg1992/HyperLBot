@@ -250,6 +250,7 @@ class PredictionEngine:
     def _calculate_position_size(self, current_price: float, confidence: float, volatility: float) -> Tuple[float, float]:
         """Calculate position size based on confidence and market volatility"""
         try:
+            from core.constants import MagicNumbers
             # Base position size (conservative for testing)
             base_usd = MagicNumbers.DEFAULT_POSITION_SIZE_USD  # Default position size
             
@@ -274,6 +275,7 @@ class PredictionEngine:
     def _calculate_confidence(self, market_data: Dict[str, Any], historical_analysis: Dict[str, Any]) -> float:
         """Calculate confidence using both real-time and historical data"""
         try:
+            from core.constants import MagicNumbers
             base_confidence = 0.3  # Start low as requested
             
             rsi = market_data.get("rsi", MagicNumbers.RSI_NEUTRAL)
@@ -319,6 +321,7 @@ class PredictionEngine:
     
     def _get_default_prediction(self, current_price: float) -> Dict[str, Any]:
         """Generate safe default prediction when analysis fails"""
+        from core.constants import MagicNumbers
         return {
             "direction": "BUY",
             "size_btc": 0.001,
