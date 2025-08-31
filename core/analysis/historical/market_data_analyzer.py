@@ -329,7 +329,7 @@ class MarketDataAnalyzer:
                 "current_price": current_price,
                 "rsi": rsi,  # Use the actual RSI value passed in
                 "trend": self._get_trend(yahoo_analysis, session_context),
-                "volume_category": self._get_volume_category(yahoo_analysis, session_context),
+                # volume_category removed - TradingBot uses orderbook depth categorization directly
                 "volatility_5m": volatility,  # Use the actual volatility value passed in
                 
                 # Additional context fields
@@ -362,7 +362,7 @@ class MarketDataAnalyzer:
                 "current_price": current_price,
                 "rsi": rsi,
                 "trend": "NEUTRAL",
-                "volume_category": "NORMAL",
+                # volume_category removed - TradingBot uses orderbook depth categorization only
                 "volatility_5m": volatility,
                 "market_condition": "NEUTRAL",
                 "analysis_type": "fallback",
