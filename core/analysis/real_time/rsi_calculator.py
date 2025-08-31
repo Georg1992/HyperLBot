@@ -283,5 +283,15 @@ class RealTimeRSICalculator:
         # Change is significant if it exceeds the volatility threshold
         return percentage_change >= volatility_threshold
 
-# Global instance
-real_time_rsi_calculator = RealTimeRSICalculator(periods=14)
+# Global instance - Singleton pattern to prevent recreation
+_real_time_rsi_calculator_instance = None
+
+def get_real_time_rsi_calculator():
+    """Get the singleton instance of RealTimeRSICalculator"""
+    global _real_time_rsi_calculator_instance
+    if _real_time_rsi_calculator_instance is None:
+        _real_time_rsi_calculator_instance = RealTimeRSICalculator(periods=14)
+    return _real_time_rsi_calculator_instance
+
+# Create the global instance
+real_time_rsi_calculator = get_real_time_rsi_calculator()
