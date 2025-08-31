@@ -19,7 +19,7 @@ from core.api.hyperliquid_api import HyperliquidAPI
 from core.api.hyperliquid_websocket import HyperliquidWebSocket
 from core.api.hyperliquid_simulator import HyperliquidSimulator
 from config.config import TradingConfig
-from core.constants import constants, strategy_constants, ui_constants, MagicNumbers
+from core.constants import constants, ui_constants, MagicNumbers
 from core.state.trade_state_manager import trade_state_manager
 from core.execution.fee_manager import FeeManager
 from core.analysis.historical.market_volatility_analyzer import VariabilityAnalyzer
@@ -34,8 +34,8 @@ from core.management.position_manager import PositionManager
 class YahooHyperliquidPaperTradingBot:
     def __init__(self, initial_balance: float = None, strategy_name: str = None, balance_mode: str = "simulated"):
         self.config = TradingConfig()
-        self.strategy_name = strategy_name or constants.DEFAULT_STRATEGY
-        self.strategy_config = self.config.STRATEGY_CONFIGS.get(self.strategy_name, strategy_constants.STANDARD_STRATEGY)
+        self.strategy_name = strategy_name or self.config.DEFAULT_STRATEGY
+        self.strategy_config = self.config.STRATEGY_CONFIGS.get(self.strategy_name, self.config.STRATEGY_CONFIGS["standard"])
         self.hyperliquid_api = None
         self.hyperliquid_websocket = None  # WebSocket for real-time price updates
         self.connected = False

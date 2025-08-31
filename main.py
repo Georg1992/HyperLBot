@@ -272,7 +272,7 @@ def run_paper_trading():
                         elif choice == "2":
                             if account_manager.reset_account():
                                 # Create new account
-                                new_balance = float(input(f"Enter initial balance for new account (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
+                                new_balance = float(input(f"Enter initial balance for new account (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
                                 account_data = account_manager.create_account(new_balance)
                                 initial_balance = new_balance
                                 logger.info(f"[GAME] Created new account: ${initial_balance:.2f}")
@@ -288,7 +288,7 @@ def run_paper_trading():
             else:
                 # Create new account
                 print("📝 No existing account found. Creating new simulated account...")
-                new_balance = float(input(f"Enter initial balance (default {constants.DEFAULT_INITIAL_BALANCE}): ") or str(constants.DEFAULT_INITIAL_BALANCE))
+                new_balance = float(input(f"Enter initial balance (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
                 account_data = account_manager.create_account(new_balance)
                 initial_balance = new_balance
                 logger.info(f"[GAME] Created new account: ${initial_balance:.2f}")
@@ -297,10 +297,10 @@ def run_paper_trading():
             print(f"\nPaper Trading Configuration:")
             print(f"💰 Balance: ${initial_balance:.2f} (simulated)")
             max_trades = int(input(f"Enter max trades (default {config.DEFAULT_MAX_TRADES}): ") or str(config.DEFAULT_MAX_TRADES))
-            check_interval = constants.DEFAULT_CHECK_INTERVAL  # Fixed for responsiveness
+            check_interval = config.DEFAULT_CHECK_INTERVAL  # Fixed for responsiveness
             
             # Use default strategy
-            selected_strategy = constants.DEFAULT_STRATEGY
+            selected_strategy = config.DEFAULT_STRATEGY
             
             # Update instance lock with strategy info
             instance_manager.update_lock_info(selected_strategy, initial_balance)

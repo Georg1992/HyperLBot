@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
 Trading Bot Constants
-Centralized location for all hardcoded values and magic numbers
+Centralized location for system constants, hardcoded values, and magic numbers
+
+Note: User-configurable parameters (like balance, leverage, etc.) are now in config/config.py
+This file contains only non-configurable system constants and magic numbers.
 """
 
 import os
@@ -9,23 +12,19 @@ import os
 class TradingConstants:
     """All trading-related constants in one place"""
     
-    # Default Values
+    # Default Values (non-configurable constants only)
     DEFAULT_BTC_PRICE = 97500.0
-    DEFAULT_INITIAL_BALANCE = 120.0
-    DEFAULT_DASHBOARD_PORT = 5002
-    DEFAULT_DASHBOARD_HOST = "0.0.0.0"
     
-    # Time Intervals (seconds)
-    DEFAULT_CHECK_INTERVAL = 5
+    # System defaults - for user-configurable values, use config/config.py instead
+    # These are kept for backward compatibility but should be migrated to config.py usage
+    DEFAULT_INITIAL_BALANCE = 120.0  # Use config.DEFAULT_INITIAL_BALANCE instead
+    DEFAULT_CHECK_INTERVAL = 5       # Use config.DEFAULT_CHECK_INTERVAL instead  
+    DEFAULT_STRATEGY = "standard"    # Use config.DEFAULT_STRATEGY instead
+    
+    # Time Intervals (seconds) - these are system constants, not user configurable
     MIN_TRADE_INTERVAL = 300  # 5 minutes
     SIGNAL_COOLDOWN = 300     # 5 minutes
     PRICE_DIFFERENCE_ALERT_COOLDOWN = 300  # 5 minutes
-    
-    # Risk Management
-    DEFAULT_LEVERAGE = 30
-    MAX_POSITION_SIZE = 0.4    # 40%
-    MIN_PROFIT_TARGET = 0.005  # 0.5%
-    MAX_STOP_LOSS = 0.015      # 1.5%
     
     # Price Monitoring
     PRICE_DIFFERENCE_THRESHOLD = 0.002  # 0.2%
@@ -44,12 +43,8 @@ class TradingConstants:
     DEFAULT_LOG_LEVEL = "INFO"
     LOG_DIR = "trading_logs"
     
-    # API Configuration
-    HYPERLIQUID_API_URL = "https://api.hyperliquid.xyz"
-    
-    # Strategy Defaults
-    DEFAULT_STRATEGY = "standard"
-    DEFAULT_MAX_TRADES = 10
+    # Note: Configurable values like LEVERAGE, MAX_POSITION_SIZE, DASHBOARD_PORT, etc. 
+    # are now defined in config/config.py for environment variable support
     
     # Dashboard Update Intervals
     DASHBOARD_UPDATE_INTERVAL = 2    # seconds
@@ -60,9 +55,7 @@ class TradingConstants:
     BUSINESS_HOURS_MULTIPLIER = 1.2
     OFF_HOURS_MULTIPLIER = 0.8
     
-    # RSI and Technical Indicators
-    DEFAULT_RSI = 50.0
-    NEUTRAL_RSI_THRESHOLD = 50.0
+    # Note: RSI constants moved to TechnicalAnalysisConstants to avoid duplication
     
     # Confidence Thresholds
     MIN_CONFIDENCE_THRESHOLD = 0.3
@@ -75,10 +68,7 @@ class TradingConstants:
     HIGH_CONFIDENCE_POSITION = 0.20   # 20%
     ULTRA_CONFIDENCE_POSITION = 0.40  # 40%
     
-    # Volatility Ranges - REALISTIC Bitcoin trading ranges
-    LOW_VOLATILITY_THRESHOLD = 0.002     # 0.2% - quiet Bitcoin market
-    MEDIUM_VOLATILITY_THRESHOLD = 0.01   # 1.0% - normal Bitcoin trading  
-    HIGH_VOLATILITY_THRESHOLD = 0.03     # 3.0% - active Bitcoin trading
+    # Note: Volatility thresholds consolidated in VariabilityConstants to avoid duplication
     
     # Connection Timeouts
     API_TIMEOUT = 30
@@ -90,41 +80,8 @@ class TradingConstants:
     SIMULATED_BALANCE_UPDATE_INTERVAL = 5  # 5 seconds
 
 
-class StrategyConstants:
-    """Strategy-specific constants"""
-    
-    STANDARD_STRATEGY = {
-        "min_range_percentage": 0.002,
-        "volatility_threshold": "medium",
-        "confidence_threshold": 0.3,
-        "min_interval": 30,
-        "max_leverage": 40,
-        "profit_target": 0.008,
-        "stop_loss": 0.004,
-        "position_size": 0.1
-    }
-    
-    LOW_VOLATILITY_STRATEGY = {
-        "min_range_percentage": 0.0005,
-        "volatility_threshold": "low",
-        "confidence_threshold": 0.05,
-        "min_interval": 60,
-        "max_leverage": 30,
-        "profit_target": 0.005,
-        "stop_loss": 0.002,
-        "position_size": 0.2
-    }
-    
-    HIGH_VOLATILITY_STRATEGY = {
-        "min_range_percentage": 0.005,
-        "volatility_threshold": "high",
-        "confidence_threshold": 0.5,
-        "min_interval": 60,
-        "max_leverage": 50,
-        "profit_target": 0.02,
-        "stop_loss": 0.01,
-        "position_size": 0.08
-    }
+# Strategy constants removed - configurations now centralized in config/config.py
+# This eliminates duplication and makes config.py the single source of truth for strategies
 
 
 class UIConstants:
@@ -169,7 +126,6 @@ class UIConstants:
 
 # Global constants instance for easy import
 constants = TradingConstants()
-strategy_constants = StrategyConstants()
 ui_constants = UIConstants()
 
 # Common Magic Numbers (extracted from codebase)
@@ -208,10 +164,7 @@ class MagicNumbers:
     VOLUME_BELOW_AVERAGE = 25.0
     VOLUME_LOW = 10.0
     
-    # RSI thresholds
-    RSI_OVERSOLD = 30.0
-    RSI_OVERBOUGHT = 70.0
-    RSI_NEUTRAL = 50.0
+    # Note: RSI thresholds moved to TechnicalAnalysisConstants to avoid duplication
     
     # Price fallbacks
     FALLBACK_BTC_PRICE = 50000.0
@@ -225,10 +178,7 @@ class MagicNumbers:
     TEST_BALANCE = 100.0
     TEST_BTC_PRICE = 45000.0
     
-    # Volatility thresholds - REALISTIC Bitcoin ranges
-    LOW_VOLATILITY_CAP = 0.002       # 0.2% - quiet Bitcoin market
-    MEDIUM_VOLATILITY_CAP = 0.01     # 1.0% - normal Bitcoin trading
-    HIGH_VOLATILITY_CAP = 0.05       # 5.0% - high Bitcoin volatility
+    # Note: Volatility thresholds consolidated in TechnicalAnalysisConstants and VariabilityConstants
     
     # Strength caps
     MAX_STRENGTH_CAP = 0.1           # 10% max strength
@@ -473,20 +423,14 @@ class TimeConstants:
     MINUTES_IN_HOUR = 60
     HOURS_IN_DAY = 24
     
-    # Update Intervals
-    DASHBOARD_UPDATE_INTERVAL = 2    # 2 seconds
-    FORCE_UPDATE_INTERVAL = 10       # 10 seconds
+    # Update Intervals (dashboard intervals defined in TradingConstants to avoid duplication)
     REAL_BALANCE_UPDATE_INTERVAL = 60 # 1 minute
     SIMULATED_BALANCE_UPDATE_INTERVAL = 5 # 5 seconds
     
-    # Cooldown Periods
+    # Cooldown Periods (SIGNAL_COOLDOWN defined in TradingConstants to avoid duplication)
     ADJUSTMENT_COOLDOWN = 300        # 5 minutes between adjustments
-    SIGNAL_COOLDOWN = 300            # 5 minutes signal cooldown
     
-    # Timeout Values
-    API_TIMEOUT = 30                 # 30 seconds API timeout
-    CONNECTION_RETRY_ATTEMPTS = 3    # 3 retry attempts
-    RETRY_DELAY = 5                  # 5 seconds retry delay
+    # Note: Timeout values defined in TradingConstants to avoid duplication
 
 
 # Global instances for easy import

@@ -4,7 +4,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class TradingConfig:
-    """Configuration for trading parameters"""
+    """
+    Centralized Configuration for Trading Parameters
+    
+    This is the single source of truth for all configurable trading parameters.
+    Environment variables take precedence over defaults.
+    
+    Note: System constants (timeouts, intervals, etc.) remain in core/constants.py
+    """
     
     # Wallet Configuration - No defaults for security
     WALLET_ADDRESS = os.getenv("WALLET_ADDRESS")
