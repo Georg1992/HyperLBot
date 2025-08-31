@@ -59,8 +59,6 @@ class TradingConstants:
     BUSINESS_HOURS_MULTIPLIER = 1.2
     OFF_HOURS_MULTIPLIER = 0.8
     
-    # Note: RSI constants moved to TechnicalAnalysisConstants to avoid duplication
-    
     # Confidence Thresholds
     MIN_CONFIDENCE_THRESHOLD = 0.3
     HIGH_CONFIDENCE_THRESHOLD = 0.7
@@ -72,8 +70,6 @@ class TradingConstants:
     HIGH_CONFIDENCE_POSITION = 0.20   # 20%
     ULTRA_CONFIDENCE_POSITION = 0.40  # 40%
     
-    # Note: Volatility thresholds consolidated in VariabilityConstants to avoid duplication
-    
     # Connection Timeouts
     API_TIMEOUT = 30
     CONNECTION_RETRY_ATTEMPTS = 3
@@ -82,10 +78,6 @@ class TradingConstants:
     # Balance Calculation
     REAL_BALANCE_UPDATE_INTERVAL = 60  # 1 minute
     SIMULATED_BALANCE_UPDATE_INTERVAL = 5  # 5 seconds
-
-
-# Strategy constants removed - configurations now centralized in config/config.py
-# This eliminates duplication and makes config.py the single source of truth for strategies
 
 
 class UIConstants:
@@ -168,8 +160,6 @@ class MagicNumbers:
     VOLUME_BELOW_AVERAGE = 25.0
     VOLUME_LOW = 10.0
     
-    # Note: RSI thresholds moved to TechnicalAnalysisConstants to avoid duplication
-    
     # Price fallbacks
     FALLBACK_BTC_PRICE = 50000.0
     FALLBACK_BALANCE = 100.0
@@ -181,8 +171,6 @@ class MagicNumbers:
     # Test values
     TEST_BALANCE = 100.0
     TEST_BTC_PRICE = 45000.0
-    
-    # Note: Volatility thresholds consolidated in TechnicalAnalysisConstants and VariabilityConstants
     
     # Strength caps
     MAX_STRENGTH_CAP = 0.1           # 10% max strength
@@ -423,14 +411,13 @@ class TimeConstants:
     MINUTES_IN_HOUR = 60
     HOURS_IN_DAY = 24
     
-    # Update Intervals (dashboard intervals defined in TradingConstants to avoid duplication)
+    # Update Intervals
     REAL_BALANCE_UPDATE_INTERVAL = 60 # 1 minute
     SIMULATED_BALANCE_UPDATE_INTERVAL = 5 # 5 seconds
     
-    # Cooldown Periods (SIGNAL_COOLDOWN defined in TradingConstants to avoid duplication)
+    # Cooldown Periods 
     ADJUSTMENT_COOLDOWN = 300        # 5 minutes between adjustments
     
-    # Note: Timeout values defined in TradingConstants to avoid duplication
 
 
 # Global instances for easy import (continued from above)

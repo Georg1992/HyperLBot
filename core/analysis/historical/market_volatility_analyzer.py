@@ -9,7 +9,6 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 from collections import deque
-# Removed VolatilityCalculator import - now using MarketDataManager for consolidation
 from core.constants import variability_constants, trading_constants, simulation_constants
 
 class VariabilityAnalyzer:
@@ -25,8 +24,6 @@ class VariabilityAnalyzer:
         self.volatility_history = deque(maxlen=lookback_periods)
         self.volume_history = deque(maxlen=lookback_periods)
         self.variability_scores = deque(maxlen=lookback_periods)
-        
-        # Note: Volatility calculations now delegated to MarketDataManager for consolidation
         
         # Variability thresholds
         self.variability_thresholds = {

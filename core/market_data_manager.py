@@ -68,7 +68,6 @@ class MarketDataManager:
             volatility_data = hyperliquid_api.get_volatility_analysis(symbol)
             pressure_data = hyperliquid_api.get_pressure(symbol)
             
-            # Debug logging removed for cleaner output
             
             return {
                 "volume_data": volume_data or {},

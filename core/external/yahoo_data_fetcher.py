@@ -417,9 +417,7 @@ class YahooDataFetcher:
                 price_difference_pct = 0
                 logger.warning(f"⚠️ No Hyperliquid price provided, using last close: ${current_price:,.2f}")
             
-            # NOTE: Complex analysis calculations moved to MarketDataManager to eliminate circular dependency
-            # Use market_data_manager.get_yahoo_data_with_analysis() for full analysis
-            # This method now provides raw data + basic volume/momentum analysis only
+            # Simplified to raw data + basic analysis only (complex calculations in MarketDataManager)
             
             # Basic analysis with raw data + volume/momentum (no circular dependencies)
             analysis = {
@@ -441,8 +439,7 @@ class YahooDataFetcher:
                 "volume_category": volume_analyzer.analyze_volume_data(candles_5m).get("volume_category", "NORMAL"),
                 "momentum_data": momentum_analyzer.analyze_momentum(candles_5m),
                 
-                # NOTE: For complex indicators (RSI, volatility, support/resistance, trends)
-                # use market_data_manager.get_yahoo_data_with_analysis() instead
+                # For complex indicators, use market_data_manager.get_yahoo_data_with_analysis()
                 "data_source": "yahoo_finance_raw_data"
             }
             
@@ -714,11 +711,6 @@ class YahooDataFetcher:
             logger.error(f"❌ Failed to calculate real-time momentum: {e}")
             return {"momentum": "NEUTRAL", "strength": 0, "direction": 0, "error": str(e)}
     
-    # RSI calculation method removed - now centralized in MarketDataManager
-    # Use market_data_manager.calculate_rsi_from_candles() instead
-    # This eliminates code duplication and circular dependencies
-
-
 def main():
     """Test the Yahoo Finance data fetcher"""
     logger.info("🔍 Testing Yahoo Finance Data Fetcher (HISTORICAL DATA ONLY)")
