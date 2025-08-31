@@ -467,13 +467,15 @@ class YahooHyperliquidPaperTradingBot:
     
 
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
-        """Get optimized market analysis from Yahoo Finance with periodic updates"""
+        """Get market analysis from Yahoo Finance using centralized MarketDataManager"""
         try:
-            # Use market data analyzer
-            analysis = self.market_data_analyzer.get_yahoo_analysis(hyperliquid_price)
+            # Use centralized MarketDataManager for Yahoo data analysis (eliminates duplicates)
+            analysis = market_data_manager.get_yahoo_data_with_analysis(
+                self.market_data_analyzer.yahoo_fetcher, "BTC", hyperliquid_price
+            )
             
             if "error" not in analysis:
-                logger.info(f"[CHART] Yahoo Finance analysis: ${analysis.get('current_price', 0):,.2f} - {analysis.get('market_condition', 'UNKNOWN')}")
+                logger.info(f"[CHART] Yahoo Finance analysis: ${analysis.get('current_price', 0):,.2f} - Market data retrieved")
                 return analysis
             else:
                 logger.error(f"❌ Yahoo Finance analysis failed: {analysis.get('error', 'Unknown error')}")
@@ -573,8 +575,8 @@ class YahooHyperliquidPaperTradingBot:
                 "reason": f"No valid prediction: {prediction_analysis.get('reason', 'Unknown')}"
             }
         
-        # Traditional entry analysis
-        entry_analysis = self._analyze_entry_point(prediction_analysis, hyperliquid_price)
+        # Traditional entry analysis using PredictionEngine directly (removed redundant wrapper)
+        entry_analysis = self.prediction_engine.analyze_entry_point(prediction_analysis, hyperliquid_price)
         if not entry_analysis["should_place_order"]:
             return {
                 "should_trade": False,
@@ -666,21 +668,10 @@ class YahooHyperliquidPaperTradingBot:
         """Close a paper position"""
         self.trading_execution.close_paper_position(position, exit_reason, exit_price)
     
-    def _analyze_entry_point(self, prediction_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Analyze entry point using prediction engine"""
-        return self.prediction_engine.analyze_entry_point(prediction_analysis, current_price)
-    
-    def _build_price_prediction(self, yahoo_analysis: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Build price prediction using prediction engine"""
-        return self.prediction_engine.build_price_prediction(yahoo_analysis, current_price, self.strategy_name)
-    
-    def _is_prediction_valid(self, prediction: Dict[str, Any], current_price: float) -> bool:
-        """Simple prediction validation"""
-        return prediction.get("confidence", 0) > MagicNumbers.DEFAULT_CONFIDENCE and prediction.get("has_prediction", False)
-    
-    def _calculate_prediction_win_probability(self, prediction: Dict[str, Any], prediction_analysis: Dict[str, Any]) -> float:
-        """Get win probability from prediction engine"""
-        return self.prediction_engine.calculate_win_probability(prediction, prediction_analysis)
+    # Redundant wrapper methods removed - call PredictionEngine methods directly
+    # _analyze_entry_point → self.prediction_engine.analyze_entry_point()
+    # _build_price_prediction → self.prediction_engine.build_price_prediction()  
+    # _calculate_prediction_win_probability → self.prediction_engine.calculate_win_probability()
     
 
     
@@ -1323,9 +1314,42 @@ class YahooHyperliquidPaperTradingBot:
             pass
 
     def get_weekly_trend_analysis(self) -> Dict[str, Any]:
-        """Get weekly trend analysis from Yahoo Finance"""
+        """Get weekly trend analysis from Yahoo Finance using direct data fetching"""
         try:
-            return self.market_data_analyzer.get_weekly_trend_analysis()
+            # Get weekly data directly (removed duplicate MarketDataAnalyzer implementation)
+            candles_1d = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "1d", 30)
+            
+            if not candles_1d or len(candles_1d) < 7:
+                return {"error": "Insufficient daily data", "weekly_trend": "UNKNOWN"}
+            
+            # Simple weekly trend calculation (authoritative implementation)
+            recent_week = candles_1d[-7:]
+            week_start = recent_week[0]["close"]
+            week_end = recent_week[-1]["close"]
+            
+            if week_start > 0:
+                weekly_change = (week_end - week_start) / week_start
+                weekly_change_pct = weekly_change * 100
+                
+                if weekly_change > 0.02:
+                    weekly_trend = "STRONG_UPTREND"
+                elif weekly_change > 0.005:
+                    weekly_trend = "UPTREND"
+                elif weekly_change < -0.02:
+                    weekly_trend = "STRONG_DOWNTREND"
+                elif weekly_change < -0.005:
+                    weekly_trend = "DOWNTREND"
+                else:
+                    weekly_trend = "SIDEWAYS"
+                
+                return {
+                    "weekly_trend": weekly_trend,
+                    "weekly_change_pct": weekly_change_pct,
+                    "data_source": "yahoo_direct_single_implementation"
+                }
+            else:
+                return {"error": "Invalid price data", "weekly_trend": "UNKNOWN"}
+                
         except Exception as e:
             logger.error(f"❌ Failed to get weekly trend analysis: {e}")
             return {"error": str(e)}
@@ -1455,7 +1479,8 @@ class YahooHyperliquidPaperTradingBot:
     def get_data_update_status(self) -> Dict[str, Any]:
         """Get status of all data updates for monitoring"""
         try:
-            return self.market_data_analyzer.get_update_status()
+            # Use centralized MarketDataManager cache status (removed duplicate implementation)
+            return market_data_manager.get_cache_status()
         except Exception as e:
             logger.error(f"❌ Failed to get data update status: {e}")
             return {}
