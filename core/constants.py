@@ -19,12 +19,6 @@ class TradingConstants:
     DEFAULT_DASHBOARD_HOST = "0.0.0.0"
     DEFAULT_DASHBOARD_PORT = 5002
     
-    # System defaults - for user-configurable values, use config/config.py instead
-    # These are kept for backward compatibility but should be migrated to config.py usage
-    DEFAULT_INITIAL_BALANCE = 120.0  # Use config.DEFAULT_INITIAL_BALANCE instead
-    DEFAULT_CHECK_INTERVAL = 5       # Use config.DEFAULT_CHECK_INTERVAL instead  
-    DEFAULT_STRATEGY = "standard"    # Use config.DEFAULT_STRATEGY instead
-    
     # Time Intervals (seconds) - these are system constants, not user configurable
     MIN_TRADE_INTERVAL = 300  # 5 minutes
     SIGNAL_COOLDOWN = 300     # 5 minutes

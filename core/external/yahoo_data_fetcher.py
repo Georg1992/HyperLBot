@@ -26,123 +26,11 @@ class YahooDataFetcher:
     
     def __init__(self):
         self.symbol = "BTC-USD"
-        self.cache = {}
-        self.cache_duration = data_constants.YAHOO_CACHE_DURATION
-        
-        # Optimized data manager - periodic update tracking
-        self.last_yahoo_update = 0
-        self.last_1h_update = 0
-        self.last_daily_update = 0
-        
-        # Update intervals (in seconds)
-        self.yahoo_update_interval = data_constants.YAHOO_UPDATE_INTERVAL
-        self.hourly_update_interval = data_constants.HOURLY_UPDATE_INTERVAL
-        self.daily_update_interval = data_constants.DAILY_UPDATE_INTERVAL
-        
-        # Stored analysis data
-        self.cached_yahoo_analysis = {}
-        self.cached_1h_data = {}
-        self.cached_daily_data = {}
+        # Note: Caching removed - now handled by MarketDataManager for centralization
         
         logger.info("🔗 Yahoo Finance Data Fetcher initialized for BTC-USD (HISTORICAL DATA ONLY)")
         logger.info("📊 Real-time pricing should come from Hyperliquid API")
-        logger.info("⚡ Optimized data manager: Periodic updates enabled")
-    
-    def _get_cached_data(self, key: str) -> Optional[Dict]:
-        """Get cached data if still valid"""
-        if key in self.cache:
-            data, timestamp = self.cache[key]
-            if time.time() - timestamp < self.cache_duration:
-                return data
-        return None
-    
-    def _cache_data(self, key: str, data: Dict):
-        """Cache data with timestamp"""
-        self.cache[key] = (data, time.time())
-    
-    def _should_update_data(self, last_update: float, interval: int) -> bool:
-        """Check if data should be updated based on interval"""
-        return time.time() - last_update > interval
-    
-    def get_optimized_market_analysis(self, symbol: str = "BTC", hyperliquid_price: float = None) -> Dict[str, Any]:
-        """
-        Get optimized market analysis with periodic updates
-        Only fetches new data when intervals are exceeded
-        """
-        current_time = time.time()
-        
-        # Check if we need a full Yahoo analysis update
-        if self._should_update_data(self.last_yahoo_update, self.yahoo_update_interval):
-            logger.info("📊 Updating Yahoo Finance market analysis (periodic update)")
-            self.cached_yahoo_analysis = self.get_market_analysis(symbol, hyperliquid_price)
-            self.last_yahoo_update = current_time
-        
-        return self.cached_yahoo_analysis
-    
-    def get_optimized_1h_data(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """
-        Get optimized 1-hour data with 15-minute update interval
-        """
-        current_time = time.time()
-        
-        if self._should_update_data(self.last_1h_update, self.hourly_update_interval):
-            logger.info("📊 Updating 1-hour data (15-minute interval)")
-            candles_1h = self.get_1h_klines(symbol, 84)
-            if candles_1h:
-                # Store raw candle data only - calculations moved to MarketDataManager
-                # This eliminates circular dependency
-                self.cached_1h_data = {
-                    "candles": candles_1h,
-                    "last_update": current_time
-                }
-            else:
-                self.cached_1h_data = {}
-            self.last_1h_update = current_time
-        
-        return self.cached_1h_data
-    
-    def get_optimized_daily_data(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """
-        Get optimized daily data with 1-hour update interval
-        """
-        current_time = time.time()
-        
-        if self._should_update_data(self.last_daily_update, self.daily_update_interval):
-            logger.info("📊 Updating daily data (1-hour interval)")
-            candles_1d = self.get_klines(symbol, "1d", 45)
-            if candles_1d:
-                # Store raw candle data only - calculations moved to MarketDataManager  
-                # This eliminates circular dependency
-                self.cached_daily_data = {
-                    "candles": candles_1d,
-                    "last_update": current_time
-                }
-            else:
-                self.cached_daily_data = {}
-            self.last_daily_update = current_time
-        
-        return self.cached_daily_data
-    
-    def get_update_status(self) -> Dict[str, Any]:
-        """Get status of all data updates"""
-        current_time = time.time()
-        return {
-            "yahoo_analysis": {
-                "last_update": self.last_yahoo_update,
-                "next_update": self.last_yahoo_update + self.yahoo_update_interval,
-                "time_until_update": max(0, (self.last_yahoo_update + self.yahoo_update_interval) - current_time)
-            },
-            "hourly_data": {
-                "last_update": self.last_1h_update,
-                "next_update": self.last_1h_update + self.hourly_update_interval,
-                "time_until_update": max(0, (self.last_1h_update + self.hourly_update_interval) - current_time)
-            },
-            "daily_data": {
-                "last_update": self.last_daily_update,
-                "next_update": self.last_daily_update + self.daily_update_interval,
-                "time_until_update": max(0, (self.last_daily_update + self.daily_update_interval) - current_time)
-            }
-        }
+        logger.info("📦 Simplified fetcher - caching handled by MarketDataManager")
     
     def _convert_yf_to_standard(self, yf_data) -> List[Dict[str, Any]]:
         """Convert yfinance DataFrame to standard candlestick format"""
@@ -165,12 +53,8 @@ class YahooDataFetcher:
         return candles
     
     def get_klines(self, symbol: str = "BTC", interval: str = "5m", limit: int = 100) -> List[Dict[str, Any]]:
-        """Get candlestick data from Yahoo Finance"""
+        """Get candlestick data from Yahoo Finance (no caching - handled by MarketDataManager)"""
         try:
-            cache_key = f"klines_{symbol}_{interval}_{limit}"
-            cached_data = self._get_cached_data(cache_key)
-            if cached_data:
-                return cached_data
             
             # Convert interval to Yahoo Finance format
             interval_map = {
@@ -219,9 +103,6 @@ class YahooDataFetcher:
             if len(candles) > limit:
                 candles = candles[-limit:]
             
-            # Cache the result
-            self._cache_data(cache_key, candles)
-            
             logger.info(f"✅ Retrieved {len(candles)} {interval} candles from Yahoo Finance")
             return candles
             
@@ -244,13 +125,8 @@ class YahooDataFetcher:
     # REMOVED: get_current_price method - Real-time pricing should come from Hyperliquid
     
     def get_ticker_data(self, symbol: str = "BTC") -> Optional[Dict[str, Any]]:
-        """Get ticker-like data from Yahoo Finance (historical context only)"""
+        """Get ticker-like data from Yahoo Finance (historical context only, no caching)"""
         try:
-            cache_key = f"ticker_{symbol}"
-            cached_data = self._get_cached_data(cache_key)
-            if cached_data:
-                return cached_data
-            
             ticker = yf.Ticker(self.symbol)
             info = ticker.info
             
@@ -267,7 +143,6 @@ class YahooDataFetcher:
                 "count": 0  # Not provided by Yahoo Finance
             }
             
-            self._cache_data(cache_key, ticker_data)
             return ticker_data
             
         except Exception as e:
@@ -567,73 +442,6 @@ class YahooDataFetcher:
                 "volume_category": "ERROR",
                 "avg_volume": 0,
                 "volume_trend": "ERROR",
-                "error": str(e),
-                "data_source": "yahoo_finance"
-            }
-    
-    def get_market_summary(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """Get market summary including day high/low, averages, and trends"""
-        try:
-            cache_key = f"summary_{symbol}"
-            cached_data = self._get_cached_data(cache_key)
-            if cached_data:
-                return cached_data
-            
-            # Get daily data for summary
-            daily_candles = self.get_klines(symbol, "1d", data_constants.DAILY_CANDLES_COUNT)
-            if not daily_candles:
-                return {
-                    "error": "No daily data available",
-                    "data_source": "yahoo_finance"
-                }
-            
-            # Get 5m data for intraday analysis
-            intraday_candles = self.get_klines(symbol, "5m", data_constants.INTRADAY_CANDLES_COUNT)
-            
-            # Calculate daily statistics
-            today_candle = daily_candles[-1] if daily_candles else None
-            yesterday_candle = daily_candles[-2] if len(daily_candles) > 1 else None
-            
-            # Calculate moving averages
-            closes = [c["close"] for c in daily_candles]
-            ma_20 = sum(closes[-20:]) / min(20, len(closes)) if closes else 0
-            ma_50 = sum(closes[-50:]) / min(50, len(closes)) if closes else 0
-            
-            # Calculate intraday range
-            if intraday_candles:
-                intraday_high = max(c["high"] for c in intraday_candles)
-                intraday_low = min(c["low"] for c in intraday_candles)
-                intraday_range = intraday_high - intraday_low
-                intraday_range_pct = (intraday_range / intraday_low) * 100 if intraday_low > 0 else 0
-            else:
-                intraday_high = intraday_low = intraday_range = intraday_range_pct = 0
-            
-            summary = {
-                "current_price": today_candle["close"] if today_candle else 0,
-                "day_open": today_candle["open"] if today_candle else 0,
-                "day_high": today_candle["high"] if today_candle else 0,
-                "day_low": today_candle["low"] if today_candle else 0,
-                "previous_close": yesterday_candle["close"] if yesterday_candle else 0,
-                "day_change": (today_candle["close"] - yesterday_candle["close"]) if today_candle and yesterday_candle else 0,
-                "day_change_pct": ((today_candle["close"] - yesterday_candle["close"]) / yesterday_candle["close"] * 100) if today_candle and yesterday_candle and yesterday_candle["close"] > 0 else 0,
-                "ma_20": ma_20,
-                "ma_50": ma_50,
-                "intraday_high": intraday_high,
-                "intraday_low": intraday_low,
-                "intraday_range": intraday_range,
-                "intraday_range_pct": intraday_range_pct,
-                "data_source": "yahoo_finance",
-                "update_frequency": "5_seconds"
-            }
-            
-            # Cache the summary
-            self._cache_data(cache_key, summary)
-            
-            return summary
-            
-        except Exception as e:
-            logger.error(f"Failed to get market summary: {e}")
-            return {
                 "error": str(e),
                 "data_source": "yahoo_finance"
             }

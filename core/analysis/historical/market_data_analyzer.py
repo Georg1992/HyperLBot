@@ -12,6 +12,7 @@ from core.external.yahoo_data_fetcher import yahoo_data_fetcher
 from core.external.yahoo_volume_analyzer import volume_analyzer
 from core.external.yahoo_momentum_analyzer import momentum_analyzer
 from core.analysis.session.session_historical_data_manager import session_historical_data_manager
+from core.market_data_manager import market_data_manager
 
 class MarketDataAnalyzer:
     """Handles market data analysis and RSI calculations with session context"""
@@ -285,10 +286,10 @@ class MarketDataAnalyzer:
             return 0.5  # Default 50% probability
     
     def get_update_status(self) -> Dict[str, Any]:
-        """Get update status for dashboard"""
+        """Get update status for dashboard using centralized MarketDataManager"""
         try:
-            # Get status from yahoo fetcher
-            return self.yahoo_fetcher.get_update_status()
+            # Use centralized cache status from MarketDataManager (BEST implementation)
+            return market_data_manager.get_cache_status()
         except Exception as e:
             logger.error(f"❌ Failed to get update status: {e}")
             return {
