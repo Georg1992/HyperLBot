@@ -12,9 +12,10 @@ from typing import Dict, List, Any, Optional
 from loguru import logger
 from datetime import datetime, timedelta
 import statistics
-from core.constants import data_constants, volume_constants, technical_constants, time_constants
+from core.constants import data_constants, volume_constants, technical_constants, time_constants, magic_numbers
 from core.external.yahoo_volume_analyzer import volume_analyzer
 from core.external.yahoo_momentum_analyzer import momentum_analyzer
+from core.market_data_manager import market_data_manager
 
 class YahooDataFetcher:
     """
@@ -696,7 +697,6 @@ class YahooDataFetcher:
             momentum_data = momentum_analyzer.analyze_momentum(candles_5m, symbol)
             
             # Calculate RSI using centralized MarketDataManager
-            from core.market_data_manager import market_data_manager
             yahoo_rsi = market_data_manager.calculate_rsi_from_candles(candles_5m)
             
             result = {
@@ -734,8 +734,6 @@ def main():
         
         # Test centralized analysis via MarketDataManager
         logger.info("📊 Testing centralized analysis...")
-        from core.market_data_manager import market_data_manager
-        from core.constants import magic_numbers
         
         mock_hyperliquid_price = magic_numbers.TEST_BTC_PRICE
         analysis = market_data_manager.get_yahoo_data_with_analysis(fetcher, "BTC", mock_hyperliquid_price)

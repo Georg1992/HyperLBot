@@ -9,6 +9,7 @@ import statistics
 from typing import Dict, List, Any, Optional, Tuple
 from collections import deque
 from loguru import logger
+from core.market_data_manager import market_data_manager
 
 class SessionHistoricalDataManager:
     """
@@ -172,7 +173,6 @@ class SessionHistoricalDataManager:
                 })
             
             # Use centralized MarketDataManager for consistency (eliminates calculation redundancy)
-            from core.market_data_manager import market_data_manager
             return market_data_manager.calculate_volatility(candles, min(len(candles), 20))
             
         except Exception as e:

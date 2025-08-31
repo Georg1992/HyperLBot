@@ -30,6 +30,13 @@ from core.execution.trading_execution import TradingExecution
 from core.analysis.historical.market_data_analyzer import MarketDataAnalyzer
 from core.data.real_time_data_updater import RTMUpdater
 from core.management.position_manager import PositionManager
+from core.account_manager import account_manager
+from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
+from core.market_data_manager import market_data_manager
+from core.constants import technical_constants
+from core.data.real_time_manager import simple_rtm
+from core.analysis.trend_manager import trend_manager
+from core.session.session_manager import SessionManager
 
 class YahooHyperliquidPaperTradingBot:
     def __init__(self, initial_balance: float = None, strategy_name: str = None, balance_mode: str = "simulated"):
@@ -99,7 +106,6 @@ class YahooHyperliquidPaperTradingBot:
         
         # Initialize account manager
         try:
-            from core.account_manager import account_manager
             self.account_manager = account_manager
             logger.success("💰 Account Manager initialized")
         except ImportError as e:
@@ -132,10 +138,7 @@ class YahooHyperliquidPaperTradingBot:
     def _initialize_rsi_calculator(self):
         """Initialize RSI calculator with Yahoo Finance baseline"""
         try:
-            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
-            
             # Use 5-minute data for RSI baseline - get raw data and calculate centrally
-            from core.market_data_manager import market_data_manager
             candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
             if candles_5m and len(candles_5m) >= 15:
                 # Calculate RSI using centralized MarketDataManager (eliminates circular dependency)
@@ -148,16 +151,13 @@ class YahooHyperliquidPaperTradingBot:
                     logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
                 else:
                     logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
-                    from core.constants import technical_constants
                     real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
             else:
                 logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
-                from core.constants import technical_constants
                 real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
                 
         except Exception as e:
             logger.error(f"❌ Failed to initialize RSI calculator: {e}")
-            from core.constants import technical_constants
             real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
     
     def _initialize_websocket(self):
@@ -410,8 +410,6 @@ class YahooHyperliquidPaperTradingBot:
         - TradingBot: Uses static baseline for trading decisions
         """
         try:
-            from core.analysis.real_time.rsi_calculator import real_time_rsi_calculator
-            
             # Get current price
             if hyperliquid_price is None:
                 hyperliquid_price = self.get_hyperliquid_price()
@@ -420,7 +418,6 @@ class YahooHyperliquidPaperTradingBot:
             if not real_time_rsi_calculator.is_initialized:
                 logger.info("📊 Initializing RSI with Yahoo Finance baseline...")
                 # Use 5-minute data for RSI baseline - get raw data and calculate centrally
-                from core.market_data_manager import market_data_manager
                 candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
                 if candles_5m and len(candles_5m) >= 15:
                     # Calculate RSI using centralized MarketDataManager (eliminates circular dependency)
@@ -433,11 +430,9 @@ class YahooHyperliquidPaperTradingBot:
                         logger.success(f"📊 RSI initialized with Yahoo 5m baseline: {yahoo_rsi:.2f}")
                     else:
                         logger.warning("⚠️ Failed to initialize RSI with Yahoo data, using default")
-                        from core.constants import technical_constants
                         real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
                 else:
                     logger.warning("⚠️ Not enough Yahoo 5m data for RSI initialization, using default")
-                    from core.constants import technical_constants
                     real_time_rsi_calculator.cached_rsi = technical_constants.RSI_NEUTRAL
             
             # RSI stays at Yahoo baseline - no real-time updates needed
@@ -688,7 +683,6 @@ class YahooHyperliquidPaperTradingBot:
     
     def _get_default_rsi_data(self, hyperliquid_price: float = None, error: str = "unknown") -> Dict[str, Any]:
         """Get default RSI data structure when calculation fails"""
-        from core.constants import technical_constants
         return {
                             "rsi": technical_constants.RSI_NEUTRAL,  # Neutral RSI
             "rsi_trend": "NEUTRAL",
@@ -703,11 +697,9 @@ class YahooHyperliquidPaperTradingBot:
         """Update SimpleRTM with current market data including volatility"""
         try:
             # Get real-time data from Hyperliquid API
-            from core.market_data_manager import market_data_manager
             hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
             
             # Get trend analysis
-            from core.analysis.trend_manager import trend_manager
             candles_1m = self.market_data_analyzer.get_1m_candles("BTC", 10)
             candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 10)
             candles_1h = self.market_data_analyzer.get_1h_candles("BTC", 10)
@@ -748,7 +740,6 @@ class YahooHyperliquidPaperTradingBot:
             }
             
             # Update SimpleRTM with market data
-            from core.data.real_time_manager import simple_rtm
             simple_rtm.update_market(market_data)
             
             logger.info(f"📊 Market data updated to RTM - Price: ${current_price:.2f}, Volatility: {volatility_data.get('volatility_5m', 0)*100:.2f}%")
@@ -764,7 +755,6 @@ class YahooHyperliquidPaperTradingBot:
         Updates every 5 seconds (throttled for optimal frequency)
         """
         try:
-            from core.constants import technical_constants
             # Throttle predictions to every 5 seconds (aligned with RSI updates)
             current_time = time.time()
             if current_time - self._last_prediction_time < self._prediction_interval:
@@ -772,7 +762,6 @@ class YahooHyperliquidPaperTradingBot:
             
             self._last_prediction_time = current_time
             # Get current market data from SimpleRTM for prediction
-            from core.data.real_time_manager import simple_rtm
             rtm_data = simple_rtm.get_data()
             market_data = rtm_data.get("market", {})
             
@@ -854,8 +843,6 @@ class YahooHyperliquidPaperTradingBot:
         
         # Start session with RTM integration and session tracking
         try:
-            from core.session.session_manager import SessionManager
-            
             # Clear RTM cache before starting new session
             self.rtm_updater.clear_rtm_cache()
             logger.info("🧹 RTM cache cleared - Fresh session data")
@@ -1159,7 +1146,6 @@ class YahooHyperliquidPaperTradingBot:
     def _check_for_ongoing_session(self) -> Optional[Dict]:
         """Check if there's an ongoing session in RTM"""
         try:
-            from core.data.real_time_manager import simple_rtm
             rtm_data = simple_rtm.get_data()
             rtm_session = rtm_data.get("session", {})
             
@@ -1325,7 +1311,6 @@ class YahooHyperliquidPaperTradingBot:
         """Update SimpleRTM with activity"""
         try:
             # Actually update SimpleRTM with activity
-            from core.data.real_time_manager import simple_rtm
             simple_rtm.add_activity(message, level, "bot")
             logger.info(f"📊 RTM Activity: {message}")
         except Exception as e:
@@ -1383,13 +1368,10 @@ class YahooHyperliquidPaperTradingBot:
     def _update_market_data_centralized(self, current_price: float, force_update: bool = False):
         """Centralized market data update with optimized periodic updates and session tracking"""
         try:
-            from core.constants import technical_constants
-            
             # Get Yahoo baseline RSI data (static)
             hybrid_rsi_analysis = self.get_yahoo_baseline_rsi_data()
             
             # Get advanced trend analysis using trend manager
-            from core.analysis.trend_manager import trend_manager
             candles_1m = self.market_data_analyzer.get_1m_candles("BTC", 10)
             candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 10)
             candles_1h = self.market_data_analyzer.get_1h_candles("BTC", 10)

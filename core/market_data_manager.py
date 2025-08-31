@@ -9,6 +9,8 @@ import statistics
 from typing import Dict, List, Any, Optional
 from loguru import logger
 from core.analysis.real_time.volatility_calculator import VolatilityCalculator
+from core.analysis.trend_manager import trend_manager
+from core.constants import technical_constants
 
 class MarketDataManager:
     """Centralized market data manager to eliminate redundant calculations"""
@@ -88,7 +90,6 @@ class MarketDataManager:
     
     def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
         """Use trend manager for advanced trend calculation"""
-        from core.analysis.trend_manager import trend_manager
         return trend_manager.calculate_trend(candles, periods)
     
     def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:
@@ -156,7 +157,6 @@ class MarketDataManager:
         
         try:
             if len(candles) < periods + 1:
-                from core.constants import technical_constants
                 return technical_constants.RSI_NEUTRAL
             
             # Calculate price changes
@@ -184,7 +184,6 @@ class MarketDataManager:
             
         except Exception as e:
             logger.error(f"❌ RSI calculation failed: {e}")
-            from core.constants import technical_constants
             return technical_constants.RSI_NEUTRAL
 
     def get_yahoo_data_with_analysis(self, yahoo_fetcher, symbol: str = "BTC", hyperliquid_price: float = None) -> Dict[str, Any]:
