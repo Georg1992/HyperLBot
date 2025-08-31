@@ -62,34 +62,13 @@ class MarketDataAnalyzer:
     # get_yahoo_analysis removed - duplicates TradingBot.get_yahoo_analysis() and YahooDataFetcher.get_market_analysis()
     # Use YahooDataFetcher.get_market_analysis() for authoritative Yahoo data
     
-    def get_candles(self, symbol: str, interval: str, count: int) -> List[Dict[str, Any]]:
-        """Get candles for any timeframe"""
-        try:
-            return self.yahoo_fetcher.get_klines(symbol, interval, count)
-        except Exception as e:
-            logger.error(f"❌ Failed to get {interval} candles: {e}")
-            return []
-    
-    def get_1m_candles(self, symbol: str = "BTC", count: int = 10) -> List[Dict[str, Any]]:
-        """Get 1-minute candles"""
-        return self.get_candles(symbol, "1m", count)
-    
-    def get_5m_candles(self, symbol: str = "BTC", count: int = 10) -> List[Dict[str, Any]]:
-        """Get 5-minute candles"""
-        return self.get_candles(symbol, "5m", count)
-    
-    def get_1h_candles(self, symbol: str = "BTC", count: int = 10) -> List[Dict[str, Any]]:
-        """Get 1-hour candles"""
-        return self.get_candles(symbol, "1h", count)
-    
-    def get_1d_candles(self, symbol: str = "BTC", count: int = 10) -> List[Dict[str, Any]]:
-        """Get 1-day candles"""
-        return self.get_candles(symbol, "1d", count)
+    # Redundant wrapper methods removed - call yahoo_fetcher.get_klines() directly
+    # Eliminated: get_candles, get_1m_candles, get_5m_candles, get_1h_candles, get_1d_candles
     
     def test_connection(self) -> bool:
         """Test Yahoo Finance connection"""
         try:
-            test_candles = self.get_5m_candles("BTC", 5)
+            test_candles = self.yahoo_fetcher.get_klines("BTC-USD", "5m", 5)
             return test_candles and len(test_candles) > 0
         except Exception as e:
             logger.error(f"❌ Yahoo Finance connection test failed: {e}")

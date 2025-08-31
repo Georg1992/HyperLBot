@@ -109,17 +109,8 @@ class YahooDataFetcher:
             logger.error(f"❌ Failed to get {interval} klines from Yahoo Finance: {e}")
             return []
     
-    def get_5m_klines(self, symbol: str = "BTC", limit: int = 100) -> List[Dict[str, Any]]:
-        """Get 5-minute candlestick data from Yahoo Finance"""
-        return self.get_klines(symbol, "5m", limit)
-    
-    def get_1m_klines(self, symbol: str = "BTC", limit: int = 100) -> List[Dict[str, Any]]:
-        """Get 1-minute candlestick data from Yahoo Finance"""
-        return self.get_klines(symbol, "1m", limit)
-    
-    def get_1h_klines(self, symbol: str = "BTC", limit: int = 100) -> List[Dict[str, Any]]:
-        """Get 1-hour candlestick data from Yahoo Finance"""
-        return self.get_klines(symbol, "1h", limit)
+    # Redundant wrapper methods removed - use get_klines() directly
+    # Eliminated: get_5m_klines, get_1m_klines, get_1h_klines
     
     # REMOVED: get_current_price method - Real-time pricing should come from Hyperliquid
     
@@ -262,9 +253,9 @@ class YahooDataFetcher:
         """
         try:
             # Get different timeframe data - COMPLETE optimal multi-timeframe configuration
-            candles_1m = self.get_1m_klines(symbol, 120)  # 2 hours of 1m data for immediate momentum
-            candles_5m = self.get_5m_klines(symbol, 60)   # 5 hours of 5m data (core prediction analysis)
-            candles_1h = self.get_1h_klines(symbol, 84)   # 3.5 days of 1h data (daily trend context)
+            candles_1m = self.get_klines(symbol, "1m", 120)  # 2 hours of 1m data for immediate momentum
+            candles_5m = self.get_klines(symbol, "5m", 60)   # 5 hours of 5m data (core prediction analysis)
+            candles_1h = self.get_klines(symbol, "1h", 84)   # 3.5 days of 1h data (daily trend context)
             candles_1d = self.get_klines(symbol, "1d", 45) # 6 weeks of 1d data (weekly/monthly trend context)
             ticker = self.get_ticker_data(symbol)
             
@@ -353,7 +344,7 @@ class YahooDataFetcher:
         """Test connection to Yahoo Finance (historical data only)"""
         try:
             # Test with historical data instead of current price
-            candles = self.get_5m_klines("BTC", 10)
+            candles = self.get_klines("BTC-USD", "5m", 10)
             if candles and len(candles) > 0:
                 logger.success("✅ Yahoo Finance connection successful (historical data)")
                 return True
@@ -460,7 +451,7 @@ def main():
     
     # Test raw data fetching (YahooDataFetcher now focuses on raw data only)
     logger.info("📊 Testing raw data fetching...")
-    candles_5m = fetcher.get_5m_klines("BTC", 10)
+    candles_5m = fetcher.get_klines("BTC-USD", "5m", 10)
     
     if candles_5m:
         logger.success("✅ Raw candle data fetched successfully!")

@@ -682,10 +682,10 @@ class YahooHyperliquidPaperTradingBot:
             # Get real-time data from Hyperliquid API
             hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
             
-            # Get trend analysis
-            candles_1m = self.market_data_analyzer.get_1m_candles("BTC", 10)
-            candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 10)
-            candles_1h = self.market_data_analyzer.get_1h_candles("BTC", 10)
+            # Get trend analysis (direct yahoo_fetcher calls - wrapper methods eliminated)
+            candles_1m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "1m", 10)
+            candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 10)
+            candles_1h = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "1h", 10)
             
             if candles_1m and candles_5m and candles_1h:
                 trend_data = trend_manager.get_multi_timeframe_trend(candles_1m, candles_5m, candles_1h)
@@ -1374,10 +1374,10 @@ class YahooHyperliquidPaperTradingBot:
             # Get Yahoo baseline RSI data (static)
             hybrid_rsi_analysis = self.get_yahoo_baseline_rsi_data()
             
-            # Get advanced trend analysis using trend manager
-            candles_1m = self.market_data_analyzer.get_1m_candles("BTC", 10)
-            candles_5m = self.market_data_analyzer.get_5m_candles("BTC", 10)
-            candles_1h = self.market_data_analyzer.get_1h_candles("BTC", 10)
+            # Get advanced trend analysis using trend manager (direct calls - wrappers eliminated)
+            candles_1m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "1m", 10)
+            candles_5m = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "5m", 10)
+            candles_1h = self.market_data_analyzer.yahoo_fetcher.get_klines("BTC-USD", "1h", 10)
             
             if candles_1m and candles_5m and candles_1h:
                 try:
