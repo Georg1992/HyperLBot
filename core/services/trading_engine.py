@@ -82,7 +82,8 @@ class TradingEngine:
             return {"should_trade": False, "reason": f"Variability: {variability_decision['reason']}"}
         
         # 8. TRADE QUALITY EVALUATION
-        trade_decision = self.trade_quality_manager.should_place_trade(entry_analysis, analysis, hyperliquid_price)
+        open_positions = self.get_open_positions()
+        trade_decision = self.trade_quality_manager.should_place_trade(entry_analysis, analysis, hyperliquid_price, open_positions)
         if not trade_decision["should_place"]:
             return {"should_trade": False, "reason": f"Quality: {trade_decision['reason']}"}
         
