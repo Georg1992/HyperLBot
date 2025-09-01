@@ -35,15 +35,15 @@ class MarketDataService:
     def initialize_yahoo_rsi(self):
         """Simple Yahoo Finance RSI initialization"""
         try:
-            # Get 1-hour data for RSI calculation (more stable than 5m volatility)
-            candles_1h = self.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "1h", 30)
-            if candles_1h and len(candles_1h) >= 15:
-                # Calculate RSI using centralized MarketDataManager with 1h data for stability
-                self.yahoo_rsi_value = market_data_manager.calculate_rsi_from_candles(candles_1h)
+            # Get 5-minute data for RSI calculation (granular, real-time sensitivity)
+            candles_5m = self.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
+            if candles_5m and len(candles_5m) >= 15:
+                # Calculate RSI using centralized MarketDataManager with 5m data
+                self.yahoo_rsi_value = market_data_manager.calculate_rsi_from_candles(candles_5m)
                 self.rsi_initialized = True
-                logger.success(f"📊 Yahoo RSI initialized (1h data): {self.yahoo_rsi_value:.2f}")
+                logger.success(f"📊 Yahoo RSI initialized (5m data): {self.yahoo_rsi_value:.2f}")
             else:
-                logger.warning("⚠️ Not enough Yahoo 1h data for RSI, using default")
+                logger.warning("⚠️ Not enough Yahoo 5m data for RSI, using default")
                 self.yahoo_rsi_value = technical_constants.RSI_NEUTRAL
                 self.rsi_initialized = True
                 
