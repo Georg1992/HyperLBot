@@ -92,7 +92,7 @@ class RSICalculator:
             self.previous_rsi = self.baseline_rsi
             self.wilder_avg_gain = wilder_avg_gain
             self.wilder_avg_loss = wilder_avg_loss
-            self.last_price = closes[-1]  # Store last price for incremental updates
+            self.last_price = 0.0  # Will be set on first real-time update (prevents discontinuity)
             
             # Store price history for continuous updates
             self.price_history.extend(closes)
@@ -122,8 +122,13 @@ class RSICalculator:
             # Add new price to history
             self.price_history.append(new_price)
             
-            # Calculate price change from last price (every tick update)
-            if self.last_price > 0:
+            # Handle first real-time update (prevent Yahoo-Hyperliquid price discontinuity)
+            if self.last_price == 0.0:
+                # First real-time update - set current price as baseline, no RSI change
+                self.last_price = new_price
+                logger.debug(f"🔬 First real-time price set: ${new_price:,.2f} (no RSI update to prevent discontinuity)")
+            else:
+                # Regular real-time update
                 price_change = new_price - self.last_price
                 
                 # Separate into gain and loss
@@ -145,8 +150,8 @@ class RSICalculator:
                 
                 self.current_rsi = round(self.current_rsi, 4)  # Higher precision for smooth updates
                 
-            # Update last price for next calculation
-            self.last_price = new_price
+                # Update last price for next calculation
+                self.last_price = new_price
             
             # Get comprehensive RSI analysis
             rsi_trend = self._get_rsi_trend(self.current_rsi)
