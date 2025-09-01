@@ -240,7 +240,8 @@ class SessionOrchestrator:
                 # FIX: Dashboard expects 'pressure' object
                 "pressure": pressure_data,
                 
-                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                # FIX: Use SAME source for volatility value and category (Hyperliquid for consistency)
+                "volatility_5m": volatility_data.get("volatility_5m", 0.0),
                 "volatility_category": volatility_data.get("volatility_category", "NORMAL"),
                 "volatility_trend": volatility_data.get("volatility_trend", "NEUTRAL"),
                 
