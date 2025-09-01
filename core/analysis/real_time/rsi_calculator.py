@@ -33,6 +33,62 @@ class RSICalculator:
         
         logger.info("🔬 RSI Calculator initialized - Scientific every-tick Wilder's smoothing")
     
+    def calculate_standalone_rsi(self, candles: List[Dict], periods: int = 14) -> float:
+        """
+        Calculate standalone RSI from candles (doesn't affect instance state)
+        Perfect for Yahoo analysis - just calculates and returns RSI value
+        """
+        try:
+            if len(candles) < periods + 1:
+                return technical_constants.RSI_NEUTRAL
+            
+            # Extract candle closes
+            closes = [float(candle['close']) for candle in candles]
+            
+            # Calculate price changes
+            price_changes = []
+            for i in range(1, len(closes)):
+                change = closes[i] - closes[i-1]
+                price_changes.append(change)
+            
+            if len(price_changes) < periods:
+                return technical_constants.RSI_NEUTRAL
+            
+            # Initial period: Simple Moving Average for first calculation
+            initial_gains = [max(0, change) for change in price_changes[:periods]]
+            initial_losses = [max(0, -change) for change in price_changes[:periods]]
+            
+            initial_avg_gain = sum(initial_gains) / periods
+            initial_avg_loss = sum(initial_losses) / periods
+            
+            # Apply Wilder's smoothing for remaining periods
+            wilder_avg_gain = initial_avg_gain
+            wilder_avg_loss = initial_avg_loss
+            
+            # Process each subsequent price change with Wilder's EMA
+            for i in range(periods, len(price_changes)):
+                change = price_changes[i]
+                current_gain = max(0, change)
+                current_loss = max(0, -change)
+                
+                # Wilder's EMA formula
+                alpha = 1.0 / periods
+                wilder_avg_gain = (alpha * current_gain) + ((1 - alpha) * wilder_avg_gain)
+                wilder_avg_loss = (alpha * current_loss) + ((1 - alpha) * wilder_avg_loss)
+            
+            # Calculate final RSI
+            if wilder_avg_loss == 0:
+                rsi = 100.0
+            else:
+                rs = wilder_avg_gain / wilder_avg_loss
+                rsi = 100 - (100 / (1 + rs))
+            
+            return round(rsi, 2)
+            
+        except Exception as e:
+            logger.error(f"❌ Standalone RSI calculation failed: {e}")
+            return technical_constants.RSI_NEUTRAL
+    
     def calculate_yahoo_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
         """
         Calculate scientifically accurate baseline RSI using Wilder's smoothing

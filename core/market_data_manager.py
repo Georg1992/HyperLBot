@@ -218,11 +218,8 @@ class MarketDataManager:
         return global_rsi_calculator.get_current_rsi_data()
     
     def calculate_rsi_from_candles(self, candles: List[Dict], periods: int = 14) -> float:
-        """Calculate RSI from candles using RSICalculator (clean architecture - ALL calculations in RSICalculator)"""
-        # Create temporary RSI calculator to avoid affecting global state
-        from core.analysis.real_time.rsi_calculator import RSICalculator
-        temp_rsi_calc = RSICalculator()
-        return temp_rsi_calc.calculate_yahoo_baseline_rsi(candles, periods)
+        """Calculate RSI using RSICalculator (SRP - ALL calculations in RSICalculator)"""
+        return global_rsi_calculator.calculate_standalone_rsi(candles, periods)
 
     # _categorize_5m_volatility_for_trading() moved to VolatilityCalculator (proper volatility logic location)
 
@@ -241,7 +238,7 @@ class MarketDataManager:
         try:
             # Get raw candle data from Yahoo (no calculations)
             candles_1m = yahoo_fetcher.get_klines(f"{symbol}-USD", "1m", 120)  
-            candles_5m = yahoo_fetcher.get_klines(f"{symbol}-USD", "5m", 12)  # 1 hour for 5m trading
+            candles_5m = yahoo_fetcher.get_klines(f"{symbol}-USD", "5m", 30)  # 30 candles for proper RSI calculation
             candles_1h = yahoo_fetcher.get_klines(f"{symbol}-USD", "1h", 84)
             candles_1d = yahoo_fetcher.get_klines(f"{symbol}-USD", "1d", 45)
             
