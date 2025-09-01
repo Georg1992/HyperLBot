@@ -210,12 +210,14 @@ class SessionOrchestrator:
             rsi_data = market_data_service.get_yahoo_baseline_rsi_data(hyperliquid_price)
             rsi_value = rsi_data.get("rsi", 50.0)
             
-            # Get Hyperliquid market data (volume, volatility, pressure)
+            # Get Hyperliquid market data (volume, pressure) + 5-minute volatility 
             from core.market_data_manager import market_data_manager
             hyperliquid_data = market_data_manager.get_hyperliquid_data(market_data_service.hyperliquid_api, "BTC")
             volume_data = hyperliquid_data.get("volume_data", {})
-            volatility_data = hyperliquid_data.get("volatility_data", {})
             pressure_data = hyperliquid_data.get("pressure_data", {})
+            
+            # Calculate 5-minute volatility (aligned with bot's trading timeframe)
+            volatility_5m_data = self._calculate_5m_volatility(market_data_service)
             
             # Prepare market data for dashboard (EXACT field names expected by HTML template)
             market_data = {
@@ -240,10 +242,10 @@ class SessionOrchestrator:
                 # FIX: Dashboard expects 'pressure' object
                 "pressure": pressure_data,
                 
-                # FIX: Use SAME source for volatility value and category (Hyperliquid for consistency)
-                "volatility_5m": volatility_data.get("volatility_5m", 0.0),
-                "volatility_category": volatility_data.get("volatility_category", "NORMAL"),
-                "volatility_trend": volatility_data.get("volatility_trend", "NEUTRAL"),
+                # FIX: Use 5-minute candle volatility (aligned with bot's trading timeframe)
+                "volatility_5m": volatility_5m_data.get("volatility_5m", 0.0),
+                "volatility_category": volatility_5m_data.get("volatility_category", "NORMAL"),
+                "volatility_trend": volatility_5m_data.get("volatility_trend", "NEUTRAL"),
                 
                 "timestamp": time.time(),
                 "data_source": "clean_architecture_services"
@@ -261,3 +263,52 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Failed to update dashboard market data: {e}")
             # Continue trading even if dashboard update fails
+    
+    def _calculate_5m_volatility(self, market_data_service) -> Dict[str, Any]:
+        """Calculate 5-minute volatility aligned with bot's trading timeframe"""
+        try:
+            # Get recent 5-minute candles (last 25 candles = ~2 hours)
+            candles_5m = market_data_service.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "5m", 25)
+            
+            if not candles_5m or len(candles_5m) < 10:
+                return {"volatility_5m": 0.0, "volatility_category": "UNKNOWN", "volatility_trend": "UNKNOWN"}
+            
+            # Calculate 5-minute returns (price changes between 5m candles)
+            closes = [float(candle['close']) for candle in candles_5m[-20:]]  # Last 20 periods
+            returns_5m = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
+            
+            # Calculate volatility (standard deviation of 5m returns)
+            import statistics
+            volatility_5m = statistics.stdev(returns_5m) if len(returns_5m) > 1 else 0.0
+            
+            # Categorize based on 5-minute trading relevance
+            if volatility_5m > 0.015:      # > 1.5%
+                category = "EXTREME"
+                trend = "VOLATILE"
+            elif volatility_5m > 0.008:    # > 0.8%  
+                category = "HIGH"
+                trend = "ACTIVE"
+            elif volatility_5m > 0.004:    # > 0.4%
+                category = "MODERATE" 
+                trend = "NORMAL"
+            elif volatility_5m > 0.002:    # > 0.2%
+                category = "LOW"
+                trend = "QUIET"
+            else:                          # < 0.2%
+                category = "VERY_LOW"
+                trend = "BORING"
+            
+            logger.debug(f"📊 5m Volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%) → {category}")
+            
+            return {
+                "volatility_5m": volatility_5m,
+                "volatility_category": category,
+                "volatility_trend": trend,
+                "calculation_method": "5m_candle_returns_stdev",
+                "timeframe": "5_minutes",
+                "data_source": "yahoo_5m_candles"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ 5m volatility calculation failed: {e}")
+            return {"volatility_5m": 0.0, "volatility_category": "ERROR", "volatility_trend": "ERROR"}

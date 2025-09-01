@@ -51,7 +51,7 @@ class MarketDataManager:
             logger.error(f"❌ HyperliquidAPI is None - cannot fetch data for {symbol}")
             return {
                 "volume_data": {},
-                "volatility_data": {},
+                # volatility_data removed - using 5m candle volatility instead of orderbook volatility
                 "pressure_data": {},
                 "current_price": None,
                 "timestamp": time.time(),
@@ -65,15 +65,14 @@ class MarketDataManager:
             return cached_data
         
         try:
-            # Get Hyperliquid data
+            # Get Hyperliquid data (removed volatility_data - using 5m candle volatility instead)
             volume_data = hyperliquid_api.get_volume_analysis(symbol)
-            volatility_data = hyperliquid_api.get_volatility_analysis(symbol)
             pressure_data = hyperliquid_api.get_pressure(symbol)
             
             
             return {
                 "volume_data": volume_data or {},
-                "volatility_data": volatility_data or {},
+                # volatility_data removed - using 5m candle volatility instead of orderbook volatility
                 "pressure_data": pressure_data or {},
                 "timestamp": time.time()
             }

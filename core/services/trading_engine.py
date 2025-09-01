@@ -50,8 +50,8 @@ class TradingEngine:
         hyperliquid_data = market_data_manager.get_hyperliquid_data(hyperliquid_api, "BTC")
         
         volume_data = hyperliquid_data.get("volume_data", {})
-        volatility_data = hyperliquid_data.get("volatility_data", {})
         pressure_data = hyperliquid_data.get("pressure_data", {})
+        # volatility_data removed - using 5m candle volatility instead of orderbook volatility
         
         # Update variability analyzer (use real orderbook depth, not fake volume estimate)
         orderbook_depth = volume_data.get("volume_depth", 100)
@@ -60,7 +60,7 @@ class TradingEngine:
         # 4. BUILD COMPREHENSIVE ANALYSIS
         analysis = yahoo_analysis.copy()
         analysis["hyperliquid_volume"] = volume_data
-        analysis["hyperliquid_volatility"] = volatility_data
+        # hyperliquid_volatility removed - using 5m candle volatility from Yahoo analysis instead
         analysis["hyperliquid_pressure"] = pressure_data
         analysis["timestamp"] = current_time
         
