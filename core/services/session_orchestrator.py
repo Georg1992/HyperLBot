@@ -216,9 +216,9 @@ class SessionOrchestrator:
             volume_data = hyperliquid_data.get("volume_data", {})
             pressure_data = hyperliquid_data.get("pressure_data", {})
             
-            # Get 5-minute volatility from yahoo_analysis (eliminates duplicate calculation)
+            # Get 5-minute volatility from yahoo_analysis (already calculated by MarketDataManager)
             volatility_5m_value = yahoo_analysis.get("volatility_5m", 0.0)
-            volatility_5m_data = self._categorize_5m_volatility_for_trading(volatility_5m_value)
+            volatility_5m_data = market_data_service.categorize_5m_volatility_for_trading(volatility_5m_value)
             
             # Prepare market data for dashboard (EXACT field names expected by HTML template)
             market_data = {

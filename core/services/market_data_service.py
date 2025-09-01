@@ -151,6 +151,39 @@ class MarketDataService:
             logger.error(f"❌ Failed to get data update status: {e}")
             return {"status": "ERROR", "error": str(e)}
     
+    def categorize_5m_volatility_for_trading(self, volatility_5m_value: float) -> Dict[str, Any]:
+        """Categorize existing 5m volatility for trading decisions (proper service responsibility)"""
+        try:
+            # Categorize based on 5-minute trading relevance
+            if volatility_5m_value > 0.015:      # > 1.5%
+                category = "EXTREME"
+                trend = "VOLATILE"
+            elif volatility_5m_value > 0.008:    # > 0.8%  
+                category = "HIGH"
+                trend = "ACTIVE"
+            elif volatility_5m_value > 0.004:    # > 0.4%
+                category = "MODERATE" 
+                trend = "NORMAL"
+            elif volatility_5m_value > 0.002:    # > 0.2%
+                category = "LOW"
+                trend = "QUIET"
+            else:                                 # < 0.2%
+                category = "VERY_LOW"
+                trend = "BORING"
+            
+            logger.debug(f"📊 5m Volatility: {volatility_5m_value:.6f} ({volatility_5m_value*100:.4f}%) → {category}")
+            
+            return {
+                "volatility_5m": volatility_5m_value,
+                "volatility_category": category,
+                "volatility_trend": trend,
+                "timeframe": "5_minutes_trading_focused"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ 5m volatility categorization failed: {e}")
+            return {"volatility_5m": volatility_5m_value, "volatility_category": "ERROR", "volatility_trend": "ERROR"}
+    
     def update_cached_websocket_price(self, price: float):
         """Update cached WebSocket price (simple)"""
         self._cached_websocket_price = price
