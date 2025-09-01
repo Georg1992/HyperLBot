@@ -74,9 +74,14 @@ class DashboardService:
             
             # Generate prediction (fix argument mismatch - method expects market_data dict)
             # Build market_data structure for prediction engine (use Yahoo RSI - simple!)
+            
+            # DEBUG: Check what RSI we're getting from yahoo analysis
+            rsi_from_yahoo = historical_analysis.get("rsi_5m") if historical_analysis else None
+            logger.debug(f"🔍 DashboardService RSI debug: historical_analysis exists={historical_analysis is not None}, rsi_5m={rsi_from_yahoo}")
+            
             market_data_for_prediction = {
                 "current_price": current_price,
-                "rsi": historical_analysis.get("rsi_5m") if historical_analysis else technical_constants.RSI_NEUTRAL,
+                "rsi": rsi_from_yahoo if rsi_from_yahoo is not None else technical_constants.RSI_NEUTRAL,
                 "trend": historical_analysis.get("trend_5m", {}).get("trend", "NEUTRAL") if historical_analysis else "NEUTRAL",
                 "volume_category": "NORMAL",  # Default for predictions
                 "volatility_5m": historical_analysis.get("volatility_5m", 0.0) if historical_analysis else 0.0
