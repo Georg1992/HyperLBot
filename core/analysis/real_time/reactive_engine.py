@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Market Reactor
+Reactive Engine
 Reactive trading engine for immediate market setup responses
-CONCEPTUAL RELATIONSHIP: PredictionEngine (predictive) vs MarketReactor (reactive)
+CONCEPTUAL RELATIONSHIP: PredictionEngine (predictive) vs ReactiveEngine (reactive)
 """
 
 import time
@@ -12,13 +12,13 @@ from config.config import TradingConfig
 from core.constants import volume_constants, technical_constants
 
 
-class MarketReactor:
+class ReactiveEngine:
     """
     Reactive trading engine (counterpart to PredictionEngine)
     
     CONCEPTUAL DIFFERENCE:
     - PredictionEngine: Analyzes market data → predicts FUTURE moves
-    - MarketReactor: Detects live patterns → reacts to CURRENT setups
+    - ReactiveEngine: Detects live patterns → reacts to CURRENT setups
     """
     
     def __init__(self, strategy_config: Dict[str, Any]):
@@ -31,7 +31,7 @@ class MarketReactor:
         self.accumulation_volume_threshold = 1.5  # 1.5x volume
         self.accumulation_price_threshold = 0.005 # 0.5% price range
         
-        logger.info("⚡ Market Reactor initialized - Reactive trading engine")
+        logger.info("⚡ Reactive Engine initialized - Reactive trading engine")
     
     def generate_structured_reaction(self, market_data: Dict[str, Any], pattern_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -100,6 +100,90 @@ class MarketReactor:
         except Exception as e:
             logger.error(f"❌ Failed to generate structured reaction: {e}")
             return self._get_default_reaction(market_data.get("current_price", 0))
+    
+    def _detect_immediate_setup(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Detect immediate reactive setups requiring fast action"""
+        try:
+            # TODO: Implement immediate setup detection
+            # - Check for momentum breakouts
+            # - Check for volume accumulation
+            # - Check for support/resistance breaks
+            # - Check for flash spikes
+            
+            return {
+                "detected": False,
+                "setup_type": "NONE",
+                "urgency": "LOW",
+                "strength": 0.0,
+                "volume_confirmed": False,
+                "technical_score": 0.0
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Immediate setup detection failed: {e}")
+            return {"detected": False, "error": str(e)}
+    
+    def _determine_reactive_action(self, current_price: float, setup_data: Dict[str, Any], 
+                                  rsi_value: float, trend: str, volume_data: Dict[str, Any]) -> Tuple[str, float, str, str]:
+        """Determine reactive action based on detected setup"""
+        try:
+            # TODO: Implement reactive action logic
+            # - Analyze setup type and strength
+            # - Consider market context (RSI, trend, volume)
+            # - Determine optimal reactive strategy
+            # - Calculate entry price and timing
+            
+            direction = "WAIT"
+            entry_price = current_price
+            reaction_timing = "WAIT"
+            reasoning = "No immediate setup detected"
+            
+            return direction, entry_price, reaction_timing, reasoning
+            
+        except Exception as e:
+            logger.error(f"❌ Reactive action determination failed: {e}")
+            return "WAIT", current_price, "WAIT", f"Error: {e}"
+    
+    def _calculate_reactive_size(self, current_price: float, urgency: str, volatility_category: str) -> Tuple[float, float]:
+        """Calculate position size for reactive trades (typically smaller than predictive)"""
+        try:
+            # TODO: Implement reactive position sizing
+            # - Base size on urgency level
+            # - Adjust for volatility
+            # - Consider setup confidence
+            # - Use smaller sizes for reactive trades
+            
+            # Default reactive size (smaller than predictive)
+            base_size_usd = self.config.DEFAULT_POSITION_SIZE * 0.5  # 50% of normal size
+            size_btc = base_size_usd / current_price if current_price > 0 else 0.0
+            
+            return size_btc, base_size_usd
+            
+        except Exception as e:
+            logger.error(f"❌ Reactive size calculation failed: {e}")
+            return 0.0, 0.0
+    
+    def _get_default_reaction(self, current_price: float) -> Dict[str, Any]:
+        """Get default reaction when no setup is detected"""
+        return {
+            "direction": "WAIT",
+            "size_btc": 0.0,
+            "size_usd": 0.0,
+            "entry_price": current_price,
+            "rsi_at_reaction": technical_constants.RSI_NEUTRAL,
+            "setup_detected": "NONE",
+            "reaction_timing": "WAIT",
+            "urgency_level": "NONE",
+            "reasoning": "No reactive setup detected - market monitoring mode",
+            "reaction_timestamp": time.time(),
+            "reaction_time": time.strftime("%H:%M:%S"),
+            "current_price": current_price,
+            "setup_context": {
+                "pattern_strength": 0.0,
+                "volume_confirmation": False,
+                "technical_confluence": 0.0
+            }
+        }
     
     def get_reaction_strategy(self, setup_type: str, setup_data: Dict[str, Any]) -> Dict[str, Any]:
         """
