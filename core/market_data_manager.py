@@ -218,8 +218,35 @@ class MarketDataManager:
         return global_rsi_calculator.get_current_rsi_data()
     
     def calculate_rsi_from_candles(self, candles: List[Dict], periods: int = 14) -> float:
-        """Backward compatibility wrapper - delegates to global RSICalculator"""
-        return global_rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
+        """Calculate RSI from candles without affecting global RSI calculator state"""
+        try:
+            if len(candles) < periods + 1:
+                return technical_constants.RSI_NEUTRAL
+            
+            # Calculate price changes from candles
+            closes = [float(candle['close']) for candle in candles[-(periods + 1):]]
+            changes = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+            
+            # Separate gains and losses
+            gains = [change if change > 0 else 0 for change in changes]
+            losses = [-change if change < 0 else 0 for change in changes]
+            
+            # Calculate average gain and loss
+            avg_gain = sum(gains) / len(gains) if gains else 0
+            avg_loss = sum(losses) / len(losses) if losses else 0
+            
+            # Avoid division by zero
+            if avg_loss == 0:
+                rsi = 100.0
+            else:
+                rs = avg_gain / avg_loss
+                rsi = 100 - (100 / (1 + rs))
+            
+            return round(rsi, 2)
+            
+        except Exception as e:
+            logger.error(f"❌ RSI calculation failed: {e}")
+            return technical_constants.RSI_NEUTRAL
 
     # _categorize_5m_volatility_for_trading() moved to VolatilityCalculator (proper volatility logic location)
 
@@ -266,6 +293,7 @@ class MarketDataManager:
             
             # Calculate RSI from Yahoo 5m candles (proper candle-based calculation)
             rsi_5m = self.calculate_rsi_from_candles(candles_5m)
+            logger.debug(f"📊 Yahoo analysis RSI calculated: {rsi_5m:.2f} from 5m candles")
             
             # Calculate volume analysis using VolumeCalculator (proper delegation)
             volumes_5m = [candle["volume"] for candle in candles_5m if "volume" in candle]
