@@ -204,8 +204,12 @@ class MarketDataManager:
         """Calculate baseline RSI from Yahoo candles using RSICalculator (proper delegation)"""
         return self.rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
     
+    def update_realtime_rsi_on_candle_close(self, new_candle_close: float, candle_timestamp: float) -> Dict[str, Any]:
+        """Update real-time RSI scientifically on candle close using RSICalculator (proper delegation)"""
+        return self.rsi_calculator.update_realtime_rsi_on_candle_close(new_candle_close, candle_timestamp)
+    
     def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
-        """Update real-time RSI using RSICalculator (proper delegation)"""
+        """DEPRECATED: Use update_realtime_rsi_on_candle_close() for scientific accuracy"""
         return self.rsi_calculator.update_realtime_rsi(new_price)
     
     def get_current_rsi_data(self) -> Dict[str, Any]:
