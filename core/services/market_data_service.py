@@ -28,6 +28,10 @@ class MarketDataService:
         self._cached_websocket_price = None
         self._last_price_update = 0
         
+        # Emergency price fallback
+        self._last_known_good_price = None
+        self._last_known_good_time = 0
+        
         logger.info("📊 Market Data Service initialized - Data orchestration")
     
     def initialize_yahoo_rsi(self):
@@ -93,32 +97,55 @@ class MarketDataService:
             return {}
     
     def get_hyperliquid_price(self) -> Optional[float]:
-        """Get current price from Hyperliquid WebSocket - SINGLE SOURCE OF TRUTH"""
+        """Get current price with robust fallback strategy"""
         try:
             # PRIMARY: WebSocket cached price (real-time stream) 
             if (hasattr(self, '_cached_websocket_price') and 
                 self._cached_websocket_price is not None and
                 time.time() - self._last_price_update < 30):  # Price must be recent (30s)
+                self._update_last_known_good_price(self._cached_websocket_price)
                 return self._cached_websocket_price
             
             # SECONDARY: Direct WebSocket query
             if self.hyperliquid_websocket:
                 ws_price = self.hyperliquid_websocket.get_current_price()
                 if ws_price and ws_price > 0:
+                    self._update_last_known_good_price(ws_price)
                     return ws_price
             
-            # FALLBACK: HTTP API call
+            # TERTIARY: HTTP API call
             logger.warning("⚠️ WebSocket price unavailable - using HTTP API fallback")
             hyperliquid_data = market_data_manager.get_hyperliquid_data(self.hyperliquid_api, "BTC")
             api_price = hyperliquid_data.get("current_price")
             
             if api_price:
                 logger.warning(f"📡 HTTP API price: ${api_price:.2f} (WebSocket fallback)")
+                self._update_last_known_good_price(api_price)
                 return api_price
             
+            # QUATERNARY: Yahoo Finance fallback (real-time data)
+            logger.warning("🚨 Hyperliquid completely down - using Yahoo Finance fallback")
+            yahoo_price = self._get_yahoo_realtime_price()
+            if yahoo_price:
+                logger.warning(f"📊 Yahoo Finance price: ${yahoo_price:.2f} (Emergency fallback)")
+                return yahoo_price
+            
+            # EMERGENCY: Last known good price (if recent)
+            if self._last_known_good_price and time.time() - self._last_known_good_time < 300:  # 5 minutes
+                logger.error(f"🚨 Using last known good price: ${self._last_known_good_price:.2f} (Emergency fallback)")
+                return self._last_known_good_price
+            
+            logger.error("🚨 ALL PRICE SOURCES FAILED - no price available")
             return None
+            
         except Exception as e:
-            logger.error(f"❌ Failed to get Hyperliquid price: {e}")
+            logger.error(f"❌ Failed to get price: {e}")
+            
+            # Try emergency fallback
+            if self._last_known_good_price and time.time() - self._last_known_good_time < 300:
+                logger.error(f"🚨 Exception fallback - using last known price: ${self._last_known_good_price:.2f}")
+                return self._last_known_good_price
+            
             return None
     
     def get_weekly_trend_analysis(self) -> Dict[str, Any]:
@@ -151,6 +178,35 @@ class MarketDataService:
         """Update cached WebSocket price"""
         self._cached_websocket_price = price
         self._last_price_update = time.time()
+        self._update_last_known_good_price(price)
+    
+    def _update_last_known_good_price(self, price: float):
+        """Update emergency fallback price cache"""
+        self._last_known_good_price = price
+        self._last_known_good_time = time.time()
+    
+    def _get_yahoo_realtime_price(self) -> Optional[float]:
+        """Get real-time price from Yahoo Finance as ultimate fallback"""
+        try:
+            # Get latest 1-minute candle for most recent price
+            candles_1m = self.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "1m", 1)
+            if candles_1m and len(candles_1m) > 0:
+                latest_close = float(candles_1m[-1]["close"])
+                logger.info(f"📊 Yahoo Finance real-time price: ${latest_close:.2f}")
+                return latest_close
+            
+            # If 1m fails, try 5m candle
+            candles_5m = self.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "5m", 1) 
+            if candles_5m and len(candles_5m) > 0:
+                latest_close = float(candles_5m[-1]["close"])
+                logger.info(f"📊 Yahoo Finance 5m price: ${latest_close:.2f}")
+                return latest_close
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Yahoo Finance price fallback failed: {e}")
+            return None
     
     def _get_rsi_trend(self, rsi_value: float) -> str:
         """Simple RSI trend determination"""
