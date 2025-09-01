@@ -139,6 +139,15 @@ class MagicNumbers:
     # Imbalance thresholds
     ORDERBOOK_IMBALANCE_THRESHOLD = 0.3  # 30% imbalance
     
+    # Market pressure thresholds
+    PRESSURE_STRONG_THRESHOLD = 0.25     # 25% imbalance for strong pressure
+    PRESSURE_MODERATE_THRESHOLD = 0.1    # 10% imbalance for moderate pressure
+    PRESSURE_DEPTH_REFERENCE = 20.0      # 20 BTC reference for confidence calculation
+    PRESSURE_MAX_STRENGTH = 0.95         # Maximum pressure strength
+    PRESSURE_MIN_STRENGTH = 0.1          # Minimum pressure strength
+    PRESSURE_HIGH_CONCENTRATION = 0.8    # High depth concentration threshold
+    PRESSURE_LOW_CONCENTRATION = 0.6     # Low depth concentration threshold
+    
     # Orderbook depth thresholds (BTC amounts) - REALISTIC Bitcoin market levels
     ORDERBOOK_DEPTH_EXTREMELY_HIGH = 50.0   # 50+ BTC depth (very high for Bitcoin)
     ORDERBOOK_DEPTH_VERY_HIGH = 30.0        # 30-50 BTC depth

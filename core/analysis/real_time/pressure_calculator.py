@@ -6,6 +6,7 @@ Centralized market pressure calculations from orderbook data
 
 from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
+from core.constants import MagicNumbers
 
 
 class PressureCalculator:
@@ -67,45 +68,45 @@ class PressureCalculator:
     def _categorize_pressure_direction(self, pressure_imbalance: float, depth_concentration: float) -> Tuple[str, float]:
         """Categorize pressure direction and strength"""
         try:
-            # Determine direction based on imbalance
+            # Determine direction based on imbalance (using constants)
             abs_imbalance = abs(pressure_imbalance)
             
-            if pressure_imbalance > 0.25:  # Strong bid pressure
+            if pressure_imbalance > MagicNumbers.PRESSURE_STRONG_THRESHOLD:  # Strong bid pressure
                 direction = "STRONG_BUY"
-                strength = min(0.9, 0.5 + abs_imbalance)
-            elif pressure_imbalance > 0.1:  # Moderate bid pressure
+                strength = min(MagicNumbers.PRESSURE_MAX_STRENGTH, MagicNumbers.DEFAULT_STRENGTH + abs_imbalance)
+            elif pressure_imbalance > MagicNumbers.PRESSURE_MODERATE_THRESHOLD:  # Moderate bid pressure
                 direction = "BUY"
-                strength = 0.5 + (abs_imbalance * 2)
-            elif pressure_imbalance < -0.25:  # Strong ask pressure
+                strength = MagicNumbers.DEFAULT_STRENGTH + (abs_imbalance * 2)
+            elif pressure_imbalance < -MagicNumbers.PRESSURE_STRONG_THRESHOLD:  # Strong ask pressure
                 direction = "STRONG_SELL"
-                strength = min(0.9, 0.5 + abs_imbalance)
-            elif pressure_imbalance < -0.1:  # Moderate ask pressure
+                strength = min(MagicNumbers.PRESSURE_MAX_STRENGTH, MagicNumbers.DEFAULT_STRENGTH + abs_imbalance)
+            elif pressure_imbalance < -MagicNumbers.PRESSURE_MODERATE_THRESHOLD:  # Moderate ask pressure
                 direction = "SELL"
-                strength = 0.5 + (abs_imbalance * 2)
+                strength = MagicNumbers.DEFAULT_STRENGTH + (abs_imbalance * 2)
             else:  # Balanced pressure
                 direction = "NEUTRAL"
-                strength = 0.5 - (abs_imbalance * 2)
+                strength = MagicNumbers.DEFAULT_STRENGTH - (abs_imbalance * 2)
             
-            # Adjust strength based on depth concentration
-            if depth_concentration > 0.8:  # High concentration = stronger signal
-                strength = min(0.95, strength * 1.2)
-            elif depth_concentration < 0.6:  # Low concentration = weaker signal
-                strength = max(0.1, strength * 0.8)
+            # Adjust strength based on depth concentration (using constants)
+            if depth_concentration > MagicNumbers.PRESSURE_HIGH_CONCENTRATION:  # High concentration = stronger signal
+                strength = min(MagicNumbers.PRESSURE_MAX_STRENGTH, strength * 1.2)
+            elif depth_concentration < MagicNumbers.PRESSURE_LOW_CONCENTRATION:  # Low concentration = weaker signal
+                strength = max(MagicNumbers.PRESSURE_MIN_STRENGTH, strength * 0.8)
             
             return direction, round(strength, 3)
             
         except Exception as e:
             logger.warning(f"Pressure direction categorization failed: {e}")
-            return "NEUTRAL", 0.5
+            return "NEUTRAL", MagicNumbers.DEFAULT_STRENGTH
     
     def _calculate_pressure_confidence(self, total_depth: float, pressure_imbalance: float) -> str:
         """Calculate confidence percentage for pressure reading"""
         try:
-            # Base confidence on depth and imbalance strength
-            depth_factor = min(1.0, total_depth / 20.0)  # 20 BTC = 100% depth confidence
-            imbalance_factor = min(1.0, abs(pressure_imbalance) * 4)  # 0.25 imbalance = 100%
+            # Base confidence on depth and imbalance strength (using constants)
+            depth_factor = min(1.0, total_depth / MagicNumbers.PRESSURE_DEPTH_REFERENCE)  # Reference depth = 100% confidence
+            imbalance_factor = min(1.0, abs(pressure_imbalance) * (1 / MagicNumbers.PRESSURE_STRONG_THRESHOLD))  # Strong threshold = 100%
             
-            # Combine factors for overall confidence
+            # Combine factors for overall confidence (60% depth weight, 40% imbalance weight)
             confidence_score = (depth_factor * 0.6) + (imbalance_factor * 0.4)
             confidence_pct = int(confidence_score * 100)
             
@@ -113,18 +114,23 @@ class PressureCalculator:
             
         except Exception as e:
             logger.warning(f"Pressure confidence calculation failed: {e}")
-            return "50%"
+            return "0%"  # Return 0% instead of hardcoded 50% for errors
     
     def _determine_pressure_trend(self, pressure_imbalance: float, depth_concentration: float) -> str:
         """Determine pressure trend based on orderbook characteristics"""
         try:
             abs_imbalance = abs(pressure_imbalance)
             
-            if abs_imbalance > 0.2 and depth_concentration > 0.75:
+            # Use constants for thresholds
+            building_imbalance_threshold = MagicNumbers.PRESSURE_STRONG_THRESHOLD * 0.8  # 80% of strong threshold
+            increasing_imbalance_threshold = MagicNumbers.PRESSURE_MODERATE_THRESHOLD * 1.5  # 150% of moderate threshold
+            balanced_imbalance_threshold = MagicNumbers.PRESSURE_MODERATE_THRESHOLD * 0.5  # 50% of moderate threshold
+            
+            if abs_imbalance > building_imbalance_threshold and depth_concentration > (MagicNumbers.PRESSURE_HIGH_CONCENTRATION * 0.95):
                 return "BUILDING"  # Pressure building with concentration
-            elif abs_imbalance > 0.15:
+            elif abs_imbalance > increasing_imbalance_threshold:
                 return "INCREASING"  # Pressure increasing
-            elif abs_imbalance < 0.05:
+            elif abs_imbalance < balanced_imbalance_threshold:
                 return "BALANCED"  # Very balanced orderbook
             else:
                 return "NEUTRAL"  # Normal pressure levels
@@ -138,10 +144,10 @@ class PressureCalculator:
         return {
             "direction": "NEUTRAL",
             "confidence": "0%",
-            "strength": 0.0,
+            "strength": MagicNumbers.DEFAULT_STRENGTH,
             "trend": "UNKNOWN",
-            "bid_pressure_ratio": 0.5,
-            "ask_pressure_ratio": 0.5,
+            "bid_pressure_ratio": MagicNumbers.DEFAULT_STRENGTH,  # 50/50 split
+            "ask_pressure_ratio": MagicNumbers.DEFAULT_STRENGTH,  # 50/50 split  
             "pressure_imbalance": 0.0,
             "depth_concentration": 0.0,
             "bid_depth_5": 0.0,

@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Optional
 from loguru import logger
 from core.analysis.real_time.volatility_calculator import VolatilityCalculator
 from core.analysis.real_time.volume_calculator import VolumeCalculator
+from core.analysis.real_time.pressure_calculator import PressureCalculator
 from core.analysis.trend_manager import trend_manager
 from core.constants import technical_constants
 
@@ -27,9 +28,10 @@ class MarketDataManager:
         self._indicator_timestamps = {}
         self._indicator_cache_duration = 60  # 1 minute for calculated indicators
         
-        # Initialize volatility and volume calculators
+        # Initialize volatility, volume, and pressure calculators
         self.volatility_calculator = VolatilityCalculator()
         self.volume_calculator = VolumeCalculator()
+        self.pressure_calculator = PressureCalculator()
         
         logger.info("📊 Market Data Manager initialized - Centralized data management")
     
@@ -67,11 +69,10 @@ class MarketDataManager:
             return cached_data
         
         try:
-            # Get raw orderbook data and use VolumeCalculator for analysis
+            # Get raw orderbook data and use calculators for analysis (clean architecture)
             market_data = hyperliquid_api.get_market_data(symbol)
-            pressure_data = hyperliquid_api.get_pressure(symbol)
             
-            # Use VolumeCalculator for orderbook depth analysis (clean architecture)
+            # Use VolumeCalculator and PressureCalculator for orderbook analysis (clean architecture)
             if market_data and 'levels' in market_data:
                 levels = market_data['levels']
                 if len(levels) >= 2:
@@ -84,22 +85,29 @@ class MarketDataManager:
                         ask_depth_5 = sum(float(level['sz']) for level in asks[:5])
                         total_depth_5 = bid_depth_5 + ask_depth_5
                         
-                        # Use VolumeCalculator for categorization (proper delegation)
+                        # Use VolumeCalculator for volume categorization (proper delegation)
                         volume_data = self.volume_calculator.categorize_orderbook_depth(
                             total_depth_5, bid_depth_5, ask_depth_5
                         )
                         volume_data["data_source"] = "hyperliquid_orderbook"
+                        
+                        # Use PressureCalculator for pressure analysis (proper delegation)
+                        pressure_data = self.pressure_calculator.calculate_orderbook_pressure(bids, asks)
+                        pressure_data["data_source"] = "hyperliquid_orderbook"
                     else:
                         volume_data = self._get_default_volume_data()
+                        pressure_data = self._get_default_pressure_data()
                 else:
                     volume_data = self._get_default_volume_data()
+                    pressure_data = self._get_default_pressure_data()
             else:
                 volume_data = self._get_default_volume_data()
+                pressure_data = self._get_default_pressure_data()
             
             result = {
                 "volume_data": volume_data,
                 # volatility_data removed - using 5m candle volatility instead of orderbook volatility
-                "pressure_data": pressure_data or {},
+                "pressure_data": pressure_data,
                 "timestamp": time.time()
             }
             
@@ -111,7 +119,7 @@ class MarketDataManager:
             logger.error(f"❌ Failed to get Hyperliquid data: {e}")
             return {
                 "volume_data": self._get_default_volume_data(),
-                "pressure_data": {},
+                "pressure_data": self._get_default_pressure_data(),
                 "current_price": None,
                 "timestamp": time.time()
             }
@@ -129,6 +137,10 @@ class MarketDataManager:
             "depth_analysis": "NO_DATA",
             "data_source": "default"
         }
+    
+    def _get_default_pressure_data(self) -> Dict[str, Any]:
+        """Get default pressure data when orderbook is unavailable"""
+        return self.pressure_calculator._get_default_pressure()
     
     def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
         """Use trend manager for advanced trend calculation"""

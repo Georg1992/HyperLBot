@@ -130,13 +130,8 @@ class HyperliquidAPI:
 
     # get_volatility_analysis() removed - using 5m candle volatility instead of orderbook volatility
 
-    def get_pressure(self, symbol: str = None) -> Dict[str, Any]:
-        """Get market pressure analysis from order book"""
-        try:
-            return self.analysis.get_pressure(symbol)
-        except Exception as e:
-            logger.error(f"Failed to get pressure for {symbol}: {e}")
-            raise
+    # get_pressure() REMOVED - Pressure logic moved to PressureCalculator for clean architecture
+    # MarketDataManager now handles pressure analysis using PressureCalculator delegation
 
     # ==================================================================================
     # ALL TRADING METHODS REMOVED - HyperliquidSimulator handles all trading operations
