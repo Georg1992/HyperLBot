@@ -116,6 +116,9 @@ class SessionOrchestrator:
                     time.sleep(check_interval)
                     continue
                 
+                # Update dashboard with current market data (CRITICAL - was missing!)
+                self._update_dashboard_market_data(hyperliquid_price, yahoo_analysis, market_data_service, dashboard_service)
+                
                 # Check for trading signal
                 signal = trading_engine.should_trade(hyperliquid_price, yahoo_analysis, hyperliquid_api)
                 
@@ -194,3 +197,43 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Failed to check for ongoing session: {e}")
             return None
+    
+    def _update_dashboard_market_data(self, hyperliquid_price: float, yahoo_analysis: Dict[str, Any], 
+                                     market_data_service, dashboard_service):
+        """Update dashboard with current market data (CRITICAL for dashboard display)"""
+        try:
+            # Get RSI data
+            rsi_data = market_data_service.get_yahoo_baseline_rsi_data(hyperliquid_price)
+            rsi_value = rsi_data.get("rsi", 50.0)
+            
+            # Get Hyperliquid volume data
+            from core.market_data_manager import market_data_manager
+            hyperliquid_data = market_data_manager.get_hyperliquid_data(market_data_service.hyperliquid_api, "BTC")
+            volume_data = hyperliquid_data.get("volume_data", {})
+            volatility_data = hyperliquid_data.get("volatility_data", {})
+            
+            # Prepare market data for dashboard
+            market_data = {
+                "current_price": hyperliquid_price,
+                "rsi": rsi_value,
+                "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
+                "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
+                "volume": volume_data.get("current_volume", 0),
+                "volume_category": volume_data.get("volume_category", "NORMAL"),
+                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                "timestamp": time.time(),
+                "data_source": "clean_architecture_services"
+            }
+            
+            # Update dashboard with market data
+            dashboard_service.update_rtm_market(market_data)
+            
+            # Also update data status
+            data_status = market_data_service.get_data_update_status()
+            dashboard_service.update_rtm_data_status(data_status)
+            
+            logger.debug(f"📊 Dashboard updated: ${hyperliquid_price:.2f}, RSI: {rsi_value:.1f}, Volume: {volume_data.get('current_volume', 0):.1f} BTC")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update dashboard market data: {e}")
+            # Continue trading even if dashboard update fails
