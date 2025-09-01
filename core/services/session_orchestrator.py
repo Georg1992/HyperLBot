@@ -223,8 +223,8 @@ class SessionOrchestrator:
                 "rsi": rsi_value,
                 "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
                 
-                # FIX: Dashboard expects 'volume_depth', not 'volume'
-                "volume_depth": volume_data.get("current_volume", 0),
+                # FIX: Dashboard expects 'volume_depth' field (use correct analyzer field!)
+                "volume_depth": volume_data.get("volume_depth", 0),
                 "volume_category": volume_data.get("volume_category", "NORMAL"),
                 "order_flow": volume_data.get("order_flow", "NEUTRAL"),
                 "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN"),
