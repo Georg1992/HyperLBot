@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+"""
+Session Orchestrator Service  
+Handles trading session lifecycle and main trading loop
+Single Responsibility: Session coordination and trading loop
+"""
+
+import time
+from typing import Dict, Any, Optional
+from loguru import logger
+from core.session.session_manager import SessionManager
+
+class SessionOrchestrator:
+    """Session orchestration service - handles trading loop and lifecycle"""
+    
+    def __init__(self, config, initial_balance: float):
+        self.config = config
+        self.initial_balance = initial_balance
+        self.session_manager = None
+        self.weekly_trend_analysis = {}
+        
+        logger.info("🔄 Session Orchestrator initialized - Trading loop coordination")
+    
+    def run_paper_trading_session(self, max_trades: int, check_interval: int,
+                                 system_initializer, market_data_service, trading_engine, dashboard_service) -> Dict[str, Any]:
+        """Run the main paper trading session"""
+        try:
+            # 1. Initialize system
+            init_result = system_initializer.initialize_system(market_data_service)
+            if not init_result["success"]:
+                logger.error("❌ System initialization failed")
+                return {"success": False, "error": "System initialization failed"}
+            
+            hyperliquid_api = init_result["hyperliquid_api"]
+            
+            # 2. Get weekly context
+            logger.info("📅 Getting weekly trend analysis for session context...")
+            weekly_analysis = market_data_service.get_weekly_trend_analysis()
+            
+            if "error" not in weekly_analysis:
+                self.weekly_trend_analysis = weekly_analysis
+                logger.success("✅ Weekly trend analysis loaded successfully!")
+            else:
+                logger.warning("⚠️ Could not get weekly trend analysis, proceeding without it")
+            
+            # 3. Start session
+            self._start_session(dashboard_service)
+            
+            # 4. Main trading loop
+            return self._main_trading_loop(max_trades, check_interval, hyperliquid_api,
+                                         market_data_service, trading_engine, dashboard_service)
+            
+        except Exception as e:
+            logger.error(f"❌ Trading session failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _start_session(self, dashboard_service):
+        """Start trading session"""
+        try:
+            # Clear dashboard cache
+            dashboard_service.rtm_updater.clear_rtm_cache()
+            logger.info("🧹 Dashboard cache cleared - Fresh session data")
+            
+            # Start session
+            self.session_manager = SessionManager()
+            logger.info("✅ SessionManager initialized")
+            
+            # Create initial heartbeat
+            dashboard_service.create_initial_heartbeat(self.session_manager, "standard", self.initial_balance)
+            
+            # Start session
+            session_id = self.session_manager.start_session(
+                session_id=f"bot_session_{int(time.time())}",
+                strategy="standard",
+                initial_balance=self.initial_balance
+            )
+            
+            # Log session start
+            dashboard_service.update_rtm_activity(
+                f"🚀 Trading bot started - standard strategy with ${self.initial_balance:.2f} initial balance", 
+                "SUCCESS"
+            )
+            
+            logger.success("🔥 Session started successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to start session: {e}")
+    
+    def _main_trading_loop(self, max_trades: int, check_interval: int, hyperliquid_api,
+                          market_data_service, trading_engine, dashboard_service) -> Dict[str, Any]:
+        """Main trading loop"""
+        trades_placed = 0
+        
+        logger.info(f"🔄 Starting main trading loop (max_trades: {max_trades}, interval: {check_interval}s)")
+        
+        while trades_placed < max_trades:
+            try:
+                # Update heartbeat
+                dashboard_service.update_heartbeat(self.session_manager, "standard", self.initial_balance)
+                
+                # Update session time
+                if self.session_manager:
+                    self.session_manager.update_session_time_if_active()
+                
+                # Get current price
+                hyperliquid_price = market_data_service.get_hyperliquid_price()
+                if not hyperliquid_price:
+                    logger.warning("⚠️ Could not get Hyperliquid price, retrying...")
+                    time.sleep(check_interval)
+                    continue
+                
+                # Get market analysis
+                yahoo_analysis = market_data_service.get_yahoo_analysis(hyperliquid_price)
+                if not yahoo_analysis:
+                    logger.warning("⚠️ Could not get market analysis, retrying...")
+                    time.sleep(check_interval)
+                    continue
+                
+                # Check for trading signal
+                signal = trading_engine.should_trade(hyperliquid_price, yahoo_analysis, hyperliquid_api)
+                
+                if signal["should_trade"]:
+                    # Place trade
+                    success = trading_engine.place_paper_trade(
+                        signal["side"], 
+                        signal.get("size", 0.001), 
+                        signal.get("leverage", 30),
+                        signal
+                    )
+                    
+                    if success:
+                        trades_placed += 1
+                        dashboard_service.update_rtm_activity(
+                            f"🚀 {signal['side']} trade placed #{trades_placed}", 
+                            "SUCCESS"
+                        )
+                        logger.success(f"✅ Trade #{trades_placed} placed: {signal['side']}")
+                    else:
+                        dashboard_service.update_rtm_activity("❌ Trade placement failed", "ERROR")
+                else:
+                    # Log no-trade reason
+                    dashboard_service.update_rtm_activity(f"📊 No trade: {signal['reason']}", "INFO")
+                
+                # Check position exits
+                trading_engine.check_position_exits(hyperliquid_price)
+                
+                # Generate predictions for dashboard
+                dashboard_service.generate_and_log_prediction(hyperliquid_price, yahoo_analysis)
+                
+                # Wait for next iteration
+                time.sleep(check_interval)
+                
+            except KeyboardInterrupt:
+                logger.info("🛑 Keyboard interrupt - stopping trading loop")
+                break
+            except Exception as e:
+                logger.error(f"❌ Trading loop error: {e}")
+                time.sleep(check_interval)
+        
+        # End session
+        self._end_session(dashboard_service)
+        
+        return {
+            "success": True,
+            "trades_placed": trades_placed,
+            "session_complete": True
+        }
+    
+    def _end_session(self, dashboard_service):
+        """End trading session gracefully"""
+        try:
+            # End session
+            if self.session_manager:
+                self.session_manager.end_session()
+                logger.info("📅 SessionManager session ended")
+            
+            # Cleanup heartbeat
+            dashboard_service.cleanup_heartbeat()
+            
+            # Log session end
+            dashboard_service.update_rtm_activity("🏁 Trading session closed gracefully", "SUCCESS")
+            
+            logger.success("✅ Session ended gracefully")
+            
+        except Exception as e:
+            logger.error(f"❌ Error ending session: {e}")
+    
+    def _check_for_ongoing_session(self) -> Optional[Dict]:
+        """Check for ongoing sessions"""
+        try:
+            if self.session_manager:
+                return self.session_manager.get_current_session_info()
+            return None
+        except Exception as e:
+            logger.error(f"❌ Failed to check for ongoing session: {e}")
+            return None
