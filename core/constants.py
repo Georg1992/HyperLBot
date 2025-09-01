@@ -280,6 +280,8 @@ class TechnicalAnalysisConstants:
     RSI_OVERSOLD = 30
     RSI_OVERBOUGHT = 70
     RSI_NEUTRAL = 50
+    RSI_BULLISH = 60        # Above neutral, trending up
+    RSI_BEARISH = 40        # Below neutral, trending down
     
     # Trend Strength Thresholds
     TREND_STRENGTH_HIGH = 0.01       # 1% strength

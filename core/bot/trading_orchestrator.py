@@ -146,17 +146,24 @@ class TradingOrchestrator:
                         # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
                         
-                        # IMMEDIATELY update dashboard (real-time price only - don't override complete data!)
+                        # Update real-time RSI using MarketDataManager (clean architecture)
+                        from core.market_data_manager import market_data_manager
+                        rsi_data = market_data_manager.update_realtime_rsi(current_price)
+                        
+                        # IMMEDIATELY update dashboard (real-time price + RSI - don't override complete data!)
                         try:
-                            # Update ONLY price field in existing market data to avoid overriding other fields
+                            # Update ONLY price and RSI fields in existing market data to avoid overriding other fields
                             from core.dashboard.dashboard_data_manager import simple_rtm
                             existing_data = simple_rtm.get_market_data()
                             
-                            # Update only price and timestamp, preserve other fields
+                            # Update price, RSI, and timestamp, preserve other fields
                             existing_data.update({
                                 "current_price": current_price,
+                                "rsi": rsi_data.get("rsi", existing_data.get("rsi", 50.0)),
+                                "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
                                 "timestamp": time.time(),
-                                "price_source": "hyperliquid_websocket_realtime"
+                                "price_source": "hyperliquid_websocket_realtime",
+                                "rsi_source": "hyperliquid_realtime_calculation"
                             })
                             
                             self.dashboard_service.update_rtm_market(existing_data)

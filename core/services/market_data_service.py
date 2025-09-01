@@ -33,46 +33,51 @@ class MarketDataService:
         logger.info("📊 Market Data Service initialized - Data orchestration")
     
     def initialize_yahoo_rsi(self):
-        """Simple Yahoo Finance RSI initialization"""
+        """Initialize Yahoo Finance baseline RSI using RSICalculator"""
         try:
-            # Get 5-minute data for RSI calculation (granular, real-time sensitivity)
+            # Get 5-minute data for RSI baseline calculation (user likes this value)
             candles_5m = self.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
             if candles_5m and len(candles_5m) >= 15:
-                # Calculate RSI using centralized MarketDataManager with 5m data
-                self.yahoo_rsi_value = market_data_manager.calculate_rsi_from_candles(candles_5m)
+                # Calculate baseline RSI using RSICalculator (clean architecture)
+                self.yahoo_rsi_value = market_data_manager.calculate_yahoo_baseline_rsi(candles_5m)
                 self.rsi_initialized = True
-                logger.success(f"📊 Yahoo RSI initialized (5m data): {self.yahoo_rsi_value:.2f}")
+                logger.success(f"📊 Yahoo baseline RSI initialized: {self.yahoo_rsi_value:.2f} (ready for real-time updates)")
             else:
-                logger.warning("⚠️ Not enough Yahoo 5m data for RSI, using default")
+                logger.warning("⚠️ Not enough Yahoo 5m data for RSI baseline, using default")
                 self.yahoo_rsi_value = technical_constants.RSI_NEUTRAL
                 self.rsi_initialized = True
                 
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Yahoo RSI: {e}")
+            logger.error(f"❌ Failed to initialize Yahoo baseline RSI: {e}")
             self.yahoo_rsi_value = technical_constants.RSI_NEUTRAL
             self.rsi_initialized = True
     
     def get_yahoo_baseline_rsi_data(self, hyperliquid_price: float = None) -> Dict[str, Any]:
-        """Simple Yahoo Finance RSI data for trading decisions"""
+        """Get current RSI data (baseline + real-time updates) for trading decisions"""
         try:
-            # Initialize Yahoo RSI if not already done
+            # Initialize Yahoo baseline RSI if not already done
             if not self.rsi_initialized:
                 self.initialize_yahoo_rsi()
             
-            # Return simple RSI data structure
+            # Get current RSI data from RSICalculator (includes both baseline and real-time)
+            rsi_data = market_data_manager.get_current_rsi_data()
+            
+            # Return comprehensive RSI data structure
             return {
-                "rsi": self.yahoo_rsi_value,
-                "rsi_value": self.yahoo_rsi_value,
-                "rsi_trend": self._get_rsi_trend(self.yahoo_rsi_value),
-                "rsi_signal": self._get_rsi_signal(self.yahoo_rsi_value),
-                "momentum": self._get_rsi_trend(self.yahoo_rsi_value),
-                "confidence": 0.9 if self.yahoo_rsi_value is not None else 0.3,
-                "data_source": "yahoo_finance_simple",
+                "rsi": rsi_data.get("rsi", self.yahoo_rsi_value),
+                "rsi_value": rsi_data.get("rsi", self.yahoo_rsi_value),
+                "rsi_baseline": rsi_data.get("rsi_baseline", self.yahoo_rsi_value),
+                "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
+                "rsi_signal": rsi_data.get("rsi_signal", "NEUTRAL"),
+                "rsi_momentum": rsi_data.get("rsi_momentum", 0.0),
+                "momentum": rsi_data.get("rsi_trend", "NEUTRAL"),  # Backward compatibility
+                "confidence": 0.9 if rsi_data.get("initialized", False) else 0.3,
+                "data_source": rsi_data.get("data_source", "rsi_calculator"),
                 "hyperliquid_price": hyperliquid_price or 0.0
             }
             
         except Exception as e:
-            logger.error(f"❌ Failed to get Yahoo RSI data: {e}")
+            logger.error(f"❌ Failed to get RSI data: {e}")
             return self._get_default_rsi_data(hyperliquid_price, str(e))
     
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:

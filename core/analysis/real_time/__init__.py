@@ -8,6 +8,7 @@ from .orderbook_analyzer import MarketOrderbookAnalyzer
 from .volatility_calculator import VolatilityCalculator
 from .volume_calculator import VolumeCalculator
 from .pressure_calculator import PressureCalculator
+from .rsi_calculator import RSICalculator
 from .pattern_recognition_engine import PatternRecognitionEngine
 from .setup_classifier import SetupClassifier
 from .reactive_engine import ReactiveEngine
@@ -16,8 +17,9 @@ __all__ = [
     'VolatilityCalculator',
     'VolumeCalculator',
     'PressureCalculator',
+    'RSICalculator',
     'PatternRecognitionEngine',
     'SetupClassifier', 
     'ReactiveEngine'
-    # RealTimeRSICalculator removed - replaced with simple Yahoo RSI fetch in TradingBot
+    # Old RealTimeRSICalculator replaced with clean RSICalculator
 ]

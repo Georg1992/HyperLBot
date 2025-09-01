@@ -11,6 +11,7 @@ from loguru import logger
 from core.analysis.real_time.volatility_calculator import VolatilityCalculator
 from core.analysis.real_time.volume_calculator import VolumeCalculator
 from core.analysis.real_time.pressure_calculator import PressureCalculator
+from core.analysis.real_time.rsi_calculator import RSICalculator
 from core.analysis.trend_manager import trend_manager
 from core.constants import technical_constants
 
@@ -28,10 +29,11 @@ class MarketDataManager:
         self._indicator_timestamps = {}
         self._indicator_cache_duration = 60  # 1 minute for calculated indicators
         
-        # Initialize volatility, volume, and pressure calculators
+        # Initialize volatility, volume, pressure, and RSI calculators
         self.volatility_calculator = VolatilityCalculator()
         self.volume_calculator = VolumeCalculator()
         self.pressure_calculator = PressureCalculator()
+        self.rsi_calculator = RSICalculator()
         
         logger.info("📊 Market Data Manager initialized - Centralized data management")
     
@@ -198,47 +200,21 @@ class MarketDataManager:
             logger.error(f"❌ Support/resistance calculation failed: {e}")
             return {"support": 0.0, "resistance": 0.0}
     
+    def calculate_yahoo_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
+        """Calculate baseline RSI from Yahoo candles using RSICalculator (proper delegation)"""
+        return self.rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
+    
+    def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
+        """Update real-time RSI using RSICalculator (proper delegation)"""
+        return self.rsi_calculator.update_realtime_rsi(new_price)
+    
+    def get_current_rsi_data(self) -> Dict[str, Any]:
+        """Get current RSI data using RSICalculator (proper delegation)"""
+        return self.rsi_calculator.get_current_rsi_data()
+    
     def calculate_rsi_from_candles(self, candles: List[Dict], periods: int = 14) -> float:
-        """
-        Calculate RSI from candlestick data (moved from YahooDataFetcher for consolidation)
-        Eliminates circular dependency and centralizes calculations
-        """
-        cache_key = f"rsi_{periods}_{hash(str(candles[-periods-1:]))}"
-        cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
-        
-        if cached_result:
-            return cached_result
-        
-        try:
-            if len(candles) < periods + 1:
-                return technical_constants.RSI_NEUTRAL
-            
-            # Calculate price changes
-            closes = [float(candle['close']) for candle in candles[-(periods + 1):]]
-            changes = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-            
-            # Separate gains and losses
-            gains = [change if change > 0 else 0 for change in changes]
-            losses = [-change if change < 0 else 0 for change in changes]
-            
-            # Calculate average gain and loss
-            avg_gain = sum(gains) / len(gains) if gains else 0
-            avg_loss = sum(losses) / len(losses) if losses else 0
-            
-            # Avoid division by zero
-            if avg_loss == 0:
-                rsi = 100.0
-            else:
-                rs = avg_gain / avg_loss
-                rsi = 100 - (100 / (1 + rs))
-            
-            # Cache and return result
-            self._cache_data(cache_key, rsi, self._indicator_cache_duration)
-            return round(rsi, 2)
-            
-        except Exception as e:
-            logger.error(f"❌ RSI calculation failed: {e}")
-            return technical_constants.RSI_NEUTRAL
+        """Backward compatibility wrapper - delegates to RSICalculator for Yahoo baseline"""
+        return self.rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
 
     # _categorize_5m_volatility_for_trading() moved to VolatilityCalculator (proper volatility logic location)
 
