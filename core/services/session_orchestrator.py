@@ -226,7 +226,7 @@ class SessionOrchestrator:
             market_data = {
                 "current_price": hyperliquid_price,
                 "rsi": rsi_value,
-                "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
+                "rsi_trend": "NEUTRAL",  # Simple RSI trend (can be enhanced later)
                 
                 # Volume data (VolumeCalculator → MarketDataManager → Dashboard)
                 # Primary: Hyperliquid orderbook depth (real-time execution quality)
