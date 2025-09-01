@@ -484,7 +484,7 @@
                             <span class="data-value" id="market-volume">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Volatility 5m:</span>
+                            <span class="data-label">Volatility (5h avg):</span>
                             <span class="data-value" id="market-volatility">Loading...</span>
                         </div>
                         <div class="data-item">
@@ -880,17 +880,15 @@
                     volumeElement.textContent = 'N/A';
                 }
                 
-                // Update Volatility with enhanced display and timestamps
+                // Update Volatility - Show category only (no percentage)
                 const volatilityElement = document.getElementById('market-volatility');
-                if (market.volatility_5m !== undefined && market.volatility_5m !== 'N/A' && !isNaN(parseFloat(market.volatility_5m))) {
-                    // FIXED: Don't multiply by 100 - backend already sends percentage values
-                    const volatility = parseFloat(market.volatility_5m);
+                if (market.volatility_category) {
                     const category = market.volatility_category || 'UNKNOWN';
                     const trend = market.volatility_trend || 'UNKNOWN';
                     const timestamp = new Date().toLocaleTimeString();
                     
-                    // Display volatility as percentage directly (backend sends decimal like 0.0357 for 3.57%)
-                    volatilityElement.innerHTML = `${(volatility * 100).toFixed(2)}% (${category})<br><span style="font-size: 11px; color: #888;">Trend: ${trend}</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
+                    // Display category only (5h = 60 candles x 5min each = 5 hours of data)
+                    volatilityElement.innerHTML = `${category}<br><span style="font-size: 11px; color: #888;">Trend: ${trend}</span><br><span style="font-size: 10px; color: #666;">5h avg [${timestamp}]</span>`;
                     
                     // No color coding for volatility - neutral display
                     volatilityElement.className = 'data-value';
