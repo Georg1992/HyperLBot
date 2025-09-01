@@ -160,7 +160,7 @@ class TradingOrchestrator:
                             })
                             
                             self.dashboard_service.update_rtm_market(existing_data)
-                            logger.debug(f"🔥 Real-time price update: ${current_price:.2f}")
+                            # Price update logging removed - was spamming too much
                         except Exception as e:
                             logger.error(f"❌ Real-time dashboard update failed: {e}")
                 

@@ -311,6 +311,9 @@ class TradingExecutionConstants:
     
     # Default Position Parameters
     DEFAULT_POSITION_SIZE = 0.001    # 0.1% default size
+    BASE_POSITION_SIZE = 0.10        # 10% base position (moved from MagicNumbers for consistency)
+    BASE_PROFIT_TARGET = 0.003       # 0.3% base profit target (moved from MagicNumbers for consistency)
+    BASE_STOP_LOSS = 0.0015          # 0.15% base stop loss (moved from MagicNumbers for consistency)
     DEFAULT_LEVERAGE = 30            # 30x default leverage
     DEFAULT_STOP_DISTANCE = 0.002    # 0.2% stop distance
     DEFAULT_TARGET_DISTANCE = 0.005  # 0.5% target distance

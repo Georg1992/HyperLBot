@@ -255,7 +255,7 @@ class SessionOrchestrator:
             data_status = market_data_service.get_data_update_status()
             dashboard_service.update_rtm_data_status(data_status)
             
-            logger.debug(f"📊 Dashboard updated: ${hyperliquid_price:.2f}, RSI: {rsi_value:.1f}, Volume: {volume_data.get('current_volume', 0):.1f} BTC")
+            # Dashboard update logging removed - was spamming too much
             
         except Exception as e:
             logger.error(f"❌ Failed to update dashboard market data: {e}")
