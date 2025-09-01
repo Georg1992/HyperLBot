@@ -122,11 +122,12 @@ class RSICalculator:
             # Add new price to history
             self.price_history.append(new_price)
             
-            # Handle first real-time update (prevent Yahoo-Hyperliquid price discontinuity)
+            # Handle first real-time update (smooth transition from Yahoo baseline)
             if self.last_price == 0.0:
-                # First real-time update - set current price as baseline, no RSI change
+                # First real-time update - set current price as starting point for incremental updates
                 self.last_price = new_price
-                logger.debug(f"🔬 First real-time price set: ${new_price:,.2f} (no RSI update to prevent discontinuity)")
+                logger.debug(f"🔬 Real-time RSI started: ${new_price:,.2f} with baseline RSI {self.baseline_rsi:.2f}")
+                # Keep baseline RSI, just set price reference for future updates
             else:
                 # Regular real-time update
                 price_change = new_price - self.last_price

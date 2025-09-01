@@ -42,15 +42,12 @@ class PredictionEngine:
         try:
             current_price = market_data.get("current_price", 0)
             
-            # Get RSI from global RSI calculator (single source of truth)
+            # Get RSI from market data (Yahoo 5m candle analysis - simple!)
             from core.constants import technical_constants
-            from core.market_data_manager import global_rsi_calculator
-            
-            current_rsi_data = global_rsi_calculator.get_current_rsi_data()
-            rsi_value = current_rsi_data.get("rsi", technical_constants.RSI_NEUTRAL)
+            rsi_value = market_data.get("rsi", technical_constants.RSI_NEUTRAL)
             
             # Log the RSI value being used for debugging
-            logger.info(f"🎯 PREDICTION ENGINE: Using RSI from global calculator: {rsi_value}")
+            logger.info(f"🎯 PREDICTION ENGINE: Using RSI from Yahoo analysis: {rsi_value}")
             
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
@@ -290,12 +287,9 @@ class PredictionEngine:
             from core.constants import MagicNumbers
             base_confidence = 0.3  # Start low as requested
             
-            # Get RSI from global RSI calculator (single source of truth)
+            # Get RSI from market data (Yahoo 5m candle analysis - simple!)
             from core.constants import technical_constants
-            from core.market_data_manager import global_rsi_calculator
-            
-            current_rsi_data = global_rsi_calculator.get_current_rsi_data()
-            rsi = current_rsi_data.get("rsi", technical_constants.RSI_NEUTRAL)
+            rsi = market_data.get("rsi", technical_constants.RSI_NEUTRAL)
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
             

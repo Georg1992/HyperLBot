@@ -73,13 +73,10 @@ class DashboardService:
                 return
             
             # Generate prediction (fix argument mismatch - method expects market_data dict)
-            # Build market_data structure for prediction engine (use global RSI calculator - single source)
-            from core.market_data_manager import global_rsi_calculator
-            current_rsi_data = global_rsi_calculator.get_current_rsi_data()
-            
+            # Build market_data structure for prediction engine (use Yahoo RSI - simple!)
             market_data_for_prediction = {
                 "current_price": current_price,
-                "rsi": current_rsi_data.get("rsi", technical_constants.RSI_NEUTRAL),
+                "rsi": historical_analysis.get("rsi_5m") if historical_analysis else technical_constants.RSI_NEUTRAL,
                 "trend": historical_analysis.get("trend_5m", {}).get("trend", "NEUTRAL") if historical_analysis else "NEUTRAL",
                 "volume_category": "NORMAL",  # Default for predictions
                 "volatility_5m": historical_analysis.get("volatility_5m", 0.0) if historical_analysis else 0.0

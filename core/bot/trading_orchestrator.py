@@ -146,27 +146,17 @@ class TradingOrchestrator:
                         # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
                         
-                        # SCIENTIFIC RSI: Update on EVERY price tick using global RSI calculator (single source)
-                        # Reference chart shows smooth RSI line updating continuously
-                        from core.market_data_manager import global_rsi_calculator
-                        rsi_data = global_rsi_calculator.update_realtime_rsi(current_price)
-                        
-                        # Update dashboard (real-time price + scientific RSI)
+                        # Update dashboard with ONLY price (RSI comes from Yahoo analysis, not price ticks!)
                         try:
-                            # Update ONLY price and RSI fields in existing market data to avoid overriding other fields
+                            # Update ONLY price field - RSI should come from Yahoo 5m candle analysis
                             from core.dashboard.dashboard_data_manager import simple_rtm
                             existing_data = simple_rtm.get_market_data()
                             
-                            # Update ONLY price and RSI fields (prevent overriding other dashboard data)
+                            # Update ONLY price and timestamp (RSI comes from Yahoo analysis)
                             existing_data.update({
                                 "current_price": current_price,
-                                "rsi": rsi_data.get("rsi", existing_data.get("rsi", 50.0)),
-                                "rsi_baseline": rsi_data.get("rsi_baseline", rsi_data.get("rsi", 50.0)),
-                                "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
-                                "rsi_momentum": rsi_data.get("rsi_momentum", 0.0),
                                 "timestamp": time.time(),
-                                "price_source": "hyperliquid_websocket_realtime",
-                                "rsi_source": "scientific_realtime_wilder"
+                                "price_source": "hyperliquid_websocket_realtime"
                             })
                             
                             self.dashboard_service.update_rtm_market(existing_data)

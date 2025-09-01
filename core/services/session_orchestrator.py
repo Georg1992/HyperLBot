@@ -206,10 +206,8 @@ class SessionOrchestrator:
                                      market_data_service, dashboard_service):
         """Update dashboard with current market data (CRITICAL for dashboard display)"""
         try:
-            # Get CURRENT RSI data (from RSICalculator - don't recalculate!)
-            from core.market_data_manager import market_data_manager
-            rsi_data = market_data_manager.get_current_rsi_data()
-            rsi_value = rsi_data.get("rsi", 50.0)
+            # Get RSI from Yahoo analysis (proper 5m candle calculation - don't use price ticks!)
+            rsi_value = yahoo_analysis.get("rsi_5m", 50.0)
             
             # Get Hyperliquid market data (volume, pressure) + 5-minute volatility 
             from core.market_data_manager import market_data_manager
