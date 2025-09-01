@@ -46,22 +46,22 @@ class VolatilityCalculator:
     # Use OrderbookAnalyzer.get_volatility_analysis() directly instead
     
     def categorize_5m_volatility_for_trading(self, volatility_5m: float) -> tuple:
-        """Categorize 5m volatility for trading decisions (proper volatility logic location)"""
+        """Categorize 5m volatility for trading decisions (adjusted for 5m trading reality)"""
         try:
-            # Categorize based on 5-minute trading relevance
-            if volatility_5m > 0.015:      # > 1.5%
+            # Categorize based on 5-minute trading relevance (adjusted thresholds for realistic 5m trading)
+            if volatility_5m > 0.010:      # > 1.0% (extreme 5m movement)
                 category = "EXTREME"
                 trend = "VOLATILE"
-            elif volatility_5m > 0.008:    # > 0.8%  
+            elif volatility_5m > 0.005:    # > 0.5% (high 5m activity)
                 category = "HIGH"
                 trend = "ACTIVE"
-            elif volatility_5m > 0.004:    # > 0.4%
+            elif volatility_5m > 0.002:    # > 0.2% (moderate 5m movement - user's chart level)
                 category = "MODERATE" 
                 trend = "NORMAL"
-            elif volatility_5m > 0.002:    # > 0.2%
+            elif volatility_5m > 0.001:    # > 0.1% (low but noticeable 5m movement)
                 category = "LOW"
                 trend = "QUIET"
-            else:                          # < 0.2%
+            else:                          # < 0.1% (very low 5m movement)
                 category = "VERY_LOW"
                 trend = "BORING"
             

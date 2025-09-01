@@ -156,7 +156,7 @@ class MarketDataManager:
         return trend_manager.calculate_trend(candles, periods)
     
     def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:
-        """Centralized volatility calculation using VolatilityCalculator"""
+        """Calculate volatility using VolatilityCalculator (SRP - delegate to calculator)"""
         cache_key = f"volatility_{periods}_{hash(str(candles[-periods:]))}"
         cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
         
@@ -164,11 +164,8 @@ class MarketDataManager:
             return cached_result
         
         try:
-            if len(candles) < periods:
-                return 0.0
-            
-            # Use the centralized volatility calculator
-            result = self.volatility_calculator.calculate_candle_volatility(candles[-periods:], "5m")
+            # Delegate directly to VolatilityCalculator (handles minimum candle requirements internally)
+            result = self.volatility_calculator.calculate_candle_volatility(candles, "5m")
             self._cache_data(cache_key, result, self._indicator_cache_duration)
             return result
             
