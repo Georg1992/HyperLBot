@@ -11,6 +11,7 @@ from typing import Dict, Any
 from loguru import logger
 from core.api.hyperliquid_api import HyperliquidAPI
 from core.api.hyperliquid_websocket import HyperliquidWebSocket
+from core.api.hyperliquid_simulator import HyperliquidSimulator
 from core.market_data_manager import market_data_manager
 from core.constants import technical_constants
 
@@ -43,10 +44,14 @@ class SystemInitializer:
             # Test API connections
             test_result = self._test_api_connections(connection_result["hyperliquid_api"])
             
+            # Initialize simulator
+            hyperliquid_simulator = HyperliquidSimulator()
+            
             return {
                 "success": True,
                 "hyperliquid_api": connection_result["hyperliquid_api"],
                 "hyperliquid_websocket": connection_result["hyperliquid_websocket"],
+                "hyperliquid_simulator": hyperliquid_simulator,
                 "connection_test": test_result
             }
             

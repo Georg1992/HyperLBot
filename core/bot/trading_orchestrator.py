@@ -70,8 +70,23 @@ class TradingOrchestrator:
         self.position_lifecycle_manager = TradingExecution(self)  # Still needs reference for now
         self.rtm_updater = RTMUpdater()
         
+        # Initialize state needed by PositionLifecycleManager (backward compatibility)
+        self.open_positions = []
+        self.closed_positions = []
+        self.trade_history = []
+        self.paper_balance = self.initial_balance
+        self.last_trade_time = 0
+        self.yahoo_analysis = {}
+        self.leverage_settings = {"max_leverage": self.config.LEVERAGE or 30}
+        self.account_manager = account_manager
+        
         # Connect trading components
         self.trade_quality_manager.get_open_positions = self.get_open_positions
+        
+        # Add references needed by PositionLifecycleManager (backward compatibility)
+        self.trade_manager = self.trade_quality_manager
+        self.trading_logger = self.trading_logger
+        self.fee_manager = self.fee_manager
         
         logger.info("🔧 Supporting components initialized")
     
@@ -104,6 +119,11 @@ class TradingOrchestrator:
         self.session_orchestrator = SessionOrchestrator(self.config, self.initial_balance)
         
         logger.info("🎯 5 focused services initialized successfully")
+        
+        # Add API references after initialization (will be set by SystemInitializer)
+        self.hyperliquid_api = None
+        self.hyperliquid_simulator = None
+        self.session_manager = None
     
     def connect(self) -> bool:
         """Connect to APIs (delegate to SystemInitializer)"""
@@ -113,6 +133,10 @@ class TradingOrchestrator:
             # Update market data service with initialized APIs
             self.market_data_service.hyperliquid_api = init_result["hyperliquid_api"]
             self.market_data_service.hyperliquid_websocket = init_result.get("hyperliquid_websocket")
+            
+            # Set references for backward compatibility (needed by PositionLifecycleManager)
+            self.hyperliquid_api = init_result["hyperliquid_api"]
+            self.hyperliquid_simulator = init_result["hyperliquid_simulator"]
             
             # Set up WebSocket price callback for market data service
             if self.market_data_service.hyperliquid_websocket:
@@ -183,13 +207,24 @@ class TradingOrchestrator:
         """Get Yahoo analysis (delegate to MarketDataService)"""
         return self.market_data_service.get_yahoo_analysis(hyperliquid_price)
     
+    def _update_simple_rtm_activity(self, message: str, level: str = "INFO"):
+        """Update RTM activity (delegate to DashboardService)"""
+        self.dashboard_service.update_rtm_activity(message, level)
+    
     def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
         """Run paper trading (backward compatibility - delegate to SessionOrchestrator)"""
-        return self.session_orchestrator.run_paper_trading_session(
+        # Set session manager reference so PositionLifecycleManager can access it
+        result = self.session_orchestrator.run_paper_trading_session(
             max_trades, check_interval,
             self.system_initializer, self.market_data_service, 
             self.trading_engine, self.dashboard_service
         )
+        
+        # Set session manager reference for backward compatibility
+        if hasattr(self.session_orchestrator, 'session_manager'):
+            self.session_manager = self.session_orchestrator.session_manager
+            
+        return result
 
 # Backward compatibility alias
 YahooHyperliquidPaperTradingBot = TradingOrchestrator
