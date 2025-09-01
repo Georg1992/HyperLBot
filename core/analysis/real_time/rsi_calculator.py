@@ -54,26 +54,30 @@ class RSICalculator:
             if len(price_changes) < periods:
                 return technical_constants.RSI_NEUTRAL
             
-            # Initial period: Simple Moving Average (SMA) for first calculation
-            initial_gains = [change if change > 0 else 0 for change in price_changes[:periods]]
-            initial_losses = [-change if change < 0 else 0 for change in price_changes[:periods]]
+            # SCIENTIFIC METHOD: Use exact Wilder's RSI calculation
+            # First, get initial period using Simple Moving Average
+            initial_gains = [max(0, change) for change in price_changes[:periods]]
+            initial_losses = [max(0, -change) for change in price_changes[:periods]]
             
-            initial_avg_gain = sum(initial_gains) / periods if initial_gains else 0
-            initial_avg_loss = sum(initial_losses) / periods if initial_losses else 0
+            # Calculate initial averages (SMA for first period)
+            initial_avg_gain = sum(initial_gains) / periods
+            initial_avg_loss = sum(initial_losses) / periods
             
-            # Apply Wilder's smoothing for remaining periods (SCIENTIFIC METHOD)
+            # Apply Wilder's smoothing for all remaining periods
             wilder_avg_gain = initial_avg_gain
             wilder_avg_loss = initial_avg_loss
             
-            # Process remaining price changes with Wilder's smoothing
+            # Process each subsequent price change with Wilder's EMA
             for i in range(periods, len(price_changes)):
                 change = price_changes[i]
-                gain = change if change > 0 else 0
-                loss = -change if change < 0 else 0
+                current_gain = max(0, change)
+                current_loss = max(0, -change)
                 
-                # Wilder's smoothing formula (scientifically accurate)
-                wilder_avg_gain = ((wilder_avg_gain * (periods - 1)) + gain) / periods
-                wilder_avg_loss = ((wilder_avg_loss * (periods - 1)) + loss) / periods
+                # Wilder's EMA formula: EMA = α × Current + (1-α) × Previous_EMA
+                # Where α = 1/periods (Wilder's smoothing constant)
+                alpha = 1.0 / periods
+                wilder_avg_gain = (alpha * current_gain) + ((1 - alpha) * wilder_avg_gain)
+                wilder_avg_loss = (alpha * current_loss) + ((1 - alpha) * wilder_avg_loss)
             
             # Calculate final RSI using Wilder's smoothed averages
             if wilder_avg_loss == 0:
@@ -101,40 +105,36 @@ class RSICalculator:
             logger.error(f"❌ Scientific baseline RSI calculation failed: {e}")
             return technical_constants.RSI_NEUTRAL
     
-    def update_realtime_rsi_on_candle_close(self, new_candle_close: float, candle_timestamp: float) -> Dict[str, Any]:
+    def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
         """
-        Update RSI scientifically on 5-minute candle close (NOT on price ticks)
-        SCIENTIFIC METHOD: Only update RSI when a complete 5-minute candle closes
-        Reference: Chart RSI ~44.79 - this method should produce similar accuracy
+        Update RSI scientifically on EVERY price tick (as shown in reference chart)
+        SCIENTIFIC METHOD: Wilder's smoothing applied to each price change
+        Reference chart shows: Continuous RSI updates with smooth line graph
         """
         try:
             if not self.rsi_initialized:
                 logger.warning("⚠️ RSI not initialized - use calculate_yahoo_baseline_rsi() first")
                 return self._get_default_rsi_data()
             
-            # Only update on new candle (prevent multiple updates for same candle)
-            current_candle_time = int(candle_timestamp / 300) * 300  # Round to 5-minute boundary
-            if current_candle_time <= self.last_candle_time:
-                # Same candle - return current RSI without updating
-                return self.get_current_rsi_data()
+            # Store current RSI as previous for momentum calculation
+            self.previous_rsi = self.current_rsi
             
-            self.last_candle_time = current_candle_time
+            # Add new price to history
+            self.price_history.append(new_price)
             
-            # Add new candle close to history
-            self.candle_closes.append(new_candle_close)
-            
-            # Calculate price change from previous candle close
-            if len(self.candle_closes) >= 2:
-                price_change = self.candle_closes[-1] - self.candle_closes[-2]
+            # Calculate price change from last price (every tick update)
+            if self.last_price > 0:
+                price_change = new_price - self.last_price
                 
                 # Separate into gain and loss
-                gain = price_change if price_change > 0 else 0.0
-                loss = -price_change if price_change < 0 else 0.0
+                current_gain = max(0, price_change)
+                current_loss = max(0, -price_change)
                 
-                # Apply Wilder's smoothing (SCIENTIFIC METHOD)
-                # Wilder's formula: New_EMA = ((periods-1) × Previous_EMA + Current_Value) / periods
-                self.wilder_avg_gain = ((self.wilder_avg_gain * (self.periods - 1)) + gain) / self.periods
-                self.wilder_avg_loss = ((self.wilder_avg_loss * (self.periods - 1)) + loss) / self.periods
+                # Apply Wilder's EMA smoothing to EVERY price tick (SCIENTIFIC METHOD)
+                # Wilder's EMA formula: EMA = α × Current + (1-α) × Previous_EMA
+                alpha = 1.0 / self.periods  # Wilder's smoothing constant
+                self.wilder_avg_gain = (alpha * current_gain) + ((1 - alpha) * self.wilder_avg_gain)
+                self.wilder_avg_loss = (alpha * current_loss) + ((1 - alpha) * self.wilder_avg_loss)
                 
                 # Calculate RSI using Wilder's smoothed averages
                 if self.wilder_avg_loss == 0:
@@ -143,9 +143,10 @@ class RSICalculator:
                     rs = self.wilder_avg_gain / self.wilder_avg_loss
                     self.current_rsi = 100 - (100 / (1 + rs))
                 
-                self.current_rsi = round(self.current_rsi, 2)
+                self.current_rsi = round(self.current_rsi, 4)  # Higher precision for smooth updates
                 
-                logger.debug(f"🔬 Scientific RSI updated: {self.current_rsi:.2f} (baseline: {self.baseline_rsi:.2f})")
+            # Update last price for next calculation
+            self.last_price = new_price
             
             # Get comprehensive RSI analysis
             rsi_trend = self._get_rsi_trend(self.current_rsi)
@@ -159,25 +160,17 @@ class RSICalculator:
                 "rsi_signal": rsi_signal,
                 "rsi_momentum": rsi_momentum,
                 "periods": self.periods,
-                "candle_close_used": new_candle_close,
-                "candle_timestamp": candle_timestamp,
+                "price_used": new_price,
+                "price_change": new_price - self.last_price if self.last_price > 0 else 0.0,
                 "timestamp": time.time(),
-                "wilder_avg_gain": round(self.wilder_avg_gain, 6),
-                "wilder_avg_loss": round(self.wilder_avg_loss, 6),
-                "data_source": "scientific_wilder_smoothing"
+                "wilder_avg_gain": round(self.wilder_avg_gain, 8),
+                "wilder_avg_loss": round(self.wilder_avg_loss, 8),
+                "data_source": "scientific_every_tick_wilder"
             }
             
         except Exception as e:
             logger.error(f"❌ Scientific real-time RSI update failed: {e}")
             return self._get_default_rsi_data()
-    
-    def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
-        """
-        DEPRECATED: Use update_realtime_rsi_on_candle_close() for scientific accuracy
-        This method is kept for backward compatibility but should not be used
-        """
-        logger.warning("⚠️ update_realtime_rsi() is deprecated - use update_realtime_rsi_on_candle_close() for scientific accuracy")
-        return self.get_current_rsi_data()
     
     def _get_rsi_trend(self, rsi_value: float) -> str:
         """Determine RSI trend using constants"""
