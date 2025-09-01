@@ -123,7 +123,7 @@ class DashboardService:
                 simple_rtm.add_signal(prediction_for_dashboard)
                 
                 self._last_prediction_time = current_time
-                # Prediction generation logging removed - was spamming too much
+                logger.debug(f"🎯 Generated prediction: {direction} @ ${entry_price:.2f} (RSI: {rsi_value}, Trend: {trend_value})")
             
         except Exception as e:
             logger.error(f"❌ Failed to generate prediction: {e}")
