@@ -157,15 +157,16 @@ class TradingOrchestrator:
                             from core.dashboard.dashboard_data_manager import simple_rtm
                             existing_data = simple_rtm.get_market_data()
                             
-                            # Update price, RSI, and timestamp, preserve other fields
+                            # Update ONLY price and RSI fields (prevent overriding other dashboard data)
                             existing_data.update({
                                 "current_price": current_price,
                                 "rsi": rsi_data.get("rsi", existing_data.get("rsi", 50.0)),
-                                "rsi_baseline": rsi_data.get("rsi_baseline", existing_data.get("rsi", 50.0)),
+                                "rsi_baseline": rsi_data.get("rsi_baseline", rsi_data.get("rsi", 50.0)),
                                 "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
+                                "rsi_momentum": rsi_data.get("rsi_momentum", 0.0),
                                 "timestamp": time.time(),
                                 "price_source": "hyperliquid_websocket_realtime",
-                                "rsi_source": rsi_data.get("data_source", "scientific_calculation")
+                                "rsi_source": "scientific_realtime_wilder"
                             })
                             
                             self.dashboard_service.update_rtm_market(existing_data)
