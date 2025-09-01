@@ -45,30 +45,31 @@ class VolatilityCalculator:
     # calculate_orderbook_volatility() removed - redundant wrapper for OrderbookAnalyzer.get_volatility_analysis()
     # Use OrderbookAnalyzer.get_volatility_analysis() directly instead
     
-    def calculate_price_acceleration(self, candles: List[Dict]) -> float:
-        """Calculate price acceleration (rate of change of price changes)"""
+    def categorize_5m_volatility_for_trading(self, volatility_5m: float) -> tuple:
+        """Categorize 5m volatility for trading decisions (proper volatility logic location)"""
         try:
-            if len(candles) < 4:
-                return 0.0
+            # Categorize based on 5-minute trading relevance
+            if volatility_5m > 0.015:      # > 1.5%
+                category = "EXTREME"
+                trend = "VOLATILE"
+            elif volatility_5m > 0.008:    # > 0.8%  
+                category = "HIGH"
+                trend = "ACTIVE"
+            elif volatility_5m > 0.004:    # > 0.4%
+                category = "MODERATE" 
+                trend = "NORMAL"
+            elif volatility_5m > 0.002:    # > 0.2%
+                category = "LOW"
+                trend = "QUIET"
+            else:                          # < 0.2%
+                category = "VERY_LOW"
+                trend = "BORING"
             
-            # Calculate price changes
-            prices = [candle["close"] for candle in candles[-4:]]
-            price_changes = []
+            return category, trend
             
-            for i in range(1, len(prices)):
-                change = (prices[i] - prices[i-1]) / prices[i-1]
-                price_changes.append(change)
-            
-            # Calculate acceleration (change in rate of change)
-            if len(price_changes) >= 2:
-                acceleration = abs(price_changes[-1] - price_changes[-2])
-                return acceleration
-            else:
-                return 0.0
-                
         except Exception as e:
-            logger.error(f"Price acceleration calculation failed: {e}")
-            return 0.0
+            logger.error(f"❌ 5m volatility categorization failed: {e}")
+            return "ERROR", "ERROR"
     
     # calculate_momentum_volatility() removed - dead code (never called)
     # Complex 42-line momentum calculation that was never used

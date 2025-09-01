@@ -216,7 +216,7 @@ class SessionOrchestrator:
             volume_data = hyperliquid_data.get("volume_data", {})
             pressure_data = hyperliquid_data.get("pressure_data", {})
             
-            # Get 5-minute volatility from yahoo_analysis (already calculated and categorized by MarketDataManager)
+            # Get 5-minute volatility from yahoo_analysis (calculated by MarketDataManager using VolatilityCalculator)
             volatility_5m_data = {
                 "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
                 "volatility_category": yahoo_analysis.get("volatility_5m_category", "UNKNOWN"),
