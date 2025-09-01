@@ -216,8 +216,9 @@ class SessionOrchestrator:
             volume_data = hyperliquid_data.get("volume_data", {})
             pressure_data = hyperliquid_data.get("pressure_data", {})
             
-            # Calculate 5-minute volatility (aligned with bot's trading timeframe)
-            volatility_5m_data = self._calculate_5m_volatility(market_data_service)
+            # Get 5-minute volatility from yahoo_analysis (eliminates duplicate calculation)
+            volatility_5m_value = yahoo_analysis.get("volatility_5m", 0.0)
+            volatility_5m_data = self._categorize_5m_volatility_for_trading(volatility_5m_value)
             
             # Prepare market data for dashboard (EXACT field names expected by HTML template)
             market_data = {
@@ -265,7 +266,7 @@ class SessionOrchestrator:
             # Continue trading even if dashboard update fails
     
     def _calculate_5m_volatility(self, market_data_service) -> Dict[str, Any]:
-        """Calculate 5-minute volatility aligned with bot's trading timeframe"""
+        """Calculate 5-minute volatility using centralized VolatilityCalculator (eliminates redundancy)"""
         try:
             # Get recent 5-minute candles (last 25 candles = ~2 hours)
             candles_5m = market_data_service.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "5m", 25)
@@ -273,13 +274,9 @@ class SessionOrchestrator:
             if not candles_5m or len(candles_5m) < 10:
                 return {"volatility_5m": 0.0, "volatility_category": "UNKNOWN", "volatility_trend": "UNKNOWN"}
             
-            # Calculate 5-minute returns (price changes between 5m candles)
-            closes = [float(candle['close']) for candle in candles_5m[-20:]]  # Last 20 periods
-            returns_5m = [(closes[i] - closes[i-1]) / closes[i-1] for i in range(1, len(closes))]
-            
-            # Calculate volatility (standard deviation of 5m returns)
-            import statistics
-            volatility_5m = statistics.stdev(returns_5m) if len(returns_5m) > 1 else 0.0
+            # Use centralized VolatilityCalculator (eliminates duplicate calculation)
+            from core.market_data_manager import market_data_manager
+            volatility_5m = market_data_manager.calculate_volatility(candles_5m[-20:], 20)  # Last 20 periods
             
             # Categorize based on 5-minute trading relevance
             if volatility_5m > 0.015:      # > 1.5%
@@ -304,9 +301,9 @@ class SessionOrchestrator:
                 "volatility_5m": volatility_5m,
                 "volatility_category": category,
                 "volatility_trend": trend,
-                "calculation_method": "5m_candle_returns_stdev",
+                "calculation_method": "centralized_volatility_calculator",
                 "timeframe": "5_minutes",
-                "data_source": "yahoo_5m_candles"
+                "data_source": "yahoo_5m_candles_via_manager"
             }
             
         except Exception as e:
