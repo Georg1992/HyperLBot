@@ -185,6 +185,32 @@ class MarketDataManager:
             logger.error(f"❌ RSI calculation failed: {e}")
             return technical_constants.RSI_NEUTRAL
 
+    def _categorize_5m_volatility_for_trading(self, volatility_5m: float) -> tuple:
+        """Categorize 5m volatility for trading decisions (proper location for data analysis)"""
+        try:
+            # Categorize based on 5-minute trading relevance
+            if volatility_5m > 0.015:      # > 1.5%
+                category = "EXTREME"
+                trend = "VOLATILE"
+            elif volatility_5m > 0.008:    # > 0.8%  
+                category = "HIGH"
+                trend = "ACTIVE"
+            elif volatility_5m > 0.004:    # > 0.4%
+                category = "MODERATE" 
+                trend = "NORMAL"
+            elif volatility_5m > 0.002:    # > 0.2%
+                category = "LOW"
+                trend = "QUIET"
+            else:                          # < 0.2%
+                category = "VERY_LOW"
+                trend = "BORING"
+            
+            return category, trend
+            
+        except Exception as e:
+            logger.error(f"❌ 5m volatility categorization failed: {e}")
+            return "ERROR", "ERROR"
+
     def get_yahoo_data_with_analysis(self, yahoo_fetcher, symbol: str = "BTC", hyperliquid_price: float = None) -> Dict[str, Any]:
         """
         Get Yahoo data with centralized analysis calculations
@@ -219,6 +245,9 @@ class MarketDataManager:
             volatility_1h = self.calculate_volatility(candles_1h) if candles_1h else 0.0
             volatility_1d = self.calculate_volatility(candles_1d) if candles_1d else 0.0
             
+            # Add 5-minute trading categorization (proper location for data analysis)
+            volatility_5m_category, volatility_5m_trend = self._categorize_5m_volatility_for_trading(volatility_5m)
+            
             # Get trend analysis using centralized trend manager
             trend_5m = self.calculate_trend(candles_5m) if candles_5m else {"trend": "NEUTRAL"}
             trend_1h = self.calculate_trend(candles_1h) if candles_1h else {"trend": "NEUTRAL"}
@@ -244,6 +273,8 @@ class MarketDataManager:
                 "support_resistance_1h": support_resistance_1h,
                 "support_resistance_1d": support_resistance_1d,
                 "volatility_5m": volatility_5m,
+                "volatility_5m_category": volatility_5m_category,
+                "volatility_5m_trend": volatility_5m_trend,
                 "volatility_1h": volatility_1h,
                 "volatility_1d": volatility_1d,
                 "trend_5m": trend_5m,

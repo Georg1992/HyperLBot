@@ -216,9 +216,12 @@ class SessionOrchestrator:
             volume_data = hyperliquid_data.get("volume_data", {})
             pressure_data = hyperliquid_data.get("pressure_data", {})
             
-            # Get 5-minute volatility from yahoo_analysis (already calculated by MarketDataManager)
-            volatility_5m_value = yahoo_analysis.get("volatility_5m", 0.0)
-            volatility_5m_data = market_data_service.categorize_5m_volatility_for_trading(volatility_5m_value)
+            # Get 5-minute volatility from yahoo_analysis (already calculated and categorized by MarketDataManager)
+            volatility_5m_data = {
+                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                "volatility_category": yahoo_analysis.get("volatility_5m_category", "UNKNOWN"),
+                "volatility_trend": yahoo_analysis.get("volatility_5m_trend", "UNKNOWN")
+            }
             
             # Prepare market data for dashboard (EXACT field names expected by HTML template)
             market_data = {
@@ -265,47 +268,4 @@ class SessionOrchestrator:
             logger.error(f"❌ Failed to update dashboard market data: {e}")
             # Continue trading even if dashboard update fails
     
-    def _calculate_5m_volatility(self, market_data_service) -> Dict[str, Any]:
-        """Calculate 5-minute volatility using centralized VolatilityCalculator (eliminates redundancy)"""
-        try:
-            # Get recent 5-minute candles (last 25 candles = ~2 hours)
-            candles_5m = market_data_service.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "5m", 25)
-            
-            if not candles_5m or len(candles_5m) < 10:
-                return {"volatility_5m": 0.0, "volatility_category": "UNKNOWN", "volatility_trend": "UNKNOWN"}
-            
-            # Use centralized VolatilityCalculator (eliminates duplicate calculation)
-            from core.market_data_manager import market_data_manager
-            volatility_5m = market_data_manager.calculate_volatility(candles_5m[-20:], 20)  # Last 20 periods
-            
-            # Categorize based on 5-minute trading relevance
-            if volatility_5m > 0.015:      # > 1.5%
-                category = "EXTREME"
-                trend = "VOLATILE"
-            elif volatility_5m > 0.008:    # > 0.8%  
-                category = "HIGH"
-                trend = "ACTIVE"
-            elif volatility_5m > 0.004:    # > 0.4%
-                category = "MODERATE" 
-                trend = "NORMAL"
-            elif volatility_5m > 0.002:    # > 0.2%
-                category = "LOW"
-                trend = "QUIET"
-            else:                          # < 0.2%
-                category = "VERY_LOW"
-                trend = "BORING"
-            
-            logger.debug(f"📊 5m Volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%) → {category}")
-            
-            return {
-                "volatility_5m": volatility_5m,
-                "volatility_category": category,
-                "volatility_trend": trend,
-                "calculation_method": "centralized_volatility_calculator",
-                "timeframe": "5_minutes",
-                "data_source": "yahoo_5m_candles_via_manager"
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ 5m volatility calculation failed: {e}")
-            return {"volatility_5m": 0.0, "volatility_category": "ERROR", "volatility_trend": "ERROR"}
+    # _calculate_5m_volatility() removed - calculation logic moved to MarketDataManager (proper responsibility)
