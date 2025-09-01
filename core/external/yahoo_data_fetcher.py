@@ -254,7 +254,7 @@ class YahooDataFetcher:
         try:
             # Get different timeframe data - COMPLETE optimal multi-timeframe configuration
             candles_1m = self.get_klines(symbol, "1m", 120)  # 2 hours of 1m data for immediate momentum
-            candles_5m = self.get_klines(symbol, "5m", 60)   # 5 hours of 5m data (core prediction analysis)
+            candles_5m = self.get_klines(symbol, "5m", 12)   # 1 hour of 5m data (core prediction analysis)
             candles_1h = self.get_klines(symbol, "1h", 84)   # 3.5 days of 1h data (daily trend context)
             candles_1d = self.get_klines(symbol, "1d", 45) # 6 weeks of 1d data (weekly/monthly trend context)
             ticker = self.get_ticker_data(symbol)
@@ -296,7 +296,7 @@ class YahooDataFetcher:
                 
                 # Raw candle data (primary responsibility of YahooDataFetcher)
                 "candles_1m": candles_1m,  # Full 120 1-min candles (2 hours)
-                "candles_5m": candles_5m,  # Full 60 5-min candles (5 hours)
+                "candles_5m": candles_5m,  # Full 12 5-min candles (1 hour)
                 "candles_1h": candles_1h,  # Full 84 1-hour candles (3.5 days)
                 "candles_1d": candles_1d,  # Full 45 daily candles (6 weeks)
                 "ticker": ticker,

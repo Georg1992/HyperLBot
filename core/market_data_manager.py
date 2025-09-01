@@ -202,7 +202,7 @@ class MarketDataManager:
         try:
             # Get raw candle data from Yahoo (no calculations)
             candles_1m = yahoo_fetcher.get_klines(f"{symbol}-USD", "1m", 120)  
-            candles_5m = yahoo_fetcher.get_klines(f"{symbol}-USD", "5m", 60)
+            candles_5m = yahoo_fetcher.get_klines(f"{symbol}-USD", "5m", 12)  # 1 hour for 5m trading
             candles_1h = yahoo_fetcher.get_klines(f"{symbol}-USD", "1h", 84)
             candles_1d = yahoo_fetcher.get_klines(f"{symbol}-USD", "1d", 45)
             
