@@ -315,30 +315,7 @@ class YahooDataFetcher:
             logger.error(f"❌ Error in Yahoo Finance market analysis: {e}")
             return {"error": str(e)}
     
-    def _determine_market_condition(self, trend_5m: Dict, trend_1h: Dict, volatility: float) -> str:
-        """Determine overall market condition with crypto-appropriate thresholds"""
-        # Volatility thresholds for crypto markets
-        if volatility > 0.008:  # 0.8% volatility (reduced from 2.0%)
-            return "HIGH_VOLATILITY"
-        elif volatility > 0.006:  # 0.6% volatility  
-            return "ELEVATED_VOLATILITY"
-        
-        # Strong trends
-        if trend_5m["strength"] > technical_constants.TREND_STRENGTH_HIGH and trend_1h["strength"] > technical_constants.TREND_STRENGTH_MEDIUM:
-            if trend_5m["trend"] == trend_1h["trend"]:
-                return "STRONG_TREND"
-            else:
-                return "MIXED_SIGNALS"
-        
-        # Medium volatility (was missing this range)
-        if volatility > 0.003:  # 0.3% volatility
-            return "MEDIUM_VOLATILITY"
-        
-        # Low volatility  
-        if volatility < 0.002:  # 0.2% volatility (reduced from 0.5%)
-            return "LOW_VOLATILITY"
-        
-        return "NORMAL"
+    # _determine_market_condition() REMOVED - unused trend logic, replaced by TrendCalculator
     
     def test_connection(self) -> bool:
         """Test connection to Yahoo Finance (historical data only)"""

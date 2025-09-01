@@ -43,21 +43,7 @@ class MarketDataAnalyzer:
         prices = [c['close'] for c in candles[-period:]]
         return sum(prices) / len(prices)
     
-    def _determine_market_condition(self, sma_5m: float, sma_20m: float, current_price: float) -> str:
-        """Determine market condition based on moving averages and current price"""
-        if sma_5m == 0 or sma_20m == 0:
-            return "NEUTRAL"
-        
-        if current_price > sma_5m > sma_20m:
-            return "BULLISH"
-        elif current_price < sma_5m < sma_20m:
-            return "BEARISH"
-        elif sma_5m > sma_20m:
-            return "BULLISH"
-        elif sma_5m < sma_20m:
-            return "BEARISH"
-        else:
-            return "SIDEWAYS"
+    # _determine_market_condition() REMOVED - unused trend logic, replaced by TrendCalculator
     
     # get_yahoo_analysis removed - duplicates TradingBot.get_yahoo_analysis() and YahooDataFetcher.get_market_analysis()
     # Use YahooDataFetcher.get_market_analysis() for authoritative Yahoo data
@@ -134,21 +120,7 @@ class MarketDataAnalyzer:
                 "timestamp": time.time()
             }
     
-    def _get_trend(self, yahoo_analysis: Dict[str, Any], session_context: Dict[str, Any]) -> str:
-        """Get trend combining Yahoo and session data"""
-        try:
-            # Use session trend if available and session is mature
-            if session_context.get("data_points", 0) >= 20:
-                session_trend = session_context.get("session_trend", "NEUTRAL")
-                if session_trend != "UNKNOWN":
-                    return session_trend
-            
-            # Fall back to Yahoo trend
-            return yahoo_analysis.get("market_condition", "NEUTRAL")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get trend: {e}")
-            return "NEUTRAL"
+    # _get_trend() REMOVED - unused trend logic, replaced by TrendCalculator
     
     # Volume category methods removed - TradingBot now uses orderbook depth categorization directly
     # This eliminates conflict between trading volume categorization (USD scale) and orderbook depth (BTC scale)
