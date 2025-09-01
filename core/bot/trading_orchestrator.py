@@ -138,12 +138,26 @@ class TradingOrchestrator:
             self.hyperliquid_api = init_result["hyperliquid_api"]
             self.hyperliquid_simulator = init_result["hyperliquid_simulator"]
             
-            # Set up WebSocket price callback for market data service
+            # Set up WebSocket price callback for REAL-TIME dashboard updates
             if self.market_data_service.hyperliquid_websocket:
                 def on_price_update(price_data):
                     current_price = price_data.get("current_price", 0)
                     if current_price > 0:
+                        # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
+                        
+                        # IMMEDIATELY update dashboard (real-time updates!)
+                        try:
+                            # Get basic market data for real-time dashboard update
+                            basic_market_data = {
+                                "current_price": current_price,
+                                "timestamp": time.time(),
+                                "data_source": "hyperliquid_websocket_realtime"
+                            }
+                            self.dashboard_service.update_rtm_market(basic_market_data)
+                            logger.debug(f"🔥 Real-time price update: ${current_price:.2f}")
+                        except Exception as e:
+                            logger.error(f"❌ Real-time dashboard update failed: {e}")
                 
                 self.market_data_service.hyperliquid_websocket.add_price_callback(on_price_update)
             
