@@ -182,6 +182,14 @@ class TradingOrchestrator:
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get Yahoo analysis (delegate to MarketDataService)"""
         return self.market_data_service.get_yahoo_analysis(hyperliquid_price)
+    
+    def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
+        """Run paper trading (backward compatibility - delegate to SessionOrchestrator)"""
+        return self.session_orchestrator.run_paper_trading_session(
+            max_trades, check_interval,
+            self.system_initializer, self.market_data_service, 
+            self.trading_engine, self.dashboard_service
+        )
 
 # Backward compatibility alias
 YahooHyperliquidPaperTradingBot = TradingOrchestrator
