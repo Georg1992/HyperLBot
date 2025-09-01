@@ -146,15 +146,20 @@ class TradingOrchestrator:
                         # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
                         
-                        # IMMEDIATELY update dashboard (real-time updates!)
+                        # IMMEDIATELY update dashboard (real-time price only - don't override complete data!)
                         try:
-                            # Get basic market data for real-time dashboard update
-                            basic_market_data = {
+                            # Update ONLY price field in existing market data to avoid overriding other fields
+                            from core.dashboard.dashboard_data_manager import simple_rtm
+                            existing_data = simple_rtm.get_market_data()
+                            
+                            # Update only price and timestamp, preserve other fields
+                            existing_data.update({
                                 "current_price": current_price,
                                 "timestamp": time.time(),
-                                "data_source": "hyperliquid_websocket_realtime"
-                            }
-                            self.dashboard_service.update_rtm_market(basic_market_data)
+                                "price_source": "hyperliquid_websocket_realtime"
+                            })
+                            
+                            self.dashboard_service.update_rtm_market(existing_data)
                             logger.debug(f"🔥 Real-time price update: ${current_price:.2f}")
                         except Exception as e:
                             logger.error(f"❌ Real-time dashboard update failed: {e}")

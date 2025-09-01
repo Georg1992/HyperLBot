@@ -98,15 +98,29 @@ class DashboardService:
                 
                 self.update_rtm_activity(prediction_message, "INFO")
                 
-                # Store prediction in SimpleRTM for dashboard predictions panel
-                simple_rtm.add_signal({
+                # Store prediction in SimpleRTM for dashboard predictions panel (COMPLETE structure)
+                prediction_for_dashboard = {
                     "type": "prediction",
                     "side": direction,
                     "price": entry_price,
                     "size": size_btc,
                     "confidence": confidence,
-                    "timestamp": current_time
-                })
+                    "timestamp": current_time,
+                    
+                    # COMPLETE prediction data for dashboard (exact fields expected)
+                    "prediction_data": {
+                        "direction": direction,
+                        "entry_price": entry_price,
+                        "size_btc": size_btc,
+                        "size_usd": size_usd,
+                        "rsi_at_prediction": rsi_value,
+                        "trend_at_prediction": trend_value,
+                        "confidence": confidence,
+                        "reasoning": prediction.get("reasoning", f"{direction} signal based on market analysis")
+                    }
+                }
+                
+                simple_rtm.add_signal(prediction_for_dashboard)
                 
                 self._last_prediction_time = current_time
                 logger.debug(f"🎯 Generated prediction: {direction} @ ${entry_price:.2f} (RSI: {rsi_value}, Trend: {trend_value})")

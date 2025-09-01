@@ -147,8 +147,12 @@ class SessionOrchestrator:
                 # Check position exits
                 trading_engine.check_position_exits(hyperliquid_price)
                 
-                # Generate predictions for dashboard
-                dashboard_service.generate_and_log_prediction(hyperliquid_price, yahoo_analysis)
+                # Generate predictions for dashboard (PASS prediction_engine!)
+                dashboard_service.generate_and_log_prediction(
+                    hyperliquid_price, yahoo_analysis, 
+                    prediction_engine=trading_engine.prediction_engine, 
+                    strategy_name="standard"
+                )
                 
                 # Wait for next iteration
                 time.sleep(check_interval)
@@ -206,21 +210,40 @@ class SessionOrchestrator:
             rsi_data = market_data_service.get_yahoo_baseline_rsi_data(hyperliquid_price)
             rsi_value = rsi_data.get("rsi", 50.0)
             
-            # Get Hyperliquid volume data
+            # Get Hyperliquid market data (volume, volatility, pressure)
             from core.market_data_manager import market_data_manager
             hyperliquid_data = market_data_manager.get_hyperliquid_data(market_data_service.hyperliquid_api, "BTC")
             volume_data = hyperliquid_data.get("volume_data", {})
             volatility_data = hyperliquid_data.get("volatility_data", {})
+            pressure_data = hyperliquid_data.get("pressure_data", {})
             
-            # Prepare market data for dashboard
+            # Prepare market data for dashboard (EXACT field names expected by HTML template)
             market_data = {
                 "current_price": hyperliquid_price,
                 "rsi": rsi_value,
                 "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
-                "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
-                "volume": volume_data.get("current_volume", 0),
+                
+                # FIX: Dashboard expects 'volume_depth', not 'volume'
+                "volume_depth": volume_data.get("current_volume", 0),
                 "volume_category": volume_data.get("volume_category", "NORMAL"),
+                "order_flow": volume_data.get("order_flow", "NEUTRAL"),
+                "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN"),
+                
+                # FIX: Dashboard expects 'trend_analysis.overall_trend' structure
+                "trend_analysis": {
+                    "overall_trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
+                    "trend_5m": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
+                    "trend_1h": yahoo_analysis.get("trend_1h", {}).get("trend", "NEUTRAL"),
+                    "alignment_score": 0.5  # Default alignment score
+                },
+                
+                # FIX: Dashboard expects 'pressure' object
+                "pressure": pressure_data,
+                
                 "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                "volatility_category": volatility_data.get("volatility_category", "NORMAL"),
+                "volatility_trend": volatility_data.get("volatility_trend", "NEUTRAL"),
+                
                 "timestamp": time.time(),
                 "data_source": "clean_architecture_services"
             }
