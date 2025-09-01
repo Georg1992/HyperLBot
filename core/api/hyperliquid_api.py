@@ -135,14 +135,7 @@ class HyperliquidAPI:
             logger.error(f"Failed to get volume analysis for {symbol}: {e}")
             raise
 
-    def get_volatility_analysis(self, symbol: str = None) -> Dict[str, Any]:
-        """Get volatility analysis from order book data"""
-        try:
-            result = self.analysis.get_volatility_analysis(symbol)
-            return result
-        except Exception as e:
-            logger.error(f"Failed to get volatility analysis for {symbol}: {e}")
-            raise
+    # get_volatility_analysis() removed - using 5m candle volatility instead of orderbook volatility
 
     def get_pressure(self, symbol: str = None) -> Dict[str, Any]:
         """Get market pressure analysis from order book"""
