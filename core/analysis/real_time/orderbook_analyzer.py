@@ -26,7 +26,7 @@ class MarketOrderbookAnalyzer:
             market_data = self.api.get_market_data(symbol)
             if not market_data or 'levels' not in market_data:
                 return {
-                    "current_volume": 0.0,
+                    # REMOVED: current_volume (confusing fake calculation eliminated),
                     "volume_depth": 0.0,
                     "volume_category": "UNKNOWN",
                     "volume_trend": "UNKNOWN",
@@ -43,7 +43,7 @@ class MarketOrderbookAnalyzer:
             levels = market_data['levels']
             if len(levels) < 2:
                 return {
-                    "current_volume": 0.0,
+                    # REMOVED: current_volume (confusing fake calculation eliminated),
                     "volume_depth": 0.0,
                     "volume_category": "UNKNOWN", 
                     "volume_trend": "UNKNOWN",
@@ -62,7 +62,7 @@ class MarketOrderbookAnalyzer:
             
             if not bids or not asks:
                 return {
-                    "current_volume": 0.0,
+                    # REMOVED: current_volume (confusing fake calculation eliminated),
                     "volume_depth": 0.0,
                     "volume_category": "UNKNOWN",
                     "volume_trend": "UNKNOWN", 
@@ -85,9 +85,8 @@ class MarketOrderbookAnalyzer:
             total_depth_5 = bid_depth_5 + ask_depth_5
             total_depth_10 = bid_depth_10 + ask_depth_10
             
-            # Calculate volume from order book depth (proxy for trading activity)
-            # Note: This is estimated volume since Hyperliquid doesn't provide real-time trade volume
-            estimated_volume = total_depth_5 * 0.1  # 10% of depth as conservative estimate
+            # REMOVED: Confusing estimated_volume calculation (was just depth × 0.1)
+            # OrderBook depth is the real metric - no need for fake "volume" estimates
             
             # Analyze order flow imbalance
             bid_ask_ratio = bid_depth_5 / ask_depth_5 if ask_depth_5 > 0 else 1.0
@@ -149,8 +148,8 @@ class MarketOrderbookAnalyzer:
             logger.debug(f"📊 Volume Analysis: {total_depth_5:.2f} BTC depth → {volume_category} (bid: {bid_depth_5:.2f}, ask: {ask_depth_5:.2f})")
             
             return {
-                "current_volume": round(estimated_volume, 4),
-                "volume_depth": round(total_depth_5, 2),  # Add volume_depth field for dashboard
+                # REMOVED: current_volume (was confusing fake calculation: depth × 0.1)
+                "volume_depth": round(total_depth_5, 2),  # Real orderbook depth for dashboard
                 "volume_category": volume_category,
                 "volume_trend": volume_trend,
                 "order_flow": order_flow,
@@ -160,14 +159,14 @@ class MarketOrderbookAnalyzer:
                 "total_depth_5": round(total_depth_5, 2),
                 "bid_ask_ratio": round(bid_ask_ratio, 3),
                 "depth_imbalance": round(depth_imbalance, 3),
-                "data_source": "orderbook_depth_analysis",
-                "estimation_note": "Volume estimated from orderbook depth (Hyperliquid limitation)"
+                "data_source": "orderbook_depth_analysis"
+                # REMOVED: estimation_note (no longer estimating fake volume)
             }
             
         except Exception as e:
             logger.error(f"Volume analysis failed: {e}")
             return {
-                "current_volume": 0.0,
+                # REMOVED: current_volume (confusing fake calculation eliminated),
                 "volume_depth": 0.0,
                 "volume_category": "ERROR",
                 "volume_trend": "ERROR", 

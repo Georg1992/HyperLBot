@@ -53,9 +53,9 @@ class TradingEngine:
         volatility_data = hyperliquid_data.get("volatility_data", {})
         pressure_data = hyperliquid_data.get("pressure_data", {})
         
-        # Update variability analyzer
-        real_volume = volume_data.get("current_volume", 100)
-        self.variability_analyzer.add_price_data(hyperliquid_price, volume=real_volume)
+        # Update variability analyzer (use real orderbook depth, not fake volume estimate)
+        orderbook_depth = volume_data.get("volume_depth", 100)
+        self.variability_analyzer.add_price_data(hyperliquid_price, volume=orderbook_depth)
         
         # 4. BUILD COMPREHENSIVE ANALYSIS
         analysis = yahoo_analysis.copy()
