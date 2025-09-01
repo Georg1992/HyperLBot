@@ -38,10 +38,11 @@ class MarketDataService:
             # Get 5-minute data for RSI baseline calculation (user likes this value)
             candles_5m = self.historical_data_coordinator.yahoo_fetcher.get_klines("BTC-USD", "5m", 30)
             if candles_5m and len(candles_5m) >= 15:
-                # Calculate baseline RSI using RSICalculator (clean architecture)
-                self.yahoo_rsi_value = market_data_manager.calculate_yahoo_baseline_rsi(candles_5m)
+                # Calculate baseline RSI using global RSICalculator (single source)
+                from core.market_data_manager import global_rsi_calculator
+                self.yahoo_rsi_value = global_rsi_calculator.calculate_yahoo_baseline_rsi(candles_5m)
                 self.rsi_initialized = True
-                logger.success(f"📊 Yahoo baseline RSI initialized: {self.yahoo_rsi_value:.2f} (ready for real-time updates)")
+                logger.success(f"📊 Yahoo baseline RSI initialized: {self.yahoo_rsi_value:.2f} (global RSI calculator)")
             else:
                 logger.warning("⚠️ Not enough Yahoo 5m data for RSI baseline, using default")
                 self.yahoo_rsi_value = technical_constants.RSI_NEUTRAL
@@ -59,8 +60,9 @@ class MarketDataService:
             if not self.rsi_initialized:
                 self.initialize_yahoo_rsi()
             
-            # Get current RSI data from RSICalculator (includes both baseline and real-time)
-            rsi_data = market_data_manager.get_current_rsi_data()
+            # Get current RSI data from global RSICalculator (single source)
+            from core.market_data_manager import global_rsi_calculator
+            rsi_data = global_rsi_calculator.get_current_rsi_data()
             
             # Return comprehensive RSI data structure
             return {

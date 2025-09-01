@@ -12,8 +12,13 @@ from core.analysis.real_time.volatility_calculator import VolatilityCalculator
 from core.analysis.real_time.volume_calculator import VolumeCalculator
 from core.analysis.real_time.pressure_calculator import PressureCalculator
 from core.analysis.real_time.rsi_calculator import RSICalculator
+
 from core.analysis.trend_manager import trend_manager
+
 from core.constants import technical_constants
+
+# Global RSI calculator instance (single source of truth for RSI)
+global_rsi_calculator = RSICalculator()
 
 class MarketDataManager:
     """Centralized market data manager to eliminate redundant calculations"""
@@ -29,11 +34,11 @@ class MarketDataManager:
         self._indicator_timestamps = {}
         self._indicator_cache_duration = 60  # 1 minute for calculated indicators
         
-        # Initialize volatility, volume, pressure, and RSI calculators
+        # Initialize volatility, volume, and pressure calculators
         self.volatility_calculator = VolatilityCalculator()
         self.volume_calculator = VolumeCalculator()
         self.pressure_calculator = PressureCalculator()
-        self.rsi_calculator = RSICalculator()
+        # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management")
     
@@ -201,20 +206,20 @@ class MarketDataManager:
             return {"support": 0.0, "resistance": 0.0}
     
     def calculate_yahoo_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
-        """Calculate baseline RSI from Yahoo candles using RSICalculator (proper delegation)"""
-        return self.rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
+        """Calculate baseline RSI from Yahoo candles using global RSICalculator (single source)"""
+        return global_rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
     
     def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
-        """Update real-time RSI scientifically on every price tick using RSICalculator (proper delegation)"""
-        return self.rsi_calculator.update_realtime_rsi(new_price)
+        """Update real-time RSI scientifically using global RSICalculator (single source)"""
+        return global_rsi_calculator.update_realtime_rsi(new_price)
     
     def get_current_rsi_data(self) -> Dict[str, Any]:
-        """Get current RSI data using RSICalculator (proper delegation)"""
-        return self.rsi_calculator.get_current_rsi_data()
+        """Get current RSI data using global RSICalculator (single source)"""
+        return global_rsi_calculator.get_current_rsi_data()
     
     def calculate_rsi_from_candles(self, candles: List[Dict], periods: int = 14) -> float:
-        """Backward compatibility wrapper - delegates to RSICalculator for Yahoo baseline"""
-        return self.rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
+        """Backward compatibility wrapper - delegates to global RSICalculator"""
+        return global_rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
 
     # _categorize_5m_volatility_for_trading() moved to VolatilityCalculator (proper volatility logic location)
 
@@ -259,8 +264,9 @@ class MarketDataManager:
             trend_5m = self.calculate_trend(candles_5m) if candles_5m else {"trend": "NEUTRAL"}
             trend_1h = self.calculate_trend(candles_1h) if candles_1h else {"trend": "NEUTRAL"}
             
-            # Calculate RSI using centralized method
-            rsi_5m = self.calculate_rsi_from_candles(candles_5m)
+            # Get current RSI from global RSICalculator (single source of truth)
+            current_rsi_data = global_rsi_calculator.get_current_rsi_data()
+            rsi_5m = current_rsi_data.get("rsi", technical_constants.RSI_NEUTRAL)
             
             # Calculate volume analysis using VolumeCalculator (proper delegation)
             volumes_5m = [candle["volume"] for candle in candles_5m if "volume" in candle]
@@ -340,5 +346,6 @@ class MarketDataManager:
             "cache_age_range": f"{min(time.time() - t for t in self._cache_timestamps.values()):.1f}-{max(time.time() - t for t in self._cache_timestamps.values()):.1f}s" if self._cache_timestamps else "empty"
         }
 
-# Global instance
+# Global instances
 market_data_manager = MarketDataManager()
+# Note: global_rsi_calculator is defined above for single source of truth

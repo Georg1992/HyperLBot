@@ -146,10 +146,10 @@ class TradingOrchestrator:
                         # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
                         
-                        # SCIENTIFIC RSI: Update on EVERY price tick (as shown in reference chart)
+                        # SCIENTIFIC RSI: Update on EVERY price tick using global RSI calculator (single source)
                         # Reference chart shows smooth RSI line updating continuously
-                        from core.market_data_manager import market_data_manager
-                        rsi_data = market_data_manager.update_realtime_rsi(current_price)
+                        from core.market_data_manager import global_rsi_calculator
+                        rsi_data = global_rsi_calculator.update_realtime_rsi(current_price)
                         
                         # Update dashboard (real-time price + scientific RSI)
                         try:
