@@ -15,23 +15,23 @@ class RSICalculator:
     """Centralized RSI calculation system for baseline and real-time updates"""
     
     def __init__(self):
-        # Scientific RSI calculation state
+        # Scientific RSI calculation state (reference chart: RSI updates every tick)
         self.periods = 14
-        self.candle_closes = deque(maxlen=100)  # Store candle closes only (not tick prices)
-        self.price_changes = deque(maxlen=self.periods)  # Store last N price changes
+        self.price_history = deque(maxlen=200)  # Store price history for calculations
         
         # Wilder's smoothing state (scientifically accurate)
         self.wilder_avg_gain = 0.0
         self.wilder_avg_loss = 0.0
-        self.smoothing_factor = 1.0 / self.periods  # Wilder's smoothing factor
+        self.alpha = 1.0 / self.periods  # Wilder's smoothing constant
         
-        # RSI values
+        # RSI values and state
         self.current_rsi = technical_constants.RSI_NEUTRAL
         self.baseline_rsi = technical_constants.RSI_NEUTRAL
+        self.previous_rsi = technical_constants.RSI_NEUTRAL
         self.rsi_initialized = False
-        self.last_candle_time = 0
+        self.last_price = 0.0
         
-        logger.info("🔬 RSI Calculator initialized - Scientific Wilder's implementation")
+        logger.info("🔬 RSI Calculator initialized - Scientific every-tick Wilder's smoothing")
     
     def calculate_yahoo_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
         """
@@ -85,14 +85,16 @@ class RSICalculator:
             # Initialize state for real-time updates
             self.baseline_rsi = round(rsi, 2)
             self.current_rsi = self.baseline_rsi
+            self.previous_rsi = self.baseline_rsi
             self.wilder_avg_gain = wilder_avg_gain
             self.wilder_avg_loss = wilder_avg_loss
+            self.last_price = closes[-1]  # Store last price for incremental updates
             
-            # Store candle closes for incremental updates
-            self.candle_closes.extend(closes[-periods:])
+            # Store price history for continuous updates
+            self.price_history.extend(closes)
             self.rsi_initialized = True
             
-            logger.success(f"🔬 Scientific baseline RSI calculated: {self.baseline_rsi:.2f} (Wilder's method, periods: {periods})")
+            logger.success(f"🔬 Scientific baseline RSI calculated: {self.baseline_rsi:.2f} (Wilder's method, ready for every-tick updates)")
             return self.baseline_rsi
             
         except Exception as e:
