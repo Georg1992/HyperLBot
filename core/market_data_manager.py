@@ -12,6 +12,7 @@ from core.analysis.real_time.volatility_calculator import VolatilityCalculator
 from core.analysis.real_time.volume_calculator import VolumeCalculator
 from core.analysis.real_time.pressure_calculator import PressureCalculator
 from core.analysis.real_time.rsi_calculator import RSICalculator
+from core.analysis.real_time.support_resistance_calculator import SupportResistanceCalculator
 
 from core.analysis.trend_manager import trend_manager
 
@@ -34,10 +35,11 @@ class MarketDataManager:
         self._indicator_timestamps = {}
         self._indicator_cache_duration = 60  # 1 minute for calculated indicators
         
-        # Initialize volatility, volume, and pressure calculators
+        # Initialize volatility, volume, pressure, and support/resistance calculators
         self.volatility_calculator = VolatilityCalculator()
         self.volume_calculator = VolumeCalculator()
         self.pressure_calculator = PressureCalculator()
+        self.support_resistance_calculator = SupportResistanceCalculator()
         # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management")
@@ -175,35 +177,17 @@ class MarketDataManager:
             return 0.0
     
     def calculate_support_resistance(self, candles: List[Dict], lookback: int = 20) -> Dict[str, float]:
-        """Centralized support/resistance calculation to eliminate redundant calculations"""
+        """Calculate support/resistance using SupportResistanceCalculator (SRP - delegate to calculator)"""
         cache_key = f"support_resistance_{lookback}_{hash(str(candles[-lookback:]))}"
         cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
         
         if cached_result:
             return cached_result
         
-        try:
-            if len(candles) < lookback:
-                return {"support": 0.0, "resistance": 0.0}
-            
-            recent_candles = candles[-lookback:]
-            highs = [candle["high"] for candle in recent_candles]
-            lows = [candle["low"] for candle in recent_candles]
-            
-            resistance = max(highs)
-            support = min(lows)
-            
-            result = {
-                "support": round(support, 2),
-                "resistance": round(resistance, 2)
-            }
-            
-            self._cache_data(cache_key, result, self._indicator_cache_duration)
-            return result
-            
-        except Exception as e:
-            logger.error(f"❌ Support/resistance calculation failed: {e}")
-            return {"support": 0.0, "resistance": 0.0}
+        # Delegate to SupportResistanceCalculator (ALL calculation logic in calculator)
+        result = self.support_resistance_calculator.calculate_support_resistance(candles, lookback)
+        self._cache_data(cache_key, result, self._indicator_cache_duration)
+        return result
     
     def calculate_yahoo_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
         """Calculate baseline RSI from Yahoo candles using global RSICalculator (single source)"""

@@ -9,6 +9,7 @@ from .volatility_calculator import VolatilityCalculator
 from .volume_calculator import VolumeCalculator
 from .pressure_calculator import PressureCalculator
 from .rsi_calculator import RSICalculator
+from .support_resistance_calculator import SupportResistanceCalculator
 from .pattern_recognition_engine import PatternRecognitionEngine
 from .setup_classifier import SetupClassifier
 from .reactive_engine import ReactiveEngine
@@ -18,8 +19,9 @@ __all__ = [
     'VolumeCalculator',
     'PressureCalculator',
     'RSICalculator',
+    'SupportResistanceCalculator',
     'PatternRecognitionEngine',
     'SetupClassifier', 
     'ReactiveEngine'
-    # Old RealTimeRSICalculator replaced with clean RSICalculator
+    # All calculation logic moved to dedicated calculators (proper SRP)
 ]
