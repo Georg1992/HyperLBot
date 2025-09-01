@@ -355,85 +355,8 @@ class YahooDataFetcher:
             logger.error(f"❌ Yahoo Finance connection error: {e}")
             return False
 
-
-            
-            # Extract volume data from candles
-            volumes = [candle.get("volume", 0) for candle in candles_5m]
-            
-            # Use most recent completed candle (not the current incomplete one)
-            if len(volumes) >= 2 and volumes[-1] == 0:
-                current_volume = volumes[-2]  # Use previous completed candle
-                logger.info("Using previous completed candle for volume (current candle incomplete)")
-            else:
-                current_volume = volumes[-1] if volumes else 0
-            
-            # Calculate average volume from recent candles
-            recent_volumes = volumes[-5:]  # Last 5 candles
-            avg_volume = sum(recent_volumes) / len(recent_volumes) if recent_volumes else 0
-            
-            # Use actual Yahoo volume (no scaling to match Hyperliquid)
-            current_volume = current_volume
-            avg_volume = avg_volume
-            
-            # Categorize volume using standardized thresholds and consistent naming
-            if current_volume >= volume_constants.TRADING_VOLUME_EXTREMELY_HIGH:
-                volume_category = volume_constants.VOLUME_CATEGORY_EXTREMELY_HIGH
-            elif current_volume >= volume_constants.TRADING_VOLUME_VERY_HIGH:
-                volume_category = volume_constants.VOLUME_CATEGORY_VERY_HIGH
-            elif current_volume >= volume_constants.TRADING_VOLUME_HIGH:
-                volume_category = volume_constants.VOLUME_CATEGORY_HIGH
-            elif current_volume >= volume_constants.TRADING_VOLUME_ABOVE_AVERAGE:
-                volume_category = volume_constants.VOLUME_CATEGORY_ABOVE_AVERAGE
-            elif current_volume >= volume_constants.TRADING_VOLUME_NORMAL:
-                volume_category = volume_constants.VOLUME_CATEGORY_NORMAL
-            elif current_volume >= volume_constants.TRADING_VOLUME_BELOW_AVERAGE:
-                volume_category = volume_constants.VOLUME_CATEGORY_BELOW_AVERAGE
-            elif current_volume >= volume_constants.TRADING_VOLUME_LOW:
-                volume_category = volume_constants.VOLUME_CATEGORY_LOW
-            elif current_volume >= volume_constants.TRADING_VOLUME_VERY_LOW:
-                volume_category = volume_constants.VOLUME_CATEGORY_VERY_LOW
-            else:
-                volume_category = volume_constants.VOLUME_CATEGORY_EXTREMELY_LOW
-            
-            # Determine volume trend
-            if len(volumes) >= 3:
-                recent_avg = sum(volumes[-3:]) / 3
-                older_avg = sum(volumes[-6:-3]) / 3 if len(volumes) >= 6 else recent_avg
-                
-                if recent_avg > older_avg * 1.1:
-                    volume_trend = "INCREASING"
-                elif recent_avg < older_avg * 0.9:
-                    volume_trend = "DECREASING"
-                else:
-                    volume_trend = "STABLE"
-            else:
-                volume_trend = "UNKNOWN"
-            
-            return {
-                "current_volume": current_volume,
-                "volume_category": volume_category,
-                "avg_volume": avg_volume,
-                "volume_trend": volume_trend,
-                "recent_volumes": recent_volumes,
-                "data_source": "yahoo_finance",
-                # Add basic spike detection fields for dashboard compatibility
-                "has_spike": False,
-                "spike_severity": "NORMAL",
-                "is_immediate_spike": False,
-                "spike_reason": "",
-                "volume_source": "yahoo_finance_basic"
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get current 5m volume: {e}")
-            return {
-                "current_volume": 0,
-                "volume_category": "ERROR",
-                "avg_volume": 0,
-                "volume_trend": "ERROR",
-                "error": str(e),
-                "data_source": "yahoo_finance"
-            }
+    # Volume categorization logic REMOVED - moved to VolumeCalculator for clean architecture
+    # YahooDataFetcher now focuses on raw data fetching only
     
     # get_realtime_momentum_analysis removed - unused dead code with redundant RSI calculation
 

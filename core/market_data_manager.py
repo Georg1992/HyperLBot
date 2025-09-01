@@ -9,6 +9,7 @@ import statistics
 from typing import Dict, List, Any, Optional
 from loguru import logger
 from core.analysis.real_time.volatility_calculator import VolatilityCalculator
+from core.analysis.real_time.volume_calculator import VolumeCalculator
 from core.analysis.trend_manager import trend_manager
 from core.constants import technical_constants
 
@@ -26,8 +27,9 @@ class MarketDataManager:
         self._indicator_timestamps = {}
         self._indicator_cache_duration = 60  # 1 minute for calculated indicators
         
-        # Initialize volatility calculator
+        # Initialize volatility and volume calculators
         self.volatility_calculator = VolatilityCalculator()
+        self.volume_calculator = VolumeCalculator()
         
         logger.info("📊 Market Data Manager initialized - Centralized data management")
     
@@ -65,27 +67,68 @@ class MarketDataManager:
             return cached_data
         
         try:
-            # Get Hyperliquid data (removed volatility_data - using 5m candle volatility instead)
-            volume_data = hyperliquid_api.get_volume_analysis(symbol)
+            # Get raw orderbook data and use VolumeCalculator for analysis
+            market_data = hyperliquid_api.get_market_data(symbol)
             pressure_data = hyperliquid_api.get_pressure(symbol)
             
+            # Use VolumeCalculator for orderbook depth analysis (clean architecture)
+            if market_data and 'levels' in market_data:
+                levels = market_data['levels']
+                if len(levels) >= 2:
+                    bids = levels[0] if isinstance(levels[0], list) else []
+                    asks = levels[1] if isinstance(levels[1], list) else []
+                    
+                    if bids and asks:
+                        # Calculate orderbook depths
+                        bid_depth_5 = sum(float(level['sz']) for level in bids[:5])
+                        ask_depth_5 = sum(float(level['sz']) for level in asks[:5])
+                        total_depth_5 = bid_depth_5 + ask_depth_5
+                        
+                        # Use VolumeCalculator for categorization (proper delegation)
+                        volume_data = self.volume_calculator.categorize_orderbook_depth(
+                            total_depth_5, bid_depth_5, ask_depth_5
+                        )
+                        volume_data["data_source"] = "hyperliquid_orderbook"
+                    else:
+                        volume_data = self._get_default_volume_data()
+                else:
+                    volume_data = self._get_default_volume_data()
+            else:
+                volume_data = self._get_default_volume_data()
             
-            return {
-                "volume_data": volume_data or {},
+            result = {
+                "volume_data": volume_data,
                 # volatility_data removed - using 5m candle volatility instead of orderbook volatility
                 "pressure_data": pressure_data or {},
                 "timestamp": time.time()
             }
             
+            # Cache the result
+            self._cache_data(cache_key, result, self._cache_duration)
+            return result
+            
         except Exception as e:
             logger.error(f"❌ Failed to get Hyperliquid data: {e}")
             return {
-                "volume_data": {},
-                "volatility_data": {},
+                "volume_data": self._get_default_volume_data(),
                 "pressure_data": {},
                 "current_price": None,
                 "timestamp": time.time()
             }
+    
+    def _get_default_volume_data(self) -> Dict[str, Any]:
+        """Get default volume data when orderbook is unavailable"""
+        return {
+            "volume_depth": 0.0,
+            "volume_category": "UNKNOWN",
+            "bid_depth": 0.0,
+            "ask_depth": 0.0,
+            "bid_ask_ratio": 1.0,
+            "depth_imbalance": 0.0,
+            "order_flow": "NEUTRAL",
+            "depth_analysis": "NO_DATA",
+            "data_source": "default"
+        }
     
     def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
         """Use trend manager for advanced trend calculation"""
@@ -231,6 +274,20 @@ class MarketDataManager:
             # Calculate RSI using centralized method
             rsi_5m = self.calculate_rsi_from_candles(candles_5m)
             
+            # Calculate volume analysis using VolumeCalculator (proper delegation)
+            volumes_5m = [candle["volume"] for candle in candles_5m if "volume" in candle]
+            if volumes_5m:
+                current_volume_5m = volumes_5m[-1]
+                volume_analysis_5m = self.volume_calculator.categorize_yahoo_volume(current_volume_5m, volumes_5m)
+                volume_momentum_5m = self.volume_calculator.calculate_volume_momentum(volumes_5m)
+                volume_spike_5m = self.volume_calculator.detect_volume_spikes(current_volume_5m, volumes_5m)
+                relative_volume_5m = self.volume_calculator.calculate_relative_volume(current_volume_5m, volumes_5m)
+            else:
+                volume_analysis_5m = {"current_volume": 0, "volume_category": "UNKNOWN", "volume_trend": "UNKNOWN", "data_source": "no_data"}
+                volume_momentum_5m = {"momentum": 0.0, "acceleration": 0.0, "trend": "UNKNOWN"}
+                volume_spike_5m = {"has_spike": False, "spike_magnitude": 1.0, "spike_type": "NORMAL"}
+                relative_volume_5m = 1.0
+            
             # Build consolidated analysis
             analysis = {
                 "timestamp": time.time(),
@@ -256,6 +313,12 @@ class MarketDataManager:
                 "trend_5m": trend_5m,
                 "trend_1h": trend_1h,
                 "rsi_5m": rsi_5m,
+                
+                # Volume analysis (using VolumeCalculator - proper delegation)
+                "volume_5m_analysis": volume_analysis_5m,
+                "volume_5m_momentum": volume_momentum_5m,
+                "volume_5m_spike": volume_spike_5m,
+                "relative_volume_5m": relative_volume_5m,
                 
                 "data_source": "centralized_market_data_manager"
             }

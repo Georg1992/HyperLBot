@@ -125,15 +125,8 @@ class HyperliquidAPI:
             logger.error(f"Failed to get orderbook for {symbol}: {e}")
             raise
 
-    def get_volume_analysis(self, symbol: str = None) -> Dict[str, Any]:
-        """Get volume analysis using order book dynamics and trade flow"""
-        try:
-            result = self.analysis.get_volume_analysis(symbol)
-            # Debug logging removed for cleaner output
-            return result
-        except Exception as e:
-            logger.error(f"Failed to get volume analysis for {symbol}: {e}")
-            raise
+    # get_volume_analysis() REMOVED - Volume logic moved to VolumeCalculator for clean architecture
+    # MarketDataManager now handles volume analysis using VolumeCalculator delegation
 
     # get_volatility_analysis() removed - using 5m candle volatility instead of orderbook volatility
 

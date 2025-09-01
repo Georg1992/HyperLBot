@@ -229,11 +229,17 @@ class SessionOrchestrator:
                 "rsi": rsi_value,
                 "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
                 
-                # FIX: Dashboard expects 'volume_depth' field (use correct analyzer field!)
+                # Volume data (VolumeCalculator → MarketDataManager → Dashboard)
+                # Primary: Hyperliquid orderbook depth (real-time execution quality)
                 "volume_depth": volume_data.get("volume_depth", 0),
                 "volume_category": volume_data.get("volume_category", "NORMAL"),
                 "order_flow": volume_data.get("order_flow", "NEUTRAL"),
                 "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN"),
+                
+                # Secondary: Yahoo volume momentum (5m trading activity)
+                "volume_momentum": yahoo_analysis.get("volume_5m_momentum", {}),
+                "volume_spike": yahoo_analysis.get("volume_5m_spike", {}),
+                "relative_volume": yahoo_analysis.get("relative_volume_5m", 1.0),
                 
                 # FIX: Dashboard expects 'trend_analysis.overall_trend' structure
                 "trend_analysis": {
