@@ -264,9 +264,8 @@ class MarketDataManager:
             trend_5m = self.calculate_trend(candles_5m) if candles_5m else {"trend": "NEUTRAL"}
             trend_1h = self.calculate_trend(candles_1h) if candles_1h else {"trend": "NEUTRAL"}
             
-            # Get current RSI from global RSICalculator (single source of truth)
-            current_rsi_data = global_rsi_calculator.get_current_rsi_data()
-            rsi_5m = current_rsi_data.get("rsi", technical_constants.RSI_NEUTRAL)
+            # Calculate RSI from Yahoo 5m candles (proper candle-based calculation)
+            rsi_5m = self.calculate_rsi_from_candles(candles_5m)
             
             # Calculate volume analysis using VolumeCalculator (proper delegation)
             volumes_5m = [candle["volume"] for candle in candles_5m if "volume" in candle]
