@@ -13,8 +13,7 @@ from core.analysis.real_time.volume_calculator import VolumeCalculator
 from core.analysis.real_time.pressure_calculator import PressureCalculator
 from core.analysis.real_time.rsi_calculator import RSICalculator
 from core.analysis.real_time.support_resistance_calculator import SupportResistanceCalculator
-
-from core.analysis.trend_manager import trend_manager
+from core.analysis.real_time.trend_calculator import TrendCalculator
 
 from core.constants import technical_constants
 
@@ -35,11 +34,12 @@ class MarketDataManager:
         self._indicator_timestamps = {}
         self._indicator_cache_duration = 60  # 1 minute for calculated indicators
         
-        # Initialize volatility, volume, pressure, and support/resistance calculators
+        # Initialize all calculators (consistent pattern)
         self.volatility_calculator = VolatilityCalculator()
         self.volume_calculator = VolumeCalculator()
         self.pressure_calculator = PressureCalculator()
         self.support_resistance_calculator = SupportResistanceCalculator()
+        self.trend_calculator = TrendCalculator()
         # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management")
@@ -151,9 +151,18 @@ class MarketDataManager:
         """Get default pressure data when orderbook is unavailable"""
         return self.pressure_calculator._get_default_pressure()
     
-    def calculate_trend(self, candles: List[Dict], periods: int = 5) -> Dict[str, Any]:
-        """Use trend manager for advanced trend calculation"""
-        return trend_manager.calculate_trend(candles, periods)
+    def calculate_trend(self, candles: List[Dict], timeframe: str = "5m") -> Dict[str, Any]:
+        """Calculate trend using TrendCalculator (SRP - delegate to calculator)"""
+        cache_key = f"trend_{timeframe}_{hash(str(candles[-10:]))}"
+        cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
+        
+        if cached_result:
+            return cached_result
+        
+        # Delegate to TrendCalculator (ALL calculation logic in calculator)
+        result = self.trend_calculator.calculate_trend(candles, timeframe)
+        self._cache_data(cache_key, result, self._indicator_cache_duration)
+        return result
     
     def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:
         """Calculate volatility using VolatilityCalculator (SRP - delegate to calculator)"""
@@ -241,9 +250,9 @@ class MarketDataManager:
             # Add 5-minute trading categorization (use VolatilityCalculator for volatility expertise)
             volatility_5m_category, volatility_5m_trend = self.volatility_calculator.categorize_5m_volatility_for_trading(volatility_5m)
             
-            # Get trend analysis using centralized trend manager
-            trend_5m = self.calculate_trend(candles_5m) if candles_5m else {"trend": "NEUTRAL"}
-            trend_1h = self.calculate_trend(candles_1h) if candles_1h else {"trend": "NEUTRAL"}
+            # Get trend analysis using TrendCalculator (proper delegation)
+            trend_5m = self.calculate_trend(candles_5m, "5m") if candles_5m else {"trend": "NEUTRAL"}
+            trend_1h = self.calculate_trend(candles_1h, "1h") if candles_1h else {"trend": "NEUTRAL"}
             
             # Calculate RSI from Yahoo 5m candles (proper candle-based calculation)
             rsi_5m = self.calculate_rsi_from_candles(candles_5m)

@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from core.constants import technical_constants
 from core.market_data_manager import market_data_manager
-from core.analysis.trend_manager import trend_manager
+# trend_manager import removed - using TrendCalculator via MarketDataManager (proper SRP)
 
 class MarketDataService:
     """Market data orchestration service - handles all data coordination"""
@@ -141,8 +141,8 @@ class MarketDataService:
             if not candles_1d or len(candles_1d) < 7:
                 return {"error": "Insufficient weekly data", "weekly_trend": "UNKNOWN"}
             
-            # Calculate weekly trend
-            weekly_trend = trend_manager.calculate_trend(candles_1d, "1d")
+            # Calculate weekly trend using MarketDataManager (proper delegation)
+            weekly_trend = market_data_manager.calculate_trend(candles_1d, "1d")
             return weekly_trend
             
         except Exception as e:

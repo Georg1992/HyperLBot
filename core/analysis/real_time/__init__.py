@@ -10,6 +10,7 @@ from .volume_calculator import VolumeCalculator
 from .pressure_calculator import PressureCalculator
 from .rsi_calculator import RSICalculator
 from .support_resistance_calculator import SupportResistanceCalculator
+from .trend_calculator import TrendCalculator
 from .pattern_recognition_engine import PatternRecognitionEngine
 from .setup_classifier import SetupClassifier
 from .reactive_engine import ReactiveEngine
@@ -20,6 +21,7 @@ __all__ = [
     'PressureCalculator',
     'RSICalculator',
     'SupportResistanceCalculator',
+    'TrendCalculator',
     'PatternRecognitionEngine',
     'SetupClassifier', 
     'ReactiveEngine'
