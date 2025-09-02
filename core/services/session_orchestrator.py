@@ -206,8 +206,13 @@ class SessionOrchestrator:
                                      market_data_service, dashboard_service):
         """Update dashboard with current market data (CRITICAL for dashboard display)"""
         try:
-            # Get RSI from Yahoo analysis (proper 5m candle calculation - don't use price ticks!)
-            rsi_value = yahoo_analysis.get("rsi_5m", 50.0)
+            # Get real-time RSI (corrected by Yahoo at regular intervals for scalping accuracy)
+            from core.market_data_manager import global_rsi_calculator
+            if global_rsi_calculator.rsi_initialized:
+                rsi_value = global_rsi_calculator.current_rsi
+            else:
+                # Fallback: Use Yahoo if real-time not initialized yet
+                rsi_value = yahoo_analysis.get("rsi_5m", 50.0)
             
             # Get Hyperliquid market data (volume, pressure) + 5-minute volatility 
             from core.market_data_manager import market_data_manager

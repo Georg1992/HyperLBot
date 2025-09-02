@@ -92,6 +92,31 @@ class MarketDataService:
             
             if "error" not in analysis:
                 logger.info(f"[CHART] Yahoo Finance analysis: ${analysis.get('current_price', 0):,.2f} - Market data retrieved")
+                
+                # YAHOO CORRECTION POINT: Calibrate real-time RSI when fresh Yahoo arrives
+                yahoo_rsi = analysis.get("rsi_5m")
+                if yahoo_rsi:
+                    from core.market_data_manager import global_rsi_calculator
+                    
+                    # Check accuracy of real-time RSI before correction
+                    if global_rsi_calculator.rsi_initialized:
+                        current_realtime_rsi = global_rsi_calculator.current_rsi
+                        accuracy_gap = abs(current_realtime_rsi - yahoo_rsi)
+                        
+                        logger.info(f"📊 Yahoo correction: Real-time {current_realtime_rsi:.2f} → Yahoo {yahoo_rsi:.2f} (gap: {accuracy_gap:.2f})")
+                        
+                        # Correct real-time RSI to Yahoo value (correction point)
+                        global_rsi_calculator.current_rsi = yahoo_rsi
+                        global_rsi_calculator.baseline_rsi = yahoo_rsi
+                        
+                        # Log accuracy assessment
+                        if accuracy_gap <= 1.0:
+                            logger.info("✅ Real-time RSI accuracy: EXCELLENT")
+                        elif accuracy_gap <= 2.0:
+                            logger.info("✅ Real-time RSI accuracy: GOOD")
+                        else:
+                            logger.warning(f"⚠️ Real-time RSI accuracy: NEEDS IMPROVEMENT")
+                
                 return analysis
             else:
                 logger.error(f"❌ Yahoo Finance analysis failed: {analysis.get('error', 'Unknown error')}")

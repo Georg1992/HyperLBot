@@ -146,23 +146,29 @@ class TradingOrchestrator:
                         # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
                         
-                        # Update dashboard with ONLY price (RSI comes from Yahoo analysis, not price ticks!)
+                        # Update REAL-TIME RSI between Yahoo points (for scalping accuracy)
                         try:
-                            # Update ONLY price field - RSI should come from Yahoo 5m candle analysis
+                            # Calculate real-time RSI between Yahoo fetches (Yahoo provides correction points)
+                            from core.market_data_manager import market_data_manager
+                            rsi_data = market_data_manager.update_realtime_rsi(current_price)
+                            
+                            # Update dashboard with real-time RSI + price
                             from core.dashboard.dashboard_data_manager import simple_rtm
                             existing_data = simple_rtm.get_market_data()
                             
-                            # Update ONLY price and timestamp (RSI comes from Yahoo analysis)
+                            # Real-time updates between Yahoo correction points
                             existing_data.update({
                                 "current_price": current_price,
+                                "rsi": rsi_data.get("rsi", existing_data.get("rsi", 50.0)),
+                                "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
                                 "timestamp": time.time(),
-                                "price_source": "hyperliquid_websocket_realtime"
+                                "price_source": "hyperliquid_websocket_realtime",
+                                "rsi_source": "realtime_between_yahoo_corrections"
                             })
                             
                             self.dashboard_service.update_rtm_market(existing_data)
-                            # Price update logging removed - was spamming too much
                         except Exception as e:
-                            logger.error(f"❌ Real-time dashboard update failed: {e}")
+                            logger.error(f"❌ Real-time RSI update failed: {e}")
                 
                 self.market_data_service.hyperliquid_websocket.add_price_callback(on_price_update)
             
