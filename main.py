@@ -118,6 +118,9 @@ def start_dashboard():
     try:
         from web_dashboard import create_dashboard, EventDrivenTradingDashboard
         
+        # DEBUG: Show current flag state
+        logger.info(f"🐛 DEBUG: dashboard_started_this_session = {dashboard_started_this_session}")
+        
         # Check if dashboard is already running (thorough check)
         logger.info("🔍 Checking for existing dashboard...")
         if EventDrivenTradingDashboard.is_dashboard_running(
@@ -130,12 +133,18 @@ def start_dashboard():
             logger.info("🚫 No browser opening (preventing conflicts)")
             
             # DON'T set flag here - this is connecting to existing, not starting new
+            logger.info("🐛 DEBUG: Found existing dashboard, returning without setting flag")
             return True
+        
+        logger.info("🐛 DEBUG: No existing dashboard found")
         
         # Check if we already started dashboard this session (prevents duplicate NEW dashboards)
         if dashboard_started_this_session:
             logger.info("✅ Dashboard already started this session - reusing")
+            logger.info("🐛 DEBUG: Flag was True, reusing existing")
             return True
+        
+        logger.info("🐛 DEBUG: Flag is False, proceeding to start new dashboard")
         
         logger.info("🚀 Starting new dashboard instance...")
         
@@ -167,9 +176,11 @@ def start_dashboard():
             logger.info("🚫 Auto-browser disabled (preventing conflicts with existing browser instances)")
             
             dashboard_started_this_session = True  # Mark as started this session
+            logger.info("🐛 DEBUG: Set flag to True after successful dashboard start")
         else:
             logger.warning("⚠️ Dashboard may not have started properly")
             logger.info(f"💡 Please check if dashboard is available at: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
+            logger.info("🐛 DEBUG: Dashboard failed to start, flag remains False")
         
         return True
         
@@ -179,6 +190,12 @@ def start_dashboard():
 
 def main():
     """Main entry point with simplified menu"""
+    global dashboard_started_this_session
+    
+    # Reset dashboard flag on fresh start (prevents persistence from previous runs)
+    dashboard_started_this_session = False
+    logger.info("🐛 DEBUG: Reset dashboard_started_this_session to False on main() start")
+    
     logger.info("HyperLBot - Hybrid Trading Bot")
     logger.info("=" * 50)
     
