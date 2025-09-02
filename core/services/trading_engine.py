@@ -64,44 +64,8 @@ class TradingEngine:
         analysis["hyperliquid_pressure"] = pressure_data
         analysis["timestamp"] = current_time
         
-        # 5. GENERATE PREDICTION
-        prediction_analysis = self.prediction_engine.build_price_prediction(analysis, hyperliquid_price, self.strategy_name)
-        analysis["prediction_analysis"] = prediction_analysis
-        
-        if not prediction_analysis.get("has_prediction", False):
-            return {"should_trade": False, "reason": f"No valid prediction: {prediction_analysis.get('reason', 'Unknown')}"}
-        
-        # 6. ANALYZE ENTRY POINT
-        entry_analysis = self.prediction_engine.analyze_entry_point(prediction_analysis, hyperliquid_price)
-        if not entry_analysis["should_place_order"]:
-            return {"should_trade": False, "reason": entry_analysis["reason"]}
-        
-        # 7. VARIABILITY CHECK
-        variability_decision = self.variability_analyzer.should_trade_based_on_variability(entry_analysis["variability_threshold"])
-        if not variability_decision["should_trade"]:
-            return {"should_trade": False, "reason": f"Variability: {variability_decision['reason']}"}
-        
-        # 8. TRADE QUALITY EVALUATION
-        open_positions = self.get_open_positions()
-        trade_decision = self.trade_quality_manager.should_place_trade(entry_analysis, analysis, hyperliquid_price, open_positions)
-        if not trade_decision["should_place"]:
-            return {"should_trade": False, "reason": f"Quality: {trade_decision['reason']}"}
-        
-        # EXECUTE TRADE
-        return {
-            "should_trade": True,
-            "side": entry_analysis["side"],
-            "reason": f"Quality: {trade_decision['quality_score']:.1%} - {entry_analysis['reason']}",
-            "target": entry_analysis["target_price"],
-            "stop": entry_analysis["stop_price"],
-            "size": entry_analysis["size"],
-            "leverage": entry_analysis["leverage"],
-            "confidence": entry_analysis["confidence"],
-            "quality_score": trade_decision["quality_score"],
-            "strategy": self.strategy_name,
-            "hyperliquid_price": hyperliquid_price,
-            "timestamp": current_time
-        }
+        # TRADING LOGIC DISABLED: Only initial prediction needed, no ongoing trading (user request)
+        return {"should_trade": False, "reason": "Trading disabled - only initial session prediction implemented"}
     
     def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
         """Place a paper trade (delegate to position lifecycle manager)"""

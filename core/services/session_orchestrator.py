@@ -78,6 +78,9 @@ class SessionOrchestrator:
                 initial_balance=self.initial_balance
             )
             
+            # GENERATE INITIAL SESSION PREDICTION (limit order for dashboard)
+            self._generate_initial_session_prediction(market_data_service, dashboard_service)
+            
             # Log session start
             dashboard_service.update_rtm_activity(
                 f"🚀 Trading bot started - standard strategy with ${self.initial_balance:.2f} initial balance", 
@@ -116,6 +119,59 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Failed to compute historical context: {e}")
             # Continue session without historical context (degraded but functional)
+    
+    def _generate_initial_session_prediction(self, market_data_service, dashboard_service):
+        """Generate initial session prediction and store for dashboard display"""
+        try:
+            logger.info("🎯 Generating initial session prediction...")
+            
+            # Get current market data
+            current_price = market_data_service.get_hyperliquid_price()
+            if not current_price:
+                logger.warning("⚠️ Cannot generate initial prediction - no price data")
+                return
+            
+            # Get market analysis
+            yahoo_analysis = market_data_service.get_yahoo_analysis(current_price)
+            if not yahoo_analysis or "error" in yahoo_analysis:
+                logger.warning("⚠️ Cannot generate initial prediction - no market analysis")
+                return
+            
+            # Build market data for prediction engine
+            from core.market_data_manager import global_rsi_calculator
+            rsi_data = global_rsi_calculator.get_current_rsi_data()
+            
+            market_data = {
+                "current_price": current_price,
+                "rsi": rsi_data.get("rsi", yahoo_analysis.get("rsi_5m", 50.0)),
+                "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
+                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                "volatility_category": yahoo_analysis.get("volatility_5m_category", "MODERATE")
+            }
+            
+            # Generate initial prediction using prediction engine
+            from strategies.prediction_engine import PredictionEngine
+            prediction_engine = PredictionEngine(self.config.STRATEGY_CONFIGS["standard"])
+            prediction_engine.set_session_manager(self.session_manager)
+            
+            initial_prediction = prediction_engine.generate_initial_session_prediction(current_price, market_data)
+            
+            # Store prediction for dashboard display
+            dashboard_service.rtm_updater.update_simple_rtm_prediction_data({"initial_prediction": initial_prediction})
+            
+            # Log initial prediction
+            order_structure = initial_prediction.get("order_structure", {})
+            dashboard_service.update_rtm_activity(
+                f"🎯 Initial prediction: {order_structure.get('direction', 'N/A')} @ ${order_structure.get('entry_price', 0):.2f} "
+                f"(Stop: ${order_structure.get('stop_loss', 0):.2f}, Take: ${order_structure.get('take_profit', 0):.2f})",
+                "INFO"
+            )
+            
+            logger.success("✅ Initial session prediction generated and stored for dashboard")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to generate initial session prediction: {e}")
+            # Continue session without initial prediction (degraded but functional)
     
     def _main_trading_loop(self, max_trades: int, check_interval: int, hyperliquid_api,
                           market_data_service, trading_engine, dashboard_service) -> Dict[str, Any]:

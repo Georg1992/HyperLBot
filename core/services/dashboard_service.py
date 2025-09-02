@@ -57,92 +57,10 @@ class DashboardService:
     
     def generate_and_log_prediction(self, current_price: float, historical_analysis: Dict[str, Any] = None, 
                                    prediction_engine=None, strategy_name: str = "standard"):
-        """Generate structured prediction and log to dashboard"""
-        try:
-            if not prediction_engine:
-                logger.warning("⚠️ No prediction engine available")
-                return
-            
-            # Throttle predictions to every 5 seconds
-            current_time = time.time()
-            if not hasattr(self, '_last_prediction_time'):
-                self._last_prediction_time = 0
-            
-            prediction_interval = 5  # seconds
-            if current_time - self._last_prediction_time < prediction_interval:
-                return
-            
-            # Generate prediction (fix argument mismatch - method expects market_data dict)
-            # Build market_data structure for prediction engine (use Yahoo RSI - simple!)
-            
-            # Get calibrated real-time RSI (Yahoo-corrected for scalping accuracy)
-            from core.market_data_manager import global_rsi_calculator
-            rsi_data = global_rsi_calculator.get_current_rsi_data()
-            current_rsi = rsi_data.get("rsi", technical_constants.RSI_NEUTRAL)
-            
-            market_data_for_prediction = {
-                "current_price": current_price,
-                "rsi": current_rsi,
-                "trend": historical_analysis.get("trend_5m", {}).get("trend", "NEUTRAL") if historical_analysis else "NEUTRAL",
-                "volume_category": "NORMAL",  # Default for predictions
-                "volatility_5m": historical_analysis.get("volatility_5m", 0.0) if historical_analysis else 0.0
-            }
-            
-            prediction = prediction_engine.generate_structured_prediction(
-                market_data_for_prediction, historical_analysis
-            )
-            
-            if prediction:
-                # Extract prediction data
-                direction = prediction.get("side", "HOLD")
-                size_btc = prediction.get("size", 0.001)
-                size_usd = prediction.get("size_usd", 0)
-                entry_price = prediction.get("entry_price", current_price)
-                rsi_value = prediction.get("rsi_at_prediction", technical_constants.RSI_NEUTRAL)
-                trend_value = prediction.get("trend_at_prediction", "NEUTRAL")
-                confidence = prediction.get("confidence", 0.3)
-                
-                # Log prediction to activity (dashboard)
-                prediction_message = (
-                    f"🔮 {direction} Signal | "
-                    f"Size: {size_btc:.4f} BTC (${size_usd:.0f}) | "
-                    f"Entry: ${entry_price:.2f} | "
-                    f"RSI: {rsi_value} | "
-                    f"TREND: {trend_value} | "
-                    f"Confidence: {confidence:.1%}"
-                )
-                
-                self.update_rtm_activity(prediction_message, "INFO")
-                
-                # Store prediction in SimpleRTM for dashboard predictions panel (COMPLETE structure)
-                prediction_for_dashboard = {
-                    "type": "prediction",
-                    "side": direction,
-                    "price": entry_price,
-                    "size": size_btc,
-                    "confidence": confidence,
-                    "timestamp": current_time,
-                    
-                    # COMPLETE prediction data for dashboard (exact fields expected)
-                    "prediction_data": {
-                        "direction": direction,
-                        "entry_price": entry_price,
-                        "size_btc": size_btc,
-                        "size_usd": size_usd,
-                        "rsi_at_prediction": rsi_value,
-                        "trend_at_prediction": trend_value,
-                        "confidence": confidence,
-                        "reasoning": prediction.get("reasoning", f"{direction} signal based on market analysis")
-                    }
-                }
-                
-                simple_rtm.add_signal(prediction_for_dashboard)
-                
-                self._last_prediction_time = current_time
-                logger.debug(f"🎯 Generated prediction: {direction} @ ${entry_price:.2f} (RSI: {rsi_value}, Trend: {trend_value})")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to generate prediction: {e}")
+        """DISABLED: Ongoing predictions removed - only initial session prediction shown (user request)"""
+        # Ongoing prediction generation disabled
+        # Only initial session prediction is generated once at session start and displayed
+        return
     
     def create_initial_heartbeat(self, session_manager=None, strategy_name: str = "standard", paper_balance: float = 0.0):
         """Create initial heartbeat file immediately when bot starts"""
