@@ -129,10 +129,10 @@ def start_dashboard():
             logger.info("🔗 Bot will use existing dashboard (no new instance created)")
             logger.info("🚫 No browser opening (preventing conflicts)")
             
-            dashboard_started_this_session = True  # Mark as handled
+            # DON'T set flag here - this is connecting to existing, not starting new
             return True
         
-        # Check if we already started dashboard this session
+        # Check if we already started dashboard this session (prevents duplicate NEW dashboards)
         if dashboard_started_this_session:
             logger.info("✅ Dashboard already started this session - reusing")
             return True
