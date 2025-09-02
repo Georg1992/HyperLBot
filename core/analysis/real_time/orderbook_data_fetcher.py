@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Market Orderbook Analyzer Module
-Provides market analysis using order book data (volume, volatility, pressure)
+Orderbook Data Fetcher Module
+Fetches orderbook data from Hyperliquid API (pure data fetching, no analysis)
 """
 
 import time
@@ -10,8 +10,8 @@ from typing import Dict, Any, List
 from loguru import logger
 from core.constants import volume_constants, technical_constants
 
-class MarketOrderbookAnalyzer:
-    """Market analysis using order book data (volume, volatility, pressure)"""
+class OrderbookDataFetcher:
+    """Fetches orderbook data from Hyperliquid API (pure data fetching, no analysis)"""
     
     def __init__(self, api_instance):
         """Initialize with reference to main API instance"""

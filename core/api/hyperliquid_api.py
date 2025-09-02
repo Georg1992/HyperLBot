@@ -7,7 +7,7 @@ from config.config import TradingConfig
 
 # Import analysis modules
 import statistics # Added for enhanced volatility analysis
-from core.analysis.real_time.orderbook_analyzer import MarketOrderbookAnalyzer
+from core.analysis.real_time.orderbook_data_fetcher import OrderbookDataFetcher
 
 class HyperliquidAPI:
     """Hyperliquid API client - simplified to only used methods (dead trading code eliminated)"""
@@ -23,8 +23,8 @@ class HyperliquidAPI:
             'User-Agent': 'HyperliquidTradingBot/1.0'
         })
         
-        # Initialize analysis module
-        self.analysis = MarketOrderbookAnalyzer(self)
+        # Initialize orderbook data fetcher
+        self.analysis = OrderbookDataFetcher(self)
         
         if self.wallet_address and self.wallet_private_key:
             self._authenticate()
