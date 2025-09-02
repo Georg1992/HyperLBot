@@ -118,9 +118,6 @@ def start_dashboard():
     try:
         from web_dashboard import create_dashboard, EventDrivenTradingDashboard
         
-        # DEBUG: Show current flag state
-        logger.info(f"🐛 DEBUG: dashboard_started_this_session = {dashboard_started_this_session}")
-        
         # Check if dashboard is already running (thorough check)
         logger.info("🔍 Checking for existing dashboard...")
         if EventDrivenTradingDashboard.is_dashboard_running(
@@ -132,19 +129,12 @@ def start_dashboard():
             logger.info("🔗 Bot will use existing dashboard (no new instance created)")
             logger.info("🚫 No browser opening (preventing conflicts)")
             
-            # DON'T set flag here - this is connecting to existing, not starting new
-            logger.info("🐛 DEBUG: Found existing dashboard, returning without setting flag")
             return True
-        
-        logger.info("🐛 DEBUG: No existing dashboard found")
         
         # Check if we already started dashboard this session (prevents duplicate NEW dashboards)
         if dashboard_started_this_session:
             logger.info("✅ Dashboard already started this session - reusing")
-            logger.info("🐛 DEBUG: Flag was True, reusing existing")
             return True
-        
-        logger.info("🐛 DEBUG: Flag is False, proceeding to start new dashboard")
         
         logger.info("🚀 Starting new dashboard instance...")
         
@@ -174,15 +164,19 @@ def start_dashboard():
         ):
             logger.success("✅ New dashboard started successfully!")
             logger.info(f"🌐 Dashboard URL: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
-            logger.info("💡 Please open the URL in your browser to view the dashboard")
-            logger.info("🚫 Auto-browser disabled (preventing conflicts with existing browser instances)")
+            
+            # Open browser for NEW dashboard (but not for existing ones)
+            try:
+                webbrowser.open(f'http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}')
+                logger.info("🌐 Dashboard opened in browser automatically")
+            except Exception as e:
+                logger.warning(f"Could not open browser automatically: {e}")
+                logger.info("💡 Please open the URL in your browser to view the dashboard")
             
             dashboard_started_this_session = True  # Mark as started this session
-            logger.info("🐛 DEBUG: Set flag to True after successful dashboard start")
         else:
             logger.warning("⚠️ Dashboard may not have started properly")
             logger.info(f"💡 Please check if dashboard is available at: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
-            logger.info("🐛 DEBUG: Dashboard failed to start, flag remains False")
         
         return True
         
@@ -196,7 +190,6 @@ def main():
     
     # Reset dashboard flag on fresh start (prevents persistence from previous runs)
     dashboard_started_this_session = False
-    logger.info("🐛 DEBUG: Reset dashboard_started_this_session to False on main() start")
     
     logger.info("HyperLBot - Hybrid Trading Bot")
     logger.info("=" * 50)
