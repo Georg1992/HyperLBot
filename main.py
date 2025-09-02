@@ -30,8 +30,9 @@ from config.config import config
 from core.constants import constants
 from core.instance_manager import instance_manager, check_single_instance
 
-# Global variable to track active bot instance for graceful shutdown
+# Global variables to track active instances for graceful shutdown
 active_bot_instance = None
+dashboard_started_this_session = False
 
 def signal_handler(signum, frame):
     """Handle Ctrl+C and other termination signals"""
@@ -112,30 +113,31 @@ def check_and_install_dependencies():
 
 def start_dashboard():
     """Start the real-time dashboard in a background thread"""
+    global dashboard_started_this_session
+    
     try:
         from web_dashboard import create_dashboard, EventDrivenTradingDashboard
         
-        # Check if dashboard is already running
+        # Check if dashboard is already running (thorough check)
+        logger.info("🔍 Checking for existing dashboard...")
         if EventDrivenTradingDashboard.is_dashboard_running(
             host=constants.DEFAULT_DASHBOARD_HOST, 
             port=constants.DEFAULT_DASHBOARD_PORT
         ):
-            logger.info("✅ Dashboard is already running!")
-            logger.info(f"🌐 Dashboard is available at: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
+            logger.success("✅ Existing dashboard detected - connecting to it!")
+            logger.info(f"🌐 Dashboard URL: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
+            logger.info("🔗 Bot will use existing dashboard (no new instance created)")
+            logger.info("🚫 No browser opening (preventing conflicts)")
             
-            # Check if there are active browser connections
-            if EventDrivenTradingDashboard.has_active_browser_connections(
-                host=constants.DEFAULT_DASHBOARD_HOST, 
-                port=constants.DEFAULT_DASHBOARD_PORT
-            ):
-                logger.info("🔗 Dashboard is already open in browser - bot will connect automatically")
-                logger.info("💡 Data will start flowing to your existing dashboard")
-            else:
-                logger.info("🔗 Bot will connect to existing dashboard automatically")
-                logger.info("💡 Please open the dashboard in your browser to see the data")
-                logger.info(f"   URL: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
-            
+            dashboard_started_this_session = True  # Mark as handled
             return True
+        
+        # Check if we already started dashboard this session
+        if dashboard_started_this_session:
+            logger.info("✅ Dashboard already started this session - reusing")
+            return True
+        
+        logger.info("🚀 Starting new dashboard instance...")
         
         def run_dashboard():
             try:
@@ -153,21 +155,18 @@ def start_dashboard():
         dashboard_thread.start()
         
         # Wait for dashboard to become available
-        logger.info("⏳ Waiting for dashboard to start...")
+        logger.info("⏳ Waiting for new dashboard to start...")
         if EventDrivenTradingDashboard.wait_for_dashboard(
             host=constants.DEFAULT_DASHBOARD_HOST, 
             port=constants.DEFAULT_DASHBOARD_PORT, 
             timeout=10
         ):
-            logger.info("✅ Dashboard started successfully!")
+            logger.success("✅ New dashboard started successfully!")
+            logger.info(f"🌐 Dashboard URL: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
+            logger.info("💡 Please open the URL in your browser to view the dashboard")
+            logger.info("🚫 Auto-browser disabled (preventing conflicts with existing browser instances)")
             
-            # Open browser automatically only if dashboard is newly started
-            try:
-                webbrowser.open(f'http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}')
-                logger.info("🌐 Real-time dashboard opened automatically in browser")
-            except Exception as e:
-                logger.warning(f"Could not open browser automatically: {e}")
-                logger.info(f"💡 Please open http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT} manually")
+            dashboard_started_this_session = True  # Mark as started this session
         else:
             logger.warning("⚠️ Dashboard may not have started properly")
             logger.info(f"💡 Please check if dashboard is available at: http://{constants.DEFAULT_DASHBOARD_HOST}:{constants.DEFAULT_DASHBOARD_PORT}")
