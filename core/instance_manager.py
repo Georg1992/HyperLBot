@@ -128,6 +128,11 @@ class SingleInstanceManager:
     
     def _write_lock_file(self, data: Dict[str, Any]):
         """Write lock file data"""
+        # Ensure directory exists for lock file (create data/temp/ if missing after cleanup)
+        lock_dir = os.path.dirname(self.lock_file)
+        if lock_dir:  # Only create if there's actually a directory path
+            os.makedirs(lock_dir, exist_ok=True)
+        
         with open(self.lock_file, 'w') as f:
             import json
             json.dump(data, f, indent=2)
