@@ -118,17 +118,29 @@ class SystemInitializer:
             logger.error(f"❌ Failed to initialize candle buffers: {e}")
     
     def _ensure_env_file(self):
-        """Ensure .env file exists with basic configuration"""
+        """Ensure .env file exists with complete configuration from template"""
         env_file = ".env"
+        env_example = "env_example.txt"
+        
         if not os.path.exists(env_file):
-            logger.warning("⚠️ .env file not found, creating basic template...")
+            logger.warning("⚠️ .env file not found, creating from template...")
             try:
-                with open(env_file, 'w') as f:
-                    f.write("# HyperLBot Configuration\n")
-                    f.write("WALLET_ADDRESS=your_wallet_address\n")
-                    f.write("WALLET_PRIVATE_KEY=your_private_key\n")
-                    f.write("LOG_LEVEL=INFO\n")
-                logger.info("📝 Basic .env file created - please configure your wallet credentials")
+                # Copy complete template if it exists
+                if os.path.exists(env_example):
+                    import shutil
+                    shutil.copy2(env_example, env_file)
+                    logger.info("📝 Complete .env file created from env_example.txt")
+                    logger.warning("⚠️ Please configure wallet credentials and adjust settings in .env")
+                else:
+                    # Fallback: create basic template
+                    with open(env_file, 'w') as f:
+                        f.write("# HyperLBot Configuration\n")
+                        f.write("WALLET_ADDRESS=your_wallet_address\n")
+                        f.write("WALLET_PRIVATE_KEY=your_private_key\n")
+                        f.write("TRADING_MODE=paper\n")
+                        f.write("LOG_LEVEL=INFO\n")
+                        f.write("DASHBOARD_PORT=5002\n")
+                    logger.info("📝 Basic .env file created - please configure your settings")
             except Exception as e:
                 logger.error(f"❌ Could not create .env file: {e}")
     
