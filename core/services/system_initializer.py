@@ -38,6 +38,9 @@ class SystemInitializer:
             # Initialize market data
             market_data_service.initialize_yahoo_rsi()
             
+            # AUTO-TEST: RSI accuracy validation for scalping (when API works)
+            self._validate_rsi_accuracy(connection_result["hyperliquid_api"])
+            
             # Initialize candle buffers
             self._initialize_candle_buffers()
             
