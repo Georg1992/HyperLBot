@@ -195,21 +195,8 @@ class MarketDataManager:
         self._cache_data(cache_key, result, self._indicator_cache_duration)
         return result
     
-    def calculate_yahoo_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
-        """Calculate baseline RSI from Yahoo candles using global RSICalculator (single source)"""
-        return global_rsi_calculator.calculate_yahoo_baseline_rsi(candles, periods)
-    
-    def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
-        """Update real-time RSI scientifically using global RSICalculator (single source)"""
-        return global_rsi_calculator.update_realtime_rsi(new_price)
-    
-    def get_current_rsi_data(self) -> Dict[str, Any]:
-        """Get current RSI data using global RSICalculator (single source)"""
-        return global_rsi_calculator.get_current_rsi_data()
-    
-    def calculate_rsi_from_candles(self, candles: List[Dict], periods: int = 14) -> float:
-        """Calculate RSI using RSICalculator (SRP - ALL calculations in RSICalculator)"""
-        return global_rsi_calculator.calculate_standalone_rsi(candles, periods)
+# CLEANED: RSI wrapper methods removed - use global_rsi_calculator directly (SRP)
+# All RSI calculations now happen in RSICalculator (single responsibility)
 
     # _categorize_5m_volatility_for_trading() moved to VolatilityCalculator (proper volatility logic location)
 
@@ -254,8 +241,8 @@ class MarketDataManager:
             trend_5m = self.calculate_trend(candles_5m, "5m") if candles_5m else {"trend": "NEUTRAL"}
             trend_1h = self.calculate_trend(candles_1h, "1h") if candles_1h else {"trend": "NEUTRAL"}
             
-            # Calculate RSI from Yahoo 5m candles (proper candle-based calculation)
-            rsi_5m = self.calculate_rsi_from_candles(candles_5m)
+            # Calculate RSI from Yahoo 5m candles (using global RSICalculator directly)
+            rsi_5m = global_rsi_calculator.calculate_standalone_rsi(candles_5m)
             logger.debug(f"📊 Yahoo analysis RSI calculated: {rsi_5m:.2f} from 5m candles")
             
             # Calculate volume analysis using VolumeCalculator (proper delegation)

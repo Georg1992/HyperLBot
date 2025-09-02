@@ -149,12 +149,11 @@ class TradingOrchestrator:
                         # FIXED: Real-time RSI interpolation (proper method between Yahoo points)
                         try:
                             # Calculate FIXED real-time RSI (interpolation, not broken tick-by-tick)
-                            from core.market_data_manager import market_data_manager
-                            rsi_data = market_data_manager.update_realtime_rsi(current_price)
+                            from core.market_data_manager import global_rsi_calculator
+                            rsi_data = global_rsi_calculator.update_realtime_rsi(current_price)
                             current_rsi = rsi_data.get("rsi", 50.0)
                             
-                            # LOG FIXED RSI VALUES for tracking accuracy
-                            logger.info(f"⚡ FIXED RSI: {current_rsi:.2f} at ${current_price:,.2f}")
+                            # Real-time RSI logging removed - was spamming console
                             
                             # Update dashboard with fixed real-time RSI + price
                             from core.dashboard.dashboard_data_manager import simple_rtm
