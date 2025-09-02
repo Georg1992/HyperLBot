@@ -118,31 +118,108 @@ class SystemInitializer:
             logger.error(f"❌ Failed to initialize candle buffers: {e}")
     
     def _ensure_env_file(self):
-        """Ensure .env file exists with complete configuration from template"""
+        """Ensure .env file exists with interactive wallet credential setup"""
         env_file = ".env"
         env_example = "env_example.txt"
         
         if not os.path.exists(env_file):
-            logger.warning("⚠️ .env file not found, creating from template...")
+            logger.warning("⚠️ .env file not found - Interactive setup required")
+            print("\n" + "="*60)
+            print("🔧 FIRST-TIME SETUP: Environment Configuration")
+            print("="*60)
+            
             try:
-                # Copy complete template if it exists
+                # Interactive wallet credential input
+                print("\n🔐 WALLET CREDENTIALS SETUP:")
+                print("💭 For production trading, you need Hyperliquid wallet credentials")
+                print("💭 For paper trading, you can leave these empty (just press Enter)")
+                print()
+                
+                wallet_address = input("📍 Enter your Hyperliquid wallet address (or press Enter for paper trading): ").strip()
+                if not wallet_address:
+                    wallet_address = "your_wallet_address_here"
+                    print("   ✅ Using placeholder (paper trading mode)")
+                
+                wallet_private_key = input("🔐 Enter your Hyperliquid private key (or press Enter for paper trading): ").strip()
+                if not wallet_private_key:
+                    wallet_private_key = "your_private_key_here"
+                    print("   ✅ Using placeholder (paper trading mode)")
+                
+                # Trading mode selection
+                print("\n⚙️ TRADING MODE SELECTION:")
+                print("1. Paper Trading (Safe - No real money)")
+                print("2. Production Trading (Real money - Requires valid wallet)")
+                
+                while True:
+                    mode_choice = input("Choose trading mode (1 or 2): ").strip()
+                    if mode_choice == "1":
+                        trading_mode = "paper"
+                        print("   ✅ Paper trading mode selected (safe)")
+                        break
+                    elif mode_choice == "2":
+                        trading_mode = "production"
+                        print("   ⚠️ Production mode selected (real money!)")
+                        if wallet_address == "your_wallet_address_here" or wallet_private_key == "your_private_key_here":
+                            print("   ❌ Production mode requires valid wallet credentials!")
+                            continue
+                        break
+                    else:
+                        print("   ❌ Please enter 1 or 2")
+                
+                # Generate .env file
                 if os.path.exists(env_example):
-                    import shutil
-                    shutil.copy2(env_example, env_file)
-                    logger.info("📝 Complete .env file created from env_example.txt")
-                    logger.warning("⚠️ Please configure wallet credentials and adjust settings in .env")
+                    # Read template and replace placeholders
+                    with open(env_example, 'r') as f:
+                        template_content = f.read()
+                    
+                    # Replace placeholders with user input
+                    env_content = template_content.replace(
+                        "WALLET_ADDRESS=your_wallet_address_here", 
+                        f"WALLET_ADDRESS={wallet_address}"
+                    ).replace(
+                        "WALLET_PRIVATE_KEY=your_private_key_here", 
+                        f"WALLET_PRIVATE_KEY={wallet_private_key}"
+                    ).replace(
+                        "TRADING_MODE=paper", 
+                        f"TRADING_MODE={trading_mode}"
+                    )
+                    
+                    with open(env_file, 'w') as f:
+                        f.write(env_content)
+                    
+                    logger.success("✅ Complete .env file created with your credentials!")
                 else:
-                    # Fallback: create basic template
+                    # Fallback: create basic template with user input
                     with open(env_file, 'w') as f:
                         f.write("# HyperLBot Configuration\n")
-                        f.write("WALLET_ADDRESS=your_wallet_address\n")
-                        f.write("WALLET_PRIVATE_KEY=your_private_key\n")
-                        f.write("TRADING_MODE=paper\n")
+                        f.write(f"WALLET_ADDRESS={wallet_address}\n")
+                        f.write(f"WALLET_PRIVATE_KEY={wallet_private_key}\n")
+                        f.write(f"TRADING_MODE={trading_mode}\n")
                         f.write("LOG_LEVEL=INFO\n")
                         f.write("DASHBOARD_PORT=5002\n")
-                    logger.info("📝 Basic .env file created - please configure your settings")
+                    
+                    logger.success("✅ Basic .env file created with your credentials!")
+                
+                print("\n🎯 SETUP COMPLETE!")
+                print(f"📍 Configuration saved to: {env_file}")
+                if trading_mode == "paper":
+                    print("💡 You can start trading safely with paper trading mode")
+                else:
+                    print("⚠️ Production mode enabled - real money will be used!")
+                print()
+                
             except Exception as e:
-                logger.error(f"❌ Could not create .env file: {e}")
+                logger.error(f"❌ Error during interactive setup: {e}")
+                # Create minimal fallback
+                try:
+                    with open(env_file, 'w') as f:
+                        f.write("# HyperLBot Configuration\n")
+                        f.write("WALLET_ADDRESS=your_wallet_address_here\n")
+                        f.write("WALLET_PRIVATE_KEY=your_private_key_here\n")
+                        f.write("TRADING_MODE=paper\n")
+                    logger.info("📝 Fallback .env file created")
+                except:
+                    logger.error("❌ Could not create any .env file")
     
     def _test_api_connections(self, hyperliquid_api) -> Dict[str, Any]:
         """Test API connections"""
