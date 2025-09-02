@@ -46,7 +46,7 @@ class PredictionEngine:
             from core.constants import technical_constants
             rsi_value = market_data.get("rsi", technical_constants.RSI_NEUTRAL)
             
-            # Prediction engine using calibrated real-time RSI (no logging to prevent spam)
+            # Prediction engine using calibrated real-time RSI (clean, no spam logging)
             
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
@@ -100,8 +100,14 @@ class PredictionEngine:
         """
         try:
             # Convert Yahoo analysis to market data format for structured prediction
+            from core.market_data_manager import global_rsi_calculator
+            from core.constants import technical_constants
+            rsi_data = global_rsi_calculator.get_current_rsi_data()
+            current_rsi = rsi_data.get("rsi", yahoo_analysis.get("rsi_5m", technical_constants.RSI_NEUTRAL))
+            
             market_data = {
                 "current_price": current_price,
+                "rsi": current_rsi,  # Use real-time RSI (no more hardcoded 50.0)
                 "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
                 # volume_category removed - uses orderbook depth categorization from TradingBot instead
                 "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
