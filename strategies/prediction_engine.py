@@ -20,6 +20,7 @@ class PredictionEngine:
     def __init__(self, strategy_config: Dict[str, Any]):
         self.strategy_config = strategy_config
         self.config = TradingConfig()
+        self.session_manager = None  # Will be set by SessionOrchestrator for historical context
         
         # Standardized high volume categories for consistent usage
         self.high_volume_categories = [
@@ -29,6 +30,16 @@ class PredictionEngine:
         ]
         
         logger.info("🎯 Clean Prediction Engine initialized")
+    
+    def set_session_manager(self, session_manager):
+        """Set session manager reference for accessing historical context (for enhanced predictions)"""
+        self.session_manager = session_manager
+    
+    def get_historical_context(self) -> Dict[str, Any]:
+        """Get session historical context for enhanced prediction decisions"""
+        if self.session_manager and self.session_manager.has_historical_context():
+            return self.session_manager.get_historical_context()
+        return {}
     
     def generate_structured_prediction(self, market_data: Dict[str, Any], historical_analysis: Dict[str, Any] = None) -> Dict[str, Any]:
         """

@@ -122,8 +122,14 @@ class SessionOrchestrator:
         """Main trading loop"""
         trades_placed = 0
         
-        # Set session manager reference in trading engine (for historical context access)
-        trading_engine.set_session_manager(self.session_manager)
+        # Set session manager reference in DECISION engines (for historical context access)
+        if hasattr(trading_engine, 'prediction_engine'):
+            trading_engine.prediction_engine.set_session_manager(self.session_manager)
+            logger.debug("📊 PredictionEngine: Historical context access enabled")
+        
+        # TODO: Set for ReactiveEngine when it's integrated into trading flow
+        # if hasattr(trading_engine, 'reactive_engine'):
+        #     trading_engine.reactive_engine.set_session_manager(self.session_manager)
         
         logger.info(f"🔄 Starting main trading loop (max_trades: {max_trades}, interval: {check_interval}s)")
         

@@ -24,6 +24,7 @@ class ReactiveEngine:
     def __init__(self, strategy_config: Dict[str, Any]):
         self.strategy_config = strategy_config
         self.config = TradingConfig()
+        self.session_manager = None  # Will be set by SessionOrchestrator for historical context
         
         # Reactive thresholds for immediate action
         self.momentum_breakout_threshold = 0.02  # 2% price move
@@ -32,6 +33,16 @@ class ReactiveEngine:
         self.accumulation_price_threshold = 0.005 # 0.5% price range
         
         logger.info("⚡ Reactive Engine initialized - Reactive trading engine")
+    
+    def set_session_manager(self, session_manager):
+        """Set session manager reference for accessing historical context (for enhanced reactions)"""
+        self.session_manager = session_manager
+    
+    def get_historical_context(self) -> Dict[str, Any]:
+        """Get session historical context for enhanced reactive decisions"""
+        if self.session_manager and self.session_manager.has_historical_context():
+            return self.session_manager.get_historical_context()
+        return {}
     
     def generate_structured_reaction(self, market_data: Dict[str, Any], pattern_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
