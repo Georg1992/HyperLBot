@@ -59,7 +59,7 @@ class EventDrivenTradingDashboard:
         logger.info("🚀 Event-Driven Trading Dashboard initialized with WebSocket support")
     
     @staticmethod
-    def is_dashboard_running(host='localhost', port=5002) -> bool:
+    def is_dashboard_running(host='localhost', port=5002, log_detection=True) -> bool:
         """Check if dashboard is already running and accessible"""
         # Try multiple host addresses since dashboard binds to 0.0.0.0
         test_hosts = ['localhost', '127.0.0.1', '0.0.0.0']
@@ -69,7 +69,8 @@ class EventDrivenTradingDashboard:
                 # Try to connect to the dashboard health endpoint
                 response = requests.get(f'http://{test_host}:{port}/health', timeout=2)
                 if response.status_code == 200:
-                    logger.info(f"✅ Dashboard already running on {test_host}:{port}")
+                    if log_detection:
+                        logger.info(f"✅ Dashboard already running on {test_host}:{port}")
                     return True
             except requests.exceptions.RequestException:
                 continue
@@ -95,7 +96,8 @@ class EventDrivenTradingDashboard:
         """Wait for dashboard to become available"""
         start_time = time.time()
         while time.time() - start_time < timeout:
-            if EventDrivenTradingDashboard.is_dashboard_running(host, port):
+            # Don't log detection here - this is just waiting for the new dashboard to start
+            if EventDrivenTradingDashboard.is_dashboard_running(host, port, log_detection=False):
                 return True
             time.sleep(magic_numbers.DASHBOARD_SLEEP_INTERVAL)
         return False

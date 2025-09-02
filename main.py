@@ -163,8 +163,10 @@ def start_dashboard():
         dashboard_thread = threading.Thread(target=run_dashboard, daemon=True)
         dashboard_thread.start()
         
-        # Wait for dashboard to become available
+        # Wait for dashboard to become available (give it time to start)
         logger.info("⏳ Waiting for new dashboard to start...")
+        time.sleep(1)  # Give dashboard thread time to start
+        
         if EventDrivenTradingDashboard.wait_for_dashboard(
             host=constants.DEFAULT_DASHBOARD_HOST, 
             port=constants.DEFAULT_DASHBOARD_PORT, 
