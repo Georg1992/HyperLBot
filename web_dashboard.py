@@ -300,7 +300,7 @@ class EventDrivenTradingDashboard:
                 "connection_status": "✅ Connected"
             }
             
-            logger.debug(f"✅ Dashboard data from RTM - Balance: ${dashboard_data['session']['current_balance']:.2f}, Session: {dashboard_data['session']['session_id']}")
+            # Dashboard data logging removed - was spamming every 2 seconds
             return dashboard_data
             
         except Exception as e:

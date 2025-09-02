@@ -46,8 +46,7 @@ class PredictionEngine:
             from core.constants import technical_constants
             rsi_value = market_data.get("rsi", technical_constants.RSI_NEUTRAL)
             
-            # Log the RSI value being used for debugging
-            logger.info(f"🎯 PREDICTION ENGINE: Using RSI from Yahoo analysis: {rsi_value}")
+            # Prediction engine using calibrated real-time RSI (no logging to prevent spam)
             
             trend = market_data.get("trend", "NEUTRAL")
             volume_category = market_data.get("volume_category", "NORMAL")
