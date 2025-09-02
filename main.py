@@ -215,6 +215,12 @@ def main():
         elif choice == "2":
             run_real_trading()
         elif choice == "3":
+            # Ensure .env file exists before starting dashboard
+            logger.info("🔧 Validating configuration...")
+            from core.services.system_initializer import SystemInitializer
+            temp_initializer = SystemInitializer(config)
+            temp_initializer._ensure_env_file()  # Interactive .env setup if missing
+            
             logger.info("Starting Dashboard Only...")
             if start_dashboard():
                 logger.info("✅ Real-time dashboard started successfully!")
