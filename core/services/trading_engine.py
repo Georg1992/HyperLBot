@@ -25,8 +25,19 @@ class TradingEngine:
         # Trading state
         self.strategy_name = strategy_config.get("name", "standard")
         self.last_trade_time = 0
+        self.session_manager = None  # Will be set by SessionOrchestrator
         
         logger.info("🧠 Trading Engine initialized - Core trading decisions")
+    
+    def set_session_manager(self, session_manager):
+        """Set session manager reference for accessing historical context (business logic)"""
+        self.session_manager = session_manager
+    
+    def get_historical_context(self) -> Dict[str, Any]:
+        """Get session historical context for strategy decisions"""
+        if self.session_manager and self.session_manager.has_historical_context():
+            return self.session_manager.get_historical_context()
+        return {}
     
     def should_trade(self, hyperliquid_price: float, yahoo_analysis: Dict[str, Any], hyperliquid_api) -> Dict[str, Any]:
         """Core trading decision logic"""
@@ -121,12 +132,27 @@ class TradingEngine:
         return self.position_lifecycle_manager.get_open_positions()
     
     def _auto_detect_strategy(self, yahoo_analysis: Dict[str, Any], current_price: float) -> str:
-        """Auto-detect optimal strategy based on market conditions"""
+        """Auto-detect optimal strategy based on market conditions + historical context"""
         try:
             volatility_5m = yahoo_analysis.get("volatility_5m", 0.0)
             trend_5m = yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL")
             
-            # Strategy detection logic
+            # Get historical context for enhanced strategy selection
+            historical_context = self.get_historical_context()
+            if historical_context:
+                # Use historical recommendations if available
+                recommended_strategy = historical_context.get("strategy_recommendations", {}).get("primary", "standard")
+                market_regime = historical_context.get("market_regime", {}).get("regime", "UNKNOWN")
+                
+                logger.debug(f"🧠 Historical context: {market_regime} regime suggests {recommended_strategy}")
+                
+                # Enhanced strategy detection with historical context
+                if market_regime in ["RANGING", "TIGHT_RANGING"] and trend_5m == "SIDEWAYS":
+                    return "range_trading"  # TODO: Implement range trading strategy
+                elif volatility_5m < 0.05 and trend_5m in ["WEAK_UPTREND", "WEAK_DOWNTREND"]:
+                    return "micro_scalping"  # TODO: Implement micro scalping strategy
+            
+            # Fallback to current logic if no historical context
             if volatility_5m > 0.25:  # High volatility
                 return "high_volatility"
             elif volatility_5m < 0.05:  # Low volatility

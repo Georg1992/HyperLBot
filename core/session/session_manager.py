@@ -42,6 +42,25 @@ class SessionManager:
         
         logger.success("📅 Enhanced Session Manager initialized")
     
+    def set_historical_context(self, historical_context: Dict[str, Any]):
+        """Store historical context for session (business logic data for strategies)"""
+        try:
+            self.historical_context = historical_context
+            logger.info(f"📊 Historical context stored: {historical_context.get('market_regime', {}).get('regime', 'UNKNOWN')} regime")
+        except Exception as e:
+            logger.error(f"❌ Failed to store historical context: {e}")
+    
+    def get_historical_context(self) -> Dict[str, Any]:
+        """Get historical context for strategy decisions (business logic access)"""
+        if self.historical_context is None:
+            logger.warning("⚠️ Historical context not computed yet")
+            return {}
+        return self.historical_context
+    
+    def has_historical_context(self) -> bool:
+        """Check if historical context is available"""
+        return self.historical_context is not None
+    
     def start_session(self, session_id: str = None, strategy: str = "standard", initial_balance: float = None) -> str:
         from core.constants import MagicNumbers
         if initial_balance is None:
@@ -58,23 +77,26 @@ class SessionManager:
                 
                 self.current_session_id = session_id
                 
-                # Store session data
-                self.current_session_data = {
-                    "session_id": session_id,
-                    "start_time": datetime.now().isoformat(),
-                    "status": "ACTIVE",
-                    "strategy": strategy,
-                    "initial_balance": initial_balance,
-                    "current_balance": initial_balance,
-                    "total_trades": 0,
-                    "winning_trades": 0,
-                    "losing_trades": 0,
-                    "total_pnl": 0.0,
-                    "win_rate": 0.0,
-                    "balance_change": 0.0,
-                    "balance_change_pct": 0.0,
-                    "session_time": "0m"  # Pre-calculated session time
-                }
+                        # Store session data
+        self.current_session_data = {
+            "session_id": session_id,
+            "start_time": datetime.now().isoformat(),
+            "status": "ACTIVE",
+            "strategy": strategy,
+            "initial_balance": initial_balance,
+            "current_balance": initial_balance,
+            "total_trades": 0,
+            "winning_trades": 0,
+            "losing_trades": 0,
+            "total_pnl": 0.0,
+            "win_rate": 0.0,
+            "balance_change": 0.0,
+            "balance_change_pct": 0.0,
+            "session_time": "0m"  # Pre-calculated session time
+        }
+        
+        # Initialize historical context storage (business logic data for strategies)
+        self.historical_context = None
                 
                 # Calculate and update session time before syncing
                 self._update_session_time()

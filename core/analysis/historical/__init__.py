@@ -14,5 +14,6 @@ and provide analysis for backtesting and trend identification.
 
 from .historical_data_coordinator import MarketDataAnalyzer
 from .variability_analyzer import VariabilityAnalyzer
+from .session_context_analyzer import SessionContextAnalyzer
 
-__all__ = ['MarketDataAnalyzer', 'VariabilityAnalyzer']
+__all__ = ['MarketDataAnalyzer', 'VariabilityAnalyzer', 'SessionContextAnalyzer']

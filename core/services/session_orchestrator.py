@@ -61,9 +61,12 @@ class SessionOrchestrator:
             dashboard_service.rtm_updater.clear_rtm_cache()
             logger.info("🧹 Dashboard cache cleared - Fresh session data")
             
-            # Start session
+            # Start session  
             self.session_manager = SessionManager()
             logger.info("✅ SessionManager initialized")
+            
+            # COMPUTE HISTORICAL CONTEXT for session (business logic data)
+            self._compute_and_store_historical_context()
             
             # Create initial heartbeat
             dashboard_service.create_initial_heartbeat(self.session_manager, "standard", self.initial_balance)
@@ -86,10 +89,41 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Failed to start session: {e}")
     
+    def _compute_and_store_historical_context(self):
+        """Compute historical context once per session and store in SessionManager"""
+        try:
+            logger.info("📊 Computing session historical context (6.5 weeks analysis)...")
+            
+            # Import historical analyzer
+            from core.analysis.historical.session_context_analyzer import SessionContextAnalyzer
+            from core.external.yahoo_data_fetcher import YahooDataFetcher
+            
+            # Get historical data for context analysis
+            yahoo_fetcher = YahooDataFetcher()
+            candles_1d = yahoo_fetcher.get_klines("BTC-USD", "1d", 45)  # 6.5 weeks
+            candles_1h = yahoo_fetcher.get_klines("BTC-USD", "1h", 84)  # 3.5 days  
+            candles_5m = yahoo_fetcher.get_klines("BTC-USD", "5m", 30)  # 2.5 hours
+            
+            # Analyze historical context
+            context_analyzer = SessionContextAnalyzer()
+            historical_context = context_analyzer.analyze_session_context(candles_1d, candles_1h, candles_5m)
+            
+            # Store in SessionManager (business logic layer)
+            self.session_manager.set_historical_context(historical_context)
+            
+            logger.success("✅ Session historical context computed and stored")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to compute historical context: {e}")
+            # Continue session without historical context (degraded but functional)
+    
     def _main_trading_loop(self, max_trades: int, check_interval: int, hyperliquid_api,
                           market_data_service, trading_engine, dashboard_service) -> Dict[str, Any]:
         """Main trading loop"""
         trades_placed = 0
+        
+        # Set session manager reference in trading engine (for historical context access)
+        trading_engine.set_session_manager(self.session_manager)
         
         logger.info(f"🔄 Starting main trading loop (max_trades: {max_trades}, interval: {check_interval}s)")
         
