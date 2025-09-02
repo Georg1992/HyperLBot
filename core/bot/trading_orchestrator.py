@@ -146,33 +146,34 @@ class TradingOrchestrator:
                         # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
                         
-                        # TRACK REAL-TIME RSI (for debugging accuracy issues)
+                        # FIXED: Real-time RSI interpolation (proper method between Yahoo points)
                         try:
-                            # Calculate real-time RSI and LOG every update
+                            # Calculate FIXED real-time RSI (interpolation, not broken tick-by-tick)
                             from core.market_data_manager import market_data_manager
                             rsi_data = market_data_manager.update_realtime_rsi(current_price)
                             current_rsi = rsi_data.get("rsi", 50.0)
                             
-                            # LOG EVERY REAL-TIME RSI VALUE for tracking
-                            logger.info(f"⚡ REAL-TIME RSI: {current_rsi:.2f} at ${current_price:,.2f}")
+                            # LOG FIXED RSI VALUES for tracking accuracy
+                            logger.info(f"⚡ FIXED RSI: {current_rsi:.2f} at ${current_price:,.2f}")
                             
-                            # Update dashboard with real-time RSI + price
+                            # Update dashboard with fixed real-time RSI + price
                             from core.dashboard.dashboard_data_manager import simple_rtm
                             existing_data = simple_rtm.get_market_data()
                             
-                            # Real-time updates between Yahoo correction points
+                            # Real-time RSI (now properly interpolated between Yahoo points)
                             existing_data.update({
                                 "current_price": current_price,
                                 "rsi": current_rsi,
                                 "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
                                 "timestamp": time.time(),
                                 "price_source": "hyperliquid_websocket_realtime",
-                                "rsi_source": "realtime_between_yahoo_corrections"
+                                "rsi_source": "fixed_interpolation_between_yahoo"
                             })
                             
                             self.dashboard_service.update_rtm_market(existing_data)
+                            
                         except Exception as e:
-                            logger.error(f"❌ Real-time RSI update failed: {e}")
+                            logger.error(f"❌ Fixed RSI update failed: {e}")
                 
                 self.market_data_service.hyperliquid_websocket.add_price_callback(on_price_update)
             
