@@ -109,11 +109,8 @@ class MarketDataService:
                         global_rsi_calculator.current_rsi = yahoo_rsi
                         global_rsi_calculator.baseline_rsi = yahoo_rsi
                         
-                        # Simple accuracy logging (clean)
-                        if accuracy_gap <= 2.0:
-                            logger.debug(f"✅ RSI accuracy: {accuracy_gap:.2f} gap - corrected to Yahoo {yahoo_rsi:.2f}")
-                        else:
-                            logger.info(f"🔧 RSI correction: {accuracy_gap:.2f} gap - reset to Yahoo {yahoo_rsi:.2f}")
+                        # Clean correction logging: Show both values at correction moment
+                        logger.info(f"📊 RSI Correction: Yahoo {yahoo_rsi:.2f} ← Real-time {current_realtime_rsi:.2f} (gap: {accuracy_gap:.2f})")
                 
                 return analysis
             else:
