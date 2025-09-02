@@ -233,6 +233,18 @@ def run_paper_trading():
     """Run the Hyperliquid paper trading bot for testing"""
     global active_bot_instance
     
+    # FIRST: Ensure .env file exists and validate credentials BEFORE any initialization
+    logger.info("🔧 Validating configuration...")
+    from core.services.system_initializer import SystemInitializer
+    temp_initializer = SystemInitializer(config)
+    temp_initializer._ensure_env_file()  # Interactive .env setup if missing
+    
+    # Reload config after potential .env creation
+    from dotenv import load_dotenv
+    load_dotenv(override=True)  # Reload environment variables
+    
+    logger.info("✅ Configuration validated - proceeding with bot initialization")
+    
     # Acquire instance lock
     with instance_manager:
         try:
