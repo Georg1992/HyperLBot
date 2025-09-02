@@ -129,39 +129,44 @@ class SystemInitializer:
             print("="*60)
             
             try:
-                # Interactive wallet credential input
-                print("\n🔐 WALLET CREDENTIALS SETUP:")
-                print("💭 For production trading, you need Hyperliquid wallet credentials")
-                print("💭 For paper trading, you can leave these empty (just press Enter)")
+                # ALWAYS require wallet credentials first
+                print("\n🔐 HYPERLIQUID WALLET CREDENTIALS REQUIRED:")
+                print("💭 Wallet credentials are needed for ALL modes (market data + trading)")
+                print("💭 Both paper trading and production need API access to Hyperliquid")
                 print()
                 
-                wallet_address = input("📍 Enter your Hyperliquid wallet address (or press Enter for paper trading): ").strip()
-                if not wallet_address:
-                    wallet_address = "your_wallet_address_here"
-                    print("   ✅ Using placeholder (paper trading mode)")
+                # Validate wallet credentials are provided
+                while True:
+                    wallet_address = input("📍 Enter your Hyperliquid wallet address (REQUIRED): ").strip()
+                    if wallet_address and wallet_address != "your_wallet_address_here":
+                        print("   ✅ Wallet address accepted")
+                        break
+                    else:
+                        print("   ❌ Wallet address is required for bot operation!")
                 
-                wallet_private_key = input("🔐 Enter your Hyperliquid private key (or press Enter for paper trading): ").strip()
-                if not wallet_private_key:
-                    wallet_private_key = "your_private_key_here"
-                    print("   ✅ Using placeholder (paper trading mode)")
+                while True:
+                    wallet_private_key = input("🔐 Enter your Hyperliquid private key (REQUIRED): ").strip()
+                    if wallet_private_key and wallet_private_key != "your_private_key_here":
+                        print("   ✅ Private key accepted")
+                        break
+                    else:
+                        print("   ❌ Private key is required for bot operation!")
                 
-                # Trading mode selection
+                # Trading mode selection AFTER credentials are validated
                 print("\n⚙️ TRADING MODE SELECTION:")
-                print("1. Paper Trading (Safe - No real money)")
-                print("2. Production Trading (Real money - Requires valid wallet)")
+                print("💡 Both modes use your wallet for market data access")
+                print("1. Paper Trading (Simulated trades - Safe)")
+                print("2. Production Trading (Real trades - Real money!)")
                 
                 while True:
                     mode_choice = input("Choose trading mode (1 or 2): ").strip()
                     if mode_choice == "1":
                         trading_mode = "paper"
-                        print("   ✅ Paper trading mode selected (safe)")
+                        print("   ✅ Paper trading mode selected (simulated trades)")
                         break
                     elif mode_choice == "2":
                         trading_mode = "production"
-                        print("   ⚠️ Production mode selected (real money!)")
-                        if wallet_address == "your_wallet_address_here" or wallet_private_key == "your_private_key_here":
-                            print("   ❌ Production mode requires valid wallet credentials!")
-                            continue
+                        print("   ⚠️ Production mode selected (REAL MONEY!)")
                         break
                     else:
                         print("   ❌ Please enter 1 or 2")
