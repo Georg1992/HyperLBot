@@ -335,7 +335,7 @@ class YahooDataFetcher:
     # Volume categorization logic REMOVED - moved to VolumeCalculator for clean architecture
     # YahooDataFetcher now focuses on raw data fetching only
     
-    # get_realtime_momentum_analysis removed - unused dead code with redundant RSI calculation
+    # get_realtime_momentum_analysis removed - unused dead code
 
 def main():
     """Test the Yahoo Finance data fetcher"""

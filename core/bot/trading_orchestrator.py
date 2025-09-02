@@ -146,9 +146,9 @@ class TradingOrchestrator:
                         # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
                         
-                        # FIXED: Real-time RSI interpolation (proper method between Yahoo points)
+                        # Real-time RSI updates (enhanced sensitivity for scalping)
                         try:
-                            # Calculate FIXED real-time RSI (interpolation, not broken tick-by-tick)
+                            # Calculate real-time RSI (enhanced sensitivity for scalping)
                             from core.market_data_manager import global_rsi_calculator
                             rsi_data = global_rsi_calculator.update_realtime_rsi(current_price)
                             current_rsi = rsi_data.get("rsi", 50.0)
@@ -166,13 +166,13 @@ class TradingOrchestrator:
                                 "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
                                 "timestamp": time.time(),
                                 "price_source": "hyperliquid_websocket_realtime",
-                                "rsi_source": "fixed_interpolation_between_yahoo"
+                                "rsi_source": "realtime_enhanced_sensitivity"
                             })
                             
                             self.dashboard_service.update_rtm_market(existing_data)
                             
                         except Exception as e:
-                            logger.error(f"❌ Fixed RSI update failed: {e}")
+                            logger.error(f"❌ Real-time RSI update failed: {e}")
                 
                 self.market_data_service.hyperliquid_websocket.add_price_callback(on_price_update)
             

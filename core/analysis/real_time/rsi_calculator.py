@@ -163,9 +163,8 @@ class RSICalculator:
     
     def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
         """
-        Update RSI scientifically on EVERY price tick (as shown in reference chart)
-        SCIENTIFIC METHOD: Wilder's smoothing applied to each price change
-        Reference chart shows: Continuous RSI updates with smooth line graph
+        Update real-time RSI between Yahoo correction points (enhanced sensitivity for scalping)
+        Method: RSI interpolation based on price movement with Yahoo baseline correction
         """
         try:
             if not self.rsi_initialized:
@@ -188,15 +187,15 @@ class RSICalculator:
                 # FIXED: RSI interpolation based on price movement (not broken tick-by-tick)
                 price_change_pct = (new_price - self.last_price) / self.last_price
                 
-                # RSI sensitivity: Realistic price-to-RSI relationship
-                # 1% price move ≈ 2-4 RSI points (based on market observations)
-                rsi_sensitivity = 2.5  # Moderate sensitivity
+                # RSI sensitivity: Enhanced responsiveness for scalping (user requested more sensitive)
+                # 1% price move ≈ 3-4 RSI points (increased from 2.5 for better responsiveness)
+                rsi_sensitivity = 3.5  # More sensitive for scalping accuracy
                 
                 # Calculate RSI adjustment based on price movement
                 rsi_adjustment = price_change_pct * 100 * rsi_sensitivity
                 
-                # Apply small adjustment to Yahoo baseline (stay close to Yahoo)
-                dampening = 0.2  # 20% of calculated adjustment (prevents wild swings)
+                # Apply adjustment to Yahoo baseline (increased responsiveness)
+                dampening = 0.35  # 35% of calculated adjustment (more responsive, still controlled)
                 self.current_rsi = self.baseline_rsi + (rsi_adjustment * dampening)
                 
                 # Keep RSI in valid range [0, 100]

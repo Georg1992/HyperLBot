@@ -218,9 +218,9 @@ class DataFetchingConstants:
     
     # Yahoo Finance Update Intervals (seconds)
     YAHOO_UPDATE_INTERVAL = 300      # 5 minutes for full analysis
-    RSI_UPDATE_INTERVAL = 30         # 30 seconds for RSI (optimized for profitability)
     HOURLY_UPDATE_INTERVAL = 900     # 15 minutes for 1h candles
     DAILY_UPDATE_INTERVAL = 3600     # 1 hour for daily candles
+    # RSI_UPDATE_INTERVAL removed - now real-time with Yahoo corrections
     
     # Cache Durations
     YAHOO_CACHE_DURATION = 5         # 5 seconds cache for ultra-frequent updates
