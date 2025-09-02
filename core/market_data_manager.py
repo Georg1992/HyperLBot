@@ -219,6 +219,9 @@ class MarketDataManager:
             candles_1h = yahoo_fetcher.get_klines(f"{symbol}-USD", "1h", 84)
             candles_1d = yahoo_fetcher.get_klines(f"{symbol}-USD", "1d", 45)
             
+            # Consolidated Yahoo fetch logging (single clean message)
+            logger.info(f"📊 Yahoo data: {len(candles_1m)}×1m, {len(candles_5m)}×5m, {len(candles_1h)}×1h, {len(candles_1d)}×1d candles retrieved")
+            
             if not candles_5m:
                 return {"error": "No Yahoo candle data available"}
                 

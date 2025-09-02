@@ -102,7 +102,7 @@ class YahooDataFetcher:
             if len(candles) > limit:
                 candles = candles[-limit:]
             
-            logger.info(f"✅ Retrieved {len(candles)} {interval} candles from Yahoo Finance")
+            # Individual candle retrieval logging removed - consolidated at analysis level
             return candles
             
         except Exception as e:
