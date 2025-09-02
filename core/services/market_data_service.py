@@ -80,7 +80,9 @@ class MarketDataService:
             
         except Exception as e:
             logger.error(f"❌ Failed to get RSI data: {e}")
-            return self._get_default_rsi_data(hyperliquid_price, str(e))
+            # Use RSICalculator's default data method (SRP - all RSI logic in RSICalculator)
+            from core.market_data_manager import global_rsi_calculator
+            return global_rsi_calculator._get_default_rsi_data()
     
     def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
         """Get market analysis from Yahoo Finance using centralized MarketDataManager"""
@@ -93,29 +95,25 @@ class MarketDataService:
             if "error" not in analysis:
                 logger.info(f"[CHART] Yahoo Finance analysis: ${analysis.get('current_price', 0):,.2f} - Market data retrieved")
                 
-                # YAHOO CORRECTION POINT: Calibrate real-time RSI when fresh Yahoo arrives
+                # YAHOO CORRECTION: Auto-correct real-time RSI with validated Yahoo RSI
                 yahoo_rsi = analysis.get("rsi_5m")
                 if yahoo_rsi:
                     from core.market_data_manager import global_rsi_calculator
                     
-                    # Check accuracy of real-time RSI before correction
+                    # Simple correction: Set real-time RSI to accurate Yahoo value
                     if global_rsi_calculator.rsi_initialized:
                         current_realtime_rsi = global_rsi_calculator.current_rsi
                         accuracy_gap = abs(current_realtime_rsi - yahoo_rsi)
                         
-                        logger.info(f"📊 Yahoo correction: Real-time {current_realtime_rsi:.2f} → Yahoo {yahoo_rsi:.2f} (gap: {accuracy_gap:.2f})")
-                        
-                        # Correct real-time RSI to Yahoo value (correction point)
+                        # Correct real-time RSI to Yahoo value (maintains accuracy)
                         global_rsi_calculator.current_rsi = yahoo_rsi
                         global_rsi_calculator.baseline_rsi = yahoo_rsi
                         
-                        # Log accuracy assessment
-                        if accuracy_gap <= 1.0:
-                            logger.info("✅ Real-time RSI accuracy: EXCELLENT")
-                        elif accuracy_gap <= 2.0:
-                            logger.info("✅ Real-time RSI accuracy: GOOD")
+                        # Simple accuracy logging (clean)
+                        if accuracy_gap <= 2.0:
+                            logger.debug(f"✅ RSI accuracy: {accuracy_gap:.2f} gap - corrected to Yahoo {yahoo_rsi:.2f}")
                         else:
-                            logger.warning(f"⚠️ Real-time RSI accuracy: NEEDS IMPROVEMENT")
+                            logger.info(f"🔧 RSI correction: {accuracy_gap:.2f} gap - reset to Yahoo {yahoo_rsi:.2f}")
                 
                 return analysis
             else:
@@ -190,41 +188,6 @@ class MarketDataService:
         self._cached_websocket_price = price
         self._last_price_update = time.time()
     
-    def _get_rsi_trend(self, rsi_value: float) -> str:
-        """Simple RSI trend determination"""
-        if rsi_value is None:
-            return "NEUTRAL"
-        elif rsi_value >= 70:
-            return "OVERBOUGHT"
-        elif rsi_value <= 30:
-            return "OVERSOLD"
-        elif rsi_value >= 60:
-            return "BULLISH"
-        elif rsi_value <= 40:
-            return "BEARISH"
-        else:
-            return "NEUTRAL"
-    
-    def _get_rsi_signal(self, rsi_value: float) -> str:
-        """Simple RSI signal determination"""
-        if rsi_value is None:
-            return "NEUTRAL"
-        elif rsi_value >= 70:
-            return "SELL"
-        elif rsi_value <= 30:
-            return "BUY"
-        else:
-            return "NEUTRAL"
-    
-    def _get_default_rsi_data(self, hyperliquid_price: float = None, error: str = "unknown") -> Dict[str, Any]:
-        """Get default RSI data structure when calculation fails"""
-        return {
-            "rsi": technical_constants.RSI_NEUTRAL,
-            "rsi_trend": "NEUTRAL",
-            "rsi_signal": "HOLD", 
-            "momentum": "NEUTRAL",
-            "confidence": 0.3,
-            "data_source": "fallback_default",
-            "error": error,
-            "hyperliquid_price": hyperliquid_price or 0.0
-        }
+# CLEANED: Redundant RSI helper methods removed - ALL RSI logic now in RSICalculator (SRP)
+# Removed: _get_rsi_trend(), _get_rsi_signal(), _get_default_rsi_data()
+# Use: global_rsi_calculator methods instead (single source of truth)
