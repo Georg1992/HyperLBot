@@ -67,6 +67,10 @@ class MarketConditionsAnalyzer:
             if rsi_analysis["risk"] > 0:
                 risk_factors.extend(rsi_analysis["risk_factors"])
             
+            # Store neutral factors for override logic
+            neutral_rsi = rsi_analysis.get("neutral", False)
+            neutral_factors = rsi_analysis.get("neutral_factors", [])
+            
             # 4. TREND CONDITIONS
             trend_analysis = self._analyze_trend_conditions(trend)
             condition_factors.extend(trend_analysis["factors"])
@@ -84,9 +88,10 @@ class MarketConditionsAnalyzer:
             logger.debug(f"🔍 Total risk factors: {len(risk_factors)} - {risk_factors}")
             logger.debug(f"🔍 Total positive factors: {len(positive_factors)} - {positive_factors}")
             
-            # DETERMINE OVERALL TRADABILITY
+            # DETERMINE OVERALL TRADABILITY (with RSI override logic for scalping)
             overall_analysis = self._determine_overall_tradability(
-                risk_factors, positive_factors, condition_factors
+                risk_factors, positive_factors, condition_factors, 
+                neutral_rsi, volume_analysis, trend_analysis, volatility_analysis
             )
             
             result = {
@@ -156,6 +161,7 @@ class MarketConditionsAnalyzer:
         """Analyze volume for trading suitability"""
         factors = []
         risk_factors = []
+        positive_factors = []
         risk_level = 0
         
         if volume_category in ["VERY_LOW", "LOW"]:
@@ -168,13 +174,14 @@ class MarketConditionsAnalyzer:
             
         elif volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
             factors.append(f"{volume_category.lower().replace('_', ' ').title()} volume - strong market interest")
+            positive_factors = [f"Strong {volume_category.lower().replace('_', ' ')} volume activity"]  # Mark as positive for override
             
         return {
             "factors": factors,
             "risk": risk_level,
             "risk_factors": risk_factors,
-            "positive": volume_category in ["HIGH", "VERY_HIGH"],
-            "positive_factors": []
+            "positive": volume_category in ["HIGH", "VERY_HIGH", "EXTREME"],
+            "positive_factors": positive_factors
         }
     
     def _analyze_rsi_conditions(self, rsi: float) -> Dict[str, Any]:
@@ -187,10 +194,10 @@ class MarketConditionsAnalyzer:
         logger.debug(f"🔍 RSI Analysis: RSI={rsi:.1f}")
         
         if 45 <= rsi <= 55:
-            factors.append("RSI in neutral zone - unclear directional bias")
-            risk_factors.append("RSI dead zone - no clear signal")
-            risk_level = 2
-            logger.debug(f"🔍 RSI: Dead zone detected (45-55 range)")
+            factors.append("RSI in neutral zone - no directional bias (OVERRIDE possible)")
+            # RSI neutrality is NO LONGER a blocking risk factor (Option 3: Override)
+            risk_level = 0  # Changed from 2 to 0
+            logger.debug(f"🔍 RSI: Neutral zone (45-55) - can be overridden by strong factors")
             
         elif rsi <= 25 or rsi >= 75:
             factors.append(f"RSI extreme zone ({rsi:.1f}) - potential reversal risk")
@@ -207,20 +214,23 @@ class MarketConditionsAnalyzer:
             logger.debug(f"🔍 RSI: Overbought condition detected (>=65)")
         else:
             factors.append(f"RSI in tradable range ({rsi:.1f})")
-            logger.debug(f"🔍 RSI: Tradable range (35-65, not 45-55 dead zone)")
+            logger.debug(f"🔍 RSI: Tradable range (36-44 or 56-64)")
             
         return {
             "factors": factors,
             "risk": risk_level,
             "risk_factors": risk_factors,
             "positive": rsi <= 35 or rsi >= 65,  # Oversold/overbought are positive signals
-            "positive_factors": ["Strong RSI signal"] if (rsi <= 35 or rsi >= 65) else []
+            "positive_factors": ["Strong RSI signal"] if (rsi <= 35 or rsi >= 65) else [],
+            "neutral": 45 <= rsi <= 55,  # Flag neutral zone for override logic
+            "neutral_factors": ["RSI neutral zone"] if 45 <= rsi <= 55 else []
         }
     
     def _analyze_trend_conditions(self, trend: str) -> Dict[str, Any]:
         """Analyze trend for trading suitability"""
         factors = []
         risk_factors = []
+        positive_factors = []
         risk_level = 0
         
         if trend == "SIDEWAYS":
@@ -235,9 +245,11 @@ class MarketConditionsAnalyzer:
             
         elif trend in ["UPTREND", "DOWNTREND"]:
             factors.append(f"{trend.lower()} - good directional momentum")
+            positive_factors = [f"Strong {trend.lower()} momentum"]  # Mark as positive for override
             
         elif trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
             factors.append(f"{trend.replace('_', ' ').lower()} - excellent momentum")
+            positive_factors = [f"Excellent {trend.replace('_', ' ').lower()} momentum"]  # Mark as positive for override
             
         else:  # NEUTRAL or unknown
             factors.append("Neutral trend - no clear direction")
@@ -249,7 +261,7 @@ class MarketConditionsAnalyzer:
             "risk": risk_level,
             "risk_factors": risk_factors,
             "positive": trend in ["UPTREND", "DOWNTREND", "STRONG_UPTREND", "STRONG_DOWNTREND"],
-            "positive_factors": []
+            "positive_factors": positive_factors
         }
     
     def _analyze_historical_context(self, historical_context: Dict[str, Any], 
@@ -311,18 +323,47 @@ class MarketConditionsAnalyzer:
         }
     
     def _determine_overall_tradability(self, risk_factors: list, positive_factors: list, 
-                                     condition_factors: list) -> Dict[str, Any]:
-        """Determine overall market tradability"""
+                                     condition_factors: list, neutral_rsi: bool = False,
+                                     volume_analysis: Dict = None, trend_analysis: Dict = None, 
+                                     volatility_analysis: Dict = None) -> Dict[str, Any]:
+        """Determine overall market tradability with RSI override logic (Option 3: Scalping-friendly)"""
         
         total_risk_score = len(risk_factors)
         total_positive_score = len(positive_factors)
         
         # DEBUG: Log tradability decision process
-        logger.debug(f"🔍 Tradability Decision: {total_risk_score} risk factors, {total_positive_score} positive factors")
+        logger.debug(f"🔍 Tradability Decision: {total_risk_score} risk factors, {total_positive_score} positive factors, neutral_rsi={neutral_rsi}")
         
-        # UNTRADABLE CONDITIONS (high risk, multiple problems)
-        if total_risk_score >= 3:
-            logger.debug(f"🔍 UNTRADABLE: {total_risk_score} ≥ 3 risk factors")
+        # OPTION 3: OVERRIDE LOGIC - Strong factors can override RSI neutrality for scalping
+        strong_override_factors = []
+        
+        # Check for strong trend override (momentum trading)
+        if trend_analysis and trend_analysis.get("positive", False):
+            strong_override_factors.append("Strong trend momentum")
+            
+        # Check for strong volume override (volume spikes/breakouts)
+        if volume_analysis and volume_analysis.get("positive", False):
+            strong_override_factors.append("Strong volume activity")
+            
+        # Check for strong volatility override (momentum opportunities)
+        if volatility_analysis and volatility_analysis.get("positive", False):
+            strong_override_factors.append("Strong price movement volatility")
+        
+        # OVERRIDE LOGIC: RSI neutral zone can be overridden by strong factors
+        can_override_rsi_neutral = len(strong_override_factors) >= 1 and neutral_rsi
+        if can_override_rsi_neutral:
+            logger.info(f"⚡ RSI OVERRIDE: Neutral RSI overridden by: {', '.join(strong_override_factors)}")
+            # Remove RSI neutrality from blocking risk factors for this analysis
+            # Continue with normal logic but treat as if RSI is not neutral
+        
+        # UNTRADABLE CONDITIONS (high risk, multiple problems - but account for overrides)
+        effective_risk_score = total_risk_score
+        if can_override_rsi_neutral:
+            # If we can override RSI neutral, don't count RSI-related risks
+            effective_risk_score = max(0, total_risk_score - 1)  # Remove one risk factor for RSI override
+            
+        if effective_risk_score >= 3:
+            logger.debug(f"🔍 UNTRADABLE: {effective_risk_score} ≥ 3 effective risk factors (after overrides)")
             return {
                 "is_tradable": False,
                 "condition": "UNTRADABLE",
@@ -330,9 +371,9 @@ class MarketConditionsAnalyzer:
                 "confidence": 0.9
             }
         
-        # POOR CONDITIONS (some risk factors)
-        elif total_risk_score >= 2:
-            logger.debug(f"🔍 POOR: {total_risk_score} ≥ 2 risk factors")
+        # POOR CONDITIONS (some risk factors - after accounting for overrides)
+        elif effective_risk_score >= 2:
+            logger.debug(f"🔍 POOR: {effective_risk_score} ≥ 2 effective risk factors (after overrides)")
             return {
                 "is_tradable": False,
                 "condition": "POOR",
@@ -340,31 +381,41 @@ class MarketConditionsAnalyzer:
                 "confidence": 0.75
             }
         
-        # EXCELLENT CONDITIONS (multiple positive factors, low risk)
-        elif total_positive_score >= 2 and total_risk_score == 0:
+        # EXCELLENT CONDITIONS (multiple positive factors + override cases)
+        elif (total_positive_score >= 2 and effective_risk_score == 0) or (can_override_rsi_neutral and total_positive_score >= 1):
+            condition_level = "RSI_OVERRIDE_EXCELLENT" if can_override_rsi_neutral else "EXCELLENT"
+            logger.debug(f"🔍 {condition_level}: Strong factors override neutral RSI" if can_override_rsi_neutral else f"🔍 EXCELLENT: Natural excellent conditions")
             return {
                 "is_tradable": True,
                 "condition": "EXCELLENT",
                 "risk_level": "LOW",
-                "confidence": 0.85
+                "confidence": 0.85 if not can_override_rsi_neutral else 0.75  # Slightly lower confidence for overrides
             }
         
-        # GOOD CONDITIONS (some positive factors, minimal risk)
-        elif total_positive_score >= 1 and total_risk_score <= 1:
+        # GOOD CONDITIONS (some positive factors + override cases)
+        elif (total_positive_score >= 1 and effective_risk_score <= 1) or (can_override_rsi_neutral and len(strong_override_factors) >= 1):
+            condition_level = "RSI_OVERRIDE_GOOD" if can_override_rsi_neutral else "GOOD"
+            logger.debug(f"🔍 {condition_level}: Override or naturally good conditions")
             return {
                 "is_tradable": True,
                 "condition": "GOOD", 
                 "risk_level": "MODERATE",
-                "confidence": 0.7
+                "confidence": 0.7 if not can_override_rsi_neutral else 0.6  # Lower confidence for override
             }
         
         # MARGINAL CONDITIONS (neutral, proceed with caution)
         else:
+            # For neutral RSI with no strong overrides, still allow trading but lower confidence
+            confidence = 0.5
+            if neutral_rsi and len(strong_override_factors) == 0:
+                confidence = 0.4  # Lower confidence for truly neutral conditions
+                logger.debug(f"🔍 MARGINAL: Neutral RSI with no strong override factors")
+            
             return {
-                "is_tradable": True,  # Allow trading but with lower confidence
+                "is_tradable": True,  # Still allow trading (scalping-friendly approach)
                 "condition": "MARGINAL",
                 "risk_level": "MODERATE",
-                "confidence": 0.5
+                "confidence": confidence
             }
     
     def _get_default_conditions_analysis(self) -> Dict[str, Any]:
