@@ -79,6 +79,11 @@ class MarketConditionsAnalyzer:
             if context_analysis["risk"] > 0:
                 risk_factors.extend(context_analysis["risk_factors"])
             
+            # DEBUG: Log all analysis results before overall determination
+            logger.debug(f"🔍 Analysis Summary: RSI={rsi:.1f}, Trend={trend}, Vol={volatility_category}")
+            logger.debug(f"🔍 Total risk factors: {len(risk_factors)} - {risk_factors}")
+            logger.debug(f"🔍 Total positive factors: {len(positive_factors)} - {positive_factors}")
+            
             # DETERMINE OVERALL TRADABILITY
             overall_analysis = self._determine_overall_tradability(
                 risk_factors, positive_factors, condition_factors
@@ -95,9 +100,11 @@ class MarketConditionsAnalyzer:
                 "analysis_timestamp": market_data.get("timestamp", 0)
             }
             
-            # Log important condition changes
+            # Log important condition changes with DEBUG details
             if not overall_analysis["is_tradable"]:
-                logger.warning(f"🚫 UNTRADABLE CONDITIONS: {overall_analysis['condition']} - {', '.join(risk_factors[:2])}")
+                logger.warning(f"🚫 UNTRADABLE CONDITIONS: {overall_analysis['condition']}")
+                logger.debug(f"🔍 Risk factors: {risk_factors}")
+                logger.debug(f"🔍 All factors: {condition_factors}")
             elif overall_analysis["condition"] == "EXCELLENT":
                 logger.success(f"🎯 EXCELLENT trading conditions: {', '.join(positive_factors[:2])}")
             
@@ -176,30 +183,38 @@ class MarketConditionsAnalyzer:
         risk_factors = []
         risk_level = 0
         
+        # DEBUG: Log RSI analysis for troubleshooting
+        logger.debug(f"🔍 RSI Analysis: RSI={rsi:.1f}")
+        
         if 45 <= rsi <= 55:
             factors.append("RSI in neutral zone - unclear directional bias")
             risk_factors.append("RSI dead zone - no clear signal")
             risk_level = 2
+            logger.debug(f"🔍 RSI: Dead zone detected (45-55 range)")
             
         elif rsi <= 25 or rsi >= 75:
             factors.append(f"RSI extreme zone ({rsi:.1f}) - potential reversal risk")
             risk_factors.append("Extreme RSI - reversal risk")
             risk_level = 1
+            logger.debug(f"🔍 RSI: Extreme zone detected (<25 or >75)")
             
         elif rsi <= 35:
             factors.append(f"RSI oversold ({rsi:.1f}) - bullish potential")
+            logger.debug(f"🔍 RSI: Oversold condition detected (<=35)")
             
         elif rsi >= 65:
             factors.append(f"RSI overbought ({rsi:.1f}) - bearish potential")
+            logger.debug(f"🔍 RSI: Overbought condition detected (>=65)")
         else:
             factors.append(f"RSI in tradable range ({rsi:.1f})")
+            logger.debug(f"🔍 RSI: Tradable range (35-65, not 45-55 dead zone)")
             
         return {
             "factors": factors,
             "risk": risk_level,
             "risk_factors": risk_factors,
-            "positive": False,
-            "positive_factors": []
+            "positive": rsi <= 35 or rsi >= 65,  # Oversold/overbought are positive signals
+            "positive_factors": ["Strong RSI signal"] if (rsi <= 35 or rsi >= 65) else []
         }
     
     def _analyze_trend_conditions(self, trend: str) -> Dict[str, Any]:
@@ -302,8 +317,12 @@ class MarketConditionsAnalyzer:
         total_risk_score = len(risk_factors)
         total_positive_score = len(positive_factors)
         
+        # DEBUG: Log tradability decision process
+        logger.debug(f"🔍 Tradability Decision: {total_risk_score} risk factors, {total_positive_score} positive factors")
+        
         # UNTRADABLE CONDITIONS (high risk, multiple problems)
         if total_risk_score >= 3:
+            logger.debug(f"🔍 UNTRADABLE: {total_risk_score} ≥ 3 risk factors")
             return {
                 "is_tradable": False,
                 "condition": "UNTRADABLE",
@@ -313,6 +332,7 @@ class MarketConditionsAnalyzer:
         
         # POOR CONDITIONS (some risk factors)
         elif total_risk_score >= 2:
+            logger.debug(f"🔍 POOR: {total_risk_score} ≥ 2 risk factors")
             return {
                 "is_tradable": False,
                 "condition": "POOR",
