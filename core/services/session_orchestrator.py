@@ -142,6 +142,9 @@ class SessionOrchestrator:
             from core.market_data_manager import global_rsi_calculator
             rsi_data = global_rsi_calculator.get_current_rsi_data()
             
+            # MARKET CONDITIONS ANALYSIS for session prediction
+            from strategies.market_conditions_analyzer import global_conditions_analyzer
+            
             market_data = {
                 "current_price": current_price,
                 "rsi": rsi_data.get("rsi", yahoo_analysis.get("rsi_5m", 50.0)),
@@ -182,6 +185,23 @@ class SessionOrchestrator:
                 }
             }
             simple_rtm.add_signal(signal_data)
+            
+            # ANALYZE & STORE MARKET CONDITIONS for dashboard display
+            market_conditions_data = global_conditions_analyzer.analyze_trading_conditions(
+                market_data=market_data, 
+                historical_context=self.session_manager.get_historical_context()
+            )
+            
+            # Store market conditions in RTM for dashboard
+            simple_rtm.update_market({
+                "market_conditions": {
+                    "is_tradable": market_conditions_data["is_tradable"],
+                    "condition": market_conditions_data["condition"], 
+                    "risk_level": market_conditions_data["risk_level"],
+                    "main_reasons": market_conditions_data["reasons"][:3],
+                    "confidence": market_conditions_data["confidence"]
+                }
+            })
             
             # Log initial prediction
             order_structure = initial_prediction.get("order_structure", {})
@@ -383,6 +403,33 @@ class SessionOrchestrator:
                 
                 "timestamp": time.time(),
                 "data_source": "clean_architecture_services"
+            }
+            
+            # CONTINUOUS MARKET CONDITIONS ANALYSIS (update dashboard with tradability)
+            from strategies.market_conditions_analyzer import global_conditions_analyzer
+            
+            market_conditions_input = {
+                "current_price": hyperliquid_price,
+                "rsi": rsi_value,
+                "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
+                "volatility_5m": volatility_5m_data.get("volatility_5m", 0.0),
+                "volatility_category": volatility_5m_data.get("volatility_category", "MODERATE"),
+                "volume_category": volume_data.get("volume_category", "NORMAL"),
+                "timestamp": time.time()
+            }
+            
+            conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(
+                market_data=market_conditions_input,
+                historical_context=self.session_manager.get_historical_context() if self.session_manager else {}
+            )
+            
+            # Add market conditions to market data for dashboard
+            market_data["market_conditions"] = {
+                "is_tradable": conditions_analysis["is_tradable"],
+                "condition": conditions_analysis["condition"], 
+                "risk_level": conditions_analysis["risk_level"],
+                "main_reasons": conditions_analysis["reasons"][:3],
+                "confidence": conditions_analysis["confidence"]
             }
             
             # Update dashboard with market data

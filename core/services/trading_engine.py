@@ -64,8 +64,29 @@ class TradingEngine:
         analysis["hyperliquid_pressure"] = pressure_data
         analysis["timestamp"] = current_time
         
-        # TRADING LOGIC DISABLED: Only initial prediction needed, no ongoing trading (user request)
-        return {"should_trade": False, "reason": "Trading disabled - only initial session prediction implemented"}
+        # MARKET CONDITIONS CHECK (determine if market is tradable)
+        from strategies.market_conditions_analyzer import global_conditions_analyzer
+        
+        conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(
+            market_data={
+                "current_price": hyperliquid_price,
+                "rsi": analysis.get("yahoo_analysis", {}).get("rsi_5m", 50.0),
+                "trend": analysis.get("yahoo_analysis", {}).get("trend_5m", {}).get("trend", "NEUTRAL"),
+                "volatility_5m": analysis.get("yahoo_analysis", {}).get("volatility_5m", 0.0),
+                "volatility_category": analysis.get("yahoo_analysis", {}).get("volatility_5m_category", "MODERATE"),
+                "volume_category": analysis.get("hyperliquid_volume", {}).get("volume_category", "NORMAL"),
+                "timestamp": current_time
+            },
+            historical_context={}  # Will add session manager context later
+        )
+        
+        # BLOCK TRADING if conditions are untradable
+        if not conditions_analysis["is_tradable"]:
+            untradable_reason = global_conditions_analyzer.get_untradable_condition_summary(conditions_analysis)
+            return {"should_trade": False, "reason": f"⚠️ {untradable_reason}"}
+        
+        # TRADING LOGIC STILL DISABLED for now (but conditions check is active)
+        return {"should_trade": False, "reason": f"Trading disabled - Conditions: {conditions_analysis['condition']} ({conditions_analysis['confidence']:.0%})"}
     
     def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
         """Place a paper trade (delegate to position lifecycle manager)"""

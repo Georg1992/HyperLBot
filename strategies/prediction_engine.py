@@ -56,9 +56,24 @@ class PredictionEngine:
             volatility_5m = market_data.get("volatility_5m", 0.0)
             volatility_category = market_data.get("volatility_category", "MODERATE")
             
-            # Determine trade direction using historical context + current conditions
+            # MARKET CONDITIONS CHECK (ensure conditions are tradable)
+            from strategies.market_conditions_analyzer import global_conditions_analyzer
+            
+            conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(
+                market_data={
+                    "current_price": current_price,
+                    "rsi": rsi_value,
+                    "trend": trend,
+                    "volatility_5m": volatility_5m,
+                    "volatility_category": volatility_category,
+                    "volume_category": "NORMAL"  # Default for initial prediction
+                },
+                historical_context=historical_context
+            )
+            
+            # Determine trade direction using historical context + current conditions + market conditions
             direction, reasoning = self._determine_initial_direction(
-                current_price, rsi_value, trend, volatility_category, historical_context
+                current_price, rsi_value, trend, volatility_category, historical_context, conditions_analysis
             )
             
             # Calculate limit order prices (entry + stop + take profit)
@@ -90,7 +105,13 @@ class PredictionEngine:
                 "reasoning": reasoning,
                 "historical_context_used": historical_context.get("market_regime", {}).get("regime", "UNKNOWN"),
                 "confidence": self._calculate_initial_confidence(rsi_value, trend, historical_context),
-                "session_strategy": historical_context.get("strategy_recommendations", {}).get("primary", "standard")
+                "session_strategy": historical_context.get("strategy_recommendations", {}).get("primary", "standard"),
+                "market_conditions": {
+                    "is_tradable": conditions_analysis["is_tradable"],
+                    "condition": conditions_analysis["condition"],
+                    "risk_level": conditions_analysis["risk_level"],
+                    "main_factors": conditions_analysis["reasons"][:3]  # Top 3 factors
+                }
             }
             
             logger.success(f"✅ Initial prediction: {direction} @ ${order_prices['entry']:.2f} (Stop: ${order_prices['stop_loss']:.2f}, Take: ${order_prices['take_profit']:.2f})")
@@ -101,34 +122,56 @@ class PredictionEngine:
             return self._get_default_initial_prediction(current_price)
     
     def _determine_initial_direction(self, current_price: float, rsi: float, trend: str, 
-                                   volatility_category: str, historical_context: Dict) -> Tuple[str, str]:
-        """Determine initial trade direction using historical context + current conditions"""
+                                   volatility_category: str, historical_context: Dict, conditions_analysis: Dict) -> Tuple[str, str]:
+        """Determine initial trade direction using historical context + current conditions + market conditions"""
         try:
+            # Get market conditions assessment
+            market_condition = conditions_analysis.get("condition", "UNKNOWN")
+            is_tradable = conditions_analysis.get("is_tradable", False)
+            
+            # ADJUST STRATEGY based on market conditions
+            if not is_tradable:
+                # For untradable conditions, provide conservative prediction with warning
+                direction = "BUY" if rsi < 50 else "SELL"
+                return direction, f"⚠️ UNTRADABLE conditions ({market_condition}) - Conservative {direction} bias only"
+            
             # Get historical insights
             market_regime = historical_context.get("market_regime", {}).get("regime", "UNKNOWN")
             major_levels = historical_context.get("major_levels", {})
             support_levels = major_levels.get("support", [])
             resistance_levels = major_levels.get("resistance", [])
             
-            # Enhanced direction logic with historical context
+            # EXCELLENT/GOOD CONDITIONS: Enhanced trading logic
+            if market_condition in ["EXCELLENT", "GOOD"]:
+                # Strong directional bias with good conditions
+                if rsi <= 30 and trend in ["UPTREND", "STRONG_UPTREND"]:
+                    return "BUY", f"🎯 Strong BUY: Oversold RSI ({rsi:.1f}) + {trend} in {market_condition} conditions"
+                elif rsi >= 70 and trend in ["DOWNTREND", "STRONG_DOWNTREND"]:
+                    return "SELL", f"🎯 Strong SELL: Overbought RSI ({rsi:.1f}) + {trend} in {market_condition} conditions"
+            
+            # Range trading for ranging markets
             if market_regime in ["RANGING", "TIGHT_RANGING"]:
-                # Range trading logic: Buy near support, sell near resistance
                 if support_levels and any(abs(current_price - level) / level < 0.02 for level in support_levels):
-                    return "BUY", f"Near historical support in {market_regime} regime (RSI: {rsi:.1f})"
+                    return "BUY", f"Range trade: Near support in {market_regime} regime (RSI: {rsi:.1f})"
                 elif resistance_levels and any(abs(current_price - level) / level < 0.02 for level in resistance_levels):
-                    return "SELL", f"Near historical resistance in {market_regime} regime (RSI: {rsi:.1f})"
+                    return "SELL", f"Range trade: Near resistance in {market_regime} regime (RSI: {rsi:.1f})"
             
-            # RSI-based decision with trend confirmation
+            # Standard RSI-based decision with trend confirmation  
             if rsi <= 35 and trend in ["UPTREND", "WEAK_UPTREND", "SIDEWAYS"]:
-                return "BUY", f"RSI oversold ({rsi:.1f}) with {trend} context"
+                return "BUY", f"RSI oversold ({rsi:.1f}) + {trend} bias"
             elif rsi >= 65 and trend in ["DOWNTREND", "WEAK_DOWNTREND", "SIDEWAYS"]:
-                return "SELL", f"RSI overbought ({rsi:.1f}) with {trend} context"
+                return "SELL", f"RSI overbought ({rsi:.1f}) + {trend} bias"
             
-            # Default: Slight bias based on RSI
+            # Marginal conditions: Conservative bias
+            if market_condition == "MARGINAL":
+                direction = "BUY" if rsi < 50 else "SELL"
+                return direction, f"Marginal conditions - Conservative {direction} (RSI: {rsi:.1f})"
+            
+            # Default: RSI-based bias
             if rsi < 50:
-                return "BUY", f"Slight RSI bias ({rsi:.1f}) - bullish lean"
+                return "BUY", f"Bullish RSI bias ({rsi:.1f})"
             else:
-                return "SELL", f"Slight RSI bias ({rsi:.1f}) - bearish lean"
+                return "SELL", f"Bearish RSI bias ({rsi:.1f})"
                 
         except Exception as e:
             logger.error(f"❌ Initial direction determination failed: {e}")
