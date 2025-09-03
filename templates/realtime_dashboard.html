@@ -517,36 +517,6 @@
                     </div>
                 </div>
 
-                <!-- Market Conditions Card -->
-                <div class="card">
-                    <h2>🔍 Market Conditions</h2>
-                    <div style="font-size: 12px; color: #666; margin-bottom: 15px; font-style: italic;">
-                        Real-time analysis of trading suitability and market quality
-                    </div>
-                    <div id="market-conditions">
-                        <div class="data-item">
-                            <span class="data-label">Status:</span>
-                            <span class="data-value" id="conditions-status" style="font-weight: bold;">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Condition:</span>
-                            <span class="data-value" id="conditions-condition">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Risk Level:</span>
-                            <span class="data-value" id="conditions-risk-level">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Confidence:</span>
-                            <span class="data-value" id="conditions-confidence">Loading...</span>
-                        </div>
-                        <div class="data-item" style="grid-column: 1 / -1;">
-                            <span class="data-label">Factors:</span>
-                            <div id="conditions-factors" style="font-size: 11px; color: #ccc; margin-top: 5px; line-height: 1.3;">Loading...</div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Trading Predictions Card -->
                 <div class="card">
                     <h2>🎯 Trading Predictions <span style="font-size: 14px; color: #4CAF50; font-weight: normal;">(Best Confidence)</span></h2>
@@ -973,69 +943,7 @@
                     pressureElement.className = 'data-value trend-neutral';
                 }
                 
-                // Update Market Conditions
-                if (market.market_conditions) {
-                    const conditions = market.market_conditions;
-                    
-                    // Status (TRADABLE/UNTRADABLE)
-                    const statusElement = document.getElementById('conditions-status');
-                    const isTradeableText = conditions.is_tradable ? '🟢 TRADABLE' : '🔴 UNTRADABLE';
-                    statusElement.textContent = isTradeableText;
-                    statusElement.style.color = conditions.is_tradable ? '#4CAF50' : '#f44336';
-                    
-                    // Condition (EXCELLENT, GOOD, POOR, UNTRADABLE)
-                    const conditionElement = document.getElementById('conditions-condition');
-                    conditionElement.textContent = conditions.condition || 'UNKNOWN';
-                    if (conditions.condition === 'EXCELLENT') {
-                        conditionElement.style.color = '#4CAF50';
-                    } else if (conditions.condition === 'GOOD') {
-                        conditionElement.style.color = '#8BC34A';
-                    } else if (conditions.condition === 'POOR') {
-                        conditionElement.style.color = '#FF9800';
-                    } else if (conditions.condition === 'UNTRADABLE') {
-                        conditionElement.style.color = '#f44336';
-                    } else {
-                        conditionElement.style.color = '#ccc';
-                    }
-                    
-                    // Risk Level
-                    const riskElement = document.getElementById('conditions-risk-level');
-                    riskElement.textContent = conditions.risk_level || 'UNKNOWN';
-                    if (conditions.risk_level === 'LOW') {
-                        riskElement.style.color = '#4CAF50';
-                    } else if (conditions.risk_level === 'MODERATE') {
-                        riskElement.style.color = '#FF9800';
-                    } else if (conditions.risk_level === 'HIGH') {
-                        riskElement.style.color = '#f44336';
-                    } else if (conditions.risk_level === 'EXTREME') {
-                        riskElement.style.color = '#d32f2f';
-                    } else {
-                        riskElement.style.color = '#ccc';
-                    }
-                    
-                    // Confidence
-                    const confidenceElement = document.getElementById('conditions-confidence');
-                    const confidenceValue = conditions.confidence || 0;
-                    const confidencePercent = confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue;
-                    confidenceElement.textContent = `${confidencePercent.toFixed(0)}%`;
-                    
-                    // Factors (main reasons)
-                    const factorsElement = document.getElementById('conditions-factors');
-                    if (conditions.main_reasons && conditions.main_reasons.length > 0) {
-                        factorsElement.innerHTML = conditions.main_reasons.map(reason => `• ${reason}`).join('<br>');
-                    } else {
-                        factorsElement.textContent = 'No specific factors identified';
-                    }
-                } else {
-                    // No market conditions data
-                    document.getElementById('conditions-status').textContent = 'N/A';
-                    document.getElementById('conditions-condition').textContent = 'N/A';
-                    document.getElementById('conditions-risk-level').textContent = 'N/A';
-                    document.getElementById('conditions-confidence').textContent = 'N/A';
-                    document.getElementById('conditions-factors').textContent = 'Waiting for conditions analysis...';
-                }
-                
-                // UPDATE TRADING OVERVIEW market conditions section (same data, different layout)
+                // UPDATE TRADING OVERVIEW market conditions section
                 if (market.market_conditions) {
                     const conditions = market.market_conditions;
                     
