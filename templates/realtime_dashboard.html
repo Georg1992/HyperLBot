@@ -1053,11 +1053,11 @@
                     const bestPrediction = sortedPredictions[0];
                     const predictionData = bestPrediction.prediction_data || bestPrediction;
                     
-                    // Update structured prediction fields with exact format
-                    this.updateElement('prediction-direction', predictionData.direction || bestPrediction.type || 'N/A');
-                    this.updateElement('prediction-size-btc', predictionData.size_btc ? predictionData.size_btc.toFixed(6) : (bestPrediction.size_btc ? bestPrediction.size_btc.toFixed(6) : 'N/A'));
-                    this.updateElement('prediction-size-usd', predictionData.size_usd ? `$${predictionData.size_usd.toFixed(0)}` : (bestPrediction.size_usd ? `$${bestPrediction.size_usd.toFixed(0)}` : 'N/A'));
-                    this.updateElement('prediction-entry-price', predictionData.entry_price ? `$${predictionData.entry_price.toFixed(2)}` : (bestPrediction.price ? `$${bestPrediction.price.toFixed(2)}` : 'N/A'));
+                    // Update structured prediction fields with exact format (FIXED MAPPING)
+                    this.updateElement('prediction-direction', bestPrediction.direction || predictionData.direction || 'N/A');
+                    this.updateElement('prediction-size-btc', bestPrediction.size_btc ? bestPrediction.size_btc.toFixed(6) : (predictionData.size_btc ? predictionData.size_btc.toFixed(6) : 'N/A'));
+                    this.updateElement('prediction-size-usd', bestPrediction.size_usd ? `$${bestPrediction.size_usd.toFixed(0)}` : (predictionData.size_usd ? `$${predictionData.size_usd.toFixed(0)}` : 'N/A'));
+                    this.updateElement('prediction-entry-price', bestPrediction.entry_price ? `$${bestPrediction.entry_price.toFixed(2)}` : (predictionData.entry_price ? `$${predictionData.entry_price.toFixed(2)}` : 'N/A'));
                     this.updateElement('prediction-stop-loss', bestPrediction.stop_loss ? `$${bestPrediction.stop_loss.toFixed(2)}` : (predictionData.order_structure?.stop_loss ? `$${predictionData.order_structure.stop_loss.toFixed(2)}` : 'N/A'));
                     this.updateElement('prediction-take-profit', bestPrediction.take_profit ? `$${bestPrediction.take_profit.toFixed(2)}` : (predictionData.order_structure?.take_profit ? `$${predictionData.order_structure.take_profit.toFixed(2)}` : 'N/A'));
                     this.updateElement('prediction-rsi', predictionData.rsi_at_prediction ? predictionData.rsi_at_prediction.toFixed(1) : (predictionData.rsi || bestPrediction.rsi || 'N/A'));
