@@ -181,8 +181,13 @@ class SimpleRTM:
                 "type": signal_data.get("type", "UNKNOWN"),
                 "confidence": signal_data.get("confidence", 0) or 0,
                 "reason": signal_data.get("reason", ""),
+                "reasoning": signal_data.get("reasoning", ""),  # Add reasoning field
                 "price": signal_data.get("price", 0) or 0,
-                # Store additional prediction data for dashboard display
+                # FIXED: Store ALL prediction fields for dashboard display
+                "direction": signal_data.get("direction", "UNKNOWN"),  # BUY/SELL
+                "entry_price": signal_data.get("entry_price", 0),      # Entry price
+                "stop_loss": signal_data.get("stop_loss", 0),          # Stop loss 
+                "take_profit": signal_data.get("take_profit", 0),      # Take profit
                 "size_btc": signal_data.get("size_btc", 0),
                 "size_usd": signal_data.get("size_usd", 0),
                 "rsi": signal_data.get("rsi", 50),
