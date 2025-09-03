@@ -44,7 +44,7 @@ class SessionOrchestrator:
                 logger.warning("⚠️ Could not get weekly trend analysis, proceeding without it")
             
             # 3. Start session
-            self._start_session(dashboard_service)
+            self._start_session(dashboard_service, market_data_service)
             
             # 4. Main trading loop
             return self._main_trading_loop(max_trades, check_interval, hyperliquid_api,
@@ -54,7 +54,7 @@ class SessionOrchestrator:
             logger.error(f"❌ Trading session failed: {e}")
             return {"success": False, "error": str(e)}
     
-    def _start_session(self, dashboard_service):
+    def _start_session(self, dashboard_service, market_data_service):
         """Start trading session"""
         try:
             # Clear dashboard cache
