@@ -523,6 +523,14 @@
                                         <span class="data-label">Size (USD):</span>
                                         <span class="data-value" id="prediction-size-usd">N/A</span>
                                     </div>
+                                    <div class="data-item">
+                                        <span class="data-label">Stop Loss:</span>
+                                        <span class="data-value" id="prediction-stop-loss" style="color: #ff4444;">N/A</span>
+                                    </div>
+                                    <div class="data-item">
+                                        <span class="data-label">Take Profit:</span>
+                                        <span class="data-value" id="prediction-take-profit" style="color: #44ff44;">N/A</span>
+                                    </div>
                                 </div>
                                 
                                 <!-- Right Column: Market Context -->
@@ -1050,6 +1058,8 @@
                     this.updateElement('prediction-size-btc', predictionData.size_btc ? predictionData.size_btc.toFixed(6) : (bestPrediction.size_btc ? bestPrediction.size_btc.toFixed(6) : 'N/A'));
                     this.updateElement('prediction-size-usd', predictionData.size_usd ? `$${predictionData.size_usd.toFixed(0)}` : (bestPrediction.size_usd ? `$${bestPrediction.size_usd.toFixed(0)}` : 'N/A'));
                     this.updateElement('prediction-entry-price', predictionData.entry_price ? `$${predictionData.entry_price.toFixed(2)}` : (bestPrediction.price ? `$${bestPrediction.price.toFixed(2)}` : 'N/A'));
+                    this.updateElement('prediction-stop-loss', bestPrediction.stop_loss ? `$${bestPrediction.stop_loss.toFixed(2)}` : (predictionData.order_structure?.stop_loss ? `$${predictionData.order_structure.stop_loss.toFixed(2)}` : 'N/A'));
+                    this.updateElement('prediction-take-profit', bestPrediction.take_profit ? `$${bestPrediction.take_profit.toFixed(2)}` : (predictionData.order_structure?.take_profit ? `$${predictionData.order_structure.take_profit.toFixed(2)}` : 'N/A'));
                     this.updateElement('prediction-rsi', predictionData.rsi_at_prediction ? predictionData.rsi_at_prediction.toFixed(1) : (predictionData.rsi || bestPrediction.rsi || 'N/A'));
                     this.updateElement('prediction-trend', predictionData.trend_at_prediction || predictionData.trend || bestPrediction.trend || 'N/A');
                     // Convert confidence to percentage (0.0-1.0 scale to 0-100%)
@@ -1118,6 +1128,8 @@
                     this.updateElement('prediction-size-btc', 'N/A');
                     this.updateElement('prediction-size-usd', 'N/A');
                     this.updateElement('prediction-entry-price', 'N/A');
+                    this.updateElement('prediction-stop-loss', 'N/A');
+                    this.updateElement('prediction-take-profit', 'N/A');
                     this.updateElement('prediction-rsi', 'N/A');
                     this.updateElement('prediction-trend', 'N/A');
                     this.updateElement('prediction-confidence', 'N/A');

@@ -30,9 +30,38 @@ class RTMUpdater:
             logger.error(f"❌ Failed to update RTM market data: {e}")
     
     def update_simple_rtm_prediction_data(self, prediction_data: Dict[str, Any]) -> None:
-        """Update RTM with prediction data"""
+        """Update RTM with prediction data (handles both initial_prediction and best_prediction)"""
         try:
-            # Extract the best prediction and add it as a signal
+            # Handle initial session prediction
+            initial_prediction = prediction_data.get("initial_prediction")
+            if initial_prediction:
+                order_structure = initial_prediction.get("order_structure", {})
+                market_analysis = initial_prediction.get("market_analysis", {})
+                
+                signal_data = {
+                    "type": "INITIAL_PREDICTION",
+                    "direction": order_structure.get("direction", "UNKNOWN"),
+                    "confidence": initial_prediction.get("confidence", 0),
+                    "reasoning": initial_prediction.get("reasoning", ""),
+                    "entry_price": order_structure.get("entry_price", 0),
+                    "stop_loss": order_structure.get("stop_loss", 0),
+                    "take_profit": order_structure.get("take_profit", 0),
+                    "size_btc": 0.001,  # Default for initial prediction
+                    "size_usd": order_structure.get("entry_price", 0) * 0.001,
+                    "rsi": market_analysis.get("rsi", 50),
+                    "trend": market_analysis.get("trend", "NEUTRAL"),
+                    "prediction_data": {
+                        "order_structure": order_structure,
+                        "market_analysis": market_analysis,
+                        "prediction_type": initial_prediction.get("prediction_type", "INITIAL"),
+                        "session_strategy": initial_prediction.get("session_strategy", "standard")
+                    }
+                }
+                self.rtm.add_signal(signal_data)
+                logger.success(f"✅ Initial prediction stored: {signal_data['direction']} @ ${signal_data['entry_price']:.2f}")
+                return
+            
+            # Handle ongoing predictions (best_prediction format)
             best_prediction = prediction_data.get("best_prediction", {})
             if best_prediction:
                 signal_data = {
@@ -42,11 +71,6 @@ class RTMUpdater:
                     "price": best_prediction.get("entry_price", 0)
                 }
                 self.rtm.add_signal(signal_data)
-                
-                # Log update
-                side = best_prediction.get("side", "UNKNOWN")
-                confidence = best_prediction.get("confidence", 0)
-                # Reduced logging frequency
             
         except Exception as e:
             logger.error(f"❌ Failed to update RTM prediction data: {e}")
