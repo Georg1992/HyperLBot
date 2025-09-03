@@ -425,6 +425,29 @@
                     </div>
                 </div>
                 
+                <!-- Market Conditions Section -->
+                <div style="margin-bottom: 30px;">
+                    <h3 style="color: #FFD700; margin-bottom: 15px;">🔍 Market Conditions</h3>
+                    <div id="overview-conditions">
+                        <div class="data-item">
+                            <span class="data-label">Status:</span>
+                            <span class="data-value" id="overview-conditions-status" style="font-weight: bold;">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Quality:</span>
+                            <span class="data-value" id="overview-conditions-condition">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Risk:</span>
+                            <span class="data-value" id="overview-conditions-risk">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Confidence:</span>
+                            <span class="data-value" id="overview-conditions-confidence">Loading...</span>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Performance Section -->
                 <div>
                     <h3 style="color: #FFD700; margin-bottom: 15px;">💰 Performance</h3>
@@ -1010,6 +1033,62 @@
                     document.getElementById('conditions-risk-level').textContent = 'N/A';
                     document.getElementById('conditions-confidence').textContent = 'N/A';
                     document.getElementById('conditions-factors').textContent = 'Waiting for conditions analysis...';
+                }
+                
+                // UPDATE TRADING OVERVIEW market conditions section (same data, different layout)
+                if (market.market_conditions) {
+                    const conditions = market.market_conditions;
+                    
+                    // Overview Status
+                    const overviewStatusElement = document.getElementById('overview-conditions-status');
+                    const isTradeableText = conditions.is_tradable ? '🟢 TRADABLE' : '🔴 UNTRADABLE';
+                    overviewStatusElement.textContent = isTradeableText;
+                    overviewStatusElement.style.color = conditions.is_tradable ? '#4CAF50' : '#f44336';
+                    
+                    // Overview Quality (same as condition)
+                    const overviewConditionElement = document.getElementById('overview-conditions-condition');
+                    overviewConditionElement.textContent = conditions.condition || 'UNKNOWN';
+                    if (conditions.condition === 'EXCELLENT') {
+                        overviewConditionElement.style.color = '#4CAF50';
+                    } else if (conditions.condition === 'GOOD') {
+                        overviewConditionElement.style.color = '#8BC34A';
+                    } else if (conditions.condition === 'MARGINAL') {
+                        overviewConditionElement.style.color = '#FF9800';
+                    } else if (conditions.condition === 'POOR') {
+                        overviewConditionElement.style.color = '#ff5722';
+                    } else if (conditions.condition === 'UNTRADABLE') {
+                        overviewConditionElement.style.color = '#f44336';
+                    } else {
+                        overviewConditionElement.style.color = '#ccc';
+                    }
+                    
+                    // Overview Risk
+                    const overviewRiskElement = document.getElementById('overview-conditions-risk');
+                    overviewRiskElement.textContent = conditions.risk_level || 'UNKNOWN';
+                    if (conditions.risk_level === 'LOW') {
+                        overviewRiskElement.style.color = '#4CAF50';
+                    } else if (conditions.risk_level === 'MODERATE') {
+                        overviewRiskElement.style.color = '#FF9800';
+                    } else if (conditions.risk_level === 'HIGH') {
+                        overviewRiskElement.style.color = '#f44336';
+                    } else if (conditions.risk_level === 'EXTREME') {
+                        overviewRiskElement.style.color = '#d32f2f';
+                        overviewRiskElement.style.fontWeight = 'bold';
+                    } else {
+                        overviewRiskElement.style.color = '#ccc';
+                    }
+                    
+                    // Overview Confidence
+                    const overviewConfidenceElement = document.getElementById('overview-conditions-confidence');
+                    const confidenceValue = conditions.confidence || 0;
+                    const confidencePercent = confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue;
+                    overviewConfidenceElement.textContent = `${confidencePercent.toFixed(0)}%`;
+                } else {
+                    // No market conditions data in overview
+                    document.getElementById('overview-conditions-status').textContent = 'N/A';
+                    document.getElementById('overview-conditions-condition').textContent = 'N/A';
+                    document.getElementById('overview-conditions-risk').textContent = 'N/A';
+                    document.getElementById('overview-conditions-confidence').textContent = 'N/A';
                 }
             }
             
