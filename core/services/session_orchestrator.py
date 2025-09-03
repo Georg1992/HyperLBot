@@ -58,7 +58,8 @@ class SessionOrchestrator:
         """Start trading session"""
         try:
             # Clear dashboard cache
-            dashboard_service.rtm_updater.clear_rtm_cache()
+            from core.dashboard.dashboard_data_manager import simple_rtm
+            simple_rtm.clear_presentation_data()
             logger.info("🧹 Dashboard cache cleared - Fresh session data")
             
             # Start session  
@@ -157,7 +158,30 @@ class SessionOrchestrator:
             initial_prediction = prediction_engine.generate_initial_session_prediction(current_price, market_data)
             
             # Store prediction for dashboard display
-            dashboard_service.rtm_updater.update_simple_rtm_prediction_data({"initial_prediction": initial_prediction})
+            from core.dashboard.dashboard_data_manager import simple_rtm
+            order_structure = initial_prediction.get("order_structure", {})
+            market_analysis = initial_prediction.get("market_analysis", {})
+            
+            signal_data = {
+                "type": "INITIAL_PREDICTION",
+                "direction": order_structure.get("direction", "UNKNOWN"),
+                "confidence": initial_prediction.get("confidence", 0),
+                "reasoning": initial_prediction.get("reasoning", ""),
+                "entry_price": order_structure.get("entry_price", 0),
+                "stop_loss": order_structure.get("stop_loss", 0),
+                "take_profit": order_structure.get("take_profit", 0),
+                "size_btc": 0.001,  # Default for initial prediction
+                "size_usd": order_structure.get("entry_price", 0) * 0.001,
+                "rsi": market_analysis.get("rsi", 50),
+                "trend": market_analysis.get("trend", "NEUTRAL"),
+                "prediction_data": {
+                    "order_structure": order_structure,
+                    "market_analysis": market_analysis,
+                    "prediction_type": initial_prediction.get("prediction_type", "INITIAL"),
+                    "session_strategy": initial_prediction.get("session_strategy", "standard")
+                }
+            }
+            simple_rtm.add_signal(signal_data)
             
             # Log initial prediction
             order_structure = initial_prediction.get("order_structure", {})

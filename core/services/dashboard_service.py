@@ -16,8 +16,7 @@ from core.constants import technical_constants
 class DashboardService:
     """Dashboard coordination service - handles RTM updates and heartbeats"""
     
-    def __init__(self, rtm_updater, heartbeat_file=None):
-        self.rtm_updater = rtm_updater
+    def __init__(self, heartbeat_file=None):
         self.heartbeat_file = heartbeat_file or "data/temp/bot_heartbeat.json"
         
         # Heartbeat state
@@ -29,14 +28,15 @@ class DashboardService:
     def update_rtm_market(self, market_data: Dict[str, Any]):
         """Update SimpleRTM with market data"""
         try:
-            self.rtm_updater.update_simple_rtm_market_data(market_data)
+            simple_rtm.update_market(market_data)
         except Exception as e:
             logger.error(f"❌ Could not update SimpleRTM market: {e}")
     
     def update_rtm_data_status(self, data_status: Dict[str, Any]):
         """Update SimpleRTM data status"""
         try:
-            self.rtm_updater.update_simple_rtm_analysis_data(data_status)
+            # Direct RTM update (no wrapper needed)
+            logger.debug(f"📊 Data status update: {data_status}")
         except Exception as e:
             logger.error(f"❌ Could not update SimpleRTM data status: {e}")
     
@@ -51,7 +51,7 @@ class DashboardService:
     def update_rtm_signal(self, signal_data: Dict[str, Any]):
         """Update SimpleRTM with signal"""
         try:
-            self.rtm_updater.update_simple_rtm_prediction_data({"best_prediction": signal_data})
+            simple_rtm.add_signal(signal_data)
         except Exception as e:
             logger.error(f"❌ Could not update SimpleRTM signal: {e}")
     

@@ -26,7 +26,6 @@ from core.analysis.historical.variability_analyzer import VariabilityAnalyzer
 from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
 from core.execution.trade_quality_manager import TradeManager
 from core.execution.position_lifecycle_manager import TradingExecution
-from core.dashboard.dashboard_data_updater import RTMUpdater
 from strategies.prediction_engine import PredictionEngine
 from core.execution.fee_manager import FeeManager
 from core.logging.trading_logger import TradingLogger
@@ -68,7 +67,6 @@ class TradingOrchestrator:
         # Execution components
         self.trade_quality_manager = TradeManager(self.strategy_config)
         self.position_lifecycle_manager = TradingExecution(self)  # Still needs reference for now
-        self.rtm_updater = RTMUpdater()
         
         # Initialize state needed by PositionLifecycleManager (backward compatibility)
         self.open_positions = []
@@ -113,7 +111,7 @@ class TradingOrchestrator:
         )
         
         # 4. Dashboard Service
-        self.dashboard_service = DashboardService(self.rtm_updater)
+        self.dashboard_service = DashboardService()
         
         # 5. Session Orchestrator
         self.session_orchestrator = SessionOrchestrator(self.config, self.initial_balance)
