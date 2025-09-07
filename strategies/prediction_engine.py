@@ -10,7 +10,7 @@ REMOVED: All complex ongoing prediction logic (user request: clean redundant log
 """
 
 import time
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, List
 from datetime import datetime
 from loguru import logger
 from config.config import TradingConfig
@@ -178,6 +178,79 @@ class PredictionEngine:
             logger.error(f"❌ Initial direction determination failed: {e}")
             return "BUY", "Default buy direction due to error"
     
+    def _calculate_range_trading_levels(self, current_price: float, direction: str, 
+                                      support_levels: List[float], resistance_levels: List[float]) -> Dict[str, float]:
+        """Calculate range trading levels using actual support/resistance levels"""
+        try:
+            # Find the nearest support and resistance levels
+            nearest_support = min(support_levels, key=lambda x: abs(x - current_price)) if support_levels else None
+            nearest_resistance = min(resistance_levels, key=lambda x: abs(x - current_price)) if resistance_levels else None
+            
+            # For BUY orders in range trading
+            if direction == "BUY":
+                # Entry: slightly below current price
+                entry_price = current_price * 0.9999  # 0.01% below current
+                
+                # Stop loss: below the nearest support level
+                if nearest_support and nearest_support < current_price:
+                    stop_loss = nearest_support * 0.999  # 0.1% below support
+                else:
+                    stop_loss = current_price * 0.995  # 0.5% below current (fallback)
+                
+                # Take profit: at or near the nearest resistance level
+                if nearest_resistance and nearest_resistance > current_price:
+                    take_profit = nearest_resistance * 0.999  # 0.1% below resistance
+                else:
+                    take_profit = current_price * 1.001  # 0.1% above current (fallback)
+            
+            # For SELL orders in range trading
+            else:  # SELL
+                # Entry: slightly above current price
+                entry_price = current_price * 1.0001  # 0.01% above current
+                
+                # Stop loss: above the nearest resistance level
+                if nearest_resistance and nearest_resistance > current_price:
+                    stop_loss = nearest_resistance * 1.001  # 0.1% above resistance
+                else:
+                    stop_loss = current_price * 1.005  # 0.5% above current (fallback)
+                
+                # Take profit: at or near the nearest support level
+                if nearest_support and nearest_support < current_price:
+                    take_profit = nearest_support * 1.001  # 0.1% above support
+                else:
+                    take_profit = current_price * 0.999  # 0.1% below current (fallback)
+            
+            logger.info(f"🎯 Range Trading Levels: Entry=${entry_price:.2f}, Stop=${stop_loss:.2f}, Take=${take_profit:.2f}")
+            logger.info(f"   Support: {nearest_support}, Resistance: {nearest_resistance}")
+            
+            return {
+                "entry": round(entry_price, 2),
+                "stop_loss": round(stop_loss, 2),
+                "take_profit": round(take_profit, 2)
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Range trading levels calculation failed: {e}")
+            # Fallback to percentage-based calculation
+            return self._calculate_percentage_based_levels(current_price, direction)
+    
+    def _calculate_percentage_based_levels(self, current_price: float, direction: str) -> Dict[str, float]:
+        """Fallback percentage-based calculation"""
+        if direction == "BUY":
+            entry_price = current_price * 0.9999
+            stop_loss = current_price * 0.995
+            take_profit = current_price * 1.001
+        else:  # SELL
+            entry_price = current_price * 1.0001
+            stop_loss = current_price * 1.005
+            take_profit = current_price * 0.999
+        
+        return {
+            "entry": round(entry_price, 2),
+            "stop_loss": round(stop_loss, 2),
+            "take_profit": round(take_profit, 2)
+        }
+    
     def _calculate_limit_order_structure(self, current_price: float, direction: str, 
                                        volatility_5m: float, historical_context: Dict) -> Dict[str, float]:
         """Calculate limit order prices (entry, stop loss, take profit)"""
@@ -185,6 +258,18 @@ class PredictionEngine:
             # Dynamic risk management based on volatility (using centralized constants)
             from core.constants import VariabilityConstants
             
+            # Check if we have support/resistance levels for range trading
+            major_levels = historical_context.get("major_levels", {})
+            support_levels = major_levels.get("support", [])
+            resistance_levels = major_levels.get("resistance", [])
+            
+            # For VERY_LOW volatility (range trading), use support/resistance levels if available
+            if volatility_5m <= VariabilityConstants.VOLATILITY_5M_VERY_LOW and (support_levels or resistance_levels):
+                return self._calculate_range_trading_levels(
+                    current_price, direction, support_levels, resistance_levels
+                )
+            
+            # Fallback to percentage-based calculations
             if volatility_5m <= VariabilityConstants.VOLATILITY_5M_VERY_LOW:  # Very low volatility
                 stop_distance_pct = 0.0005  # 0.05% (very tight stops for ranging)
                 take_distance_pct = 0.001   # 0.1% (very small targets for ranging)
