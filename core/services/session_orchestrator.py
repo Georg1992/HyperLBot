@@ -280,12 +280,17 @@ class SessionOrchestrator:
                 # Extract values from order structure
                 order_structure = updated_prediction.get("order_structure", {})
                 
-                # Update dashboard with new prediction
+                # Update dashboard with new prediction (include all required fields)
+                entry_price = order_structure.get("entry_price", 0)
                 dashboard_service.update_rtm_signal({
+                    "type": "DYNAMIC_UPDATE",
                     "direction": order_structure.get("direction", "UNKNOWN"),
-                    "entry": order_structure.get("entry_price", 0),
+                    "entry": entry_price,  # Use 'entry' for dashboard compatibility
+                    "entry_price": entry_price,  # Also include 'entry_price' for consistency
                     "stop_loss": order_structure.get("stop_loss", 0),
                     "take_profit": order_structure.get("take_profit", 0),
+                    "size_btc": 0.001,  # Default position size
+                    "size_usd": entry_price * 0.001,  # Calculate USD size
                     "confidence": updated_prediction.get("confidence", 0),
                     "reasoning": updated_prediction.get("reasoning", "Dynamic update"),
                     "strategy_used": strategy_name,
