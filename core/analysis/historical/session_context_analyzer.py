@@ -161,7 +161,8 @@ class SessionContextAnalyzer:
             for high in highs:
                 # Round to nearest $10 for level detection
                 level = round(high, -1)
-                if level not in resistance_levels and level >= range_high - (range_width * 0.3):
+                # Only add resistance levels that are above the current price
+                if level not in resistance_levels and level >= range_high - (range_width * 0.3) and level > current_price:
                     resistance_levels.append(level)
             
             # Sort and limit to most relevant levels
@@ -169,6 +170,8 @@ class SessionContextAnalyzer:
             resistance_levels = sorted(list(set(resistance_levels)))[:3]
             
             logger.info(f"🎯 5m Range Levels: Support={support_levels}, Resistance={resistance_levels}")
+            logger.info(f"   Current Price: {current_price}, Range: {range_low}-{range_high} (width: {range_width:.2f})")
+            logger.info(f"   Valid Resistance: {[level for level in resistance_levels if level > current_price]}")
             
             return {
                 "support": support_levels,

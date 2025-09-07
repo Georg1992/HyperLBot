@@ -184,7 +184,10 @@ class PredictionEngine:
         try:
             # Find the nearest support and resistance levels
             nearest_support = min(support_levels, key=lambda x: abs(x - current_price)) if support_levels else None
-            nearest_resistance = min(resistance_levels, key=lambda x: abs(x - current_price)) if resistance_levels else None
+            
+            # Filter resistance levels to only include those above current price
+            valid_resistance_levels = [level for level in resistance_levels if level > current_price]
+            nearest_resistance = min(valid_resistance_levels, key=lambda x: abs(x - current_price)) if valid_resistance_levels else None
             
             # For BUY orders in range trading
             if direction == "BUY":
@@ -201,7 +204,8 @@ class PredictionEngine:
                 if nearest_resistance and nearest_resistance > current_price:
                     take_profit = nearest_resistance * 0.999  # 0.1% below resistance
                 else:
-                    take_profit = current_price * 1.001  # 0.1% above current (fallback)
+                    # Fallback: use a reasonable take profit above current price
+                    take_profit = current_price * 1.002  # 0.2% above current (better fallback)
             
             # For SELL orders in range trading
             else:  # SELL
