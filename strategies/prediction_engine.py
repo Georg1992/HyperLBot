@@ -66,7 +66,7 @@ class PredictionEngine:
                     "trend": trend,
                     "volatility_5m": volatility_5m,
                     "volatility_category": volatility_category,
-                    "volume_category": "NORMAL"  # Default for initial prediction
+                    "volume_category": market_data.get("volume_category", "NORMAL")  # Use actual volume data
                 },
                 historical_context=historical_context,
                 strategy_name=strategy_name
@@ -152,10 +152,23 @@ class PredictionEngine:
             
             # Range trading for ranging markets
             if market_regime in ["RANGING", "TIGHT_RANGING"]:
-                if support_levels and any(abs(current_price - level) / level < 0.02 for level in support_levels):
-                    return "BUY", f"Range trade: Near support in {market_regime} regime (RSI: {rsi:.1f})"
-                elif resistance_levels and any(abs(current_price - level) / level < 0.02 for level in resistance_levels):
+                # Check proximity to support/resistance levels
+                near_support = support_levels and any(abs(current_price - level) / level < 0.02 for level in support_levels)
+                near_resistance = resistance_levels and any(abs(current_price - level) / level < 0.02 for level in resistance_levels)
+                
+                # Enhanced range trading logic with price action consideration
+                if near_resistance and rsi >= 50:
+                    # Near resistance + RSI not oversold = SELL opportunity
                     return "SELL", f"Range trade: Near resistance in {market_regime} regime (RSI: {rsi:.1f})"
+                elif near_support and rsi <= 50:
+                    # Near support + RSI not overbought = BUY opportunity  
+                    return "BUY", f"Range trade: Near support in {market_regime} regime (RSI: {rsi:.1f})"
+                elif near_resistance:
+                    # Near resistance but RSI oversold = wait or weak SELL
+                    return "SELL", f"Range trade: Near resistance but RSI oversold (RSI: {rsi:.1f})"
+                elif near_support:
+                    # Near support but RSI overbought = wait or weak BUY
+                    return "BUY", f"Range trade: Near support but RSI overbought (RSI: {rsi:.1f})"
             
             # Standard RSI-based decision with trend confirmation  
             if rsi <= 35 and trend in ["UPTREND", "WEAK_UPTREND", "SIDEWAYS"]:
