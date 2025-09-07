@@ -195,14 +195,21 @@ class SessionContextAnalyzer:
             avg_volatility = market_data_manager.calculate_volatility(candles_1d, len(candles_1d))
             recent_volatility = market_data_manager.calculate_volatility(candles_1d[-7:], 7) if len(candles_1d) >= 7 else avg_volatility
             
-            # Volatility regime classification (adjusted for daily timeframe - 20x higher than 5m)
-            if avg_volatility < 0.02:  # <2% daily moves (equivalent to <0.1% for 5m)
+            # Volatility regime classification using centralized constants (adjusted for daily timeframe)
+            from core.constants import VariabilityConstants
+            
+            # Convert 5m thresholds to daily thresholds (multiply by ~20 for daily timeframe)
+            daily_very_low = VariabilityConstants.VOLATILITY_5M_VERY_LOW * 20  # 0.1% * 20 = 2%
+            daily_low = VariabilityConstants.VOLATILITY_5M_LOW * 20            # 0.25% * 20 = 5%
+            daily_moderate = VariabilityConstants.VOLATILITY_5M_MODERATE * 20  # 0.5% * 20 = 10%
+            
+            if avg_volatility < daily_very_low:  # <2% daily moves
                 regime = "LOW_VOLATILITY"
                 characteristics = "Ranging, consolidation periods"
-            elif avg_volatility < 0.05:  # <5% daily moves (equivalent to <0.25% for 5m)
+            elif avg_volatility < daily_low:  # <5% daily moves
                 regime = "MODERATE_VOLATILITY"
                 characteristics = "Normal trading activity"
-            else:  # >5% daily moves (equivalent to >0.25% for 5m)
+            else:  # >5% daily moves
                 regime = "HIGH_VOLATILITY"
                 characteristics = "Active trending or major events"
             
