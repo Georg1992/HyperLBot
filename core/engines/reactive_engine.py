@@ -84,7 +84,13 @@ class ReactiveEngine:
     
     def analyze_reactive_opportunity(self, current_price: float, market_data: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
         """
-        Analyze if there's a reactive trading opportunity
+        Analyze if there's a reactive trading opportunity - ONLY for truly significant market events
+        
+        Requirements for reactive signal:
+        1. Strong price movement (CRITICAL level)
+        2. High volume trading activity
+        3. Support/resistance break
+        4. Multiple confirming signals
         
         Args:
             current_price: Current market price
@@ -101,53 +107,147 @@ class ReactiveEngine:
             # Update price history
             self._update_price_history(current_price)
             
-            # Analyze different reactive triggers
-            reactive_signals = []
-            
-            # 1. Price movement analysis
+            # REQUIREMENT 1: Check for CRITICAL price movement first
             price_movement_signal = self._analyze_price_movement(current_price)
-            if price_movement_signal:
-                reactive_signals.append(price_movement_signal)
+            if not price_movement_signal or price_movement_signal.urgency != "CRITICAL":
+                return None  # No reactive signal without CRITICAL price movement
             
-            # 2. RSI extreme analysis
+            # REQUIREMENT 2: Check for high volume trading
+            volume_requirement_met = self._check_volume_requirement(market_data)
+            if not volume_requirement_met:
+                logger.debug("⚡ Reactive signal blocked: Insufficient volume")
+                return None
+            
+            # REQUIREMENT 3: Check for support/resistance break
+            support_resistance_break = self._check_support_resistance_break(current_price, market_data)
+            if not support_resistance_break:
+                logger.debug("⚡ Reactive signal blocked: No support/resistance break")
+                return None
+            
+            # REQUIREMENT 4: Get additional confirming signals
+            confirming_signals = []
+            
+            # RSI extreme analysis (only for CRITICAL levels)
             rsi_signal = self._analyze_rsi_extremes(current_price, market_data)
-            if rsi_signal:
-                reactive_signals.append(rsi_signal)
+            if rsi_signal and rsi_signal.urgency == "CRITICAL":
+                confirming_signals.append(rsi_signal)
             
-            # 3. Order book pressure analysis
+            # Order book pressure analysis (only for CRITICAL levels)
             pressure_signal = self._analyze_order_book_pressure(current_price, market_data)
-            if pressure_signal:
-                reactive_signals.append(pressure_signal)
+            if pressure_signal and pressure_signal.urgency == "CRITICAL":
+                confirming_signals.append(pressure_signal)
             
-            # 4. Psychological level break analysis
-            psychological_signal = self._analyze_psychological_breaks(current_price, market_data)
-            if psychological_signal:
-                reactive_signals.append(psychological_signal)
+            # REQUIREMENT 5: Must have at least 2 strong signals (price movement + 1 confirming)
+            if len(confirming_signals) < 1:
+                logger.debug("⚡ Reactive signal blocked: Insufficient confirming signals")
+                return None
             
-            # Select the highest urgency signal
-            if reactive_signals:
-                best_signal = max(reactive_signals, key=lambda s: self._get_urgency_priority(s.urgency))
-                self.last_reactive_signal = best_signal
-                
-                # Convert ReactiveSignal to dict format for Trading Engine
-                return {
-                    "direction": best_signal.direction,
-                    "confidence": best_signal.confidence,
-                    "urgency": best_signal.urgency,
-                    "execution_type": best_signal.execution_type,
-                    "size_percentage": best_signal.size_percentage,
-                    "reasoning": best_signal.reasoning,
-                    "signal_type": best_signal.signal_type,
-                    "price_movement": best_signal.price_movement,
-                    "timestamp": best_signal.timestamp,
-                    "data": best_signal.data
+            # Combine signals for final reactive signal
+            all_signals = [price_movement_signal] + confirming_signals
+            
+            # Calculate combined confidence (average of all signals)
+            combined_confidence = sum(s.confidence for s in all_signals) / len(all_signals)
+            
+            # Create comprehensive reasoning
+            reasoning_parts = [price_movement_signal.reasoning]
+            reasoning_parts.extend([s.reasoning for s in confirming_signals])
+            reasoning_parts.append(f"Volume: {volume_requirement_met}")
+            reasoning_parts.append(f"Support/Resistance: {support_resistance_break}")
+            
+            # Update cooldown
+            self.last_reactive_signal = price_movement_signal
+            
+            logger.info(f"🚨 REACTIVE SIGNAL TRIGGERED: {len(all_signals)} strong signals, {combined_confidence:.1%} confidence")
+            
+            return {
+                "signal_type": "MULTI_SIGNAL_REACTIVE",
+                "direction": price_movement_signal.direction,
+                "confidence": combined_confidence,
+                "urgency": "CRITICAL",
+                "reasoning": " | ".join(reasoning_parts),
+                "execution_type": "MARKET_ORDER",  # Always market order for reactive signals
+                "size_percentage": 0.6,  # Conservative size for reactive signals
+                "price_movement": price_movement_signal.price_movement,
+                "timestamp": time.time(),
+                "data": {
+                    "signal_count": len(all_signals),
+                    "volume_confirmed": volume_requirement_met,
+                    "support_resistance_break": support_resistance_break,
+                    "signals": [s.signal_type for s in all_signals]
                 }
-            
-            return None
+            }
             
         except Exception as e:
             logger.error(f"❌ Reactive opportunity analysis failed: {e}")
             return None
+    
+    def _check_volume_requirement(self, market_data: Dict[str, Any] = None) -> bool:
+        """Check if volume is high enough for reactive signal"""
+        try:
+            if not market_data:
+                return False
+            
+            # Check for high volume indicators
+            volume_depth = market_data.get("volume_depth", 0)
+            volume_category = market_data.get("volume_category", "NORMAL")
+            relative_volume = market_data.get("relative_volume_5m", 1.0)
+            
+            # Requirements for high volume:
+            # 1. Volume category must be HIGH or VERY_HIGH
+            # 2. Relative volume must be > 1.5x normal
+            # 3. Volume depth must be substantial
+            
+            volume_requirements_met = (
+                volume_category in ["HIGH", "VERY_HIGH"] and
+                relative_volume > 1.5 and
+                volume_depth > 50  # At least 50 BTC volume depth
+            )
+            
+            if volume_requirements_met:
+                logger.debug(f"✅ Volume requirement met: {volume_category}, {relative_volume:.1f}x, {volume_depth:.1f} BTC")
+            else:
+                logger.debug(f"❌ Volume requirement not met: {volume_category}, {relative_volume:.1f}x, {volume_depth:.1f} BTC")
+            
+            return volume_requirements_met
+            
+        except Exception as e:
+            logger.error(f"❌ Volume requirement check failed: {e}")
+            return False
+    
+    def _check_support_resistance_break(self, current_price: float, market_data: Dict[str, Any] = None) -> bool:
+        """Check if price is breaking key support/resistance levels"""
+        try:
+            if not market_data:
+                return False
+            
+            # Get support/resistance data
+            support_resistance_5m = market_data.get("support_resistance_5m", {})
+            support_levels = support_resistance_5m.get("support_levels", [])
+            resistance_levels = support_resistance_5m.get("resistance_levels", [])
+            
+            if not support_levels and not resistance_levels:
+                return False
+            
+            # Check for support break (price falling below support)
+            for support in support_levels[:3]:  # Check top 3 support levels
+                support_price = support.get("level", 0)
+                if support_price > 0 and current_price < support_price * 0.998:  # 0.2% below support
+                    logger.debug(f"✅ Support break detected: ${current_price:,.2f} below ${support_price:,.2f}")
+                    return True
+            
+            # Check for resistance break (price rising above resistance)
+            for resistance in resistance_levels[:3]:  # Check top 3 resistance levels
+                resistance_price = resistance.get("level", 0)
+                if resistance_price > 0 and current_price > resistance_price * 1.002:  # 0.2% above resistance
+                    logger.debug(f"✅ Resistance break detected: ${current_price:,.2f} above ${resistance_price:,.2f}")
+                    return True
+            
+            logger.debug("❌ No support/resistance break detected")
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Support/resistance break check failed: {e}")
+            return False
     
     def _analyze_price_movement(self, current_price: float) -> Optional[ReactiveSignal]:
         """Analyze rapid price movements"""
@@ -156,10 +256,10 @@ class ReactiveEngine:
                 return None
             
             # Calculate price movement over shorter timeframes for more sensitivity
-            recent_prices = self.price_history[-5:]  # Last 5 price points
-            older_prices = self.price_history[-10:-5] if len(self.price_history) >= 10 else self.price_history[:-5]
+            recent_prices = self.price_history[-3:]  # Last 3 price points
+            older_prices = self.price_history[-6:-3] if len(self.price_history) >= 6 else self.price_history[:-3]
             
-            if not older_prices:
+            if not older_prices or len(recent_prices) < 2:
                 return None
             
             # Calculate percentage change
