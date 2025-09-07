@@ -343,9 +343,9 @@ class PredictionEngine:
                 else:
                     stop_loss = current_price * 0.995  # 0.5% below current (fallback)
                 
-                # Take profit: at or near the nearest resistance level
+                # Take profit: at the nearest resistance level (aggressive for range trading)
                 if nearest_resistance and nearest_resistance > current_price:
-                    take_profit = nearest_resistance * 0.999  # 0.1% below resistance
+                    take_profit = nearest_resistance * 0.9998  # 0.02% below resistance (very aggressive)
                 else:
                     # Fallback: use a reasonable take profit above current price
                     take_profit = current_price * 1.002  # 0.2% above current (better fallback)
@@ -361,11 +361,12 @@ class PredictionEngine:
                 else:
                     stop_loss = current_price * 1.005  # 0.5% above current (fallback)
                 
-                # Take profit: at or near the nearest support level
+                # Take profit: at the nearest support level (aggressive for range trading)
                 if nearest_support and nearest_support < current_price:
-                    take_profit = nearest_support * 1.001  # 0.1% above support
+                    # For range trading, target very close to the actual support level
+                    take_profit = nearest_support * 1.0002  # 0.02% above support (very aggressive)
                 else:
-                    take_profit = current_price * 0.999  # 0.1% below current (fallback)
+                    take_profit = current_price * 0.998  # 0.2% below current (better fallback)
             
             logger.info(f"🎯 Range Trading Levels: Entry=${entry_price:.2f}, Stop=${stop_loss:.2f}, Take=${take_profit:.2f}")
             logger.info(f"   Support: {nearest_support}, Resistance: {nearest_resistance}")
