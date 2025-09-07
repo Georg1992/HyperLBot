@@ -192,10 +192,12 @@ class SessionOrchestrator:
             from strategies.prediction_engine import PredictionEngine
             from core.session.session_manager import session_manager
             strategy_config = self.config.STRATEGY_CONFIGS.get(strategy_name, self.config.STRATEGY_CONFIGS["standard"])
-            prediction_engine = PredictionEngine(strategy_config)
-            prediction_engine.set_session_manager(session_manager)
             
-            initial_prediction = prediction_engine.generate_initial_session_prediction(current_price, market_data, strategy_name)
+            # Store prediction engine as instance variable for dynamic updates
+            self.prediction_engine = PredictionEngine(strategy_config)
+            self.prediction_engine.set_session_manager(session_manager)
+            
+            initial_prediction = self.prediction_engine.generate_initial_session_prediction(current_price, market_data, strategy_name)
             
             # Store prediction for dashboard display
             from core.dashboard.dashboard_data_manager import simple_rtm
@@ -257,6 +259,50 @@ class SessionOrchestrator:
             logger.error(f"❌ Failed to generate initial session prediction: {e}")
             # Continue session without initial prediction (degraded but functional)
     
+    def _update_dynamic_prediction(self, current_price: float, market_data: Dict[str, Any], 
+                                 dashboard_service, strategy_name: str = "standard"):
+        """Update prediction dynamically based on market changes"""
+        try:
+            if not hasattr(self, 'prediction_engine') or not self.prediction_engine:
+                return
+            
+            # Generate dynamic prediction
+            updated_prediction = self.prediction_engine.generate_dynamic_prediction(
+                current_price=current_price,
+                market_data=market_data,
+                strategy_name=strategy_name
+            )
+            
+            # Only update dashboard if prediction actually changed
+            if updated_prediction and updated_prediction.get("prediction_type") == "DYNAMIC_UPDATE":
+                logger.info("🔄 Updating dashboard with new dynamic prediction")
+                
+                # Extract values from order structure
+                order_structure = updated_prediction.get("order_structure", {})
+                
+                # Update dashboard with new prediction
+                dashboard_service.update_rtm_signal({
+                    "direction": order_structure.get("direction", "UNKNOWN"),
+                    "entry": order_structure.get("entry_price", 0),
+                    "stop_loss": order_structure.get("stop_loss", 0),
+                    "take_profit": order_structure.get("take_profit", 0),
+                    "confidence": updated_prediction.get("confidence", 0),
+                    "reasoning": updated_prediction.get("reasoning", "Dynamic update"),
+                    "strategy_used": strategy_name,
+                    "prediction_type": "DYNAMIC_UPDATE",
+                    "update_reason": updated_prediction.get("update_reason", "Market conditions changed"),
+                    "timestamp": time.time()
+                })
+                
+                # Update activity log
+                dashboard_service.update_rtm_activity(
+                    f"🔄 Prediction updated: {order_structure.get('direction', 'UNKNOWN')} at ${order_structure.get('entry_price', 0):,.2f}",
+                    "INFO"
+                )
+            
+        except Exception as e:
+            logger.error(f"❌ Error updating dynamic prediction: {e}")
+    
     def _main_trading_loop(self, max_trades: int, check_interval: int, hyperliquid_api,
                           market_data_service, trading_engine, dashboard_service, strategy_manager=None) -> Dict[str, Any]:
         """Main trading loop"""
@@ -307,6 +353,10 @@ class SessionOrchestrator:
                     self._generate_initial_session_prediction(market_data_service, dashboard_service, current_strategy)
                     initial_prediction_generated = True
                 
+                # Generate dynamic prediction updates based on market changes
+                if strategy_manager and initial_prediction_generated:
+                    self._update_dynamic_prediction(hyperliquid_price, yahoo_analysis, dashboard_service, current_strategy)
+                
                 # Update heartbeat with current strategy
                 dashboard_service.update_heartbeat(self.session_manager, current_strategy, self.initial_balance)
                 
@@ -338,7 +388,7 @@ class SessionOrchestrator:
                 # Check position exits
                 trading_engine.check_position_exits(hyperliquid_price)
                 
-                # Note: Ongoing predictions disabled - only initial session prediction is used
+                # Dynamic predictions are now handled above via _update_dynamic_prediction
                 
                 # Wait for next iteration
                 time.sleep(check_interval)

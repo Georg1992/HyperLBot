@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """
-Clean Prediction Engine
-======================
-SIMPLIFIED: Only generates initial session prediction (limit order + stop/take profit)
+Dynamic Prediction Engine
+========================
+ENHANCED: Generates initial predictions AND updates them based on market changes
 
-PURPOSE: Create ONE prediction at session start for dashboard display
-FOCUS: Clean limit order structure with historical context
-REMOVED: All complex ongoing prediction logic (user request: clean redundant logic)
+PURPOSE: Create dynamic predictions that adapt to market conditions
+FOCUS: Clean limit order structure with historical context + real-time updates
+FEATURES: 
+- Initial session prediction
+- Dynamic prediction updates based on market condition changes
+- Signal detection for prediction updates
+- Strategy-aware prediction generation
 """
 
 import time
@@ -18,14 +22,19 @@ from core.constants import technical_constants
 
 
 class PredictionEngine:
-    """CLEAN prediction engine - only initial session predictions"""
+    """Dynamic prediction engine - initial predictions + real-time updates"""
     
     def __init__(self, strategy_config: Dict[str, Any]):
         self.strategy_config = strategy_config
         self.config = TradingConfig()
         self.session_manager = None  # Will be set by SessionOrchestrator for historical context
         
-        logger.info("🎯 Clean Prediction Engine initialized - Initial session predictions only")
+        # Track last prediction for comparison
+        self.last_prediction = None
+        self.last_market_conditions = None
+        self.last_update_time = 0
+        
+        logger.info("🎯 Dynamic Prediction Engine initialized - Initial + real-time updates")
     
     def set_session_manager(self, session_manager):
         """Set session manager reference for accessing historical context (for enhanced predictions)"""
@@ -36,6 +45,127 @@ class PredictionEngine:
         if self.session_manager and self.session_manager.has_historical_context():
             return self.session_manager.get_historical_context()
         return {}
+    
+    def should_update_prediction(self, current_price: float, market_data: Dict[str, Any], strategy_name: str = "standard") -> bool:
+        """
+        Determine if prediction should be updated based on market changes
+        
+        Returns True if:
+        1. Market conditions have changed significantly
+        2. Price has moved significantly from last prediction
+        3. RSI has crossed key thresholds
+        4. Support/resistance levels have been broken
+        5. Strategy has changed
+        """
+        try:
+            current_time = time.time()
+            
+            # Don't update too frequently (minimum 5 seconds between updates for testing)
+            if current_time - self.last_update_time < 5:
+                logger.debug(f"⏰ Update throttled: {current_time - self.last_update_time:.1f}s since last update")
+                return False
+            
+            # If no previous prediction, always generate initial one
+            if not self.last_prediction:
+                return True
+            
+            # Check for significant price movement
+            last_order_structure = self.last_prediction.get("order_structure", {})
+            last_price = last_order_structure.get("entry_price", current_price)
+            price_change_pct = abs(current_price - last_price) / last_price
+            
+            # Update if price moved more than 0.015% (significant for range trading)
+            if price_change_pct > 0.00015:
+                logger.info(f"🔄 Price change detected: {price_change_pct:.3%} - updating prediction")
+                return True
+            
+            # Check for RSI threshold crossings
+            current_rsi = market_data.get("rsi", 50)
+            last_rsi = self.last_market_conditions.get("rsi", 50) if self.last_market_conditions else 50
+            
+            # Update if RSI crossed key thresholds (30, 50, 70)
+            rsi_thresholds = [30, 50, 70]
+            for threshold in rsi_thresholds:
+                if (last_rsi < threshold < current_rsi) or (last_rsi > threshold > current_rsi):
+                    logger.info(f"🔄 RSI threshold crossed: {last_rsi:.1f} → {current_rsi:.1f} (threshold: {threshold})")
+                    return True
+            
+            # Check for support/resistance breaks
+            historical_context = self.get_historical_context()
+            if historical_context:
+                major_levels = historical_context.get("major_levels", {})
+                support_levels = major_levels.get("support", [])
+                resistance_levels = major_levels.get("resistance", [])
+                
+                # Check if price broke through any major levels
+                for level in support_levels + resistance_levels:
+                    if abs(current_price - level) / level < 0.0005:  # Within 0.05% of level
+                        logger.info(f"🔄 Price near major level: ${current_price:,.2f} ≈ ${level:,.2f}")
+                        return True
+            
+            # Check for volatility regime changes
+            current_volatility = market_data.get("volatility_category", "MODERATE")
+            last_volatility = self.last_market_conditions.get("volatility_category", "MODERATE") if self.last_market_conditions else "MODERATE"
+            
+            if current_volatility != last_volatility:
+                logger.info(f"🔄 Volatility regime changed: {last_volatility} → {current_volatility}")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Error checking prediction update conditions: {e}")
+            return True  # Default to updating on error
+    
+    def generate_dynamic_prediction(self, current_price: float, market_data: Dict[str, Any], strategy_name: str = "standard") -> Dict[str, Any]:
+        """
+        Generate dynamic prediction that adapts to current market conditions
+        
+        This method:
+        1. Checks if prediction should be updated
+        2. Generates new prediction if conditions changed
+        3. Returns updated prediction or keeps existing one
+        """
+        try:
+            # Check if we should update the prediction
+            if not self.should_update_prediction(current_price, market_data, strategy_name):
+                # Return existing prediction if no update needed
+                if self.last_prediction:
+                    logger.debug("📊 No significant market changes - keeping existing prediction")
+                    return self.last_prediction
+            
+            # Generate new prediction
+            logger.info("🔄 Generating updated prediction based on market changes...")
+            
+            new_prediction = self.generate_initial_session_prediction(current_price, market_data, strategy_name)
+            
+            # Update tracking variables
+            self.last_prediction = new_prediction
+            self.last_market_conditions = {
+                "rsi": market_data.get("rsi", 50),
+                "volatility_category": market_data.get("volatility_category", "MODERATE"),
+                "trend": market_data.get("trend", "SIDEWAYS"),
+                "current_price": current_price
+            }
+            self.last_update_time = time.time()
+            
+            # Mark as dynamic update
+            new_prediction["prediction_type"] = "DYNAMIC_UPDATE"
+            new_prediction["update_reason"] = "Market conditions changed"
+            
+            # Extract key values for logging
+            order_structure = new_prediction.get("order_structure", {})
+            direction = order_structure.get("direction", "UNKNOWN")
+            entry = order_structure.get("entry_price", 0)
+            
+            logger.info(f"✅ Dynamic prediction updated: {direction} at ${entry:,.2f}")
+            
+            return new_prediction
+            
+        except Exception as e:
+            logger.error(f"❌ Error generating dynamic prediction: {e}")
+            # Return last prediction on error
+            return self.last_prediction or {}
     
     def generate_initial_session_prediction(self, current_price: float, market_data: Dict[str, Any], strategy_name: str = "standard") -> Dict[str, Any]:
         """
