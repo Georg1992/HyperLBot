@@ -380,30 +380,28 @@ class SessionOrchestrator:
                 if hasattr(self, 'prediction_engine') and self.prediction_engine and self.prediction_engine.last_prediction:
                     prediction_signal = self.prediction_engine.last_prediction
                 
-                # Get trading decision from trading engine
+                # Get trading decision from trading engine (ONLY predictions and reactions)
                 signal = trading_engine.should_trade(
                     hyperliquid_price, yahoo_analysis, hyperliquid_api, current_strategy,
                     prediction_signal=prediction_signal, reactive_signal=reactive_signal
                 )
                 
                 if signal["should_trade"]:
-                    # Place trade
-                    success = trading_engine.place_paper_trade(
-                        signal["side"], 
-                        signal.get("size", 0.001), 
-                        signal.get("leverage", 30),
-                        signal
+                    # PREPARATION MODE: Log trade signal but don't execute
+                    trades_placed += 1
+                    dashboard_service.update_rtm_activity(
+                        f"🎯 {signal['side']} trade signal prepared #{trades_placed} (PREPARATION MODE)", 
+                        "INFO"
                     )
+                    logger.info(f"🎯 Trade signal #{trades_placed} prepared: {signal['side']} - PREPARATION MODE (not executed)")
                     
-                    if success:
-                        trades_placed += 1
-                        dashboard_service.update_rtm_activity(
-                            f"🚀 {signal['side']} trade placed #{trades_placed}", 
-                            "SUCCESS"
-                        )
-                        logger.success(f"✅ Trade #{trades_placed} placed: {signal['side']}")
-                    else:
-                        dashboard_service.update_rtm_activity("❌ Trade placement failed", "ERROR")
+                    # TODO: Enable actual trading when ready
+                    # success = trading_engine.place_paper_trade(
+                    #     signal["side"], 
+                    #     signal.get("size", 0.001), 
+                    #     signal.get("leverage", 30),
+                    #     signal
+                    # )
                 else:
                     # Log no-trade reason
                     dashboard_service.update_rtm_activity(f"📊 No trade: {signal['reason']}", "INFO")

@@ -92,8 +92,11 @@ class TradingExecution:
             try:
                 orderbook = self.hyperliquid_api.get_orderbook("BTC") if self.hyperliquid_api else None
                 if orderbook and not orderbook.get('error'):
-                    if self.hyperliquid_simulator:
+                    # Ensure orderbook has required format for simulator
+                    if 'bids' in orderbook and 'asks' in orderbook and self.hyperliquid_simulator:
                         self.hyperliquid_simulator.update_order_book(orderbook)
+                    else:
+                        logger.debug("⚠️ Orderbook missing bids/asks - skipping simulator update")
             
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
@@ -304,8 +307,11 @@ class TradingExecution:
             try:
                 orderbook = self.hyperliquid_api.get_orderbook("BTC") if self.hyperliquid_api else None
                 if orderbook and not orderbook.get('error'):
-                    if self.hyperliquid_simulator:
+                    # Ensure orderbook has required format for simulator
+                    if 'bids' in orderbook and 'asks' in orderbook and self.hyperliquid_simulator:
                         self.hyperliquid_simulator.update_order_book(orderbook)
+                    else:
+                        logger.debug("⚠️ Orderbook missing bids/asks - skipping simulator update")
             
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
