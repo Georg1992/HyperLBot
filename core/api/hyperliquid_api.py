@@ -7,7 +7,7 @@ from config.config import TradingConfig
 
 # Import analysis modules
 import statistics # Added for enhanced volatility analysis
-from core.analysis.real_time.orderbook_data_fetcher import OrderbookDataFetcher
+# OrderbookDataFetcher removed - functionality moved to dedicated calculators
 
 class HyperliquidAPI:
     """Hyperliquid API client - simplified to only used methods (dead trading code eliminated)"""
@@ -24,7 +24,7 @@ class HyperliquidAPI:
         })
         
         # Initialize orderbook data fetcher
-        self.analysis = OrderbookDataFetcher(self)
+        # Analysis functionality moved to dedicated calculators in MarketDataManager
         
         if self.wallet_address and self.wallet_private_key:
             self._authenticate()

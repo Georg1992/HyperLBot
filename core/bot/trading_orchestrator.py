@@ -68,25 +68,14 @@ class TradingOrchestrator:
         
         # Execution components
         self.trade_quality_manager = TradeManager(self.strategy_config)
-        self.position_lifecycle_manager = TradingExecution(self)  # Still needs reference for now
+        self.position_lifecycle_manager = TradingExecution(
+            hyperliquid_api=None,  # Will be set after API initialization
+            hyperliquid_simulator=None,  # Will be set after simulator initialization  
+            trading_logger=self.trading_logger
+        )
         
-        # Initialize state needed by PositionLifecycleManager (backward compatibility)
-        self.open_positions = []
-        self.closed_positions = []
-        self.trade_history = []
-        self.paper_balance = self.initial_balance
-        self.last_trade_time = 0
-        self.yahoo_analysis = {}
-        self.leverage_settings = {"max_leverage": self.config.LEVERAGE or 30}
-        self.account_manager = account_manager
-        
-        # Connect trading components
-        self.trade_quality_manager.get_open_positions = self.get_open_positions
-        
-        # Add references needed by PositionLifecycleManager (backward compatibility)
-        self.trade_manager = self.trade_quality_manager
-        self.trading_logger = self.trading_logger
-        self.fee_manager = self.fee_manager
+        # State management should be handled by dedicated managers, not orchestrator
+        # TODO: Refactor PositionLifecycleManager to not depend on TradingOrchestrator state
         
         logger.info("🔧 Supporting components initialized")
     
@@ -136,6 +125,10 @@ class TradingOrchestrator:
             # Set references for backward compatibility (needed by PositionLifecycleManager)
             self.hyperliquid_api = init_result["hyperliquid_api"]
             self.hyperliquid_simulator = init_result["hyperliquid_simulator"]
+            
+            # Update position lifecycle manager with API references
+            self.position_lifecycle_manager.hyperliquid_api = self.hyperliquid_api
+            self.position_lifecycle_manager.hyperliquid_simulator = self.hyperliquid_simulator
             
             # Set up WebSocket price callback for REAL-TIME dashboard updates
             if self.market_data_service.hyperliquid_websocket:

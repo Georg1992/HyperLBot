@@ -14,15 +14,22 @@ from core.constants import constants, MagicNumbers, trading_constants, time_cons
 class TradingExecution:
     """Trading execution and position management methods"""
     
-    def __init__(self, bot_instance):
-        """Initialize with reference to main bot instance"""
-        self.bot = bot_instance
+    def __init__(self, hyperliquid_api=None, hyperliquid_simulator=None, trading_logger=None):
+        """Initialize with required dependencies (dependency injection)"""
+        self.hyperliquid_api = hyperliquid_api
+        self.hyperliquid_simulator = hyperliquid_simulator
+        self.trading_logger = trading_logger
         self.magic_numbers = MagicNumbers()
+        
+        # State that should be managed by dedicated managers
+        self.paper_balance = 0.0
+        self.leverage_settings = {"max_leverage": 30}
+        self.trade_history = []
     
     def place_paper_trade(self, side: str, size: float = trading_constants.DEFAULT_POSITION_SIZE, leverage: int = trading_constants.DEFAULT_LEVERAGE, signal_data: Dict = None) -> bool:
         """Place a PREDICTIVE paper trade using predicted entry points and time-based order management"""
         try:
-            hyperliquid_price = self.bot.get_hyperliquid_price()
+            hyperliquid_price = self.hyperliquid_api.get_current_price() if self.hyperliquid_api else None
             if not hyperliquid_price:
                 return False
             
@@ -33,7 +40,7 @@ class TradingExecution:
                 leverage = optimal_params["leverage"]
             
             # Ensure leverage doesn't exceed Hyperliquid limit
-            leverage = min(leverage, self.bot.leverage_settings["max_leverage"])
+            leverage = min(leverage, self.leverage_settings["max_leverage"])
             
             # Use PREDICTED entry price from signal data
             if signal_data and "entry_price" in signal_data:
@@ -68,20 +75,21 @@ class TradingExecution:
             logger.info(f"   Size: {size} BTC (${position_value_usd:,.2f})")
             logger.info(f"   Leverage: {leverage}x")
             logger.info(f"   Required Margin: ${position_value_usd/leverage:.2f}")
-            logger.info(f"   Paper Balance: ${self.bot.paper_balance:.2f}")
+            logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
             logger.info(f"   Order Type: LIMIT (Lower fees than MARKET!)")
             
             # Update simulator with real order book data
             try:
-                orderbook = self.bot.hyperliquid_api.get_orderbook("BTC")
+                orderbook = self.hyperliquid_api.get_orderbook("BTC") if self.hyperliquid_api else None
                 if orderbook and not orderbook.get('error'):
-                    self.bot.hyperliquid_simulator.update_order_book(orderbook)
+                    if self.hyperliquid_simulator:
+                        self.hyperliquid_simulator.update_order_book(orderbook)
             
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
             
             # Use enhanced Hyperliquid simulator for realistic order execution
-            execution_result = self.bot.hyperliquid_simulator.simulate_order_execution(
+            execution_result = self.hyperliquid_simulator.simulate_order_execution(
                 order_type="LIMIT",
                 side=side,
                 size=size,
@@ -94,14 +102,15 @@ class TradingExecution:
                 logger.error(f"❌ {error_msg}")
                 
                 # Log error to JSON file
-                self.bot.trading_logger.log_error({
+                if self.trading_logger:
+                    self.trading_logger.log_error({
                     "error_type": "trade_execution_failed",
                     "message": error_msg,
-                    "trade_id": f"hybrid_trade_{len(self.bot.trade_history) + 1}",
+                    "trade_id": f"hybrid_trade_{len(self.trade_history) + 1}",
                     "side": side,
                     "size": size,
                     "leverage": leverage,
-                    "paper_balance": self.bot.paper_balance,
+                    "paper_balance": self.paper_balance,
                     "required_margin": size * hyperliquid_price / leverage
                 })
                 return False
@@ -280,16 +289,17 @@ class TradingExecution:
             
             # Update simulator with real order book data
             try:
-                orderbook = self.bot.hyperliquid_api.get_orderbook("BTC")
+                orderbook = self.hyperliquid_api.get_orderbook("BTC") if self.hyperliquid_api else None
                 if orderbook and not orderbook.get('error'):
-                    self.bot.hyperliquid_simulator.update_order_book(orderbook)
+                    if self.hyperliquid_simulator:
+                        self.hyperliquid_simulator.update_order_book(orderbook)
             
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
             
             # Use enhanced Hyperliquid simulator for realistic exit execution
             exit_side = "SELL" if side == "BUY" else "BUY"  # Opposite of entry
-            execution_result = self.bot.hyperliquid_simulator.simulate_order_execution(
+            execution_result = self.hyperliquid_simulator.simulate_order_execution(
                 order_type="MARKET",  # Market order for exit
                 side=exit_side,
                 size=size,
@@ -429,7 +439,7 @@ class TradingExecution:
             logger.info(f"   Net P&L: ${net_pnl:.4f} (fees: ${total_fees:.4f})")
             logger.info(f"   Slippage: {execution_result.get('slippage', 0)*100:.3f}%")
             logger.info(f"   Reason: {exit_reason}")
-            logger.info(f"   Paper Balance: ${self.bot.paper_balance:.2f}")
+            logger.info(f"   Paper Balance: ${self.paper_balance:.2f}")
             
             return True
             

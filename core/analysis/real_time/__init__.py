@@ -4,7 +4,7 @@ Real-time Analysis Module
 Handles real-time market data analysis using live Hyperliquid data
 """
 
-from .orderbook_data_fetcher import OrderbookDataFetcher
+# OrderbookDataFetcher removed - functionality moved to dedicated calculators
 from .volatility_calculator import VolatilityCalculator
 from .volume_calculator import VolumeCalculator
 from .pressure_calculator import PressureCalculator
@@ -12,7 +12,7 @@ from .rsi_calculator import RSICalculator
 from .support_resistance_calculator import SupportResistanceCalculator
 from .trend_calculator import TrendCalculator
 __all__ = [
-    'OrderbookDataFetcher',
+    # OrderbookDataFetcher removed
     'VolatilityCalculator',
     'VolumeCalculator',
     'PressureCalculator',
