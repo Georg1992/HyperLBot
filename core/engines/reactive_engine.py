@@ -51,10 +51,10 @@ class ReactiveEngine:
         
         # Reactive thresholds (more aggressive than predictive)
         self.price_movement_thresholds = {
-            "CRITICAL": 0.015,   # 1.5% price movement - immediate execution
-            "HIGH": 0.01,        # 1% price movement - urgent execution
-            "MODERATE": 0.007,   # 0.7% price movement - consider execution
-            "LOW": 0.003         # 0.3% price movement - monitor
+            "CRITICAL": 0.008,   # 0.8% price movement - immediate execution
+            "HIGH": 0.005,       # 0.5% price movement - urgent execution
+            "MODERATE": 0.003,   # 0.3% price movement - consider execution
+            "LOW": 0.0015        # 0.15% price movement - monitor (catches moves like we just saw)
         }
         
         # RSI thresholds for reactive signals

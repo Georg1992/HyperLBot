@@ -197,6 +197,10 @@ class SessionOrchestrator:
             self.prediction_engine = PredictionEngine()
             self.prediction_engine.set_session_manager(session_manager)
             
+            # Initialize reactive engine for emergency execution
+            from core.engines.reactive_engine import ReactiveEngine
+            self.reactive_engine = ReactiveEngine()
+            
             initial_prediction = self.prediction_engine.generate_prediction(current_price, market_data, strategy_name)
             
             if not initial_prediction:
@@ -361,11 +365,26 @@ class SessionOrchestrator:
                 if strategy_manager and initial_prediction_generated:
                     self._update_dynamic_prediction(hyperliquid_price, yahoo_analysis, dashboard_service, current_strategy)
                 
+                # Check for reactive signals (emergency execution for sudden movements)
+                reactive_signal = None
+                if hasattr(self, 'reactive_engine') and self.reactive_engine:
+                    reactive_signal = self.reactive_engine.analyze_reactive_opportunity(hyperliquid_price, yahoo_analysis)
+                    if reactive_signal:
+                        logger.info(f"⚡ Reactive signal detected: {reactive_signal['direction']} ({reactive_signal['urgency']} urgency)")
+                
                 # Update heartbeat with current strategy
                 dashboard_service.update_heartbeat(self.session_manager, current_strategy, self.initial_balance)
                 
-                # Check for trading signal
-                signal = trading_engine.should_trade(hyperliquid_price, yahoo_analysis, hyperliquid_api, current_strategy)
+                # Check for trading signal (prediction engine)
+                prediction_signal = None
+                if hasattr(self, 'prediction_engine') and self.prediction_engine and self.prediction_engine.last_prediction:
+                    prediction_signal = self.prediction_engine.last_prediction
+                
+                # Get trading decision from trading engine
+                signal = trading_engine.should_trade(
+                    hyperliquid_price, yahoo_analysis, hyperliquid_api, current_strategy,
+                    prediction_signal=prediction_signal, reactive_signal=reactive_signal
+                )
                 
                 if signal["should_trade"]:
                     # Place trade
