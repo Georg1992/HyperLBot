@@ -37,7 +37,7 @@ class SessionContextAnalyzer:
                 return self._get_default_context()
             
             # 1. MAJOR SUPPORT/RESISTANCE LEVELS (Critical for range trading)
-            major_levels = self._identify_major_levels(candles_1d, candles_1h)
+            major_levels = self._identify_major_levels(candles_1d, candles_1h, candles_5m)
             
             # 2. VOLATILITY REGIME ANALYSIS 
             volatility_regime = self._analyze_volatility_regime(candles_1d, candles_1h)
@@ -84,7 +84,7 @@ class SessionContextAnalyzer:
             logger.error(f"❌ Session context analysis failed: {e}")
             return self._get_default_context()
     
-    def _identify_major_levels(self, candles_1d: List[Dict], candles_1h: List[Dict]) -> Dict[str, Any]:
+    def _identify_major_levels(self, candles_1d: List[Dict], candles_1h: List[Dict], candles_5m: List[Dict] = None) -> Dict[str, Any]:
         """Identify major support/resistance levels from historical data"""
         try:
             # Get significant price levels from daily data
@@ -101,19 +101,83 @@ class SessionContextAnalyzer:
             major_resistance = sorted([level for level in level_groups if level > statistics.median(all_levels)])[:5]
             major_support = sorted([level for level in level_groups if level < statistics.median(all_levels)], reverse=True)[:5]
             
+            # ENHANCED: Add 5-minute range levels for range trading
+            range_levels = self._identify_5m_range_levels(candles_5m) if candles_5m else {"support": [], "resistance": []}
+            
+            # Combine daily levels with 5-minute range levels
+            combined_support = major_support + range_levels["support"]
+            combined_resistance = major_resistance + range_levels["resistance"]
+            
             return {
-                "support": major_support,
-                "resistance": major_resistance,
+                "support": combined_support,
+                "resistance": combined_resistance,
                 "current_range": {
                     "low": min(daily_lows[-7:]),  # Last week's low
                     "high": max(daily_highs[-7:])  # Last week's high
                 },
+                "range_levels": range_levels,  # 5-minute range levels for range trading
                 "analysis_confidence": min(1.0, len(candles_1d) / 30)  # More data = higher confidence
             }
             
         except Exception as e:
             logger.error(f"❌ Major levels identification failed: {e}")
             return {"support": [], "resistance": [], "current_range": {"low": 0, "high": 0}, "analysis_confidence": 0.0}
+    
+    def _identify_5m_range_levels(self, candles_5m: List[Dict]) -> Dict[str, Any]:
+        """Identify support/resistance levels from 5-minute data for range trading"""
+        try:
+            if not candles_5m or len(candles_5m) < 20:
+                return {"support": [], "resistance": []}
+            
+            # Get recent 5-minute data (last 4 hours = 48 candles)
+            recent_candles = candles_5m[-48:] if len(candles_5m) >= 48 else candles_5m
+            
+            # Extract price levels
+            highs = [candle["high"] for candle in recent_candles]
+            lows = [candle["low"] for candle in recent_candles]
+            
+            # Find the current range (min/max of recent data)
+            range_low = min(lows)
+            range_high = max(highs)
+            range_width = range_high - range_low
+            
+            # Only consider this a range if it's relatively tight (less than 1% of price)
+            current_price = recent_candles[-1]["close"]
+            if range_width / current_price > 0.01:  # More than 1% range
+                return {"support": [], "resistance": []}
+            
+            # Find levels that have been tested multiple times
+            support_levels = []
+            resistance_levels = []
+            
+            # Look for support levels (price bounces from lows)
+            for low in lows:
+                # Round to nearest $10 for level detection
+                level = round(low, -1)
+                if level not in support_levels and level <= range_low + (range_width * 0.3):
+                    support_levels.append(level)
+            
+            # Look for resistance levels (price rejects from highs)
+            for high in highs:
+                # Round to nearest $10 for level detection
+                level = round(high, -1)
+                if level not in resistance_levels and level >= range_high - (range_width * 0.3):
+                    resistance_levels.append(level)
+            
+            # Sort and limit to most relevant levels
+            support_levels = sorted(list(set(support_levels)), reverse=True)[:3]
+            resistance_levels = sorted(list(set(resistance_levels)))[:3]
+            
+            logger.info(f"🎯 5m Range Levels: Support={support_levels}, Resistance={resistance_levels}")
+            
+            return {
+                "support": support_levels,
+                "resistance": resistance_levels
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ 5m range levels identification failed: {e}")
+            return {"support": [], "resistance": []}
     
     def _analyze_volatility_regime(self, candles_1d: List[Dict], candles_1h: List[Dict]) -> Dict[str, Any]:
         """Analyze historical volatility patterns to understand current regime"""
