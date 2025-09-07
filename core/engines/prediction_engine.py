@@ -54,8 +54,9 @@ class PredictionEngine:
         self.prediction_cooldown = 10  # 10 seconds between predictions
         
         # Dynamic tracking
-        self.signal_change_threshold = 0.1  # 10% change triggers re-evaluation
-        self.confidence_change_threshold = 0.05  # 5% confidence change triggers update
+        self.signal_change_threshold = 0.05  # 5% change triggers re-evaluation (more sensitive)
+        self.confidence_change_threshold = 0.02  # 2% confidence change triggers update (more sensitive)
+        self.entry_price_tolerance = 0.002  # 0.2% tolerance for entry price validity
         
         # Quality thresholds
         self.min_confidence_threshold = 0.7  # 70% minimum confidence
@@ -97,10 +98,21 @@ class PredictionEngine:
             if not self.last_prediction:
                 return self.generate_prediction(current_price, market_data, strategy_name)
             
-            # Step 3: Check for significant signal changes
+            # Step 3: Check if current prediction is still valid
+            prediction_validity = self._check_prediction_validity(current_price)
+            
+            # Step 4: Check for significant signal changes
             signal_changes = self._analyze_signal_changes(current_signals, current_aggregated)
             
-            if signal_changes["significant_change"]:
+            # Step 5: Determine if we need a new prediction
+            needs_new_prediction = (
+                signal_changes["significant_change"] or
+                not prediction_validity["is_valid"] or
+                prediction_validity["price_moved_away"] or
+                self._should_regenerate_prediction(current_price, current_aggregated)
+            )
+            
+            if needs_new_prediction:
                 logger.info(f"🔄 Significant signal changes detected: {signal_changes['change_summary']}")
                 
                 # Generate new prediction with updated signals
@@ -138,6 +150,86 @@ class PredictionEngine:
         except Exception as e:
             logger.error(f"❌ Signal tracking and adjustment failed: {e}")
             return self.last_prediction
+    
+    def _check_prediction_validity(self, current_price: float) -> Dict[str, Any]:
+        """Check if the current prediction is still valid based on price movement"""
+        try:
+            if not self.last_prediction:
+                return {"is_valid": False, "price_moved_away": False, "reason": "No prediction"}
+            
+            entry_price = self.last_prediction.get("entry_price", 0)
+            direction = self.last_prediction.get("direction", "NEUTRAL")
+            
+            if entry_price == 0:
+                return {"is_valid": False, "price_moved_away": False, "reason": "Invalid entry price"}
+            
+            # Calculate price deviation from entry
+            price_deviation = abs(current_price - entry_price) / entry_price
+            
+            # Check if price has moved too far from entry level
+            price_moved_away = price_deviation > self.entry_price_tolerance
+            
+            # Determine validity based on direction and price movement
+            is_valid = True
+            reason = "Prediction still valid"
+            
+            if price_moved_away:
+                if direction == "BUY" and current_price < entry_price * (1 - self.entry_price_tolerance):
+                    # Price moved down for a BUY prediction - still valid (better entry)
+                    is_valid = True
+                    reason = "Price moved down for BUY - better entry opportunity"
+                elif direction == "SELL" and current_price > entry_price * (1 + self.entry_price_tolerance):
+                    # Price moved up for a SELL prediction - still valid (better entry)
+                    is_valid = True
+                    reason = "Price moved up for SELL - better entry opportunity"
+                else:
+                    # Price moved against the prediction direction
+                    is_valid = False
+                    reason = f"Price moved {price_deviation:.1%} away from entry - prediction invalidated"
+            
+            return {
+                "is_valid": is_valid,
+                "price_moved_away": price_moved_away,
+                "price_deviation": price_deviation,
+                "reason": reason
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Prediction validity check failed: {e}")
+            return {"is_valid": False, "price_moved_away": True, "reason": f"Error: {e}"}
+    
+    def _should_regenerate_prediction(self, current_price: float, current_aggregated: Dict) -> bool:
+        """Determine if we should regenerate prediction based on market conditions"""
+        try:
+            if not self.last_prediction:
+                return True
+            
+            # Check if enough time has passed (force regeneration every 5 minutes)
+            time_since_last = time.time() - self.last_update_time
+            if time_since_last > 300:  # 5 minutes
+                logger.info("🔄 Forcing prediction regeneration - 5 minutes elapsed")
+                return True
+            
+            # Check if confidence has dropped significantly
+            current_confidence = current_aggregated.get("overall_confidence", 0.0)
+            last_confidence = self.last_prediction.get("confidence", 0.0)
+            confidence_drop = last_confidence - current_confidence
+            
+            if confidence_drop > 0.1:  # 10% confidence drop
+                logger.info(f"🔄 Confidence dropped {confidence_drop:.1%} - regenerating prediction")
+                return True
+            
+            # Check if market conditions have changed significantly
+            current_quality = current_aggregated.get("quality_rating", "POOR")
+            if current_quality in ["EXCELLENT", "GOOD"] and self.last_prediction.get("confidence", 0) < 0.6:
+                logger.info(f"🔄 Market conditions improved to {current_quality} - regenerating prediction")
+                return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Prediction regeneration check failed: {e}")
+            return False
     
     def _analyze_signal_changes(self, current_signals: Dict, current_aggregated: Dict) -> Dict[str, Any]:
         """Analyze changes between current and last signals"""
