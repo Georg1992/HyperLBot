@@ -65,11 +65,11 @@ class ReactiveEngine:
             "MODERATE": {"oversold": 30, "overbought": 70}
         }
         
-        # Order book pressure thresholds
+        # Order book pressure thresholds (adjusted for realistic market behavior)
         self.pressure_thresholds = {
-            "CRITICAL": 0.25,    # 25% imbalance - immediate execution
-            "HIGH": 0.15,        # 15% imbalance - urgent execution
-            "MODERATE": 0.1      # 10% imbalance - consider execution
+            "CRITICAL": 0.8,     # 80% imbalance - extreme market pressure
+            "HIGH": 0.6,         # 60% imbalance - significant pressure
+            "MODERATE": 0.4      # 40% imbalance - notable pressure
         }
         
         # Price tracking for movement detection
