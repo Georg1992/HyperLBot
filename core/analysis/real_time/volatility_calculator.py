@@ -16,12 +16,24 @@ class VolatilityCalculator:
         logger.info("📊 Volatility Calculator initialized")
     
     def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m") -> float:
-        """Calculate volatility from candle data (Yahoo Finance style)"""
+        """Calculate volatility from candle data using range-based method (more accurate for crypto)"""
         try:
             if len(candles) < 10:
                 return self._get_default_volatility(timeframe)
             
-            # Calculate returns from close prices
+            # Method 1: Range-based volatility (high-low)/close - better for crypto
+            range_volatilities = []
+            for candle in candles:
+                if candle["close"] > 0 and candle["high"] > 0 and candle["low"] > 0:
+                    range_vol = (candle["high"] - candle["low"]) / candle["close"]
+                    range_volatilities.append(range_vol)
+            
+            if range_volatilities:
+                # Use average range volatility (more representative of actual price action)
+                volatility = sum(range_volatilities) / len(range_volatilities)
+                return round(volatility, 6)
+            
+            # Fallback: Calculate returns from close prices (original method)
             returns = []
             for i in range(1, len(candles)):
                 if candles[i-1]["close"] > 0:

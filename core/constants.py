@@ -382,12 +382,12 @@ class VariabilityConstants:
     EXTREME_VOLATILITY = 0.08        # 8.0% - very volatile Bitcoin market
     
     # 5-Minute Volatility Thresholds (for real-time trading) - REALISTIC Bitcoin 5m trading thresholds
-    # Adjusted for proper ranging market classification
-    VOLATILITY_5M_VERY_LOW = 0.001    # 0.1% - tight ranging markets (very small moves)
-    VOLATILITY_5M_LOW = 0.0025        # 0.25% - low movement (quiet market, small moves)
-    VOLATILITY_5M_MODERATE = 0.005    # 0.5% - moderate movement (normal trading, noticeable moves)
-    VOLATILITY_5M_HIGH = 0.008        # 0.8% - high movement (active trading, significant moves)
-    VOLATILITY_5M_EXTREME = 0.02      # 2% - extreme movement (volatile market, large moves)
+    # Based on statistical analysis: 95% of movements < 0.1%, adjusted for range-based calculation
+    VOLATILITY_5M_VERY_LOW = 0.0003   # 0.03% - tight ranging markets (very small moves)
+    VOLATILITY_5M_LOW = 0.0008        # 0.08% - low movement (quiet market, small moves)
+    VOLATILITY_5M_MODERATE = 0.0015   # 0.15% - moderate movement (normal trading, noticeable moves)
+    VOLATILITY_5M_HIGH = 0.003        # 0.3% - high movement (active trading, significant moves)
+    VOLATILITY_5M_EXTREME = 0.006     # 0.6% - extreme movement (volatile market, large moves)
     
     # Trading Condition Scores
     OPTIMAL_TRADING_SCORE = 0.7      # 70% score for optimal conditions
