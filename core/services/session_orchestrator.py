@@ -63,11 +63,30 @@ class SessionOrchestrator:
             logger.info("🧹 Dashboard cache cleared - Fresh session data")
             
             # Start session  
-            self.session_manager = SessionManager()
+            from core.session.session_manager import session_manager
+            self.session_manager = session_manager  # Use singleton instance
             logger.info("✅ SessionManager initialized")
             
             # COMPUTE HISTORICAL CONTEXT for session (business logic data)
+            logger.info("🚀 Starting historical context computation...")
             self._compute_and_store_historical_context()
+            
+            # Wait a moment for computation to complete
+            time.sleep(1)
+            
+            # Verify historical context was computed successfully
+            if not self.session_manager.has_historical_context():
+                logger.warning("⚠️ Historical context computation failed - retrying once...")
+                # Retry once with a small delay
+                time.sleep(3)
+                self._compute_and_store_historical_context()
+                
+                if not self.session_manager.has_historical_context():
+                    logger.error("❌ Historical context computation failed after retry - continuing with degraded functionality")
+                else:
+                    logger.success("✅ Historical context ready after retry")
+            else:
+                logger.success("✅ Historical context ready for market conditions analysis")
             
             # Create initial heartbeat
             dashboard_service.create_initial_heartbeat(self.session_manager, "standard", self.initial_balance)
@@ -101,21 +120,40 @@ class SessionOrchestrator:
             
             # Get historical data for context analysis
             yahoo_fetcher = YahooDataFetcher()
+            logger.info("📊 Fetching daily candles (45 days)...")
             candles_1d = yahoo_fetcher.get_klines("BTC-USD", "1d", 45)  # 6.5 weeks
+            logger.info(f"📊 Daily candles: {len(candles_1d) if candles_1d else 0} candles")
+            
+            logger.info("📊 Fetching hourly candles (84 hours)...")
             candles_1h = yahoo_fetcher.get_klines("BTC-USD", "1h", 84)  # 3.5 days  
+            logger.info(f"📊 Hourly candles: {len(candles_1h) if candles_1h else 0} candles")
+            
+            logger.info("📊 Fetching 5-minute candles (30 candles)...")
             candles_5m = yahoo_fetcher.get_klines("BTC-USD", "5m", 30)  # 2.5 hours
+            logger.info(f"📊 5-minute candles: {len(candles_5m) if candles_5m else 0} candles")
+            
+            # Validate data before analysis
+            if not candles_1d or not candles_1h or not candles_5m:
+                logger.error("❌ Historical data fetching failed - missing candle data")
+                logger.error(f"   Daily: {len(candles_1d) if candles_1d else 0}, Hourly: {len(candles_1h) if candles_1h else 0}, 5m: {len(candles_5m) if candles_5m else 0}")
+                return
             
             # Analyze historical context
+            logger.info("📊 Analyzing historical context...")
             context_analyzer = SessionContextAnalyzer()
             historical_context = context_analyzer.analyze_session_context(candles_1d, candles_1h, candles_5m)
             
-            # Store in SessionManager (business logic layer)
-            self.session_manager.set_historical_context(historical_context)
+            # Store in SessionManager (business logic layer) - use singleton
+            from core.session.session_manager import session_manager
+            session_manager.set_historical_context(historical_context)
             
             logger.success("✅ Session historical context computed and stored")
+            logger.info(f"✅ Market regime: {historical_context.get('market_regime', {}).get('regime', 'UNKNOWN')}")
             
         except Exception as e:
             logger.error(f"❌ Failed to compute historical context: {e}")
+            import traceback
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
             # Continue session without historical context (degraded but functional)
     
     def _generate_initial_session_prediction(self, market_data_service, dashboard_service, strategy_name="standard"):
@@ -426,9 +464,21 @@ class SessionOrchestrator:
                 "timestamp": time.time()
             }
             
+            # Get historical context with logging - use singleton directly
+            from core.session.session_manager import session_manager
+            historical_context = {}
+            if session_manager:
+                historical_context = session_manager.get_historical_context()
+                if not session_manager.has_historical_context():
+                    logger.warning("⚠️ Market conditions analysis running without historical context")
+                else:
+                    logger.debug("📊 Market conditions analysis using historical context")
+            else:
+                logger.warning("⚠️ No SessionManager available for historical context")
+            
             conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(
                 market_data=market_conditions_input,
-                historical_context=self.session_manager.get_historical_context() if self.session_manager else {},
+                historical_context=historical_context,
                 strategy_name=strategy_name
             )
             

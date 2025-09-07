@@ -142,6 +142,9 @@ class MarketConditionsAnalyzer:
             if strategy_name == "low_volatility":
                 # Low volatility strategy is designed for low volatility
                 positive_factors.append("Good conditions for low volatility strategy")
+            elif strategy_name == "range_trading":
+                # Range trading strategy also works well in low volatility
+                positive_factors.append("Good conditions for range trading")
             else:
                 # Other strategies find low volatility risky
                 risk_factors.append("Reduced profit potential")
@@ -211,10 +214,11 @@ class MarketConditionsAnalyzer:
             logger.debug(f"🔍 RSI: Neutral zone (45-55) - can be overridden by strong factors")
             
         elif rsi <= 25 or rsi >= 75:
-            factors.append(f"RSI extreme zone ({rsi:.1f}) - potential reversal risk")
-            risk_factors.append("Extreme RSI - reversal risk")
-            risk_level = 1
-            logger.debug(f"🔍 RSI: Extreme zone detected (<25 or >75)")
+            factors.append(f"RSI extreme zone ({rsi:.1f}) - strong signal")
+            # Extreme RSI is ALWAYS a strong trading opportunity, never a risk
+            # RSI >85 = perfect short opportunity, RSI <15 = perfect long opportunity
+            risk_level = 0  # No risk, just opportunity
+            logger.debug(f"🔍 RSI: Extreme zone detected (<25 or >75) - treating as strong trading opportunity")
             
         elif rsi <= 35:
             factors.append(f"RSI oversold ({rsi:.1f}) - bullish potential")
@@ -231,8 +235,8 @@ class MarketConditionsAnalyzer:
             "factors": factors,
             "risk": risk_level,
             "risk_factors": risk_factors,
-            "positive": rsi <= 35 or rsi >= 65,  # Oversold/overbought are positive signals
-            "positive_factors": ["Strong RSI signal"] if (rsi <= 35 or rsi >= 65) else [],
+            "positive": rsi <= 35 or rsi >= 65 or (rsi <= 25 or rsi >= 75),  # Oversold/overbought/extreme are positive signals
+            "positive_factors": ["Strong RSI signal"] if (rsi <= 35 or rsi >= 65 or (rsi <= 25 or rsi >= 75)) else [],
             "neutral": 45 <= rsi <= 55,  # Flag neutral zone for override logic
             "neutral_factors": ["RSI neutral zone"] if 45 <= rsi <= 55 else []
         }

@@ -39,6 +39,7 @@ class SessionManager:
         self._initialized = True
         self.session_lock = threading.RLock()
         self.current_session_id = None
+        self.historical_context = None  # Initialize historical context
         
         logger.success("📅 Enhanced Session Manager initialized")
     
@@ -96,7 +97,8 @@ class SessionManager:
                 }
                 
                 # Initialize historical context storage (business logic data for strategies)
-                self.historical_context = None
+                # NOTE: Don't reset historical_context here - it's already computed and stored!
+                # self.historical_context = None  # REMOVED - this was clearing the computed context!
                 
                 # Calculate and update session time before syncing
                 self._update_session_time()

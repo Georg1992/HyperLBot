@@ -63,35 +63,12 @@ class TradingEngine:
         # TODO: This will be implemented in next steps
         # Signals will come from external engines (PredictionEngine/ReactiveEngine)
         
-        # 5. MARKET CONDITIONS CHECK (safety filter)
-        from strategies.market_conditions_analyzer import global_conditions_analyzer
-        
-        conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(
-            market_data={
-                "current_price": hyperliquid_price,
-                "rsi": market_data.get("rsi_5m", 50.0),
-                "trend": market_data.get("trend_5m", {}).get("trend", "NEUTRAL"),
-                "volatility_5m": market_data.get("volatility_5m", 0.0),
-                "volatility_category": market_data.get("volatility_5m_category", "MODERATE"),
-                "volume_category": volume_data.get("volume_category", "NORMAL"),
-                "timestamp": current_time
-            },
-            historical_context={},
-            strategy_name=strategy_name
-        )
-        
-        # BLOCK TRADING if conditions are untradable (safety filter)
-        if not conditions_analysis["is_tradable"]:
-            untradable_reason = global_conditions_analyzer.get_untradable_condition_summary(conditions_analysis)
-            return {
-                "should_trade": False, 
-                "reason": f"⚠️ {untradable_reason}"
-            }
-        
-        # 6. TRADING LOGIC DISABLED - Waiting for external signal integration
+        # 5. TRADING LOGIC DISABLED - Waiting for external signal integration
+        # TradingEngine should ONLY execute trades from PredictionEngine/ReactiveEngine
+        # No market conditions analysis here - that's the engines' responsibility
         return {
             "should_trade": False, 
-            "reason": f"Trading disabled - Waiting for engine integration. Conditions: {conditions_analysis['condition']} ({conditions_analysis['confidence']:.0%})"
+            "reason": "Trading disabled - Waiting for engine integration"
         }
     
     def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
