@@ -314,7 +314,8 @@ class SessionOrchestrator:
     def _main_trading_loop(self, max_trades: int, check_interval: int, hyperliquid_api,
                           market_data_service, trading_engine, dashboard_service, strategy_manager=None) -> Dict[str, Any]:
         """Main trading loop"""
-        trades_placed = 0
+        trades_placed = 0  # Only counts actual executed trades
+        signals_prepared = 0  # Counts prepared signals (for logging)
         initial_prediction_generated = False
         
         # Note: TradingEngine is now a pure execution engine and doesn't need session manager access
@@ -388,12 +389,12 @@ class SessionOrchestrator:
                 
                 if signal["should_trade"]:
                     # PREPARATION MODE: Log trade signal but don't execute
-                    trades_placed += 1
+                    signals_prepared += 1  # Count prepared signals for logging
                     dashboard_service.update_rtm_activity(
-                        f"🎯 {signal['side']} trade signal prepared #{trades_placed} (PREPARATION MODE)", 
+                        f"🎯 {signal['side']} trade signal prepared #{signals_prepared} (PREPARATION MODE)", 
                         "INFO"
                     )
-                    logger.info(f"🎯 Trade signal #{trades_placed} prepared: {signal['side']} - PREPARATION MODE (not executed)")
+                    logger.info(f"🎯 Trade signal #{signals_prepared} prepared: {signal['side']} - PREPARATION MODE (not executed)")
                     
                     # TODO: Enable actual trading when ready
                     # success = trading_engine.place_paper_trade(
@@ -402,6 +403,8 @@ class SessionOrchestrator:
                     #     signal.get("leverage", 30),
                     #     signal
                     # )
+                    # if success:
+                    #     trades_placed += 1  # Only count actual executed trades
                 else:
                     # Log no-trade reason
                     dashboard_service.update_rtm_activity(f"📊 No trade: {signal['reason']}", "INFO")
@@ -427,6 +430,7 @@ class SessionOrchestrator:
         return {
             "success": True,
             "trades_placed": trades_placed,
+            "signals_prepared": signals_prepared,
             "session_complete": True
         }
     
