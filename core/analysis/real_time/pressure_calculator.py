@@ -99,8 +99,8 @@ class PressureCalculator:
             logger.warning(f"Pressure direction categorization failed: {e}")
             return "NEUTRAL", MagicNumbers.DEFAULT_STRENGTH
     
-    def _calculate_pressure_confidence(self, total_depth: float, pressure_imbalance: float) -> str:
-        """Calculate confidence percentage for pressure reading"""
+    def _calculate_pressure_confidence(self, total_depth: float, pressure_imbalance: float) -> float:
+        """Calculate confidence score for pressure reading (0.0 to 1.0)"""
         try:
             # Base confidence on depth and imbalance strength (using constants)
             depth_factor = min(1.0, total_depth / MagicNumbers.PRESSURE_DEPTH_REFERENCE)  # Reference depth = 100% confidence
@@ -108,13 +108,12 @@ class PressureCalculator:
             
             # Combine factors for overall confidence (60% depth weight, 40% imbalance weight)
             confidence_score = (depth_factor * 0.6) + (imbalance_factor * 0.4)
-            confidence_pct = int(confidence_score * 100)
             
-            return f"{confidence_pct}%"
+            return round(confidence_score, 3)
             
         except Exception as e:
             logger.warning(f"Pressure confidence calculation failed: {e}")
-            return "0%"  # Return 0% instead of hardcoded 50% for errors
+            return 0.0  # Return 0.0 for errors
     
     def _determine_pressure_trend(self, pressure_imbalance: float, depth_concentration: float) -> str:
         """Determine pressure trend based on orderbook characteristics"""

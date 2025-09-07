@@ -189,39 +189,41 @@ class SessionOrchestrator:
             }
             
             # Generate initial prediction using prediction engine with strategy-specific configuration
-            from strategies.prediction_engine import PredictionEngine
+            from core.engines.prediction_engine import PredictionEngine
             from core.session.session_manager import session_manager
             strategy_config = self.config.STRATEGY_CONFIGS.get(strategy_name, self.config.STRATEGY_CONFIGS["standard"])
             
             # Store prediction engine as instance variable for dynamic updates
-            self.prediction_engine = PredictionEngine(strategy_config)
+            self.prediction_engine = PredictionEngine()
             self.prediction_engine.set_session_manager(session_manager)
             
-            initial_prediction = self.prediction_engine.generate_initial_session_prediction(current_price, market_data, strategy_name)
+            initial_prediction = self.prediction_engine.generate_prediction(current_price, market_data, strategy_name)
+            
+            if not initial_prediction:
+                logger.error("❌ Failed to generate initial session prediction: No prediction returned")
+                return None
             
             # Store prediction for dashboard display
             from core.dashboard.dashboard_data_manager import simple_rtm
-            order_structure = initial_prediction.get("order_structure", {})
-            market_analysis = initial_prediction.get("market_analysis", {})
             
             signal_data = {
                 "type": "INITIAL_PREDICTION",
-                "direction": order_structure.get("direction", "UNKNOWN"),
+                "direction": initial_prediction.get("direction", "UNKNOWN"),
                 "confidence": initial_prediction.get("confidence", 0),
                 "reasoning": initial_prediction.get("reasoning", ""),
-                "entry_price": order_structure.get("entry_price", 0),
-                "stop_loss": order_structure.get("stop_loss", 0),
-                "take_profit": order_structure.get("take_profit", 0),
-                "size_btc": 0.001,  # Default for initial prediction
-                "size_usd": order_structure.get("entry_price", 0) * 0.001,
-                "rsi": market_analysis.get("rsi", 50),
-                "trend": market_analysis.get("trend", "NEUTRAL"),
+                "entry_price": initial_prediction.get("entry_price", 0),
+                "stop_loss": initial_prediction.get("stop_loss", 0),
+                "take_profit": initial_prediction.get("take_profit", 0),
+                "size_btc": initial_prediction.get("position_size", 0.001),
+                "size_usd": initial_prediction.get("entry_price", 0) * initial_prediction.get("position_size", 0.001),
+                "rsi": market_data.get("rsi", 50),
+                "trend": market_data.get("trend", "NEUTRAL"),
                 "strategy_used": strategy_name,  # Include strategy information
                 "prediction_data": {
-                    "order_structure": order_structure,
-                    "market_analysis": market_analysis,
-                    "prediction_type": initial_prediction.get("prediction_type", "INITIAL"),
-                    "session_strategy": strategy_name
+                    "prediction_type": initial_prediction.get("prediction_type", "SIGNAL_BASED"),
+                    "session_strategy": strategy_name,
+                    "signal_analysis": initial_prediction.get("signal_analysis", {}),
+                    "timestamp": initial_prediction.get("timestamp", 0)
                 }
             }
             simple_rtm.add_signal(signal_data)
@@ -267,41 +269,38 @@ class SessionOrchestrator:
                 return
             
             # Generate dynamic prediction
-            updated_prediction = self.prediction_engine.generate_dynamic_prediction(
+            updated_prediction = self.prediction_engine.track_signals_and_adjust_prediction(
                 current_price=current_price,
                 market_data=market_data,
                 strategy_name=strategy_name
             )
             
             # Only update dashboard if prediction actually changed
-            if updated_prediction and updated_prediction.get("prediction_type") == "DYNAMIC_UPDATE":
+            if updated_prediction and updated_prediction.get("prediction_type") in ["SIGNAL_ADJUSTED", "CONFIDENCE_ADJUSTED"]:
                 logger.info("🔄 Updating dashboard with new dynamic prediction")
                 
-                # Extract values from order structure
-                order_structure = updated_prediction.get("order_structure", {})
-                
-                # Update dashboard with new prediction (include all required fields)
-                entry_price = order_structure.get("entry_price", 0)
+                # Extract values from new prediction structure
+                entry_price = updated_prediction.get("entry_price", 0)
                 dashboard_service.update_rtm_signal({
                     "type": "DYNAMIC_UPDATE",
-                    "direction": order_structure.get("direction", "UNKNOWN"),
+                    "direction": updated_prediction.get("direction", "UNKNOWN"),
                     "entry": entry_price,  # Use 'entry' for dashboard compatibility
                     "entry_price": entry_price,  # Also include 'entry_price' for consistency
-                    "stop_loss": order_structure.get("stop_loss", 0),
-                    "take_profit": order_structure.get("take_profit", 0),
-                    "size_btc": 0.001,  # Default position size
-                    "size_usd": entry_price * 0.001,  # Calculate USD size
+                    "stop_loss": updated_prediction.get("stop_loss", 0),
+                    "take_profit": updated_prediction.get("take_profit", 0),
+                    "size_btc": updated_prediction.get("position_size", 0.001),
+                    "size_usd": entry_price * updated_prediction.get("position_size", 0.001),
                     "confidence": updated_prediction.get("confidence", 0),
                     "reasoning": updated_prediction.get("reasoning", "Dynamic update"),
                     "strategy_used": strategy_name,
-                    "prediction_type": "DYNAMIC_UPDATE",
+                    "prediction_type": updated_prediction.get("prediction_type", "SIGNAL_ADJUSTED"),
                     "update_reason": updated_prediction.get("update_reason", "Market conditions changed"),
                     "timestamp": time.time()
                 })
                 
                 # Update activity log
                 dashboard_service.update_rtm_activity(
-                    f"🔄 Prediction updated: {order_structure.get('direction', 'UNKNOWN')} at ${order_structure.get('entry_price', 0):,.2f}",
+                    f"🔄 Prediction updated: {updated_prediction.get('direction', 'UNKNOWN')} at ${updated_prediction.get('entry_price', 0):,.2f}",
                     "INFO"
                 )
             

@@ -26,7 +26,7 @@ from core.analysis.historical.variability_analyzer import VariabilityAnalyzer
 from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
 from core.execution.trade_quality_manager import TradeManager
 from core.execution.position_lifecycle_manager import TradingExecution
-from strategies.prediction_engine import PredictionEngine
+from core.engines.prediction_engine import PredictionEngine
 from strategies.strategy_manager import StrategyManager
 from core.execution.fee_manager import FeeManager
 from core.logging.trading_logger import TradingLogger
@@ -62,7 +62,7 @@ class TradingOrchestrator:
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
         self.historical_data_coordinator = MarketDataAnalyzer()
         self.strategy_manager = StrategyManager(self.config)
-        self.prediction_engine = PredictionEngine(self.strategy_config)
+        self.prediction_engine = PredictionEngine()
         self.fee_manager = FeeManager()
         self.trading_logger = TradingLogger()
         
