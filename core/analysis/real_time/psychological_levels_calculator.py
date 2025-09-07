@@ -272,24 +272,24 @@ class PsychologicalLevelsCalculator:
             
             # More aggressive direction determination
             if distance_ratio < 0.7:  # Support is significantly closer
-                implications["primary_direction"] = "DOWN"
+                implications["primary_direction"] = "SELL"
                 implications["confidence"] = min(0.9, support_level["strength"] + 0.2)  # Boost confidence
                 implications["target_levels"].append(support_level["level"])
                 implications["trading_bias"] = "BEARISH"
             elif distance_ratio > 1.4:  # Resistance is significantly closer
-                implications["primary_direction"] = "UP"
+                implications["primary_direction"] = "BUY"
                 implications["confidence"] = min(0.9, resistance_level["strength"] + 0.2)  # Boost confidence
                 implications["target_levels"].append(resistance_level["level"])
                 implications["trading_bias"] = "BULLISH"
             else:
                 # Close distances - use level strength to determine bias
                 if support_level["strength"] > resistance_level["strength"]:
-                    implications["primary_direction"] = "DOWN"
+                    implications["primary_direction"] = "SELL"
                     implications["confidence"] = support_level["strength"]
                     implications["target_levels"].append(support_level["level"])
                     implications["trading_bias"] = "BEARISH"
                 elif resistance_level["strength"] > support_level["strength"]:
-                    implications["primary_direction"] = "UP"
+                    implications["primary_direction"] = "BUY"
                     implications["confidence"] = resistance_level["strength"]
                     implications["target_levels"].append(resistance_level["level"])
                     implications["trading_bias"] = "BULLISH"
@@ -385,24 +385,24 @@ class PsychologicalLevelsCalculator:
         
         # Adjust based on RSI
         rsi_factor = 1.0
-        if implications["primary_direction"] == "UP" and rsi < 30:
+        if implications["primary_direction"] == "BUY" and rsi < 30:
             rsi_factor = 1.2  # Oversold + psychological support = stronger signal
-        elif implications["primary_direction"] == "DOWN" and rsi > 70:
+        elif implications["primary_direction"] == "SELL" and rsi > 70:
             rsi_factor = 1.2  # Overbought + psychological resistance = stronger signal
-        elif implications["primary_direction"] == "UP" and rsi > 70:
+        elif implications["primary_direction"] == "BUY" and rsi > 70:
             rsi_factor = 0.8  # Overbought + psychological support = weaker signal
-        elif implications["primary_direction"] == "DOWN" and rsi < 30:
+        elif implications["primary_direction"] == "SELL" and rsi < 30:
             rsi_factor = 0.8  # Oversold + psychological resistance = weaker signal
         
         # Adjust based on trend
         trend_factor = 1.0
-        if implications["trading_bias"] == "BULLISH" and "UP" in trend:
+        if implications["trading_bias"] == "BULLISH" and "UPTREND" in trend:
             trend_factor = 1.1  # Trend aligns with psychological bias
-        elif implications["trading_bias"] == "BEARISH" and "DOWN" in trend:
+        elif implications["trading_bias"] == "BEARISH" and "DOWNTREND" in trend:
             trend_factor = 1.1  # Trend aligns with psychological bias
-        elif implications["trading_bias"] == "BULLISH" and "DOWN" in trend:
+        elif implications["trading_bias"] == "BULLISH" and "DOWNTREND" in trend:
             trend_factor = 0.9  # Trend contradicts psychological bias
-        elif implications["trading_bias"] == "BEARISH" and "UP" in trend:
+        elif implications["trading_bias"] == "BEARISH" and "UPTREND" in trend:
             trend_factor = 0.9  # Trend contradicts psychological bias
         
         final_confidence = base_confidence * rsi_factor * trend_factor
