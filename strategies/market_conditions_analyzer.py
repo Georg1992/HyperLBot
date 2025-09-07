@@ -22,7 +22,8 @@ class MarketConditionsAnalyzer:
         logger.info("🔍 Market Conditions Analyzer initialized - Untradable condition detection")
     
     def analyze_trading_conditions(self, market_data: Dict[str, Any], 
-                                 historical_context: Dict[str, Any] = None) -> Dict[str, Any]:
+                                 historical_context: Dict[str, Any] = None, 
+                                 strategy_name: str = "standard") -> Dict[str, Any]:
         """
         Comprehensive market conditions analysis for trading decisions
         
@@ -47,8 +48,8 @@ class MarketConditionsAnalyzer:
             risk_factors = []
             positive_factors = []
             
-            # 1. VOLATILITY CONDITIONS
-            volatility_analysis = self._analyze_volatility_conditions(volatility_5m, volatility_category)
+            # 1. VOLATILITY CONDITIONS (strategy-aware)
+            volatility_analysis = self._analyze_volatility_conditions(volatility_5m, volatility_category, strategy_name)
             condition_factors.extend(volatility_analysis["factors"])
             if volatility_analysis["risk"] > 0:
                 risk_factors.extend(volatility_analysis["risk_factors"])
@@ -119,7 +120,7 @@ class MarketConditionsAnalyzer:
             logger.error(f"❌ Market conditions analysis failed: {e}")
             return self._get_default_conditions_analysis()
     
-    def _analyze_volatility_conditions(self, volatility_5m: float, category: str) -> Dict[str, Any]:
+    def _analyze_volatility_conditions(self, volatility_5m: float, category: str, strategy_name: str = "standard") -> Dict[str, Any]:
         """Analyze volatility for trading suitability"""
         factors = []
         risk_factors = []
@@ -128,13 +129,23 @@ class MarketConditionsAnalyzer:
         
         if category == "VERY_LOW":
             factors.append("Very low volatility - range-bound market")
-            risk_factors.append("Insufficient price movement for scalping")
-            risk_level = 3  # High risk due to low movement
+            if strategy_name == "range_trading":
+                # Range trading strategy is designed for very low volatility
+                positive_factors.append("Optimal conditions for range trading")
+            else:
+                # Other strategies (like scalping) find very low volatility risky
+                risk_factors.append("Insufficient price movement for scalping")
+                risk_level = 3  # High risk due to low movement
             
         elif category == "LOW":
             factors.append("Low volatility - limited opportunities") 
-            risk_factors.append("Reduced profit potential")
-            risk_level = 2
+            if strategy_name == "low_volatility":
+                # Low volatility strategy is designed for low volatility
+                positive_factors.append("Good conditions for low volatility strategy")
+            else:
+                # Other strategies find low volatility risky
+                risk_factors.append("Reduced profit potential")
+                risk_level = 2
             
         elif category == "MODERATE":
             factors.append("Moderate volatility - good for trading")

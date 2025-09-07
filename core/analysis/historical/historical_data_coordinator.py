@@ -63,11 +63,7 @@ class MarketDataAnalyzer:
     # get_weekly_trend_analysis removed - duplicates TradingBot.get_weekly_trend_analysis()
     # Use TradingBot.get_weekly_trend_analysis() for consistency
     
-    # analyze_entry_point removed - duplicates PredictionEngine.analyze_entry_point()
-    # Use PredictionEngine.analyze_entry_point() for authoritative entry analysis
-    
-    # calculate_prediction_win_probability removed - duplicates PredictionEngine.calculate_win_probability()
-    # Use PredictionEngine.calculate_win_probability() for authoritative probability calculation
+    # Note: Old prediction methods removed - PredictionEngine handles all prediction logic
     
     def get_update_status(self) -> Dict[str, Any]:
         """Get update status for dashboard using centralized MarketDataManager"""
@@ -88,9 +84,9 @@ class MarketDataAnalyzer:
     def get_analysis(self, current_price: float, volume: float, rsi: float, volatility: float) -> Dict[str, Any]:
         """Get minimal analysis - simplified to essential fields only"""
         try:
-            # Minimal analysis with only fields needed by prediction engine
+            # Minimal analysis with only essential fields
             analysis = {
-                # Core fields required by prediction engine
+                # Core fields for market analysis
                 "current_price": current_price,
                 "rsi": rsi,  # Use the actual RSI value passed in
                 "trend": "NEUTRAL",  # Simplified - no complex session tracking needed

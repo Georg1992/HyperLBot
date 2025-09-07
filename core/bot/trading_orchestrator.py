@@ -27,6 +27,7 @@ from core.analysis.historical.historical_data_coordinator import MarketDataAnaly
 from core.execution.trade_quality_manager import TradeManager
 from core.execution.position_lifecycle_manager import TradingExecution
 from strategies.prediction_engine import PredictionEngine
+from strategies.strategy_manager import StrategyManager
 from core.execution.fee_manager import FeeManager
 from core.logging.trading_logger import TradingLogger
 from core.state.trade_state_manager import trade_state_manager
@@ -60,6 +61,7 @@ class TradingOrchestrator:
         # Core components
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
         self.historical_data_coordinator = MarketDataAnalyzer()
+        self.strategy_manager = StrategyManager(self.config)
         self.prediction_engine = PredictionEngine(self.strategy_config)
         self.fee_manager = FeeManager()
         self.trading_logger = TradingLogger()
@@ -104,7 +106,6 @@ class TradingOrchestrator:
         self.trading_engine = TradingEngine(
             self.config,
             self.strategy_config,
-            self.prediction_engine,
             self.trade_quality_manager,
             self.position_lifecycle_manager,
             self.variability_analyzer
@@ -189,7 +190,7 @@ class TradingOrchestrator:
         result = self.session_orchestrator.run_paper_trading_session(
             max_trades, check_interval,
             self.system_initializer, self.market_data_service, 
-            self.trading_engine, self.dashboard_service
+            self.trading_engine, self.dashboard_service, self.strategy_manager
         )
         
         return result
@@ -244,7 +245,7 @@ class TradingOrchestrator:
         result = self.session_orchestrator.run_paper_trading_session(
             max_trades, check_interval,
             self.system_initializer, self.market_data_service, 
-            self.trading_engine, self.dashboard_service
+            self.trading_engine, self.dashboard_service, self.strategy_manager
         )
         
         # Set session manager reference for backward compatibility

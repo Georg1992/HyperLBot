@@ -46,22 +46,25 @@ class VolatilityCalculator:
     # Use OrderbookAnalyzer.get_volatility_analysis() directly instead
     
     def categorize_5m_volatility_for_trading(self, volatility_5m: float) -> tuple:
-        """Categorize 5m volatility for trading decisions (adjusted for 5m trading reality)"""
+        """Categorize 5m volatility for trading decisions using centralized constants"""
         try:
-            # Categorize based on 5-minute trading relevance (adjusted thresholds for realistic 5m trading)
-            if volatility_5m > 0.010:      # > 1.0% (extreme 5m movement)
+            # Import centralized constants for consistency
+            from core.constants import VariabilityConstants
+            
+            # Use centralized 5-minute volatility thresholds
+            if volatility_5m > VariabilityConstants.VOLATILITY_5M_EXTREME:  # > 2.0% (extreme 5m movement)
                 category = "EXTREME"
                 trend = "VOLATILE"
-            elif volatility_5m > 0.005:    # > 0.5% (high 5m activity)
+            elif volatility_5m > VariabilityConstants.VOLATILITY_5M_HIGH:    # > 1.0% (high 5m activity)
                 category = "HIGH"
                 trend = "ACTIVE"
-            elif volatility_5m > 0.002:    # > 0.2% (moderate 5m movement - user's chart level)
+            elif volatility_5m > VariabilityConstants.VOLATILITY_5M_MODERATE:  # > 0.5% (moderate 5m movement)
                 category = "MODERATE" 
                 trend = "NORMAL"
-            elif volatility_5m > 0.001:    # > 0.1% (low but noticeable 5m movement)
+            elif volatility_5m > VariabilityConstants.VOLATILITY_5M_LOW:     # > 0.2% (low but noticeable 5m movement)
                 category = "LOW"
                 trend = "QUIET"
-            else:                          # < 0.1% (very low 5m movement)
+            else:                                                              # < 0.2% (very low 5m movement)
                 category = "VERY_LOW"
                 trend = "BORING"
             

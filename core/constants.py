@@ -375,11 +375,18 @@ class FeeConstants:
 class VariabilityConstants:
     """Variability analysis constants"""
     
-    # Volatility Thresholds - REALISTIC Bitcoin ranges
+    # Volatility Thresholds - REALISTIC Bitcoin ranges (DAILY)
     LOW_VOLATILITY = 0.002           # 0.2% - quiet market
     MEDIUM_VOLATILITY = 0.01         # 1.0% - normal Bitcoin trading
     HIGH_VOLATILITY = 0.03           # 3.0% - active Bitcoin trading
     EXTREME_VOLATILITY = 0.08        # 8.0% - very volatile Bitcoin market
+    
+    # 5-Minute Volatility Thresholds (for real-time trading)
+    VOLATILITY_5M_VERY_LOW = 0.001   # 0.1% - very low 5m movement
+    VOLATILITY_5M_LOW = 0.002        # 0.2% - low 5m movement
+    VOLATILITY_5M_MODERATE = 0.005   # 0.5% - moderate 5m movement
+    VOLATILITY_5M_HIGH = 0.010       # 1.0% - high 5m movement
+    VOLATILITY_5M_EXTREME = 0.020    # 2.0% - extreme 5m movement
     
     # Trading Condition Scores
     OPTIMAL_TRADING_SCORE = 0.7      # 70% score for optimal conditions

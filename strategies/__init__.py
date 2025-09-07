@@ -8,6 +8,7 @@ from .reactive_engine import ReactiveEngine
 from .pattern_recognition_engine import PatternRecognitionEngine
 from .setup_classifier import SetupClassifier
 from .market_conditions_analyzer import MarketConditionsAnalyzer, global_conditions_analyzer
+from .strategy_manager import StrategyManager
 
 __all__ = [
     'PredictionEngine',
@@ -15,5 +16,6 @@ __all__ = [
     'PatternRecognitionEngine',
     'SetupClassifier',
     'MarketConditionsAnalyzer',
-    'global_conditions_analyzer'
+    'global_conditions_analyzer',
+    'StrategyManager'
 ]

@@ -118,26 +118,24 @@ class SessionContextAnalyzer:
     def _analyze_volatility_regime(self, candles_1d: List[Dict], candles_1h: List[Dict]) -> Dict[str, Any]:
         """Analyze historical volatility patterns to understand current regime"""
         try:
-            # Calculate daily volatility for regime assessment
-            daily_changes = []
-            for i in range(1, len(candles_1d)):
-                change_pct = abs(candles_1d[i]["close"] - candles_1d[i-1]["close"]) / candles_1d[i-1]["close"]
-                daily_changes.append(change_pct)
+            # Use centralized MarketDataManager for consistent volatility calculation
+            from core.market_data_manager import market_data_manager
             
-            if not daily_changes:
+            if not candles_1d or len(candles_1d) < 2:
                 return {"regime": "UNKNOWN", "confidence": 0.0}
             
-            avg_volatility = statistics.median(daily_changes)
-            recent_volatility = statistics.median(daily_changes[-7:]) if len(daily_changes) >= 7 else avg_volatility
+            # Calculate daily volatility using the same method as VolatilityCalculator
+            avg_volatility = market_data_manager.calculate_volatility(candles_1d, len(candles_1d))
+            recent_volatility = market_data_manager.calculate_volatility(candles_1d[-7:], 7) if len(candles_1d) >= 7 else avg_volatility
             
-            # Volatility regime classification
-            if avg_volatility < 0.02:  # <2% daily moves
+            # Volatility regime classification (adjusted for daily timeframe - 20x higher than 5m)
+            if avg_volatility < 0.02:  # <2% daily moves (equivalent to <0.1% for 5m)
                 regime = "LOW_VOLATILITY"
                 characteristics = "Ranging, consolidation periods"
-            elif avg_volatility < 0.05:  # <5% daily moves
+            elif avg_volatility < 0.05:  # <5% daily moves (equivalent to <0.25% for 5m)
                 regime = "MODERATE_VOLATILITY"
                 characteristics = "Normal trading activity"
-            else:  # >5% daily moves
+            else:  # >5% daily moves (equivalent to >0.25% for 5m)
                 regime = "HIGH_VOLATILITY"
                 characteristics = "Active trending or major events"
             

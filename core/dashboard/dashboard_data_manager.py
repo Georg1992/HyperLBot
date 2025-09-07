@@ -192,6 +192,7 @@ class SimpleRTM:
                 "size_usd": signal_data.get("size_usd", 0),
                 "rsi": signal_data.get("rsi", 50),
                 "trend": signal_data.get("trend", "NEUTRAL"),
+                "strategy_used": signal_data.get("strategy_used", "unknown"),  # Add strategy information
                 "prediction_data": signal_data.get("prediction_data", {})
             }
             self._data["predictions"].append(signal)

@@ -12,81 +12,87 @@ from core.constants import technical_constants
 from core.market_data_manager import market_data_manager
 
 class TradingEngine:
-    """Core trading decision engine - focused on trading logic only"""
+    """Pure execution engine - executes trades based on signals from PredictionEngine/ReactiveEngine"""
     
-    def __init__(self, config, strategy_config, prediction_engine, trade_quality_manager, position_lifecycle_manager, variability_analyzer):
+    def __init__(self, config, strategy_config, trade_quality_manager, position_lifecycle_manager, variability_analyzer):
         self.config = config
         self.strategy_config = strategy_config
-        self.prediction_engine = prediction_engine
         self.trade_quality_manager = trade_quality_manager
         self.position_lifecycle_manager = position_lifecycle_manager
         self.variability_analyzer = variability_analyzer
         
         # Trading state
-        self.strategy_name = strategy_config.get("name", "standard")
         self.last_trade_time = 0
         
-        logger.info("🧠 Trading Engine initialized - Trade execution only")
+        logger.info("🧠 Trading Engine initialized - Pure execution engine (no strategy decisions)")
     
-    def should_trade(self, hyperliquid_price: float, yahoo_analysis: Dict[str, Any], hyperliquid_api) -> Dict[str, Any]:
-        """Core trading decision logic"""
+    def should_trade(self, hyperliquid_price: float, yahoo_analysis: Dict[str, Any], hyperliquid_api, strategy_name: str = "standard") -> Dict[str, Any]:
+        """
+        Pure execution engine - executes trades based on signals from PredictionEngine/ReactiveEngine
+        
+        RESPONSIBILITY: Only execute trades, not make trading decisions
+        INPUT: Trading signals from prediction/reaction engines
+        OUTPUT: Execution decision (should_trade, side, size, etc.)
+        """
         if not yahoo_analysis or "error" in yahoo_analysis:
             return {"should_trade": False, "reason": "No market analysis available"}
         
-        # 1. DETECT STRATEGY AND MARKET CONDITIONS
-        current_strategy = self._auto_detect_strategy(yahoo_analysis, hyperliquid_price)
-        if current_strategy != self.strategy_name:
-            logger.info(f"🔄 Auto-switching strategy: {self.strategy_name} → {current_strategy}")
-            self.strategy_name = current_strategy
-            self.strategy_config = self.config.STRATEGY_CONFIGS.get(current_strategy, self.config.STRATEGY_CONFIGS["standard"])
-        
-        # 2. CHECK TIME INTERVAL
+        # 1. CHECK TIME INTERVAL (execution constraint)
         current_time = time.time()
         min_interval = self.strategy_config["min_interval"]
         if current_time - self.last_trade_time < min_interval:
             return {"should_trade": False, "reason": f"Too soon since last trade (need {min_interval}s)"}
         
-        # 3. GATHER MARKET INTELLIGENCE
+        # 2. GATHER MARKET DATA (for engines to use)
         hyperliquid_data = market_data_manager.get_hyperliquid_data(hyperliquid_api, "BTC")
-        
         volume_data = hyperliquid_data.get("volume_data", {})
         pressure_data = hyperliquid_data.get("pressure_data", {})
-        # volatility_data removed - using 5m candle volatility instead of orderbook volatility
         
-        # Update variability analyzer (use real orderbook depth, not fake volume estimate)
+        # Update variability analyzer
         orderbook_depth = volume_data.get("volume_depth", 100)
         self.variability_analyzer.add_price_data(hyperliquid_price, volume=orderbook_depth)
         
-        # 4. BUILD COMPREHENSIVE ANALYSIS
-        analysis = yahoo_analysis.copy()
-        analysis["hyperliquid_volume"] = volume_data
-        # hyperliquid_volatility removed - using 5m candle volatility from Yahoo analysis instead
-        analysis["hyperliquid_pressure"] = pressure_data
-        analysis["timestamp"] = current_time
+        # 3. BUILD MARKET DATA FOR ENGINES
+        market_data = yahoo_analysis.copy()
+        market_data["hyperliquid_volume"] = volume_data
+        market_data["hyperliquid_pressure"] = pressure_data
+        market_data["current_price"] = hyperliquid_price
+        market_data["timestamp"] = current_time
         
-        # MARKET CONDITIONS CHECK (determine if market is tradable)
+        # 4. GET SIGNALS FROM PREDICTION AND REACTIVE ENGINES
+        # TODO: This will be implemented in next steps
+        # Signals will come from external engines (PredictionEngine/ReactiveEngine)
+        
+        # 5. MARKET CONDITIONS CHECK (safety filter)
         from strategies.market_conditions_analyzer import global_conditions_analyzer
         
         conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(
             market_data={
                 "current_price": hyperliquid_price,
-                "rsi": analysis.get("yahoo_analysis", {}).get("rsi_5m", 50.0),
-                "trend": analysis.get("yahoo_analysis", {}).get("trend_5m", {}).get("trend", "NEUTRAL"),
-                "volatility_5m": analysis.get("yahoo_analysis", {}).get("volatility_5m", 0.0),
-                "volatility_category": analysis.get("yahoo_analysis", {}).get("volatility_5m_category", "MODERATE"),
-                "volume_category": analysis.get("hyperliquid_volume", {}).get("volume_category", "NORMAL"),
+                "rsi": market_data.get("rsi_5m", 50.0),
+                "trend": market_data.get("trend_5m", {}).get("trend", "NEUTRAL"),
+                "volatility_5m": market_data.get("volatility_5m", 0.0),
+                "volatility_category": market_data.get("volatility_5m_category", "MODERATE"),
+                "volume_category": volume_data.get("volume_category", "NORMAL"),
                 "timestamp": current_time
             },
-            historical_context={}  # Will add session manager context later
+            historical_context={},
+            strategy_name=strategy_name
         )
         
-        # BLOCK TRADING if conditions are untradable
+        # BLOCK TRADING if conditions are untradable (safety filter)
         if not conditions_analysis["is_tradable"]:
             untradable_reason = global_conditions_analyzer.get_untradable_condition_summary(conditions_analysis)
-            return {"should_trade": False, "reason": f"⚠️ {untradable_reason}"}
+            return {
+                "should_trade": False, 
+                "reason": f"⚠️ {untradable_reason}"
+            }
         
-        # TRADING LOGIC STILL DISABLED for now (but conditions check is active)
-        return {"should_trade": False, "reason": f"Trading disabled - Conditions: {conditions_analysis['condition']} ({conditions_analysis['confidence']:.0%})"}
+        # 6. TRADING LOGIC DISABLED - Waiting for external signal integration
+        return {
+            "should_trade": False, 
+            "reason": f"Trading disabled - Waiting for engine integration. Conditions: {conditions_analysis['condition']} ({conditions_analysis['confidence']:.0%})"
+        }
     
     def place_paper_trade(self, side: str, size: float = 0.001, leverage: int = 30, signal_data: Dict = None) -> bool:
         """Place a paper trade (delegate to position lifecycle manager)"""
@@ -105,25 +111,7 @@ class TradingEngine:
         """Get open positions (delegate to position lifecycle manager)"""
         return self.position_lifecycle_manager.get_open_positions()
     
-    def _auto_detect_strategy(self, yahoo_analysis: Dict[str, Any], current_price: float) -> str:
-        """Auto-detect optimal strategy based on market conditions + historical context"""
-        try:
-            volatility_5m = yahoo_analysis.get("volatility_5m", 0.0)
-            trend_5m = yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL")
-            
-            # Simple strategy detection (enhanced decisions moved to Predictor/Reactor)
-            if volatility_5m > 0.25:  # High volatility
-                return "high_volatility"
-            elif volatility_5m < 0.05:  # Low volatility
-                return "low_volatility"
-            elif trend_5m in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
-                return "trend_following"
-            else:
-                return "standard"
-                
-        except Exception as e:
-            logger.error(f"❌ Strategy auto-detection failed: {e}")
-            return "standard"
+    
     
     def _calculate_smart_limit_price(self, side: str, current_price: float) -> float:
         """Calculate smart limit price with small buffer"""

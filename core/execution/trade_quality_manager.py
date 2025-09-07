@@ -103,12 +103,15 @@ class TradeManager:
             volatility_5m = signal_data.get("prediction_analysis", {}).get("volatility_5m", 0.003)
             strategy_name = signal_data.get("strategy_name", "standard")
             
+            # Use centralized volatility constants for consistency
+            from core.constants import VariabilityConstants
+            
             volatility_score = 0.5  # Default
-            if strategy_name == "high_volatility" and volatility_5m > 0.008:
+            if strategy_name == "high_volatility" and volatility_5m > VariabilityConstants.VOLATILITY_5M_HIGH:
                 volatility_score = 1.0  # High vol strategy with high vol
-            elif strategy_name == "low_volatility" and volatility_5m < 0.002:
+            elif strategy_name == "low_volatility" and volatility_5m < VariabilityConstants.VOLATILITY_5M_LOW:
                 volatility_score = 1.0  # Low vol strategy with low vol
-            elif strategy_name == "standard" and 0.002 <= volatility_5m <= 0.008:
+            elif strategy_name == "standard" and VariabilityConstants.VOLATILITY_5M_LOW <= volatility_5m <= VariabilityConstants.VOLATILITY_5M_HIGH:
                 volatility_score = 0.9  # Standard strategy with normal vol
             
             quality_score += volatility_score * 0.10

@@ -22,7 +22,7 @@ class SessionOrchestrator:
         logger.info("🔄 Session Orchestrator initialized - Trading loop coordination")
     
     def run_paper_trading_session(self, max_trades: int, check_interval: int,
-                                 system_initializer, market_data_service, trading_engine, dashboard_service) -> Dict[str, Any]:
+                                 system_initializer, market_data_service, trading_engine, dashboard_service, strategy_manager=None) -> Dict[str, Any]:
         """Run the main paper trading session"""
         try:
             # 1. Initialize system
@@ -48,7 +48,7 @@ class SessionOrchestrator:
             
             # 4. Main trading loop
             return self._main_trading_loop(max_trades, check_interval, hyperliquid_api,
-                                         market_data_service, trading_engine, dashboard_service)
+                                         market_data_service, trading_engine, dashboard_service, strategy_manager)
             
         except Exception as e:
             logger.error(f"❌ Trading session failed: {e}")
@@ -79,12 +79,9 @@ class SessionOrchestrator:
                 initial_balance=self.initial_balance
             )
             
-            # GENERATE INITIAL SESSION PREDICTION (limit order for dashboard)
-            self._generate_initial_session_prediction(market_data_service, dashboard_service)
-            
             # Log session start
             dashboard_service.update_rtm_activity(
-                f"🚀 Trading bot started - standard strategy with ${self.initial_balance:.2f} initial balance", 
+                f"🚀 Trading bot started with ${self.initial_balance:.2f} initial balance", 
                 "SUCCESS"
             )
             
@@ -121,10 +118,10 @@ class SessionOrchestrator:
             logger.error(f"❌ Failed to compute historical context: {e}")
             # Continue session without historical context (degraded but functional)
     
-    def _generate_initial_session_prediction(self, market_data_service, dashboard_service):
+    def _generate_initial_session_prediction(self, market_data_service, dashboard_service, strategy_name="standard"):
         """Generate initial session prediction and store for dashboard display"""
         try:
-            logger.info("🎯 Generating initial session prediction...")
+            logger.info(f"🎯 Generating initial session prediction with {strategy_name} strategy...")
             
             # Get current market data
             current_price = market_data_service.get_hyperliquid_price()
@@ -153,12 +150,14 @@ class SessionOrchestrator:
                 "volatility_category": yahoo_analysis.get("volatility_5m_category", "MODERATE")
             }
             
-            # Generate initial prediction using prediction engine
+            # Generate initial prediction using prediction engine with strategy-specific configuration
             from strategies.prediction_engine import PredictionEngine
-            prediction_engine = PredictionEngine(self.config.STRATEGY_CONFIGS["standard"])
-            prediction_engine.set_session_manager(self.session_manager)
+            from core.session.session_manager import session_manager
+            strategy_config = self.config.STRATEGY_CONFIGS.get(strategy_name, self.config.STRATEGY_CONFIGS["standard"])
+            prediction_engine = PredictionEngine(strategy_config)
+            prediction_engine.set_session_manager(session_manager)
             
-            initial_prediction = prediction_engine.generate_initial_session_prediction(current_price, market_data)
+            initial_prediction = prediction_engine.generate_initial_session_prediction(current_price, market_data, strategy_name)
             
             # Store prediction for dashboard display
             from core.dashboard.dashboard_data_manager import simple_rtm
@@ -177,19 +176,22 @@ class SessionOrchestrator:
                 "size_usd": order_structure.get("entry_price", 0) * 0.001,
                 "rsi": market_analysis.get("rsi", 50),
                 "trend": market_analysis.get("trend", "NEUTRAL"),
+                "strategy_used": strategy_name,  # Include strategy information
                 "prediction_data": {
                     "order_structure": order_structure,
                     "market_analysis": market_analysis,
                     "prediction_type": initial_prediction.get("prediction_type", "INITIAL"),
-                    "session_strategy": initial_prediction.get("session_strategy", "standard")
+                    "session_strategy": strategy_name
                 }
             }
             simple_rtm.add_signal(signal_data)
             
             # ANALYZE & STORE MARKET CONDITIONS for dashboard display
+            from core.session.session_manager import session_manager
             market_conditions_data = global_conditions_analyzer.analyze_trading_conditions(
                 market_data=market_data, 
-                historical_context=self.session_manager.get_historical_context()
+                historical_context=session_manager.get_historical_context(),
+                strategy_name=strategy_name
             )
             
             # Store market conditions in RTM for dashboard
@@ -218,26 +220,17 @@ class SessionOrchestrator:
             # Continue session without initial prediction (degraded but functional)
     
     def _main_trading_loop(self, max_trades: int, check_interval: int, hyperliquid_api,
-                          market_data_service, trading_engine, dashboard_service) -> Dict[str, Any]:
+                          market_data_service, trading_engine, dashboard_service, strategy_manager=None) -> Dict[str, Any]:
         """Main trading loop"""
         trades_placed = 0
+        initial_prediction_generated = False
         
-        # Set session manager reference in DECISION engines (for historical context access)
-        if hasattr(trading_engine, 'prediction_engine'):
-            trading_engine.prediction_engine.set_session_manager(self.session_manager)
-            logger.debug("📊 PredictionEngine: Historical context access enabled")
-        
-        # TODO: Set for ReactiveEngine when it's integrated into trading flow
-        # if hasattr(trading_engine, 'reactive_engine'):
-        #     trading_engine.reactive_engine.set_session_manager(self.session_manager)
+        # Note: TradingEngine is now a pure execution engine and doesn't need session manager access
         
         logger.info(f"🔄 Starting main trading loop (max_trades: {max_trades}, interval: {check_interval}s)")
         
         while trades_placed < max_trades:
             try:
-                # Update heartbeat
-                dashboard_service.update_heartbeat(self.session_manager, "standard", self.initial_balance)
-                
                 # Update session time
                 if self.session_manager:
                     self.session_manager.update_session_time_if_active()
@@ -256,11 +249,31 @@ class SessionOrchestrator:
                     time.sleep(check_interval)
                     continue
                 
+                # Strategy detection and update (if StrategyManager available)
+                current_strategy = "standard"  # Default fallback
+                if strategy_manager:
+                    # Build market data for strategy detection
+                    market_data = yahoo_analysis.copy()
+                    market_data["current_price"] = hyperliquid_price
+                    market_data["timestamp"] = time.time()
+                    
+                    # Detect optimal strategy
+                    optimal_strategy = strategy_manager.detect_optimal_strategy(market_data)
+                    current_strategy = optimal_strategy
+                
                 # Update dashboard with current market data (CRITICAL - was missing!)
-                self._update_dashboard_market_data(hyperliquid_price, yahoo_analysis, market_data_service, dashboard_service)
+                self._update_dashboard_market_data(hyperliquid_price, yahoo_analysis, market_data_service, dashboard_service, current_strategy)
+                
+                # Generate initial prediction AFTER strategy is determined (only once)
+                if not initial_prediction_generated and strategy_manager:
+                    self._generate_initial_session_prediction(market_data_service, dashboard_service, current_strategy)
+                    initial_prediction_generated = True
+                
+                # Update heartbeat with current strategy
+                dashboard_service.update_heartbeat(self.session_manager, current_strategy, self.initial_balance)
                 
                 # Check for trading signal
-                signal = trading_engine.should_trade(hyperliquid_price, yahoo_analysis, hyperliquid_api)
+                signal = trading_engine.should_trade(hyperliquid_price, yahoo_analysis, hyperliquid_api, current_strategy)
                 
                 if signal["should_trade"]:
                     # Place trade
@@ -287,12 +300,7 @@ class SessionOrchestrator:
                 # Check position exits
                 trading_engine.check_position_exits(hyperliquid_price)
                 
-                # Generate predictions for dashboard (PASS prediction_engine!)
-                dashboard_service.generate_and_log_prediction(
-                    hyperliquid_price, yahoo_analysis, 
-                    prediction_engine=trading_engine.prediction_engine, 
-                    strategy_name="standard"
-                )
+                # Note: Ongoing predictions disabled - only initial session prediction is used
                 
                 # Wait for next iteration
                 time.sleep(check_interval)
@@ -343,7 +351,7 @@ class SessionOrchestrator:
             return None
     
     def _update_dashboard_market_data(self, hyperliquid_price: float, yahoo_analysis: Dict[str, Any], 
-                                     market_data_service, dashboard_service):
+                                     market_data_service, dashboard_service, strategy_name: str = "standard"):
         """Update dashboard with current market data (CRITICAL for dashboard display)"""
         try:
             # Get real-time RSI (corrected by Yahoo at regular intervals for scalping accuracy)
@@ -420,7 +428,8 @@ class SessionOrchestrator:
             
             conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(
                 market_data=market_conditions_input,
-                historical_context=self.session_manager.get_historical_context() if self.session_manager else {}
+                historical_context=self.session_manager.get_historical_context() if self.session_manager else {},
+                strategy_name=strategy_name
             )
             
             # Add market conditions to market data for dashboard

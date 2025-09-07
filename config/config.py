@@ -86,6 +86,22 @@ class TradingConfig:
             "volume_spike_required": True,
             "min_spike_severity": "HIGH",
             "require_momentum_alignment": True
+        },
+        "range_trading": {
+            "min_range_percentage": 0.0003,  # 0.03% minimum range (very tight)
+            "volatility_threshold": "very_low",
+            "confidence_threshold": 0.1,  # Very low confidence needed
+            "min_interval": 30,  # 30 seconds between trades (frequent)
+            "max_leverage": 20,  # Lower leverage for safety
+            "profit_target": 0.002,  # 0.2% profit target (small moves)
+            "stop_loss": 0.001,  # 0.1% stop loss (tight stops)
+            "position_size": 0.3,  # 30% of balance (larger size for small moves)
+            "range_detection_periods": 20,  # Look back 20 candles for range
+            "range_tolerance": 0.0005,  # 0.05% tolerance for range boundaries
+            "bounce_threshold": 0.0002,  # 0.02% minimum bounce to trade
+            "max_range_width": 0.005,  # 0.5% maximum range width
+            "require_range_confirmation": True,
+            "support_resistance_required": True
         }
     }
     

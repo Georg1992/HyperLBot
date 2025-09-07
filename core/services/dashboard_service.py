@@ -55,12 +55,6 @@ class DashboardService:
         except Exception as e:
             logger.error(f"❌ Could not update SimpleRTM signal: {e}")
     
-    def generate_and_log_prediction(self, current_price: float, historical_analysis: Dict[str, Any] = None, 
-                                   prediction_engine=None, strategy_name: str = "standard"):
-        """DISABLED: Ongoing predictions removed - only initial session prediction shown (user request)"""
-        # Ongoing prediction generation disabled
-        # Only initial session prediction is generated once at session start and displayed
-        return
     
     def create_initial_heartbeat(self, session_manager=None, strategy_name: str = "standard", paper_balance: float = 0.0):
         """Create initial heartbeat file immediately when bot starts"""

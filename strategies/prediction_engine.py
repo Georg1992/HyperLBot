@@ -37,7 +37,7 @@ class PredictionEngine:
             return self.session_manager.get_historical_context()
         return {}
     
-    def generate_initial_session_prediction(self, current_price: float, market_data: Dict[str, Any]) -> Dict[str, Any]:
+    def generate_initial_session_prediction(self, current_price: float, market_data: Dict[str, Any], strategy_name: str = "standard") -> Dict[str, Any]:
         """
         Generate initial prediction for session start (limit order with stop/take profit)
         
@@ -68,7 +68,8 @@ class PredictionEngine:
                     "volatility_category": volatility_category,
                     "volume_category": "NORMAL"  # Default for initial prediction
                 },
-                historical_context=historical_context
+                historical_context=historical_context,
+                strategy_name=strategy_name
             )
             
             # Determine trade direction using historical context + current conditions + market conditions
@@ -181,12 +182,14 @@ class PredictionEngine:
                                        volatility_5m: float, historical_context: Dict) -> Dict[str, float]:
         """Calculate limit order prices (entry, stop loss, take profit)"""
         try:
-            # Dynamic risk management based on volatility
-            if volatility_5m < 0.001:  # Very low volatility
+            # Dynamic risk management based on volatility (using centralized constants)
+            from core.constants import VariabilityConstants
+            
+            if volatility_5m < VariabilityConstants.VOLATILITY_5M_VERY_LOW:  # Very low volatility
                 stop_distance_pct = 0.003  # 0.3%
                 take_distance_pct = 0.006  # 0.6% (2:1 R/R)
                 entry_buffer_pct = 0.0005  # 0.05% buffer from current price
-            elif volatility_5m < 0.005:  # Low volatility
+            elif volatility_5m < VariabilityConstants.VOLATILITY_5M_MODERATE:  # Low volatility
                 stop_distance_pct = 0.005  # 0.5%
                 take_distance_pct = 0.010  # 1.0% (2:1 R/R)
                 entry_buffer_pct = 0.001   # 0.1% buffer
