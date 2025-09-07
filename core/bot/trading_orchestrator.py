@@ -71,7 +71,11 @@ class TradingOrchestrator:
         self.position_lifecycle_manager = TradingExecution(
             hyperliquid_api=None,  # Will be set after API initialization
             hyperliquid_simulator=None,  # Will be set after simulator initialization  
-            trading_logger=self.trading_logger
+            trading_logger=self.trading_logger,
+            trade_manager=self.trade_quality_manager,
+            account_manager=account_manager,
+            session_manager=None,  # Will be set after session manager initialization
+            fee_manager=self.fee_manager
         )
         
         # State management should be handled by dedicated managers, not orchestrator
@@ -244,6 +248,9 @@ class TradingOrchestrator:
         # Set session manager reference for backward compatibility
         if hasattr(self.session_orchestrator, 'session_manager'):
             self.session_manager = self.session_orchestrator.session_manager
+            
+            # Update position lifecycle manager with session manager reference
+            self.position_lifecycle_manager.session_manager = self.session_manager
             
         return result
 

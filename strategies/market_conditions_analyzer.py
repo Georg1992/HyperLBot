@@ -67,16 +67,20 @@ class MarketConditionsAnalyzer:
             condition_factors.extend(rsi_analysis["factors"])
             if rsi_analysis["risk"] > 0:
                 risk_factors.extend(rsi_analysis["risk_factors"])
+            if rsi_analysis["positive"]:
+                positive_factors.extend(rsi_analysis["positive_factors"])
             
             # Store neutral factors for override logic
             neutral_rsi = rsi_analysis.get("neutral", False)
             neutral_factors = rsi_analysis.get("neutral_factors", [])
             
             # 4. TREND CONDITIONS
-            trend_analysis = self._analyze_trend_conditions(trend)
+            trend_analysis = self._analyze_trend_conditions(trend, strategy_name)
             condition_factors.extend(trend_analysis["factors"])
             if trend_analysis["risk"] > 0:
                 risk_factors.extend(trend_analysis["risk_factors"])
+            if trend_analysis["positive"]:
+                positive_factors.extend(trend_analysis["positive_factors"])
             
             # 5. HISTORICAL CONTEXT CONDITIONS
             context_analysis = self._analyze_historical_context(historical_context, current_price)
@@ -224,24 +228,24 @@ class MarketConditionsAnalyzer:
             factors.append(f"RSI oversold ({rsi:.1f}) - bullish potential")
             logger.debug(f"🔍 RSI: Oversold condition detected (<=35)")
             
-        elif rsi >= 65:
+        elif rsi >= 60:
             factors.append(f"RSI overbought ({rsi:.1f}) - bearish potential")
-            logger.debug(f"🔍 RSI: Overbought condition detected (>=65)")
+            logger.debug(f"🔍 RSI: Overbought condition detected (>=60)")
         else:
             factors.append(f"RSI in tradable range ({rsi:.1f})")
-            logger.debug(f"🔍 RSI: Tradable range (36-44 or 56-64)")
+            logger.debug(f"🔍 RSI: Tradable range (36-44 or 56-59)")
             
         return {
             "factors": factors,
             "risk": risk_level,
             "risk_factors": risk_factors,
-            "positive": rsi <= 35 or rsi >= 65 or (rsi <= 25 or rsi >= 75),  # Oversold/overbought/extreme are positive signals
-            "positive_factors": ["Strong RSI signal"] if (rsi <= 35 or rsi >= 65 or (rsi <= 25 or rsi >= 75)) else [],
+            "positive": rsi <= 35 or rsi >= 60 or (rsi <= 25 or rsi >= 75),  # Oversold/overbought/extreme are positive signals
+            "positive_factors": ["Strong RSI signal"] if (rsi <= 35 or rsi >= 60 or (rsi <= 25 or rsi >= 75)) else [],
             "neutral": 45 <= rsi <= 55,  # Flag neutral zone for override logic
             "neutral_factors": ["RSI neutral zone"] if 45 <= rsi <= 55 else []
         }
     
-    def _analyze_trend_conditions(self, trend: str) -> Dict[str, Any]:
+    def _analyze_trend_conditions(self, trend: str, strategy_name: str = "standard") -> Dict[str, Any]:
         """Analyze trend for trading suitability"""
         factors = []
         risk_factors = []
@@ -250,13 +254,21 @@ class MarketConditionsAnalyzer:
         
         if trend == "SIDEWAYS":
             factors.append("Sideways trend - range-bound market")
-            risk_factors.append("No clear directional momentum")
-            risk_level = 2
+            if strategy_name in ["range_trading", "low_volatility"]:
+                # Range trading strategies thrive in sideways markets
+                positive_factors.append("Optimal sideways conditions for range trading")
+            else:
+                risk_factors.append("No clear directional momentum")
+                risk_level = 2
             
         elif trend in ["WEAK_UPTREND", "WEAK_DOWNTREND"]:
             factors.append(f"{trend.replace('_', ' ').lower()} - limited momentum")
-            risk_factors.append("Weak trend strength")
-            risk_level = 1
+            if strategy_name in ["range_trading", "low_volatility"]:
+                # Weak trends are good for range trading (not too strong, not too weak)
+                positive_factors.append("Good weak trend for range trading")
+            else:
+                risk_factors.append("Weak trend strength")
+                risk_level = 1
             
         elif trend in ["UPTREND", "DOWNTREND"]:
             factors.append(f"{trend.lower()} - good directional momentum")
@@ -275,7 +287,7 @@ class MarketConditionsAnalyzer:
             "factors": factors,
             "risk": risk_level,
             "risk_factors": risk_factors,
-            "positive": trend in ["UPTREND", "DOWNTREND", "STRONG_UPTREND", "STRONG_DOWNTREND"],
+            "positive": len(positive_factors) > 0,  # Positive if we have any positive factors
             "positive_factors": positive_factors
         }
     
@@ -397,7 +409,7 @@ class MarketConditionsAnalyzer:
             }
         
         # EXCELLENT CONDITIONS (multiple positive factors + override cases)
-        elif (total_positive_score >= 2 and effective_risk_score == 0) or (can_override_rsi_neutral and total_positive_score >= 1):
+        elif (total_positive_score >= 3 and effective_risk_score <= 1) or (total_positive_score >= 2 and effective_risk_score == 0) or (can_override_rsi_neutral and total_positive_score >= 1):
             condition_level = "RSI_OVERRIDE_EXCELLENT" if can_override_rsi_neutral else "EXCELLENT"
             logger.debug(f"🔍 {condition_level}: Strong factors override neutral RSI" if can_override_rsi_neutral else f"🔍 EXCELLENT: Natural excellent conditions")
             return {

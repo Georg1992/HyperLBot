@@ -14,17 +14,27 @@ from core.constants import constants, MagicNumbers, trading_constants, time_cons
 class TradingExecution:
     """Trading execution and position management methods"""
     
-    def __init__(self, hyperliquid_api=None, hyperliquid_simulator=None, trading_logger=None):
+    def __init__(self, hyperliquid_api=None, hyperliquid_simulator=None, trading_logger=None, 
+                 trade_manager=None, account_manager=None, session_manager=None, fee_manager=None):
         """Initialize with required dependencies (dependency injection)"""
         self.hyperliquid_api = hyperliquid_api
         self.hyperliquid_simulator = hyperliquid_simulator
         self.trading_logger = trading_logger
+        self.trade_manager = trade_manager
+        self.account_manager = account_manager
+        self.session_manager = session_manager
+        self.fee_manager = fee_manager
         self.magic_numbers = MagicNumbers()
         
         # State that should be managed by dedicated managers
         self.paper_balance = 0.0
         self.leverage_settings = {"max_leverage": 30}
         self.trade_history = []
+        self.open_positions = []
+        self.closed_positions = []
+        self.last_trade_time = 0
+        self.strategy_name = "standard"
+        self.yahoo_analysis = {}
     
     def place_paper_trade(self, side: str, size: float = trading_constants.DEFAULT_POSITION_SIZE, leverage: int = trading_constants.DEFAULT_LEVERAGE, signal_data: Dict = None) -> bool:
         """Place a PREDICTIVE paper trade using predicted entry points and time-based order management"""
@@ -117,7 +127,7 @@ class TradingExecution:
             
             # Create position record with prediction data and market analysis
             position = {
-                "trade_id": f"hybrid_trade_{len(self.bot.trade_history) + 1}",
+                "trade_id": f"hybrid_trade_{len(self.trade_history) + 1}",
                 "side": side,
                 "entry_price": execution_result.get("execution_price", limit_price),
                 "limit_price": limit_price,
@@ -137,7 +147,7 @@ class TradingExecution:
                 "entry_timeframe": entry_timeframe,
                 "time_to_execution": execution_result.get("time_to_execution", 0),
                 "order_status": execution_result.get("order_status", "FILLED"),
-                "original_market_analysis": self.bot.yahoo_analysis.copy(),  # Store original analysis for comparison
+                "original_market_analysis": self.yahoo_analysis.copy(),  # Store original analysis for comparison
                 "quality_evaluation": signal_data.get("quality_evaluation", {}),
                 "stop_adjustment_count": 0,
                 "partial_closes": [],
@@ -146,23 +156,23 @@ class TradingExecution:
                 "is_winback_trade": signal_data.get("is_winback_trade", False),
                 "winback_data": signal_data.get("winback_data", {}),
                 "defensive_mode": signal_data.get("defensive_mode", False),
-                "strategy": self.bot.strategy_name
+                "strategy": self.strategy_name
             }
             
             # Add to open positions
-            self.bot.open_positions.append(position)
+            self.open_positions.append(position)
             
             # Update account manager with open positions
             try:
                 from core.simulated_account_manager import account_manager
-                account_manager.update_open_positions(self.bot.open_positions)
+                account_manager.update_open_positions(self.open_positions)
                 # Updated account manager with open positions
             except Exception as e:
                 logger.error(f"❌ Failed to update account manager: {e}")
             
             # Save positions using trade state manager
             from core.state.trade_state_manager import trade_state_manager
-            trade_state_manager.save_open_positions(self.bot.open_positions)
+            trade_state_manager.save_open_positions(self.open_positions)
             
             # Prepare trade data for logging
             trade_data = {
@@ -190,21 +200,23 @@ class TradingExecution:
                 "profit_target": position["target_price"],
                 "stop_loss": position["stop_price"],
                 "risk_level": "STANDARD",  # Risk level is determined by variability analyzer separately
-                "strategy": self.bot.strategy_name
+                "strategy": self.strategy_name
             }
             
             # Log the trade
-            self.bot.trading_logger.log_trade(trade_data)
+            if self.trading_logger:
+                self.trading_logger.log_trade(trade_data)
             
             # Add trade to session manager
-            if hasattr(self.bot, 'session_manager'):
-                self.bot.session_manager.add_session_trade(trade_data)
+            if self.session_manager:
+                self.session_manager.add_session_trade(trade_data)
             
             # Trade and balance updates handled by AccountManager (SimpleRTM integration)
             
-            self.bot.trade_history.append(trade_data)
-            self.bot.fee_manager.record_trade_fees(trade_data)
-            self.bot.last_trade_time = time.time()
+            self.trade_history.append(trade_data)
+            if self.fee_manager:
+                self.fee_manager.record_trade_fees(trade_data)
+            self.last_trade_time = time.time()
             
             if prediction_type != "SMART_LIMIT":
                 logger.success(f"✅ PREDICTIVE {side} LIMIT trade placed successfully!")
@@ -221,13 +233,14 @@ class TradingExecution:
             logger.info(f"   Position Value: ${position_value_usd:,.2f}")
             logger.info(f"   Slippage: {execution_result.get('slippage', 0)*100:.3f}%")
             logger.info(f"   Fees: ${execution_result.get('fees', {}).get('fee_amount', 0):.4f} ({execution_result.get('fees', {}).get('fee_type', 'maker')})")
-            logger.info(f"   Remaining Balance: ${self.bot.paper_balance:.2f}")
+            logger.info(f"   Remaining Balance: ${self.paper_balance:.2f}")
             
             return True
                 
         except Exception as e:
             logger.error(f"❌ Failed to place hybrid paper trade: {e}")
-            self.bot.trading_logger.log_error({
+            if self.trading_logger:
+                self.trading_logger.log_error({
                 "type": "hybrid_paper_trade_error",
                 "message": str(e),
                 "details": {
@@ -269,8 +282,8 @@ class TradingExecution:
                     return False
             
             # Check if we have too many open positions
-            if len(self.bot.open_positions) >= self.magic_numbers.MAX_OPEN_POSITIONS:
-                logger.warning(f"⚠️ Too many open positions: {len(self.bot.open_positions)} >= {self.magic_numbers.MAX_OPEN_POSITIONS}")
+            if len(self.open_positions) >= self.magic_numbers.MAX_OPEN_POSITIONS:
+                logger.warning(f"⚠️ Too many open positions: {len(self.open_positions)} >= {self.magic_numbers.MAX_OPEN_POSITIONS}")
                 return False
             
             return True
@@ -340,18 +353,18 @@ class TradingExecution:
             net_pnl = pnl_amount - total_fees
             
             # Update balance
-            self.bot.paper_balance += net_pnl
+            self.paper_balance += net_pnl
             
             # Update account manager if available
-            if self.bot.account_manager and self.bot.account_manager.account_data:
-                self.bot.account_manager.update_balance(self.bot.paper_balance, net_pnl)
+            if self.account_manager and self.account_manager.account_data:
+                self.account_manager.update_balance(self.paper_balance, net_pnl)
             
             # Update session manager with new balance
             if hasattr(self.bot, 'session_manager'):
-                self.bot.session_manager.update_session_balance(self.bot.paper_balance, f"Position closed: {exit_reason}")
+                self.session_manager.update_session_balance(self.paper_balance, f"Position closed: {exit_reason}")
             
             # Update current balance in session metadata for dashboard
-            self.bot.trading_logger.update_current_balance(self.bot.paper_balance)
+            self.trading_logger.update_current_balance(self.paper_balance)
             
             # Update position
             position.update({
@@ -369,8 +382,8 @@ class TradingExecution:
             })
             
             # Move to closed positions
-            self.bot.open_positions.remove(position)
-            self.bot.closed_positions.append(position)
+            self.open_positions.remove(position)
+            self.closed_positions.append(position)
             
             # Update trade result in logger
             trade_result = {
@@ -392,18 +405,18 @@ class TradingExecution:
                 "holding_time": position["exit_time"] - position["entry_time"],
                 "exit_reason": exit_reason,
                 "was_profitable": net_pnl > 0,
-                "balance_after": self.bot.paper_balance,
+                "balance_after": self.paper_balance,
                 "is_winback_trade": position.get("is_winback_trade", False),
                 "winback_data": position.get("winback_data", {}),
                 "timestamp": time.time(),
-                "strategy": position.get("strategy", self.bot.strategy_name),
+                "strategy": position.get("strategy", self.strategy_name),
                 "execution_result": execution_result
             }
             
             # Update account manager with open positions
             try:
                 from core.simulated_account_manager import account_manager
-                account_manager.update_open_positions(self.bot.open_positions)
+                account_manager.update_open_positions(self.open_positions)
                 account_manager.add_trade(trade_result)
                 # Updated account manager: position closed
             except Exception as e:
@@ -424,7 +437,7 @@ class TradingExecution:
             from core.state.trade_state_manager import trade_state_manager
             trade_state_manager.close_position(position["trade_id"], exit_data)
             
-            self.bot.trading_logger.update_trade_result(position["trade_id"], trade_result)
+            self.trading_logger.update_trade_result(position["trade_id"], trade_result)
             
             # Trade result logged above
             
@@ -452,7 +465,7 @@ class TradingExecution:
         positions_to_close = []
         positions_to_adjust = []
         
-        for position in self.bot.open_positions:
+        for position in self.open_positions:
             entry_price = position["entry_price"]
             side = position["side"]
             target_price = position["target_price"]
@@ -480,7 +493,7 @@ class TradingExecution:
             
             # 3. CHECK FOR PARTIAL CLOSE OPPORTUNITIES
             if current_analysis:
-                partial_close_decision = self.bot.trade_manager.should_partial_close(position, hyperliquid_price)
+                partial_close_decision = self.trade_manager.should_partial_close(position, hyperliquid_price)
                 if partial_close_decision["should_partial_close"]:
                     logger.info(f"💰 Partial close opportunity: {partial_close_decision['reason']}")
                     # Implement partial close logic
@@ -489,7 +502,7 @@ class TradingExecution:
             
             # 4. CHECK FOR SCALING OPPORTUNITIES
             if current_analysis:
-                scale_decision = self.bot.trade_manager.should_scale_in_position(position, hyperliquid_price, current_analysis)
+                scale_decision = self.trade_manager.should_scale_in_position(position, hyperliquid_price, current_analysis)
                 if scale_decision["should_scale"]:
                     logger.info(f"📈 Scaling opportunity: {scale_decision['reason']}")
                     # Implement scaling logic
@@ -498,7 +511,7 @@ class TradingExecution:
             
             # 5. CHECK FOR EMERGENCY CLOSE
             if current_analysis:
-                emergency_decision = self.bot.trade_manager.should_emergency_close(position, hyperliquid_price, current_analysis)
+                emergency_decision = self.trade_manager.should_emergency_close(position, hyperliquid_price, current_analysis)
                 if emergency_decision["should_emergency_close"]:
                     positions_to_close.append((position, "EMERGENCY_CLOSE", hyperliquid_price))
                     logger.warning(f"🚨 Emergency close: {emergency_decision['reason']}")
@@ -506,21 +519,21 @@ class TradingExecution:
             
             # 5. CHECK FOR DYNAMIC STOP ADJUSTMENT
             if current_analysis:
-                stop_adjustment = self.bot.trade_manager.calculate_dynamic_stops(position, hyperliquid_price, current_analysis)
+                stop_adjustment = self.trade_manager.calculate_dynamic_stops(position, hyperliquid_price, current_analysis)
                 if stop_adjustment["should_adjust"]:
                     positions_to_adjust.append((position, stop_adjustment))
                 
                 # Enhanced market condition tracking
                 original_analysis = position.get("original_market_analysis", {})
                 if original_analysis:
-                    condition_change = self.bot.trade_manager._analyze_condition_change(original_analysis, current_analysis)
+                    condition_change = self.trade_manager._analyze_condition_change(original_analysis, current_analysis)
                     if condition_change["favorable"]:
                         logger.info(f"📈 Market conditions improved for {position['trade_id']}: {condition_change['reason']}")
                     elif not condition_change["favorable"] and condition_change["confidence"] > self.magic_numbers.HIGH_CONFIDENCE_THRESHOLD:
                         logger.warning(f"📉 Market conditions deteriorated for {position['trade_id']}: {condition_change['reason']}")
             
             # 6. CHECK POSITION HEAT
-            heat_analysis = self.bot.trade_manager.calculate_position_heat(position, hyperliquid_price)
+            heat_analysis = self.trade_manager.calculate_position_heat(position, hyperliquid_price)
             if heat_analysis["heat_level"] == "CRITICAL":
                 logger.warning(f"🔥 CRITICAL position heat: {heat_analysis['heat_pct']*100:.1f}% - {position['trade_id']}")
             elif heat_analysis["heat_level"] == "HIGH":
@@ -533,11 +546,11 @@ class TradingExecution:
         
         # Apply stop adjustments
         for position, adjustment_result in positions_to_adjust:
-            updated_position = self.bot.trade_manager.update_position_with_adjustment(position, adjustment_result)
+            updated_position = self.trade_manager.update_position_with_adjustment(position, adjustment_result)
             # Update position in our list
-            position_index = next((i for i, p in enumerate(self.bot.open_positions) if p["trade_id"] == position["trade_id"]), None)
+            position_index = next((i for i, p in enumerate(self.open_positions) if p["trade_id"] == position["trade_id"]), None)
             if position_index is not None:
-                self.bot.open_positions[position_index] = updated_position
+                self.open_positions[position_index] = updated_position
         
         # Close positions
         for position, exit_reason, exit_price in positions_to_close:
@@ -564,7 +577,7 @@ class TradingExecution:
             })
             
             # Log partial close
-            self.bot._update_simple_rtm_activity(f"💰 Partial close: {close_percentage*100:.1f}% of {position['trade_id']}", "INFO")
+            self._update_simple_rtm_activity(f"💰 Partial close: {close_percentage*100:.1f}% of {position['trade_id']}", "INFO")
             
         except Exception as e:
             logger.error(f"❌ Failed to execute partial close: {e}")
@@ -589,7 +602,7 @@ class TradingExecution:
             position["entry_price"] = new_entry_price
             
             # Log scale-in
-            self.bot._update_simple_rtm_activity(f"📈 Scale-in: {scale_size} BTC to {position['trade_id']}", "INFO")
+            self._update_simple_rtm_activity(f"📈 Scale-in: {scale_size} BTC to {position['trade_id']}", "INFO")
             
         except Exception as e:
             logger.error(f"❌ Failed to execute scale-in: {e}")
@@ -671,7 +684,7 @@ class TradingExecution:
         """Save open positions to file"""
         try:
             with open(constants.POSITIONS_FILE, 'w') as f:
-                json.dump(self.bot.open_positions, f, indent=2)
+                json.dump(self.open_positions, f, indent=2)
         except Exception as e:
             logger.error(f"Failed to save positions: {e}")
     
@@ -688,7 +701,7 @@ class TradingExecution:
     
     def get_open_positions(self) -> List[Dict[str, Any]]:
         """Get list of open positions"""
-        return [pos for pos in self.bot.open_positions if pos["status"] == "OPEN"]
+        return [pos for pos in self.open_positions if pos["status"] == "OPEN"]
     
     def calculate_portfolio_pnl(self) -> Dict[str, Any]:
         """Calculate total portfolio PnL"""
@@ -699,7 +712,7 @@ class TradingExecution:
             
             for position in open_positions:
                 entry_price = position["entry_price"]
-                current_price = self.bot.get_hyperliquid_price() or entry_price
+                current_price = self.get_hyperliquid_price() or entry_price
                 size = position["size"]
                 
                 if position["side"] == "BUY":
