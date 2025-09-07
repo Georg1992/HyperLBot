@@ -184,8 +184,9 @@ class ReactiveEngine:
             # Determine direction
             direction = "BUY" if recent_avg > older_avg else "SELL"
             
-            # Calculate confidence based on movement strength
-            confidence = min(0.95, 0.6 + (price_change_pct / 0.05))  # Scale to 0.05 (5%)
+            # Calculate confidence based on movement strength (more realistic scaling)
+            # CRITICAL (1.84%): ~80% confidence, HIGH (1.61%): ~75% confidence, MODERATE (1.23%): ~70% confidence
+            confidence = min(0.85, 0.5 + (price_change_pct / 0.05) * 0.3)
             
             # Determine execution type and size
             execution_type, size_percentage = self._determine_execution_params(urgency, confidence)
@@ -245,11 +246,11 @@ class ReactiveEngine:
             if not urgency:
                 return None
             
-            # Calculate confidence based on RSI extremity
+            # Calculate confidence based on RSI extremity (more realistic scaling)
             if direction == "BUY":
-                confidence = min(0.95, 0.7 + (30 - rsi) / 30 * 0.25)
+                confidence = min(0.85, 0.6 + (30 - rsi) / 30 * 0.25)  # RSI 20: ~68% confidence
             else:  # SELL
-                confidence = min(0.95, 0.7 + (rsi - 70) / 30 * 0.25)
+                confidence = min(0.85, 0.6 + (rsi - 70) / 30 * 0.25)  # RSI 80: ~68% confidence
             
             # Determine execution type and size
             execution_type, size_percentage = self._determine_execution_params(urgency, confidence)
@@ -318,8 +319,9 @@ class ReactiveEngine:
             else:
                 return None  # No clear direction
             
-            # Calculate confidence based on pressure strength
-            confidence = min(0.95, 0.6 + pressure_imbalance * 2)
+            # Calculate confidence based on pressure strength (more realistic scaling)
+            # MODERATE (40%): ~50% confidence, HIGH (60%): ~65% confidence, CRITICAL (80%): ~80% confidence
+            confidence = min(0.85, 0.3 + pressure_imbalance * 0.7)
             
             # Determine execution type and size
             execution_type, size_percentage = self._determine_execution_params(urgency, confidence)
@@ -380,8 +382,8 @@ class ReactiveEngine:
             if not urgency or not reasoning_parts:
                 return None
             
-            # Calculate confidence based on break strength
-            confidence = min(0.95, 0.7 + min(0.25, distance / 1000))  # Scale with distance
+            # Calculate confidence based on break strength (more realistic scaling)
+            confidence = min(0.85, 0.6 + min(0.25, distance / 1000))  # Scale with distance
             
             # Determine execution type and size
             execution_type, size_percentage = self._determine_execution_params(urgency, confidence)
