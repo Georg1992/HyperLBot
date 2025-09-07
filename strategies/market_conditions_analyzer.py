@@ -137,9 +137,9 @@ class MarketConditionsAnalyzer:
                 # Range trading strategy is designed for very low volatility
                 positive_factors.append("Optimal conditions for range trading")
             else:
-                # Other strategies (like scalping) find very low volatility risky
-                risk_factors.append("Insufficient price movement for scalping")
-                risk_level = 3  # High risk due to low movement
+                # Other strategies find very low volatility challenging
+                risk_factors.append("Limited profit potential due to low volatility")
+                risk_level = 2  # Moderate risk - not excellent conditions
             
         elif category == "LOW":
             factors.append("Low volatility - limited opportunities") 
@@ -254,9 +254,12 @@ class MarketConditionsAnalyzer:
         
         if trend == "SIDEWAYS":
             factors.append("Sideways trend - range-bound market")
-            if strategy_name in ["range_trading", "low_volatility"]:
-                # Range trading strategies thrive in sideways markets
+            if strategy_name == "range_trading":
+                # Range trading strategy thrives in sideways markets
                 positive_factors.append("Optimal sideways conditions for range trading")
+            elif strategy_name == "low_volatility":
+                # Low volatility strategy can work in sideways markets
+                positive_factors.append("Good sideways conditions for low volatility strategy")
             else:
                 risk_factors.append("No clear directional momentum")
                 risk_level = 2
@@ -409,7 +412,9 @@ class MarketConditionsAnalyzer:
             }
         
         # EXCELLENT CONDITIONS (multiple positive factors + override cases)
-        elif (total_positive_score >= 3 and effective_risk_score <= 1) or (total_positive_score >= 2 and effective_risk_score == 0) or (can_override_rsi_neutral and total_positive_score >= 1):
+        # EXCELLENT requires strong momentum + low risk, not just low volatility
+        # EXCELLENT should be rare - only when multiple strong factors align
+        elif (total_positive_score >= 4 and effective_risk_score == 0) or (can_override_rsi_neutral and total_positive_score >= 3):
             condition_level = "RSI_OVERRIDE_EXCELLENT" if can_override_rsi_neutral else "EXCELLENT"
             logger.debug(f"🔍 {condition_level}: Strong factors override neutral RSI" if can_override_rsi_neutral else f"🔍 EXCELLENT: Natural excellent conditions")
             return {

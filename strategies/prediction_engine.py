@@ -185,10 +185,10 @@ class PredictionEngine:
             # Dynamic risk management based on volatility (using centralized constants)
             from core.constants import VariabilityConstants
             
-            if volatility_5m < VariabilityConstants.VOLATILITY_5M_VERY_LOW:  # Very low volatility
-                stop_distance_pct = 0.003  # 0.3%
-                take_distance_pct = 0.006  # 0.6% (2:1 R/R)
-                entry_buffer_pct = 0.0005  # 0.05% buffer from current price
+            if volatility_5m <= VariabilityConstants.VOLATILITY_5M_VERY_LOW:  # Very low volatility
+                stop_distance_pct = 0.0005  # 0.05% (very tight stops for ranging)
+                take_distance_pct = 0.001   # 0.1% (very small targets for ranging)
+                entry_buffer_pct = 0.0001   # 0.01% buffer from current price
             elif volatility_5m < VariabilityConstants.VOLATILITY_5M_MODERATE:  # Low volatility
                 stop_distance_pct = 0.005  # 0.5%
                 take_distance_pct = 0.010  # 1.0% (2:1 R/R)
