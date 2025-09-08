@@ -1000,45 +1000,98 @@ class PredictionEngine:
     def _generate_prediction_reasoning(self, aggregated_signal: Dict[str, Any], 
                                      signal_components: Dict[str, Any], 
                                      direction: str, confidence: float) -> str:
-        """Generate comprehensive reasoning for the prediction"""
+        """Generate comprehensive reasoning for the prediction with detailed signal analysis"""
         try:
             reasoning_parts = []
             
-            # Add overall signal analysis
+            # 1. OVERALL SIGNAL ANALYSIS
             quality_rating = aggregated_signal.get("quality_rating", "UNKNOWN")
-            reasoning_parts.append(f"Signal Quality: {quality_rating}")
+            signal_strength = aggregated_signal.get("signal_strength", "UNKNOWN")
+            reasoning_parts.append(f"📊 Signal Quality: {quality_rating} | Strength: {signal_strength}")
             
-            # Add confidence level
+            # 2. CONFIDENCE ANALYSIS
             if confidence >= 0.9:
                 confidence_level = "Very High"
             elif confidence >= 0.8:
                 confidence_level = "High"
             elif confidence >= 0.7:
                 confidence_level = "Good"
-            else:
+            elif confidence >= 0.5:
                 confidence_level = "Moderate"
+            else:
+                confidence_level = "Low"
             
-            reasoning_parts.append(f"Confidence: {confidence_level} ({confidence:.1%})")
+            reasoning_parts.append(f"🎯 Confidence: {confidence_level} ({confidence:.1%})")
             
-            # Add primary signal contributions
-            primary_signals = []
+            # 3. DETAILED SIGNAL BREAKDOWN
+            signal_breakdown = []
+            total_weight = 0
+            direction_votes = {"BUY": 0, "SELL": 0, "NEUTRAL": 0}
+            
             for signal_type, component in signal_components.items():
-                if component.get("weighted_confidence", 0) > 0.1:  # Significant contribution
-                    signal_direction = component.get("direction", "NEUTRAL")
-                    signal_confidence = component.get("confidence", 0)
-                    primary_signals.append(f"{signal_type}: {signal_direction} ({signal_confidence:.1%})")
+                signal_direction = component.get("direction", "NEUTRAL")
+                signal_confidence = component.get("confidence", 0)
+                signal_weight = component.get("weight", 0)
+                weighted_confidence = component.get("weighted_confidence", 0)
+                reasoning = component.get("reasoning", "")
+                
+                # Track direction votes
+                if signal_direction in direction_votes:
+                    direction_votes[signal_direction] += signal_weight
+                
+                total_weight += signal_weight
+                
+                # Format signal contribution
+                signal_contribution = f"{signal_type}: {signal_direction} ({signal_confidence:.1%}, weight: {signal_weight:.1%})"
+                if reasoning:
+                    signal_contribution += f" - {reasoning}"
+                
+                signal_breakdown.append(signal_contribution)
             
-            if primary_signals:
-                reasoning_parts.append(f"Primary Signals: {' | '.join(primary_signals)}")
+            if signal_breakdown:
+                reasoning_parts.append(f"🔍 Signal Analysis:")
+                reasoning_parts.extend([f"  • {signal}" for signal in signal_breakdown])
             
-            # Add direction reasoning
-            reasoning_parts.append(f"Direction: {direction}")
+            # 4. DIRECTION VOTE ANALYSIS
+            if total_weight > 0:
+                buy_votes = direction_votes["BUY"] / total_weight * 100
+                sell_votes = direction_votes["SELL"] / total_weight * 100
+                neutral_votes = direction_votes["NEUTRAL"] / total_weight * 100
+                
+                vote_analysis = f"🗳️ Vote Distribution: BUY {buy_votes:.1f}% | SELL {sell_votes:.1f}% | NEUTRAL {neutral_votes:.1f}%"
+                reasoning_parts.append(vote_analysis)
             
-            return " | ".join(reasoning_parts)
+            # 5. MARKET CONTEXT CONSIDERATION
+            market_data_signal = signal_components.get("market_data", {})
+            market_direction = market_data_signal.get("direction", "NEUTRAL")
+            market_confidence = market_data_signal.get("confidence", 0)
+            
+            if market_confidence > 0.6:
+                context_note = f"📈 Market Context: {market_direction} signal ({market_confidence:.1%})"
+                reasoning_parts.append(context_note)
+            
+            # 6. DECISION LOGIC
+            if direction == "BUY":
+                if market_direction == "SELL" and market_confidence > 0.7:
+                    reasoning_parts.append("⚠️ Note: BUY despite strong SELL market context - signal aggregation override")
+                else:
+                    reasoning_parts.append("✅ BUY decision: Supported by signal majority and market context")
+            elif direction == "SELL":
+                if market_direction == "BUY" and market_confidence > 0.7:
+                    reasoning_parts.append("⚠️ Note: SELL despite strong BUY market context - signal aggregation override")
+                else:
+                    reasoning_parts.append("✅ SELL decision: Supported by signal majority and market context")
+            else:
+                reasoning_parts.append("⚖️ NEUTRAL decision: Mixed signals or insufficient confidence")
+            
+            # 7. FINAL DECISION
+            reasoning_parts.append(f"🎯 Final Decision: {direction}")
+            
+            return "\n".join(reasoning_parts)
             
         except Exception as e:
-            logger.error(f"❌ Reasoning generation failed: {e}")
-            return f"Signal-based {direction} prediction ({confidence:.1%} confidence)"
+            logger.error(f"❌ Enhanced reasoning generation failed: {e}")
+            return f"Signal-based {direction} prediction ({confidence:.1%} confidence) - Detailed analysis unavailable"
     
     def _is_in_cooldown(self) -> bool:
         """Check if we're in cooldown period between predictions"""

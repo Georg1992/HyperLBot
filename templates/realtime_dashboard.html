@@ -574,12 +574,11 @@
                                 </div>
                             </div>
                             
-                            <!-- Full Width: Reasoning -->
+                            <!-- Full Width: Detailed Reasoning -->
                             <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
-                                <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #FFD700;">Analysis</h3>
-                                <div class="data-item">
-                                    <span class="data-label">Reasoning:</span>
-                                    <span class="data-value" id="prediction-reasoning" style="font-size: 12px; color: #ccc; line-height: 1.4;">Waiting for bot...</span>
+                                <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #FFD700;">Detailed Analysis</h3>
+                                <div class="data-item" style="display: block;">
+                                    <div id="prediction-reasoning" style="font-size: 11px; color: #ccc; line-height: 1.5; white-space: pre-line; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border-left: 3px solid #FFD700; max-height: 200px; overflow-y: auto;">Waiting for bot...</div>
                                 </div>
                             </div>
                         </div>
@@ -1145,7 +1144,13 @@
                     const confidenceValue = predictionData.confidence || bestPrediction.confidence || 0;
                     const confidencePercent = confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue;
                     this.updateElement('prediction-confidence', `${confidencePercent.toFixed(1)}%`);
-                    this.updateElement('prediction-reasoning', bestPrediction.reasoning || predictionData.reasoning || bestPrediction.reason || 'No reasoning available');
+                    // Handle multi-line reasoning with proper formatting
+                    const reasoning = bestPrediction.reasoning || predictionData.reasoning || bestPrediction.reason || 'No reasoning available';
+                    const reasoningElement = document.getElementById('prediction-reasoning');
+                    if (reasoningElement) {
+                        reasoningElement.textContent = reasoning;
+                        reasoningElement.style.whiteSpace = 'pre-line'; // Preserve line breaks
+                    }
                     
                     // Log the best prediction selection for debugging
                     const bestConfidence = parseFloat(bestPrediction.confidence || 0);
