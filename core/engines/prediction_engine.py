@@ -452,7 +452,7 @@ class PredictionEngine:
             historical_context = self.get_historical_context()
             
             # Calculate prediction parameters
-            entry_price = self._calculate_entry_price(overall_direction, current_price, strategy_name)
+            entry_price = self._calculate_entry_price(overall_direction, current_price, strategy_name, market_data)
             stop_loss, take_profit = self._calculate_risk_levels(
                 overall_direction, entry_price, current_price, strategy_name, market_data
             )
