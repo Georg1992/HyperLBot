@@ -182,10 +182,17 @@ class SessionOrchestrator:
             
             market_data = {
                 "current_price": current_price,
-                "rsi": rsi_data.get("rsi", yahoo_analysis.get("rsi_5m", 50.0)),
-                "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
+                "rsi_5m": rsi_data.get("rsi", yahoo_analysis.get("rsi_5m", 50.0)),
+                "rsi": rsi_data.get("rsi", yahoo_analysis.get("rsi_5m", 50.0)),  # Keep both for compatibility
+                "trend_5m": yahoo_analysis.get("trend_5m", {}),
+                "trend": yahoo_analysis.get("trend_5m", {}).get("direction", "NEUTRAL"),  # Keep both for compatibility
                 "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                "volatility_category": yahoo_analysis.get("volatility_5m_category", "MODERATE")
+                "volatility_5m_category": yahoo_analysis.get("volatility_5m_category", "MODERATE"),
+                "volatility_category": yahoo_analysis.get("volatility_5m_category", "MODERATE"),  # Keep both for compatibility
+                "volume_5m": yahoo_analysis.get("volume_5m", 0.0),
+                "volume_category": yahoo_analysis.get("volume_category", "UNKNOWN"),
+                "pressure": yahoo_analysis.get("pressure", "NEUTRAL"),
+                "pressure_strength": yahoo_analysis.get("pressure_strength", 0.0)
             }
             
             # Generate initial prediction using prediction engine with strategy-specific configuration
