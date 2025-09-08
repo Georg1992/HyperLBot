@@ -566,7 +566,17 @@ class MarketConditionsAnalyzer:
                     "reason": f"Neutral RSI (40-60) with low volatility, sideways trend, and low volume - dead zone"
                 }
             
-            # Dead Zone Scenario 6: RSI 40-60 + psychological level + low volume
+            # Dead Zone Scenario 6: VERY_LOW volatility + neutral RSI + psychological level (REGARDLESS of volume)
+            # This is the main deadzone - price stuck at key level with no movement potential
+            if (volatility_category == "VERY_LOW" and 
+                40 <= rsi_5m <= 60 and  # Neutral RSI range
+                near_psychological_level):
+                return {
+                    "is_dead_zone": True,
+                    "reason": f"Price stuck at psychological level {near_psychological_level} with VERY_LOW volatility and neutral RSI - deadzone regardless of volume"
+                }
+            
+            # Dead Zone Scenario 7: RSI 40-60 + psychological level + low volume
             if (40 <= rsi_5m <= 60 and  # Neutral RSI range
                 near_psychological_level and
                 volume_category in ["LOW", "VERY_LOW"]):
