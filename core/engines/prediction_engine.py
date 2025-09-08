@@ -363,7 +363,16 @@ class PredictionEngine:
             if overall_direction == "NEUTRAL":
                 # Try to find the strongest individual signal for weak market conditions
                 strongest_signal = self._find_strongest_individual_signal(primary_signals)
-                if strongest_signal and strongest_signal["confidence"] > 0.4:  # Higher threshold
+                
+                # Adjust confidence threshold based on volatility conditions
+                volatility_category = market_data.get("volatility_category", "UNKNOWN")
+                if volatility_category in ["VERY_LOW", "LOW"]:
+                    min_confidence_threshold = 0.25  # Lower threshold for low volatility (25%)
+                    logger.debug(f"📊 Using lower confidence threshold for {volatility_category} volatility: {min_confidence_threshold:.1%}")
+                else:
+                    min_confidence_threshold = 0.4  # Standard threshold (40%)
+                
+                if strongest_signal and strongest_signal["confidence"] > min_confidence_threshold:
                     # Validate individual signal against market context
                     individual_validation = self._validate_signal_against_market_context(
                         strongest_signal["direction"], current_price, market_data
@@ -384,8 +393,21 @@ class PredictionEngine:
                         logger.debug(f"📊 Strongest individual signal invalidated: {individual_validation['reason']}")
                         return None
                 else:
-                    logger.debug(f"📊 No strong enough directional signal - skipping prediction generation")
-                    return None
+                    # For VERY_LOW volatility, try to generate a low-confidence prediction anyway
+                    if volatility_category == "VERY_LOW" and strongest_signal and strongest_signal["confidence"] > 0.15:
+                        logger.info(f"🔄 VERY_LOW volatility: Using weak signal for low-confidence prediction: {strongest_signal['direction']} ({strongest_signal['confidence']:.1%})")
+                        # Create a very low confidence prediction for VERY_LOW volatility
+                        aggregated_signal = {
+                            "overall_direction": strongest_signal["direction"],
+                            "overall_confidence": strongest_signal["confidence"] * 0.6,  # Further reduction for weak signals
+                            "quality_rating": "POOR",
+                            "quality_score": strongest_signal["confidence"] * 0.4,
+                            "signal_components": {strongest_signal["type"]: strongest_signal},
+                            "overall_reasoning": f"VERY_LOW volatility: Weak signal from {strongest_signal['type']} - low confidence prediction"
+                        }
+                    else:
+                        logger.debug(f"📊 No strong enough directional signal (threshold: {min_confidence_threshold:.1%}) - skipping prediction generation")
+                        return None
             else:
                 # For directional signals, validate against market context
                 logger.debug(f"📊 Validating directional signal: {overall_direction}")
