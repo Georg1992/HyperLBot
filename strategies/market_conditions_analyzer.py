@@ -96,7 +96,7 @@ class MarketConditionsAnalyzer:
             # DETERMINE OVERALL TRADABILITY (with RSI override logic for scalping)
             overall_analysis = self._determine_overall_tradability(
                 risk_factors, positive_factors, condition_factors, 
-                neutral_rsi, volume_analysis, trend_analysis, volatility_analysis
+                neutral_rsi, volume_analysis, trend_analysis, volatility_analysis, market_data
             )
             
             result = {
@@ -355,7 +355,7 @@ class MarketConditionsAnalyzer:
     def _determine_overall_tradability(self, risk_factors: list, positive_factors: list, 
                                      condition_factors: list, neutral_rsi: bool = False,
                                      volume_analysis: Dict = None, trend_analysis: Dict = None, 
-                                     volatility_analysis: Dict = None) -> Dict[str, Any]:
+                                     volatility_analysis: Dict = None, market_data: Dict = None) -> Dict[str, Any]:
         """Determine overall market tradability with RSI override logic (Option 3: Scalping-friendly)"""
         
         total_risk_score = len(risk_factors)
@@ -385,6 +385,18 @@ class MarketConditionsAnalyzer:
             logger.info(f"⚡ RSI OVERRIDE: Neutral RSI overridden by: {', '.join(strong_override_factors)}")
             # Remove RSI neutrality from blocking risk factors for this analysis
             # Continue with normal logic but treat as if RSI is not neutral
+        
+        # CRITICAL UNTRADABLE CONDITIONS - Check for specific dead zone scenarios first
+        dead_zone_analysis = self._analyze_dead_zone_conditions(market_data, volatility_analysis, trend_analysis)
+        if dead_zone_analysis.get("is_dead_zone", False):
+            logger.debug(f"🔍 UNTRADABLE: Dead zone detected - {dead_zone_analysis.get('reason', 'Unknown')}")
+            return {
+                "is_tradable": False,
+                "condition": "UNTRADABLE",
+                "risk_level": "EXTREME",
+                "confidence": 0.95,
+                "dead_zone_reason": dead_zone_analysis.get("reason", "Unknown")
+            }
         
         # UNTRADABLE CONDITIONS (high risk, multiple problems - but account for overrides)
         effective_risk_score = total_risk_score
@@ -477,6 +489,114 @@ class MarketConditionsAnalyzer:
             return f"Poor trading conditions: {', '.join(main_risks)}"
         else:
             return f"Conditions analysis unavailable"
+    
+    def _analyze_dead_zone_conditions(self, market_data: Dict[str, Any], volatility_analysis: Dict = None, trend_analysis: Dict = None) -> Dict[str, Any]:
+        """
+        Analyze for specific dead zone conditions that should be UNTRADABLE
+        
+        Dead zone scenarios:
+        1. Low volatility + sideways trend + psychological key level
+        2. Very low volatility + neutral RSI + no volume
+        3. Price stuck at major support/resistance with no movement
+        """
+        try:
+            current_price = market_data.get("current_price", 0)
+            volatility_category = market_data.get("volatility_category", "MODERATE")
+            trend_direction = market_data.get("trend", "UNKNOWN")
+            rsi_5m = market_data.get("rsi_5m", 50)
+            volume_category = market_data.get("volume_category", "NORMAL")
+            
+            # Check for psychological key levels (round numbers)
+            psychological_levels = self._get_psychological_levels(current_price)
+            near_psychological_level = self._is_near_psychological_level(current_price, psychological_levels)
+            
+            # Dead Zone Scenario 1: Low volatility + sideways + psychological level + neutral RSI
+            if (volatility_category in ["VERY_LOW", "LOW"] and 
+                trend_direction in ["SIDEWAYS", "NEUTRAL"] and 
+                near_psychological_level and
+                40 <= rsi_5m <= 60):  # Neutral RSI range
+                return {
+                    "is_dead_zone": True,
+                    "reason": f"Price stuck at psychological level {near_psychological_level} with low volatility, sideways movement, and neutral RSI"
+                }
+            
+            # Dead Zone Scenario 2: Very low volatility + neutral RSI + low volume + sideways trend
+            if (volatility_category == "VERY_LOW" and 
+                40 <= rsi_5m <= 60 and  # Neutral RSI range
+                volume_category in ["LOW", "VERY_LOW"] and
+                trend_direction in ["SIDEWAYS", "NEUTRAL"]):
+                return {
+                    "is_dead_zone": True,
+                    "reason": "Very low volatility with neutral RSI, low volume, and sideways trend - no trading opportunities"
+                }
+            
+            # Dead Zone Scenario 3: Low volatility + neutral RSI + psychological level (even with normal volume)
+            if (volatility_category in ["VERY_LOW", "LOW"] and 
+                40 <= rsi_5m <= 60 and  # Neutral RSI range
+                near_psychological_level and
+                trend_direction in ["SIDEWAYS", "NEUTRAL"]):
+                return {
+                    "is_dead_zone": True,
+                    "reason": f"Low volatility at psychological level {near_psychological_level} with neutral RSI and sideways trend - dead zone"
+                }
+            
+            # Dead Zone Scenario 4: Price range too tight (less than 0.1% range)
+            if volatility_category == "VERY_LOW":
+                # Check if we're in a very tight range (this would need recent price data)
+                # For now, we'll use the volatility category as a proxy
+                return {
+                    "is_dead_zone": False,  # Not a dead zone, but could be if we had more data
+                    "reason": "Very low volatility detected but not confirmed as dead zone"
+                }
+            
+            return {"is_dead_zone": False, "reason": "No dead zone conditions detected"}
+            
+        except Exception as e:
+            logger.error(f"❌ Dead zone analysis failed: {e}")
+            return {"is_dead_zone": False, "reason": "Analysis failed"}
+    
+    def _get_psychological_levels(self, current_price: float) -> list:
+        """Get nearby psychological levels for the current price"""
+        try:
+            # Major psychological levels (round numbers)
+            levels = []
+            
+            # Get the price range we're in (e.g., 110000-120000)
+            price_range_start = int(current_price // 10000) * 10000
+            price_range_end = price_range_start + 10000
+            
+            # Add major levels in this range
+            for level in range(price_range_start, price_range_end + 1, 1000):
+                levels.append(level)
+            
+            # Add more granular levels around current price
+            current_rounded = int(current_price // 100) * 100
+            for offset in [-200, -100, 0, 100, 200]:
+                levels.append(current_rounded + offset)
+            
+            return sorted(list(set(levels)))
+            
+        except Exception as e:
+            logger.error(f"❌ Psychological levels calculation failed: {e}")
+            return []
+    
+    def _is_near_psychological_level(self, current_price: float, psychological_levels: list, tolerance: float = 0.002) -> str:
+        """Check if current price is near a psychological level"""
+        try:
+            for level in psychological_levels:
+                if level == 0:
+                    continue
+                    
+                # Check if price is within tolerance of the psychological level
+                price_diff_pct = abs(current_price - level) / level
+                if price_diff_pct <= tolerance:
+                    return f"${level:,.0f}"
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Psychological level check failed: {e}")
+            return None
 
 # Global instance for consistent conditions analysis across the system
 global_conditions_analyzer = MarketConditionsAnalyzer()
