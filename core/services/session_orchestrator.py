@@ -173,9 +173,15 @@ class SessionOrchestrator:
                 logger.warning("⚠️ Cannot generate initial prediction - no market analysis")
                 return
             
-            # Build market data for prediction engine
+            # Build market data for prediction engine - USE REAL-TIME RSI (same as dashboard)
             from core.market_data_manager import global_rsi_calculator
-            rsi_data = global_rsi_calculator.get_current_rsi_data()
+            # Use real-time RSI value (same as dashboard) instead of stale cached data
+            if global_rsi_calculator.rsi_initialized:
+                rsi_value = global_rsi_calculator.current_rsi
+                rsi_data = {"rsi": rsi_value, "rsi_trend": "NEUTRAL", "rsi_signal": "NEUTRAL"}
+            else:
+                # Fallback: Use Yahoo if real-time not initialized yet
+                rsi_data = global_rsi_calculator.get_current_rsi_data()
             
             # MARKET CONDITIONS ANALYSIS for session prediction
             from strategies.market_conditions_analyzer import global_conditions_analyzer
@@ -278,6 +284,13 @@ class SessionOrchestrator:
         try:
             if not hasattr(self, 'prediction_engine') or not self.prediction_engine:
                 return
+            
+            # CRITICAL: Ensure market_data has real-time RSI (same as dashboard)
+            from core.market_data_manager import global_rsi_calculator
+            if global_rsi_calculator.rsi_initialized:
+                # Update market_data with real-time RSI
+                market_data["rsi_5m"] = global_rsi_calculator.current_rsi
+                market_data["rsi"] = global_rsi_calculator.current_rsi
             
             # Generate dynamic prediction
             updated_prediction = self.prediction_engine.track_signals_and_adjust_prediction(
