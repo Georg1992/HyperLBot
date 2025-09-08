@@ -215,6 +215,18 @@ class PredictionEngine:
                 logger.info("🔄 Forcing prediction regeneration - 5 minutes elapsed")
                 return True
             
+            # CRITICAL: Check if price is moving toward entry (better opportunity = higher confidence)
+            entry_price = self.last_prediction.get("entry_price", 0)
+            if entry_price > 0:
+                price_distance = abs(current_price - entry_price) / entry_price
+                last_price = self.last_prediction.get("current_price_at_prediction", current_price)
+                last_distance = abs(last_price - entry_price) / entry_price if last_price > 0 else 1.0
+                
+                # If price moved closer to entry by more than 0.1%, regenerate with better entry/confidence
+                if last_distance - price_distance > 0.001:  # 0.1% closer
+                    logger.info(f"🔄 Price moved closer to entry ({price_distance:.3%} vs {last_distance:.3%}) - regenerating with better entry/confidence")
+                    return True
+            
             # Check if confidence has dropped significantly
             current_confidence = current_aggregated.get("overall_confidence", 0.0)
             last_confidence = self.last_prediction.get("confidence", 0.0)
@@ -497,7 +509,8 @@ class PredictionEngine:
             
             # Calculate realistic confidence based on market conditions
             realistic_confidence = self._calculate_realistic_confidence(
-                overall_confidence, rsi_5m, trend_direction, volatility_category, overall_direction
+                overall_confidence, rsi_5m, trend_direction, volatility_category, overall_direction, 
+                current_price, entry_price
             )
             
             # Create prediction result
@@ -530,7 +543,8 @@ class PredictionEngine:
             return None
     
     def _calculate_realistic_confidence(self, base_confidence: float, rsi: float, trend: str, 
-                                      volatility_category: str, direction: str) -> float:
+                                      volatility_category: str, direction: str, current_price: float = 0, 
+                                      entry_price: float = 0) -> float:
         """
         Calculate realistic confidence based on market conditions
         
@@ -539,9 +553,43 @@ class PredictionEngine:
         - Sideways/neutral trends - unclear direction
         - Low volatility - limited movement potential
         - Contradictory signals (e.g., SELL with uptrend)
+        
+        Factors that increase confidence:
+        - Price moving toward entry (better opportunity)
+        - Strong signal alignment
+        - Clear market direction
         """
         try:
             confidence = base_confidence
+            
+            # ENHANCED: Boost confidence if price moved toward entry (better opportunity)
+            if current_price > 0 and entry_price > 0 and self.last_prediction:
+                last_entry = self.last_prediction.get("entry_price", 0)
+                if last_entry > 0:
+                    price_improvement = abs(current_price - last_entry) / last_entry
+                    if direction == "BUY" and current_price < last_entry:
+                        # Price moved down toward BUY entry - boost confidence
+                        if price_improvement < 0.003:  # Small move (0.1-0.3%)
+                            confidence_boost = 0.05  # +5% confidence
+                        elif price_improvement < 0.005:  # Medium move (0.3-0.5%)
+                            confidence_boost = 0.10  # +10% confidence
+                        else:  # Large move (>0.5%)
+                            confidence_boost = 0.15  # +15% confidence
+                        
+                        confidence = min(0.95, confidence + confidence_boost)
+                        logger.debug(f"📈 Confidence boosted {confidence_boost:.1%} for price moving toward BUY entry")
+                    
+                    elif direction == "SELL" and current_price > last_entry:
+                        # Price moved up toward SELL entry - boost confidence
+                        if price_improvement < 0.003:  # Small move (0.1-0.3%)
+                            confidence_boost = 0.05  # +5% confidence
+                        elif price_improvement < 0.005:  # Medium move (0.3-0.5%)
+                            confidence_boost = 0.10  # +10% confidence
+                        else:  # Large move (>0.5%)
+                            confidence_boost = 0.15  # +15% confidence
+                        
+                        confidence = min(0.95, confidence + confidence_boost)
+                        logger.debug(f"📈 Confidence boosted {confidence_boost:.1%} for price moving toward SELL entry")
             
             # RSI-based confidence adjustments
             if 40 <= rsi <= 60:  # Neutral RSI range
@@ -607,8 +655,30 @@ class PredictionEngine:
                 # For buy orders, entry should be at or below current price
                 # Use SIGNAL MANAGER data for smart entry timing
                 
+                # ENHANCED: Check if price moved toward previous entry (better opportunity)
+                last_entry = self.last_prediction.get("entry_price", 0) if self.last_prediction else 0
+                if last_entry > 0 and current_price < last_entry:
+                    # Price moved down toward entry - adjust entry price proportionally
+                    price_improvement = (last_entry - current_price) / last_entry
+                    if price_improvement > 0.001:  # 0.1% improvement
+                        # Conservative adjustment: move entry 50-75% of the way toward current price
+                        if price_improvement < 0.003:  # Small move (0.1-0.3%)
+                            adjustment_factor = 0.5  # Move entry 50% of the improvement
+                        elif price_improvement < 0.005:  # Medium move (0.3-0.5%)
+                            adjustment_factor = 0.75  # Move entry 75% of the improvement
+                        else:  # Large move (>0.5%)
+                            adjustment_factor = 0.9  # Move entry 90% of the improvement
+                        
+                        # Calculate new entry price (conservative adjustment)
+                        price_difference = last_entry - current_price
+                        entry_adjustment = price_difference * adjustment_factor
+                        entry_price = last_entry - entry_adjustment
+                        
+                        logger.info(f"🎯 Price moved toward BUY entry ({price_improvement:.3%}) - adjusting entry from ${last_entry:.2f} to ${entry_price:.2f}")
+                    else:
+                        entry_price = current_price * 0.999
                 # Perfect signal quality + strong confidence = aggressive entry
-                if quality_rating == "PERFECT" and signal_confidence > 0.8:
+                elif quality_rating == "PERFECT" and signal_confidence > 0.8:
                     entry_price = current_price * 0.999  # Slightly below for better fill
                 # Strong signal + oversold RSI = dip buying
                 elif signal_strength in ["STRONG", "VERY_STRONG"] and rsi_5m < 30:
