@@ -155,13 +155,13 @@ class StrategyManager:
         # 1. VOLATILITY-BASED STRATEGY SELECTION
         if volatility_category == "VERY_LOW":
             # Very low volatility - use range trading strategy
-            logger.info("🎯 Strategy: VERY_LOW volatility → range_trading")
-            return "range_trading"
+            logger.info("🎯 Strategy: VERY_LOW volatility → low_volatility_range")
+            return "low_volatility_range"
         
         elif volatility_category == "LOW":
-            # Low volatility - use low volatility strategy
-            logger.info("🎯 Strategy: LOW volatility → low_volatility")
-            return "low_volatility"
+            # Low volatility - use low volatility range strategy
+            logger.info("🎯 Strategy: LOW volatility → low_volatility_range")
+            return "low_volatility_range"
         
         elif volatility_category == "EXTREME":
             # Extreme volatility - use spike hunting strategy
@@ -241,10 +241,9 @@ class StrategyManager:
         """Get human-readable description of strategy"""
         descriptions = {
             "standard": "Balanced strategy for normal market conditions",
-            "low_volatility": "Optimized for low volatility, range-bound markets",
+            "low_volatility_range": "Optimized for LOW and VERY_LOW volatility, range-bound markets with support/resistance",
             "high_volatility": "Designed for high volatility, trending markets",
             "spike_hunting": "Specialized for extreme volatility and price spikes",
-            "range_trading": "Focused on very low volatility, tight range trading",
             "trend_following": "Optimized for strong trending markets"
         }
         return descriptions.get(strategy_name, "Unknown strategy")

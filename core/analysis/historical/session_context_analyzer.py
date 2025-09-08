@@ -284,14 +284,14 @@ class SessionContextAnalyzer:
         try:
             recommendations = {
                 "primary": "standard",
-                "secondary": "low_volatility", 
+                "secondary": "low_volatility_range", 
                 "avoid": [],
                 "reasoning": "Default recommendations"
             }
             
             # Strategy recommendations based on analysis
             if market_regime.get("regime") in ["RANGING", "TIGHT_RANGING"]:
-                recommendations["primary"] = "range_trading"  # TODO: Implement
+                recommendations["primary"] = "low_volatility_range"
                 recommendations["secondary"] = "micro_scalping"  # TODO: Implement
                 recommendations["reasoning"] = f"Market in {market_regime.get('regime')} phase"
             
@@ -303,7 +303,7 @@ class SessionContextAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Strategy recommendation failed: {e}")
-            return {"primary": "standard", "secondary": "low_volatility", "avoid": []}
+            return {"primary": "standard", "secondary": "low_volatility_range", "avoid": []}
     
     def _analyze_risk_context(self, candles_1d: List[Dict]) -> Dict[str, Any]:
         """Analyze historical risk patterns for position sizing and risk management"""
@@ -389,7 +389,7 @@ class SessionContextAnalyzer:
             "volatility_regime": {"regime": "UNKNOWN", "confidence": 0.0},
             "market_regime": {"regime": "UNKNOWN", "confidence": 0.0},
             "range_analysis": {"analysis_ready": False},
-            "strategy_recommendations": {"primary": "standard", "secondary": "low_volatility", "avoid": []},
+            "strategy_recommendations": {"primary": "standard", "secondary": "low_volatility_range", "avoid": []},
             "risk_context": {"analysis_ready": False},
             "session_strategy_guidance": {"guidance_ready": False},
             "analysis_status": "FAILED"

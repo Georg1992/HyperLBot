@@ -133,7 +133,7 @@ class MarketConditionsAnalyzer:
         
         if category == "VERY_LOW":
             factors.append("Very low volatility - range-bound market")
-            if strategy_name == "range_trading":
+            if strategy_name == "low_volatility_range":
                 # Range trading strategy is designed for very low volatility
                 positive_factors.append("Optimal conditions for range trading")
             else:
@@ -143,10 +143,10 @@ class MarketConditionsAnalyzer:
             
         elif category == "LOW":
             factors.append("Low volatility - limited opportunities") 
-            if strategy_name == "low_volatility":
+            if strategy_name == "low_volatility_range":
                 # Low volatility strategy is designed for low volatility
                 positive_factors.append("Good conditions for low volatility strategy")
-            elif strategy_name == "range_trading":
+            elif strategy_name == "low_volatility_range":
                 # Range trading strategy also works well in low volatility
                 positive_factors.append("Good conditions for range trading")
             else:
@@ -254,7 +254,7 @@ class MarketConditionsAnalyzer:
         
         if trend == "SIDEWAYS":
             factors.append("Sideways trend - range-bound market")
-            if strategy_name == "range_trading":
+            if strategy_name == "low_volatility_range":
                 # Range trading strategy thrives in sideways markets
                 positive_factors.append("Optimal sideways conditions for range trading")
             elif strategy_name == "low_volatility":
@@ -266,7 +266,7 @@ class MarketConditionsAnalyzer:
             
         elif trend in ["WEAK_UPTREND", "WEAK_DOWNTREND"]:
             factors.append(f"{trend.replace('_', ' ').lower()} - limited momentum")
-            if strategy_name in ["range_trading", "low_volatility"]:
+            if strategy_name == "low_volatility_range":
                 # Weak trends are good for range trading (not too strong, not too weak)
                 positive_factors.append("Good weak trend for range trading")
             else:
@@ -510,14 +510,16 @@ class MarketConditionsAnalyzer:
             psychological_levels = self._get_psychological_levels(current_price)
             near_psychological_level = self._is_near_psychological_level(current_price, psychological_levels)
             
-            # Dead Zone Scenario 1: Low volatility + sideways + psychological level + neutral RSI
+            # Dead Zone Scenario 1: Low volatility + sideways + psychological level + neutral RSI + LOW volume
+            # Only trigger if volume is also low (no activity)
             if (volatility_category in ["VERY_LOW", "LOW"] and 
                 trend_direction in ["SIDEWAYS", "NEUTRAL"] and 
                 near_psychological_level and
-                40 <= rsi_5m <= 60):  # Neutral RSI range
+                40 <= rsi_5m <= 60 and  # Neutral RSI range
+                volume_category in ["LOW", "VERY_LOW", "BELOW_AVERAGE"]):  # Low volume required
                 return {
                     "is_dead_zone": True,
-                    "reason": f"Price stuck at psychological level {near_psychological_level} with low volatility, sideways movement, and neutral RSI"
+                    "reason": f"Price stuck at psychological level {near_psychological_level} with low volatility, sideways movement, neutral RSI, and low volume"
                 }
             
             # Dead Zone Scenario 2: Very low volatility + neutral RSI + low volume + sideways trend
@@ -530,32 +532,38 @@ class MarketConditionsAnalyzer:
                     "reason": "Very low volatility with neutral RSI, low volume, and sideways trend - no trading opportunities"
                 }
             
-            # Dead Zone Scenario 3: Low volatility + neutral RSI + psychological level (even with normal volume)
+            # Dead Zone Scenario 3: Low volatility + neutral RSI + psychological level + LOW volume
+            # Only trigger if volume is also low (no market activity)
             if (volatility_category in ["VERY_LOW", "LOW"] and 
                 40 <= rsi_5m <= 60 and  # Neutral RSI range
                 near_psychological_level and
-                trend_direction in ["SIDEWAYS", "NEUTRAL"]):
+                trend_direction in ["SIDEWAYS", "NEUTRAL"] and
+                volume_category in ["LOW", "VERY_LOW", "BELOW_AVERAGE"]):  # Low volume required
                 return {
                     "is_dead_zone": True,
-                    "reason": f"Low volatility at psychological level {near_psychological_level} with neutral RSI and sideways trend - dead zone"
+                    "reason": f"Low volatility at psychological level {near_psychological_level} with neutral RSI, sideways trend, and low volume - dead zone"
                 }
             
-            # Dead Zone Scenario 4: RSI 40-60 + sideways trend + psychological level (regardless of volatility)
+            # Dead Zone Scenario 4: RSI 40-60 + sideways trend + psychological level + LOW volume
+            # Only trigger if volume is also low (no market activity)
             if (40 <= rsi_5m <= 60 and  # Neutral RSI range
                 trend_direction in ["SIDEWAYS", "NEUTRAL"] and
-                near_psychological_level):
+                near_psychological_level and
+                volume_category in ["LOW", "VERY_LOW", "BELOW_AVERAGE"]):  # Low volume required
                 return {
                     "is_dead_zone": True,
-                    "reason": f"Neutral RSI (40-60) at psychological level {near_psychological_level} with sideways trend - dead zone"
+                    "reason": f"Neutral RSI (40-60) at psychological level {near_psychological_level} with sideways trend and low volume - dead zone"
                 }
             
-            # Dead Zone Scenario 5: RSI 40-60 + low/very low volatility + sideways trend
+            # Dead Zone Scenario 5: RSI 40-60 + low/very low volatility + sideways trend + LOW volume
+            # Only trigger if volume is also low (no market activity)
             if (40 <= rsi_5m <= 60 and  # Neutral RSI range
                 volatility_category in ["VERY_LOW", "LOW"] and
-                trend_direction in ["SIDEWAYS", "NEUTRAL"]):
+                trend_direction in ["SIDEWAYS", "NEUTRAL"] and
+                volume_category in ["LOW", "VERY_LOW", "BELOW_AVERAGE"]):  # Low volume required
                 return {
                     "is_dead_zone": True,
-                    "reason": f"Neutral RSI (40-60) with low volatility and sideways trend - dead zone"
+                    "reason": f"Neutral RSI (40-60) with low volatility, sideways trend, and low volume - dead zone"
                 }
             
             # Dead Zone Scenario 6: RSI 40-60 + psychological level + low volume
@@ -598,7 +606,7 @@ class MarketConditionsAnalyzer:
             logger.error(f"❌ Psychological levels calculation failed: {e}")
             return []
     
-    def _is_near_psychological_level(self, current_price: float, psychological_levels: list, tolerance: float = 0.002) -> str:
+    def _is_near_psychological_level(self, current_price: float, psychological_levels: list, tolerance: float = 0.001) -> str:
         """Check if current price is near a psychological level"""
         try:
             for level in psychological_levels:

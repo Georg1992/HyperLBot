@@ -109,7 +109,7 @@ class TradeManager:
             volatility_score = 0.5  # Default
             if strategy_name == "high_volatility" and volatility_5m > VariabilityConstants.VOLATILITY_5M_HIGH:
                 volatility_score = 1.0  # High vol strategy with high vol
-            elif strategy_name == "low_volatility" and volatility_5m < VariabilityConstants.VOLATILITY_5M_LOW:
+            elif strategy_name == "low_volatility_range" and volatility_5m < VariabilityConstants.VOLATILITY_5M_LOW:
                 volatility_score = 1.0  # Low vol strategy with low vol
             elif strategy_name == "standard" and VariabilityConstants.VOLATILITY_5M_LOW <= volatility_5m <= VariabilityConstants.VOLATILITY_5M_HIGH:
                 volatility_score = 0.9  # Standard strategy with normal vol

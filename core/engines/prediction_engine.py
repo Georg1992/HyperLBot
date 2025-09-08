@@ -595,7 +595,7 @@ class PredictionEngine:
                 elif recent_price_action.get("trend") == "DOWN" and recent_price_action.get("reversal_signal"):
                     entry_price = current_price * 0.9995
                 # Range trading + support level = precise entry
-                elif strategy_name == "range_trading":
+                elif strategy_name == "low_volatility_range":
                     support_level = recent_price_action.get("support_level", current_price * 0.998)
                     if support_level and support_level < current_price:
                         entry_price = max(current_price * 0.999, support_level)
@@ -625,7 +625,7 @@ class PredictionEngine:
                 elif recent_price_action.get("trend") == "UP" and recent_price_action.get("rejection_signal"):
                     entry_price = current_price * 1.0005
                 # Range trading + resistance level = precise entry
-                elif strategy_name == "range_trading":
+                elif strategy_name == "low_volatility_range":
                     resistance_level = recent_price_action.get("resistance_level", current_price * 1.002)
                     # For downtrending markets, use current price or very close to it
                     if resistance_level and resistance_level > current_price * 1.005:
@@ -811,7 +811,7 @@ class PredictionEngine:
             
             if direction == "BUY":
                 # Calculate stop loss (below entry)
-                if strategy_name == "range_trading":
+                if strategy_name == "low_volatility_range":
                     # Use psychological support levels for range trading, but cap the stop loss
                     strong_support = nearest_levels.get("strong_support", {})
                     if strong_support and strong_support.get("level", 0) < entry_price:
@@ -825,7 +825,7 @@ class PredictionEngine:
                     stop_loss = entry_price * 0.99  # 1% stop loss for other strategies (reduced from 2%)
                 
                 # Calculate take profit (above entry)
-                if strategy_name == "range_trading":
+                if strategy_name == "low_volatility_range":
                     # Use psychological resistance levels for range trading
                     strong_resistance = nearest_levels.get("strong_resistance", {})
                     if strong_resistance and strong_resistance.get("level", 0) > entry_price:
@@ -837,7 +837,7 @@ class PredictionEngine:
                     
             else:  # SELL
                 # Calculate stop loss (above entry)
-                if strategy_name == "range_trading":
+                if strategy_name == "low_volatility_range":
                     # Use psychological resistance levels for range trading, but cap the stop loss
                     strong_resistance = nearest_levels.get("strong_resistance", {})
                     if strong_resistance and strong_resistance.get("level", 0) > entry_price:
@@ -851,7 +851,7 @@ class PredictionEngine:
                     stop_loss = entry_price * 1.01  # 1% stop loss for other strategies (reduced from 2%)
                 
                 # Calculate take profit (below entry) - FIXED RISK/REWARD
-                if strategy_name == "range_trading":
+                if strategy_name == "low_volatility_range":
                     # Range trading needs better risk/reward - at least 1:1.5
                     take_profit = entry_price * 0.9925  # 0.75% take profit (1.5x the 0.5% stop loss)
                 else:
@@ -876,7 +876,7 @@ class PredictionEngine:
             confidence_multiplier = min(1.0, confidence)
             
             # Adjust for strategy
-            if strategy_name == "range_trading":
+            if strategy_name == "low_volatility_range":
                 # Range trading uses smaller positions
                 strategy_multiplier = 0.8
             elif strategy_name == "trend_following":
