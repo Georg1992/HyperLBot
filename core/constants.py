@@ -149,13 +149,13 @@ class MagicNumbers:
     PRESSURE_LOW_CONCENTRATION = 0.6     # Low depth concentration threshold
     
     # Orderbook depth thresholds (BTC amounts) - REALISTIC Bitcoin market levels
-    ORDERBOOK_DEPTH_EXTREMELY_HIGH = 50.0   # 50+ BTC depth (very high for Bitcoin)
-    ORDERBOOK_DEPTH_VERY_HIGH = 30.0        # 30-50 BTC depth
-    ORDERBOOK_DEPTH_HIGH = 20.0             # 20-30 BTC depth  
-    ORDERBOOK_DEPTH_ABOVE_AVERAGE = 15.0    # 15-20 BTC depth
-    ORDERBOOK_DEPTH_NORMAL = 10.0           # 10-15 BTC depth
-    ORDERBOOK_DEPTH_BELOW_AVERAGE = 7.0     # 7-10 BTC depth
-    ORDERBOOK_DEPTH_LOW = 5.0               # 5-7 BTC depth
+    ORDERBOOK_DEPTH_EXTREMELY_HIGH = 100.0  # 100+ BTC depth (extremely high for Bitcoin)
+    ORDERBOOK_DEPTH_VERY_HIGH = 60.0        # 60-100 BTC depth
+    ORDERBOOK_DEPTH_HIGH = 40.0             # 40-60 BTC depth  
+    ORDERBOOK_DEPTH_ABOVE_AVERAGE = 25.0    # 25-40 BTC depth
+    ORDERBOOK_DEPTH_NORMAL = 15.0           # 15-25 BTC depth
+    ORDERBOOK_DEPTH_BELOW_AVERAGE = 10.0    # 10-15 BTC depth
+    ORDERBOOK_DEPTH_LOW = 5.0               # 5-10 BTC depth
     
     # Price fallbacks
     FALLBACK_BTC_PRICE = 50000.0
