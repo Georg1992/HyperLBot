@@ -56,7 +56,7 @@ class PredictionEngine:
         # Dynamic tracking
         self.signal_change_threshold = 0.05  # 5% change triggers re-evaluation (more sensitive)
         self.confidence_change_threshold = 0.02  # 2% confidence change triggers update (more sensitive)
-        self.entry_price_tolerance = 0.002  # 0.2% tolerance for entry price validity
+        self.entry_price_tolerance = 0.002  # 0.2% tolerance for entry price validity (sensitive for dynamic updates)
         
         # Quality thresholds
         self.min_confidence_threshold = 0.7  # 70% minimum confidence
@@ -183,9 +183,14 @@ class PredictionEngine:
                     is_valid = True
                     reason = "Price moved up for SELL - better entry opportunity"
                 else:
-                    # Price moved against the prediction direction
+                    # Price moved against the prediction direction OR too far away
                     is_valid = False
-                    reason = f"Price moved {price_deviation:.1%} away from entry - prediction invalidated"
+                    if direction == "BUY" and current_price > entry_price * (1 + self.entry_price_tolerance):
+                        reason = f"Price moved up {price_deviation:.1%} for BUY prediction - entry level missed"
+                    elif direction == "SELL" and current_price < entry_price * (1 - self.entry_price_tolerance):
+                        reason = f"Price moved down {price_deviation:.1%} for SELL prediction - entry level missed"
+                    else:
+                        reason = f"Price moved {price_deviation:.1%} away from entry - prediction invalidated"
             
             return {
                 "is_valid": is_valid,
