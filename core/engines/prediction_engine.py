@@ -520,13 +520,13 @@ class PredictionEngine:
                     # Selling the rejection - use current price or slightly above
                     return current_price * 1.0005
                 elif strategy_name == "range_trading":
-                    # Range trading - sell near resistance levels
+                    # Range trading - sell near resistance levels, but be realistic
                     resistance_level = recent_price_action.get("resistance_level", current_price * 1.002)
-                    # Ensure entry price is never below current price for SELL
-                    if resistance_level and resistance_level > current_price:
+                    # For downtrending markets, use current price or very close to it
+                    if resistance_level and resistance_level > current_price * 1.005:  # Only if resistance is significantly higher
                         return min(current_price * 1.001, resistance_level)
                     else:
-                        return current_price * 1.001  # Default to slightly above current price
+                        return current_price  # Use current price for downtrending markets
                 else:
                     # Trend following - sell on breakdowns (at current price)
                     return current_price
@@ -689,14 +689,17 @@ class PredictionEngine:
             if direction == "BUY":
                 # Calculate stop loss (below entry)
                 if strategy_name == "range_trading":
-                    # Use psychological support levels for range trading
+                    # Use psychological support levels for range trading, but cap the stop loss
                     strong_support = nearest_levels.get("strong_support", {})
                     if strong_support and strong_support.get("level", 0) < entry_price:
-                        stop_loss = strong_support["level"] * 0.999  # Slightly below support
+                        # Use support level but cap at reasonable distance (max 1% below entry)
+                        support_stop = strong_support["level"] * 0.999
+                        max_stop = entry_price * 0.99  # Max 1% stop loss
+                        stop_loss = max(support_stop, max_stop)
                     else:
                         stop_loss = entry_price * 0.995  # 0.5% stop loss
                 else:
-                    stop_loss = entry_price * 0.98  # 2% stop loss for other strategies
+                    stop_loss = entry_price * 0.99  # 1% stop loss for other strategies (reduced from 2%)
                 
                 # Calculate take profit (above entry)
                 if strategy_name == "range_trading":
@@ -712,14 +715,17 @@ class PredictionEngine:
             else:  # SELL
                 # Calculate stop loss (above entry)
                 if strategy_name == "range_trading":
-                    # Use psychological resistance levels for range trading
+                    # Use psychological resistance levels for range trading, but cap the stop loss
                     strong_resistance = nearest_levels.get("strong_resistance", {})
                     if strong_resistance and strong_resistance.get("level", 0) > entry_price:
-                        stop_loss = strong_resistance["level"] * 1.001  # Slightly above resistance
+                        # Use resistance level but cap at reasonable distance (max 1% above entry)
+                        resistance_stop = strong_resistance["level"] * 1.001
+                        max_stop = entry_price * 1.01  # Max 1% stop loss
+                        stop_loss = min(resistance_stop, max_stop)
                     else:
                         stop_loss = entry_price * 1.005  # 0.5% stop loss
                 else:
-                    stop_loss = entry_price * 1.02  # 2% stop loss for other strategies
+                    stop_loss = entry_price * 1.01  # 1% stop loss for other strategies (reduced from 2%)
                 
                 # Calculate take profit (below entry) - FIXED RISK/REWARD
                 if strategy_name == "range_trading":
