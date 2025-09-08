@@ -1145,7 +1145,7 @@
                     const confidenceValue = predictionData.confidence || bestPrediction.confidence || 0;
                     const confidencePercent = confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue;
                     this.updateElement('prediction-confidence', `${confidencePercent.toFixed(1)}%`);
-                    this.updateElement('prediction-reasoning', predictionData.reasoning || bestPrediction.reason || 'No reasoning available');
+                    this.updateElement('prediction-reasoning', bestPrediction.reasoning || predictionData.reasoning || bestPrediction.reason || 'No reasoning available');
                     
                     // Log the best prediction selection for debugging
                     const bestConfidence = parseFloat(bestPrediction.confidence || 0);
