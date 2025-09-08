@@ -468,15 +468,28 @@ class PredictionEngine:
                 aggregated_signal, signal_components, overall_direction, overall_confidence
             )
             
+            # Get market context for prediction
+            rsi_5m = market_data.get("rsi_5m", market_data.get("rsi", 50))
+            trend_direction = market_data.get("trend", market_data.get("trend_5m", {}).get("direction", "NEUTRAL"))
+            volatility_category = market_data.get("volatility_category", "MODERATE")
+            
+            # Calculate realistic confidence based on market conditions
+            realistic_confidence = self._calculate_realistic_confidence(
+                overall_confidence, rsi_5m, trend_direction, volatility_category, overall_direction
+            )
+            
             # Create prediction result
             prediction = {
                 "direction": overall_direction,
-                "confidence": overall_confidence,
+                "confidence": realistic_confidence,
                 "entry_price": entry_price,
                 "stop_loss": stop_loss,
                 "take_profit": take_profit,
                 "position_size": position_size,
                 "reasoning": reasoning,
+                "rsi": rsi_5m,
+                "trend": trend_direction,
+                "volatility_category": volatility_category,
                 "signal_analysis": {
                     "quality_rating": aggregated_signal.get("quality_rating", "UNKNOWN"),
                     "quality_score": aggregated_signal.get("quality_score", 0.0),
@@ -493,6 +506,52 @@ class PredictionEngine:
         except Exception as e:
             logger.error(f"❌ Prediction generation from signal failed: {e}")
             return None
+    
+    def _calculate_realistic_confidence(self, base_confidence: float, rsi: float, trend: str, 
+                                      volatility_category: str, direction: str) -> float:
+        """
+        Calculate realistic confidence based on market conditions
+        
+        Factors that reduce confidence:
+        - Neutral RSI (40-60) - no clear directional bias
+        - Sideways/neutral trends - unclear direction
+        - Low volatility - limited movement potential
+        - Contradictory signals (e.g., SELL with uptrend)
+        """
+        try:
+            confidence = base_confidence
+            
+            # RSI-based confidence adjustments
+            if 40 <= rsi <= 60:  # Neutral RSI range
+                confidence *= 0.7  # Reduce confidence by 30% for neutral RSI
+                logger.debug(f"📊 Confidence reduced for neutral RSI ({rsi:.1f}): {base_confidence:.1%} → {confidence:.1%}")
+            
+            # Trend-based confidence adjustments
+            if trend in ["SIDEWAYS", "NEUTRAL"]:
+                confidence *= 0.8  # Reduce confidence by 20% for unclear trend
+                logger.debug(f"📊 Confidence reduced for sideways trend: {base_confidence:.1%} → {confidence:.1%}")
+            
+            # Volatility-based confidence adjustments
+            if volatility_category in ["VERY_LOW", "LOW"]:
+                confidence *= 0.75  # Reduce confidence by 25% for low volatility
+                logger.debug(f"📊 Confidence reduced for low volatility: {base_confidence:.1%} → {confidence:.1%}")
+            
+            # Direction vs trend contradiction
+            if (direction == "BUY" and trend in ["DOWNTREND", "STRONG_DOWNTREND"]) or \
+               (direction == "SELL" and trend in ["UPTREND", "STRONG_UPTREND"]):
+                confidence *= 0.6  # Reduce confidence by 40% for contradictory signals
+                logger.debug(f"📊 Confidence reduced for contradictory direction vs trend: {base_confidence:.1%} → {confidence:.1%}")
+            
+            # Cap confidence at reasonable levels
+            confidence = min(confidence, 0.85)  # Max 85% confidence
+            confidence = max(confidence, 0.15)  # Min 15% confidence
+            
+            logger.debug(f"📊 Final realistic confidence: {base_confidence:.1%} → {confidence:.1%}")
+            return confidence
+            
+        except Exception as e:
+            logger.error(f"❌ Realistic confidence calculation failed: {e}")
+            return base_confidence
     
     
     def _calculate_entry_price(self, direction: str, current_price: float, strategy_name: str, market_data: Dict[str, Any] = None) -> float:
