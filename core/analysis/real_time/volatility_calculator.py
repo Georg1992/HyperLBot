@@ -47,6 +47,21 @@ class VolatilityCalculator:
                 # Use the higher of median or 75th percentile (but cap at 2x median to avoid outliers)
                 robust_volatility = min(max(median_volatility, percentile_75), median_volatility * 2)
                 
+                # ENHANCED: Also consider overall price movement for consistent trends
+                if len(candles) >= 5:
+                    first_candle = candles[0]
+                    last_candle = candles[-1]
+                    
+                    if first_candle["close"] > 0 and last_candle["close"] > 0:
+                        overall_movement = abs(last_candle["close"] - first_candle["close"]) / first_candle["close"]
+                        
+                        # For consistent movements (not just one big candle), use a weighted average
+                        # If overall movement is significant and consistent, boost the volatility
+                        if overall_movement > robust_volatility * 2:  # Overall movement is much larger than individual candles
+                            # Use weighted average: 60% overall movement, 40% robust volatility
+                            enhanced_volatility = (overall_movement * 0.6) + (robust_volatility * 0.4)
+                            return round(enhanced_volatility, 6)
+                
                 return round(robust_volatility, 6)
             
             # Fallback: Calculate returns from close prices (original method)
