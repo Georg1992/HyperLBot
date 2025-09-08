@@ -386,7 +386,7 @@ class VariabilityConstants:
     VOLATILITY_5M_VERY_LOW = 0.0008   # 0.08% - tight ranging markets (very small moves)
     VOLATILITY_5M_LOW = 0.0015        # 0.15% - low movement (quiet market, small moves)
     VOLATILITY_5M_MODERATE = 0.003    # 0.3% - moderate movement (normal trading, noticeable moves)
-    VOLATILITY_5M_HIGH = 0.006        # 0.6% - high movement (active trading, significant moves)
+    VOLATILITY_5M_HIGH = 0.004        # 0.4% - high movement (active trading, significant moves)
     VOLATILITY_5M_EXTREME = 0.012     # 1.2% - extreme movement (volatile market, large moves)
     
     # Trading Condition Scores
