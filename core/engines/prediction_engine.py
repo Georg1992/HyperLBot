@@ -353,15 +353,7 @@ class PredictionEngine:
             overall_direction = aggregated_signal.get("overall_direction", "NEUTRAL")
             overall_confidence = aggregated_signal.get("overall_confidence", 0.0)
             
-            # Validate signal against market context
-            logger.debug(f"📊 Validating signal direction: {overall_direction} with confidence: {overall_confidence:.1%}")
-            market_context_validation = self._validate_signal_against_market_context(
-                overall_direction, current_price, market_data
-            )
-            
-            if not market_context_validation["valid"]:
-                logger.debug(f"📊 Signal invalidated by market context: {market_context_validation['reason']}")
-                return None
+            logger.debug(f"📊 Signal direction: {overall_direction} with confidence: {overall_confidence:.1%}")
             
             if overall_direction == "NEUTRAL":
                 # Try to find the strongest individual signal for weak market conditions
@@ -388,6 +380,16 @@ class PredictionEngine:
                         return None
                 else:
                     logger.debug(f"📊 No strong enough directional signal - skipping prediction generation")
+                    return None
+            else:
+                # For directional signals, validate against market context
+                logger.debug(f"📊 Validating directional signal: {overall_direction}")
+                market_context_validation = self._validate_signal_against_market_context(
+                    overall_direction, current_price, market_data
+                )
+                
+                if not market_context_validation["valid"]:
+                    logger.debug(f"📊 Signal invalidated by market context: {market_context_validation['reason']}")
                     return None
             
             # Step 4: Generate prediction based on aggregated signal
@@ -618,7 +620,7 @@ class PredictionEngine:
             # Get RSI for overbought/oversold validation
             rsi_5m = market_data.get("rsi_5m", 50)
             
-            # Validation rules
+            # Validation rules - more flexible for range trading
             if direction == "BUY":
                 # BUY signal validation
                 if price_action.get("trend") == "DOWN" and price_action.get("reversal_signal"):
@@ -629,6 +631,12 @@ class PredictionEngine:
                     return {"valid": True, "reason": "Strong uptrend continuation"}
                 elif rsi_5m < 40 and price_action.get("support_level") and current_price <= price_action.get("support_level", 0) * 1.002:
                     return {"valid": True, "reason": "Near support level with oversold RSI"}
+                elif rsi_5m < 50:  # More flexible - allow BUY if RSI is below neutral
+                    return {"valid": True, "reason": "RSI below neutral - potential buying opportunity"}
+                elif price_action.get("trend") == "DOWN":  # Allow buying dips
+                    return {"valid": True, "reason": "Buying the dip"}
+                elif rsi_5m < 60:  # Even more flexible for range trading
+                    return {"valid": True, "reason": "RSI below 60 - range trading opportunity"}
                 else:
                     return {"valid": False, "reason": "BUY signal not supported by market context"}
             
@@ -642,6 +650,12 @@ class PredictionEngine:
                     return {"valid": True, "reason": "Strong downtrend continuation"}
                 elif rsi_5m > 60 and price_action.get("resistance_level") and current_price >= price_action.get("resistance_level", float('inf')) * 0.998:
                     return {"valid": True, "reason": "Near resistance level with overbought RSI"}
+                elif rsi_5m > 50:  # More flexible - allow SELL if RSI is above neutral
+                    return {"valid": True, "reason": "RSI above neutral - potential selling opportunity"}
+                elif price_action.get("trend") == "UP":  # Allow selling rallies
+                    return {"valid": True, "reason": "Selling the rally"}
+                elif rsi_5m > 40:  # Even more flexible for range trading
+                    return {"valid": True, "reason": "RSI above 40 - range trading opportunity"}
                 else:
                     return {"valid": False, "reason": "SELL signal not supported by market context"}
             
