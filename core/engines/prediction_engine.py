@@ -354,6 +354,7 @@ class PredictionEngine:
             overall_confidence = aggregated_signal.get("overall_confidence", 0.0)
             
             # Validate signal against market context
+            logger.debug(f"📊 Validating signal direction: {overall_direction} with confidence: {overall_confidence:.1%}")
             market_context_validation = self._validate_signal_against_market_context(
                 overall_direction, current_price, market_data
             )
@@ -644,7 +645,12 @@ class PredictionEngine:
                 else:
                     return {"valid": False, "reason": "SELL signal not supported by market context"}
             
-            return {"valid": False, "reason": "Unknown direction"}
+            elif direction == "NEUTRAL":
+                # NEUTRAL signals are always invalid for prediction generation
+                return {"valid": False, "reason": "NEUTRAL signals cannot generate predictions"}
+            
+            else:
+                return {"valid": False, "reason": f"Unknown direction: {direction}"}
             
         except Exception as e:
             logger.error(f"❌ Signal validation failed: {e}")

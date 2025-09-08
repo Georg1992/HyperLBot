@@ -16,12 +16,34 @@ class VolatilityCalculator:
         logger.info("📊 Volatility Calculator initialized")
     
     def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m") -> float:
-        """Calculate volatility from candle data using range-based method (more accurate for crypto)"""
+        """Calculate volatility from candle data using comprehensive method (captures overall market movement)"""
         try:
             if len(candles) < 10:
                 return self._get_default_volatility(timeframe)
             
-            # Method 1: Range-based volatility (high-low)/close - better for crypto
+            # Method 1: Overall price movement volatility (captures multi-candle trends)
+            if len(candles) >= 5:
+                # Calculate overall movement from first to last candle
+                first_candle = candles[0]
+                last_candle = candles[-1]
+                
+                if first_candle["close"] > 0 and last_candle["close"] > 0:
+                    overall_movement = abs(last_candle["close"] - first_candle["close"]) / first_candle["close"]
+                    
+                    # Also calculate the maximum range across all candles
+                    max_high = max(candle["high"] for candle in candles if candle["high"] > 0)
+                    min_low = min(candle["low"] for candle in candles if candle["low"] > 0)
+                    max_range = (max_high - min_low) / first_candle["close"]
+                    
+                    # Use the higher of overall movement or max range (captures both trends and spikes)
+                    overall_volatility = max(overall_movement, max_range)
+                    
+                    # For 5-minute timeframe, use the overall volatility directly (don't scale down)
+                    # This captures the actual market movement across the timeframe
+                    if overall_volatility > 0:
+                        return round(overall_volatility, 6)
+            
+            # Method 2: Range-based volatility (high-low)/close - fallback for individual candles
             range_volatilities = []
             for candle in candles:
                 if candle["close"] > 0 and candle["high"] > 0 and candle["low"] > 0:
@@ -63,20 +85,23 @@ class VolatilityCalculator:
             # Import centralized constants for consistency
             from core.constants import VariabilityConstants
             
-            # Use centralized 5-minute volatility thresholds
-            if volatility_5m > VariabilityConstants.VOLATILITY_5M_EXTREME:  # > 2.0% (extreme 5m movement)
+            # Use centralized 5-minute volatility thresholds (corrected range logic)
+            if volatility_5m >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 0.6% (extreme 5m movement)
                 category = "EXTREME"
                 trend = "VOLATILE"
-            elif volatility_5m > VariabilityConstants.VOLATILITY_5M_HIGH:    # > 1.0% (high 5m activity)
+            elif volatility_5m >= VariabilityConstants.VOLATILITY_5M_HIGH:    # >= 0.3% (high 5m activity)
                 category = "HIGH"
                 trend = "ACTIVE"
-            elif volatility_5m > VariabilityConstants.VOLATILITY_5M_MODERATE:  # > 0.5% (moderate 5m movement)
+            elif volatility_5m >= VariabilityConstants.VOLATILITY_5M_MODERATE:  # >= 0.15% (moderate 5m movement)
                 category = "MODERATE" 
                 trend = "NORMAL"
-            elif volatility_5m > VariabilityConstants.VOLATILITY_5M_LOW:     # > 0.2% (low but noticeable 5m movement)
+            elif volatility_5m >= VariabilityConstants.VOLATILITY_5M_LOW:     # >= 0.08% (low but noticeable 5m movement)
                 category = "LOW"
                 trend = "QUIET"
-            else:                                                              # < 0.2% (very low 5m movement)
+            elif volatility_5m >= VariabilityConstants.VOLATILITY_5M_VERY_LOW: # >= 0.03% (very low 5m movement)
+                category = "LOW"  # FIXED: This should be LOW, not VERY_LOW
+                trend = "QUIET"
+            else:                                                              # < 0.03% (extremely low 5m movement)
                 category = "VERY_LOW"
                 trend = "BORING"
             
