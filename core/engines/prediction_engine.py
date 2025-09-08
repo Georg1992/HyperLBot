@@ -499,29 +499,37 @@ class PredictionEngine:
             recent_price_action = self._analyze_recent_price_action(current_price, market_data)
             
             if direction == "BUY":
-                # For buy orders, look for pullbacks or support bounces
+                # For buy orders, entry should be at or below current price
                 if recent_price_action.get("trend") == "DOWN" and recent_price_action.get("reversal_signal"):
                     # Buying the dip - use current price or slightly below
                     return current_price * 0.9995
                 elif strategy_name == "range_trading":
                     # Range trading - buy near support levels
                     support_level = recent_price_action.get("support_level", current_price * 0.998)
-                    return max(current_price * 0.999, support_level)
+                    # Ensure entry price is never above current price for BUY
+                    if support_level and support_level < current_price:
+                        return max(current_price * 0.999, support_level)
+                    else:
+                        return current_price * 0.999  # Default to slightly below current price
                 else:
-                    # Trend following - buy on breakouts
-                    return current_price * 1.0005  # Slightly above for momentum
+                    # Trend following - buy on breakouts (at current price)
+                    return current_price
             else:  # SELL
-                # For sell orders, look for rejections or resistance bounces
+                # For sell orders, entry should be at or above current price
                 if recent_price_action.get("trend") == "UP" and recent_price_action.get("rejection_signal"):
                     # Selling the rejection - use current price or slightly above
                     return current_price * 1.0005
                 elif strategy_name == "range_trading":
                     # Range trading - sell near resistance levels
                     resistance_level = recent_price_action.get("resistance_level", current_price * 1.002)
-                    return min(current_price * 1.001, resistance_level)
+                    # Ensure entry price is never below current price for SELL
+                    if resistance_level and resistance_level > current_price:
+                        return min(current_price * 1.001, resistance_level)
+                    else:
+                        return current_price * 1.001  # Default to slightly above current price
                 else:
-                    # Trend following - sell on breakdowns
-                    return current_price * 0.9995  # Slightly below for momentum
+                    # Trend following - sell on breakdowns (at current price)
+                    return current_price
                     
         except Exception as e:
             logger.error(f"❌ Entry price calculation failed: {e}")
