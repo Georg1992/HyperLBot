@@ -57,9 +57,9 @@ class VolatilityCalculator:
                         
                         # For consistent movements (not just one big candle), use a weighted average
                         # If overall movement is significant and consistent, boost the volatility
-                        if overall_movement > robust_volatility * 2:  # Overall movement is much larger than individual candles
-                            # Use weighted average: 60% overall movement, 40% robust volatility
-                            enhanced_volatility = (overall_movement * 0.6) + (robust_volatility * 0.4)
+                        if overall_movement > robust_volatility * 1.5:  # Overall movement is larger than individual candles (reduced threshold)
+                            # Use weighted average: 70% overall movement, 30% robust volatility (increased weight for overall movement)
+                            enhanced_volatility = (overall_movement * 0.7) + (robust_volatility * 0.3)
                             return round(enhanced_volatility, 6)
                 
                 return round(robust_volatility, 6)
