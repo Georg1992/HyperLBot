@@ -507,7 +507,7 @@
                             <span class="data-value" id="market-volume">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Volatility (1h avg):</span>
+                            <span class="data-label">Volatility (5m):</span>
                             <span class="data-value" id="market-volatility">Loading...</span>
                         </div>
                         <div class="data-item">
@@ -918,8 +918,8 @@
                     const trend = market.volatility_trend || 'UNKNOWN';
                     const timestamp = new Date().toLocaleTimeString();
                     
-                    // Display category only (1h = 12 candles x 5min each = 1 hour of data)
-                    volatilityElement.innerHTML = `${category}<br><span style="font-size: 11px; color: #888;">Trend: ${trend}</span><br><span style="font-size: 10px; color: #666;">1h avg [${timestamp}]</span>`;
+                    // Display 5-minute volatility category (real-time trading timeframe)
+                    volatilityElement.innerHTML = `${category}<br><span style="font-size: 11px; color: #888;">Trend: ${trend}</span><br><span style="font-size: 10px; color: #666;">5m [${timestamp}]</span>`;
                     
                     // No color coding for volatility - neutral display
                     volatilityElement.className = 'data-value';
