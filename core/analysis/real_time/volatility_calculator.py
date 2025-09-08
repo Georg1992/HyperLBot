@@ -16,34 +16,12 @@ class VolatilityCalculator:
         logger.info("📊 Volatility Calculator initialized")
     
     def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m") -> float:
-        """Calculate volatility from candle data using comprehensive method (captures overall market movement)"""
+        """Calculate volatility from candle data using robust median-based method (resistant to outliers)"""
         try:
             if len(candles) < 10:
                 return self._get_default_volatility(timeframe)
             
-            # Method 1: Overall price movement volatility (captures multi-candle trends)
-            if len(candles) >= 5:
-                # Calculate overall movement from first to last candle
-                first_candle = candles[0]
-                last_candle = candles[-1]
-                
-                if first_candle["close"] > 0 and last_candle["close"] > 0:
-                    overall_movement = abs(last_candle["close"] - first_candle["close"]) / first_candle["close"]
-                    
-                    # Also calculate the maximum range across all candles
-                    max_high = max(candle["high"] for candle in candles if candle["high"] > 0)
-                    min_low = min(candle["low"] for candle in candles if candle["low"] > 0)
-                    max_range = (max_high - min_low) / first_candle["close"]
-                    
-                    # Use the higher of overall movement or max range (captures both trends and spikes)
-                    overall_volatility = max(overall_movement, max_range)
-                    
-                    # For 5-minute timeframe, use the overall volatility directly (don't scale down)
-                    # This captures the actual market movement across the timeframe
-                    if overall_volatility > 0:
-                        return round(overall_volatility, 6)
-            
-            # Method 2: Range-based volatility (high-low)/close - fallback for individual candles
+            # Method 1: Individual candle range volatilities (most representative of actual price action)
             range_volatilities = []
             for candle in candles:
                 if candle["close"] > 0 and candle["high"] > 0 and candle["low"] > 0:
@@ -51,9 +29,25 @@ class VolatilityCalculator:
                     range_volatilities.append(range_vol)
             
             if range_volatilities:
-                # Use average range volatility (more representative of actual price action)
-                volatility = sum(range_volatilities) / len(range_volatilities)
-                return round(volatility, 6)
+                # Use MEDIAN instead of average to be robust against outlier candles
+                # This prevents one large candle from dominating the entire volatility calculation
+                range_volatilities.sort()
+                n = len(range_volatilities)
+                
+                if n % 2 == 0:
+                    # Even number of candles - average the two middle values
+                    median_volatility = (range_volatilities[n//2 - 1] + range_volatilities[n//2]) / 2
+                else:
+                    # Odd number of candles - use the middle value
+                    median_volatility = range_volatilities[n//2]
+                
+                # For very low median values, also consider the 75th percentile to capture some activity
+                percentile_75 = range_volatilities[int(n * 0.75)]
+                
+                # Use the higher of median or 75th percentile (but cap at 2x median to avoid outliers)
+                robust_volatility = min(max(median_volatility, percentile_75), median_volatility * 2)
+                
+                return round(robust_volatility, 6)
             
             # Fallback: Calculate returns from close prices (original method)
             returns = []
@@ -65,9 +59,15 @@ class VolatilityCalculator:
             if not returns:
                 return self._get_default_volatility(timeframe)
             
-            # Calculate average volatility
-            volatility = sum(returns) / len(returns)
-            return round(volatility, 6)
+            # Use median for returns too (robust against outliers)
+            returns.sort()
+            n = len(returns)
+            if n % 2 == 0:
+                median_returns = (returns[n//2 - 1] + returns[n//2]) / 2
+            else:
+                median_returns = returns[n//2]
+            
+            return round(median_returns, 6)
             
         except Exception as e:
             logger.warning(f"Candle volatility calculation failed: {e}")
