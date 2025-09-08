@@ -349,24 +349,44 @@ class PredictionEngine:
             # Step 2: Aggregate signals
             aggregated_signal = self.signal_aggregator.aggregate_signals(primary_signals)
             
-            # Step 3: Check if we have any directional signal (let trading manager decide on confidence)
+            # Step 3: Check if we have any directional signal with market context validation
             overall_direction = aggregated_signal.get("overall_direction", "NEUTRAL")
+            overall_confidence = aggregated_signal.get("overall_confidence", 0.0)
+            
+            # Validate signal against market context
+            market_context_validation = self._validate_signal_against_market_context(
+                overall_direction, current_price, market_data
+            )
+            
+            if not market_context_validation["valid"]:
+                logger.debug(f"📊 Signal invalidated by market context: {market_context_validation['reason']}")
+                return None
+            
             if overall_direction == "NEUTRAL":
                 # Try to find the strongest individual signal for weak market conditions
                 strongest_signal = self._find_strongest_individual_signal(primary_signals)
-                if strongest_signal:
-                    logger.info(f"🔄 Using strongest individual signal: {strongest_signal['direction']} ({strongest_signal['confidence']:.1%})")
-                    # Create a modified aggregated signal based on strongest individual signal
-                    aggregated_signal = {
-                        "overall_direction": strongest_signal["direction"],
-                        "overall_confidence": strongest_signal["confidence"] * 0.7,  # Reduce confidence for weak signals
-                        "quality_rating": "FAIR",
-                        "quality_score": strongest_signal["confidence"] * 0.5,
-                        "signal_components": {strongest_signal["type"]: strongest_signal},
-                        "overall_reasoning": f"Based on strongest signal: {strongest_signal['type']}"
-                    }
+                if strongest_signal and strongest_signal["confidence"] > 0.4:  # Higher threshold
+                    # Validate individual signal against market context
+                    individual_validation = self._validate_signal_against_market_context(
+                        strongest_signal["direction"], current_price, market_data
+                    )
+                    
+                    if individual_validation["valid"]:
+                        logger.info(f"🔄 Using strongest individual signal: {strongest_signal['direction']} ({strongest_signal['confidence']:.1%})")
+                        # Create a modified aggregated signal based on strongest individual signal
+                        aggregated_signal = {
+                            "overall_direction": strongest_signal["direction"],
+                            "overall_confidence": strongest_signal["confidence"] * 0.8,  # Less reduction for validated signals
+                            "quality_rating": "FAIR",
+                            "quality_score": strongest_signal["confidence"] * 0.6,
+                            "signal_components": {strongest_signal["type"]: strongest_signal},
+                            "overall_reasoning": f"Based on strongest signal: {strongest_signal['type']} - {individual_validation['reason']}"
+                        }
+                    else:
+                        logger.debug(f"📊 Strongest individual signal invalidated: {individual_validation['reason']}")
+                        return None
                 else:
-                    logger.debug(f"📊 No directional signal - skipping prediction generation")
+                    logger.debug(f"📊 No strong enough directional signal - skipping prediction generation")
                     return None
             
             # Step 4: Generate prediction based on aggregated signal
@@ -467,25 +487,168 @@ class PredictionEngine:
             return None
     
     
-    def _calculate_entry_price(self, direction: str, current_price: float, strategy_name: str) -> float:
-        """Calculate optimal entry price based on direction and strategy"""
+    def _calculate_entry_price(self, direction: str, current_price: float, strategy_name: str, market_data: Dict[str, Any] = None) -> float:
+        """Calculate optimal entry price based on direction, strategy, and market context"""
         try:
+            market_data = market_data or {}
+            
+            # Get recent price action for better entry timing
+            recent_price_action = self._analyze_recent_price_action(current_price, market_data)
+            
             if direction == "BUY":
-                # For buy orders, try to get slightly better price
-                if strategy_name == "range_trading":
-                    return current_price * 0.9995  # 0.05% below current price
+                # For buy orders, look for pullbacks or support bounces
+                if recent_price_action.get("trend") == "DOWN" and recent_price_action.get("reversal_signal"):
+                    # Buying the dip - use current price or slightly below
+                    return current_price * 0.9995
+                elif strategy_name == "range_trading":
+                    # Range trading - buy near support levels
+                    support_level = recent_price_action.get("support_level", current_price * 0.998)
+                    return max(current_price * 0.999, support_level)
                 else:
-                    return current_price * 0.999  # 0.1% below current price
+                    # Trend following - buy on breakouts
+                    return current_price * 1.0005  # Slightly above for momentum
             else:  # SELL
-                # For sell orders, try to get slightly better price
-                if strategy_name == "range_trading":
-                    return current_price * 1.0005  # 0.05% above current price
+                # For sell orders, look for rejections or resistance bounces
+                if recent_price_action.get("trend") == "UP" and recent_price_action.get("rejection_signal"):
+                    # Selling the rejection - use current price or slightly above
+                    return current_price * 1.0005
+                elif strategy_name == "range_trading":
+                    # Range trading - sell near resistance levels
+                    resistance_level = recent_price_action.get("resistance_level", current_price * 1.002)
+                    return min(current_price * 1.001, resistance_level)
                 else:
-                    return current_price * 1.001  # 0.1% above current price
+                    # Trend following - sell on breakdowns
+                    return current_price * 0.9995  # Slightly below for momentum
                     
         except Exception as e:
             logger.error(f"❌ Entry price calculation failed: {e}")
             return current_price
+    
+    def _analyze_recent_price_action(self, current_price: float, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze recent price action for better entry timing"""
+        try:
+            # Get recent price data
+            recent_candles = market_data.get("recent_candles", [])
+            if not recent_candles or len(recent_candles) < 3:
+                return {"trend": "UNKNOWN", "reversal_signal": False, "rejection_signal": False}
+            
+            # Analyze last 3 candles for trend and reversal patterns
+            last_3_candles = recent_candles[-3:]
+            
+            # Calculate trend
+            first_price = last_3_candles[0].get("close", current_price)
+            last_price = last_3_candles[-1].get("close", current_price)
+            price_change = (last_price - first_price) / first_price
+            
+            trend = "UP" if price_change > 0.002 else "DOWN" if price_change < -0.002 else "SIDEWAYS"
+            
+            # Look for reversal signals
+            reversal_signal = False
+            rejection_signal = False
+            
+            if len(last_3_candles) >= 2:
+                # Check for hammer/doji patterns (reversal signals)
+                last_candle = last_3_candles[-1]
+                high = last_candle.get("high", 0)
+                low = last_candle.get("low", 0)
+                close = last_candle.get("close", 0)
+                open_price = last_candle.get("open", 0)
+                
+                if high > 0 and low > 0:
+                    body_size = abs(close - open_price)
+                    total_range = high - low
+                    
+                    if total_range > 0:
+                        body_ratio = body_size / total_range
+                        
+                        # Hammer pattern (small body, long lower wick) - bullish reversal
+                        if body_ratio < 0.3 and (close - low) > (high - close) * 2:
+                            reversal_signal = True
+                        
+                        # Shooting star pattern (small body, long upper wick) - bearish reversal
+                        elif body_ratio < 0.3 and (high - close) > (close - low) * 2:
+                            rejection_signal = True
+            
+            # Get support/resistance levels
+            support_resistance = market_data.get("support_resistance_5m", {})
+            support_levels = support_resistance.get("support_levels", [])
+            resistance_levels = support_resistance.get("resistance_levels", [])
+            
+            # Find nearest levels
+            support_level = None
+            resistance_level = None
+            
+            for support in support_levels[:3]:
+                level = support.get("level", 0)
+                if level > 0 and level < current_price:
+                    support_level = level
+                    break
+            
+            for resistance in resistance_levels[:3]:
+                level = resistance.get("level", 0)
+                if level > 0 and level > current_price:
+                    resistance_level = level
+                    break
+            
+            return {
+                "trend": trend,
+                "reversal_signal": reversal_signal,
+                "rejection_signal": rejection_signal,
+                "support_level": support_level,
+                "resistance_level": resistance_level,
+                "price_change": price_change
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Recent price action analysis failed: {e}")
+            return {"trend": "UNKNOWN", "reversal_signal": False, "rejection_signal": False}
+    
+    def _validate_signal_against_market_context(self, direction: str, current_price: float, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate signal direction against current market context"""
+        try:
+            # Get recent price action analysis
+            price_action = self._analyze_recent_price_action(current_price, market_data)
+            
+            # Get trend information
+            trend_5m = market_data.get("trend_5m", {})
+            trend_direction = trend_5m.get("direction", "UNKNOWN")
+            trend_strength = trend_5m.get("strength", 0.0)
+            
+            # Get RSI for overbought/oversold validation
+            rsi_5m = market_data.get("rsi_5m", 50)
+            
+            # Validation rules
+            if direction == "BUY":
+                # BUY signal validation
+                if price_action.get("trend") == "DOWN" and price_action.get("reversal_signal"):
+                    return {"valid": True, "reason": "Buying the dip with reversal signal"}
+                elif rsi_5m < 30 and trend_direction == "DOWN":
+                    return {"valid": True, "reason": "Oversold conditions with downtrend"}
+                elif price_action.get("trend") == "UP" and trend_strength > 0.6:
+                    return {"valid": True, "reason": "Strong uptrend continuation"}
+                elif rsi_5m < 40 and price_action.get("support_level") and current_price <= price_action.get("support_level", 0) * 1.002:
+                    return {"valid": True, "reason": "Near support level with oversold RSI"}
+                else:
+                    return {"valid": False, "reason": "BUY signal not supported by market context"}
+            
+            elif direction == "SELL":
+                # SELL signal validation
+                if price_action.get("trend") == "UP" and price_action.get("rejection_signal"):
+                    return {"valid": True, "reason": "Selling the rejection with bearish signal"}
+                elif rsi_5m > 70 and trend_direction == "UP":
+                    return {"valid": True, "reason": "Overbought conditions with uptrend"}
+                elif price_action.get("trend") == "DOWN" and trend_strength > 0.6:
+                    return {"valid": True, "reason": "Strong downtrend continuation"}
+                elif rsi_5m > 60 and price_action.get("resistance_level") and current_price >= price_action.get("resistance_level", float('inf')) * 0.998:
+                    return {"valid": True, "reason": "Near resistance level with overbought RSI"}
+                else:
+                    return {"valid": False, "reason": "SELL signal not supported by market context"}
+            
+            return {"valid": False, "reason": "Unknown direction"}
+            
+        except Exception as e:
+            logger.error(f"❌ Signal validation failed: {e}")
+            return {"valid": False, "reason": "Validation error"}
     
     def _calculate_risk_levels(self, direction: str, entry_price: float, current_price: float, 
                              strategy_name: str, market_data: Dict[str, Any]) -> Tuple[float, float]:
@@ -530,12 +693,12 @@ class PredictionEngine:
                 else:
                     stop_loss = entry_price * 1.02  # 2% stop loss for other strategies
                 
-                # Calculate take profit (below entry)
+                # Calculate take profit (below entry) - FIXED RISK/REWARD
                 if strategy_name == "range_trading":
-                    # Use more conservative take profit for range trading
-                    take_profit = entry_price * 0.998  # 0.2% take profit for range trading
+                    # Range trading needs better risk/reward - at least 1:1.5
+                    take_profit = entry_price * 0.9925  # 0.75% take profit (1.5x the 0.5% stop loss)
                 else:
-                    take_profit = entry_price * 0.995  # 0.5% take profit for other strategies
+                    take_profit = entry_price * 0.99  # 1% take profit (2x the 0.5% stop loss)
             
             return stop_loss, take_profit
             
