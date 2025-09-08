@@ -759,6 +759,64 @@ class PredictionEngine:
             logger.error(f"❌ Recent price action analysis failed: {e}")
             return {"trend": "UNKNOWN", "reversal_signal": False, "rejection_signal": False}
     
+    def _check_reversal_anticipation(self, direction: str, current_price: float, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Check for potential reversal opportunities based on approaching support/resistance levels"""
+        try:
+            # Get trend information
+            trend_5m = market_data.get("trend_5m", {})
+            trend_direction = trend_5m.get("direction", "UNKNOWN")
+            trend_strength = trend_5m.get("strength", 0.0)
+            
+            # Get RSI for overbought/oversold conditions
+            rsi_5m = market_data.get("rsi_5m", 50)
+            
+            # Get support/resistance levels
+            price_action = self._analyze_recent_price_action(current_price, market_data)
+            support_level = price_action.get("support_level", 0)
+            resistance_level = price_action.get("resistance_level", 0)
+            
+            # Calculate psychological levels (round numbers)
+            psychological_support = round(current_price, -2) - 200  # e.g., 111800 for 111960
+            psychological_resistance = round(current_price, -2) + 200  # e.g., 112200 for 111960
+            
+            # BUY reversal anticipation (approaching support)
+            if direction == "BUY":
+                # Check if approaching support level
+                if support_level and current_price <= support_level * 1.005:  # Within 0.5% of support
+                    if trend_direction in ["DOWN", "WEAK_DOWNTREND"] and rsi_5m < 45:
+                        return {"valid": True, "reason": f"Reversal anticipation: Approaching support at {support_level:.0f} with oversold RSI"}
+                
+                # Check if approaching psychological support
+                if current_price <= psychological_support * 1.01:  # Within 1% of psychological level
+                    if trend_direction in ["DOWN", "WEAK_DOWNTREND"] and rsi_5m < 50:
+                        return {"valid": True, "reason": f"Reversal anticipation: Approaching psychological support at {psychological_support:.0f}"}
+                
+                # Check for oversold conditions in downtrend
+                if trend_direction in ["DOWN", "WEAK_DOWNTREND"] and rsi_5m < 35:
+                    return {"valid": True, "reason": f"Reversal anticipation: Oversold conditions (RSI {rsi_5m:.1f}) in downtrend"}
+            
+            # SELL reversal anticipation (approaching resistance)
+            elif direction == "SELL":
+                # Check if approaching resistance level
+                if resistance_level and current_price >= resistance_level * 0.995:  # Within 0.5% of resistance
+                    if trend_direction in ["UP", "WEAK_UPTREND"] and rsi_5m > 55:
+                        return {"valid": True, "reason": f"Reversal anticipation: Approaching resistance at {resistance_level:.0f} with overbought RSI"}
+                
+                # Check if approaching psychological resistance
+                if current_price >= psychological_resistance * 0.99:  # Within 1% of psychological level
+                    if trend_direction in ["UP", "WEAK_UPTREND"] and rsi_5m > 50:
+                        return {"valid": True, "reason": f"Reversal anticipation: Approaching psychological resistance at {psychological_resistance:.0f}"}
+                
+                # Check for overbought conditions in uptrend
+                if trend_direction in ["UP", "WEAK_UPTREND"] and rsi_5m > 65:
+                    return {"valid": True, "reason": f"Reversal anticipation: Overbought conditions (RSI {rsi_5m:.1f}) in uptrend"}
+            
+            return {"valid": False, "reason": "No reversal anticipation opportunity"}
+            
+        except Exception as e:
+            logger.error(f"❌ Reversal anticipation check failed: {e}")
+            return {"valid": False, "reason": "Reversal anticipation error"}
+    
     def _validate_signal_against_market_context(self, direction: str, current_price: float, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """Validate signal direction against current market context"""
         try:
@@ -772,6 +830,29 @@ class PredictionEngine:
             
             # Get RSI for overbought/oversold validation
             rsi_5m = market_data.get("rsi_5m", 50)
+            
+            # Get volatility category for flexible validation
+            volatility_category = market_data.get("volatility_category", "UNKNOWN")
+            
+            # For VERY_LOW volatility, be much more flexible with validation
+            if volatility_category == "VERY_LOW":
+                if direction == "BUY":
+                    # In very low volatility, allow BUY signals more easily
+                    if rsi_5m < 50 or trend_direction in ["DOWN", "WEAK_DOWNTREND"]:
+                        return {"valid": True, "reason": "VERY_LOW volatility: Flexible BUY validation"}
+                    else:
+                        return {"valid": True, "reason": "VERY_LOW volatility: Range trading BUY opportunity"}
+                elif direction == "SELL":
+                    # In very low volatility, allow SELL signals more easily
+                    if rsi_5m > 30 or trend_direction in ["UP", "WEAK_UPTREND"]:
+                        return {"valid": True, "reason": "VERY_LOW volatility: Flexible SELL validation"}
+                    else:
+                        return {"valid": True, "reason": "VERY_LOW volatility: Range trading SELL opportunity"}
+            
+            # Check for reversal anticipation opportunities
+            reversal_opportunity = self._check_reversal_anticipation(direction, current_price, market_data)
+            if reversal_opportunity["valid"]:
+                return reversal_opportunity
             
             # Validation rules - more flexible for range trading
             if direction == "BUY":
