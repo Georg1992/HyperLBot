@@ -491,45 +491,92 @@ class PredictionEngine:
     
     
     def _calculate_entry_price(self, direction: str, current_price: float, strategy_name: str, market_data: Dict[str, Any] = None) -> float:
-        """Calculate optimal entry price based on direction, strategy, and market context"""
+        """Calculate optimal entry price based on direction, strategy, and ALL integrated signals"""
         try:
             market_data = market_data or {}
             
             # Get recent price action for better entry timing
             recent_price_action = self._analyze_recent_price_action(current_price, market_data)
             
+            # Get signal data for smart entry timing
+            signals = self.signal_aggregator.generate_primary_signals(current_price, market_data)
+            aggregated_signal = self.signal_aggregator.aggregate_signals(signals)
+            
+            # Extract signal manager data
+            signal_direction = aggregated_signal.get("overall_direction", "NEUTRAL")
+            signal_confidence = aggregated_signal.get("overall_confidence", 0.0)
+            signal_strength = aggregated_signal.get("signal_strength", "VERY_WEAK")
+            quality_rating = aggregated_signal.get("quality_rating", "VERY_POOR")
+            signal_components = aggregated_signal.get("signal_components", {})
+            
+            # Get market context
+            rsi_5m = market_data.get("rsi_5m", 50)
+            trend_5m = market_data.get("trend_5m", {})
+            trend_direction = trend_5m.get("direction", "UNKNOWN")
+            trend_strength = trend_5m.get("strength", 0.0)
+            volatility_category = market_data.get("volatility_category", "MODERATE")
+            pressure = market_data.get("pressure", "NEUTRAL")
+            
             if direction == "BUY":
                 # For buy orders, entry should be at or below current price
-                if recent_price_action.get("trend") == "DOWN" and recent_price_action.get("reversal_signal"):
-                    # Buying the dip - use current price or slightly below
+                # Use SIGNAL MANAGER data for smart entry timing
+                
+                # Perfect signal quality + strong confidence = aggressive entry
+                if quality_rating == "PERFECT" and signal_confidence > 0.8:
+                    entry_price = current_price * 0.999  # Slightly below for better fill
+                # Strong signal + oversold RSI = dip buying
+                elif signal_strength in ["STRONG", "VERY_STRONG"] and rsi_5m < 30:
                     entry_price = current_price * 0.9995
+                # Reversal signal + downtrend = dip buying
+                elif recent_price_action.get("trend") == "DOWN" and recent_price_action.get("reversal_signal"):
+                    entry_price = current_price * 0.9995
+                # Range trading + support level = precise entry
                 elif strategy_name == "range_trading":
-                    # Range trading - buy near support levels
                     support_level = recent_price_action.get("support_level", current_price * 0.998)
-                    # Ensure entry price is never above current price for BUY
                     if support_level and support_level < current_price:
                         entry_price = max(current_price * 0.999, support_level)
                     else:
-                        entry_price = current_price * 0.999  # Default to slightly below current price
+                        entry_price = current_price * 0.999
+                # Strong uptrend = momentum entry
+                elif trend_direction == "UP" and trend_strength > 0.7:
+                    entry_price = current_price  # Enter at current price for momentum
+                # Good signal quality = slightly below current price
+                elif quality_rating in ["EXCELLENT", "GOOD"]:
+                    entry_price = current_price * 0.999
+                # Default: slightly below current price
                 else:
-                    # Trend following - buy on breakouts (at current price)
-                    entry_price = current_price
+                    entry_price = current_price * 0.999
+                    
             else:  # SELL
                 # For sell orders, entry should be at or above current price
-                if recent_price_action.get("trend") == "UP" and recent_price_action.get("rejection_signal"):
-                    # Selling the rejection - use current price or slightly above
+                # Use SIGNAL MANAGER data for smart entry timing
+                
+                # Perfect signal quality + strong confidence = aggressive entry
+                if quality_rating == "PERFECT" and signal_confidence > 0.8:
+                    entry_price = current_price * 1.001  # Slightly above for better fill
+                # Strong signal + overbought RSI = rejection selling
+                elif signal_strength in ["STRONG", "VERY_STRONG"] and rsi_5m > 70:
                     entry_price = current_price * 1.0005
+                # Rejection signal + uptrend = rejection selling
+                elif recent_price_action.get("trend") == "UP" and recent_price_action.get("rejection_signal"):
+                    entry_price = current_price * 1.0005
+                # Range trading + resistance level = precise entry
                 elif strategy_name == "range_trading":
-                    # Range trading - sell near resistance levels, but be realistic
                     resistance_level = recent_price_action.get("resistance_level", current_price * 1.002)
                     # For downtrending markets, use current price or very close to it
-                    if resistance_level and resistance_level > current_price * 1.005:  # Only if resistance is significantly higher
+                    if resistance_level and resistance_level > current_price * 1.005:
                         entry_price = min(current_price * 1.001, resistance_level)
                     else:
                         entry_price = current_price  # Use current price for downtrending markets
+                # Strong downtrend = momentum entry
+                elif trend_direction == "DOWN" and trend_strength > 0.7:
+                    entry_price = current_price  # Enter at current price for momentum
+                # Good signal quality = slightly above current price
+                elif quality_rating in ["EXCELLENT", "GOOD"]:
+                    entry_price = current_price * 1.001
+                # Default: slightly above current price
                 else:
-                    # Trend following - sell on breakdowns (at current price)
-                    entry_price = current_price
+                    entry_price = current_price * 1.001
             
             # CRITICAL SAFETY CHECK: Ensure entry price is never below current price for SELL
             if direction == "SELL" and entry_price < current_price:

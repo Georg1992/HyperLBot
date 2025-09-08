@@ -186,7 +186,8 @@ class TradingEngine:
                 entry_price = current_price  # Market order uses current price
             else:
                 order_type = "limit"
-                entry_price = self._calculate_smart_limit_price(direction, current_price)
+                # Use the entry price from the prediction engine - don't override it!
+                entry_price = reactive_signal.get("entry_price", current_price)
             
             logger.info(f"⚡ REACTIVE EXECUTION: {direction} {position_size:.4f} BTC at ${entry_price:,.2f} ({urgency} urgency, {confidence:.1%} confidence)")
             
@@ -273,15 +274,3 @@ class TradingEngine:
     
     
     
-    def _calculate_smart_limit_price(self, side: str, current_price: float) -> float:
-        """Calculate smart limit price with small buffer"""
-        try:
-            if side.upper() == "BUY":
-                # Buy slightly below current price
-                return current_price * 0.9995  # 0.05% below
-            else:
-                # Sell slightly above current price  
-                return current_price * 1.0005  # 0.05% above
-        except Exception as e:
-            logger.error(f"❌ Smart limit price calculation failed: {e}")
-            return current_price
