@@ -540,13 +540,31 @@ class MarketConditionsAnalyzer:
                     "reason": f"Low volatility at psychological level {near_psychological_level} with neutral RSI and sideways trend - dead zone"
                 }
             
-            # Dead Zone Scenario 4: Price range too tight (less than 0.1% range)
-            if volatility_category == "VERY_LOW":
-                # Check if we're in a very tight range (this would need recent price data)
-                # For now, we'll use the volatility category as a proxy
+            # Dead Zone Scenario 4: RSI 40-60 + sideways trend + psychological level (regardless of volatility)
+            if (40 <= rsi_5m <= 60 and  # Neutral RSI range
+                trend_direction in ["SIDEWAYS", "NEUTRAL"] and
+                near_psychological_level):
                 return {
-                    "is_dead_zone": False,  # Not a dead zone, but could be if we had more data
-                    "reason": "Very low volatility detected but not confirmed as dead zone"
+                    "is_dead_zone": True,
+                    "reason": f"Neutral RSI (40-60) at psychological level {near_psychological_level} with sideways trend - dead zone"
+                }
+            
+            # Dead Zone Scenario 5: RSI 40-60 + low/very low volatility + sideways trend
+            if (40 <= rsi_5m <= 60 and  # Neutral RSI range
+                volatility_category in ["VERY_LOW", "LOW"] and
+                trend_direction in ["SIDEWAYS", "NEUTRAL"]):
+                return {
+                    "is_dead_zone": True,
+                    "reason": f"Neutral RSI (40-60) with low volatility and sideways trend - dead zone"
+                }
+            
+            # Dead Zone Scenario 6: RSI 40-60 + psychological level + low volume
+            if (40 <= rsi_5m <= 60 and  # Neutral RSI range
+                near_psychological_level and
+                volume_category in ["LOW", "VERY_LOW"]):
+                return {
+                    "is_dead_zone": True,
+                    "reason": f"Neutral RSI (40-60) at psychological level {near_psychological_level} with low volume - dead zone"
                 }
             
             return {"is_dead_zone": False, "reason": "No dead zone conditions detected"}

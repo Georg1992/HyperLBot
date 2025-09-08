@@ -349,6 +349,22 @@ class PsychologicalLevelsCalculator:
             rsi = market_data.get("rsi", 50)
             trend = market_data.get("trend", "NEUTRAL")
             
+            # Ensure RSI is a number
+            if not isinstance(rsi, (int, float)):
+                rsi = 50  # Default neutral RSI
+            
+            # Ensure trend is a string (fix for "argument of type 'int' is not iterable" error)
+            if isinstance(trend, (int, float)):
+                # Convert numeric trend to string representation
+                if trend > 0:
+                    trend = "UPTREND"
+                elif trend < 0:
+                    trend = "DOWNTREND"
+                else:
+                    trend = "NEUTRAL"
+            elif not isinstance(trend, str):
+                trend = "NEUTRAL"
+            
             # Determine signal strength
             signal_strength = self._calculate_signal_strength(implications, rsi, trend)
             
