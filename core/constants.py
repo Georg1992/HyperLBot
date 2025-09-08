@@ -139,9 +139,9 @@ class MagicNumbers:
     # Imbalance thresholds
     ORDERBOOK_IMBALANCE_THRESHOLD = 0.3  # 30% imbalance
     
-    # Market pressure thresholds
-    PRESSURE_STRONG_THRESHOLD = 0.25     # 25% imbalance for strong pressure
-    PRESSURE_MODERATE_THRESHOLD = 0.1    # 10% imbalance for moderate pressure
+    # Market pressure thresholds - MORE STRICT to avoid noise
+    PRESSURE_STRONG_THRESHOLD = 0.4      # 40% imbalance for strong pressure (was 25%)
+    PRESSURE_MODERATE_THRESHOLD = 0.2    # 20% imbalance for moderate pressure (was 10%)
     PRESSURE_DEPTH_REFERENCE = 20.0      # 20 BTC reference for confidence calculation
     PRESSURE_MAX_STRENGTH = 0.95         # Maximum pressure strength
     PRESSURE_MIN_STRENGTH = 0.1          # Minimum pressure strength
