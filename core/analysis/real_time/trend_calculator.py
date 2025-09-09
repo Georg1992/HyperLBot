@@ -18,17 +18,30 @@ class TrendCalculator:
     def calculate_trend(self, candles: List[Dict], timeframe: str = "5m") -> Dict[str, Any]:
         """Calculate trend using ORIGINAL WORKING LOGIC (moved from trend_manager)"""
         try:
-            if len(candles) < 5:
+            if len(candles) < 8:  # Updated to match new candle count
                 return {"trend": "SIDEWAYS", "strength": 0, "direction": 0, "confidence": 0}
             
-            # Get recent closes (ORIGINAL LOGIC)
-            recent_closes = [candle["close"] for candle in candles[-5:]]
+            # Get recent closes (ENHANCED: Use more candles for better trend detection)
+            recent_closes = [candle["close"] for candle in candles[-8:]]  # Increased from 5 to 8 candles
             
             # Calculate basic trend metrics (ORIGINAL LOGIC)
             first_price = recent_closes[0]
             last_price = recent_closes[-1]
             price_change = last_price - first_price
             price_change_pct = (price_change / first_price) * 100
+            
+            # ENHANCED: Check for recent significant moves (last 3 candles)
+            if len(recent_closes) >= 3:
+                recent_3_closes = recent_closes[-3:]
+                recent_first = recent_3_closes[0]
+                recent_last = recent_3_closes[-1]
+                recent_change_pct = abs((recent_last - recent_first) / recent_first) * 100
+                
+                # If recent 3-candle move is significant (>0.3%), boost the overall trend
+                if recent_change_pct > 0.3:
+                    # Boost the price change percentage to reflect recent momentum
+                    price_change_pct = price_change_pct * 1.5  # 50% boost for recent significant moves
+                    logger.debug(f"📈 Recent significant move detected: {recent_change_pct:.2f}% - boosting trend calculation")
             
             # Calculate trend consistency with improved logic
             up_moves = 0

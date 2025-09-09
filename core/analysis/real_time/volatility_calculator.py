@@ -29,23 +29,25 @@ class VolatilityCalculator:
                     range_volatilities.append(range_vol)
             
             if range_volatilities:
-                # Use MEDIAN instead of average to be robust against outlier candles
-                # This prevents one large candle from dominating the entire volatility calculation
+                # ENHANCED: Use weighted approach that considers both median and recent activity
                 range_volatilities.sort()
                 n = len(range_volatilities)
                 
+                # Calculate median (robust baseline)
                 if n % 2 == 0:
-                    # Even number of candles - average the two middle values
                     median_volatility = (range_volatilities[n//2 - 1] + range_volatilities[n//2]) / 2
                 else:
-                    # Odd number of candles - use the middle value
                     median_volatility = range_volatilities[n//2]
                 
-                # For very low median values, also consider the 75th percentile to capture some activity
+                # Calculate 75th percentile (captures recent activity)
                 percentile_75 = range_volatilities[int(n * 0.75)]
                 
-                # Use the higher of median or 75th percentile (but cap at 2x median to avoid outliers)
-                robust_volatility = min(max(median_volatility, percentile_75), median_volatility * 2)
+                # Calculate 90th percentile (captures significant moves)
+                percentile_90 = range_volatilities[int(n * 0.9)]
+                
+                # ENHANCED: Use weighted average that gives more weight to recent significant moves
+                # 40% median (baseline), 35% 75th percentile (recent activity), 25% 90th percentile (significant moves)
+                robust_volatility = (median_volatility * 0.4) + (percentile_75 * 0.35) + (percentile_90 * 0.25)
                 
                 # ENHANCED: Also consider overall price movement for consistent trends
                 if len(candles) >= 5:
