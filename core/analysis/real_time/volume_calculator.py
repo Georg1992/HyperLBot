@@ -219,9 +219,19 @@ class VolumeCalculator:
             if historical_prices and len(historical_prices) == len(historical_depths):
                 try:
                     import numpy as np
-                    correlation = np.corrcoef(historical_prices, historical_depths)[0, 1]
-                    price_volume_correlation = correlation if not np.isnan(correlation) else 0.0
-                except:
+                    # Check for constant values (zero variance) to avoid division by zero
+                    prices_array = np.array(historical_prices)
+                    depths_array = np.array(historical_depths)
+                    
+                    # Only calculate correlation if both arrays have variance
+                    if np.std(prices_array) > 0 and np.std(depths_array) > 0:
+                        correlation = np.corrcoef(prices_array, depths_array)[0, 1]
+                        price_volume_correlation = correlation if not np.isnan(correlation) else 0.0
+                    else:
+                        # No correlation if either array has zero variance
+                        price_volume_correlation = 0.0
+                except Exception as e:
+                    logger.debug(f"Price-volume correlation calculation failed: {e}")
                     price_volume_correlation = 0.0
             
             # Determine volume quality
