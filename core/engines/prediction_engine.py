@@ -618,15 +618,27 @@ class PredictionEngine:
                 confidence *= 0.9  # Reduce confidence by 10% for moderate volatility (not ideal for trading)
                 logger.debug(f"📊 Confidence reduced for moderate volatility: {base_confidence:.1%} → {confidence:.1%}")
             
-            # Direction vs trend contradiction
+            # Direction vs trend contradiction (MAJOR REDUCTION)
             if (direction == "BUY" and trend in ["DOWNTREND", "STRONG_DOWNTREND"]) or \
                (direction == "SELL" and trend in ["UPTREND", "STRONG_UPTREND"]):
-                confidence *= 0.6  # Reduce confidence by 40% for contradictory signals
+                confidence *= 0.4  # Reduce confidence by 60% for contradictory signals (was 40%)
                 logger.debug(f"📊 Confidence reduced for contradictory direction vs trend: {base_confidence:.1%} → {confidence:.1%}")
             
-            # Cap confidence at reasonable levels
-            confidence = min(confidence, 0.75)  # Max 75% confidence (reduced from 85%)
-            confidence = max(confidence, 0.15)  # Min 15% confidence
+            # Additional RSI vs trend contradiction check
+            if (direction == "BUY" and trend in ["DOWNTREND", "STRONG_DOWNTREND"] and rsi > 30) or \
+               (direction == "SELL" and trend in ["UPTREND", "STRONG_UPTREND"] and rsi < 70):
+                confidence *= 0.5  # Additional 50% reduction for RSI not supporting the direction
+                logger.debug(f"📊 Confidence reduced for RSI not supporting direction: {base_confidence:.1%} → {confidence:.1%}")
+            
+            # Special case: Extreme contradictions should have very low confidence
+            if (direction == "BUY" and trend == "STRONG_DOWNTREND") or \
+               (direction == "SELL" and trend == "STRONG_UPTREND"):
+                confidence = min(confidence, 0.25)  # Max 25% confidence for extreme contradictions
+                logger.debug(f"📊 Confidence capped for extreme contradiction: {base_confidence:.1%} → {confidence:.1%}")
+            
+            # Cap confidence at reasonable levels (MORE CONSERVATIVE)
+            confidence = min(confidence, 0.60)  # Max 60% confidence (reduced from 75%)
+            confidence = max(confidence, 0.10)  # Min 10% confidence (reduced from 15%)
             
             logger.debug(f"📊 Final realistic confidence: {base_confidence:.1%} → {confidence:.1%}")
             return confidence

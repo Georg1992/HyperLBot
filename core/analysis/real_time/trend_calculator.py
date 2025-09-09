@@ -101,17 +101,25 @@ class TrendCalculator:
                 else:
                     trend = "SIDEWAYS"
                     direction = 0
-            elif abs(price_change_pct) > 0.03 and strength > 0.2:
-                # Weak trends - more sensitive to catch clear moves
-                if price_change_pct > 0.03 and momentum > 0.0001:
+            elif abs(price_change_pct) > 0.02 and strength > 0.15:
+                # Weak trends - more sensitive to catch clear moves (reduced thresholds)
+                if price_change_pct > 0.02 and momentum > 0.00005:
                     trend = "WEAK_UPTREND"
                     direction = 1
-                elif price_change_pct < -0.03 and momentum < -0.0001:
+                elif price_change_pct < -0.02 and momentum < -0.00005:
                     trend = "WEAK_DOWNTREND"
                     direction = -1
                 else:
                     trend = "SIDEWAYS"
                     direction = 0
+            elif abs(price_change_pct) > 0.015:  # Fallback: prioritize price movement for very weak trends
+                # Very weak trends - price movement alone can indicate direction
+                if price_change_pct > 0.015:
+                    trend = "WEAK_UPTREND"
+                    direction = 1
+                elif price_change_pct < -0.015:
+                    trend = "WEAK_DOWNTREND"
+                    direction = -1
             else:
                 # No clear trend - sideways movement
                 trend = "SIDEWAYS"
