@@ -636,9 +636,20 @@ class PredictionEngine:
                 confidence = min(confidence, 0.25)  # Max 25% confidence for extreme contradictions
                 logger.debug(f"📊 Confidence capped for extreme contradiction: {base_confidence:.1%} → {confidence:.1%}")
             
-            # Cap confidence at reasonable levels (MORE CONSERVATIVE)
-            confidence = min(confidence, 0.60)  # Max 60% confidence (reduced from 75%)
-            confidence = max(confidence, 0.10)  # Min 10% confidence (reduced from 15%)
+            # Special case: EXTREME market conditions can have higher confidence (75-85%)
+            # Only when ALL signals align perfectly: RSI extreme + Strong trend + High volatility + Perfect direction alignment
+            extreme_conditions = (
+                (direction == "BUY" and rsi <= 20 and trend in ["STRONG_UPTREND", "UPTREND"] and volatility_category in ["HIGH", "EXTREME"]) or
+                (direction == "SELL" and rsi >= 80 and trend in ["STRONG_DOWNTREND", "DOWNTREND"] and volatility_category in ["HIGH", "EXTREME"])
+            )
+            
+            if extreme_conditions:
+                confidence = min(confidence, 0.85)  # Allow up to 85% for extreme conditions
+                logger.debug(f"📊 EXTREME CONDITIONS: All signals aligned perfectly - confidence: {confidence:.1%}")
+            else:
+                # Cap confidence at reasonable levels (VERY CONSERVATIVE)
+                confidence = min(confidence, 0.45)  # Max 45% confidence for normal conditions
+                confidence = max(confidence, 0.10)  # Min 10% confidence
             
             logger.debug(f"📊 Final realistic confidence: {base_confidence:.1%} → {confidence:.1%}")
             return confidence
