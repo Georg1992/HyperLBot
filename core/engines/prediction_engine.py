@@ -1109,39 +1109,39 @@ class PredictionEngine:
             market_data = market_data or {}
             
             # Base size calculation (percentage of available capital)
-            # Assuming $7777 balance from dashboard, use 2-5% of balance per trade
-            available_balance = 7777.0  # TODO: Get from session manager
-            base_capital_pct = 0.03  # 3% of balance as base position
+            # Get actual balance from session manager
+            try:
+                from core.session.session_manager import session_manager
+                session_data = session_manager.get_current_session_data()
+                available_balance = session_data.get("current_balance", 100.0)  # Fallback to $100
+            except Exception:
+                available_balance = 100.0  # Fallback if session manager unavailable
             
             # Get current price for BTC conversion
             current_price = market_data.get("current_price", 112000)  # Fallback to current market price
-            base_capital_usd = available_balance * base_capital_pct
+            
+            # Use strategy-specific base position size from config
+            from config.config import TradingConfig
+            config = TradingConfig()
+            strategy_config = config.STRATEGY_CONFIGS.get(strategy_name, config.STRATEGY_CONFIGS["standard"])
+            base_capital_pct = strategy_config.get("position_size", 0.1)  # Default 10% from config
+            
+            # 1. CONFIDENCE MULTIPLIER (adjust strategy base size based on confidence)
+            if confidence >= 0.9:
+                confidence_multiplier = 1.5  # 50% larger than strategy base
+            elif confidence >= 0.7:
+                confidence_multiplier = 1.0  # Use strategy base size
+            elif confidence >= 0.5:
+                confidence_multiplier = 0.7  # 30% smaller than strategy base
+            else:
+                confidence_multiplier = 0.4  # 60% smaller than strategy base
+            
+            # Calculate base position size
+            base_capital_usd = available_balance * base_capital_pct * confidence_multiplier
             base_size = base_capital_usd / current_price  # Convert to BTC
             
-            # 1. CONFIDENCE MULTIPLIER (0.3x to 1.5x)
-            if confidence >= 0.9:
-                confidence_multiplier = 1.5  # Very high confidence - larger position
-            elif confidence >= 0.8:
-                confidence_multiplier = 1.2  # High confidence
-            elif confidence >= 0.7:
-                confidence_multiplier = 1.0  # Good confidence - base size
-            elif confidence >= 0.6:
-                confidence_multiplier = 0.8  # Moderate confidence
-            elif confidence >= 0.5:
-                confidence_multiplier = 0.6  # Low confidence
-            else:
-                confidence_multiplier = 0.3  # Very low confidence - small position
-            
-            # 2. STRATEGY MULTIPLIER
-            if strategy_name == "low_volatility_range":
-                # Range trading: smaller positions, more frequent trades
-                strategy_multiplier = 0.7
-            elif strategy_name == "trend_following":
-                # Trend following: larger positions, longer holds
-                strategy_multiplier = 1.3
-            else:
-                # Standard strategy
-                strategy_multiplier = 1.0
+            # 2. STRATEGY MULTIPLIER (already handled by strategy config position_size)
+            strategy_multiplier = 1.0  # No additional strategy adjustment needed
             
             # 3. VOLATILITY ADJUSTMENT
             volatility_category = market_data.get("volatility_category", "MODERATE")
@@ -1187,7 +1187,7 @@ class PredictionEngine:
                 trend_multiplier = 0.7
             
             # Calculate final position size
-            position_size = (base_size * confidence_multiplier * strategy_multiplier * 
+            position_size = (base_size * strategy_multiplier * 
                            volatility_multiplier * rsi_multiplier * trend_multiplier)
             
             # Apply reasonable limits
@@ -1196,9 +1196,9 @@ class PredictionEngine:
             
             position_size = max(min_size, min(position_size, max_size))
             
-            logger.debug(f"📊 Position size calculation: base={base_size:.6f}, confidence={confidence_multiplier:.2f}, "
-                        f"strategy={strategy_multiplier:.2f}, volatility={volatility_multiplier:.2f}, "
-                        f"rsi={rsi_multiplier:.2f}, trend={trend_multiplier:.2f} = {position_size:.6f} BTC")
+            logger.debug(f"📊 Position size calculation: balance=${available_balance:.2f}, strategy_base={base_capital_pct:.1%}, "
+                        f"confidence={confidence_multiplier:.2f}, volatility={volatility_multiplier:.2f}, "
+                        f"rsi={rsi_multiplier:.2f}, trend={trend_multiplier:.2f} = {position_size:.6f} BTC (${position_size * current_price:.2f})")
             
             return round(position_size, 6)  # Round to 6 decimal places
             
