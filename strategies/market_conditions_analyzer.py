@@ -246,28 +246,28 @@ class MarketConditionsAnalyzer:
         
         if trend == "SIDEWAYS":
             factors.append("Sideways trend - range-bound market")
-            # Strategy-independent: Sideways trends lack clear directional momentum
-            risk_factors.append("No clear directional momentum")
-            risk_level = 2
+            # Trend is informational only - not a blocking risk factor
+            risk_level = 0  # No risk from trend alone
             
         elif trend in ["WEAK_UPTREND", "WEAK_DOWNTREND"]:
             factors.append(f"{trend.replace('_', ' ').lower()} - limited momentum")
-            # Strategy-independent: Weak trends have limited momentum
-            risk_factors.append("Weak trend strength")
-            risk_level = 1
+            # Trend is informational only - not a blocking risk factor
+            risk_level = 0  # No risk from trend alone
             
         elif trend in ["UPTREND", "DOWNTREND"]:
             factors.append(f"{trend.lower()} - good directional momentum")
             positive_factors = [f"Strong {trend.lower()} momentum"]  # Mark as positive for override
+            risk_level = 0  # No risk from good trends
             
         elif trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
             factors.append(f"{trend.replace('_', ' ').lower()} - excellent momentum")
             positive_factors = [f"Excellent {trend.replace('_', ' ').lower()} momentum"]  # Mark as positive for override
+            risk_level = 0  # No risk from strong trends
             
         else:  # NEUTRAL or unknown
             factors.append("Neutral trend - no clear direction")
-            risk_factors.append("Unclear market direction")
-            risk_level = 1
+            # Trend is informational only - not a blocking risk factor
+            risk_level = 0  # No risk from trend alone
             
         return {
             "factors": factors,
