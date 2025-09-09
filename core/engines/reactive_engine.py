@@ -80,7 +80,13 @@ class ReactiveEngine:
         self.last_reactive_signal = None
         self.reactive_signal_cooldown = 5  # 5 seconds between reactive signals (reduced for testing)
         
-        logger.info("⚡ Reactive Engine initialized - Emergency execution system")
+        # Deadzone tracking for pressure buildup detection
+        self.deadzone_start_time = None
+        self.deadzone_price_range = None
+        self.deadzone_duration_threshold = 300  # 5 minutes in deadzone triggers reactive mode
+        self.deadzone_price_tolerance = 0.001  # 0.1% price tolerance for deadzone
+        
+        logger.info("⚡ Reactive Engine initialized - Emergency execution system with deadzone detection")
     
     def analyze_reactive_opportunity(self, current_price: float, market_data: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
         """
@@ -106,6 +112,12 @@ class ReactiveEngine:
             
             # Update price history
             self._update_price_history(current_price)
+            
+            # ENHANCED: Check for deadzone pressure buildup first
+            deadzone_signal = self._analyze_deadzone_pressure_buildup(current_price, market_data)
+            if deadzone_signal:
+                logger.info(f"🚨 DEADZONE PRESSURE BUILTUP DETECTED: {deadzone_signal['reasoning']}")
+                return deadzone_signal
             
             # REQUIREMENT 1: Check for CRITICAL price movement first
             price_movement_signal = self._analyze_price_movement(current_price)
@@ -544,6 +556,112 @@ class ReactiveEngine:
         time_since_last = time.time() - self.last_reactive_signal.timestamp
         return time_since_last < self.reactive_signal_cooldown
     
+    def _analyze_deadzone_pressure_buildup(self, current_price: float, market_data: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+        """
+        Analyze deadzone pressure buildup - detect when market has been in deadzone for too long
+        
+        Deadzone conditions:
+        1. VERY_LOW volatility
+        2. RSI 40-60 (neutral)
+        3. Price near psychological level
+        4. Duration > threshold (5 minutes)
+        
+        When these conditions persist, any significant move should trigger reactive engine
+        """
+        try:
+            market_data = market_data or {}
+            
+            # Check if we're in deadzone conditions
+            volatility_category = market_data.get("volatility_category", "MODERATE")
+            rsi_5m = market_data.get("rsi_5m", 50)
+            
+            # Get psychological levels
+            psychological_analysis = global_psychological_levels_calculator.calculate_psychological_levels(current_price)
+            nearest_levels = psychological_analysis.get("nearest_levels", {})
+            
+            # Check if near psychological level (within 0.2%)
+            near_psychological_level = False
+            for level_type, level_data in nearest_levels.items():
+                if level_data and level_data.get("level"):
+                    level_price = level_data["level"]
+                    distance_pct = abs(current_price - level_price) / current_price
+                    if distance_pct <= 0.002:  # Within 0.2%
+                        near_psychological_level = True
+                        break
+            
+            # Check if we're in deadzone conditions
+            in_deadzone = (
+                volatility_category == "VERY_LOW" and
+                40 <= rsi_5m <= 60 and
+                near_psychological_level
+            )
+            
+            current_time = time.time()
+            
+            if in_deadzone:
+                # Start tracking deadzone if not already tracking
+                if self.deadzone_start_time is None:
+                    self.deadzone_start_time = current_time
+                    self.deadzone_price_range = (current_price * 0.999, current_price * 1.001)  # 0.1% range
+                    logger.debug(f"🔍 Deadzone tracking started at ${current_price:.2f}")
+                    return None
+                
+                # Check if we're still in the same deadzone price range
+                price_min, price_max = self.deadzone_price_range
+                if price_min <= current_price <= price_max:
+                    # Still in deadzone - check duration
+                    deadzone_duration = current_time - self.deadzone_start_time
+                    
+                    if deadzone_duration >= self.deadzone_duration_threshold:
+                        # Deadzone pressure buildup detected!
+                        logger.warning(f"🚨 DEADZONE PRESSURE BUILTUP: {deadzone_duration:.0f}s in deadzone at ${current_price:.2f}")
+                        
+                        # Check for any significant price movement (lower threshold for deadzone)
+                        if len(self.price_history) >= 3:
+                            recent_prices = self.price_history[-3:]
+                            price_change = abs(recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+                            
+                            # Lower threshold for deadzone breakout (0.2% instead of 1.84%)
+                            if price_change >= 0.002:  # 0.2% movement
+                                direction = "BUY" if recent_prices[-1] > recent_prices[0] else "SELL"
+                                
+                                # Reset deadzone tracking
+                                self.deadzone_start_time = None
+                                self.deadzone_price_range = None
+                                
+                                return {
+                                    "signal_type": "DEADZONE_PRESSURE_BREAKOUT",
+                                    "direction": direction,
+                                    "confidence": 0.85,  # High confidence for deadzone breakouts
+                                    "urgency": "CRITICAL",
+                                    "reasoning": f"Deadzone pressure buildup ({deadzone_duration:.0f}s) + {price_change:.2%} breakout",
+                                    "execution_type": "MARKET_ORDER",
+                                    "size_percentage": 0.7,  # Larger size for deadzone breakouts
+                                    "price_movement": price_change,
+                                    "timestamp": current_time,
+                                    "data": {
+                                        "deadzone_duration": deadzone_duration,
+                                        "volatility_category": volatility_category,
+                                        "rsi_5m": rsi_5m,
+                                        "near_psychological_level": near_psychological_level,
+                                        "breakout_threshold": 0.002
+                                    }
+                                }
+                else:
+                    # Price moved out of deadzone range - reset tracking
+                    self.deadzone_start_time = None
+                    self.deadzone_price_range = None
+            else:
+                # Not in deadzone - reset tracking
+                self.deadzone_start_time = None
+                self.deadzone_price_range = None
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Deadzone pressure buildup analysis failed: {e}")
+            return None
+
     def get_reactive_signal_summary(self) -> Dict[str, Any]:
         """Get summary of reactive engine status"""
         return {
@@ -552,10 +670,17 @@ class ReactiveEngine:
             "last_signal_time": self.last_reactive_signal.timestamp if self.last_reactive_signal else None,
             "cooldown_active": self._is_in_cooldown(),
             "price_history_length": len(self.price_history),
+            "deadzone_tracking": {
+                "active": self.deadzone_start_time is not None,
+                "start_time": self.deadzone_start_time,
+                "duration": time.time() - self.deadzone_start_time if self.deadzone_start_time else 0,
+                "price_range": self.deadzone_price_range
+            },
             "thresholds": {
                 "price_movement": self.price_movement_thresholds,
                 "rsi": self.rsi_thresholds,
-                "pressure": self.pressure_thresholds
+                "pressure": self.pressure_thresholds,
+                "deadzone_duration": self.deadzone_duration_threshold
             }
         }
 
