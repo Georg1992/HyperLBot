@@ -616,13 +616,23 @@ class ReactiveEngine:
                         # Deadzone pressure buildup detected!
                         logger.warning(f"🚨 DEADZONE PRESSURE BUILTUP: {deadzone_duration:.0f}s in deadzone at ${current_price:.2f}")
                         
-                        # Check for any significant price movement (lower threshold for deadzone)
+                        # Check for significant price movement with volume confirmation
                         if len(self.price_history) >= 3:
                             recent_prices = self.price_history[-3:]
                             price_change = abs(recent_prices[-1] - recent_prices[0]) / recent_prices[0]
                             
-                            # Lower threshold for deadzone breakout (0.2% instead of 1.84%)
-                            if price_change >= 0.002:  # 0.2% movement
+                            # Check volume requirement for deadzone breakout
+                            volume_requirement_met = self._check_volume_requirement(market_data)
+                            
+                            # Debug logging for deadzone breakout conditions
+                            if price_change >= 0.005:
+                                if volume_requirement_met:
+                                    logger.debug(f"🚨 Deadzone breakout conditions met: {price_change:.2%} movement + volume confirmed")
+                                else:
+                                    logger.debug(f"⚠️ Deadzone breakout blocked: {price_change:.2%} movement but insufficient volume")
+                            
+                            # Higher threshold for deadzone breakout (0.5% with volume) - significant move after pressure buildup
+                            if price_change >= 0.005 and volume_requirement_met:  # 0.5% movement + volume
                                 direction = "BUY" if recent_prices[-1] > recent_prices[0] else "SELL"
                                 
                                 # Reset deadzone tracking
@@ -634,7 +644,7 @@ class ReactiveEngine:
                                     "direction": direction,
                                     "confidence": 0.85,  # High confidence for deadzone breakouts
                                     "urgency": "CRITICAL",
-                                    "reasoning": f"Deadzone pressure buildup ({deadzone_duration:.0f}s) + {price_change:.2%} breakout",
+                                    "reasoning": f"Deadzone pressure buildup ({deadzone_duration:.0f}s) + {price_change:.2%} breakout with volume confirmation",
                                     "execution_type": "MARKET_ORDER",
                                     "size_percentage": 0.7,  # Larger size for deadzone breakouts
                                     "price_movement": price_change,
@@ -644,7 +654,8 @@ class ReactiveEngine:
                                         "volatility_category": volatility_category,
                                         "rsi_5m": rsi_5m,
                                         "near_psychological_level": near_psychological_level,
-                                        "breakout_threshold": 0.002
+                                        "breakout_threshold": 0.005,
+                                        "volume_confirmed": volume_requirement_met
                                     }
                                 }
                 else:
