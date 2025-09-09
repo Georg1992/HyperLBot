@@ -595,16 +595,22 @@ class PredictionEngine:
             if 40 <= rsi <= 60:  # Neutral RSI range
                 confidence *= 0.7  # Reduce confidence by 30% for neutral RSI
                 logger.debug(f"📊 Confidence reduced for neutral RSI ({rsi:.1f}): {base_confidence:.1%} → {confidence:.1%}")
+            elif rsi <= 20 or rsi >= 80:  # Extreme RSI (oversold/overbought)
+                confidence *= 0.85  # Reduce confidence by 15% for extreme RSI (high reversal risk)
+                logger.debug(f"📊 Confidence reduced for extreme RSI ({rsi:.1f}): {base_confidence:.1%} → {confidence:.1%}")
             
             # Trend-based confidence adjustments
             if trend in ["SIDEWAYS", "NEUTRAL"]:
-                confidence *= 0.8  # Reduce confidence by 20% for unclear trend
+                confidence *= 0.7  # Reduce confidence by 30% for unclear trend (increased from 20%)
                 logger.debug(f"📊 Confidence reduced for sideways trend: {base_confidence:.1%} → {confidence:.1%}")
             
             # Volatility-based confidence adjustments
             if volatility_category in ["VERY_LOW", "LOW"]:
                 confidence *= 0.75  # Reduce confidence by 25% for low volatility
                 logger.debug(f"📊 Confidence reduced for low volatility: {base_confidence:.1%} → {confidence:.1%}")
+            elif volatility_category == "MODERATE":
+                confidence *= 0.9  # Reduce confidence by 10% for moderate volatility (not ideal for trading)
+                logger.debug(f"📊 Confidence reduced for moderate volatility: {base_confidence:.1%} → {confidence:.1%}")
             
             # Direction vs trend contradiction
             if (direction == "BUY" and trend in ["DOWNTREND", "STRONG_DOWNTREND"]) or \
@@ -613,7 +619,7 @@ class PredictionEngine:
                 logger.debug(f"📊 Confidence reduced for contradictory direction vs trend: {base_confidence:.1%} → {confidence:.1%}")
             
             # Cap confidence at reasonable levels
-            confidence = min(confidence, 0.85)  # Max 85% confidence
+            confidence = min(confidence, 0.75)  # Max 75% confidence (reduced from 85%)
             confidence = max(confidence, 0.15)  # Min 15% confidence
             
             logger.debug(f"📊 Final realistic confidence: {base_confidence:.1%} → {confidence:.1%}")
