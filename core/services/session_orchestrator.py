@@ -520,6 +520,14 @@ class SessionOrchestrator:
                 "order_flow": volume_data.get("order_flow", "NEUTRAL"),
                 "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN"),
                 
+                # Trading Volume: Actual trades from Hyperliquid API
+                "trading_volume_btc": volume_data.get("trading_volume_btc", 0),
+                "trading_volume_category": volume_data.get("trading_volume_category", "NO_DATA"),
+                "trade_count": volume_data.get("trade_count", 0),
+                "avg_trade_size": volume_data.get("avg_trade_size", 0),
+                "time_window_minutes": volume_data.get("time_window_minutes", 5),
+                "data_source": volume_data.get("data_source", "unknown"),
+                
                 # Secondary: Yahoo volume momentum (5m trading activity)
                 "volume_momentum": yahoo_analysis.get("volume_5m_momentum", {}),
                 "volume_spike": yahoo_analysis.get("volume_5m_spike", {}),
