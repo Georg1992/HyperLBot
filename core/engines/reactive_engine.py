@@ -119,10 +119,10 @@ class ReactiveEngine:
                 logger.info(f"🚨 DEADZONE PRESSURE BUILTUP DETECTED: {deadzone_signal['reasoning']}")
                 return deadzone_signal
             
-            # REQUIREMENT 1: Check for CRITICAL price movement first
-            price_movement_signal = self._analyze_price_movement(current_price)
-            if not price_movement_signal or price_movement_signal.urgency != "CRITICAL":
-                return None  # No reactive signal without CRITICAL price movement
+            # REQUIREMENT 1: Check for momentum with pressure confirmation (NEW APPROACH)
+            momentum_signal = self._analyze_momentum_with_pressure_confirmation(current_price, market_data)
+            if not momentum_signal or momentum_signal.urgency not in ["HIGH", "CRITICAL"]:
+                return None  # No reactive signal without confirmed momentum
             
             # REQUIREMENT 2: Check for high volume trading
             volume_requirement_met = self._check_volume_requirement(market_data)
@@ -144,10 +144,8 @@ class ReactiveEngine:
             if rsi_signal and rsi_signal.urgency == "CRITICAL":
                 confirming_signals.append(rsi_signal)
             
-            # Order book pressure analysis (only for CRITICAL levels)
-            pressure_signal = self._analyze_order_book_pressure(current_price, market_data)
-            if pressure_signal and pressure_signal.urgency == "CRITICAL":
-                confirming_signals.append(pressure_signal)
+            # Use the momentum signal as the primary signal (already includes pressure confirmation)
+            primary_signal = momentum_signal
             
             # REQUIREMENT 5: Must have at least 2 strong signals (price movement + 1 confirming)
             if len(confirming_signals) < 1:
@@ -388,8 +386,93 @@ class ReactiveEngine:
             logger.error(f"❌ RSI extreme analysis failed: {e}")
             return None
     
+    def _analyze_momentum_with_pressure_confirmation(self, current_price: float, market_data: Dict[str, Any]) -> Optional[ReactiveSignal]:
+        """
+        Analyze price momentum with order book pressure confirmation
+        
+        This is the main reactive signal - combines:
+        1. Price movement detection (primary trigger)
+        2. Order book pressure confirmation (validates momentum)
+        3. Volume confirmation (ensures real movement)
+        """
+        try:
+            # 1. Check for significant price movement first
+            price_movement_signal = self._analyze_price_movement(current_price)
+            if not price_movement_signal:
+                return None  # No significant price movement
+            
+            # 2. Get order book pressure data
+            simulated_bids = [
+                {"px": str(int(current_price - 10)), "sz": "8.5"},
+                {"px": str(int(current_price - 20)), "sz": "6.2"},
+                {"px": str(int(current_price - 30)), "sz": "9.1"},
+                {"px": str(int(current_price - 40)), "sz": "7.8"},
+                {"px": str(int(current_price - 50)), "sz": "5.4"}
+            ]
+            
+            simulated_asks = [
+                {"px": str(int(current_price + 10)), "sz": "2.1"},
+                {"px": str(int(current_price + 20)), "sz": "1.8"},
+                {"px": str(int(current_price + 30)), "sz": "3.2"},
+                {"px": str(int(current_price + 40)), "sz": "2.5"},
+                {"px": str(int(current_price + 50)), "sz": "1.9"}
+            ]
+            
+            pressure_data = self.pressure_calculator.calculate_orderbook_pressure(simulated_bids, simulated_asks)
+            pressure_direction = pressure_data.get("direction", "NEUTRAL")
+            pressure_imbalance = abs(pressure_data.get("pressure_imbalance", 0))
+            
+            # 3. Check if pressure confirms the price movement direction
+            price_direction = price_movement_signal.direction
+            pressure_confirms = False
+            
+            if price_direction == "BUY" and pressure_direction in ["BUY", "STRONG_BUY"]:
+                pressure_confirms = True
+            elif price_direction == "SELL" and pressure_direction in ["SELL", "STRONG_SELL"]:
+                pressure_confirms = True
+            
+            # 4. Only proceed if pressure confirms the momentum
+            if not pressure_confirms or pressure_imbalance < 0.3:  # Require at least 30% imbalance
+                logger.debug(f"🔍 Reactive: Price movement {price_direction} not confirmed by pressure {pressure_direction} (imbalance: {pressure_imbalance:.3f})")
+                return None
+            
+            # 5. Boost confidence based on pressure confirmation
+            base_confidence = price_movement_signal.confidence
+            pressure_boost = min(0.15, pressure_imbalance * 0.2)  # Up to 15% boost
+            final_confidence = min(0.90, base_confidence + pressure_boost)
+            
+            # 6. Determine urgency based on combined factors
+            urgency = price_movement_signal.urgency
+            if pressure_imbalance > 0.6:  # Strong pressure confirmation
+                urgency = "CRITICAL" if urgency == "HIGH" else urgency
+            
+            # 7. Create enhanced reactive signal
+            execution_type, size_percentage = self._determine_execution_params(urgency, final_confidence)
+            
+            return ReactiveSignal(
+                signal_type="MOMENTUM_WITH_PRESSURE_CONFIRMATION",
+                direction=price_direction,
+                confidence=final_confidence,
+                urgency=urgency,
+                price_movement=price_movement_signal.price_movement,
+                reasoning=f"Price momentum {price_direction} confirmed by order book pressure {pressure_direction} (imbalance: {pressure_imbalance:.3f}) - {urgency} urgency",
+                execution_type=execution_type,
+                size_percentage=size_percentage,
+                timestamp=time.time(),
+                data={
+                    "price_movement_signal": price_movement_signal,
+                    "pressure_data": pressure_data,
+                    "pressure_confirmation": True,
+                    "combined_confidence_boost": pressure_boost
+                }
+            )
+            
+        except Exception as e:
+            logger.error(f"❌ Momentum with pressure confirmation analysis failed: {e}")
+            return None
+    
     def _analyze_order_book_pressure(self, current_price: float, market_data: Dict[str, Any]) -> Optional[ReactiveSignal]:
-        """Analyze order book pressure for reactive signals"""
+        """Analyze order book pressure for momentum confirmation (not standalone signals)"""
         try:
             # Simulate order book data (would come from Hyperliquid API)
             simulated_bids = [
