@@ -77,36 +77,36 @@ class TrendCalculator:
             # Calculate trend acceleration (rate of change in momentum)
             acceleration = self._calculate_acceleration(recent_closes)
             
-            # Determine trend with ULTRA REALISTIC THRESHOLDS for Bitcoin 5m trading
-            # PRIORITY: Price movement is the primary indicator, strength is secondary
-            if abs(price_change_pct) > 0.15:  # Significant price movement (0.15%+)
-                # Very strong trends - price movement is the key factor
-                if price_change_pct > 0.15:
+            # Determine trend with IMPROVED THRESHOLDS for Bitcoin 5m trading
+            # Balance: Price movement is primary, but strength/momentum still matter
+            if abs(price_change_pct) > 0.20 and strength > 0.5:
+                # Very strong trends - more realistic thresholds
+                if price_change_pct > 0.20 and momentum > 0.0005:
                     trend = "STRONG_UPTREND"
                     direction = 1
-                elif price_change_pct < -0.15:
+                elif price_change_pct < -0.20 and momentum < -0.0005:
                     trend = "STRONG_DOWNTREND"
                     direction = -1
                 else:
                     trend = "SIDEWAYS"
                     direction = 0
-            elif abs(price_change_pct) > 0.05:  # Moderate price movement (0.05%+)
-                # Strong trends - price movement is the key factor
-                if price_change_pct > 0.05:
+            elif abs(price_change_pct) > 0.08 and strength > 0.3:
+                # Strong trends - more realistic thresholds
+                if price_change_pct > 0.08 and momentum > 0.0002:
                     trend = "UPTREND"
                     direction = 1
-                elif price_change_pct < -0.05:
+                elif price_change_pct < -0.08 and momentum < -0.0002:
                     trend = "DOWNTREND"
                     direction = -1
                 else:
                     trend = "SIDEWAYS"
                     direction = 0
-            elif abs(price_change_pct) > 0.02:  # Small price movement (0.02%+)
-                # Weak trends - price movement is the key factor
-                if price_change_pct > 0.02:
+            elif abs(price_change_pct) > 0.03 and strength > 0.2:
+                # Weak trends - more sensitive to catch clear moves
+                if price_change_pct > 0.03 and momentum > 0.0001:
                     trend = "WEAK_UPTREND"
                     direction = 1
-                elif price_change_pct < -0.02:
+                elif price_change_pct < -0.03 and momentum < -0.0001:
                     trend = "WEAK_DOWNTREND"
                     direction = -1
                 else:
