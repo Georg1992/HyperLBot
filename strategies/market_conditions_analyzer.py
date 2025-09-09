@@ -22,8 +22,7 @@ class MarketConditionsAnalyzer:
         logger.info("🔍 Market Conditions Analyzer initialized - Untradable condition detection")
     
     def analyze_trading_conditions(self, market_data: Dict[str, Any], 
-                                 historical_context: Dict[str, Any] = None, 
-                                 strategy_name: str = "standard") -> Dict[str, Any]:
+                                 historical_context: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Comprehensive market conditions analysis for trading decisions
         
@@ -48,8 +47,8 @@ class MarketConditionsAnalyzer:
             risk_factors = []
             positive_factors = []
             
-            # 1. VOLATILITY CONDITIONS (strategy-aware)
-            volatility_analysis = self._analyze_volatility_conditions(volatility_5m, volatility_category, strategy_name)
+            # 1. VOLATILITY CONDITIONS (strategy-independent)
+            volatility_analysis = self._analyze_volatility_conditions(volatility_5m, volatility_category)
             condition_factors.extend(volatility_analysis["factors"])
             if volatility_analysis["risk"] > 0:
                 risk_factors.extend(volatility_analysis["risk_factors"])
@@ -74,8 +73,8 @@ class MarketConditionsAnalyzer:
             neutral_rsi = rsi_analysis.get("neutral", False)
             neutral_factors = rsi_analysis.get("neutral_factors", [])
             
-            # 4. TREND CONDITIONS
-            trend_analysis = self._analyze_trend_conditions(trend, strategy_name)
+            # 4. TREND CONDITIONS (strategy-independent)
+            trend_analysis = self._analyze_trend_conditions(trend)
             condition_factors.extend(trend_analysis["factors"])
             if trend_analysis["risk"] > 0:
                 risk_factors.extend(trend_analysis["risk_factors"])
@@ -124,7 +123,7 @@ class MarketConditionsAnalyzer:
             logger.error(f"❌ Market conditions analysis failed: {e}")
             return self._get_default_conditions_analysis()
     
-    def _analyze_volatility_conditions(self, volatility_5m: float, category: str, strategy_name: str = "standard") -> Dict[str, Any]:
+    def _analyze_volatility_conditions(self, volatility_5m: float, category: str) -> Dict[str, Any]:
         """Analyze volatility for trading suitability"""
         factors = []
         risk_factors = []
@@ -133,26 +132,15 @@ class MarketConditionsAnalyzer:
         
         if category == "VERY_LOW":
             factors.append("Very low volatility - range-bound market")
-            if strategy_name == "low_volatility_range":
-                # Range trading strategy is designed for very low volatility
-                positive_factors.append("Optimal conditions for range trading")
-            else:
-                # Other strategies find very low volatility challenging
-                risk_factors.append("Limited profit potential due to low volatility")
-                risk_level = 2  # Moderate risk - not excellent conditions
+            # Strategy-independent: Very low volatility is generally challenging for most trading
+            risk_factors.append("Limited profit potential due to very low volatility")
+            risk_level = 2  # Moderate risk - not excellent conditions
             
         elif category == "LOW":
             factors.append("Low volatility - limited opportunities") 
-            if strategy_name == "low_volatility_range":
-                # Low volatility strategy is designed for low volatility
-                positive_factors.append("Good conditions for low volatility strategy")
-            elif strategy_name == "low_volatility_range":
-                # Range trading strategy also works well in low volatility
-                positive_factors.append("Good conditions for range trading")
-            else:
-                # Other strategies find low volatility risky
-                risk_factors.append("Reduced profit potential")
-                risk_level = 2
+            # Strategy-independent: Low volatility reduces profit potential
+            risk_factors.append("Reduced profit potential due to low volatility")
+            risk_level = 1  # Low risk but limited opportunities
             
         elif category == "MODERATE":
             factors.append("Moderate volatility - good for trading")
@@ -249,7 +237,7 @@ class MarketConditionsAnalyzer:
             "neutral_factors": ["RSI neutral zone"] if 45 <= rsi <= 55 else []
         }
     
-    def _analyze_trend_conditions(self, trend: str, strategy_name: str = "standard") -> Dict[str, Any]:
+    def _analyze_trend_conditions(self, trend: str) -> Dict[str, Any]:
         """Analyze trend for trading suitability"""
         factors = []
         risk_factors = []
@@ -258,24 +246,15 @@ class MarketConditionsAnalyzer:
         
         if trend == "SIDEWAYS":
             factors.append("Sideways trend - range-bound market")
-            if strategy_name == "low_volatility_range":
-                # Range trading strategy thrives in sideways markets
-                positive_factors.append("Optimal sideways conditions for range trading")
-            elif strategy_name == "low_volatility":
-                # Low volatility strategy can work in sideways markets
-                positive_factors.append("Good sideways conditions for low volatility strategy")
-            else:
-                risk_factors.append("No clear directional momentum")
-                risk_level = 2
+            # Strategy-independent: Sideways trends lack clear directional momentum
+            risk_factors.append("No clear directional momentum")
+            risk_level = 2
             
         elif trend in ["WEAK_UPTREND", "WEAK_DOWNTREND"]:
             factors.append(f"{trend.replace('_', ' ').lower()} - limited momentum")
-            if strategy_name == "low_volatility_range":
-                # Weak trends are good for range trading (not too strong, not too weak)
-                positive_factors.append("Good weak trend for range trading")
-            else:
-                risk_factors.append("Weak trend strength")
-                risk_level = 1
+            # Strategy-independent: Weak trends have limited momentum
+            risk_factors.append("Weak trend strength")
+            risk_level = 1
             
         elif trend in ["UPTREND", "DOWNTREND"]:
             factors.append(f"{trend.lower()} - good directional momentum")

@@ -249,8 +249,7 @@ class SessionOrchestrator:
             from core.session.session_manager import session_manager
             market_conditions_data = global_conditions_analyzer.analyze_trading_conditions(
                 market_data=market_data, 
-                historical_context=session_manager.get_historical_context(),
-                strategy_name=strategy_name
+                historical_context=session_manager.get_historical_context()
             )
             
             # Store market conditions in RTM for dashboard
@@ -573,8 +572,7 @@ class SessionOrchestrator:
             
             conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(
                 market_data=market_conditions_input,
-                historical_context=historical_context,
-                strategy_name=strategy_name
+                historical_context=historical_context
             )
             
             # Add market conditions to market data for dashboard
