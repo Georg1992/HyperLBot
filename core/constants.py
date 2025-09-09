@@ -225,7 +225,7 @@ class DataFetchingConstants:
     # Cache Durations
     YAHOO_CACHE_DURATION = 5         # 5 seconds cache for ultra-frequent updates
     MARKET_DATA_CACHE_DURATION = 5   # 5 seconds for real-time data
-    INDICATOR_CACHE_DURATION = 60    # 1 minute for calculated indicators
+    INDICATOR_CACHE_DURATION = 5     # 5 seconds for calculated indicators (temporarily reduced for trend fix testing)
     TREND_CACHE_DURATION = 30        # 30 seconds for trend data
     
     # Data Periods

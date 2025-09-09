@@ -164,6 +164,17 @@ class MarketDataManager:
         self._cache_data(cache_key, result, self._indicator_cache_duration)
         return result
     
+    def clear_trend_cache(self):
+        """Clear trend calculation cache to force fresh calculations"""
+        try:
+            # Clear all trend-related cache entries
+            keys_to_remove = [key for key in self._cache.keys() if key.startswith("trend_")]
+            for key in keys_to_remove:
+                del self._cache[key]
+            logger.info(f"🧹 Cleared {len(keys_to_remove)} trend cache entries")
+        except Exception as e:
+            logger.error(f"❌ Failed to clear trend cache: {e}")
+    
     def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:
         """Calculate volatility using VolatilityCalculator (SRP - delegate to calculator)"""
         cache_key = f"volatility_{periods}_{hash(str(candles[-periods:]))}"
