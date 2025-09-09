@@ -34,6 +34,10 @@ class MarketDataManager:
         self._indicator_timestamps = {}
         self._indicator_cache_duration = 60  # 1 minute for calculated indicators
         
+        # Volume history tracking for noise reduction and relative analysis
+        self._volume_history = []  # List of (timestamp, depth, price) tuples
+        self._max_volume_history = 100  # Keep last 100 volume readings
+        
         # Initialize all calculators (consistent pattern)
         self.volatility_calculator = VolatilityCalculator()
         self.volume_calculator = VolumeCalculator()
@@ -42,7 +46,20 @@ class MarketDataManager:
         self.trend_calculator = TrendCalculator()
         # RSI calculator moved to global singleton to prevent multiple instances
         
-        logger.info("📊 Market Data Manager initialized - Centralized data management")
+        logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
+    
+    def _update_volume_history(self, timestamp: float, depth: float, price: float):
+        """Update volume history for noise reduction and relative analysis"""
+        try:
+            # Add new entry
+            self._volume_history.append((timestamp, depth, price))
+            
+            # Remove old entries (keep only recent ones)
+            if len(self._volume_history) > self._max_volume_history:
+                self._volume_history = self._volume_history[-self._max_volume_history:]
+                
+        except Exception as e:
+            logger.warning(f"Volume history update failed: {e}")
     
     def _get_cached_data(self, key: str, cache_duration: int) -> Optional[Dict]:
         """Get cached data if still valid"""
@@ -81,6 +98,9 @@ class MarketDataManager:
             # Get raw orderbook data and use calculators for analysis (clean architecture)
             market_data = hyperliquid_api.get_market_data(symbol)
             
+            # Get recent trades for actual trading volume calculation
+            recent_trades = hyperliquid_api.get_recent_trades(symbol)
+            
             # Use VolumeCalculator and PressureCalculator for orderbook analysis (clean architecture)
             if market_data and 'levels' in market_data:
                 levels = market_data['levels']
@@ -94,11 +114,33 @@ class MarketDataManager:
                         ask_depth_5 = sum(float(level['sz']) for level in asks[:5])
                         total_depth_5 = bid_depth_5 + ask_depth_5
                         
-                        # Use VolumeCalculator for volume categorization (proper delegation)
+                        # Update volume history for noise reduction
+                        current_time = time.time()
+                        current_price = market_data.get('markPrice', 0) if 'markPrice' in market_data else 0
+                        self._update_volume_history(current_time, total_depth_5, current_price)
+                        
+                        # Get historical depths for smoothing
+                        historical_depths = [entry[1] for entry in self._volume_history[-20:]]  # Last 20 readings
+                        historical_prices = [entry[2] for entry in self._volume_history[-20:]]
+                        
+                        # Use VolumeCalculator for volume categorization with historical data
                         volume_data = self.volume_calculator.categorize_orderbook_depth(
-                            total_depth_5, bid_depth_5, ask_depth_5
+                            total_depth_5, bid_depth_5, ask_depth_5, historical_depths
                         )
                         volume_data["data_source"] = "hyperliquid_orderbook"
+                        
+                        # Add relative volume analysis
+                        if len(historical_depths) >= 10:
+                            relative_analysis = self.volume_calculator.calculate_relative_volume_analysis(
+                                total_depth_5, historical_depths, current_price, historical_prices
+                            )
+                            volume_data.update(relative_analysis)
+                        
+                        # Calculate actual trading volume from recent trades
+                        trading_volume_analysis = self.volume_calculator.calculate_trading_volume_from_trades(
+                            recent_trades, time_window_minutes=5
+                        )
+                        volume_data.update(trading_volume_analysis)
                         
                         # Use PressureCalculator for pressure analysis (proper delegation)
                         pressure_data = self.pressure_calculator.calculate_orderbook_pressure(bids, asks)

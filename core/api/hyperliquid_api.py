@@ -124,6 +124,28 @@ class HyperliquidAPI:
         except Exception as e:
             logger.error(f"Failed to get orderbook for {symbol}: {e}")
             raise
+    
+    def get_recent_trades(self, symbol: str = None, limit: int = 100) -> Dict[str, Any]:
+        """Get recent trades for a symbol to calculate actual trading volume"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            endpoint = "/info"
+            payload = {
+                "type": "recentTrades",
+                "coin": symbol
+            }
+            
+            response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
+            response.raise_for_status()
+            
+            data = response.json()
+            logger.debug(f"Retrieved {len(data)} recent trades for {symbol}")
+            return data
+            
+        except Exception as e:
+            logger.error(f"Failed to get recent trades for {symbol}: {e}")
+            raise
 
     # get_volume_analysis() REMOVED - Volume logic moved to VolumeCalculator for clean architecture
     # MarketDataManager now handles volume analysis using VolumeCalculator delegation

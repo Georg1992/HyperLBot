@@ -503,8 +503,12 @@
                             <span class="data-value" id="market-rsi">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Volume:</span>
+                            <span class="data-label">Orderbook Depth:</span>
                             <span class="data-value" id="market-volume">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Trading Volume:</span>
+                            <span class="data-value" id="trading-volume">Loading...</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Volatility (5m):</span>
@@ -893,21 +897,67 @@
                     console.log('📊 RSI set to N/A');
                 }
                 
-                // Update Volume with enhanced display and timestamps
+                // Update Orderbook Depth (separate panel)
                 const volumeElement = document.getElementById('market-volume');
                 if (market.volume_depth !== undefined) {
-                    const volume = parseFloat(market.volume_depth);
-                    const category = market.volume_category || 'N/A';
+                    const depth = parseFloat(market.volume_depth);
+                    const depthCategory = market.volume_category || 'N/A';
                     const orderFlow = market.order_flow || 'NEUTRAL';
                     const depthAnalysis = market.depth_analysis || 'UNKNOWN';
                     const timestamp = new Date().toLocaleTimeString();
                     
-                    volumeElement.innerHTML = `${volume.toFixed(1)} BTC (${category})<br><span style="font-size: 11px; color: #888;">Flow: ${orderFlow} | Depth: ${depthAnalysis}</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
+                    // Display orderbook depth only
+                    let depthDisplay = `${depth.toFixed(1)} BTC (${depthCategory})`;
                     
-                    // No color coding for volume - neutral display
-                    volumeElement.className = 'data-value';
+                    // Add relative depth if available
+                    if (market.relative_volume !== undefined) {
+                        const relativeVol = parseFloat(market.relative_volume);
+                        const relativeText = relativeVol > 1.5 ? '📈' : relativeVol < 0.7 ? '📉' : '➡️';
+                        depthDisplay += ` ${relativeText}${relativeVol.toFixed(1)}x`;
+                    }
+                    
+                    volumeElement.innerHTML = `${depthDisplay}<br><span style="font-size: 11px; color: #888;">Flow: ${orderFlow} | Depth: ${depthAnalysis}</span><br><span style="font-size: 9px; color: #ffa500;">📊 ORDERBOOK DEPTH</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
+                    
+                    // Color coding based on depth category
+                    if (depthCategory.includes('HIGH')) {
+                        volumeElement.className = 'data-value positive';
+                    } else if (depthCategory.includes('LOW')) {
+                        volumeElement.className = 'data-value negative';
+                    } else {
+                        volumeElement.className = 'data-value';
+                    }
                 } else {
                     volumeElement.textContent = 'N/A';
+                }
+                
+                // Update Trading Volume (separate panel - if element exists)
+                const tradingVolumeElement = document.getElementById('trading-volume');
+                if (tradingVolumeElement) {
+                    if (market.trading_volume_btc !== undefined) {
+                        const tradingVol = parseFloat(market.trading_volume_btc);
+                        const tradingCategory = market.trading_volume_category || 'N/A';
+                        const tradeCount = market.trade_count || 0;
+                        const timestamp = new Date().toLocaleTimeString();
+                        
+                        let tradingDisplay = `${tradingVol.toFixed(2)} BTC (${tradingCategory})`;
+                        tradingDisplay += `<br><span style="font-size: 10px; color: #888;">${tradeCount} trades in 5m</span>`;
+                        tradingDisplay += `<br><span style="font-size: 9px; color: #00ff88;">📈 ACTUAL TRADING VOLUME</span>`;
+                        tradingDisplay += `<br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
+                        
+                        tradingVolumeElement.innerHTML = tradingDisplay;
+                        
+                        // Color coding based on trading volume category
+                        if (tradingCategory.includes('HIGH')) {
+                            tradingVolumeElement.className = 'data-value positive';
+                        } else if (tradingCategory.includes('LOW')) {
+                            tradingVolumeElement.className = 'data-value negative';
+                        } else {
+                            tradingVolumeElement.className = 'data-value';
+                        }
+                    } else {
+                        tradingVolumeElement.innerHTML = 'No trading data<br><span style="font-size: 9px; color: #ff6666;">❌ API Error</span>';
+                        tradingVolumeElement.className = 'data-value negative';
+                    }
                 }
                 
                 // Update Volatility - Show category only (no percentage)
