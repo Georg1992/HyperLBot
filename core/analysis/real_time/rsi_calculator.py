@@ -187,15 +187,15 @@ class RSICalculator:
                 # FIXED: RSI interpolation based on price movement (not broken tick-by-tick)
                 price_change_pct = (new_price - self.last_price) / self.last_price
                 
-                # RSI sensitivity: Enhanced responsiveness for scalping (user requested more sensitive)
-                # 1% price move ≈ 3-4 RSI points (increased from 2.5 for better responsiveness)
-                rsi_sensitivity = 3.5  # More sensitive for scalping accuracy
+                # RSI sensitivity: ULTRA responsive for real-time trading (user requested immediate reaction)
+                # 1% price move ≈ 8-10 RSI points (much more sensitive for green/red candles)
+                rsi_sensitivity = 8.0  # Ultra sensitive for immediate reaction to price moves
                 
                 # Calculate RSI adjustment based on price movement
                 rsi_adjustment = price_change_pct * 100 * rsi_sensitivity
                 
-                # Apply adjustment to Yahoo baseline (increased responsiveness)
-                dampening = 0.35  # 35% of calculated adjustment (more responsive, still controlled)
+                # Apply adjustment to Yahoo baseline (much more responsive)
+                dampening = 0.8  # 80% of calculated adjustment (immediate reaction to price moves)
                 self.current_rsi = self.baseline_rsi + (rsi_adjustment * dampening)
                 
                 # Keep RSI in valid range [0, 100]
