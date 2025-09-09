@@ -598,11 +598,17 @@ class PredictionEngine:
             elif rsi <= 20 or rsi >= 80:  # Extreme RSI (oversold/overbought)
                 confidence *= 0.85  # Reduce confidence by 15% for extreme RSI (high reversal risk)
                 logger.debug(f"📊 Confidence reduced for extreme RSI ({rsi:.1f}): {base_confidence:.1%} → {confidence:.1%}")
+            elif (rsi <= 35 and direction == "BUY") or (rsi >= 65 and direction == "SELL"):  # Good RSI for direction
+                confidence *= 1.1  # Boost confidence by 10% for good RSI alignment
+                logger.debug(f"📊 Confidence boosted for good RSI alignment ({rsi:.1f}): {base_confidence:.1%} → {confidence:.1%}")
             
             # Trend-based confidence adjustments
             if trend in ["SIDEWAYS", "NEUTRAL"]:
                 confidence *= 0.7  # Reduce confidence by 30% for unclear trend (increased from 20%)
                 logger.debug(f"📊 Confidence reduced for sideways trend: {base_confidence:.1%} → {confidence:.1%}")
+            elif trend in ["WEAK_UPTREND", "WEAK_DOWNTREND"]:
+                confidence *= 0.8  # Reduce confidence by 20% for weak trends
+                logger.debug(f"📊 Confidence reduced for weak trend: {base_confidence:.1%} → {confidence:.1%}")
             
             # Volatility-based confidence adjustments
             if volatility_category in ["VERY_LOW", "LOW"]:
