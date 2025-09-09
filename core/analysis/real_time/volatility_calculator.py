@@ -45,9 +45,10 @@ class VolatilityCalculator:
                 # Calculate 90th percentile (captures significant moves)
                 percentile_90 = range_volatilities[int(n * 0.9)]
                 
-                # ENHANCED: Use weighted average that gives more weight to recent significant moves
-                # 40% median (baseline), 35% 75th percentile (recent activity), 25% 90th percentile (significant moves)
-                robust_volatility = (median_volatility * 0.4) + (percentile_75 * 0.35) + (percentile_90 * 0.25)
+                # ENHANCED: Use weighted average that balances robustness with responsiveness
+                # 50% median (baseline), 30% 75th percentile (recent activity), 20% 90th percentile (significant moves)
+                # More conservative than before to avoid over-classifying moderate moves as high
+                robust_volatility = (median_volatility * 0.5) + (percentile_75 * 0.3) + (percentile_90 * 0.2)
                 
                 # ENHANCED: Also consider overall price movement for consistent trends
                 if len(candles) >= 5:
