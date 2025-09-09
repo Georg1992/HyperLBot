@@ -546,18 +546,15 @@ class PredictionEngine:
                                       volatility_category: str, direction: str, current_price: float = 0, 
                                       entry_price: float = 0) -> float:
         """
-        Calculate realistic confidence based on market conditions
+        Calculate realistic confidence based on WIN PROBABILITY that adjusts in real-time
         
-        Factors that reduce confidence:
-        - Neutral RSI (40-60) - no clear directional bias
-        - Sideways/neutral trends - unclear direction
-        - Low volatility - limited movement potential
-        - Contradictory signals (e.g., SELL with uptrend)
+        Confidence = Dynamic win probability that changes as signals update:
+        - Base probability from market conditions
+        - Real-time signal adjustments (RSI, trend, volatility, pressure, etc.)
+        - Each signal either increases or decreases win probability
+        - Confidence reflects current probability of winning this trade
         
-        Factors that increase confidence:
-        - Price moving toward entry (better opportunity)
-        - Strong signal alignment
-        - Clear market direction
+        This should be updated continuously as new signals arrive.
         """
         try:
             confidence = base_confidence
@@ -1356,6 +1353,104 @@ class PredictionEngine:
             "high_confidence_threshold": self.high_confidence_threshold,
             "prediction_cooldown": self.prediction_cooldown
         }
+    
+    def update_prediction_confidence_realtime(self, prediction: Dict[str, Any], new_signals: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update prediction confidence in real-time based on new signals
+        
+        This method should be called whenever new signals arrive to adjust
+        the win probability of the existing prediction.
+        
+        Args:
+            prediction: Current prediction to update
+            new_signals: New signal data (RSI, trend, volatility, pressure, etc.)
+            
+        Returns:
+            Updated prediction with adjusted confidence
+        """
+        try:
+            if not prediction or not new_signals:
+                return prediction
+            
+            # Get current prediction data
+            current_confidence = prediction.get("confidence", 0.5)
+            direction = prediction.get("direction", "NEUTRAL")
+            
+            # Get new signal data
+            new_rsi = new_signals.get("rsi", prediction.get("rsi", 50))
+            new_trend = new_signals.get("trend", prediction.get("trend", "NEUTRAL"))
+            new_volatility = new_signals.get("volatility_category", prediction.get("volatility_category", "MODERATE"))
+            new_pressure = new_signals.get("pressure_direction", "NEUTRAL")
+            
+            # Calculate signal-based probability adjustments
+            probability_adjustment = 0.0
+            
+            # RSI-based probability adjustment
+            if direction == "BUY":
+                if new_rsi <= 20:  # Extreme oversold
+                    probability_adjustment += 0.15  # +15% win probability
+                elif new_rsi <= 30:  # Oversold
+                    probability_adjustment += 0.10  # +10% win probability
+                elif new_rsi >= 70:  # Overbought
+                    probability_adjustment -= 0.10  # -10% win probability
+                elif new_rsi >= 80:  # Extreme overbought
+                    probability_adjustment -= 0.15  # -15% win probability
+            elif direction == "SELL":
+                if new_rsi >= 80:  # Extreme overbought
+                    probability_adjustment += 0.15  # +15% win probability
+                elif new_rsi >= 70:  # Overbought
+                    probability_adjustment += 0.10  # +10% win probability
+                elif new_rsi <= 30:  # Oversold
+                    probability_adjustment -= 0.10  # -10% win probability
+                elif new_rsi <= 20:  # Extreme oversold
+                    probability_adjustment -= 0.15  # -15% win probability
+            
+            # Trend-based probability adjustment
+            if direction == "BUY":
+                if new_trend in ["STRONG_UPTREND", "UPTREND"]:
+                    probability_adjustment += 0.10  # +10% win probability
+                elif new_trend in ["STRONG_DOWNTREND", "DOWNTREND"]:
+                    probability_adjustment -= 0.15  # -15% win probability
+            elif direction == "SELL":
+                if new_trend in ["STRONG_DOWNTREND", "DOWNTREND"]:
+                    probability_adjustment += 0.10  # +10% win probability
+                elif new_trend in ["STRONG_UPTREND", "UPTREND"]:
+                    probability_adjustment -= 0.15  # -15% win probability
+            
+            # Volatility-based probability adjustment
+            if new_volatility == "HIGH":
+                probability_adjustment += 0.05  # +5% win probability (more movement)
+            elif new_volatility == "VERY_LOW":
+                probability_adjustment -= 0.05  # -5% win probability (less movement)
+            
+            # Pressure-based probability adjustment (if available)
+            if new_pressure and direction in ["BUY", "SELL"]:
+                if (direction == "BUY" and new_pressure in ["BUY", "STRONG_BUY"]) or \
+                   (direction == "SELL" and new_pressure in ["SELL", "STRONG_SELL"]):
+                    probability_adjustment += 0.05  # +5% win probability
+                elif (direction == "BUY" and new_pressure in ["SELL", "STRONG_SELL"]) or \
+                     (direction == "SELL" and new_pressure in ["BUY", "STRONG_BUY"]):
+                    probability_adjustment -= 0.05  # -5% win probability
+            
+            # Apply probability adjustment to current confidence
+            new_confidence = current_confidence + probability_adjustment
+            
+            # Cap confidence at reasonable levels
+            new_confidence = max(0.10, min(0.85, new_confidence))
+            
+            # Update prediction with new confidence
+            updated_prediction = prediction.copy()
+            updated_prediction["confidence"] = new_confidence
+            updated_prediction["confidence_adjustment"] = probability_adjustment
+            updated_prediction["last_confidence_update"] = time.time()
+            
+            logger.debug(f"📊 Real-time confidence update: {current_confidence:.1%} → {new_confidence:.1%} (adjustment: {probability_adjustment:+.1%})")
+            
+            return updated_prediction
+            
+        except Exception as e:
+            logger.error(f"❌ Real-time confidence update failed: {e}")
+            return prediction
 
 
 # Global instance for easy access
