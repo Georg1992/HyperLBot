@@ -30,21 +30,30 @@ class TrendCalculator:
             price_change = last_price - first_price
             price_change_pct = (price_change / first_price) * 100
             
-            # Calculate trend consistency (ORIGINAL LOGIC)
+            # Calculate trend consistency with improved logic
             up_moves = 0
             down_moves = 0
+            total_moves = 0
             
             for i in range(1, len(recent_closes)):
                 if recent_closes[i] > recent_closes[i-1]:
                     up_moves += 1
+                    total_moves += 1
                 elif recent_closes[i] < recent_closes[i-1]:
                     down_moves += 1
+                    total_moves += 1
+                # No move (equal prices) doesn't count toward total
             
-            total_moves = up_moves + down_moves
             if total_moves == 0:
                 strength = 0
             else:
-                strength = max(up_moves, down_moves) / total_moves
+                # Calculate strength as consistency of direction
+                dominant_moves = max(up_moves, down_moves)
+                strength = dominant_moves / total_moves
+                
+                # Boost strength if there's a clear directional bias
+                if dominant_moves >= 3:  # At least 3 moves in same direction
+                    strength = min(1.0, strength * 1.2)  # Boost by 20%
             
             # Calculate momentum (ORIGINAL LOGIC)
             momentum = self._calculate_momentum(recent_closes)
@@ -52,33 +61,45 @@ class TrendCalculator:
             # Calculate volume confirmation (ORIGINAL LOGIC)
             volume_confirmation = self._check_volume_confirmation(candles[-5:])
             
-            # Determine trend with SENSITIVE THRESHOLDS for all original states
-            if abs(price_change_pct) > 0.3 and strength > 0.7:
-                # Strong trends first
-                if price_change_pct > 0.3 and momentum > 0:
+            # Calculate trend acceleration (rate of change in momentum)
+            acceleration = self._calculate_acceleration(recent_closes)
+            
+            # Determine trend with IMPROVED THRESHOLDS and logic
+            if abs(price_change_pct) > 0.4 and strength > 0.8:
+                # Very strong trends - requires significant movement and high consistency
+                if price_change_pct > 0.4 and momentum > 0.001:
                     trend = "STRONG_UPTREND"
                     direction = 1
-                elif price_change_pct < -0.3 and momentum < 0:
+                elif price_change_pct < -0.4 and momentum < -0.001:
                     trend = "STRONG_DOWNTREND"
                     direction = -1
                 else:
                     trend = "SIDEWAYS"
                     direction = 0
-            elif price_change_pct > 0.05 and strength > 0.3 and momentum > 0:
-                trend = "UPTREND"
-                direction = 1
-            elif price_change_pct < -0.05 and strength > 0.3 and momentum < 0:
-                trend = "DOWNTREND"
-                direction = -1
-            elif price_change_pct > 0.01 and momentum > 0:
-                # Weak uptrend - very sensitive
-                trend = "WEAK_UPTREND"
-                direction = 1
-            elif price_change_pct < -0.01 and momentum < 0:
-                # Weak downtrend - very sensitive
-                trend = "WEAK_DOWNTREND"
-                direction = -1
+            elif abs(price_change_pct) > 0.2 and strength > 0.6:
+                # Strong trends - requires moderate movement and good consistency
+                if price_change_pct > 0.2 and momentum > 0.0005:
+                    trend = "UPTREND"
+                    direction = 1
+                elif price_change_pct < -0.2 and momentum < -0.0005:
+                    trend = "DOWNTREND"
+                    direction = -1
+                else:
+                    trend = "SIDEWAYS"
+                    direction = 0
+            elif abs(price_change_pct) > 0.08 and strength > 0.4:
+                # Moderate trends - requires some movement and moderate consistency
+                if price_change_pct > 0.08 and momentum > 0.0002:
+                    trend = "WEAK_UPTREND"
+                    direction = 1
+                elif price_change_pct < -0.08 and momentum < -0.0002:
+                    trend = "WEAK_DOWNTREND"
+                    direction = -1
+                else:
+                    trend = "SIDEWAYS"
+                    direction = 0
             else:
+                # No clear trend - sideways movement
                 trend = "SIDEWAYS"
                 direction = 0
             
@@ -87,10 +108,11 @@ class TrendCalculator:
                 "strength": round(strength, 3),
                 "direction": direction,
                 "momentum": round(momentum, 6),
+                "acceleration": round(acceleration, 8),
                 "price_change": round(price_change_pct, 3),
                 "volume_confirmation": volume_confirmation,
                 "timeframe": timeframe,
-                "data_source": "original_working_logic"
+                "data_source": "improved_trend_logic"
             }
             
         except Exception as e:
@@ -98,21 +120,44 @@ class TrendCalculator:
             return self._get_default_trend()
     
     def _calculate_momentum(self, prices: List[float]) -> float:
-        """Calculate price momentum (ORIGINAL WORKING LOGIC from trend_manager)"""
+        """Calculate price momentum with improved stability"""
         if len(prices) < 2:
             return 0.0
         
-        # Calculate momentum as average rate of change over recent periods
-        if len(prices) >= 3:
+        # Calculate momentum as weighted average rate of change
+        if len(prices) >= 4:
+            # Use 4-period weighted momentum for better stability
+            # More weight to recent periods
+            momentum_1 = (prices[-1] - prices[-2]) / prices[-2]  # Most recent
+            momentum_2 = (prices[-2] - prices[-3]) / prices[-3]  # Second most recent
+            momentum_3 = (prices[-3] - prices[-4]) / prices[-4]  # Third most recent
+            
+            # Weighted average: 50% recent, 30% second, 20% third
+            momentum = (momentum_1 * 0.5) + (momentum_2 * 0.3) + (momentum_3 * 0.2)
+        elif len(prices) >= 3:
             # Use 3-period momentum for better stability
             momentum_1 = (prices[-1] - prices[-2]) / prices[-2]
             momentum_2 = (prices[-2] - prices[-3]) / prices[-3]
-            momentum = (momentum_1 + momentum_2) / 2
+            momentum = (momentum_1 * 0.6) + (momentum_2 * 0.4)  # Weighted average
         else:
             # Single period momentum
             momentum = (prices[-1] - prices[-2]) / prices[-2]
         
         return momentum
+    
+    def _calculate_acceleration(self, prices: List[float]) -> float:
+        """Calculate trend acceleration (rate of change in momentum)"""
+        if len(prices) < 4:
+            return 0.0
+        
+        # Calculate momentum for recent periods
+        momentum_recent = self._calculate_momentum(prices[-3:])  # Last 3 periods
+        momentum_previous = self._calculate_momentum(prices[-4:-1])  # Previous 3 periods
+        
+        # Acceleration is the change in momentum
+        acceleration = momentum_recent - momentum_previous
+        
+        return acceleration
     
     def _check_volume_confirmation(self, candles: List[Dict]) -> bool:
         """Check if volume confirms the trend (ORIGINAL WORKING LOGIC)"""
@@ -133,13 +178,14 @@ class TrendCalculator:
         return False
     
     def _get_default_trend(self) -> Dict[str, Any]:
-        """Get default trend data when calculation fails (ORIGINAL STRUCTURE)"""
+        """Get default trend data when calculation fails"""
         return {
             "trend": "SIDEWAYS",
             "strength": 0,
             "direction": 0,
             "confidence": 0,
             "momentum": 0.0,
+            "acceleration": 0.0,
             "volume_confirmation": False,
             "timeframe": "unknown",
             "data_source": "default_fallback"
