@@ -495,7 +495,7 @@ class PredictionEngine:
             stop_loss, take_profit = self._calculate_risk_levels(
                 overall_direction, entry_price, current_price, strategy_name, market_data
             )
-            position_size = self._calculate_position_size(overall_confidence, strategy_name)
+            position_size = self._calculate_position_size(overall_confidence, strategy_name, market_data)
             
             # Generate comprehensive reasoning
             reasoning = self._generate_prediction_reasoning(
@@ -976,59 +976,122 @@ class PredictionEngine:
     
     def _calculate_risk_levels(self, direction: str, entry_price: float, current_price: float, 
                              strategy_name: str, market_data: Dict[str, Any]) -> Tuple[float, float]:
-        """Calculate stop loss and take profit levels"""
+        """Calculate sophisticated stop loss and take profit levels based on volatility and market conditions"""
         try:
+            # Get market conditions for dynamic risk management
+            volatility_category = market_data.get("volatility_category", "MODERATE")
+            rsi_5m = market_data.get("rsi_5m", 50)
+            trend_5m = market_data.get("trend_5m", {})
+            trend_strength = trend_5m.get("strength", 0.0)
+            
             # Get psychological levels for better risk management
             psychological_analysis = global_psychological_levels_calculator.calculate_psychological_levels(current_price)
             nearest_levels = psychological_analysis.get("nearest_levels", {})
             
+            # Calculate volatility-based multipliers
+            if volatility_category == "VERY_LOW":
+                volatility_multiplier = 0.5  # Tighter stops in low volatility
+                target_multiplier = 0.8     # Smaller targets
+            elif volatility_category == "LOW":
+                volatility_multiplier = 0.7
+                target_multiplier = 0.9
+            elif volatility_category == "MODERATE":
+                volatility_multiplier = 1.0
+                target_multiplier = 1.0
+            elif volatility_category == "HIGH":
+                volatility_multiplier = 1.5
+                target_multiplier = 1.2
+            else:  # EXTREME
+                volatility_multiplier = 2.0
+                target_multiplier = 1.5
+            
+            # Calculate trend-based adjustments
+            if trend_strength >= 0.8:
+                # Strong trend: wider stops, larger targets
+                trend_stop_multiplier = 1.3
+                trend_target_multiplier = 1.4
+            elif trend_strength >= 0.6:
+                # Moderate trend: standard adjustments
+                trend_stop_multiplier = 1.0
+                trend_target_multiplier = 1.1
+            else:
+                # Weak trend: tighter stops, smaller targets
+                trend_stop_multiplier = 0.8
+                trend_target_multiplier = 0.9
+            
             if direction == "BUY":
                 # Calculate stop loss (below entry)
+                base_stop_pct = 0.008  # 0.8% base stop loss
+                
                 if strategy_name == "low_volatility_range":
-                    # Use psychological support levels for range trading, but cap the stop loss
+                    # Range trading: use psychological support levels
                     strong_support = nearest_levels.get("strong_support", {})
                     if strong_support and strong_support.get("level", 0) < entry_price:
-                        # Use support level but cap at reasonable distance (max 1% below entry)
+                        # Use support level but apply volatility adjustment
                         support_stop = strong_support["level"] * 0.999
-                        max_stop = entry_price * 0.99  # Max 1% stop loss
+                        max_stop = entry_price * (1 - base_stop_pct * volatility_multiplier * trend_stop_multiplier)
                         stop_loss = max(support_stop, max_stop)
                     else:
-                        stop_loss = entry_price * 0.995  # 0.5% stop loss
+                        stop_loss = entry_price * (1 - base_stop_pct * volatility_multiplier * trend_stop_multiplier)
                 else:
-                    stop_loss = entry_price * 0.99  # 1% stop loss for other strategies (reduced from 2%)
+                    stop_loss = entry_price * (1 - base_stop_pct * volatility_multiplier * trend_stop_multiplier)
                 
                 # Calculate take profit (above entry)
+                base_target_pct = 0.015  # 1.5% base take profit
+                
                 if strategy_name == "low_volatility_range":
-                    # Use psychological resistance levels for range trading
+                    # Range trading: use psychological resistance levels
                     strong_resistance = nearest_levels.get("strong_resistance", {})
                     if strong_resistance and strong_resistance.get("level", 0) > entry_price:
                         take_profit = strong_resistance["level"] * 0.999  # Slightly below resistance
                     else:
-                        take_profit = entry_price * 1.005  # 0.5% take profit
+                        take_profit = entry_price * (1 + base_target_pct * target_multiplier * trend_target_multiplier)
                 else:
-                    take_profit = entry_price * 1.02  # 2% take profit for other strategies
+                    take_profit = entry_price * (1 + base_target_pct * target_multiplier * trend_target_multiplier)
                     
             else:  # SELL
                 # Calculate stop loss (above entry)
+                base_stop_pct = 0.008  # 0.8% base stop loss
+                
                 if strategy_name == "low_volatility_range":
-                    # Use psychological resistance levels for range trading, but cap the stop loss
+                    # Range trading: use psychological resistance levels
                     strong_resistance = nearest_levels.get("strong_resistance", {})
                     if strong_resistance and strong_resistance.get("level", 0) > entry_price:
-                        # Use resistance level but cap at reasonable distance (max 1% above entry)
                         resistance_stop = strong_resistance["level"] * 1.001
-                        max_stop = entry_price * 1.01  # Max 1% stop loss
+                        max_stop = entry_price * (1 + base_stop_pct * volatility_multiplier * trend_stop_multiplier)
                         stop_loss = min(resistance_stop, max_stop)
                     else:
-                        stop_loss = entry_price * 1.005  # 0.5% stop loss
+                        stop_loss = entry_price * (1 + base_stop_pct * volatility_multiplier * trend_stop_multiplier)
                 else:
-                    stop_loss = entry_price * 1.01  # 1% stop loss for other strategies (reduced from 2%)
+                    stop_loss = entry_price * (1 + base_stop_pct * volatility_multiplier * trend_stop_multiplier)
                 
-                # Calculate take profit (below entry) - FIXED RISK/REWARD
+                # Calculate take profit (below entry)
+                base_target_pct = 0.015  # 1.5% base take profit
+                
                 if strategy_name == "low_volatility_range":
-                    # Range trading needs better risk/reward - at least 1:1.5
-                    take_profit = entry_price * 0.9925  # 0.75% take profit (1.5x the 0.5% stop loss)
+                    # Range trading: use psychological support levels
+                    strong_support = nearest_levels.get("strong_support", {})
+                    if strong_support and strong_support.get("level", 0) < entry_price:
+                        take_profit = strong_support["level"] * 1.001  # Slightly above support
+                    else:
+                        take_profit = entry_price * (1 - base_target_pct * target_multiplier * trend_target_multiplier)
                 else:
-                    take_profit = entry_price * 0.99  # 1% take profit (2x the 0.5% stop loss)
+                    take_profit = entry_price * (1 - base_target_pct * target_multiplier * trend_target_multiplier)
+            
+            # Ensure minimum risk/reward ratio of 1:1.5
+            if direction == "BUY":
+                risk = entry_price - stop_loss
+                reward = take_profit - entry_price
+                if reward < risk * 1.5:
+                    take_profit = entry_price + (risk * 1.5)
+            else:
+                risk = stop_loss - entry_price
+                reward = entry_price - take_profit
+                if reward < risk * 1.5:
+                    take_profit = entry_price - (risk * 1.5)
+            
+            logger.debug(f"📊 Risk levels: {direction} entry={entry_price:.2f}, stop={stop_loss:.2f}, "
+                        f"target={take_profit:.2f}, volatility={volatility_category}, trend_strength={trend_strength:.2f}")
             
             return stop_loss, take_profit
             
@@ -1040,26 +1103,102 @@ class PredictionEngine:
             else:
                 return entry_price * 1.02, entry_price * 0.98
     
-    def _calculate_position_size(self, confidence: float, strategy_name: str) -> float:
-        """Calculate position size based on confidence and strategy"""
+    def _calculate_position_size(self, confidence: float, strategy_name: str, market_data: Dict[str, Any] = None) -> float:
+        """Calculate sophisticated position size based on multiple factors"""
         try:
-            base_size = 0.001  # Base size in BTC
+            market_data = market_data or {}
             
-            # Scale size based on confidence
-            confidence_multiplier = min(1.0, confidence)
+            # Base size calculation (percentage of available capital)
+            # Assuming $7777 balance from dashboard, use 2-5% of balance per trade
+            available_balance = 7777.0  # TODO: Get from session manager
+            base_capital_pct = 0.03  # 3% of balance as base position
             
-            # Adjust for strategy
+            # Get current price for BTC conversion
+            current_price = market_data.get("current_price", 112000)  # Fallback to current market price
+            base_capital_usd = available_balance * base_capital_pct
+            base_size = base_capital_usd / current_price  # Convert to BTC
+            
+            # 1. CONFIDENCE MULTIPLIER (0.3x to 1.5x)
+            if confidence >= 0.9:
+                confidence_multiplier = 1.5  # Very high confidence - larger position
+            elif confidence >= 0.8:
+                confidence_multiplier = 1.2  # High confidence
+            elif confidence >= 0.7:
+                confidence_multiplier = 1.0  # Good confidence - base size
+            elif confidence >= 0.6:
+                confidence_multiplier = 0.8  # Moderate confidence
+            elif confidence >= 0.5:
+                confidence_multiplier = 0.6  # Low confidence
+            else:
+                confidence_multiplier = 0.3  # Very low confidence - small position
+            
+            # 2. STRATEGY MULTIPLIER
             if strategy_name == "low_volatility_range":
-                # Range trading uses smaller positions
-                strategy_multiplier = 0.8
+                # Range trading: smaller positions, more frequent trades
+                strategy_multiplier = 0.7
             elif strategy_name == "trend_following":
-                # Trend following uses larger positions
-                strategy_multiplier = 1.2
+                # Trend following: larger positions, longer holds
+                strategy_multiplier = 1.3
             else:
                 # Standard strategy
                 strategy_multiplier = 1.0
             
-            position_size = base_size * confidence_multiplier * strategy_multiplier
+            # 3. VOLATILITY ADJUSTMENT
+            volatility_category = market_data.get("volatility_category", "MODERATE")
+            if volatility_category == "VERY_LOW":
+                # Very low volatility: smaller positions, need more movement
+                volatility_multiplier = 0.6
+            elif volatility_category == "LOW":
+                # Low volatility: slightly smaller positions
+                volatility_multiplier = 0.8
+            elif volatility_category == "MODERATE":
+                # Moderate volatility: standard positions
+                volatility_multiplier = 1.0
+            elif volatility_category == "HIGH":
+                # High volatility: larger positions, faster moves
+                volatility_multiplier = 1.2
+            else:  # EXTREME
+                # Extreme volatility: smaller positions, high risk
+                volatility_multiplier = 0.5
+            
+            # 4. RSI ADJUSTMENT (risk management)
+            rsi_5m = market_data.get("rsi_5m", 50)
+            if rsi_5m <= 25 or rsi_5m >= 75:
+                # Extreme RSI: larger positions (strong reversal signals)
+                rsi_multiplier = 1.2
+            elif rsi_5m <= 35 or rsi_5m >= 65:
+                # Moderate RSI: standard positions
+                rsi_multiplier = 1.0
+            else:
+                # Neutral RSI: smaller positions (less clear direction)
+                rsi_multiplier = 0.8
+            
+            # 5. TREND STRENGTH ADJUSTMENT
+            trend_5m = market_data.get("trend_5m", {})
+            trend_strength = trend_5m.get("strength", 0.0)
+            if trend_strength >= 0.8:
+                # Strong trend: larger positions
+                trend_multiplier = 1.3
+            elif trend_strength >= 0.6:
+                # Moderate trend: standard positions
+                trend_multiplier = 1.0
+            else:
+                # Weak trend: smaller positions
+                trend_multiplier = 0.7
+            
+            # Calculate final position size
+            position_size = (base_size * confidence_multiplier * strategy_multiplier * 
+                           volatility_multiplier * rsi_multiplier * trend_multiplier)
+            
+            # Apply reasonable limits
+            min_size = 0.0001  # Minimum 0.01% of balance
+            max_size = (available_balance * 0.08) / current_price  # Maximum 8% of balance
+            
+            position_size = max(min_size, min(position_size, max_size))
+            
+            logger.debug(f"📊 Position size calculation: base={base_size:.6f}, confidence={confidence_multiplier:.2f}, "
+                        f"strategy={strategy_multiplier:.2f}, volatility={volatility_multiplier:.2f}, "
+                        f"rsi={rsi_multiplier:.2f}, trend={trend_multiplier:.2f} = {position_size:.6f} BTC")
             
             return round(position_size, 6)  # Round to 6 decimal places
             
