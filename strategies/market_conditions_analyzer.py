@@ -156,7 +156,7 @@ class MarketConditionsAnalyzer:
             
         elif category == "MODERATE":
             factors.append("Moderate volatility - good for trading")
-            positive_factors.append("Optimal volatility for scalping")
+            # MODERATE volatility is neutral - no positive factors, no risk factors
             
         elif category == "HIGH":
             factors.append("High volatility - increased opportunities")
@@ -193,6 +193,10 @@ class MarketConditionsAnalyzer:
         elif volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
             factors.append(f"{volume_category.lower().replace('_', ' ').title()} volume - strong market interest")
             positive_factors = [f"Strong {volume_category.lower().replace('_', ' ')} volume activity"]  # Mark as positive for override
+            
+        elif volume_category == "ABOVE_AVERAGE":
+            factors.append("Above average volume - good liquidity")
+            # No positive factors for ABOVE_AVERAGE - only HIGH and above get positive factors
             
         return {
             "factors": factors,
@@ -423,43 +427,70 @@ class MarketConditionsAnalyzer:
                 "confidence": 0.75
             }
         
-        # EXCELLENT CONDITIONS (multiple positive factors + override cases)
-        # EXCELLENT requires strong momentum + low risk, not just low volatility
-        # EXCELLENT should be rare - only when multiple strong factors align
-        elif (total_positive_score >= 4 and effective_risk_score == 0) or (can_override_rsi_neutral and total_positive_score >= 3):
-            condition_level = "RSI_OVERRIDE_EXCELLENT" if can_override_rsi_neutral else "EXCELLENT"
-            logger.debug(f"🔍 {condition_level}: Strong factors override neutral RSI" if can_override_rsi_neutral else f"🔍 EXCELLENT: Natural excellent conditions")
+        # EXCELLENT CONDITIONS (rare - multiple strong factors + no risks)
+        elif total_positive_score >= 4 and effective_risk_score == 0:
+            logger.debug(f"🔍 EXCELLENT: {total_positive_score} positive factors, {effective_risk_score} risk factors")
             return {
                 "is_tradable": True,
                 "condition": "EXCELLENT",
                 "risk_level": "LOW",
-                "confidence": 0.85 if not can_override_rsi_neutral else 0.75  # Slightly lower confidence for overrides
+                "confidence": 0.85
             }
         
-        # GOOD CONDITIONS (some positive factors + override cases)
-        elif (total_positive_score >= 1 and effective_risk_score <= 1) or (can_override_rsi_neutral and len(strong_override_factors) >= 1):
-            condition_level = "RSI_OVERRIDE_GOOD" if can_override_rsi_neutral else "GOOD"
-            logger.debug(f"🔍 {condition_level}: Override or naturally good conditions")
+        # VERY_GOOD CONDITIONS (strong factors + minimal risks)
+        elif total_positive_score >= 3 and effective_risk_score <= 1:
+            logger.debug(f"🔍 VERY_GOOD: {total_positive_score} positive factors, {effective_risk_score} risk factors")
             return {
                 "is_tradable": True,
-                "condition": "GOOD", 
-                "risk_level": "MODERATE",
-                "confidence": 0.7 if not can_override_rsi_neutral else 0.6  # Lower confidence for override
+                "condition": "VERY_GOOD",
+                "risk_level": "LOW",
+                "confidence": 0.75
             }
         
-        # MARGINAL CONDITIONS (neutral, proceed with caution)
-        else:
-            # For neutral RSI with no strong overrides, still allow trading but lower confidence
-            confidence = 0.5
+        # GOOD CONDITIONS (moderate factors + some risks)
+        elif total_positive_score >= 2 and effective_risk_score <= 2:
+            logger.debug(f"🔍 GOOD: {total_positive_score} positive factors, {effective_risk_score} risk factors")
+            return {
+                "is_tradable": True,
+                "condition": "GOOD",
+                "risk_level": "MODERATE",
+                "confidence": 0.65
+            }
+        
+        # FAIR CONDITIONS (few factors + moderate risks)
+        elif total_positive_score >= 1 and effective_risk_score <= 2:
+            logger.debug(f"🔍 FAIR: {total_positive_score} positive factors, {effective_risk_score} risk factors")
+            return {
+                "is_tradable": True,
+                "condition": "FAIR",
+                "risk_level": "MODERATE",
+                "confidence": 0.55
+            }
+        
+        # MARGINAL CONDITIONS (neutral/weak factors + some risks)
+        elif total_positive_score >= 0 and effective_risk_score <= 3:
+            confidence = 0.45
             if neutral_rsi and len(strong_override_factors) == 0:
-                confidence = 0.4  # Lower confidence for truly neutral conditions
+                confidence = 0.35  # Lower confidence for truly neutral conditions
                 logger.debug(f"🔍 MARGINAL: Neutral RSI with no strong override factors")
+            else:
+                logger.debug(f"🔍 MARGINAL: {total_positive_score} positive factors, {effective_risk_score} risk factors")
             
             return {
                 "is_tradable": True,  # Still allow trading (scalping-friendly approach)
                 "condition": "MARGINAL",
-                "risk_level": "MODERATE",
+                "risk_level": "HIGH",
                 "confidence": confidence
+            }
+        
+        # POOR CONDITIONS (no positive factors + high risks)
+        else:
+            logger.debug(f"🔍 POOR: {total_positive_score} positive factors, {effective_risk_score} risk factors")
+            return {
+                "is_tradable": False,
+                "condition": "POOR",
+                "risk_level": "HIGH",
+                "confidence": 0.3
             }
     
     def _get_default_conditions_analysis(self) -> Dict[str, Any]:
