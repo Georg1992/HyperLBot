@@ -77,6 +77,9 @@ class TrendCalculator:
             # Calculate trend acceleration (rate of change in momentum)
             acceleration = self._calculate_acceleration(recent_closes)
             
+            # DEBUG: Log trend calculation values
+            logger.debug(f"📈 Trend calculation: price_change_pct={price_change_pct:.3f}%, strength={strength:.3f}, momentum={momentum:.6f}")
+            
             # Determine trend with IMPROVED THRESHOLDS for Bitcoin 5m trading
             # Balance: Price movement is primary, but strength/momentum still matter
             if abs(price_change_pct) > 0.20 and strength > 0.5:
@@ -124,6 +127,9 @@ class TrendCalculator:
                 # No clear trend - sideways movement
                 trend = "SIDEWAYS"
                 direction = 0
+            
+            # DEBUG: Log final trend result
+            logger.debug(f"📈 Final trend result: {trend} (direction: {direction})")
             
             return {
                 "trend": trend,
