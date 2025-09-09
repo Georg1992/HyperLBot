@@ -98,8 +98,14 @@ class MarketDataManager:
             # Get raw orderbook data and use calculators for analysis (clean architecture)
             market_data = hyperliquid_api.get_market_data(symbol)
             
-            # Get recent trades for actual trading volume calculation
-            recent_trades = hyperliquid_api.get_recent_trades(symbol)
+            # Get recent trades for actual trading volume calculation (always try this)
+            recent_trades = []
+            try:
+                recent_trades = hyperliquid_api.get_recent_trades(symbol)
+                logger.debug(f"Retrieved {len(recent_trades)} recent trades for trading volume calculation")
+            except Exception as e:
+                logger.warning(f"Failed to get recent trades: {e}")
+                recent_trades = []
             
             # Use VolumeCalculator and PressureCalculator for orderbook analysis (clean architecture)
             if market_data and 'levels' in market_data:
@@ -136,12 +142,6 @@ class MarketDataManager:
                             )
                             volume_data.update(relative_analysis)
                         
-                        # Calculate actual trading volume from recent trades
-                        trading_volume_analysis = self.volume_calculator.calculate_trading_volume_from_trades(
-                            recent_trades, time_window_minutes=5
-                        )
-                        volume_data.update(trading_volume_analysis)
-                        
                         # Use PressureCalculator for pressure analysis (proper delegation)
                         pressure_data = self.pressure_calculator.calculate_orderbook_pressure(bids, asks)
                         pressure_data["data_source"] = "hyperliquid_orderbook"
@@ -154,6 +154,37 @@ class MarketDataManager:
             else:
                 volume_data = self._get_default_volume_data()
                 pressure_data = self._get_default_pressure_data()
+            
+            # Calculate actual trading volume from recent trades (always try this, regardless of orderbook status)
+            if recent_trades:
+                try:
+                    trading_volume_analysis = self.volume_calculator.calculate_trading_volume_from_trades(
+                        recent_trades, time_window_minutes=5
+                    )
+                    volume_data.update(trading_volume_analysis)
+                    logger.debug(f"Trading volume calculated: {trading_volume_analysis.get('trading_volume_btc', 0)} BTC")
+                except Exception as e:
+                    logger.warning(f"Trading volume calculation failed: {e}")
+                    # Add error indicators to volume data
+                    volume_data.update({
+                        "trading_volume_btc": 0.0,
+                        "trading_volume_category": "ERROR",
+                        "trade_count": 0,
+                        "avg_trade_size": 0.0,
+                        "time_window_minutes": 5,
+                        "data_source": "error"
+                    })
+            else:
+                logger.warning("No recent trades available for volume calculation")
+                # Add no data indicators
+                volume_data.update({
+                    "trading_volume_btc": 0.0,
+                    "trading_volume_category": "NO_DATA",
+                    "trade_count": 0,
+                    "avg_trade_size": 0.0,
+                    "time_window_minutes": 5,
+                    "data_source": "no_trades"
+                })
             
             result = {
                 "volume_data": volume_data,

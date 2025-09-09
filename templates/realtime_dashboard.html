@@ -937,26 +937,36 @@
                         const tradingVol = parseFloat(market.trading_volume_btc);
                         const tradingCategory = market.trading_volume_category || 'N/A';
                         const tradeCount = market.trade_count || 0;
+                        const dataSource = market.data_source || 'unknown';
                         const timestamp = new Date().toLocaleTimeString();
                         
-                        let tradingDisplay = `${tradingVol.toFixed(2)} BTC (${tradingCategory})`;
-                        tradingDisplay += `<br><span style="font-size: 10px; color: #888;">${tradeCount} trades in 5m</span>`;
-                        tradingDisplay += `<br><span style="font-size: 9px; color: #00ff88;">📈 ACTUAL TRADING VOLUME</span>`;
-                        tradingDisplay += `<br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
-                        
-                        tradingVolumeElement.innerHTML = tradingDisplay;
-                        
-                        // Color coding based on trading volume category
-                        if (tradingCategory.includes('HIGH')) {
-                            tradingVolumeElement.className = 'data-value positive';
-                        } else if (tradingCategory.includes('LOW')) {
+                        // Handle different data states
+                        if (tradingCategory === 'ERROR') {
+                            tradingVolumeElement.innerHTML = 'API Error<br><span style="font-size: 9px; color: #ff6666;">❌ Failed to fetch trades</span>';
+                            tradingVolumeElement.className = 'data-value negative';
+                        } else if (tradingCategory === 'NO_DATA') {
+                            tradingVolumeElement.innerHTML = 'No trades<br><span style="font-size: 9px; color: #ffaa00;">⚠️ No recent trades</span>';
                             tradingVolumeElement.className = 'data-value negative';
                         } else {
-                            tradingVolumeElement.className = 'data-value';
+                            let tradingDisplay = `${tradingVol.toFixed(2)} BTC (${tradingCategory})`;
+                            tradingDisplay += `<br><span style="font-size: 10px; color: #888;">${tradeCount} trades in 5m</span>`;
+                            tradingDisplay += `<br><span style="font-size: 9px; color: #00ff88;">📈 ACTUAL TRADING VOLUME</span>`;
+                            tradingDisplay += `<br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
+                            
+                            tradingVolumeElement.innerHTML = tradingDisplay;
+                            
+                            // Color coding based on trading volume category
+                            if (tradingCategory.includes('HIGH')) {
+                                tradingVolumeElement.className = 'data-value positive';
+                            } else if (tradingCategory.includes('LOW')) {
+                                tradingVolumeElement.className = 'data-value negative';
+                            } else {
+                                tradingVolumeElement.className = 'data-value';
+                            }
                         }
                     } else {
-                        tradingVolumeElement.innerHTML = 'No trading data<br><span style="font-size: 9px; color: #ff6666;">❌ API Error</span>';
-                        tradingVolumeElement.className = 'data-value negative';
+                        tradingVolumeElement.innerHTML = 'Loading...<br><span style="font-size: 9px; color: #888;">⏳ Fetching data</span>';
+                        tradingVolumeElement.className = 'data-value';
                     }
                 }
                 
