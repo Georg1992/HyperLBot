@@ -286,11 +286,11 @@ class MarketConditionsAnalyzer:
         
         if not historical_context:
             factors.append("No historical context - limited insight")
-            risk_level = 1
+            risk_level = 0  # Reduced from 1 - don't block trading for missing historical context
             return {
                 "factors": factors,
                 "risk": risk_level, 
-                "risk_factors": ["Missing historical context"],
+                "risk_factors": [],  # Removed "Missing historical context" as blocking risk factor
                 "positive": False,
                 "positive_factors": []
             }
