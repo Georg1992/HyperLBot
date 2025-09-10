@@ -576,14 +576,15 @@ class MarketConditionsAnalyzer:
                     "reason": f"Neutral RSI (40-60) with low volatility, sideways trend, and low volume - dead zone"
                 }
             
-            # Dead Zone Scenario 6: VERY_LOW volatility + neutral RSI + psychological level (REGARDLESS of volume)
-            # This is the main deadzone - price stuck at key level with no movement potential
+            # Dead Zone Scenario 6: VERY_LOW volatility + neutral RSI + psychological level + SIDEWAYS trend
+            # Only deadzone if trend is sideways (no clear direction)
             if (volatility_category == "VERY_LOW" and 
                 40 <= rsi_5m <= 60 and  # Neutral RSI range
-                near_psychological_level):
+                near_psychological_level and
+                trend_direction in ["SIDEWAYS", "NEUTRAL"]):  # Only deadzone if no clear trend
                 return {
                     "is_dead_zone": True,
-                    "reason": f"Price stuck at psychological level {near_psychological_level} with VERY_LOW volatility and neutral RSI - deadzone regardless of volume"
+                    "reason": f"Price stuck at psychological level {near_psychological_level} with VERY_LOW volatility, neutral RSI, and sideways trend - deadzone"
                 }
             
             # Dead Zone Scenario 7: RSI 40-60 + psychological level + low volume
@@ -626,7 +627,7 @@ class MarketConditionsAnalyzer:
             logger.error(f"❌ Psychological levels calculation failed: {e}")
             return []
     
-    def _is_near_psychological_level(self, current_price: float, psychological_levels: list, tolerance: float = 0.001) -> str:
+    def _is_near_psychological_level(self, current_price: float, psychological_levels: list, tolerance: float = 0.00005) -> str:
         """Check if current price is near a psychological level"""
         try:
             for level in psychological_levels:

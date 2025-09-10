@@ -246,19 +246,34 @@ class DataFetchingConstants:
 class VolumeConstants:
     """Volume analysis constants"""
     
-    # Trading volume thresholds (USD/share amounts) - used by YahooDataFetcher
-    TRADING_VOLUME_EXTREMELY_HIGH = 500000    # 500K+ trading volume
-    TRADING_VOLUME_VERY_HIGH = 200000         # 200K+ trading volume  
-    TRADING_VOLUME_HIGH = 100000              # 100K+ trading volume
-    TRADING_VOLUME_ABOVE_AVERAGE = 50000      # 50K+ trading volume
-    TRADING_VOLUME_NORMAL = 20000             # 20K+ trading volume
-    TRADING_VOLUME_BELOW_AVERAGE = 10000      # 10K+ trading volume
-    TRADING_VOLUME_LOW = 5000                 # 5K+ trading volume
-    TRADING_VOLUME_VERY_LOW = 2000            # 2K+ trading volume
+    # YAHOO VOLUME THRESHOLDS (USD) - for market analysis
+    YAHOO_VOLUME_EXTREMELY_HIGH = 500000    # 500K+ USD trading volume
+    YAHOO_VOLUME_VERY_HIGH = 200000         # 200K+ USD trading volume  
+    YAHOO_VOLUME_HIGH = 100000              # 100K+ USD trading volume
+    YAHOO_VOLUME_ABOVE_AVERAGE = 50000      # 50K+ USD trading volume
+    YAHOO_VOLUME_NORMAL = 20000             # 20K+ USD trading volume
+    YAHOO_VOLUME_BELOW_AVERAGE = 10000      # 10K+ USD trading volume
+    YAHOO_VOLUME_LOW = 5000                 # 5K+ USD trading volume
+    YAHOO_VOLUME_VERY_LOW = 2000            # 2K+ USD trading volume
     
-    # Volume Multipliers
-    VOLUME_SURGE_MULTIPLIER = 3      # 300% of average for surge detection
-    VOLUME_DEPTH_ESTIMATE = 0.15     # 15% of depth as recent volume
+    # HYPERLIQUID ORDERBOOK DEPTH THRESHOLDS (BTC) - for liquidity assessment
+    # IMPORTANT: These are ORDERBOOK DEPTH thresholds, NOT trading volume!
+    # Hyperliquid API does not provide actual trading volume data.
+    # These measure liquidity available in top 5 bid/ask levels.
+    HYPERLIQUID_DEPTH_EXTREMELY_HIGH = 100.0  # 100+ BTC depth (rare, major events)
+    HYPERLIQUID_DEPTH_VERY_HIGH = 60.0        # 60-100 BTC depth (high liquidity)
+    HYPERLIQUID_DEPTH_HIGH = 40.0             # 40-60 BTC depth (good liquidity)
+    HYPERLIQUID_DEPTH_ABOVE_AVERAGE = 25.0    # 25-40 BTC depth (above normal)
+    HYPERLIQUID_DEPTH_NORMAL = 15.0           # 15-25 BTC depth (normal liquidity)
+    HYPERLIQUID_DEPTH_BELOW_AVERAGE = 10.0    # 10-15 BTC depth (below normal)
+    HYPERLIQUID_DEPTH_LOW = 5.0               # 5-10 BTC depth (low liquidity)
+    HYPERLIQUID_DEPTH_VERY_LOW = 2.0          # 2-5 BTC depth (very low)
+    
+    # VOLUME ANALYSIS PARAMETERS
+    VOLUME_SMOOTHING_PERIOD = 5               # 5-period moving average for noise reduction
+    VOLUME_SURGE_MULTIPLIER = 2.5             # 250% of average for surge detection
+    VOLUME_MOMENTUM_PERIOD = 10               # 10-period momentum calculation
+    VOLUME_CORRELATION_THRESHOLD = 0.3        # Minimum correlation with price movement
     
     # Standardized volume categories (used by all components)
     VOLUME_CATEGORY_EXTREMELY_HIGH = "EXTREMELY_HIGH"

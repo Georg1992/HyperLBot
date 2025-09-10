@@ -94,6 +94,20 @@ class TradingConfig:
             "min_spike_severity": "HIGH",
             "require_momentum_alignment": True
         },
+        "trend_following": {
+            "min_range_percentage": 0.003,  # 0.3% minimum range
+            "volatility_threshold": "moderate",
+            "confidence_threshold": 0.4,
+            "min_interval": 120,  # 2 minutes between trades
+            "max_leverage": 35,
+            "profit_target": 0.012,  # 1.2% profit target
+            "stop_loss": 0.006,  # 0.6% stop loss
+            "position_size": 0.15,  # 15% of balance
+            "trend_confirmation_required": True,
+            "min_trend_strength": "STRONG",
+            "momentum_alignment_required": True,
+            "description": "Optimized for strong trending markets with momentum confirmation"
+        },
     }
     
     # Default strategy

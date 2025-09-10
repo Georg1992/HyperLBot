@@ -168,7 +168,7 @@ class SessionOrchestrator:
                 return
             
             # Get market analysis
-            yahoo_analysis = market_data_service.get_yahoo_analysis(current_price)
+            yahoo_analysis = market_data_service.get_yahoo_analysis(current_price, current_strategy)
             if not yahoo_analysis or "error" in yahoo_analysis:
                 logger.warning("⚠️ Cannot generate initial prediction - no market analysis")
                 return
@@ -355,7 +355,7 @@ class SessionOrchestrator:
                     continue
                 
                 # Get market analysis
-                yahoo_analysis = market_data_service.get_yahoo_analysis(hyperliquid_price)
+                yahoo_analysis = market_data_service.get_yahoo_analysis(hyperliquid_price, current_strategy)
                 if not yahoo_analysis:
                     logger.warning("⚠️ Could not get market analysis, retrying...")
                     time.sleep(check_interval)

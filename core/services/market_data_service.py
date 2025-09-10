@@ -84,12 +84,12 @@ class MarketDataService:
             from core.market_data_manager import global_rsi_calculator
             return global_rsi_calculator._get_default_rsi_data()
     
-    def get_yahoo_analysis(self, hyperliquid_price: float = None) -> Dict[str, Any]:
+    def get_yahoo_analysis(self, hyperliquid_price: float = None, strategy_name: str = "standard") -> Dict[str, Any]:
         """Get market analysis from Yahoo Finance using centralized MarketDataManager"""
         try:
-            # Use centralized MarketDataManager for Yahoo data analysis
+            # Use centralized MarketDataManager for Yahoo data analysis with strategy-specific trend
             analysis = market_data_manager.get_yahoo_data_with_analysis(
-                self.historical_data_coordinator.yahoo_fetcher, "BTC", hyperliquid_price
+                self.historical_data_coordinator.yahoo_fetcher, "BTC", hyperliquid_price, strategy_name
             )
             
             if "error" not in analysis:
