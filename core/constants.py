@@ -148,14 +148,6 @@ class MagicNumbers:
     PRESSURE_HIGH_CONCENTRATION = 0.8    # High depth concentration threshold
     PRESSURE_LOW_CONCENTRATION = 0.6     # Low depth concentration threshold
     
-    # Orderbook depth thresholds (BTC amounts) - REALISTIC Bitcoin market levels
-    ORDERBOOK_DEPTH_EXTREMELY_HIGH = 100.0  # 100+ BTC depth (extremely high for Bitcoin)
-    ORDERBOOK_DEPTH_VERY_HIGH = 60.0        # 60-100 BTC depth
-    ORDERBOOK_DEPTH_HIGH = 40.0             # 40-60 BTC depth  
-    ORDERBOOK_DEPTH_ABOVE_AVERAGE = 25.0    # 25-40 BTC depth
-    ORDERBOOK_DEPTH_NORMAL = 15.0           # 15-25 BTC depth
-    ORDERBOOK_DEPTH_BELOW_AVERAGE = 10.0    # 10-15 BTC depth
-    ORDERBOOK_DEPTH_LOW = 5.0               # 5-10 BTC depth
     
     # Price fallbacks
     FALLBACK_BTC_PRICE = 50000.0
@@ -243,49 +235,7 @@ class DataFetchingConstants:
     CANDLE_CLOSE_OFFSET = 59999      # Add 59.999 seconds to close time
 
 
-class VolumeConstants:
-    """Volume analysis constants"""
-    
-    # YAHOO VOLUME THRESHOLDS (USD) - for market analysis
-    YAHOO_VOLUME_EXTREMELY_HIGH = 500000    # 500K+ USD trading volume
-    YAHOO_VOLUME_VERY_HIGH = 200000         # 200K+ USD trading volume  
-    YAHOO_VOLUME_HIGH = 100000              # 100K+ USD trading volume
-    YAHOO_VOLUME_ABOVE_AVERAGE = 50000      # 50K+ USD trading volume
-    YAHOO_VOLUME_NORMAL = 20000             # 20K+ USD trading volume
-    YAHOO_VOLUME_BELOW_AVERAGE = 10000      # 10K+ USD trading volume
-    YAHOO_VOLUME_LOW = 5000                 # 5K+ USD trading volume
-    YAHOO_VOLUME_VERY_LOW = 2000            # 2K+ USD trading volume
-    
-    # HYPERLIQUID ORDERBOOK DEPTH THRESHOLDS (BTC) - for liquidity assessment
-    # IMPORTANT: These are ORDERBOOK DEPTH thresholds, NOT trading volume!
-    # Hyperliquid API does not provide actual trading volume data.
-    # These measure liquidity available in top 5 bid/ask levels.
-    HYPERLIQUID_DEPTH_EXTREMELY_HIGH = 100.0  # 100+ BTC depth (rare, major events)
-    HYPERLIQUID_DEPTH_VERY_HIGH = 60.0        # 60-100 BTC depth (high liquidity)
-    HYPERLIQUID_DEPTH_HIGH = 40.0             # 40-60 BTC depth (good liquidity)
-    HYPERLIQUID_DEPTH_ABOVE_AVERAGE = 25.0    # 25-40 BTC depth (above normal)
-    HYPERLIQUID_DEPTH_NORMAL = 15.0           # 15-25 BTC depth (normal liquidity)
-    HYPERLIQUID_DEPTH_BELOW_AVERAGE = 10.0    # 10-15 BTC depth (below normal)
-    HYPERLIQUID_DEPTH_LOW = 5.0               # 5-10 BTC depth (low liquidity)
-    HYPERLIQUID_DEPTH_VERY_LOW = 2.0          # 2-5 BTC depth (very low)
-    
-    # VOLUME ANALYSIS PARAMETERS
-    VOLUME_SMOOTHING_PERIOD = 5               # 5-period moving average for noise reduction
-    VOLUME_SURGE_MULTIPLIER = 2.5             # 250% of average for surge detection
-    VOLUME_MOMENTUM_PERIOD = 10               # 10-period momentum calculation
-    VOLUME_CORRELATION_THRESHOLD = 0.3        # Minimum correlation with price movement
-    
-    # Standardized volume categories (used by all components)
-    VOLUME_CATEGORY_EXTREMELY_HIGH = "EXTREMELY_HIGH"
-    VOLUME_CATEGORY_VERY_HIGH = "VERY_HIGH"
-    VOLUME_CATEGORY_HIGH = "HIGH"
-    VOLUME_CATEGORY_ABOVE_AVERAGE = "ABOVE_AVERAGE"
-    VOLUME_CATEGORY_NORMAL = "NORMAL"
-    VOLUME_CATEGORY_BELOW_AVERAGE = "BELOW_AVERAGE"
-    VOLUME_CATEGORY_LOW = "LOW"
-    VOLUME_CATEGORY_VERY_LOW = "VERY_LOW"
-    VOLUME_CATEGORY_EXTREMELY_LOW = "EXTREMELY_LOW"
-    VOLUME_CATEGORY_UNKNOWN = "UNKNOWN"
+# VolumeConstants class removed - using CoinGecko volume data instead
 
 
 class TechnicalAnalysisConstants:
@@ -396,13 +346,13 @@ class VariabilityConstants:
     HIGH_VOLATILITY = 0.03           # 3.0% - active Bitcoin trading
     EXTREME_VOLATILITY = 0.08        # 8.0% - very volatile Bitcoin market
     
-    # 5-Minute Volatility Thresholds (for real-time trading) - REALISTIC Bitcoin 5m trading thresholds
-    # Based on statistical analysis: 95% of movements < 0.1%, adjusted for range-based calculation
-    VOLATILITY_5M_VERY_LOW = 0.0015   # 0.15% - tight ranging markets (very small moves)
-    VOLATILITY_5M_LOW = 0.0025        # 0.25% - low movement (quiet market, small moves)
-    VOLATILITY_5M_MODERATE = 0.0035   # 0.35% - moderate movement (normal trading, noticeable moves)
-    VOLATILITY_5M_HIGH = 0.0050       # 0.50% - high movement (active trading, significant moves)
-    VOLATILITY_5M_EXTREME = 0.0080    # 0.80% - extreme movement (volatile market, large moves)
+    # 5-Minute Volatility Thresholds (for real-time trading) - MORE SENSITIVE Bitcoin 5m trading thresholds
+    # Adjusted to be more sensitive to smaller movements and market changes
+    VOLATILITY_5M_VERY_LOW = 0.0005   # 0.05% - tight ranging markets (very small moves)
+    VOLATILITY_5M_LOW = 0.0010        # 0.10% - low movement (quiet market, small moves)
+    VOLATILITY_5M_MODERATE = 0.0018   # 0.18% - moderate movement (normal trading, noticeable moves)
+    VOLATILITY_5M_HIGH = 0.0028       # 0.28% - high movement (active trading, significant moves)
+    VOLATILITY_5M_EXTREME = 0.0040    # 0.40% - extreme movement (volatile market, large moves)
     
     # Trading Condition Scores
     OPTIMAL_TRADING_SCORE = 0.7      # 70% score for optimal conditions
@@ -466,7 +416,7 @@ class TimeConstants:
 # Global instances for easy import (continued from above)
 magic_numbers = MagicNumbers()
 data_constants = DataFetchingConstants()
-volume_constants = VolumeConstants()
+# volume_constants removed - using CoinGecko volume data instead
 technical_constants = TechnicalAnalysisConstants()
 trading_constants = TradingExecutionConstants()
 fee_constants = FeeConstants()

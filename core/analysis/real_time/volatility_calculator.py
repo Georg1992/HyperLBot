@@ -4,7 +4,6 @@ Volatility Calculator Module
 Centralized volatility calculations from different data sources
 """
 
-import statistics
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
@@ -46,9 +45,9 @@ class VolatilityCalculator:
                 percentile_90 = range_volatilities[int(n * 0.9)]
                 
                 # ENHANCED: Use weighted average that balances robustness with responsiveness
-                # 50% median (baseline), 30% 75th percentile (recent activity), 20% 90th percentile (significant moves)
-                # More conservative than before to avoid over-classifying moderate moves as high
-                robust_volatility = (median_volatility * 0.5) + (percentile_75 * 0.3) + (percentile_90 * 0.2)
+                # 30% median (baseline), 40% 75th percentile (recent activity), 30% 90th percentile (significant moves)
+                # More sensitive to recent activity and significant moves
+                robust_volatility = (median_volatility * 0.3) + (percentile_75 * 0.4) + (percentile_90 * 0.3)
                 
                 # ENHANCED: Also consider overall price movement for consistent trends
                 if len(candles) >= 5:
@@ -60,9 +59,9 @@ class VolatilityCalculator:
                         
                         # For consistent movements (not just one big candle), use a weighted average
                         # If overall movement is significant and consistent, boost the volatility
-                        if overall_movement > robust_volatility * 1.5:  # Overall movement is larger than individual candles (reduced threshold)
-                            # Use weighted average: 70% overall movement, 30% robust volatility (increased weight for overall movement)
-                            enhanced_volatility = (overall_movement * 0.7) + (robust_volatility * 0.3)
+                        if overall_movement > robust_volatility * 1.1:  # Overall movement is larger than individual candles (more sensitive threshold)
+                            # Use weighted average: 85% overall movement, 15% robust volatility (more responsive to overall movement)
+                            enhanced_volatility = (overall_movement * 0.85) + (robust_volatility * 0.15)
                             return round(enhanced_volatility, 6)
                 
                 return round(robust_volatility, 6)
