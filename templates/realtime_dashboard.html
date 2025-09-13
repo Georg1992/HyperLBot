@@ -445,6 +445,22 @@
                             <span class="data-label">Confidence:</span>
                             <span class="data-value" id="overview-conditions-confidence">Loading...</span>
                         </div>
+                        <div class="data-item">
+                            <span class="data-label">Fear & Greed:</span>
+                            <span class="data-value" id="overview-fear-greed-index">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Sentiment:</span>
+                            <span class="data-value" id="overview-sentiment-zone">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Whale Activity:</span>
+                            <span class="data-value" id="overview-whale-activity">Loading...</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">News Sentiment:</span>
+                            <span class="data-value" id="overview-news-sentiment">Loading...</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -503,12 +519,8 @@
                             <span class="data-value" id="market-rsi">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Orderbook Depth:</span>
-                            <span class="data-value" id="market-volume">Loading...</span>
-                        </div>
-                        <div class="data-item">
                             <span class="data-label">Trading Volume:</span>
-                            <span class="data-value" id="trading-volume">Loading...</span>
+                            <span class="data-value" id="market-volume">Loading...</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Volatility (5m):</span>
@@ -521,75 +533,35 @@
                     </div>
                 </div>
 
-                <!-- Trading Predictions Card -->
+                <!-- Candle Chart Card -->
                 <div class="card">
-                    <h2>🎯 Trading Predictions <span style="font-size: 14px; color: #4CAF50; font-weight: normal;">(Best Confidence)</span></h2>
+                    <h2>📊 Candle Analysis <span style="font-size: 14px; color: #4CAF50; font-weight: normal;">(Last 12 × 5m + Future 3)</span></h2>
                     <div style="font-size: 12px; color: #666; margin-bottom: 15px; font-style: italic;">
-                        Shows the prediction with the highest confidence score from all available predictions
+                        Historical candles (last 60 minutes) + Predicted future candles (next 15 minutes)
                     </div>
-                    <div id="predictions-container">
-                        <!-- Main Prediction Card -->
-                        <div class="prediction-main-card" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 15px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                <!-- Left Column: Trade Details -->
-                                <div class="prediction-trade-details">
-                                    <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #FFD700;">Trade Details</h3>
-                                    <div class="data-item">
-                                        <span class="data-label">Direction:</span>
-                                        <span class="data-value" id="prediction-direction">Waiting...</span>
-                                    </div>
-                                    <div class="data-item">
-                                        <span class="data-label">Entry Price:</span>
-                                        <span class="data-value" id="prediction-entry-price">N/A</span>
-                                    </div>
-                                    <div class="data-item">
-                                        <span class="data-label">Size (BTC):</span>
-                                        <span class="data-value" id="prediction-size-btc">N/A</span>
-                                    </div>
-                                    <div class="data-item">
-                                        <span class="data-label">Size (USD):</span>
-                                        <span class="data-value" id="prediction-size-usd">N/A</span>
-                                    </div>
-                                    <div class="data-item">
-                                        <span class="data-label">Stop Loss:</span>
-                                        <span class="data-value" id="prediction-stop-loss" style="color: #ff4444;">N/A</span>
-                                    </div>
-                                    <div class="data-item">
-                                        <span class="data-label">Take Profit:</span>
-                                        <span class="data-value" id="prediction-take-profit" style="color: #44ff44;">N/A</span>
-                                    </div>
+                    <div id="candle-chart-container">
+                        <!-- Candle Chart Canvas -->
+                        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 15px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+                            <canvas id="candle-chart" width="1600" height="800" style="width: 100%; max-width: 800px; height: 400px; background: rgba(0,0,0,0.2); border-radius: 8px; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"></canvas>
                                 </div>
                                 
-                                <!-- Right Column: Market Context -->
-                                <div class="prediction-market-context">
-                                    <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #FFD700;">Market Context</h3>
-                                    <div class="data-item">
-                                        <span class="data-label">RSI:</span>
-                                        <span class="data-value" id="prediction-rsi">N/A</span>
+                        <!-- Candle Data Table -->
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 15px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+                            <h3 style="margin: 0 0 15px 0; font-size: 14px; color: #FFD700;">Candle Data</h3>
+                            <div id="candle-data-table" style="max-height: 200px; overflow-y: auto;">
+                                <div style="text-align: center; color: #888; padding: 20px;">
+                                    <div style="font-size: 24px; margin-bottom: 10px;">📈</div>
+                                    <div><strong>Loading candle data...</strong></div>
+                                    <div style="font-size: 12px; margin-top: 8px;">
+                                        Waiting for market data to display historical and predicted candles.
                                     </div>
-                                    <div class="data-item">
-                                        <span class="data-label">Trend:</span>
-                                        <span class="data-value" id="prediction-trend">N/A</span>
-                                    </div>
-                                    <div class="data-item">
-                                        <span class="data-label">Confidence:</span>
-                                        <span class="data-value" id="prediction-confidence">N/A</span>
                                     </div>
                                 </div>
                             </div>
                             
-                            <!-- Full Width: Detailed Reasoning -->
-                            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);">
-                                <h3 style="margin: 0 0 10px 0; font-size: 14px; color: #FFD700;">Detailed Analysis</h3>
-                                <div class="data-item" style="display: block;">
-                                    <div id="prediction-reasoning" style="font-size: 11px; color: #ccc; line-height: 1.5; white-space: pre-line; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border-left: 3px solid #FFD700; max-height: 200px; overflow-y: auto;">Waiting for bot...</div>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <!-- Info Card -->
-                        <div class="prediction-info" style="padding: 12px; background: rgba(255,165,0,0.1); border-radius: 8px; border-left: 4px solid #FFA500; font-size: 12px;">
-                            🎯 <strong>Live Predictions:</strong> Shows structured trading predictions updated every 5s with exact BUY/SELL signals, position sizing, entry prices, and market context.
+                        <!-- Market Analysis Info -->
+                        <div style="padding: 12px; background: rgba(0,255,255,0.1); border-radius: 8px; border-left: 4px solid #00FFFF; font-size: 12px;">
+                            📊 <strong>Future Market Model:</strong> Shows last 12 historical 5-minute candles (60 minutes) + 2-3 predicted future candles (15 minutes) based on market analysis and trend patterns.
                         </div>
                     </div>
                 </div>
@@ -819,9 +791,14 @@
                         this.updateActivityLogs(data.logs);
                     }
                     
-                    // Update predictions
-                    if (data.predictions) {
-                        this.updatePredictions(data.predictions);
+                    // Update candle chart
+                    console.log('🕯️ Checking for candleData in data:', {
+                        hasCandleData: !!data.candleData,
+                        dataKeys: Object.keys(data),
+                        candleDataValue: data.candleData
+                    });
+                    if (data.candleData) {
+                        this.updateCandleChart(data.candleData);
                     }
                     
                     // Update trade history
@@ -897,78 +874,32 @@
                     console.log('📊 RSI set to N/A');
                 }
                 
-                // Update Orderbook Depth (separate panel)
+                // Update Trading Volume (calculated from orderbook depth)
                 const volumeElement = document.getElementById('market-volume');
-                if (market.volume_depth !== undefined) {
-                    const depth = parseFloat(market.volume_depth);
-                    const depthCategory = market.volume_category || 'N/A';
-                    const orderFlow = market.order_flow || 'NEUTRAL';
-                    const depthAnalysis = market.depth_analysis || 'UNKNOWN';
+                if (market.trading_volume_btc !== undefined) {
+                    const tradingVol = parseFloat(market.trading_volume_btc);
+                    const tradingCategory = market.trading_volume_category || 'N/A';
+                    const tradeCount = market.trade_count || 0;
+                    const dataSource = market.data_source || 'unknown';
                     const timestamp = new Date().toLocaleTimeString();
                     
-                    // Display orderbook depth only
-                    let depthDisplay = `${depth.toFixed(1)} BTC (${depthCategory})`;
+                    // Display trading volume
+                    let volumeDisplay = `${tradingVol.toFixed(1)} BTC (${tradingCategory})`;
                     
-                    // Add relative depth if available
-                    if (market.relative_volume !== undefined) {
-                        const relativeVol = parseFloat(market.relative_volume);
-                        const relativeText = relativeVol > 1.5 ? '📈' : relativeVol < 0.7 ? '📉' : '➡️';
-                        depthDisplay += ` ${relativeText}${relativeVol.toFixed(1)}x`;
-                    }
+                    volumeElement.innerHTML = `${volumeDisplay}<br><span style="font-size: 11px; color: #888;">Source: ${dataSource}</span><br><span style="font-size: 9px; color: #ffa500;">📊 TRADING VOLUME</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
                     
-                    volumeElement.innerHTML = `${depthDisplay}<br><span style="font-size: 11px; color: #888;">Flow: ${orderFlow} | Depth: ${depthAnalysis}</span><br><span style="font-size: 9px; color: #ffa500;">📊 ORDERBOOK DEPTH</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
-                    
-                    // Color coding based on depth category
-                    if (depthCategory.includes('HIGH')) {
+                    // Color coding based on volume category
+                    if (tradingCategory.includes('HIGH') || tradingCategory.includes('EXTREME')) {
                         volumeElement.className = 'data-value positive';
-                    } else if (depthCategory.includes('LOW')) {
+                    } else if (tradingCategory.includes('LOW') || tradingCategory === 'NO_DATA') {
                         volumeElement.className = 'data-value negative';
                     } else {
-                        volumeElement.className = 'data-value';
+                    volumeElement.className = 'data-value';
                     }
                 } else {
                     volumeElement.textContent = 'N/A';
                 }
                 
-                // Update Trading Volume (separate panel - if element exists)
-                const tradingVolumeElement = document.getElementById('trading-volume');
-                if (tradingVolumeElement) {
-                    if (market.trading_volume_btc !== undefined) {
-                        const tradingVol = parseFloat(market.trading_volume_btc);
-                        const tradingCategory = market.trading_volume_category || 'N/A';
-                        const tradeCount = market.trade_count || 0;
-                        const dataSource = market.data_source || 'unknown';
-                        const timestamp = new Date().toLocaleTimeString();
-                        
-                        // Handle different data states
-                        if (tradingCategory === 'ERROR') {
-                            tradingVolumeElement.innerHTML = 'API Error<br><span style="font-size: 9px; color: #ff6666;">❌ Failed to fetch trades</span>';
-                            tradingVolumeElement.className = 'data-value negative';
-                        } else if (tradingCategory === 'NO_DATA') {
-                            tradingVolumeElement.innerHTML = 'No trades<br><span style="font-size: 9px; color: #ffaa00;">⚠️ No recent trades</span>';
-                            tradingVolumeElement.className = 'data-value negative';
-                        } else {
-                            let tradingDisplay = `${tradingVol.toFixed(2)} BTC (${tradingCategory})`;
-                            tradingDisplay += `<br><span style="font-size: 10px; color: #888;">${tradeCount} trades in 5m</span>`;
-                            tradingDisplay += `<br><span style="font-size: 9px; color: #00ff88;">📈 ACTUAL TRADING VOLUME</span>`;
-                            tradingDisplay += `<br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
-                            
-                            tradingVolumeElement.innerHTML = tradingDisplay;
-                            
-                            // Color coding based on trading volume category
-                            if (tradingCategory.includes('HIGH')) {
-                                tradingVolumeElement.className = 'data-value positive';
-                            } else if (tradingCategory.includes('LOW')) {
-                                tradingVolumeElement.className = 'data-value negative';
-                            } else {
-                                tradingVolumeElement.className = 'data-value';
-                            }
-                        }
-                    } else {
-                        tradingVolumeElement.innerHTML = 'Loading...<br><span style="font-size: 9px; color: #888;">⏳ Fetching data</span>';
-                        tradingVolumeElement.className = 'data-value';
-                    }
-                }
                 
                 // Update Volatility - Show category only (no percentage)
                 const volatilityElement = document.getElementById('market-volatility');
@@ -1050,12 +981,128 @@
                     const confidenceValue = conditions.confidence || 0;
                     const confidencePercent = confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue;
                     overviewConfidenceElement.textContent = `${confidencePercent.toFixed(0)}%`;
+                    
+                    // UPDATE FEAR & GREED DATA
+                    if (conditions.sentiment_data) {
+                        const sentimentData = conditions.sentiment_data;
+                        const sentimentSignals = sentimentData.sentiment_signals || {};
+                        
+                        // Fear & Greed Index
+                        const fearGreedElement = document.getElementById('overview-fear-greed-index');
+                        const indexValue = sentimentData.index_value || 50;
+                        const classification = sentimentData.classification || 'Neutral';
+                        
+                        // Color code based on sentiment
+                        let fearGreedColor = 'trend-neutral';
+                        if (indexValue <= 25) {
+                            fearGreedColor = 'trend-strong-up'; // Extreme Fear = Green (buy opportunity)
+                        } else if (indexValue <= 45) {
+                            fearGreedColor = 'trend-up'; // Fear = Light Green
+                        } else if (indexValue <= 55) {
+                            fearGreedColor = 'trend-neutral'; // Neutral = Yellow
+                        } else if (indexValue <= 75) {
+                            fearGreedColor = 'trend-down'; // Greed = Light Red
+                        } else {
+                            fearGreedColor = 'trend-strong-down'; // Extreme Greed = Red (sell opportunity)
+                        }
+                        
+                        fearGreedElement.textContent = `${indexValue} (${classification})`;
+                        fearGreedElement.className = `data-value ${fearGreedColor}`;
+                        
+                        // Sentiment Zone
+                        const sentimentZoneElement = document.getElementById('overview-sentiment-zone');
+                        const sentimentZone = sentimentSignals.sentiment_zone || 'NEUTRAL';
+                        const tradingBias = sentimentSignals.trading_bias || 'NEUTRAL';
+                        
+                        let sentimentColor = 'trend-neutral';
+                        if (sentimentZone === 'EXTREME_FEAR') {
+                            sentimentColor = 'trend-strong-up';
+                        } else if (sentimentZone === 'FEAR') {
+                            sentimentColor = 'trend-up';
+                        } else if (sentimentZone === 'GREED') {
+                            sentimentColor = 'trend-down';
+                        } else if (sentimentZone === 'EXTREME_GREED') {
+                            sentimentColor = 'trend-strong-down';
+                        }
+                        
+                        sentimentZoneElement.textContent = `${sentimentZone} (${tradingBias})`;
+                        sentimentZoneElement.className = `data-value ${sentimentColor}`;
+                    } else {
+                        // No sentiment data
+                        document.getElementById('overview-fear-greed-index').textContent = 'N/A';
+                        document.getElementById('overview-sentiment-zone').textContent = 'N/A';
+                    }
+                    
+                    // UPDATE WHALE ANALYTICS DATA
+                    if (conditions.whale_analytics) {
+                        const whaleData = conditions.whale_analytics;
+                        const whaleActivity = whaleData.whale_activity || {};
+                        const sentiment = whaleData.sentiment || {};
+                        
+                        const whaleElement = document.getElementById('overview-whale-activity');
+                        const whaleCount = whaleActivity.whale_count || 0;
+                        const activityLevel = whaleActivity.activity_level || 'unknown';
+                        const sentimentClass = sentiment.classification || 'neutral';
+                        
+                        // Color code based on sentiment and activity
+                        let whaleColor = 'trend-neutral';
+                        if (sentimentClass === 'bullish' && activityLevel === 'high') {
+                            whaleColor = 'trend-strong-up';
+                        } else if (sentimentClass === 'bullish') {
+                            whaleColor = 'trend-up';
+                        } else if (sentimentClass === 'bearish' && activityLevel === 'high') {
+                            whaleColor = 'trend-strong-down';
+                        } else if (sentimentClass === 'bearish') {
+                            whaleColor = 'trend-down';
+                        }
+                        
+                        whaleElement.textContent = `${whaleCount} whales (${activityLevel}) - ${sentimentClass}`;
+                        whaleElement.className = `data-value ${whaleColor}`;
+                    } else {
+                        // No whale data
+                        document.getElementById('overview-whale-activity').textContent = 'N/A';
+                    }
+                    
+                    // UPDATE NEWS SENTIMENT DATA
+                    if (conditions.news_sentiment) {
+                        const newsData = conditions.news_sentiment;
+                        const sentiment = newsData.sentiment || {};
+                        const impact = newsData.impact || {};
+                        
+                        const newsElement = document.getElementById('overview-news-sentiment');
+                        const sentimentClass = sentiment.classification || 'neutral';
+                        const impactLevel = impact.impact_level || 'low';
+                        const bullishCount = sentiment.bullish_count || 0;
+                        const bearishCount = sentiment.bearish_count || 0;
+                        
+                        // Color code based on sentiment and impact
+                        let newsColor = 'trend-neutral';
+                        if (sentimentClass === 'bullish' && impactLevel === 'high') {
+                            newsColor = 'trend-strong-up';
+                        } else if (sentimentClass === 'bullish') {
+                            newsColor = 'trend-up';
+                        } else if (sentimentClass === 'bearish' && impactLevel === 'high') {
+                            newsColor = 'trend-strong-down';
+                        } else if (sentimentClass === 'bearish') {
+                            newsColor = 'trend-down';
+                        }
+                        
+                        newsElement.textContent = `${sentimentClass} (${impactLevel}) - ${bullishCount}B/${bearishCount}BE`;
+                        newsElement.className = `data-value ${newsColor}`;
+                    } else {
+                        // No news data
+                        document.getElementById('overview-news-sentiment').textContent = 'N/A';
+                    }
                 } else {
                     // No market conditions data in overview
                     document.getElementById('overview-conditions-status').textContent = 'N/A';
                     document.getElementById('overview-conditions-condition').textContent = 'N/A';
                     document.getElementById('overview-conditions-risk').textContent = 'N/A';
                     document.getElementById('overview-conditions-confidence').textContent = 'N/A';
+                    document.getElementById('overview-fear-greed-index').textContent = 'N/A';
+                    document.getElementById('overview-sentiment-zone').textContent = 'N/A';
+                    document.getElementById('overview-whale-activity').textContent = 'N/A';
+                    document.getElementById('overview-news-sentiment').textContent = 'N/A';
                 }
             }
             
@@ -1171,120 +1218,485 @@
                 container.scrollTop = container.scrollHeight;
             }
             
-            updatePredictions(predictions) {
-                if (predictions && predictions.length > 0) {
-                    // Sort predictions by confidence (highest first) and select the best one
-                    const sortedPredictions = predictions.sort((a, b) => {
-                        // Handle different confidence formats (0-1 scale vs 0-100 scale)
-                        let confidenceA = parseFloat(a.confidence || 0);
-                        let confidenceB = parseFloat(b.confidence || 0);
-                        
-                        // If confidence is in 0-1 scale, convert to 0-100 for comparison
-                        if (confidenceA <= 1 && confidenceB <= 1) {
-                            confidenceA *= 100;
-                            confidenceB *= 100;
-                        }
-                        
-                        return confidenceB - confidenceA; // Highest confidence first
+            updateCandleChart(candleData) {
+                console.log('🕯️ updateCandleChart called with:', candleData);
+                
+                if (candleData && candleData.historical && candleData.predicted) {
+                    // Draw the candle chart
+                    this.drawCandleChart(candleData.historical, candleData.predicted);
+                    
+                    // Update the candle data table
+                    this.updateCandleDataTable(candleData.historical, candleData.predicted);
+                    
+                    console.log(`📊 Dashboard: Updated candle chart with ${candleData.historical.length} historical + ${candleData.predicted.length} predicted candles`);
+                } else {
+                    console.log('🕯️ Candle data structure:', {
+                        hasCandleData: !!candleData,
+                        hasHistorical: candleData ? !!candleData.historical : false,
+                        hasPredicted: candleData ? !!candleData.predicted : false,
+                        candleDataKeys: candleData ? Object.keys(candleData) : 'null'
                     });
                     
-                    const bestPrediction = sortedPredictions[0];
-                    const predictionData = bestPrediction.prediction_data || bestPrediction;
-                    
-                    // Update structured prediction fields with exact format (FIXED MAPPING)
-                    this.updateElement('prediction-direction', bestPrediction.direction || predictionData.direction || 'N/A');
-                    this.updateElement('prediction-size-btc', bestPrediction.size_btc ? bestPrediction.size_btc.toFixed(6) : (predictionData.size_btc ? predictionData.size_btc.toFixed(6) : 'N/A'));
-                    this.updateElement('prediction-size-usd', bestPrediction.size_usd ? `$${bestPrediction.size_usd.toFixed(0)}` : (predictionData.size_usd ? `$${predictionData.size_usd.toFixed(0)}` : 'N/A'));
-                    this.updateElement('prediction-entry-price', bestPrediction.entry_price ? `$${bestPrediction.entry_price.toFixed(2)}` : (predictionData.entry_price ? `$${predictionData.entry_price.toFixed(2)}` : 'N/A'));
-                    this.updateElement('prediction-stop-loss', bestPrediction.stop_loss ? `$${bestPrediction.stop_loss.toFixed(2)}` : (predictionData.order_structure?.stop_loss ? `$${predictionData.order_structure.stop_loss.toFixed(2)}` : 'N/A'));
-                    this.updateElement('prediction-take-profit', bestPrediction.take_profit ? `$${bestPrediction.take_profit.toFixed(2)}` : (predictionData.order_structure?.take_profit ? `$${predictionData.order_structure.take_profit.toFixed(2)}` : 'N/A'));
-                    // Use REAL-TIME market data for Market Context (not static prediction data)
-                    // Get real-time RSI from market data (same as main dashboard)
-                    const realTimeRsi = document.getElementById('market-rsi')?.textContent || 'N/A';
-                    this.updateElement('prediction-rsi', realTimeRsi !== 'N/A' ? realTimeRsi : (predictionData.rsi_at_prediction ? predictionData.rsi_at_prediction.toFixed(1) : 'N/A'));
-                    
-                    // Get real-time trend from market data (same as main dashboard)
-                    const realTimeTrend = document.getElementById('market-overall-trend')?.textContent || 'N/A';
-                    this.updateElement('prediction-trend', realTimeTrend !== 'N/A' ? realTimeTrend : (predictionData.trend_at_prediction || predictionData.trend || 'N/A'));
-                    // Convert confidence to percentage (0.0-1.0 scale to 0-100%)
-                    const confidenceValue = predictionData.confidence || bestPrediction.confidence || 0;
-                    const confidencePercent = confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue;
-                    this.updateElement('prediction-confidence', `${confidencePercent.toFixed(1)}%`);
-                    // Handle multi-line reasoning with proper formatting
-                    const reasoning = bestPrediction.reasoning || predictionData.reasoning || bestPrediction.reason || 'No reasoning available';
-                    const reasoningElement = document.getElementById('prediction-reasoning');
-                    if (reasoningElement) {
-                        reasoningElement.textContent = reasoning;
-                        reasoningElement.style.whiteSpace = 'pre-line'; // Preserve line breaks
-                    }
-                    
-                    // Log the best prediction selection for debugging
-                    const bestConfidence = parseFloat(bestPrediction.confidence || 0);
-                    const normalizedConfidence = bestConfidence <= 1 ? bestConfidence * 100 : bestConfidence;
-                    console.log(`🎯 Dashboard: Selected best prediction with ${normalizedConfidence.toFixed(1)}% confidence from ${predictions.length} available predictions`);
-                    if (predictions.length > 1) {
-                        console.log(`📊 Available predictions:`, predictions.map(p => {
-                            const conf = parseFloat(p.confidence || 0);
-                            const normConf = conf <= 1 ? conf * 100 : conf;
-                            return {
-                                type: p.type || p.direction,
-                                confidence: normConf.toFixed(1) + '%',
-                                reason: p.reason || p.reasoning
-                            };
-                        }));
-                    }
-                    
-                    // Update direction color
-                    const directionElement = document.getElementById('prediction-direction');
-                    if (directionElement) {
-                        const direction = (predictionData.direction || bestPrediction.type || '').toUpperCase();
-                        if (direction.includes('BUY')) {
-                            directionElement.className = 'data-value trend-up';
-                        } else if (direction.includes('SELL')) {
-                            directionElement.className = 'data-value trend-down';
-                        } else {
-                            directionElement.className = 'data-value trend-neutral';
-                        }
-                    }
-                    
-                    // Update confidence color
-                    const confidenceElement = document.getElementById('prediction-confidence');
-                    if (confidenceElement) {
-                        const confidence = parseFloat(predictionData.confidence ? predictionData.confidence : bestPrediction.confidence || 0);
-                        if (confidence > 70) {
-                            confidenceElement.className = 'data-value trend-up';
-                        } else if (confidence > 50) {
-                            confidenceElement.className = 'data-value';
-                        } else {
-                            confidenceElement.className = 'data-value trend-down';
-                        }
-                    }
-                    
-                    // Update trend color
-                    const trendElement = document.getElementById('prediction-trend');
-                    if (trendElement) {
-                        const trend = (predictionData.trend_at_prediction || predictionData.trend || '').toUpperCase();
-                        if (trend.includes('UP')) {
-                            trendElement.className = 'data-value trend-up';
-                        } else if (trend.includes('DOWN')) {
-                            trendElement.className = 'data-value trend-down';
-                        } else {
-                            trendElement.className = 'data-value trend-neutral';
-                        }
-                    }
-                } else {
-                    // No predictions available - update new structured fields
-                    this.updateElement('prediction-direction', '⚪ Waiting...');
-                    this.updateElement('prediction-size-btc', 'N/A');
-                    this.updateElement('prediction-size-usd', 'N/A');
-                    this.updateElement('prediction-entry-price', 'N/A');
-                    this.updateElement('prediction-stop-loss', 'N/A');
-                    this.updateElement('prediction-take-profit', 'N/A');
-                    this.updateElement('prediction-rsi', 'N/A');
-                    this.updateElement('prediction-trend', 'N/A');
-                    this.updateElement('prediction-confidence', 'N/A');
-                    this.updateElement('prediction-reasoning', 'Waiting for bot...');
+                    // No candle data available
+                    this.updateElement('candle-data-table', `
+                        <div style="text-align: center; color: #888; padding: 20px;">
+                            <div style="font-size: 24px; margin-bottom: 10px;">📈</div>
+                            <div><strong>Loading candle data...</strong></div>
+                            <div style="font-size: 12px; margin-top: 8px;">
+                                Waiting for market data to display historical and predicted candles.
+                            </div>
+                        </div>
+                    `);
                 }
+            }
+            
+            drawCandleChart(historicalCandles, predictedCandles) {
+                const canvas = document.getElementById('candle-chart');
+                if (!canvas) return;
+                
+                const ctx = canvas.getContext('2d');
+                
+                // Fix canvas scaling for crisp rendering
+                const devicePixelRatio = window.devicePixelRatio || 1;
+                const rect = canvas.getBoundingClientRect();
+                
+                canvas.width = rect.width * devicePixelRatio;
+                canvas.height = rect.height * devicePixelRatio;
+                
+                ctx.scale(devicePixelRatio, devicePixelRatio);
+                canvas.style.width = rect.width + 'px';
+                canvas.style.height = rect.height + 'px';
+                
+                const width = rect.width;
+                const height = rect.height;
+                
+                // Check if we have real data
+                if (!historicalCandles || historicalCandles.length === 0 || 
+                    (historicalCandles.length > 0 && historicalCandles[0].open === 0)) {
+                    // Clear canvas with darker background
+                    ctx.fillStyle = 'rgba(10, 10, 15, 0.98)';
+                    ctx.fillRect(0, 0, width, height);
+                    
+                    // Draw error background box
+                    const boxWidth = 400;
+                    const boxHeight = 120;
+                    const boxX = (width - boxWidth) / 2;
+                    const boxY = (height - boxHeight) / 2;
+                    
+                    // Error box background
+                    ctx.fillStyle = 'rgba(40, 40, 50, 0.95)';
+                    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+                    
+                    // Error box border
+                    ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
+                    
+                    // Main error message - bright red
+                    ctx.fillStyle = '#FF4444';
+                    ctx.font = 'bold 18px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText('❌ NO REAL DATA AVAILABLE', width / 2, boxY + 35);
+                    
+                    // Subtitle - bright white
+                    ctx.fillStyle = '#FFFFFF';
+                    ctx.font = 'bold 14px Arial';
+                    ctx.fillText('Hyperliquid API failed to provide candle data', width / 2, boxY + 60);
+                    
+                    // Instructions - light gray
+                    ctx.fillStyle = '#CCCCCC';
+                    ctx.font = '12px Arial';
+                    ctx.fillText('Check logs for details', width / 2, boxY + 85);
+                    return;
+                }
+                
+                // Clear canvas with professional dark background
+                ctx.fillStyle = 'rgba(15, 15, 25, 1.0)';
+                ctx.fillRect(0, 0, width, height);
+                
+                // Add subtle gradient for depth
+                const gradient = ctx.createLinearGradient(0, 0, 0, height);
+                gradient.addColorStop(0, 'rgba(25, 25, 35, 0.3)');
+                gradient.addColorStop(1, 'rgba(10, 10, 20, 0.3)');
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, width, height);
+                
+                // Calculate candle dimensions first
+                const totalCandles = historicalCandles.length + predictedCandles.length;
+                const candleWidth = width / totalCandles;
+                
+                // Draw professional grid with anti-aliasing
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                
+                // Minor grid lines - very subtle
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineWidth = 0.5;
+                
+                // Horizontal grid lines (price levels) - 10 levels for clean look
+                for (let i = 0; i <= 10; i++) {
+                    const y = (height / 10) * i;
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(width, y);
+                    ctx.stroke();
+                }
+                
+                // Vertical grid lines - align to candle boundaries
+                for (let i = 0; i <= totalCandles; i++) {
+                    const x = i * candleWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                }
+                
+                // Major grid lines (every 2nd line for better visibility)
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                ctx.lineWidth = 1;
+                
+                // Major horizontal lines
+                for (let i = 0; i <= 10; i += 2) {
+                    const y = (height / 10) * i;
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(width, y);
+                    ctx.stroke();
+                }
+                
+                // Major vertical lines (every 3rd candle)
+                for (let i = 0; i <= totalCandles; i += 3) {
+                    const x = i * candleWidth;
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, height);
+                    ctx.stroke();
+                }
+                
+                // Calculate price range with some padding
+                const allCandles = [...historicalCandles, ...predictedCandles];
+                const prices = allCandles.flatMap(c => [c.open, c.high, c.low, c.close]);
+                const minPrice = Math.min(...prices);
+                const maxPrice = Math.max(...prices);
+                const priceRange = maxPrice - minPrice;
+                const padding = priceRange * 0.1; // 10% padding
+                const adjustedMinPrice = minPrice - padding;
+                const adjustedMaxPrice = maxPrice + padding;
+                const adjustedPriceRange = adjustedMaxPrice - adjustedMinPrice;
+                
+                // Draw price labels on the right with high contrast
+                ctx.fillStyle = '#FFFFFF';  // Pure white for maximum contrast
+                ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
+                ctx.textAlign = 'right';
+                
+                // Add text shadow for better readability
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.shadowBlur = 2;
+                ctx.shadowOffsetX = 1;
+                ctx.shadowOffsetY = 1;
+                
+                // Draw price labels for major grid lines (every 2nd line)
+                for (let i = 0; i <= 10; i += 2) {
+                    const price = adjustedMaxPrice - (adjustedPriceRange * i / 10);
+                    const y = (height / 10) * i + 5;
+                    
+                    // Format price with appropriate decimal places
+                    let formattedPrice;
+                    if (price >= 1000) {
+                        formattedPrice = price.toLocaleString('en-US', { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 0 
+                        });
+                        } else {
+                        formattedPrice = price.toLocaleString('en-US', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                        });
+                    }
+                    
+                    ctx.fillText(formattedPrice, width - 15, y);
+                }
+                
+                // Draw minor price labels for better granularity
+                ctx.fillStyle = '#E0E0E0';  // Light gray for minor labels
+                ctx.font = 'bold 13px Arial';
+                for (let i = 1; i <= 9; i += 2) {
+                    const price = adjustedMaxPrice - (adjustedPriceRange * i / 10);
+                    const y = (height / 10) * i + 4;
+                    
+                    let formattedPrice;
+                    if (price >= 1000) {
+                        formattedPrice = price.toLocaleString('en-US', { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 0 
+                        });
+                        } else {
+                        formattedPrice = price.toLocaleString('en-US', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                        });
+                    }
+                    
+                    ctx.fillText(formattedPrice, width - 12, y);
+                }
+                
+                // Reset shadow
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+                
+                // Draw historical candles (last 12)
+                const historicalStartX = 0;
+                
+                historicalCandles.forEach((candle, index) => {
+                    const x = historicalStartX + (index * candleWidth);
+                    this.drawCandle(ctx, candle, x, candleWidth, height, adjustedMinPrice, adjustedPriceRange, false);
+                });
+                
+                // Draw predicted candles (next 3)
+                const predictedStartX = historicalCandles.length * candleWidth;
+                predictedCandles.forEach((candle, index) => {
+                    const x = predictedStartX + (index * candleWidth);
+                    this.drawCandle(ctx, candle, x, candleWidth, height, adjustedMinPrice, adjustedPriceRange, true);
+                });
+                
+                // Draw separator line between historical and predicted
+                ctx.strokeStyle = 'rgba(0,255,255,0.6)';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([8, 4]);
+                ctx.beginPath();
+                ctx.moveTo(predictedStartX, 0);
+                ctx.lineTo(predictedStartX, height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Add current price indicator
+                if (historicalCandles.length > 0) {
+                    const lastCandle = historicalCandles[historicalCandles.length - 1];
+                    const currentPrice = lastCandle.close;
+                    const currentPriceY = height - ((currentPrice - adjustedMinPrice) / adjustedPriceRange) * height;
+                    
+                    // Draw current price line
+                    ctx.strokeStyle = 'rgba(0,255,255,0.9)';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([3, 3]);
+                    ctx.beginPath();
+                    ctx.moveTo(0, currentPriceY);
+                    ctx.lineTo(width, currentPriceY);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    
+                    // Draw current price label with background
+                    const priceText = currentPrice.toLocaleString('en-US', { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                    });
+                    
+                    // Draw background rectangle for price label
+                    ctx.fillStyle = 'rgba(0,255,255,0.25)';
+                    ctx.fillRect(8, currentPriceY - 20, priceText.length * 9 + 12, 18);
+                    
+                    // Draw price text with shadow for better readability
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                    ctx.shadowBlur = 2;
+                    ctx.shadowOffsetX = 1;
+                    ctx.shadowOffsetY = 1;
+                    ctx.fillStyle = '#00FFFF';  // Bright cyan
+                    ctx.font = 'bold 14px Arial';
+                    ctx.textAlign = 'left';
+                    ctx.fillText(priceText, 16, currentPriceY - 6);
+                    
+                    // Reset shadow
+                    ctx.shadowColor = 'transparent';
+                    ctx.shadowBlur = 0;
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 0;
+                }
+                
+                // Draw time labels at the bottom with high contrast
+                ctx.fillStyle = '#FFFFFF';  // Pure white
+                ctx.font = 'bold 14px "Segoe UI", Arial, sans-serif';
+                ctx.textAlign = 'center';
+                
+                // Add text shadow for time labels
+                ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+                ctx.shadowBlur = 2;
+                ctx.shadowOffsetX = 1;
+                ctx.shadowOffsetY = 1;
+                
+                // Add time labels for every 3rd candle
+                for (let i = 0; i < historicalCandles.length; i += 3) {
+                    const candle = historicalCandles[i];
+                    const x = historicalStartX + (i * candleWidth) + (candleWidth / 2);
+                    const y = height - 10;
+                    
+                    // Convert timestamp to time string
+                    const date = new Date(candle.timestamp * 1000);
+                    const timeString = date.toLocaleTimeString('en-US', { 
+                        hour12: false, 
+                        hour: '2-digit', 
+                        minute: '2-digit' 
+                    });
+                    
+                    ctx.fillText(timeString, x, y);
+                }
+                
+                // Add "NOW" label for the last candle
+                if (historicalCandles.length > 0) {
+                    const lastCandleX = historicalStartX + ((historicalCandles.length - 1) * candleWidth) + (candleWidth / 2);
+                    ctx.fillStyle = '#00FFFF';  // Bright cyan
+                    ctx.font = 'bold 13px Arial';
+                    ctx.fillText('NOW', lastCandleX, height - 10);
+                }
+                
+                // Reset shadow
+                ctx.shadowColor = 'transparent';
+                ctx.shadowBlur = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+            }
+            
+            drawCandle(ctx, candle, x, width, height, minPrice, priceRange, isPredicted) {
+                const candleWidth = width * 0.75; // Slightly wider candles
+                const centerX = x + (width / 2);
+                
+                // Enable anti-aliasing for smooth rendering
+                ctx.imageSmoothingEnabled = true;
+                ctx.imageSmoothingQuality = 'high';
+                
+                // Calculate Y positions
+                const highY = height - ((candle.high - minPrice) / priceRange) * height;
+                const lowY = height - ((candle.low - minPrice) / priceRange) * height;
+                const openY = height - ((candle.open - minPrice) / priceRange) * height;
+                const closeY = height - ((candle.close - minPrice) / priceRange) * height;
+                
+                const isGreen = candle.close >= candle.open;
+                
+                // Set colors based on candle type - match Hyperliquid style
+                let wickColor, bodyColor, borderColor;
+                if (isPredicted) {
+                    wickColor = '#00FFFF';
+                    bodyColor = isGreen ? 'rgba(0,255,255,0.4)' : 'rgba(255,0,255,0.4)';
+                    borderColor = '#00FFFF';
+                } else {
+                    // Professional colors like Hyperliquid with better contrast
+                    wickColor = isGreen ? '#00E676' : '#FF5252'; // Brighter green/red
+                    bodyColor = isGreen ? 'rgba(0,230,118,0.95)' : 'rgba(255,82,82,0.95)';
+                    borderColor = isGreen ? '#00E676' : '#FF5252';
+                }
+                
+                // Draw wick with smooth rendering
+                ctx.strokeStyle = wickColor;
+                ctx.lineWidth = 1.5;
+                ctx.lineCap = 'round';
+                ctx.beginPath();
+                ctx.moveTo(centerX, highY);
+                ctx.lineTo(centerX, lowY);
+                ctx.stroke();
+                
+                // Draw body with rounded corners
+                const bodyTop = Math.min(openY, closeY);
+                const bodyHeight = Math.abs(closeY - openY);
+                
+                // Fill body with gradient for depth
+                const bodyGradient = ctx.createLinearGradient(centerX - candleWidth/2, bodyTop, centerX + candleWidth/2, bodyTop);
+                if (isGreen) {
+                    bodyGradient.addColorStop(0, 'rgba(0,230,118,0.9)');
+                    bodyGradient.addColorStop(1, 'rgba(0,200,83,0.9)');
+                } else {
+                    bodyGradient.addColorStop(0, 'rgba(255,82,82,0.9)');
+                    bodyGradient.addColorStop(1, 'rgba(255,23,68,0.9)');
+                }
+                
+                ctx.fillStyle = bodyGradient;
+                ctx.fillRect(centerX - candleWidth/2, bodyTop, candleWidth, Math.max(bodyHeight, 1));
+                
+                // Draw body border with smooth edges
+                ctx.strokeStyle = borderColor;
+                ctx.lineWidth = 1;
+                ctx.lineCap = 'round';
+                ctx.strokeRect(centerX - candleWidth/2, bodyTop, candleWidth, Math.max(bodyHeight, 1));
+                
+                // Draw open/close ticks for better clarity (like Hyperliquid)
+                if (bodyHeight < 2) { // Very small body, draw ticks
+                    // Open tick (left side)
+                    ctx.strokeStyle = wickColor;
+                    ctx.lineWidth = 2;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(centerX - candleWidth/2 - 3, openY);
+                    ctx.lineTo(centerX - candleWidth/2, openY);
+                    ctx.stroke();
+                    
+                    // Close tick (right side)
+                    ctx.beginPath();
+                    ctx.moveTo(centerX + candleWidth/2, closeY);
+                    ctx.lineTo(centerX + candleWidth/2 + 3, closeY);
+                    ctx.stroke();
+                }
+            }
+            
+            updateCandleDataTable(historicalCandles, predictedCandles) {
+                const tableContainer = document.getElementById('candle-data-table');
+                if (!tableContainer) return;
+                
+                let tableHTML = `
+                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+                        <thead>
+                            <tr style="background: rgba(255,255,255,0.1);">
+                                <th style="padding: 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.2);">Type</th>
+                                <th style="padding: 8px; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.2);">Time</th>
+                                <th style="padding: 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.2);">Open</th>
+                                <th style="padding: 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.2);">High</th>
+                                <th style="padding: 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.2);">Low</th>
+                                <th style="padding: 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.2);">Close</th>
+                                <th style="padding: 8px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.2);">Volume</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                // Add historical candles
+                historicalCandles.forEach((candle, index) => {
+                    const isGreen = candle.close >= candle.open;
+                    const color = isGreen ? '#00FF00' : '#FF0000';
+                    tableHTML += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1);">
+                            <td style="padding: 6px; color: #FFD700;">H${index + 1}</td>
+                            <td style="padding: 6px; color: #ccc;">${new Date(candle.timestamp).toLocaleTimeString()}</td>
+                            <td style="padding: 6px; text-align: right; color: #ccc;">$${candle.open.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right; color: #00FF00;">$${candle.high.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right; color: #FF0000;">$${candle.low.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right; color: ${color};">$${candle.close.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right; color: #ccc;">${candle.volume.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+                
+                // Add predicted candles
+                predictedCandles.forEach((candle, index) => {
+                    const isGreen = candle.close >= candle.open;
+                    const color = isGreen ? '#00FFFF' : '#FF00FF';
+                    tableHTML += `
+                        <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); background: rgba(0,255,255,0.1);">
+                            <td style="padding: 6px; color: #00FFFF; font-weight: bold;">P${index + 1}</td>
+                            <td style="padding: 6px; color: #00FFFF;">${new Date(candle.timestamp).toLocaleTimeString()}</td>
+                            <td style="padding: 6px; text-align: right; color: #00FFFF;">$${candle.open.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right; color: #00FFFF;">$${candle.high.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right; color: #00FFFF;">$${candle.low.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right; color: ${color}; font-weight: bold;">$${candle.close.toFixed(2)}</td>
+                            <td style="padding: 6px; text-align: right; color: #00FFFF;">${candle.volume.toFixed(2)}</td>
+                        </tr>
+                    `;
+                });
+                
+                tableHTML += `
+                        </tbody>
+                    </table>
+                `;
+                
+                tableContainer.innerHTML = tableHTML;
             }
             
             updateTradeHistory(trades) {

@@ -1,13 +1,8 @@
 import requests
-import json
 import time
 from typing import Dict, Any, Optional, List
 from loguru import logger
 from config.config import TradingConfig
-
-# Import analysis modules
-import statistics # Added for enhanced volatility analysis
-# OrderbookDataFetcher removed - functionality moved to dedicated calculators
 
 class HyperliquidAPI:
     """Hyperliquid API client - simplified to only used methods (dead trading code eliminated)"""
@@ -154,6 +149,78 @@ class HyperliquidAPI:
 
     # get_pressure() REMOVED - Pressure logic moved to PressureCalculator for clean architecture
     # MarketDataManager now handles pressure analysis using PressureCalculator delegation
+
+    def get_historical_candles(self, symbol: str = None, interval: str = "1m", limit: int = 12) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get historical candle data from Hyperliquid API
+        
+        Args:
+            symbol: Trading symbol (default: BTC)
+            interval: Candle interval (1m, 5m, 1h, 1d)
+            limit: Number of candles to retrieve
+            
+        Returns:
+            List of candle dictionaries with OHLCV data
+        """
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Hyperliquid API endpoint for historical data
+            url = f"{self.base_url}/info"
+            
+            # Calculate time range based on interval
+            interval_minutes = {
+                "1m": 1,
+                "5m": 5,
+                "1h": 60,
+                "1d": 1440
+            }.get(interval, 1)
+            
+            # Request payload for historical candles
+            payload = {
+                "type": "candleSnapshot",
+                "req": {
+                    "coin": symbol,
+                    "interval": interval,
+                    "startTime": int((time.time() - (limit * interval_minutes * 60)) * 1000),  # Convert to milliseconds
+                    "endTime": int(time.time() * 1000)  # Convert to milliseconds
+                }
+            }
+            
+            logger.info(f"🕯️ Requesting {limit} {interval} candles for {symbol}")
+            logger.debug(f"🕯️ Payload: {payload}")
+            
+            response = self.session.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            
+            data = response.json()
+            logger.info(f"🕯️ Hyperliquid API response: {len(data) if isinstance(data, list) else 'not a list'}")
+            # Hyperliquid returns candles directly as a list
+            if isinstance(data, list) and len(data) > 0:
+                candles = data
+                
+                # Convert to our format and take the last 'limit' candles
+                formatted_candles = []
+                for candle in candles[-limit:]:
+                    formatted_candle = {
+                        "open": float(candle.get("o", "0")),
+                        "high": float(candle.get("h", "0")),
+                        "low": float(candle.get("l", "0")),
+                        "close": float(candle.get("c", "0")),
+                        "volume": float(candle.get("v", "0")),
+                        "timestamp": int(candle.get("t", time.time() * 1000)) // 1000  # Convert ms to seconds
+                    }
+                    formatted_candles.append(formatted_candle)
+                
+                logger.debug(f"📊 Fetched {len(formatted_candles)} candles from Hyperliquid for {symbol}")
+                return formatted_candles
+            else:
+                logger.warning(f"⚠️ No candles data in Hyperliquid response: {data}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to fetch Hyperliquid candles: {e}")
+            return None
 
     # ==================================================================================
     # ALL TRADING METHODS REMOVED - HyperliquidSimulator handles all trading operations
