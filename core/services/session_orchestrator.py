@@ -411,12 +411,35 @@ class SessionOrchestrator:
             volume_data = hyperliquid_data.get("volume_data", {})
             pressure_data = hyperliquid_data.get("pressure_data", {})
             
-            # Get 5-minute volatility from yahoo_analysis (calculated by MarketDataManager using VolatilityCalculator)
-            volatility_5m_data = {
-                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                "volatility_category": yahoo_analysis.get("volatility_5m_category", "UNKNOWN"),
-                "volatility_trend": yahoo_analysis.get("volatility_5m_trend", "UNKNOWN")
-            }
+            # Get 5-minute volatility from Hyperliquid REAL-TIME data (not stale Yahoo data)
+            try:
+                # Fetch real-time Hyperliquid candles for accurate volatility calculation
+                hyperliquid_candles = market_data_service.hyperliquid_api.get_historical_candles("BTC", "5m", 12)
+                
+                if hyperliquid_candles and len(hyperliquid_candles) >= 3:
+                    # Use REAL Hyperliquid data for volatility calculation
+                    volatility_5m_data = market_data_manager.get_hyperliquid_volatility_analysis(
+                        hyperliquid_candles, "BTC", strategy_name
+                    )
+                    logger.info(f"📊 Using Hyperliquid volatility: {volatility_5m_data.get('volatility_5m_category', 'UNKNOWN')}")
+                else:
+                    # Fallback to Yahoo data if Hyperliquid fails
+                    logger.warning("⚠️ Hyperliquid candles unavailable, falling back to Yahoo volatility")
+                    volatility_5m_data = {
+                        "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                        "volatility_category": yahoo_analysis.get("volatility_5m_category", "UNKNOWN"),
+                        "volatility_trend": yahoo_analysis.get("volatility_5m_trend", "UNKNOWN"),
+                        "data_source": "yahoo_fallback"
+                    }
+            except Exception as e:
+                logger.error(f"❌ Hyperliquid volatility calculation failed: {e}")
+                # Fallback to Yahoo data
+                volatility_5m_data = {
+                    "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                    "volatility_category": yahoo_analysis.get("volatility_5m_category", "UNKNOWN"),
+                    "volatility_trend": yahoo_analysis.get("volatility_5m_trend", "UNKNOWN"),
+                    "data_source": "yahoo_error_fallback"
+                }
             
             # Prepare market data for dashboard (EXACT field names expected by HTML template)
             market_data = {

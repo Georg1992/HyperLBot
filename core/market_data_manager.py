@@ -305,6 +305,43 @@ class MarketDataManager:
 
     # _categorize_5m_volatility_for_trading() moved to VolatilityCalculator (proper volatility logic location)
 
+    def get_hyperliquid_volatility_analysis(self, hyperliquid_candles: List[Dict], symbol: str = "BTC", strategy_name: str = "standard") -> Dict[str, Any]:
+        """
+        Get volatility analysis from Hyperliquid candle data (REAL-TIME DATA)
+        This method uses actual market data instead of stale Yahoo data
+        """
+        try:
+            if not hyperliquid_candles or len(hyperliquid_candles) < 3:
+                logger.warning("⚠️ Not enough Hyperliquid candles for volatility analysis")
+                return {
+                    "volatility_5m": 0.0,
+                    "volatility_5m_category": "UNKNOWN",
+                    "volatility_5m_trend": "UNKNOWN",
+                    "data_source": "hyperliquid_insufficient_data"
+                }
+            
+            # Calculate volatility from REAL Hyperliquid data
+            volatility_5m = self.calculate_volatility(hyperliquid_candles)
+            volatility_5m_category, volatility_5m_trend = self.volatility_calculator.categorize_5m_volatility_for_trading(volatility_5m)
+            
+            logger.info(f"📊 Hyperliquid volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%) → {volatility_5m_category}")
+            
+            return {
+                "volatility_5m": volatility_5m,
+                "volatility_5m_category": volatility_5m_category,
+                "volatility_5m_trend": volatility_5m_trend,
+                "data_source": "hyperliquid_real_time"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Hyperliquid volatility analysis failed: {e}")
+            return {
+                "volatility_5m": 0.0,
+                "volatility_5m_category": "ERROR",
+                "volatility_5m_trend": "ERROR",
+                "data_source": "hyperliquid_error"
+            }
+
     def get_yahoo_data_with_analysis(self, yahoo_fetcher, symbol: str = "BTC", hyperliquid_price: float = None, strategy_name: str = "standard") -> Dict[str, Any]:
         """
         Get Yahoo data with centralized analysis calculations
