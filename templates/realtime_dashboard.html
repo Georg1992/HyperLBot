@@ -1400,8 +1400,7 @@
                 
                 // Draw price labels for major grid lines (every 2nd line)
                 for (let i = 0; i <= 10; i += 2) {
-                    const rawPrice = adjustedMaxPrice - (adjustedPriceRange * i / 10);
-                    const price = Math.round(rawPrice / 100) * 100; // Round to nearest 100
+                    const price = adjustedMaxPrice - (adjustedPriceRange * i / 10);
                     const y = (height / 10) * i + 5;
                     
                     // Format price with appropriate decimal places
@@ -1413,8 +1412,8 @@
                         });
                         } else {
                         formattedPrice = price.toLocaleString('en-US', { 
-                            minimumFractionDigits: 0, 
-                            maximumFractionDigits: 0 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
                         });
                     }
                     
@@ -1425,8 +1424,7 @@
                 ctx.fillStyle = '#E0E0E0';  // Light gray for minor labels
                 ctx.font = 'bold 13px Arial';
                 for (let i = 1; i <= 9; i += 2) {
-                    const rawPrice = adjustedMaxPrice - (adjustedPriceRange * i / 10);
-                    const price = Math.round(rawPrice / 100) * 100; // Round to nearest 100
+                    const price = adjustedMaxPrice - (adjustedPriceRange * i / 10);
                     const y = (height / 10) * i + 4;
                     
                     let formattedPrice;
@@ -1437,8 +1435,8 @@
                         });
                         } else {
                         formattedPrice = price.toLocaleString('en-US', { 
-                            minimumFractionDigits: 0, 
-                            maximumFractionDigits: 0 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
                         });
                     }
                     
