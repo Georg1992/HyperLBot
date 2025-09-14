@@ -18,6 +18,7 @@ class VolatilityCalculator:
         """Calculate volatility from candle data using HIGHLY REACTIVE method for real-time trading"""
         try:
             if len(candles) < 3:  # Reduced minimum requirement for faster response
+                logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 3")
                 return self._get_default_volatility(timeframe)
             
             # Use only the most recent 6 candles for maximum reactivity (30 minutes of 5m data)
@@ -39,6 +40,9 @@ class VolatilityCalculator:
                 # Calculate weighted average (most recent candles have much higher impact)
                 weighted_avg_volatility = sum(weighted_volatilities) / total_weight
                 
+                # DEBUG: Log the calculation details
+                logger.debug(f"🔍 Volatility calculation: {len(recent_candles)} candles, weighted_avg={weighted_avg_volatility:.6f} ({weighted_avg_volatility*100:.4f}%)")
+                
                 # Method 2: Recent price momentum (captures directional movement)
                 if len(recent_candles) >= 3:
                     recent_momentum = 0
@@ -56,6 +60,7 @@ class VolatilityCalculator:
                         
                         # Combine weighted volatility with recent momentum (70% volatility, 30% momentum)
                         combined_volatility = (weighted_avg_volatility * 0.7) + (recent_momentum * 0.3)
+                        logger.debug(f"🔍 Combined volatility: {combined_volatility:.6f} ({combined_volatility*100:.4f}%) - momentum={recent_momentum:.6f}")
                         return round(combined_volatility, 6)
                 
                 return round(weighted_avg_volatility, 6)
@@ -96,6 +101,9 @@ class VolatilityCalculator:
             # Import centralized constants for consistency
             from core.constants import VariabilityConstants
             
+            # DEBUG: Log the input volatility
+            logger.debug(f"🔍 Categorizing volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%)")
+            
             # Use centralized 5-minute volatility thresholds (corrected range logic)
             if volatility_5m >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 0.6% (extreme 5m movement)
                 category = "EXTREME"
@@ -115,6 +123,9 @@ class VolatilityCalculator:
             else:                                                              # < 0.03% (extremely low 5m movement)
                 category = "VERY_LOW"
                 trend = "BORING"
+            
+            # DEBUG: Log the final categorization
+            logger.debug(f"🔍 Volatility categorized as: {category} ({trend})")
             
             return category, trend
             
