@@ -15,56 +15,50 @@ class VolatilityCalculator:
         logger.info("📊 Volatility Calculator initialized")
     
     def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m") -> float:
-        """Calculate volatility from candle data using robust median-based method (resistant to outliers)"""
+        """Calculate volatility from candle data using HIGHLY REACTIVE method for real-time trading"""
         try:
-            if len(candles) < 10:
+            if len(candles) < 3:  # Reduced minimum requirement for faster response
                 return self._get_default_volatility(timeframe)
             
-            # Method 1: Individual candle range volatilities (most representative of actual price action)
-            range_volatilities = []
-            for candle in candles:
+            # Use only the most recent 6 candles for maximum reactivity (30 minutes of 5m data)
+            recent_candles = candles[-6:] if len(candles) >= 6 else candles
+            
+            # Method 1: Weighted recent candle volatilities (most reactive to current market)
+            weighted_volatilities = []
+            total_weight = 0
+            
+            for i, candle in enumerate(recent_candles):
                 if candle["close"] > 0 and candle["high"] > 0 and candle["low"] > 0:
                     range_vol = (candle["high"] - candle["low"]) / candle["close"]
-                    range_volatilities.append(range_vol)
+                    # Give exponentially more weight to recent candles
+                    weight = (i + 1) ** 2  # 1, 4, 9, 16, 25, 36 for 6 candles
+                    weighted_volatilities.append(range_vol * weight)
+                    total_weight += weight
             
-            if range_volatilities:
-                # ENHANCED: Use weighted approach that considers both median and recent activity
-                range_volatilities.sort()
-                n = len(range_volatilities)
+            if weighted_volatilities and total_weight > 0:
+                # Calculate weighted average (most recent candles have much higher impact)
+                weighted_avg_volatility = sum(weighted_volatilities) / total_weight
                 
-                # Calculate median (robust baseline)
-                if n % 2 == 0:
-                    median_volatility = (range_volatilities[n//2 - 1] + range_volatilities[n//2]) / 2
-                else:
-                    median_volatility = range_volatilities[n//2]
-                
-                # Calculate 75th percentile (captures recent activity)
-                percentile_75 = range_volatilities[int(n * 0.75)]
-                
-                # Calculate 90th percentile (captures significant moves)
-                percentile_90 = range_volatilities[int(n * 0.9)]
-                
-                # ENHANCED: Use weighted average that balances robustness with responsiveness
-                # 30% median (baseline), 40% 75th percentile (recent activity), 30% 90th percentile (significant moves)
-                # More sensitive to recent activity and significant moves
-                robust_volatility = (median_volatility * 0.3) + (percentile_75 * 0.4) + (percentile_90 * 0.3)
-                
-                # ENHANCED: Also consider overall price movement for consistent trends
-                if len(candles) >= 5:
-                    first_candle = candles[0]
-                    last_candle = candles[-1]
+                # Method 2: Recent price momentum (captures directional movement)
+                if len(recent_candles) >= 3:
+                    recent_momentum = 0
+                    for i in range(1, len(recent_candles)):
+                        if recent_candles[i-1]["close"] > 0:
+                            momentum = abs(recent_candles[i]["close"] - recent_candles[i-1]["close"]) / recent_candles[i-1]["close"]
+                            # Give more weight to recent momentum
+                            weight = (len(recent_candles) - i) ** 1.5
+                            recent_momentum += momentum * weight
                     
-                    if first_candle["close"] > 0 and last_candle["close"] > 0:
-                        overall_movement = abs(last_candle["close"] - first_candle["close"]) / first_candle["close"]
+                    # Average momentum with weight
+                    momentum_weight = sum((len(recent_candles) - i) ** 1.5 for i in range(1, len(recent_candles)))
+                    if momentum_weight > 0:
+                        recent_momentum = recent_momentum / momentum_weight
                         
-                        # For consistent movements (not just one big candle), use a weighted average
-                        # If overall movement is significant and consistent, boost the volatility
-                        if overall_movement > robust_volatility * 1.1:  # Overall movement is larger than individual candles (more sensitive threshold)
-                            # Use weighted average: 85% overall movement, 15% robust volatility (more responsive to overall movement)
-                            enhanced_volatility = (overall_movement * 0.85) + (robust_volatility * 0.15)
-                            return round(enhanced_volatility, 6)
+                        # Combine weighted volatility with recent momentum (70% volatility, 30% momentum)
+                        combined_volatility = (weighted_avg_volatility * 0.7) + (recent_momentum * 0.3)
+                        return round(combined_volatility, 6)
                 
-                return round(robust_volatility, 6)
+                return round(weighted_avg_volatility, 6)
             
             # Fallback: Calculate returns from close prices (original method)
             returns = []

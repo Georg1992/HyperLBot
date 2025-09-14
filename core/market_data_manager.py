@@ -269,7 +269,7 @@ class MarketDataManager:
         return result
     
     
-    def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:
+    def calculate_volatility(self, candles: List[Dict], periods: int = 6) -> float:
         """Calculate volatility using VolatilityCalculator (SRP - delegate to calculator)"""
         cache_key = f"volatility_{periods}_{hash(str(candles[-periods:]))}"
         cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
