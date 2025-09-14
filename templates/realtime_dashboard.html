@@ -1321,9 +1321,9 @@
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, width, height);
                 
-                // Calculate candle dimensions first
+                // Calculate candle dimensions first - scale out candles for better visibility
                 const totalCandles = historicalCandles.length + predictedCandles.length;
-                const candleWidth = width / totalCandles;
+                const candleWidth = (width * 0.8) / totalCandles; // Use 80% of width, scale out candles
                 
                 // Draw professional grid with anti-aliasing
                 ctx.imageSmoothingEnabled = true;
@@ -1342,9 +1342,10 @@
                     ctx.stroke();
                 }
                 
-                // Vertical grid lines - align to candle boundaries
+                // Vertical grid lines - align to candle boundaries with offset for scaling
+                const chartStartX = (width - (totalCandles * candleWidth)) / 2; // Center the chart
                 for (let i = 0; i <= totalCandles; i++) {
-                    const x = i * candleWidth;
+                    const x = chartStartX + (i * candleWidth);
                     ctx.beginPath();
                     ctx.moveTo(x, 0);
                     ctx.lineTo(x, height);
@@ -1366,7 +1367,7 @@
                 
                 // Major vertical lines (every 3rd candle)
                 for (let i = 0; i <= totalCandles; i += 3) {
-                    const x = i * candleWidth;
+                    const x = chartStartX + (i * candleWidth);
                     ctx.beginPath();
                     ctx.moveTo(x, 0);
                     ctx.lineTo(x, height);
@@ -1446,16 +1447,16 @@
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
                 
-                // Draw historical candles (last 12)
-                const historicalStartX = 0;
+                // Draw historical candles (last 12) with proper chart positioning
+                const historicalStartX = chartStartX;
                 
                 historicalCandles.forEach((candle, index) => {
                     const x = historicalStartX + (index * candleWidth);
                     this.drawCandle(ctx, candle, x, candleWidth, height, adjustedMinPrice, adjustedPriceRange, false);
                 });
                 
-                // Draw predicted candles (next 3)
-                const predictedStartX = historicalCandles.length * candleWidth;
+                // Draw predicted candles (next 3) with proper chart positioning
+                const predictedStartX = chartStartX + (historicalCandles.length * candleWidth);
                 predictedCandles.forEach((candle, index) => {
                     const x = predictedStartX + (index * candleWidth);
                     this.drawCandle(ctx, candle, x, candleWidth, height, adjustedMinPrice, adjustedPriceRange, true);
@@ -1558,7 +1559,7 @@
             }
             
             drawCandle(ctx, candle, x, width, height, minPrice, priceRange, isPredicted) {
-                const candleWidth = width * 0.75; // Slightly wider candles
+                const candleWidth = width * 0.6; // Scale out candles for better visibility
                 const centerX = x + (width / 2);
                 
                 // Enable anti-aliasing for smooth rendering

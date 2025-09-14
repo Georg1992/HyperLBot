@@ -5,7 +5,6 @@ Eliminates redundant calculations and provides single source of truth for all ma
 """
 
 import time
-import statistics
 from typing import Dict, List, Any, Optional
 from loguru import logger
 from core.analysis.real_time.volatility_calculator import VolatilityCalculator
@@ -38,6 +37,10 @@ class MarketDataManager:
         self._volume_history = []  # List of (timestamp, depth, price) tuples
         self._max_volume_history = 100  # Keep last 100 volume readings
         
+        # Rolling window for historical candles (keep last 12)
+        self._candle_buffer = []
+        self._max_candles = 12
+        
         # Initialize all calculators (consistent pattern)
         self.volatility_calculator = VolatilityCalculator()
         self.volume_calculator = VolumeCalculator()
@@ -47,6 +50,49 @@ class MarketDataManager:
         # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
+    
+    def get_historical_candles(self, symbol: str = "BTC", interval: str = "5m", limit: int = 12) -> List[Dict[str, Any]]:
+        """
+        Get historical candles with rolling window management
+        
+        Args:
+            symbol: Trading symbol (default: BTC)
+            interval: Candle interval (default: 5m)
+            limit: Number of candles to return (default: 12)
+            
+        Returns:
+            List of historical candle dictionaries
+        """
+        try:
+            from core.api.hyperliquid_api import HyperliquidAPI
+            
+            # Create Hyperliquid API instance
+            hyperliquid_api = HyperliquidAPI()
+            
+            # Fetch latest candles from Hyperliquid (get a few extra to detect new ones)
+            logger.info(f"🕯️ Fetching {interval} candles for {symbol}...")
+            new_candles = hyperliquid_api.get_historical_candles(
+                symbol=symbol,
+                interval=interval,
+                limit=15  # Get 15 to detect new candles
+            )
+            
+            if not new_candles or len(new_candles) < limit:
+                logger.error(f"❌ Insufficient data from Hyperliquid: {len(new_candles) if new_candles else 0} candles (need {limit})")
+                raise Exception(f"Hyperliquid API returned insufficient data: {len(new_candles) if new_candles else 0} candles")
+            
+            # Implement rolling window: keep only the last N candles
+            latest_candles = new_candles[-limit:]
+            
+            # Update our buffer with the latest candles
+            self._candle_buffer = latest_candles
+            
+            logger.info(f"✅ Rolling window updated: {len(self._candle_buffer)} candles, price range: ${min(c['low'] for c in self._candle_buffer):.2f} - ${max(c['high'] for c in self._candle_buffer):.2f}")
+            return self._candle_buffer
+            
+        except Exception as e:
+            logger.error(f"❌ Historical candle fetch failed: {e}")
+            raise Exception(f"Failed to fetch historical candle data: {e}")
     
     def _update_volume_history(self, timestamp: float, depth: float, price: float):
         """Update volume history for noise reduction and relative analysis"""
@@ -98,14 +144,7 @@ class MarketDataManager:
             # Get raw orderbook data and use calculators for analysis (clean architecture)
             market_data = hyperliquid_api.get_market_data(symbol)
             
-            # Get recent trades for actual trading volume calculation (always try this)
-            recent_trades = []
-            try:
-                recent_trades = hyperliquid_api.get_recent_trades(symbol)
-                logger.debug(f"Retrieved {len(recent_trades)} recent trades for trading volume calculation")
-            except Exception as e:
-                logger.warning(f"Failed to get recent trades: {e}")
-                recent_trades = []
+            # Note: Recent trades removed - using CoinGecko for accurate volume data
             
             # Use VolumeCalculator and PressureCalculator for orderbook analysis (clean architecture)
             if market_data and 'levels' in market_data:
@@ -129,18 +168,8 @@ class MarketDataManager:
                         historical_depths = [entry[1] for entry in self._volume_history[-20:]]  # Last 20 readings
                         historical_prices = [entry[2] for entry in self._volume_history[-20:]]
                         
-                        # Use VolumeCalculator for volume categorization with historical data
-                        volume_data = self.volume_calculator.categorize_orderbook_depth(
-                            total_depth_5, bid_depth_5, ask_depth_5, historical_depths
-                        )
-                        volume_data["data_source"] = "hyperliquid_orderbook"
-                        
-                        # Add relative volume analysis
-                        if len(historical_depths) >= 10:
-                            relative_analysis = self.volume_calculator.calculate_relative_volume_analysis(
-                                total_depth_5, historical_depths, current_price, historical_prices
-                            )
-                            volume_data.update(relative_analysis)
+                        # Initialize volume data - will be populated by CoinGecko volume calculation below
+                        volume_data = {"data_source": "coingecko"}
                         
                         # Use PressureCalculator for pressure analysis (proper delegation)
                         pressure_data = self.pressure_calculator.calculate_orderbook_pressure(bids, asks)
@@ -155,36 +184,41 @@ class MarketDataManager:
                 volume_data = self._get_default_volume_data()
                 pressure_data = self._get_default_pressure_data()
             
-            # Calculate actual trading volume from recent trades (always try this, regardless of orderbook status)
-            if recent_trades:
-                try:
-                    trading_volume_analysis = self.volume_calculator.calculate_trading_volume_from_trades(
-                        recent_trades, time_window_minutes=5
-                    )
-                    volume_data.update(trading_volume_analysis)
-                    logger.debug(f"Trading volume calculated: {trading_volume_analysis.get('trading_volume_btc', 0)} BTC")
-                except Exception as e:
-                    logger.warning(f"Trading volume calculation failed: {e}")
-                    # Add error indicators to volume data
-                    volume_data.update({
-                        "trading_volume_btc": 0.0,
-                        "trading_volume_category": "ERROR",
-                        "trade_count": 0,
-                        "avg_trade_size": 0.0,
-                        "time_window_minutes": 5,
-                        "data_source": "error"
-                    })
-            else:
-                logger.warning("No recent trades available for volume calculation")
-                # Add no data indicators
+            # Get real-time volume data from Binance WebSocket (for scalping)
+            try:
+                # Use global instance for real-time volume data
+                if not hasattr(self, 'binance_api'):
+                    from core.external.binance_api import binance_api
+                    self.binance_api = binance_api
+                
+                # Get real-time volume data from Binance WebSocket
+                real_time_volume = self.binance_api.get_real_time_volume()
+                
+                # Update volume data with real-time information
                 volume_data.update({
-                    "trading_volume_btc": 0.0,
-                    "trading_volume_category": "NO_DATA",
-                    "trade_count": 0,
-                    "avg_trade_size": 0.0,
-                    "time_window_minutes": 5,
-                    "data_source": "no_trades"
+                    "real_time_volume_btc": real_time_volume.get('current_volume_btc', 0),
+                    "real_time_volume_usd": real_time_volume.get('current_volume_usd', 0),
+                    "volume_per_minute": real_time_volume.get('volume_per_minute', 0),
+                    "volume_per_second": real_time_volume.get('volume_per_second', 0),
+                    "trade_count_per_minute": real_time_volume.get('trade_count_per_minute', 0),
+                    "volume_spike_detected": real_time_volume.get('volume_spike_detected', False),
+                    "volume_ratio": real_time_volume.get('volume_ratio', 1.0),
+                    "binance_timestamp": real_time_volume.get('timestamp', time.time()),
+                    "data_source": "binance_websocket" if real_time_volume.get('real_time', False) else "binance_fallback"
                 })
+                
+                # Calculate volume category using VolumeCalculator
+                current_volume_btc = real_time_volume.get('current_volume_btc', 0)
+                volume_spike_result = self.volume_calculator.detect_volume_spike_from_binance(current_volume_btc, [])
+                volume_data["volume_category"] = volume_spike_result.get("volume_category", "UNKNOWN")
+                
+                logger.debug(f"Binance real-time volume: {real_time_volume.get('current_volume_btc', 0):.1f} BTC/min, "
+                           f"Spike: {real_time_volume.get('volume_spike_detected', False)}, "
+                           f"Ratio: {real_time_volume.get('volume_ratio', 1.0):.2f}x")
+                    
+            except Exception as e:
+                logger.warning(f"Binance real-time volume fetch failed: {e}")
+                # Continue with orderbook data (fallback for scalping)
             
             result = {
                 "volume_data": volume_data,
@@ -207,16 +241,13 @@ class MarketDataManager:
             }
     
     def _get_default_volume_data(self) -> Dict[str, Any]:
-        """Get default volume data when orderbook is unavailable"""
+        """Get default volume data when CoinGecko is unavailable"""
         return {
-            "volume_depth": 0.0,
+            "current_volume_usd": 0,
+            "current_volume_btc": 0,
+            "volume_spike_detected": False,
+            "volume_ratio": 1.0,
             "volume_category": "UNKNOWN",
-            "bid_depth": 0.0,
-            "ask_depth": 0.0,
-            "bid_ask_ratio": 1.0,
-            "depth_imbalance": 0.0,
-            "order_flow": "NEUTRAL",
-            "depth_analysis": "NO_DATA",
             "data_source": "default"
         }
     
@@ -237,16 +268,6 @@ class MarketDataManager:
         self._cache_data(cache_key, result, self._indicator_cache_duration)
         return result
     
-    def clear_trend_cache(self):
-        """Clear trend calculation cache to force fresh calculations"""
-        try:
-            # Clear all trend-related cache entries
-            keys_to_remove = [key for key in self._cache.keys() if key.startswith("trend_")]
-            for key in keys_to_remove:
-                del self._cache[key]
-            logger.info(f"🧹 Cleared {len(keys_to_remove)} trend cache entries")
-        except Exception as e:
-            logger.error(f"❌ Failed to clear trend cache: {e}")
     
     def calculate_volatility(self, candles: List[Dict], periods: int = 20) -> float:
         """Calculate volatility using VolatilityCalculator (SRP - delegate to calculator)"""
@@ -332,14 +353,15 @@ class MarketDataManager:
             rsi_5m = global_rsi_calculator.calculate_standalone_rsi(candles_5m)
             logger.debug(f"📊 Yahoo analysis RSI calculated: {rsi_5m:.2f} from 5m candles")
             
-            # Calculate volume analysis using VolumeCalculator (proper delegation)
+            # Volume analysis now handled by CoinGecko - Yahoo volume methods removed
             volumes_5m = [candle["volume"] for candle in candles_5m if "volume" in candle]
             if volumes_5m:
                 current_volume_5m = volumes_5m[-1]
-                volume_analysis_5m = self.volume_calculator.categorize_yahoo_volume(current_volume_5m, volumes_5m)
                 volume_momentum_5m = self.volume_calculator.calculate_volume_momentum(volumes_5m)
-                volume_spike_5m = self.volume_calculator.detect_volume_spikes(current_volume_5m, volumes_5m)
                 relative_volume_5m = self.volume_calculator.calculate_relative_volume(current_volume_5m, volumes_5m)
+                # Yahoo volume categorization removed - using CoinGecko volume data instead
+                volume_analysis_5m = {"current_volume": current_volume_5m, "volume_category": "YAHOO_DATA", "volume_trend": "UNKNOWN", "data_source": "yahoo"}
+                volume_spike_5m = {"has_spike": False, "spike_magnitude": 1.0, "spike_type": "NORMAL"}
             else:
                 volume_analysis_5m = {"current_volume": 0, "volume_category": "UNKNOWN", "volume_trend": "UNKNOWN", "data_source": "no_data"}
                 volume_momentum_5m = {"momentum": 0.0, "acceleration": 0.0, "trend": "UNKNOWN"}

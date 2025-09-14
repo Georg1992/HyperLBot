@@ -27,6 +27,8 @@ class PredictionEngine:
         self.last_analysis = None
         self.last_update_time = 0
         
+        # Prediction engine no longer manages historical data - that's MarketDataManager's job
+        
         logger.info("🎯 Future Candle Prediction Engine initialized - Ready for candle modeling")
     
     def analyze_market_for_prediction(self, current_price: float, market_data: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
@@ -188,53 +190,33 @@ class PredictionEngine:
                 "ready_for_prediction": False
             }
     
-    def generate_historical_candles(self, current_price: float, market_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def get_historical_candles(self, current_price: float, market_data: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        Get last 12 real historical candles from Hyperliquid API
+        Get historical candles from MarketDataManager (proper separation of concerns)
         
         Args:
             current_price: Current market price
             market_data: Additional market data
             
         Returns:
-            List of 12 real historical candle dictionaries
+            List of historical candle dictionaries
         """
         try:
-            # Try to get real data from Hyperliquid first
-            from core.api.hyperliquid_api import HyperliquidAPI
+            # Get historical candles from MarketDataManager (proper architecture)
+            from core.market_data_manager import market_data_manager
             
-            # Get real historical data from Hyperliquid
-            # Use 5m candles for better trend analysis
-            interval = "5m"  # 5-minute candles
-            
-            logger.info(f"🕯️ Starting candle generation for price: ${current_price:.2f}")
-            
-            # Create Hyperliquid API instance
-            hyperliquid_api = HyperliquidAPI()
-            
-            # Fetch last 12 candles from Hyperliquid
-            logger.info(f"🕯️ Calling Hyperliquid API for {interval} candles...")
-            candles = hyperliquid_api.get_historical_candles(
+            # MarketDataManager handles the rolling window and data fetching
+            historical_candles = market_data_manager.get_historical_candles(
                 symbol="BTC",
-                interval=interval,
+                interval="5m",
                 limit=12
             )
             
-            logger.info(f"🕯️ Hyperliquid API returned: {len(candles) if candles else 0} candles")
-            
-            if not candles or len(candles) < 12:
-                logger.error(f"❌ Insufficient data from Hyperliquid: {len(candles) if candles else 0} candles (need 12)")
-                raise Exception(f"Hyperliquid API returned insufficient data: {len(candles) if candles else 0} candles")
-            
-            # Hyperliquid API already returns candles in our format
-            formatted_candles = candles
-            
-            logger.info(f"✅ Fetched {len(formatted_candles)} real Hyperliquid candles, price range: ${min(c['low'] for c in formatted_candles):.2f} - ${max(c['high'] for c in formatted_candles):.2f}")
-            return formatted_candles
+            return historical_candles
             
         except Exception as e:
-            logger.error(f"❌ Candle generation failed: {e}")
-            raise Exception(f"Failed to generate real candle data: {e}")
+            logger.error(f"❌ Failed to get historical candles: {e}")
+            raise Exception(f"Failed to get historical candle data: {e}")
     
     def _generate_fallback_candles(self, current_price: float) -> List[Dict[str, Any]]:
         """Generate realistic fallback candles with proper OHLC patterns"""
@@ -315,8 +297,8 @@ class PredictionEngine:
         try:
             market_data = market_data or {}
             
-            # Generate historical candles (last 12) - REAL DATA ONLY
-            historical_candles = self.generate_historical_candles(current_price, market_data)
+            # Get historical candles (last 12) - REAL DATA ONLY
+            historical_candles = self.get_historical_candles(current_price, market_data)
             
             # For now, no predicted candles - just empty array
             predicted_candles = []
