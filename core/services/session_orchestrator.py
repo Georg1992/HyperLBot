@@ -21,7 +21,7 @@ class SessionOrchestrator:
         
         logger.info("🔄 Session Orchestrator initialized - Trading loop coordination")
     
-    def run_paper_trading_session(self, max_trades: int, check_interval: int,
+    def run_paper_trading_session(self, check_interval: int,
                                  system_initializer, market_data_service, trading_engine, dashboard_service, strategy_manager=None) -> Dict[str, Any]:
         """Run the main paper trading session"""
         try:
@@ -46,8 +46,8 @@ class SessionOrchestrator:
             # 3. Start session
             self._start_session(dashboard_service, market_data_service)
             
-            # 4. Main trading loop
-            return self._main_trading_loop(max_trades, check_interval, hyperliquid_api,
+            # 4. Main monitoring loop
+            return self._main_trading_loop(check_interval, hyperliquid_api,
                                          market_data_service, trading_engine, dashboard_service, strategy_manager)
             
         except Exception as e:
@@ -116,10 +116,10 @@ class SessionOrchestrator:
             
             # Import historical analyzer
             from core.analysis.historical.session_context_analyzer import SessionContextAnalyzer
-            from core.external.yahoo_data_fetcher import YahooDataFetcher
+            from core.external.yahoo_api import YahooAPI
             
             # Get historical data for context analysis
-            yahoo_fetcher = YahooDataFetcher()
+            yahoo_fetcher = YahooAPI()
             logger.info("📊 Fetching daily candles (45 days)...")
             candles_1d = yahoo_fetcher.get_klines("BTC-USD", "1d", 45)  # 6.5 weeks
             logger.info(f"📊 Daily candles: {len(candles_1d) if candles_1d else 0} candles")
@@ -156,21 +156,21 @@ class SessionOrchestrator:
             logger.error(f"❌ Traceback: {traceback.format_exc()}")
             # Continue session without historical context (degraded but functional)
     
-    def _generate_initial_session_prediction(self, market_data_service, dashboard_service, strategy_name="standard"):
-        """Generate initial session prediction and store for dashboard display"""
+    def _generate_initial_market_analysis(self, market_data_service, dashboard_service, strategy_name="standard"):
+        """Generate initial market analysis and candle data for dashboard display"""
         try:
-            logger.info(f"🎯 Generating initial session prediction with {strategy_name} strategy...")
+            logger.info(f"🎯 Generating initial market analysis with {strategy_name} strategy...")
             
             # Get current market data
             current_price = market_data_service.get_hyperliquid_price()
             if not current_price:
-                logger.warning("⚠️ Cannot generate initial prediction - no price data")
+                logger.warning("⚠️ Cannot generate initial market analysis - no price data")
                 return
             
             # Get market analysis
-            yahoo_analysis = market_data_service.get_yahoo_analysis(current_price, current_strategy)
+            yahoo_analysis = market_data_service.get_yahoo_analysis(current_price, strategy_name)
             if not yahoo_analysis or "error" in yahoo_analysis:
-                logger.warning("⚠️ Cannot generate initial prediction - no market analysis")
+                logger.warning("⚠️ Cannot generate initial market analysis - no market analysis")
                 return
             
             # Build market data for prediction engine - USE REAL-TIME RSI (same as dashboard)
@@ -201,48 +201,53 @@ class SessionOrchestrator:
                 "pressure_strength": yahoo_analysis.get("pressure_strength", 0.0)
             }
             
-            # Generate initial prediction using prediction engine with strategy-specific configuration
+            # Initialize market analysis engine for future candle prediction
             from core.engines.prediction_engine import PredictionEngine
             from core.session.session_manager import session_manager
             strategy_config = self.config.STRATEGY_CONFIGS.get(strategy_name, self.config.STRATEGY_CONFIGS["standard"])
             
-            # Store prediction engine as instance variable for dynamic updates
+            # Store prediction engine as instance variable for market analysis
             self.prediction_engine = PredictionEngine()
-            self.prediction_engine.set_session_manager(session_manager)
             
             # Initialize reactive engine for emergency execution
             from core.engines.reactive_engine import ReactiveEngine
             self.reactive_engine = ReactiveEngine()
             
-            initial_prediction = self.prediction_engine.generate_prediction(current_price, market_data, strategy_name)
+            # Analyze market for future candle prediction
+            market_analysis = self.prediction_engine.analyze_market_for_prediction(current_price, market_data)
             
-            if not initial_prediction:
-                logger.error("❌ Failed to generate initial session prediction: No prediction returned")
+            if not market_analysis:
+                logger.error("❌ Failed to analyze market for prediction: No analysis returned")
                 return None
             
-            # Store prediction for dashboard display
+            # Generate candle data for visualization
+            candle_data = self.prediction_engine.generate_candle_data(current_price, market_data)
+            
+            if not candle_data:
+                candle_data = {"historical": [], "predicted": []}
+            
+            # Store market analysis for dashboard display
             from core.dashboard.dashboard_data_manager import simple_rtm
             
             signal_data = {
-                "type": "INITIAL_PREDICTION",
-                "direction": initial_prediction.get("direction", "UNKNOWN"),
-                "confidence": initial_prediction.get("confidence", 0),
-                "reasoning": initial_prediction.get("reasoning", ""),
-                "entry_price": initial_prediction.get("entry_price", 0),
-                "stop_loss": initial_prediction.get("stop_loss", 0),
-                "take_profit": initial_prediction.get("take_profit", 0),
-                "size_btc": initial_prediction.get("position_size", 0.001),
-                "size_usd": initial_prediction.get("entry_price", 0) * initial_prediction.get("position_size", 0.001),
-                "rsi": market_data.get("rsi", 50),
-                "trend": market_data.get("trend", "NEUTRAL"),
+                "type": "MARKET_ANALYSIS",
+                "market_regime": market_analysis.get("market_regime", "UNKNOWN"),
+                "prediction_readiness": market_analysis.get("prediction_readiness", {}),
+                "reasoning": f"Market analysis: {market_analysis.get('market_regime', 'UNKNOWN')} regime",
+                "rsi": market_analysis.get("rsi", 50.0),
+                "trend": market_analysis.get("trend", "NEUTRAL"),
+                "volatility_category": market_analysis.get("volatility_category", "MODERATE"),
+                "volume_category": market_analysis.get("volume_category", "NORMAL"),
                 "strategy_used": strategy_name,  # Include strategy information
-                "prediction_data": {
-                    "prediction_type": initial_prediction.get("prediction_type", "SIGNAL_BASED"),
+                "candleData": candle_data,  # Add candle data for dashboard
+                "analysis_data": {
+                    "analysis_type": market_analysis.get("analysis_type", "MARKET_ANALYSIS"),
                     "session_strategy": strategy_name,
-                    "signal_analysis": initial_prediction.get("signal_analysis", {}),
-                    "timestamp": initial_prediction.get("timestamp", 0)
+                    "market_analysis": market_analysis,
+                    "timestamp": market_analysis.get("timestamp", 0)
                 }
             }
+            
             simple_rtm.add_signal(signal_data)
             
             # ANALYZE & STORE MARKET CONDITIONS for dashboard display
@@ -259,89 +264,37 @@ class SessionOrchestrator:
                     "condition": market_conditions_data["condition"], 
                     "risk_level": market_conditions_data["risk_level"],
                     "main_reasons": market_conditions_data["reasons"][:3],
-                    "confidence": market_conditions_data["confidence"]
+                    "confidence": market_conditions_data["confidence"],
+                    # Include whale analytics and news sentiment data
+                    "whale_analytics": market_conditions_data.get("whale_analytics"),
+                    "news_sentiment": market_conditions_data.get("news_sentiment"),
+                    "sentiment_data": market_conditions_data.get("sentiment_data")
                 }
             })
             
-            # Log initial prediction
-            order_structure = initial_prediction.get("order_structure", {})
+            # Log initial analysis
             dashboard_service.update_rtm_activity(
-                f"🎯 Initial prediction: {order_structure.get('direction', 'N/A')} @ ${order_structure.get('entry_price', 0):.2f} "
-                f"(Stop: ${order_structure.get('stop_loss', 0):.2f}, Take: ${order_structure.get('take_profit', 0):.2f})",
+                f"🎯 Initial market analysis: {market_analysis.get('market_regime', 'UNKNOWN')} regime, "
+                f"RSI: {market_analysis.get('rsi', 50.0):.1f}, Trend: {market_analysis.get('trend', 'NEUTRAL')}",
                 "INFO"
             )
             
-            logger.success("✅ Initial session prediction generated and stored for dashboard")
+            logger.success("✅ Initial market analysis generated and stored for dashboard")
             
         except Exception as e:
-            logger.error(f"❌ Failed to generate initial session prediction: {e}")
-            # Continue session without initial prediction (degraded but functional)
+            logger.error(f"❌ Failed to generate initial market analysis: {e}")
+            # Continue session without initial analysis (degraded but functional)
     
-    def _update_dynamic_prediction(self, current_price: float, market_data: Dict[str, Any], 
-                                 dashboard_service, strategy_name: str = "standard"):
-        """Update prediction dynamically based on market changes"""
-        try:
-            if not hasattr(self, 'prediction_engine') or not self.prediction_engine:
-                return
-            
-            # CRITICAL: Ensure market_data has real-time RSI (same as dashboard)
-            from core.market_data_manager import global_rsi_calculator
-            if global_rsi_calculator.rsi_initialized:
-                # Update market_data with real-time RSI
-                market_data["rsi_5m"] = global_rsi_calculator.current_rsi
-                market_data["rsi"] = global_rsi_calculator.current_rsi
-            
-            # Generate dynamic prediction
-            updated_prediction = self.prediction_engine.track_signals_and_adjust_prediction(
-                current_price=current_price,
-                market_data=market_data,
-                strategy_name=strategy_name
-            )
-            
-            # Only update dashboard if prediction actually changed
-            if updated_prediction and updated_prediction.get("prediction_type") in ["SIGNAL_ADJUSTED", "CONFIDENCE_ADJUSTED"]:
-                logger.info("🔄 Updating dashboard with new dynamic prediction")
-                
-                # Extract values from new prediction structure
-                entry_price = updated_prediction.get("entry_price", 0)
-                dashboard_service.update_rtm_signal({
-                    "type": "DYNAMIC_UPDATE",
-                    "direction": updated_prediction.get("direction", "UNKNOWN"),
-                    "entry": entry_price,  # Use 'entry' for dashboard compatibility
-                    "entry_price": entry_price,  # Also include 'entry_price' for consistency
-                    "stop_loss": updated_prediction.get("stop_loss", 0),
-                    "take_profit": updated_prediction.get("take_profit", 0),
-                    "size_btc": updated_prediction.get("position_size", 0.001),
-                    "size_usd": entry_price * updated_prediction.get("position_size", 0.001),
-                    "confidence": updated_prediction.get("confidence", 0),
-                    "reasoning": updated_prediction.get("reasoning", "Dynamic update"),
-                    "strategy_used": strategy_name,
-                    "prediction_type": updated_prediction.get("prediction_type", "SIGNAL_ADJUSTED"),
-                    "update_reason": updated_prediction.get("update_reason", "Market conditions changed"),
-                    "timestamp": time.time()
-                })
-                
-                # Update activity log
-                dashboard_service.update_rtm_activity(
-                    f"🔄 Prediction updated: {updated_prediction.get('direction', 'UNKNOWN')} at ${updated_prediction.get('entry_price', 0):,.2f}",
-                    "INFO"
-                )
-            
-        except Exception as e:
-            logger.error(f"❌ Error updating dynamic prediction: {e}")
     
-    def _main_trading_loop(self, max_trades: int, check_interval: int, hyperliquid_api,
+    def _main_trading_loop(self, check_interval: int, hyperliquid_api,
                           market_data_service, trading_engine, dashboard_service, strategy_manager=None) -> Dict[str, Any]:
-        """Main trading loop"""
-        trades_placed = 0  # Only counts actual executed trades
-        signals_prepared = 0  # Counts prepared signals (for logging)
-        initial_prediction_generated = False
+        """Main monitoring loop - simplified for candle data display"""
+        initial_analysis_generated = False
         
-        # Note: TradingEngine is now a pure execution engine and doesn't need session manager access
+        logger.info(f"🔄 Starting continuous monitoring loop (interval: {check_interval}s)")
         
-        logger.info(f"🔄 Starting main trading loop (max_trades: {max_trades}, interval: {check_interval}s)")
-        
-        while trades_placed < max_trades:
+        # Continuous loop - no trading logic to interfere
+        while True:
             try:
                 # Update session time
                 if self.session_manager:
@@ -354,6 +307,9 @@ class SessionOrchestrator:
                     time.sleep(check_interval)
                     continue
                 
+                # Strategy detection and update (if StrategyManager available)
+                current_strategy = "standard"  # Default fallback
+                
                 # Get market analysis
                 yahoo_analysis = market_data_service.get_yahoo_analysis(hyperliquid_price, current_strategy)
                 if not yahoo_analysis:
@@ -361,8 +317,6 @@ class SessionOrchestrator:
                     time.sleep(check_interval)
                     continue
                 
-                # Strategy detection and update (if StrategyManager available)
-                current_strategy = "standard"  # Default fallback
                 if strategy_manager:
                     # Build market data for strategy detection
                     market_data = yahoo_analysis.copy()
@@ -373,83 +327,40 @@ class SessionOrchestrator:
                     optimal_strategy = strategy_manager.detect_optimal_strategy(market_data)
                     current_strategy = optimal_strategy
                 
-                # Update dashboard with current market data (CRITICAL - was missing!)
+                # Update dashboard with current market data (CRITICAL for candle display)
                 self._update_dashboard_market_data(hyperliquid_price, yahoo_analysis, market_data_service, dashboard_service, current_strategy)
                 
-                # Generate initial prediction AFTER strategy is determined (only once)
-                if not initial_prediction_generated and strategy_manager:
-                    self._generate_initial_session_prediction(market_data_service, dashboard_service, current_strategy)
-                    initial_prediction_generated = True
-                
-                # Generate dynamic prediction updates based on market changes
-                if strategy_manager and initial_prediction_generated:
-                    self._update_dynamic_prediction(hyperliquid_price, yahoo_analysis, dashboard_service, current_strategy)
-                
-                # Check for reactive signals (emergency execution for sudden movements)
-                reactive_signal = None
-                if hasattr(self, 'reactive_engine') and self.reactive_engine:
-                    reactive_signal = self.reactive_engine.analyze_reactive_opportunity(hyperliquid_price, yahoo_analysis)
-                    if reactive_signal:
-                        logger.info(f"⚡ Reactive signal detected: {reactive_signal['direction']} ({reactive_signal['urgency']} urgency)")
+                # Generate initial market analysis AFTER strategy is determined (only once)
+                if not initial_analysis_generated and strategy_manager:
+                    self._generate_initial_market_analysis(market_data_service, dashboard_service, current_strategy)
+                    initial_analysis_generated = True
                 
                 # Update heartbeat with current strategy
                 dashboard_service.update_heartbeat(self.session_manager, current_strategy, self.initial_balance)
                 
-                # Check for trading signal (prediction engine)
-                prediction_signal = None
-                if hasattr(self, 'prediction_engine') and self.prediction_engine and self.prediction_engine.last_prediction:
-                    prediction_signal = self.prediction_engine.last_prediction
-                
-                # Get trading decision from trading engine (ONLY predictions and reactions)
-                signal = trading_engine.should_trade(
-                    hyperliquid_price, yahoo_analysis, hyperliquid_api, current_strategy,
-                    prediction_signal=prediction_signal, reactive_signal=reactive_signal
+                # Simple monitoring log
+                dashboard_service.update_rtm_activity(
+                    f"📊 Monitoring: ${hyperliquid_price:.2f}, RSI: {yahoo_analysis.get('rsi_5m', 50.0):.1f}, Strategy: {current_strategy}", 
+                    "INFO"
                 )
-                
-                if signal["should_trade"]:
-                    # PREPARATION MODE: Log trade signal but don't execute
-                    signals_prepared += 1  # Count prepared signals for logging
-                    dashboard_service.update_rtm_activity(
-                        f"🎯 {signal['side']} trade signal prepared #{signals_prepared} (PREPARATION MODE)", 
-                        "INFO"
-                    )
-                    logger.info(f"🎯 Trade signal #{signals_prepared} prepared: {signal['side']} - PREPARATION MODE (not executed)")
-                    
-                    # TODO: Enable actual trading when ready
-                    # success = trading_engine.place_paper_trade(
-                    #     signal["side"], 
-                    #     signal.get("size", 0.001), 
-                    #     signal.get("leverage", 30),
-                    #     signal
-                    # )
-                    # if success:
-                    #     trades_placed += 1  # Only count actual executed trades
-                else:
-                    # Log no-trade reason
-                    dashboard_service.update_rtm_activity(f"📊 No trade: {signal['reason']}", "INFO")
-                
-                # Check position exits
-                trading_engine.check_position_exits(hyperliquid_price)
-                
-                # Dynamic predictions are now handled above via _update_dynamic_prediction
                 
                 # Wait for next iteration
                 time.sleep(check_interval)
                 
             except KeyboardInterrupt:
-                logger.info("🛑 Keyboard interrupt - stopping trading loop")
+                logger.info("🛑 Keyboard interrupt - stopping monitoring loop")
                 break
             except Exception as e:
-                logger.error(f"❌ Trading loop error: {e}")
+                logger.error(f"❌ Monitoring loop error: {e}")
                 time.sleep(check_interval)
         
-        # End session
+        # End session only on keyboard interrupt
         self._end_session(dashboard_service)
         
         return {
             "success": True,
-            "trades_placed": trades_placed,
-            "signals_prepared": signals_prepared,
+            "trades_placed": 0,
+            "signals_prepared": 0,
             "session_complete": True
         }
     
@@ -513,19 +424,15 @@ class SessionOrchestrator:
                 "rsi": rsi_value,
                 "rsi_trend": "NEUTRAL",  # Simple RSI trend (can be enhanced later)
                 
-                # Volume data (VolumeCalculator → MarketDataManager → Dashboard)
-                # Primary: Hyperliquid orderbook depth (real-time execution quality)
-                "volume_depth": volume_data.get("volume_depth", 0),
-                "volume_category": volume_data.get("volume_category", "NORMAL"),
-                "order_flow": volume_data.get("order_flow", "NEUTRAL"),
-                "depth_analysis": volume_data.get("depth_analysis", "UNKNOWN"),
-                
-                # Trading Volume: Actual trades from Hyperliquid API
-                "trading_volume_btc": volume_data.get("trading_volume_btc", 0),
-                "trading_volume_category": volume_data.get("trading_volume_category", "NO_DATA"),
-                "trade_count": volume_data.get("trade_count", 0),
-                "avg_trade_size": volume_data.get("avg_trade_size", 0),
-                "time_window_minutes": volume_data.get("time_window_minutes", 5),
+                # Trading Volume: Real-time volume from Binance WebSocket
+                "trading_volume_btc": volume_data.get("real_time_volume_btc", volume_data.get("current_volume_btc", 0)),
+                "trading_volume_category": volume_data.get("volume_category", "NO_DATA"),
+                "volume_spike_detected": volume_data.get("volume_spike_detected", False),
+                "volume_ratio": volume_data.get("volume_ratio", 1.0),
+                "current_volume_usd": volume_data.get("real_time_volume_usd", volume_data.get("current_volume_usd", 0)),
+                "volume_per_minute": volume_data.get("volume_per_minute", 0),
+                "volume_per_second": volume_data.get("volume_per_second", 0),
+                "trade_count_per_minute": volume_data.get("trade_count_per_minute", 0),
                 "data_source": volume_data.get("data_source", "unknown"),
                 
                 # Secondary: Yahoo volume momentum (5m trading activity)
@@ -562,7 +469,7 @@ class SessionOrchestrator:
                 "trend": yahoo_analysis.get("trend_5m", {}).get("trend", "NEUTRAL"),
                 "volatility_5m": volatility_5m_data.get("volatility_5m", 0.0),
                 "volatility_category": volatility_5m_data.get("volatility_category", "MODERATE"),
-                "volume_category": volume_data.get("volume_category", "NORMAL"),
+                "volume_category": volume_data.get("volume_category", "NO_DATA"),
                 "timestamp": time.time()
             }
             
@@ -589,7 +496,11 @@ class SessionOrchestrator:
                 "condition": conditions_analysis["condition"], 
                 "risk_level": conditions_analysis["risk_level"],
                 "main_reasons": conditions_analysis["reasons"][:3],
-                "confidence": conditions_analysis["confidence"]
+                "confidence": conditions_analysis["confidence"],
+                # Include whale analytics and news sentiment data
+                "whale_analytics": conditions_analysis.get("whale_analytics"),
+                "news_sentiment": conditions_analysis.get("news_sentiment"),
+                "sentiment_data": conditions_analysis.get("sentiment_data")
             }
             
             # Update dashboard with market data
@@ -599,7 +510,7 @@ class SessionOrchestrator:
             data_status = market_data_service.get_data_update_status()
             dashboard_service.update_rtm_data_status(data_status)
             
-            logger.debug(f"📊 Dashboard updated: ${hyperliquid_price:.2f}, RSI: {rsi_value:.1f}, Volume: {volume_data.get('volume_depth', 0):.1f} BTC")
+            logger.debug(f"📊 Dashboard updated: ${hyperliquid_price:.2f}, RSI: {rsi_value:.1f}, Volume: {volume_data.get('real_time_volume_btc', volume_data.get('current_volume_btc', 0)):.1f} BTC/min, Spike: {volume_data.get('volume_spike_detected', False)}")
             
         except Exception as e:
             logger.error(f"❌ Failed to update dashboard market data: {e}")
