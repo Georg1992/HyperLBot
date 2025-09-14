@@ -1321,9 +1321,11 @@
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, width, height);
                 
-                // Calculate candle dimensions first - scale out candles for better visibility
+                // Calculate candle dimensions first - leave space for price labels
                 const totalCandles = historicalCandles.length + predictedCandles.length;
-                const candleWidth = (width * 0.8) / totalCandles; // Use 80% of width, scale out candles
+                const priceLabelWidth = 80; // Reserve space for price labels on the right
+                const chartWidth = width - priceLabelWidth; // Available width for chart
+                const candleWidth = (chartWidth * 0.8) / totalCandles; // Use 80% of available chart width
                 
                 // Draw professional grid with anti-aliasing
                 ctx.imageSmoothingEnabled = true;
@@ -1338,12 +1340,12 @@
                     const y = (height / 10) * i;
                     ctx.beginPath();
                     ctx.moveTo(0, y);
-                    ctx.lineTo(width, y);
+                    ctx.lineTo(chartWidth, y); // Stop grid lines before price labels
                     ctx.stroke();
                 }
                 
                 // Vertical grid lines - align to candle boundaries with offset for scaling
-                const chartStartX = (width - (totalCandles * candleWidth)) / 2; // Center the chart
+                const chartStartX = (chartWidth - (totalCandles * candleWidth)) / 2; // Center the chart within available space
                 for (let i = 0; i <= totalCandles; i++) {
                     const x = chartStartX + (i * candleWidth);
                     ctx.beginPath();
@@ -1361,7 +1363,7 @@
                     const y = (height / 10) * i;
                     ctx.beginPath();
                     ctx.moveTo(0, y);
-                    ctx.lineTo(width, y);
+                    ctx.lineTo(chartWidth, y); // Stop grid lines before price labels
                     ctx.stroke();
                 }
                 
@@ -1415,7 +1417,7 @@
                         });
                     }
                     
-                    ctx.fillText(formattedPrice, width - 15, y);
+                    ctx.fillText(formattedPrice, width - 15, y); // Position in reserved price label area
                 }
                 
                 // Draw minor price labels for better granularity
@@ -1438,7 +1440,7 @@
                         });
                     }
                     
-                    ctx.fillText(formattedPrice, width - 12, y);
+                    ctx.fillText(formattedPrice, width - 12, y); // Position in reserved price label area
                 }
                 
                 // Reset shadow
