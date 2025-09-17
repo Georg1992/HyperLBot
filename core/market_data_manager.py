@@ -16,6 +16,7 @@ from core.analysis.real_time.trend_calculator import TrendCalculator
 from core.analysis.real_time.orderbook_analyzer import OrderBookAnalyzer
 from core.analysis.real_time.funding_rate_analyzer import FundingRateAnalyzer
 from core.analysis.real_time.volume_profile_analyzer import VolumeProfileAnalyzer
+from core.analysis.real_time.cross_asset_correlation_analyzer import CrossAssetCorrelationAnalyzer
 
 from core.constants import technical_constants
 
@@ -53,6 +54,7 @@ class MarketDataManager:
         self.orderbook_analyzer = OrderBookAnalyzer()
         self.funding_rate_analyzer = FundingRateAnalyzer()
         self.volume_profile_analyzer = VolumeProfileAnalyzer()
+        self.cross_asset_correlation_analyzer = CrossAssetCorrelationAnalyzer()
         # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
@@ -230,24 +232,30 @@ class MarketDataManager:
                             volume_profile_analysis = self.volume_profile_analyzer.analyze_volume_profile(trades_data, current_price)
                         else:
                             volume_profile_analysis = self._get_default_volume_profile_analysis()
+                        
+                        # Analyze cross-asset correlations for broader market context
+                        cross_asset_analysis = self.cross_asset_correlation_analyzer.analyze_cross_asset_correlations(current_price)
                     else:
                         volume_data = self._get_default_volume_data()
                         pressure_data = self._get_default_pressure_data()
                         orderbook_analysis = self._get_default_orderbook_analysis()
                         funding_analysis = self._get_default_funding_analysis()
                         volume_profile_analysis = self._get_default_volume_profile_analysis()
+                        cross_asset_analysis = self._get_default_cross_asset_analysis()
                 else:
                     volume_data = self._get_default_volume_data()
                     pressure_data = self._get_default_pressure_data()
                     orderbook_analysis = self._get_default_orderbook_analysis()
                     funding_analysis = self._get_default_funding_analysis()
                     volume_profile_analysis = self._get_default_volume_profile_analysis()
+                    cross_asset_analysis = self._get_default_cross_asset_analysis()
             else:
                 volume_data = self._get_default_volume_data()
                 pressure_data = self._get_default_pressure_data()
                 orderbook_analysis = self._get_default_orderbook_analysis()
                 funding_analysis = self._get_default_funding_analysis()
                 volume_profile_analysis = self._get_default_volume_profile_analysis()
+                cross_asset_analysis = self._get_default_cross_asset_analysis()
             
             # Get volume data from Hyperliquid candles (more reliable than Binance WebSocket)
             try:
@@ -328,6 +336,7 @@ class MarketDataManager:
                 "orderbook_analysis": orderbook_analysis if 'orderbook_analysis' in locals() else self._get_default_orderbook_analysis(),
                 "funding_analysis": funding_analysis if 'funding_analysis' in locals() else self._get_default_funding_analysis(),
                 "volume_profile_analysis": volume_profile_analysis if 'volume_profile_analysis' in locals() else self._get_default_volume_profile_analysis(),
+                "cross_asset_analysis": cross_asset_analysis if 'cross_asset_analysis' in locals() else self._get_default_cross_asset_analysis(),
                 "timestamp": time.time()
             }
             
@@ -343,6 +352,7 @@ class MarketDataManager:
                 "orderbook_analysis": self._get_default_orderbook_analysis(),
                 "funding_analysis": self._get_default_funding_analysis(),
                 "volume_profile_analysis": self._get_default_volume_profile_analysis(),
+                "cross_asset_analysis": self._get_default_cross_asset_analysis(),
                 "current_price": None,
                 "timestamp": time.time()
             }
@@ -397,6 +407,19 @@ class MarketDataManager:
             "large_trade_detection": {"large_trades": [], "count": 0, "impact": "UNKNOWN"},
             "trade_frequency_analysis": {"frequency": "UNKNOWN", "pattern": "UNKNOWN"},
             "market_microstructure": {"microstructure": "UNKNOWN", "characteristics": []},
+            "timestamp": time.time(),
+            "data_source": "default_fallback"
+        }
+    
+    def _get_default_cross_asset_analysis(self) -> Dict[str, Any]:
+        """Get default cross-asset correlation analysis when data is unavailable"""
+        return {
+            "dxy_correlation": {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No data"},
+            "gold_correlation": {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No data"},
+            "stock_correlation": {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No data"},
+            "market_regime": {"regime": "UNKNOWN", "description": "No data", "btc_outlook": "UNCERTAIN"},
+            "risk_sentiment": {"sentiment": "UNKNOWN", "strength": "WEAK", "btc_implication": "UNCERTAIN"},
+            "correlation_trends": {"trend": "UNKNOWN", "direction": "UNKNOWN"},
             "timestamp": time.time(),
             "data_source": "default_fallback"
         }
