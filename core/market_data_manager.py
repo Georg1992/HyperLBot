@@ -15,6 +15,7 @@ from core.analysis.real_time.support_resistance_calculator import SupportResista
 from core.analysis.real_time.trend_calculator import TrendCalculator
 from core.analysis.real_time.orderbook_analyzer import OrderBookAnalyzer
 from core.analysis.real_time.funding_rate_analyzer import FundingRateAnalyzer
+from core.analysis.real_time.volume_profile_analyzer import VolumeProfileAnalyzer
 
 from core.constants import technical_constants
 
@@ -51,6 +52,7 @@ class MarketDataManager:
         self.trend_calculator = TrendCalculator()
         self.orderbook_analyzer = OrderBookAnalyzer()
         self.funding_rate_analyzer = FundingRateAnalyzer()
+        self.volume_profile_analyzer = VolumeProfileAnalyzer()
         # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
@@ -221,21 +223,31 @@ class MarketDataManager:
                         # Get and analyze funding rate data
                         funding_data = hyperliquid_api.get_funding_rate(symbol)
                         funding_analysis = self.funding_rate_analyzer.analyze_funding_rate(funding_data)
+                        
+                        # Get and analyze volume profile from recent trades
+                        trades_data = hyperliquid_api.get_recent_trades(symbol, limit=100)
+                        if trades_data and isinstance(trades_data, list):
+                            volume_profile_analysis = self.volume_profile_analyzer.analyze_volume_profile(trades_data, current_price)
+                        else:
+                            volume_profile_analysis = self._get_default_volume_profile_analysis()
                     else:
                         volume_data = self._get_default_volume_data()
                         pressure_data = self._get_default_pressure_data()
                         orderbook_analysis = self._get_default_orderbook_analysis()
                         funding_analysis = self._get_default_funding_analysis()
+                        volume_profile_analysis = self._get_default_volume_profile_analysis()
                 else:
                     volume_data = self._get_default_volume_data()
                     pressure_data = self._get_default_pressure_data()
                     orderbook_analysis = self._get_default_orderbook_analysis()
                     funding_analysis = self._get_default_funding_analysis()
+                    volume_profile_analysis = self._get_default_volume_profile_analysis()
             else:
                 volume_data = self._get_default_volume_data()
                 pressure_data = self._get_default_pressure_data()
                 orderbook_analysis = self._get_default_orderbook_analysis()
                 funding_analysis = self._get_default_funding_analysis()
+                volume_profile_analysis = self._get_default_volume_profile_analysis()
             
             # Get volume data from Hyperliquid candles (more reliable than Binance WebSocket)
             try:
@@ -315,6 +327,7 @@ class MarketDataManager:
                 "pressure_data": pressure_data,
                 "orderbook_analysis": orderbook_analysis if 'orderbook_analysis' in locals() else self._get_default_orderbook_analysis(),
                 "funding_analysis": funding_analysis if 'funding_analysis' in locals() else self._get_default_funding_analysis(),
+                "volume_profile_analysis": volume_profile_analysis if 'volume_profile_analysis' in locals() else self._get_default_volume_profile_analysis(),
                 "timestamp": time.time()
             }
             
@@ -329,6 +342,7 @@ class MarketDataManager:
                 "pressure_data": self._get_default_pressure_data(),
                 "orderbook_analysis": self._get_default_orderbook_analysis(),
                 "funding_analysis": self._get_default_funding_analysis(),
+                "volume_profile_analysis": self._get_default_volume_profile_analysis(),
                 "current_price": None,
                 "timestamp": time.time()
             }
@@ -372,6 +386,19 @@ class MarketDataManager:
             "next_funding_time": 0,
             "data_source": "default_fallback",
             "timestamp": time.time()
+        }
+    
+    def _get_default_volume_profile_analysis(self) -> Dict[str, Any]:
+        """Get default volume profile analysis when data is unavailable"""
+        return {
+            "trade_size_distribution": {"distribution": "UNKNOWN", "categories": {}},
+            "trade_flow_analysis": {"flow": "UNKNOWN", "direction": "NEUTRAL", "strength": "WEAK"},
+            "volume_weighted_price": {"vwap": 0.0, "deviation": 0.0, "category": "UNKNOWN"},
+            "large_trade_detection": {"large_trades": [], "count": 0, "impact": "UNKNOWN"},
+            "trade_frequency_analysis": {"frequency": "UNKNOWN", "pattern": "UNKNOWN"},
+            "market_microstructure": {"microstructure": "UNKNOWN", "characteristics": []},
+            "timestamp": time.time(),
+            "data_source": "default_fallback"
         }
     
     def calculate_trend(self, candles: List[Dict], timeframe: str = "5m", strategy_name: str = "standard") -> Dict[str, Any]:
