@@ -181,7 +181,7 @@ class SessionOrchestrator:
                 rsi_data = {"rsi": rsi_value, "rsi_trend": "NEUTRAL", "rsi_signal": "NEUTRAL"}
             else:
                 # Fallback: Use Yahoo if real-time not initialized yet
-                rsi_data = global_rsi_calculator.get_current_rsi_data()
+            rsi_data = global_rsi_calculator.get_current_rsi_data()
             
             # MARKET CONDITIONS ANALYSIS for session prediction
             from strategies.market_conditions_analyzer import global_conditions_analyzer
@@ -423,6 +423,7 @@ class SessionOrchestrator:
             hyperliquid_data = market_data_manager.get_hyperliquid_data(market_data_service.hyperliquid_api, "BTC")
             volume_data = hyperliquid_data.get("volume_data", {})
             pressure_data = hyperliquid_data.get("pressure_data", {})
+            pattern_analysis = hyperliquid_data.get("pattern_analysis", {})
             
             # Get multi-timeframe volatility from Hyperliquid REAL-TIME data
             try:
@@ -608,6 +609,9 @@ class SessionOrchestrator:
             
             # Add real-time support/resistance data to market data
             market_data["support_resistance"] = real_time_sr_data
+            
+            # Add pattern analysis data to market data for chart visualization
+            market_data["pattern_analysis"] = pattern_analysis
             
             # Debug: Log volatility data being sent
             # logger.info(f"📊 Sending volatility data to dashboard: 5m={market_data.get('volatility_5m', 0):.6f} ({market_data.get('volatility_5m_category', 'UNKNOWN')})")

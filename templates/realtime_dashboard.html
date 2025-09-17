@@ -545,6 +545,10 @@
                             <span class="data-label">🎯 Key Levels:</span>
                             <span class="data-value" id="support-resistance-levels">Loading...</span>
                         </div>
+                        <div class="data-item">
+                            <span class="data-label">📊 Patterns:</span>
+                            <span class="data-value" id="pattern-analysis">Loading...</span>
+                        </div>
                     </div>
                     
                     <!-- Candle Chart moved here from Candle Analysis -->
@@ -1032,6 +1036,66 @@
                 } else {
                     srElement.textContent = 'No key levels detected';
                     srElement.className = 'data-value trend-neutral';
+                }
+                
+                // Update Pattern Analysis
+                const patternElement = document.getElementById('pattern-analysis');
+                if (market.pattern_analysis && market.pattern_analysis.patterns) {
+                    const patterns = market.pattern_analysis.patterns;
+                    const marketSetup = market.pattern_analysis.market_setup || {};
+                    const overallConfidence = market.pattern_analysis.overall_confidence || 0;
+                    
+                    let patternText = '';
+                    
+                    // Show market setup
+                    if (marketSetup.setup && marketSetup.setup !== 'UNKNOWN') {
+                        const setupEmoji = marketSetup.setup.includes('BULLISH') ? '🟢' : 
+                                          marketSetup.setup.includes('BEARISH') ? '🔴' : '🟡';
+                        patternText += `${setupEmoji} ${marketSetup.setup}<br>`;
+                    }
+                    
+                    // Show pattern counts
+                    const totalPatterns = (patterns.reversal_patterns?.length || 0) + 
+                                        (patterns.continuation_patterns?.length || 0) + 
+                                        (patterns.triangle_patterns?.length || 0) + 
+                                        (patterns.channel_patterns?.length || 0) + 
+                                        (patterns.wedge_patterns?.length || 0);
+                    
+                    if (totalPatterns > 0) {
+                        patternText += `📊 ${totalPatterns} patterns detected<br>`;
+                        
+                        // Show top patterns by confidence
+                        const allPatterns = [
+                            ...(patterns.reversal_patterns || []),
+                            ...(patterns.continuation_patterns || []),
+                            ...(patterns.triangle_patterns || []),
+                            ...(patterns.channel_patterns || []),
+                            ...(patterns.wedge_patterns || [])
+                        ].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+                        
+                        // Show top 2 patterns
+                        allPatterns.slice(0, 2).forEach(pattern => {
+                            const confidence = Math.round((pattern.confidence || 0) * 100);
+                            const patternName = pattern.pattern_type?.replace(/_/g, ' ') || 'Unknown';
+                            const patternEmoji = patternName.includes('DOUBLE TOP') || patternName.includes('HEAD SHOULDERS') ? '🔴' :
+                                               patternName.includes('DOUBLE BOTTOM') || patternName.includes('INVERSE') ? '🟢' :
+                                               patternName.includes('TRIANGLE') ? '🔺' :
+                                               patternName.includes('CHANNEL') ? '📏' :
+                                               patternName.includes('WEDGE') ? '🔻' : '📊';
+                            patternText += `${patternEmoji} ${patternName} (${confidence}%)<br>`;
+                        });
+                        
+                        // Show overall confidence
+                        patternText += `<span style="font-size: 10px; color: #666;">Confidence: ${Math.round(overallConfidence * 100)}%</span>`;
+                    } else {
+                        patternText = 'No patterns detected';
+                    }
+                    
+                    patternElement.innerHTML = patternText;
+                    patternElement.className = 'data-value trend-positive';
+                } else {
+                    patternElement.textContent = 'No pattern data';
+                    patternElement.className = 'data-value trend-neutral';
                 }
                 
                 // UPDATE TRADING OVERVIEW market conditions section
@@ -1605,6 +1669,11 @@
                 const nowX = chartStartX + ((historicalCandles.length - 1) * candleWidth) + (candleWidth / 2);
                 ctx.fillText('NOW', nowX, height - 10);
                 
+                // Draw pattern overlays on the chart
+                if (candleData && candleData.pattern_analysis) {
+                    this.drawPatternOverlays(ctx, candleData.pattern_analysis, historicalCandles, chartStartX, candleWidth, height, adjustedMinPrice, adjustedPriceRange);
+                }
+                
                 // Add current price indicator (use real-time price if available)
                 if (historicalCandles.length > 0) {
                     // Try to get real-time price from global data, fallback to last candle close
@@ -1832,6 +1901,317 @@
                     ctx.lineTo(centerX + candleWidth/2 + 3, closeY);
                     ctx.stroke();
                 }
+            }
+            
+            // Pattern Drawing Functions for Chart Overlay
+            drawPatternOverlays(ctx, patternAnalysis, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                if (!patternAnalysis || !patternAnalysis.patterns) return;
+                
+                const patterns = patternAnalysis.patterns;
+                
+                // Draw reversal patterns
+                if (patterns.reversal_patterns && patterns.reversal_patterns.length > 0) {
+                    patterns.reversal_patterns.forEach(pattern => {
+                        this.drawReversalPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    });
+                }
+                
+                // Draw continuation patterns
+                if (patterns.continuation_patterns && patterns.continuation_patterns.length > 0) {
+                    patterns.continuation_patterns.forEach(pattern => {
+                        this.drawContinuationPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    });
+                }
+                
+                // Draw triangle patterns
+                if (patterns.triangle_patterns && patterns.triangle_patterns.length > 0) {
+                    patterns.triangle_patterns.forEach(pattern => {
+                        this.drawTrianglePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    });
+                }
+                
+                // Draw channel patterns
+                if (patterns.channel_patterns && patterns.channel_patterns.length > 0) {
+                    patterns.channel_patterns.forEach(pattern => {
+                        this.drawChannelPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    });
+                }
+                
+                // Draw wedge patterns
+                if (patterns.wedge_patterns && patterns.wedge_patterns.length > 0) {
+                    patterns.wedge_patterns.forEach(pattern => {
+                        this.drawWedgePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    });
+                }
+            }
+            
+            drawReversalPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                const patternType = pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
+                const startIndex = pattern.start_candle_index || 0;
+                const endIndex = pattern.end_candle_index || candles.length - 1;
+                
+                // Calculate pattern bounds
+                const startX = chartStartX + (startIndex * candleWidth);
+                const endX = chartStartX + (endIndex * candleWidth);
+                const patternWidth = endX - startX;
+                
+                // Get pattern price levels
+                const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
+                const patternLow = pattern.pattern_low || Math.min(...candles.slice(startIndex, endIndex + 1).map(c => c.low));
+                
+                const highY = height - ((patternHigh - minPrice) / priceRange) * height;
+                const lowY = height - ((patternLow - minPrice) / priceRange) * height;
+                
+                // Set pattern color based on type and confidence
+                let patternColor, patternName;
+                if (patternType.includes('DOUBLE_TOP') || patternType.includes('HEAD_SHOULDERS')) {
+                    patternColor = `rgba(255, 100, 100, ${0.3 + confidence * 0.4})`; // Red for bearish
+                    patternName = patternType.replace('_', ' ');
+                } else if (patternType.includes('DOUBLE_BOTTOM') || patternType.includes('INVERSE')) {
+                    patternColor = `rgba(100, 255, 100, ${0.3 + confidence * 0.4})`; // Green for bullish
+                    patternName = patternType.replace('_', ' ');
+                } else {
+                    patternColor = `rgba(255, 255, 100, ${0.3 + confidence * 0.4})`; // Yellow for neutral
+                    patternName = patternType.replace('_', ' ');
+                }
+                
+                // Draw pattern background
+                ctx.fillStyle = patternColor;
+                ctx.fillRect(startX, lowY, patternWidth, highY - lowY);
+                
+                // Draw pattern border
+                ctx.strokeStyle = patternColor.replace('rgba', 'rgb').replace(/,\s*[\d.]+\)/, ')');
+                ctx.lineWidth = 2;
+                ctx.strokeRect(startX, lowY, patternWidth, highY - lowY);
+                
+                // Draw pattern label
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                const labelY = lowY - 5;
+                ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + patternWidth/2, labelY);
+            }
+            
+            drawContinuationPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                const patternType = pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
+                const startIndex = pattern.start_candle_index || 0;
+                const endIndex = pattern.end_candle_index || candles.length - 1;
+                
+                // Calculate pattern bounds
+                const startX = chartStartX + (startIndex * candleWidth);
+                const endX = chartStartX + (endIndex * candleWidth);
+                
+                // Get pattern price levels
+                const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
+                const patternLow = pattern.pattern_low || Math.min(...candles.slice(startIndex, endIndex + 1).map(c => c.low));
+                
+                const highY = height - ((patternHigh - minPrice) / priceRange) * height;
+                const lowY = height - ((patternLow - minPrice) / priceRange) * height;
+                
+                // Set pattern color based on type
+                let patternColor = `rgba(100, 150, 255, ${0.2 + confidence * 0.3})`; // Blue for continuation
+                let patternName = patternType.replace('_', ' ');
+                
+                // Draw pattern lines (support/resistance levels)
+                ctx.strokeStyle = patternColor.replace('rgba', 'rgb').replace(/,\s*[\d.]+\)/, ')');
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                
+                // Draw support line
+                ctx.beginPath();
+                ctx.moveTo(startX, lowY);
+                ctx.lineTo(endX, lowY);
+                ctx.stroke();
+                
+                // Draw resistance line
+                ctx.beginPath();
+                ctx.moveTo(startX, highY);
+                ctx.lineTo(endX, highY);
+                ctx.stroke();
+                
+                ctx.setLineDash([]);
+                
+                // Draw pattern label
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                const labelY = highY - 5;
+                ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + (endX - startX)/2, labelY);
+            }
+            
+            drawTrianglePattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                const patternType = pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
+                const startIndex = pattern.start_candle_index || 0;
+                const endIndex = pattern.end_candle_index || candles.length - 1;
+                
+                // Calculate pattern bounds
+                const startX = chartStartX + (startIndex * candleWidth);
+                const endX = chartStartX + (endIndex * candleWidth);
+                
+                // Get pattern price levels
+                const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
+                const patternLow = pattern.pattern_low || Math.min(...candles.slice(startIndex, endIndex + 1).map(c => c.low));
+                
+                const highY = height - ((patternHigh - minPrice) / priceRange) * height;
+                const lowY = height - ((patternLow - minPrice) / priceRange) * height;
+                
+                // Set pattern color based on type
+                let patternColor = `rgba(255, 200, 100, ${0.3 + confidence * 0.4})`; // Orange for triangles
+                let patternName = patternType.replace('_', ' ');
+                
+                // Draw triangle lines
+                ctx.strokeStyle = patternColor.replace('rgba', 'rgb').replace(/,\s*[\d.]+\)/, ')');
+                ctx.lineWidth = 2;
+                
+                if (patternType.includes('ASCENDING')) {
+                    // Ascending triangle: horizontal resistance, ascending support
+                    ctx.beginPath();
+                    ctx.moveTo(startX, highY);
+                    ctx.lineTo(endX, highY);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(startX, lowY);
+                    ctx.lineTo(endX, highY);
+                    ctx.stroke();
+                } else if (patternType.includes('DESCENDING')) {
+                    // Descending triangle: horizontal support, descending resistance
+                    ctx.beginPath();
+                    ctx.moveTo(startX, lowY);
+                    ctx.lineTo(endX, lowY);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(startX, highY);
+                    ctx.lineTo(endX, lowY);
+                    ctx.stroke();
+                } else {
+                    // Symmetrical triangle: converging lines
+                    ctx.beginPath();
+                    ctx.moveTo(startX, highY);
+                    ctx.lineTo(endX, (highY + lowY) / 2);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(startX, lowY);
+                    ctx.lineTo(endX, (highY + lowY) / 2);
+                    ctx.stroke();
+                }
+                
+                // Draw pattern label
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                const labelY = highY - 5;
+                ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + (endX - startX)/2, labelY);
+            }
+            
+            drawChannelPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                const patternType = pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
+                const startIndex = pattern.start_candle_index || 0;
+                const endIndex = pattern.end_candle_index || candles.length - 1;
+                
+                // Calculate pattern bounds
+                const startX = chartStartX + (startIndex * candleWidth);
+                const endX = chartStartX + (endIndex * candleWidth);
+                
+                // Get pattern price levels
+                const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
+                const patternLow = pattern.pattern_low || Math.min(...candles.slice(startIndex, endIndex + 1).map(c => c.low));
+                
+                const highY = height - ((patternHigh - minPrice) / priceRange) * height;
+                const lowY = height - ((patternLow - minPrice) / priceRange) * height;
+                
+                // Set pattern color based on type
+                let patternColor = `rgba(150, 100, 255, ${0.2 + confidence * 0.3})`; // Purple for channels
+                let patternName = patternType.replace('_', ' ');
+                
+                // Draw channel lines
+                ctx.strokeStyle = patternColor.replace('rgba', 'rgb').replace(/,\s*[\d.]+\)/, ')');
+                ctx.lineWidth = 2;
+                ctx.setLineDash([3, 3]);
+                
+                // Draw upper channel line
+                ctx.beginPath();
+                ctx.moveTo(startX, highY);
+                ctx.lineTo(endX, highY);
+                ctx.stroke();
+                
+                // Draw lower channel line
+                ctx.beginPath();
+                ctx.moveTo(startX, lowY);
+                ctx.lineTo(endX, lowY);
+                ctx.stroke();
+                
+                ctx.setLineDash([]);
+                
+                // Draw pattern label
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                const labelY = highY - 5;
+                ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + (endX - startX)/2, labelY);
+            }
+            
+            drawWedgePattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                const patternType = pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
+                const startIndex = pattern.start_candle_index || 0;
+                const endIndex = pattern.end_candle_index || candles.length - 1;
+                
+                // Calculate pattern bounds
+                const startX = chartStartX + (startIndex * candleWidth);
+                const endX = chartStartX + (endIndex * candleWidth);
+                
+                // Get pattern price levels
+                const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
+                const patternLow = pattern.pattern_low || Math.min(...candles.slice(startIndex, endIndex + 1).map(c => c.low));
+                
+                const highY = height - ((patternHigh - minPrice) / priceRange) * height;
+                const lowY = height - ((patternLow - minPrice) / priceRange) * height;
+                
+                // Set pattern color based on type
+                let patternColor = `rgba(255, 150, 200, ${0.3 + confidence * 0.4})`; // Pink for wedges
+                let patternName = patternType.replace('_', ' ');
+                
+                // Draw wedge lines
+                ctx.strokeStyle = patternColor.replace('rgba', 'rgb').replace(/,\s*[\d.]+\)/, ')');
+                ctx.lineWidth = 2;
+                
+                if (patternType.includes('RISING')) {
+                    // Rising wedge: both lines ascending, converging
+                    ctx.beginPath();
+                    ctx.moveTo(startX, lowY);
+                    ctx.lineTo(endX, highY);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(startX, lowY + (highY - lowY) * 0.3);
+                    ctx.lineTo(endX, highY - (highY - lowY) * 0.3);
+                    ctx.stroke();
+                } else if (patternType.includes('FALLING')) {
+                    // Falling wedge: both lines descending, converging
+                    ctx.beginPath();
+                    ctx.moveTo(startX, highY);
+                    ctx.lineTo(endX, lowY);
+                    ctx.stroke();
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(startX, highY - (highY - lowY) * 0.3);
+                    ctx.lineTo(endX, lowY + (highY - lowY) * 0.3);
+                    ctx.stroke();
+                }
+                
+                // Draw pattern label
+                ctx.fillStyle = '#FFFFFF';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                const labelY = highY - 5;
+                ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + (endX - startX)/2, labelY);
             }
             
             drawFutureCandlePlaceholder(ctx, x, width, height, minPrice, priceRange) {
