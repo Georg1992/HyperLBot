@@ -114,6 +114,13 @@ class SupportResistanceCalculator:
             support_levels = [lvl for lvl in key_levels if lvl["type"] == "support"]
             resistance_levels = [lvl for lvl in key_levels if lvl["type"] == "resistance"]
             
+            # Debug logging for level detection
+            logger.debug(f"📊 Support/Resistance Detection: Found {len(support_levels)} support, {len(resistance_levels)} resistance levels")
+            if support_levels:
+                logger.debug(f"📊 Support levels: {[s['level'] for s in support_levels[:3]]}")
+            if resistance_levels:
+                logger.debug(f"📊 Resistance levels: {[r['level'] for r in resistance_levels[:3]]}")
+            
             strongest_support = max(support_levels, key=lambda x: x["touches"])["level"] if support_levels else min(lows)
             strongest_resistance = max(resistance_levels, key=lambda x: x["touches"])["level"] if resistance_levels else max(highs)
             
@@ -157,7 +164,9 @@ class SupportResistanceCalculator:
                 clusters.append(current_cluster)
             
             # Convert clusters to precise levels
-            for cluster in clusters:
+            logger.debug(f"📊 Found {len(clusters)} price clusters, current price: ${current_price:.2f}")
+            
+            for i, cluster in enumerate(clusters):
                 # Calculate precise level as median of cluster
                 precise_level = statistics.median(cluster)
                 
@@ -174,6 +183,7 @@ class SupportResistanceCalculator:
                         "cluster_size": len(cluster),
                         "precision": "high"
                     })
+                    logger.debug(f"📊 Cluster {i+1}: Support level ${precise_level:.2f} (touches: {touches})")
                 elif precise_level > current_price:
                     levels.append({
                         "level": round(precise_level, 2),  # Round to nearest cent for precision
@@ -182,6 +192,9 @@ class SupportResistanceCalculator:
                         "cluster_size": len(cluster),
                         "precision": "high"
                     })
+                    logger.debug(f"📊 Cluster {i+1}: Resistance level ${precise_level:.2f} (touches: {touches})")
+                else:
+                    logger.debug(f"📊 Cluster {i+1}: Level ${precise_level:.2f} at current price - skipping")
             
             return levels
             

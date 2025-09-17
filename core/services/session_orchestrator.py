@@ -677,12 +677,19 @@ class SessionOrchestrator:
                 for support in support_levels_below[:3]:  # Top 3 closest support levels
                     relevant_levels.append(support)
             
-            # Include resistance levels within 5% of current price
+            # Include resistance levels within 10% of current price (more inclusive)
             for level in resistance_levels_above:
                 level_price = level["level"]
                 price_diff_pct = (level_price - current_price) / current_price
-                if price_diff_pct <= 0.05:  # Within 5% above current price
+                if price_diff_pct <= 0.10:  # Within 10% above current price (increased from 5%)
                     relevant_levels.append(level)
+            
+            # If no resistance levels within 10%, include the closest one regardless of distance
+            if not any(lvl["type"] == "resistance" for lvl in relevant_levels) and resistance_levels_above:
+                # Sort by distance from current price (closest first)
+                resistance_levels_above.sort(key=lambda x: x["level"] - current_price)
+                # Add the closest resistance level
+                relevant_levels.append(resistance_levels_above[0])
             
             # 4. Sort by strength (touches) and relevance
             relevant_levels.sort(key=lambda x: (x.get("touches", 0), x.get("relevance", "low")), reverse=True)
@@ -694,7 +701,7 @@ class SessionOrchestrator:
             strongest_support = support_levels[0]["level"] if support_levels else 0.0
             strongest_resistance = resistance_levels[0]["level"] if resistance_levels else 0.0
             
-            # Debug logging for support level detection
+            # Debug logging for support and resistance level detection
             if len(support_levels) == 0:
                 logger.warning(f"⚠️ No support levels found! Current price: ${current_price:.2f}")
                 logger.warning(f"⚠️ Total levels detected: {len(all_levels)}, Support levels below price: {len(support_levels_below)}")
@@ -705,6 +712,16 @@ class SessionOrchestrator:
             else:
                 logger.debug(f"📊 Found {len(support_levels)} support levels: {[s['level'] for s in support_levels[:3]]}")
                 logger.debug(f"📊 Support levels below price: {[s['level'] for s in support_levels_below[:3]]}")
+            
+            # Debug logging for resistance level detection
+            if len(resistance_levels) == 0:
+                logger.warning(f"⚠️ No resistance levels found! Current price: ${current_price:.2f}")
+                logger.warning(f"⚠️ Resistance levels above price: {len(resistance_levels_above)}")
+                if resistance_levels_above:
+                    logger.warning(f"⚠️ Resistance levels above price: {[r['level'] for r in resistance_levels_above[:3]]}")
+            else:
+                logger.debug(f"📊 Found {len(resistance_levels)} resistance levels: {[r['level'] for r in resistance_levels[:3]]}")
+                logger.debug(f"📊 Resistance levels above price: {[r['level'] for r in resistance_levels_above[:3]]}")
             
             return {
                 "key_levels": relevant_levels[:8],  # Top 8 most relevant levels
