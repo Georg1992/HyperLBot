@@ -181,7 +181,7 @@ class SessionOrchestrator:
                 rsi_data = {"rsi": rsi_value, "rsi_trend": "NEUTRAL", "rsi_signal": "NEUTRAL"}
             else:
                 # Fallback: Use Yahoo if real-time not initialized yet
-            rsi_data = global_rsi_calculator.get_current_rsi_data()
+                rsi_data = global_rsi_calculator.get_current_rsi_data()
             
             # MARKET CONDITIONS ANALYSIS for session prediction
             from strategies.market_conditions_analyzer import global_conditions_analyzer
