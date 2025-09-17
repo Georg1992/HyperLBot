@@ -29,8 +29,8 @@ class HyperliquidAPI:
         try:
             # For wallet-based authentication, we use the wallet address directly
             # No additional headers needed for basic info requests
-            logger.info("Using wallet-based authentication")
-            logger.info(f"Wallet address: {self.wallet_address}")
+            logger.debug("Using wallet-based authentication")
+            logger.debug(f"Wallet address: {self.wallet_address}")
             
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
@@ -78,7 +78,7 @@ class HyperliquidAPI:
                     best_ask = float(asks[0]['px'])
                     mid_price = (best_bid + best_ask) / 2
                     
-                    logger.debug(f"Current {symbol} price: ${mid_price:,.2f} (Bid: ${best_bid:,.2f}, Ask: ${best_ask:,.2f})")
+                    # logger.debug(f"Current {symbol} price: ${mid_price:,.2f} (Bid: ${best_bid:,.2f}, Ask: ${best_ask:,.2f})")
                     return mid_price
             
             logger.warning(f"Could not get current price for {symbol}")
@@ -103,7 +103,7 @@ class HyperliquidAPI:
             response.raise_for_status()
             
             data = response.json()
-            logger.debug(f"Retrieved market data for {symbol}")
+            # logger.debug(f"Retrieved market data for {symbol}")
             return data
             
         except Exception as e:
@@ -135,12 +135,109 @@ class HyperliquidAPI:
             response.raise_for_status()
             
             data = response.json()
-            logger.debug(f"Retrieved {len(data)} recent trades for {symbol}")
+            # logger.debug(f"Retrieved {len(data)} recent trades for {symbol}")
             return data
             
         except Exception as e:
             logger.error(f"Failed to get recent trades for {symbol}: {e}")
             raise
+
+    def get_ongoing_candle(self, symbol: str = None, interval: str = "5m") -> Optional[Dict[str, Any]]:
+        """
+        Get the current ongoing candle by combining last completed candle with recent trades
+        
+        This allows us to show the current incomplete candle (e.g., if bot starts at 20:48,
+        we can show the candle that started at 20:45 and is still forming until 20:50)
+        
+        Args:
+            symbol: Trading symbol (default: BTC)
+            interval: Candle interval (default: 5m)
+            
+        Returns:
+            Ongoing candle dict with OHLCV data or None if unavailable
+        """
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            # Get the last completed candle to use as base
+            historical_candles = self.get_historical_candles(symbol, interval, 1)
+            if not historical_candles:
+                logger.error(f"No historical candles available for ongoing candle")
+                return None
+            
+            last_completed_candle = historical_candles[0]
+            
+            # Get recent trades to build the ongoing candle
+            recent_trades = self.get_recent_trades(symbol, limit=50)
+            if not recent_trades:
+                logger.warning(f"No recent trades available for ongoing candle")
+                return None
+            
+            # Calculate the current candle start time
+            current_time = time.time()
+            interval_seconds = self._get_interval_seconds(interval)
+            current_candle_start = (int(current_time // interval_seconds)) * interval_seconds
+            
+            # Filter trades that belong to the current ongoing candle
+            ongoing_trades = []
+            for trade in recent_trades:
+                trade_time = trade.get('time', 0) / 1000  # Convert from milliseconds
+                if trade_time >= current_candle_start:
+                    ongoing_trades.append(trade)
+            
+            if not ongoing_trades:
+                logger.debug(f"No trades in current candle period, using last completed candle")
+                return last_completed_candle
+            
+            # Build ongoing candle from trades
+            prices = [float(trade.get('px', 0)) for trade in ongoing_trades if trade.get('px')]
+            volumes = [float(trade.get('sz', 0)) for trade in ongoing_trades if trade.get('sz')]
+            
+            if not prices:
+                logger.warning(f"No valid price data in ongoing trades")
+                return last_completed_candle
+            
+            # Calculate OHLCV for ongoing candle
+            open_price = prices[-1]  # Most recent trade price as open (will be updated)
+            high_price = max(prices)
+            low_price = min(prices)
+            close_price = prices[0]  # First trade in current period as close
+            volume = sum(volumes)
+            
+            # Use the last completed candle's open as the true open for ongoing candle
+            if last_completed_candle:
+                open_price = last_completed_candle.get('close', open_price)
+            
+            ongoing_candle = {
+                'timestamp': current_candle_start,
+                'open': open_price,
+                'high': high_price,
+                'low': low_price,
+                'close': close_price,
+                'volume': volume,
+                'is_ongoing': True,  # Mark as ongoing candle
+                'trades_count': len(ongoing_trades),
+                'last_trade_time': ongoing_trades[0].get('time', 0) / 1000 if ongoing_trades else current_time
+            }
+            
+            # logger.debug(f"🕯️ Ongoing {interval} candle: O=${open_price:.2f} H=${high_price:.2f} L=${low_price:.2f} C=${close_price:.2f} V={volume:.2f} ({len(ongoing_trades)} trades)")
+            return ongoing_candle
+            
+        except Exception as e:
+            logger.error(f"Failed to get ongoing candle for {symbol}: {e}")
+            return None
+
+    def _get_interval_seconds(self, interval: str) -> int:
+        """Convert interval string to seconds"""
+        interval_map = {
+            "1m": 60,
+            "5m": 300,
+            "15m": 900,
+            "1h": 3600,
+            "4h": 14400,
+            "1d": 86400
+        }
+        return interval_map.get(interval, 300)  # Default to 5m
 
     # get_volume_analysis() REMOVED - Volume logic moved to VolumeCalculator for clean architecture
     # MarketDataManager now handles volume analysis using VolumeCalculator delegation
@@ -176,18 +273,18 @@ class HyperliquidAPI:
                 "1d": 1440
             }.get(interval, 1)
             
-            # Request payload for historical candles
+            # Request payload for historical candles (include ongoing candle for rolling window)
             payload = {
                 "type": "candleSnapshot",
                 "req": {
                     "coin": symbol,
                     "interval": interval,
                     "startTime": int((time.time() - (limit * interval_minutes * 60)) * 1000),  # Convert to milliseconds
-                    "endTime": int(time.time() * 1000)  # Convert to milliseconds
+                    "endTime": int(time.time() * 1000)  # Include current ongoing candle
                 }
             }
             
-            logger.info(f"🕯️ Requesting {limit} {interval} candles for {symbol}")
+            logger.info(f"🕯️ Requesting {limit} {interval} candles for {symbol} (rolling window approach)")
             logger.debug(f"🕯️ Payload: {payload}")
             
             response = self.session.post(url, json=payload, timeout=10)

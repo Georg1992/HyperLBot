@@ -27,6 +27,18 @@ class SystemInitializer:
     def initialize_system(self, market_data_service) -> Dict[str, Any]:
         """Initialize all system components"""
         try:
+            # Check if already initialized to prevent duplicate API creation
+            if self.connected:
+                logger.info("⚙️ System already initialized, skipping duplicate initialization")
+                # Return the existing API instances to maintain compatibility
+                return {
+                    "success": True, 
+                    "already_initialized": True,
+                    "hyperliquid_api": getattr(self, '_hyperliquid_api', None),
+                    "hyperliquid_websocket": getattr(self, '_hyperliquid_websocket', None),
+                    "hyperliquid_simulator": getattr(self, '_hyperliquid_simulator', None)
+                }
+            
             # Ensure environment
             self._ensure_env_file()
             
@@ -46,6 +58,11 @@ class SystemInitializer:
             
             # Initialize simulator
             hyperliquid_simulator = HyperliquidSimulator()
+            
+            # Store API instances for future reuse
+            self._hyperliquid_api = connection_result["hyperliquid_api"]
+            self._hyperliquid_websocket = connection_result["hyperliquid_websocket"]
+            self._hyperliquid_simulator = hyperliquid_simulator
             
             return {
                 "success": True,
