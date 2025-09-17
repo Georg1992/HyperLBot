@@ -655,13 +655,29 @@ class SessionOrchestrator:
                     level["relevance"] = "medium"  # Medium-term data
                 all_levels.extend(sr_1h.get("key_levels", []))
             
-            # 3. Filter levels by proximity to current price (within 5% for real-time relevance)
-            # Increased from 3% to 5% to prevent support levels from disappearing during price movement
+            # 3. Smart filtering: Always show closest support/resistance levels
+            # For support: show closest level below current price (regardless of distance)
+            # For resistance: show closest level above current price (within reasonable range)
             relevant_levels = []
-            for level in all_levels:
+            
+            # Get all support levels below current price
+            support_levels_below = [lvl for lvl in all_levels if lvl["type"] == "support" and lvl["level"] < current_price]
+            # Get all resistance levels above current price
+            resistance_levels_above = [lvl for lvl in all_levels if lvl["type"] == "resistance" and lvl["level"] > current_price]
+            
+            # Always include the closest support level below current price
+            if support_levels_below:
+                # Sort by distance from current price (closest first)
+                support_levels_below.sort(key=lambda x: current_price - x["level"])
+                # Add the closest support level (and maybe 1-2 more if they're close)
+                for support in support_levels_below[:3]:  # Top 3 closest support levels
+                    relevant_levels.append(support)
+            
+            # Include resistance levels within 5% of current price
+            for level in resistance_levels_above:
                 level_price = level["level"]
-                price_diff_pct = abs(level_price - current_price) / current_price
-                if price_diff_pct <= 0.05:  # Within 5% of current price (increased from 3%)
+                price_diff_pct = (level_price - current_price) / current_price
+                if price_diff_pct <= 0.05:  # Within 5% above current price
                     relevant_levels.append(level)
             
             # 4. Sort by strength (touches) and relevance
@@ -676,11 +692,15 @@ class SessionOrchestrator:
             
             # Debug logging for support level detection
             if len(support_levels) == 0:
-                logger.warning(f"⚠️ No support levels found! Current price: ${current_price:.2f}, Total levels: {len(all_levels)}, Relevant levels: {len(relevant_levels)}")
+                logger.warning(f"⚠️ No support levels found! Current price: ${current_price:.2f}")
+                logger.warning(f"⚠️ Total levels detected: {len(all_levels)}, Support levels below price: {len(support_levels_below)}")
                 if all_levels:
                     logger.warning(f"⚠️ All detected levels: {[(l['level'], l['type'], l.get('touches', 0)) for l in all_levels[:5]]}")
+                if support_levels_below:
+                    logger.warning(f"⚠️ Support levels below price: {[s['level'] for s in support_levels_below[:3]]}")
             else:
                 logger.debug(f"📊 Found {len(support_levels)} support levels: {[s['level'] for s in support_levels[:3]]}")
+                logger.debug(f"📊 Support levels below price: {[s['level'] for s in support_levels_below[:3]]}")
             
             return {
                 "key_levels": relevant_levels[:8],  # Top 8 most relevant levels
