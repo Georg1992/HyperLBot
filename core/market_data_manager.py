@@ -13,6 +13,7 @@ from core.analysis.real_time.pressure_calculator import PressureCalculator
 from core.analysis.real_time.rsi_calculator import RSICalculator
 from core.analysis.real_time.support_resistance_calculator import SupportResistanceCalculator
 from core.analysis.real_time.trend_calculator import TrendCalculator
+from core.analysis.real_time.orderbook_analyzer import OrderBookAnalyzer
 
 from core.constants import technical_constants
 
@@ -47,52 +48,88 @@ class MarketDataManager:
         self.pressure_calculator = PressureCalculator()
         self.support_resistance_calculator = SupportResistanceCalculator()
         self.trend_calculator = TrendCalculator()
+        self.orderbook_analyzer = OrderBookAnalyzer()
         # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
     
-    def get_historical_candles(self, symbol: str = "BTC", interval: str = "5m", limit: int = 12) -> List[Dict[str, Any]]:
+    def get_historical_candles(self, symbol: str = "BTC", interval: str = "5m", limit: int = 12, force_refresh: bool = False, include_ongoing: bool = True) -> List[Dict[str, Any]]:
         """
-        Get historical candles with rolling window management
+        Get historical candles with simple 12-candle rolling window
+        
+        Simple approach:
+        - Always show exactly 12 candles: 11 historical + 1 current ongoing
+        - Remove oldest candle when new one completes
         
         Args:
             symbol: Trading symbol (default: BTC)
             interval: Candle interval (default: 5m)
             limit: Number of candles to return (default: 12)
+            force_refresh: Force refresh from API (default: False)
+            include_ongoing: Include current ongoing candle (default: True)
             
         Returns:
-            List of historical candle dictionaries
+            List of exactly 12 candle dictionaries: 11 historical + 1 ongoing
         """
         try:
+            # Check if we have recent data and don't need to refresh
+            if not force_refresh and self._candle_buffer and len(self._candle_buffer) >= limit:
+                # Check if the latest candle is recent (within last 5 minutes for 5m candles)
+                latest_candle_time = self._candle_buffer[-1].get('timestamp', 0)
+                current_time = time.time()
+                time_diff = current_time - latest_candle_time
+                
+                # For 5m candles, only refresh if more than 4 minutes have passed
+                if interval == "5m" and time_diff < 240:  # 4 minutes
+                    # logger.debug(f"🕯️ Using cached candles (age: {time_diff:.0f}s)")
+                    return self._candle_buffer
+            
             from core.api.hyperliquid_api import HyperliquidAPI
             
             # Create Hyperliquid API instance
             hyperliquid_api = HyperliquidAPI()
             
-            # Fetch latest candles from Hyperliquid (get a few extra to detect new ones)
+            # Fetch latest candles from Hyperliquid (get enough for 12-candle window)
             logger.info(f"🕯️ Fetching {interval} candles for {symbol}...")
             new_candles = hyperliquid_api.get_historical_candles(
                 symbol=symbol,
                 interval=interval,
-                limit=15  # Get 15 to detect new candles
+                limit=12  # Get exactly 12 candles
             )
             
-            if not new_candles or len(new_candles) < limit:
-                logger.error(f"❌ Insufficient data from Hyperliquid: {len(new_candles) if new_candles else 0} candles (need {limit})")
+            if not new_candles or len(new_candles) < 12:
+                logger.error(f"❌ Insufficient data from Hyperliquid: {len(new_candles) if new_candles else 0} candles (need 12)")
                 raise Exception(f"Hyperliquid API returned insufficient data: {len(new_candles) if new_candles else 0} candles")
             
-            # Implement rolling window: keep only the last N candles
-            latest_candles = new_candles[-limit:]
+            # Simple 12-candle rolling window: always return exactly 12 candles
+            latest_candles = new_candles[-12:]
+            logger.info(f"🕯️ Simple rolling window: {len(latest_candles)} candles")
+            
+            # Mark the last candle as ongoing if it's the current incomplete candle
+            if latest_candles:
+                current_time = time.time()
+                interval_seconds = 300 if interval == "5m" else 60  # 5m = 300s, 1m = 60s
+                last_candle_time = latest_candles[-1].get('timestamp', 0)
+                time_since_last = current_time - last_candle_time
+                
+                # If last candle is very recent (within 5 minutes for 5m candles), mark as ongoing
+                if time_since_last < interval_seconds:
+                    latest_candles[-1]['is_ongoing'] = True
+                    logger.debug(f"🕯️ Marked last candle as ongoing (age: {time_since_last:.0f}s)")
             
             # Update our buffer with the latest candles
             self._candle_buffer = latest_candles
             
-            logger.info(f"✅ Rolling window updated: {len(self._candle_buffer)} candles, price range: ${min(c['low'] for c in self._candle_buffer):.2f} - ${max(c['high'] for c in self._candle_buffer):.2f}")
+            logger.info(f"✅ Growing window updated: {len(self._candle_buffer)} candles, price range: ${min(c['low'] for c in self._candle_buffer):.2f} - ${max(c['high'] for c in self._candle_buffer):.2f}")
             return self._candle_buffer
             
         except Exception as e:
             logger.error(f"❌ Historical candle fetch failed: {e}")
             raise Exception(f"Failed to fetch historical candle data: {e}")
+    
+    def get_ongoing_candle(self) -> Optional[Dict[str, Any]]:
+        """Get the current ongoing candle (for layering with 1st prediction)"""
+        return getattr(self, '_ongoing_candle', None)
     
     def _update_volume_history(self, timestamp: float, depth: float, price: float):
         """Update volume history for noise reduction and relative analysis"""
@@ -174,56 +211,100 @@ class MarketDataManager:
                         # Use PressureCalculator for pressure analysis (proper delegation)
                         pressure_data = self.pressure_calculator.calculate_orderbook_pressure(bids, asks)
                         pressure_data["data_source"] = "hyperliquid_orderbook"
+                        
+                        # Use OrderBookAnalyzer for comprehensive order book analysis
+                        current_price = market_data.get('markPrice', 0) if 'markPrice' in market_data else 0
+                        orderbook_analysis = self.orderbook_analyzer.analyze_orderbook(market_data, current_price)
                     else:
                         volume_data = self._get_default_volume_data()
                         pressure_data = self._get_default_pressure_data()
+                        orderbook_analysis = self._get_default_orderbook_analysis()
                 else:
                     volume_data = self._get_default_volume_data()
                     pressure_data = self._get_default_pressure_data()
+                    orderbook_analysis = self._get_default_orderbook_analysis()
             else:
                 volume_data = self._get_default_volume_data()
                 pressure_data = self._get_default_pressure_data()
+                orderbook_analysis = self._get_default_orderbook_analysis()
             
-            # Get real-time volume data from Binance WebSocket (for scalping)
+            # Get volume data from Hyperliquid candles (more reliable than Binance WebSocket)
             try:
-                # Use global instance for real-time volume data
-                if not hasattr(self, 'binance_api'):
-                    from core.external.binance_api import binance_api
-                    self.binance_api = binance_api
+                # Check cache for volume data (cache for 30 seconds)
+                volume_cache_key = f"volume_data_{symbol}"
+                cached_volume = self._get_cached_data(volume_cache_key, 30)
                 
-                # Get real-time volume data from Binance WebSocket
-                real_time_volume = self.binance_api.get_real_time_volume()
-                
-                # Update volume data with real-time information
-                volume_data.update({
-                    "real_time_volume_btc": real_time_volume.get('current_volume_btc', 0),
-                    "real_time_volume_usd": real_time_volume.get('current_volume_usd', 0),
-                    "volume_per_minute": real_time_volume.get('volume_per_minute', 0),
-                    "volume_per_second": real_time_volume.get('volume_per_second', 0),
-                    "trade_count_per_minute": real_time_volume.get('trade_count_per_minute', 0),
-                    "volume_spike_detected": real_time_volume.get('volume_spike_detected', False),
-                    "volume_ratio": real_time_volume.get('volume_ratio', 1.0),
-                    "binance_timestamp": real_time_volume.get('timestamp', time.time()),
-                    "data_source": "binance_websocket" if real_time_volume.get('real_time', False) else "binance_fallback"
-                })
-                
-                # Calculate volume category using VolumeCalculator
-                current_volume_btc = real_time_volume.get('current_volume_btc', 0)
-                volume_spike_result = self.volume_calculator.detect_volume_spike_from_binance(current_volume_btc, [])
-                volume_data["volume_category"] = volume_spike_result.get("volume_category", "UNKNOWN")
-                
-                logger.debug(f"Binance real-time volume: {real_time_volume.get('current_volume_btc', 0):.1f} BTC/min, "
-                           f"Spike: {real_time_volume.get('volume_spike_detected', False)}, "
-                           f"Ratio: {real_time_volume.get('volume_ratio', 1.0):.2f}x")
+                if cached_volume:
+                    volume_data = cached_volume
+                else:
+                    # Get recent candles to calculate volume per minute
+                    candles = hyperliquid_api.get_historical_candles(symbol, "5m", 5)
+                    if candles and len(candles) >= 3:
+                        # Calculate average volume per minute from recent 5m candles
+                        recent_volumes = [candle.get('volume', 0) for candle in candles[-3:]]
+                        avg_5m_volume = sum(recent_volumes) / len(recent_volumes)
+                        volume_per_minute = avg_5m_volume / 5  # Convert 5m volume to per minute
+                        volume_per_second = volume_per_minute / 60
+                        
+                        # Calculate volume category using VolumeCalculator
+                        volume_spike_result = self.volume_calculator.detect_volume_spike_from_binance(volume_per_minute, [])
+                        
+                        # Update volume data with Hyperliquid candle data
+                        volume_data.update({
+                            "current_volume_btc": volume_per_minute,
+                            "current_volume_usd": volume_per_minute * market_data.get('markPrice', 0),
+                            "real_time_volume_btc": volume_per_minute,
+                            "real_time_volume_usd": volume_per_minute * market_data.get('markPrice', 0),
+                            "volume_per_minute": volume_per_minute,
+                            "volume_per_second": volume_per_second,
+                            "trade_count_per_minute": 0,  # Not available from candles
+                            "volume_spike_detected": volume_spike_result.get('volume_spike_detected', False),
+                            "volume_ratio": volume_spike_result.get('volume_ratio', 1.0),
+                            "volume_category": volume_spike_result.get('volume_category', 'UNKNOWN'),
+                            "data_source": "hyperliquid_candles",
+                            "timestamp": time.time()
+                        })
+                        
+                        # Cache the volume data
+                        self._cache_data(volume_cache_key, volume_data, 30)  # 30 second cache
+                        
+                        # logger.info(f"📊 Hyperliquid volume: {volume_per_minute:.1f} BTC/min → {volume_spike_result.get('volume_category', 'UNKNOWN')}")  # Dashboard shows this
+                    else:
+                        logger.warning("⚠️ Not enough Hyperliquid candles for volume calculation")
                     
             except Exception as e:
-                logger.warning(f"Binance real-time volume fetch failed: {e}")
+                logger.warning(f"⚠️ Hyperliquid volume calculation failed: {e}")
+                
+                # Fallback to Binance WebSocket if Hyperliquid fails
+                try:
+                    if not hasattr(self, 'binance_api'):
+                        from core.external.binance_api import binance_api
+                        self.binance_api = binance_api
+                    
+                    real_time_volume = self.binance_api.get_real_time_volume()
+                    current_volume_btc = real_time_volume.get('current_volume_btc', 0)
+                    volume_spike_result = self.volume_calculator.detect_volume_spike_from_binance(current_volume_btc, [])
+                    
+                    volume_data.update({
+                        "current_volume_btc": current_volume_btc,
+                        "real_time_volume_btc": current_volume_btc,
+                        "volume_per_minute": current_volume_btc,
+                        "volume_spike_detected": real_time_volume.get('volume_spike_detected', False),
+                        "volume_ratio": real_time_volume.get('volume_ratio', 1.0),
+                        "volume_category": volume_spike_result.get('volume_category', 'UNKNOWN'),
+                        "data_source": "binance_fallback"
+                    })
+                    
+                    logger.debug(f"Binance fallback volume: {current_volume_btc:.1f} BTC/min")
+                except Exception as e2:
+                    logger.error(f"❌ Both Hyperliquid and Binance volume failed: {e2}")
                 # Continue with orderbook data (fallback for scalping)
             
             result = {
                 "volume_data": volume_data,
                 # volatility_data removed - using 5m candle volatility instead of orderbook volatility
                 "pressure_data": pressure_data,
+                "orderbook_analysis": orderbook_analysis if 'orderbook_analysis' in locals() else self._get_default_orderbook_analysis(),
                 "timestamp": time.time()
             }
             
@@ -236,6 +317,7 @@ class MarketDataManager:
             return {
                 "volume_data": self._get_default_volume_data(),
                 "pressure_data": self._get_default_pressure_data(),
+                "orderbook_analysis": self._get_default_orderbook_analysis(),
                 "current_price": None,
                 "timestamp": time.time()
             }
@@ -254,6 +336,18 @@ class MarketDataManager:
     def _get_default_pressure_data(self) -> Dict[str, Any]:
         """Get default pressure data when orderbook is unavailable"""
         return self.pressure_calculator._get_default_pressure()
+    
+    def _get_default_orderbook_analysis(self) -> Dict[str, Any]:
+        """Get default order book analysis when data is unavailable"""
+        return {
+            "bid_ask_spread": {"absolute": 0.0, "percentage": 0.0, "category": "UNKNOWN"},
+            "order_imbalance": {"ratio": 1.0, "category": "BALANCED", "bias": 0.0},
+            "liquidity_depth": {"depth_score": 0.0, "category": "LOW", "levels_analyzed": 0},
+            "market_pressure": {"pressure": 0.0, "direction": "NEUTRAL", "strength": "WEAK"},
+            "support_resistance_strength": {"support_strength": 0.0, "resistance_strength": 0.0, "category": "WEAK"},
+            "timestamp": time.time(),
+            "data_source": "default_fallback"
+        }
     
     def calculate_trend(self, candles: List[Dict], timeframe: str = "5m", strategy_name: str = "standard") -> Dict[str, Any]:
         """Calculate strategy-specific trend using TrendCalculator (SRP - delegate to calculator)"""
@@ -307,24 +401,19 @@ class MarketDataManager:
 
     def get_hyperliquid_volatility_analysis(self, hyperliquid_candles: List[Dict], symbol: str = "BTC", strategy_name: str = "standard") -> Dict[str, Any]:
         """
-        Get volatility analysis from Hyperliquid candle data (REAL-TIME DATA)
+        Get multi-timeframe volatility analysis from Hyperliquid candle data (REAL-TIME DATA)
         This method uses actual market data instead of stale Yahoo data
         """
         try:
             if not hyperliquid_candles or len(hyperliquid_candles) < 3:
                 logger.warning("⚠️ Not enough Hyperliquid candles for volatility analysis")
-                return {
-                    "volatility_5m": 0.0,
-                    "volatility_5m_category": "UNKNOWN",
-                    "volatility_5m_trend": "UNKNOWN",
-                    "data_source": "hyperliquid_insufficient_data"
-                }
+                return self._get_default_volatility_analysis("hyperliquid_insufficient_data")
             
             # Calculate volatility from REAL Hyperliquid data
             volatility_5m = self.calculate_volatility(hyperliquid_candles)
-            volatility_5m_category, volatility_5m_trend = self.volatility_calculator.categorize_5m_volatility_for_trading(volatility_5m)
+            volatility_5m_category, volatility_5m_trend = self.volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
             
-            logger.info(f"📊 Hyperliquid volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%) → {volatility_5m_category}")
+            logger.info(f"📊 Hyperliquid 5m volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%) → {volatility_5m_category}")
             
             return {
                 "volatility_5m": volatility_5m,
@@ -335,12 +424,110 @@ class MarketDataManager:
             
         except Exception as e:
             logger.error(f"❌ Hyperliquid volatility analysis failed: {e}")
-            return {
-                "volatility_5m": 0.0,
-                "volatility_5m_category": "ERROR",
-                "volatility_5m_trend": "ERROR",
-                "data_source": "hyperliquid_error"
+            return self._get_default_volatility_analysis("hyperliquid_error")
+    
+    def get_multi_timeframe_volatility_analysis(self, hyperliquid_api, symbol: str = "BTC", strategy_name: str = "standard") -> Dict[str, Any]:
+        """
+        Get comprehensive multi-timeframe volatility analysis from Hyperliquid data
+        Calculates 1m, 5m, 1h, and 1d volatility for complete market context
+        CACHED to avoid excessive API calls
+        """
+        try:
+            # Check cache first (cache for 2 minutes to avoid excessive API calls)
+            cache_key = f"multi_volatility_{symbol}_{strategy_name}"
+            cached_result = self._get_cached_data(cache_key, 120)  # 2 minute cache
+            
+            if cached_result:
+                return cached_result
+            
+            # Fetch candles for all timeframes (only when cache expires)
+            candles_1m = hyperliquid_api.get_historical_candles(symbol, "1m", 20)  # 20 minutes
+            candles_5m = hyperliquid_api.get_historical_candles(symbol, "5m", 12)  # 1 hour
+            candles_1h = hyperliquid_api.get_historical_candles(symbol, "1h", 24)  # 1 day
+            candles_1d = hyperliquid_api.get_historical_candles(symbol, "1d", 7)   # 1 week
+            
+            volatility_analysis = {
+                "data_source": "hyperliquid_multi_timeframe",
+                "timestamp": time.time()
             }
+            
+            # Calculate 1-minute volatility (for scalping)
+            if candles_1m and len(candles_1m) >= 3:
+                volatility_1m = self.calculate_volatility(candles_1m)
+                volatility_1m_category, volatility_1m_trend = self.volatility_calculator.categorize_volatility_for_trading(volatility_1m, "1m")
+                volatility_analysis.update({
+                    "volatility_1m": volatility_1m,
+                    "volatility_1m_category": volatility_1m_category,
+                    "volatility_1m_trend": volatility_1m_trend
+                })
+                # logger.debug(f"📊 1m volatility: {volatility_1m:.6f} ({volatility_1m*100:.4f}%) → {volatility_1m_category}")
+            else:
+                volatility_analysis.update(self._get_default_timeframe_volatility("1m"))
+            
+            # Calculate 5-minute volatility (for position management)
+            if candles_5m and len(candles_5m) >= 3:
+                volatility_5m = self.calculate_volatility(candles_5m)
+                volatility_5m_category, volatility_5m_trend = self.volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
+                volatility_analysis.update({
+                    "volatility_5m": volatility_5m,
+                    "volatility_5m_category": volatility_5m_category,
+                    "volatility_5m_trend": volatility_5m_trend
+                })
+                # logger.info(f"📊 5m volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%) → {volatility_5m_category}")  # Dashboard shows this
+            else:
+                volatility_analysis.update(self._get_default_timeframe_volatility("5m"))
+            
+            # Calculate 1-hour volatility (for trend confirmation)
+            if candles_1h and len(candles_1h) >= 3:
+                volatility_1h = self.calculate_volatility(candles_1h)
+                volatility_1h_category, volatility_1h_trend = self.volatility_calculator.categorize_volatility_for_trading(volatility_1h, "1h")
+                volatility_analysis.update({
+                    "volatility_1h": volatility_1h,
+                    "volatility_1h_category": volatility_1h_category,
+                    "volatility_1h_trend": volatility_1h_trend
+                })
+                # logger.debug(f"📊 1h volatility: {volatility_1h:.6f} ({volatility_1h*100:.4f}%) → {volatility_1h_category}")
+            else:
+                volatility_analysis.update(self._get_default_timeframe_volatility("1h"))
+            
+            # Calculate daily volatility (for market context)
+            if candles_1d and len(candles_1d) >= 3:
+                volatility_1d = self.calculate_volatility(candles_1d)
+                volatility_1d_category, volatility_1d_trend = self.volatility_calculator.categorize_volatility_for_trading(volatility_1d, "1d")
+                volatility_analysis.update({
+                    "volatility_1d": volatility_1d,
+                    "volatility_1d_category": volatility_1d_category,
+                    "volatility_1d_trend": volatility_1d_trend
+                })
+                # logger.debug(f"📊 1d volatility: {volatility_1d:.6f} ({volatility_1d*100:.4f}%) → {volatility_1d_category}")
+            else:
+                volatility_analysis.update(self._get_default_timeframe_volatility("1d"))
+            
+            # Cache the result to avoid excessive API calls
+            self._cache_data(cache_key, volatility_analysis, 120)  # 2 minute cache
+            
+            return volatility_analysis
+            
+        except Exception as e:
+            logger.error(f"❌ Multi-timeframe volatility analysis failed: {e}")
+            return self._get_default_volatility_analysis("hyperliquid_error")
+    
+    def _get_default_volatility_analysis(self, data_source: str) -> Dict[str, Any]:
+        """Get default volatility analysis when data is unavailable"""
+        return {
+            "volatility_5m": 0.0,
+            "volatility_5m_category": "UNKNOWN",
+            "volatility_5m_trend": "UNKNOWN",
+            "data_source": data_source
+        }
+    
+    def _get_default_timeframe_volatility(self, timeframe: str) -> Dict[str, Any]:
+        """Get default volatility data for a specific timeframe"""
+        return {
+            f"volatility_{timeframe}": 0.0,
+            f"volatility_{timeframe}_category": "UNKNOWN",
+            f"volatility_{timeframe}_trend": "UNKNOWN"
+        }
 
     def get_yahoo_data_with_analysis(self, yahoo_fetcher, symbol: str = "BTC", hyperliquid_price: float = None, strategy_name: str = "standard") -> Dict[str, Any]:
         """
@@ -388,7 +575,7 @@ class MarketDataManager:
             
             # Calculate RSI from Yahoo 5m candles (using global RSICalculator directly)
             rsi_5m = global_rsi_calculator.calculate_standalone_rsi(candles_5m)
-            logger.debug(f"📊 Yahoo analysis RSI calculated: {rsi_5m:.2f} from 5m candles")
+            # logger.debug(f"📊 Yahoo analysis RSI calculated: {rsi_5m:.2f} from 5m candles")
             
             # Volume analysis now handled by CoinGecko - Yahoo volume methods removed
             volumes_5m = [candle["volume"] for candle in candles_5m if "volume" in candle]
