@@ -244,7 +244,12 @@ class MarketDataManager:
                         onchain_analysis = self.onchain_data_analyzer.analyze_onchain_data(current_price)
                         
                         # Analyze trading patterns for market setups
-                        pattern_analysis = self.pattern_recognition_engine.analyze_patterns(candles)
+                        # Get recent candles for pattern analysis
+                        pattern_candles = hyperliquid_api.get_historical_candles(symbol, "5m", 20)
+                        if pattern_candles and len(pattern_candles) >= 10:
+                            pattern_analysis = self.pattern_recognition_engine.analyze_patterns(pattern_candles)
+                        else:
+                            pattern_analysis = self._get_default_pattern_analysis()
                     else:
                         volume_data = self._get_default_volume_data()
                         pressure_data = self._get_default_pressure_data()
