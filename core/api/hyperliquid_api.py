@@ -319,12 +319,84 @@ class HyperliquidAPI:
             logger.error(f"❌ Failed to fetch Hyperliquid candles: {e}")
             return None
 
+    def get_funding_rate(self, symbol: str = None) -> Dict[str, Any]:
+        """Get current funding rate for a symbol"""
+        try:
+            symbol = symbol or self.config.SYMBOL
+            
+            endpoint = "/info"
+            payload = {
+                "type": "meta",
+                "coin": symbol
+            }
+            
+            response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            # Extract funding rate from meta data
+            if data and 'fundingRate' in data:
+                funding_rate = float(data['fundingRate'])
+                return {
+                    "funding_rate": funding_rate,
+                    "funding_rate_percentage": funding_rate * 100,
+                    "next_funding_time": data.get('nextFundingTime', 0),
+                    "symbol": symbol,
+                    "timestamp": time.time(),
+                    "data_source": "hyperliquid_api"
+                }
+            else:
+                # Fallback: calculate funding rate from mark/index price difference
+                market_data = self.get_market_data(symbol)
+                if market_data and 'markPrice' in market_data and 'indexPrice' in market_data:
+                    mark_price = float(market_data['markPrice'])
+                    index_price = float(market_data['indexPrice'])
+                    
+                    # Calculate funding rate based on price difference
+                    price_diff = (mark_price - index_price) / index_price
+                    funding_rate = price_diff * 0.0001  # 0.01% per hour base rate
+                    
+                    # Clamp to reasonable range
+                    funding_rate = max(-0.0075, min(0.0075, funding_rate))  # ±0.75% per hour max
+                    
+                    return {
+                        "funding_rate": funding_rate,
+                        "funding_rate_percentage": funding_rate * 100,
+                        "mark_price": mark_price,
+                        "index_price": index_price,
+                        "price_difference": price_diff,
+                        "symbol": symbol,
+                        "timestamp": time.time(),
+                        "data_source": "calculated_fallback"
+                    }
+                else:
+                    return {
+                        "funding_rate": 0.0,
+                        "funding_rate_percentage": 0.0,
+                        "symbol": symbol,
+                        "timestamp": time.time(),
+                        "data_source": "default_fallback",
+                        "error": "No funding rate data available"
+                    }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get funding rate for {symbol}: {e}")
+            return {
+                "funding_rate": 0.0,
+                "funding_rate_percentage": 0.0,
+                "symbol": symbol,
+                "timestamp": time.time(),
+                "data_source": "error_fallback",
+                "error": str(e)
+            }
+
     # ==================================================================================
     # ALL TRADING METHODS REMOVED - HyperliquidSimulator handles all trading operations
     # Methods eliminated: get_account_info, get_account_balance, get_open_positions, 
     # get_open_orders, get_mark_price, set_leverage, get_leverage, place_order,
     # place_market_order, place_limit_order, cancel_order, get_positions, 
-    # get_trade_history, get_funding_rate, calculate_liquidation_price, 
+    # get_trade_history, calculate_liquidation_price, 
     # _sign_order, _create_signed_order_payload
     # (540 lines of dead trading code eliminated)
     # ==================================================================================

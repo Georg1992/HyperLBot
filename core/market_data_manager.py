@@ -14,6 +14,7 @@ from core.analysis.real_time.rsi_calculator import RSICalculator
 from core.analysis.real_time.support_resistance_calculator import SupportResistanceCalculator
 from core.analysis.real_time.trend_calculator import TrendCalculator
 from core.analysis.real_time.orderbook_analyzer import OrderBookAnalyzer
+from core.analysis.real_time.funding_rate_analyzer import FundingRateAnalyzer
 
 from core.constants import technical_constants
 
@@ -49,6 +50,7 @@ class MarketDataManager:
         self.support_resistance_calculator = SupportResistanceCalculator()
         self.trend_calculator = TrendCalculator()
         self.orderbook_analyzer = OrderBookAnalyzer()
+        self.funding_rate_analyzer = FundingRateAnalyzer()
         # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
@@ -215,18 +217,25 @@ class MarketDataManager:
                         # Use OrderBookAnalyzer for comprehensive order book analysis
                         current_price = market_data.get('markPrice', 0) if 'markPrice' in market_data else 0
                         orderbook_analysis = self.orderbook_analyzer.analyze_orderbook(market_data, current_price)
+                        
+                        # Get and analyze funding rate data
+                        funding_data = hyperliquid_api.get_funding_rate(symbol)
+                        funding_analysis = self.funding_rate_analyzer.analyze_funding_rate(funding_data)
                     else:
                         volume_data = self._get_default_volume_data()
                         pressure_data = self._get_default_pressure_data()
                         orderbook_analysis = self._get_default_orderbook_analysis()
+                        funding_analysis = self._get_default_funding_analysis()
                 else:
                     volume_data = self._get_default_volume_data()
                     pressure_data = self._get_default_pressure_data()
                     orderbook_analysis = self._get_default_orderbook_analysis()
+                    funding_analysis = self._get_default_funding_analysis()
             else:
                 volume_data = self._get_default_volume_data()
                 pressure_data = self._get_default_pressure_data()
                 orderbook_analysis = self._get_default_orderbook_analysis()
+                funding_analysis = self._get_default_funding_analysis()
             
             # Get volume data from Hyperliquid candles (more reliable than Binance WebSocket)
             try:
@@ -305,6 +314,7 @@ class MarketDataManager:
                 # volatility_data removed - using 5m candle volatility instead of orderbook volatility
                 "pressure_data": pressure_data,
                 "orderbook_analysis": orderbook_analysis if 'orderbook_analysis' in locals() else self._get_default_orderbook_analysis(),
+                "funding_analysis": funding_analysis if 'funding_analysis' in locals() else self._get_default_funding_analysis(),
                 "timestamp": time.time()
             }
             
@@ -318,6 +328,7 @@ class MarketDataManager:
                 "volume_data": self._get_default_volume_data(),
                 "pressure_data": self._get_default_pressure_data(),
                 "orderbook_analysis": self._get_default_orderbook_analysis(),
+                "funding_analysis": self._get_default_funding_analysis(),
                 "current_price": None,
                 "timestamp": time.time()
             }
@@ -347,6 +358,20 @@ class MarketDataManager:
             "support_resistance_strength": {"support_strength": 0.0, "resistance_strength": 0.0, "category": "WEAK"},
             "timestamp": time.time(),
             "data_source": "default_fallback"
+        }
+    
+    def _get_default_funding_analysis(self) -> Dict[str, Any]:
+        """Get default funding rate analysis when data is unavailable"""
+        return {
+            "current_funding_rate": 0.0,
+            "current_funding_rate_pct": 0.0,
+            "funding_trend": {"trend": "UNKNOWN", "direction": "NEUTRAL", "strength": 0.0},
+            "funding_sentiment": {"sentiment": "UNKNOWN", "description": "No data", "risk_level": "UNKNOWN"},
+            "extreme_funding_detection": {"is_extreme": False, "extreme_type": "NORMAL", "description": "No data"},
+            "funding_volatility": {"volatility": 0.0, "category": "UNKNOWN"},
+            "next_funding_time": 0,
+            "data_source": "default_fallback",
+            "timestamp": time.time()
         }
     
     def calculate_trend(self, candles: List[Dict], timeframe: str = "5m", strategy_name: str = "standard") -> Dict[str, Any]:
