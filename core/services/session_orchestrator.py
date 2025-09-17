@@ -258,19 +258,31 @@ class SessionOrchestrator:
                 historical_context=session_manager.get_historical_context()
             )
             
+            # Get support/resistance levels from historical analysis (computed once at startup)
+            from core.session.session_manager import session_manager
+            historical_context = session_manager.get_historical_context()
+            major_levels = historical_context.get("major_levels", {}) if historical_context else {}
+            
+            # Format support/resistance data for dashboard
+            support_resistance_data = {
+                "key_levels": major_levels.get("key_levels", []),
+                "strongest_support": major_levels.get("strongest_support", 0.0),
+                "strongest_resistance": major_levels.get("strongest_resistance", 0.0),
+                "timeframe": "historical",
+                "candles_analyzed": major_levels.get("timeframes_analyzed", {}).get("hourly", 0),
+                "analysis_confidence": major_levels.get("analysis_confidence", 0.0)
+            }
+            
             # Store market conditions in RTM for dashboard
             simple_rtm.update_market({
                 "market_conditions": {
                     "is_tradable": market_conditions_data["is_tradable"],
-                    "condition": market_conditions_data["condition"], 
                     "risk_level": market_conditions_data["risk_level"],
-                    "main_reasons": market_conditions_data["reasons"][:3],
-                    "confidence": market_conditions_data["confidence"],
-                    # Include whale analytics and news sentiment data
-                    "whale_analytics": market_conditions_data.get("whale_analytics"),
-                    "news_sentiment": market_conditions_data.get("news_sentiment"),
-                    "sentiment_data": market_conditions_data.get("sentiment_data")
-                }
+                    "reasons": market_conditions_data.get("reasons", []),  # Use 'reasons' instead of 'factors'
+                    "positive_factors": market_conditions_data.get("positive_factors", []),
+                    "risk_factors": market_conditions_data.get("risk_factors", [])
+                },
+                "support_resistance": support_resistance_data  # Add support/resistance levels
             })
             
             # Log initial analysis
@@ -412,35 +424,36 @@ class SessionOrchestrator:
             volume_data = hyperliquid_data.get("volume_data", {})
             pressure_data = hyperliquid_data.get("pressure_data", {})
             
-            # Get 5-minute volatility from Hyperliquid REAL-TIME data (not stale Yahoo data)
+            # Get multi-timeframe volatility from Hyperliquid REAL-TIME data
             try:
-                # Fetch real-time Hyperliquid candles for accurate volatility calculation
-                hyperliquid_candles = market_data_service.hyperliquid_api.get_historical_candles("BTC", "5m", 12)
+                # Get comprehensive multi-timeframe volatility analysis
+                multi_timeframe_volatility = market_data_manager.get_multi_timeframe_volatility_analysis(
+                    market_data_service.hyperliquid_api, "BTC", strategy_name
+                )
                 
-                if hyperliquid_candles and len(hyperliquid_candles) >= 3:
-                    # Use REAL Hyperliquid data for volatility calculation
-                    volatility_5m_data = market_data_manager.get_hyperliquid_volatility_analysis(
-                        hyperliquid_candles, "BTC", strategy_name
-                    )
-                    logger.info(f"📊 Using Hyperliquid volatility: {volatility_5m_data.get('volatility_5m_category', 'UNKNOWN')}")
-                else:
-                    # Fallback to Yahoo data if Hyperliquid fails
-                    logger.warning("⚠️ Hyperliquid candles unavailable, falling back to Yahoo volatility")
-                    volatility_5m_data = {
-                        "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                        "volatility_category": yahoo_analysis.get("volatility_5m_category", "UNKNOWN"),
-                        "volatility_trend": yahoo_analysis.get("volatility_5m_trend", "UNKNOWN"),
-                        "data_source": "yahoo_fallback"
-                    }
+                # Log the primary 5m volatility for monitoring
+                if "volatility_5m" in multi_timeframe_volatility:
+                    # logger.info(f"📊 Multi-timeframe volatility: 5m={multi_timeframe_volatility['volatility_5m']:.6f} ({multi_timeframe_volatility['volatility_5m']*100:.4f}%) → {multi_timeframe_volatility['volatility_5m_category']}")
+                    pass  # Placeholder for future logging
+                
+                # Log other timeframes if available
+                for timeframe in ["1m", "1h", "1d"]:
+                    vol_key = f"volatility_{timeframe}"
+                    if vol_key in multi_timeframe_volatility:
+                        # logger.debug(f"📊 {timeframe} volatility: {multi_timeframe_volatility[vol_key]:.6f} ({multi_timeframe_volatility[vol_key]*100:.4f}%) → {multi_timeframe_volatility.get(f'{vol_key}_category', 'UNKNOWN')}")
+                        pass  # Placeholder for future debug logging
+                
+                volatility_5m_data = multi_timeframe_volatility
+                
             except Exception as e:
-                logger.error(f"❌ Hyperliquid volatility calculation failed: {e}")
-                # Fallback to Yahoo data
-                volatility_5m_data = {
-                    "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
-                    "volatility_category": yahoo_analysis.get("volatility_5m_category", "UNKNOWN"),
-                    "volatility_trend": yahoo_analysis.get("volatility_5m_trend", "UNKNOWN"),
-                    "data_source": "yahoo_error_fallback"
-                }
+                # Fallback to Yahoo data if Hyperliquid fails
+                logger.warning(f"⚠️ Multi-timeframe volatility failed: {e}, falling back to Yahoo volatility")
+            volatility_5m_data = {
+                "volatility_5m": yahoo_analysis.get("volatility_5m", 0.0),
+                    "volatility_5m_category": yahoo_analysis.get("volatility_5m_category", "UNKNOWN"),
+                    "volatility_5m_trend": yahoo_analysis.get("volatility_5m_trend", "UNKNOWN"),
+                    "data_source": "yahoo_fallback"
+            }
             
             # Prepare market data for dashboard (EXACT field names expected by HTML template)
             market_data = {
@@ -477,11 +490,22 @@ class SessionOrchestrator:
                 
                 # FIX: Use 5-minute candle volatility (aligned with bot's trading timeframe)
                 "volatility_5m": volatility_5m_data.get("volatility_5m", 0.0),
-                "volatility_category": volatility_5m_data.get("volatility_category", "NORMAL"),
-                "volatility_trend": volatility_5m_data.get("volatility_trend", "NEUTRAL"),
+                "volatility_5m_category": volatility_5m_data.get("volatility_5m_category", "NORMAL"),
+                "volatility_5m_trend": volatility_5m_data.get("volatility_5m_trend", "NEUTRAL"),
+                
+                # Add multi-timeframe volatility data for dashboard
+                "volatility_1m": volatility_5m_data.get("volatility_1m", 0.0),
+                "volatility_1m_category": volatility_5m_data.get("volatility_1m_category", "NORMAL"),
+                "volatility_1m_trend": volatility_5m_data.get("volatility_1m_trend", "NEUTRAL"),
+                "volatility_1h": volatility_5m_data.get("volatility_1h", 0.0),
+                "volatility_1h_category": volatility_5m_data.get("volatility_1h_category", "NORMAL"),
+                "volatility_1h_trend": volatility_5m_data.get("volatility_1h_trend", "NEUTRAL"),
+                "volatility_1d": volatility_5m_data.get("volatility_1d", 0.0),
+                "volatility_1d_category": volatility_5m_data.get("volatility_1d_category", "NORMAL"),
+                "volatility_1d_trend": volatility_5m_data.get("volatility_1d_trend", "NEUTRAL"),
                 
                 "timestamp": time.time(),
-                "data_source": "clean_architecture_services"
+                "data_source": volume_data.get("data_source", "hyperliquid_candles")
             }
             
             # CONTINUOUS MARKET CONDITIONS ANALYSIS (update dashboard with tradability)
@@ -514,6 +538,11 @@ class SessionOrchestrator:
                 historical_context=historical_context
             )
             
+            # REAL-TIME SUPPORT/RESISTANCE DETECTION (update every 5 seconds)
+            real_time_sr_data = self._calculate_real_time_support_resistance(
+                market_data_service.hyperliquid_api, hyperliquid_price, strategy_name
+            )
+            
             # Add market conditions to market data for dashboard
             market_data["market_conditions"] = {
                 "is_tradable": conditions_analysis["is_tradable"],
@@ -527,6 +556,62 @@ class SessionOrchestrator:
                 "sentiment_data": conditions_analysis.get("sentiment_data")
             }
             
+            # Add current candle data for chart display
+            try:
+                # Get current 5m candles for chart (force refresh every 30 seconds for real-time updates)
+                current_time = time.time()
+                force_refresh = not hasattr(self, '_last_candle_refresh') or (current_time - self._last_candle_refresh) > 30
+                current_candles = market_data_manager.get_historical_candles("BTC", "5m", 12, force_refresh=force_refresh)
+                
+                if force_refresh:
+                    self._last_candle_refresh = current_time
+                if current_candles:
+                    # Update ongoing candle with real-time price for live updates
+                    # The ongoing candle is now included in current_candles array (marked with is_ongoing: true)
+                    ongoing_candle = None
+                    if current_candles:
+                        last_candle = current_candles[-1]
+                        if last_candle.get('is_ongoing', False) and hyperliquid_price:
+                            # Update the ongoing candle with real-time price
+                            last_candle["close"] = hyperliquid_price
+                            # Also update high/low if current price exceeds them
+                            if hyperliquid_price > last_candle.get("high", 0):
+                                last_candle["high"] = hyperliquid_price
+                            if hyperliquid_price < last_candle.get("low", 0) or last_candle.get("low", 0) == 0:
+                                last_candle["low"] = hyperliquid_price
+                            ongoing_candle = last_candle
+                    
+                    # Generate candle data structure for dashboard (simple 12-candle approach)
+                    candle_data = {
+                        "historical": current_candles,  # Exactly 12 candles (11 historical + 1 ongoing)
+                        "ongoing": ongoing_candle,      # Ongoing candle (same as last in historical)
+                        "predicted": []  # No predicted candles - using trade predictions instead
+                    }
+                    market_data["candleData"] = candle_data
+                    
+                    # Debug: Log candle data structure
+                    # logger.info(f"🕯️ Simple 12-candle window: {len(current_candles)} candles, ongoing: {ongoing_candle is not None}")
+                    if ongoing_candle:
+                        # logger.info(f"🕯️ Ongoing candle: O=${ongoing_candle.get('open', 0):.2f} C=${ongoing_candle.get('close', 0):.2f}")
+                        pass  # Placeholder for future logging
+                    
+                    # Debug: Log candle data details
+                    latest_candle = current_candles[-1] if current_candles else None
+                    if latest_candle:
+                        latest_time = latest_candle.get('timestamp', 0)
+                        latest_close = latest_candle.get('close', 0)
+                        # logger.info(f"📊 Updated candle data: {len(current_candles)} candles, latest: ${latest_close:.2f} at {latest_time}")
+                    else:
+                        logger.debug(f"📊 Added {len(current_candles)} candles to dashboard data")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to add candle data to dashboard: {e}")
+            
+            # Add real-time support/resistance data to market data
+            market_data["support_resistance"] = real_time_sr_data
+            
+            # Debug: Log volatility data being sent
+            # logger.info(f"📊 Sending volatility data to dashboard: 5m={market_data.get('volatility_5m', 0):.6f} ({market_data.get('volatility_5m_category', 'UNKNOWN')})")
+            
             # Update dashboard with market data
             dashboard_service.update_rtm_market(market_data)
             
@@ -534,10 +619,90 @@ class SessionOrchestrator:
             data_status = market_data_service.get_data_update_status()
             dashboard_service.update_rtm_data_status(data_status)
             
-            logger.debug(f"📊 Dashboard updated: ${hyperliquid_price:.2f}, RSI: {rsi_value:.1f}, Volume: {volume_data.get('real_time_volume_btc', volume_data.get('current_volume_btc', 0)):.1f} BTC/min, Spike: {volume_data.get('volume_spike_detected', False)}")
+            # logger.debug(f"📊 Dashboard updated: ${hyperliquid_price:.2f}, RSI: {rsi_value:.1f}, Volume: {volume_data.get('real_time_volume_btc', volume_data.get('current_volume_btc', 0)):.1f} BTC/min, Spike: {volume_data.get('volume_spike_detected', False)}")
             
         except Exception as e:
             logger.error(f"❌ Failed to update dashboard market data: {e}")
             # Continue trading even if dashboard update fails
+    
+    def _calculate_real_time_support_resistance(self, hyperliquid_api, current_price: float, strategy_name: str) -> Dict[str, Any]:
+        """Calculate real-time support/resistance levels from recent candle data"""
+        try:
+            from core.analysis.real_time.support_resistance_calculator import SupportResistanceCalculator
+            sr_calculator = SupportResistanceCalculator()
+            
+            # Get recent candle data for real-time analysis
+            # Use multiple timeframes for comprehensive level detection
+            candles_5m = hyperliquid_api.get_historical_candles("BTC", "5m", 24)  # Last 2 hours
+            candles_1h = hyperliquid_api.get_historical_candles("BTC", "1h", 12)  # Last 12 hours
+            
+            # Combine recent data for better level detection
+            all_levels = []
+            
+            # 1. Analyze 5-minute data (most recent, most relevant)
+            if candles_5m and len(candles_5m) >= 10:
+                sr_5m = sr_calculator.identify_key_levels(candles_5m, min_touches=2)
+                for level in sr_5m.get("key_levels", []):
+                    level["timeframe"] = "5m"
+                    level["relevance"] = "high"  # Most recent data
+                all_levels.extend(sr_5m.get("key_levels", []))
+            
+            # 2. Analyze 1-hour data (medium-term levels)
+            if candles_1h and len(candles_1h) >= 10:
+                sr_1h = sr_calculator.identify_key_levels(candles_1h, min_touches=2)
+                for level in sr_1h.get("key_levels", []):
+                    level["timeframe"] = "1h"
+                    level["relevance"] = "medium"  # Medium-term data
+                all_levels.extend(sr_1h.get("key_levels", []))
+            
+            # 3. Filter levels by proximity to current price (within 5% for real-time relevance)
+            # Increased from 3% to 5% to prevent support levels from disappearing during price movement
+            relevant_levels = []
+            for level in all_levels:
+                level_price = level["level"]
+                price_diff_pct = abs(level_price - current_price) / current_price
+                if price_diff_pct <= 0.05:  # Within 5% of current price (increased from 3%)
+                    relevant_levels.append(level)
+            
+            # 4. Sort by strength (touches) and relevance
+            relevant_levels.sort(key=lambda x: (x.get("touches", 0), x.get("relevance", "low")), reverse=True)
+            
+            # 5. Get strongest support and resistance
+            support_levels = [lvl for lvl in relevant_levels if lvl["type"] == "support"]
+            resistance_levels = [lvl for lvl in relevant_levels if lvl["type"] == "resistance"]
+            
+            strongest_support = support_levels[0]["level"] if support_levels else 0.0
+            strongest_resistance = resistance_levels[0]["level"] if resistance_levels else 0.0
+            
+            # Debug logging for support level detection
+            if len(support_levels) == 0:
+                logger.warning(f"⚠️ No support levels found! Current price: ${current_price:.2f}, Total levels: {len(all_levels)}, Relevant levels: {len(relevant_levels)}")
+                if all_levels:
+                    logger.warning(f"⚠️ All detected levels: {[(l['level'], l['type'], l.get('touches', 0)) for l in all_levels[:5]]}")
+            else:
+                logger.debug(f"📊 Found {len(support_levels)} support levels: {[s['level'] for s in support_levels[:3]]}")
+            
+            return {
+                "key_levels": relevant_levels[:8],  # Top 8 most relevant levels
+                "strongest_support": strongest_support,
+                "strongest_resistance": strongest_resistance,
+                "timeframe": "real_time",
+                "candles_analyzed": len(candles_5m) + len(candles_1h),
+                "analysis_confidence": min(1.0, len(relevant_levels) / 10),  # More levels = higher confidence
+                "data_source": "hyperliquid_realtime"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Real-time support/resistance calculation failed: {e}")
+            # Return fallback data
+            return {
+                "key_levels": [],
+                "strongest_support": 0.0,
+                "strongest_resistance": 0.0,
+                "timeframe": "error",
+                "candles_analyzed": 0,
+                "analysis_confidence": 0.0,
+                "data_source": "error_fallback"
+            }
     
     # _calculate_5m_volatility() removed - calculation logic moved to MarketDataManager (proper responsibility)
