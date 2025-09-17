@@ -1323,6 +1323,9 @@
                 console.log('🕯️ updateCandleChart called with:', candleData);
                 
                 if (candleData && candleData.historical) {
+                    // Store candle data for responsive redraws
+                    this.lastCandleData = candleData;
+                    
                     // Draw the candle chart with new structure (historical + ongoing + predicted)
                     this.drawCandleChart(candleData.historical, candleData.predicted || [], candleData);
                     
@@ -1479,13 +1482,22 @@
                     ctx.stroke();
                 }
                 
-                // Calculate price range with some padding
+                // Calculate responsive price range that always fits viewport
                 const allCandles = [...historicalCandles, ...predictedCandles];
                 const prices = allCandles.flatMap(c => [c.open, c.high, c.low, c.close]);
                 const minPrice = Math.min(...prices);
                 const maxPrice = Math.max(...prices);
                 const priceRange = maxPrice - minPrice;
-                const padding = priceRange * 0.25; // 25% padding for more vertical space
+                
+                // Ensure minimum price range for readability (0.5% of current price)
+                const currentPrice = prices[prices.length - 1] || (minPrice + maxPrice) / 2;
+                const minPriceRange = currentPrice * 0.005; // 0.5% minimum range
+                const effectivePriceRange = Math.max(priceRange, minPriceRange);
+                
+                // Dynamic padding: larger padding for smaller ranges, smaller for larger ranges
+                const paddingRatio = effectivePriceRange < minPriceRange * 2 ? 0.4 : 0.25;
+                const padding = effectivePriceRange * paddingRatio;
+                
                 const adjustedMinPrice = minPrice - padding;
                 const adjustedMaxPrice = maxPrice + padding;
                 const adjustedPriceRange = adjustedMaxPrice - adjustedMinPrice;
@@ -2091,6 +2103,20 @@
         document.addEventListener('DOMContentLoaded', () => {
             console.log('🚀 Initializing Real-Time Dashboard...');
             dashboard = new RealTimeDashboard();
+            
+            // Add responsive chart behavior
+            window.addEventListener('resize', () => {
+                if (dashboard && dashboard.lastCandleData) {
+                    // Redraw chart with new dimensions
+                    setTimeout(() => {
+                        dashboard.drawCandleChart(
+                            dashboard.lastCandleData.historical, 
+                            dashboard.lastCandleData.predicted || [], 
+                            dashboard.lastCandleData
+                        );
+                    }, 100); // Small delay to ensure canvas has new dimensions
+                }
+            });
         });
         
         // Global function for manual refresh button
