@@ -18,6 +18,7 @@ from core.analysis.real_time.funding_rate_analyzer import FundingRateAnalyzer
 from core.analysis.real_time.volume_profile_analyzer import VolumeProfileAnalyzer
 from core.analysis.real_time.cross_asset_correlation_analyzer import CrossAssetCorrelationAnalyzer
 from core.analysis.real_time.onchain_data_analyzer import OnChainDataAnalyzer
+from core.analysis.real_time.pattern_recognition_engine import PatternRecognitionEngine
 
 from core.constants import technical_constants
 
@@ -57,6 +58,7 @@ class MarketDataManager:
         self.volume_profile_analyzer = VolumeProfileAnalyzer()
         self.cross_asset_correlation_analyzer = CrossAssetCorrelationAnalyzer()
         self.onchain_data_analyzer = OnChainDataAnalyzer()
+        self.pattern_recognition_engine = PatternRecognitionEngine()
         # RSI calculator moved to global singleton to prevent multiple instances
         
         logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
@@ -240,6 +242,9 @@ class MarketDataManager:
                         
                         # Analyze on-chain data for blockchain insights
                         onchain_analysis = self.onchain_data_analyzer.analyze_onchain_data(current_price)
+                        
+                        # Analyze trading patterns for market setups
+                        pattern_analysis = self.pattern_recognition_engine.analyze_patterns(candles)
                     else:
                         volume_data = self._get_default_volume_data()
                         pressure_data = self._get_default_pressure_data()
@@ -248,6 +253,7 @@ class MarketDataManager:
                         volume_profile_analysis = self._get_default_volume_profile_analysis()
                         cross_asset_analysis = self._get_default_cross_asset_analysis()
                         onchain_analysis = self._get_default_onchain_analysis()
+                        pattern_analysis = self._get_default_pattern_analysis()
                 else:
                     volume_data = self._get_default_volume_data()
                     pressure_data = self._get_default_pressure_data()
@@ -256,6 +262,7 @@ class MarketDataManager:
                     volume_profile_analysis = self._get_default_volume_profile_analysis()
                     cross_asset_analysis = self._get_default_cross_asset_analysis()
                     onchain_analysis = self._get_default_onchain_analysis()
+                    pattern_analysis = self._get_default_pattern_analysis()
             else:
                 volume_data = self._get_default_volume_data()
                 pressure_data = self._get_default_pressure_data()
@@ -264,6 +271,7 @@ class MarketDataManager:
                 volume_profile_analysis = self._get_default_volume_profile_analysis()
                 cross_asset_analysis = self._get_default_cross_asset_analysis()
                 onchain_analysis = self._get_default_onchain_analysis()
+                pattern_analysis = self._get_default_pattern_analysis()
             
             # Get volume data from Hyperliquid candles (more reliable than Binance WebSocket)
             try:
@@ -346,6 +354,7 @@ class MarketDataManager:
                 "volume_profile_analysis": volume_profile_analysis if 'volume_profile_analysis' in locals() else self._get_default_volume_profile_analysis(),
                 "cross_asset_analysis": cross_asset_analysis if 'cross_asset_analysis' in locals() else self._get_default_cross_asset_analysis(),
                 "onchain_analysis": onchain_analysis if 'onchain_analysis' in locals() else self._get_default_onchain_analysis(),
+                "pattern_analysis": pattern_analysis if 'pattern_analysis' in locals() else self._get_default_pattern_analysis(),
                 "timestamp": time.time()
             }
             
@@ -363,6 +372,7 @@ class MarketDataManager:
                 "volume_profile_analysis": self._get_default_volume_profile_analysis(),
                 "cross_asset_analysis": self._get_default_cross_asset_analysis(),
                 "onchain_analysis": self._get_default_onchain_analysis(),
+                "pattern_analysis": self._get_default_pattern_analysis(),
                 "current_price": None,
                 "timestamp": time.time()
             }
@@ -443,6 +453,32 @@ class MarketDataManager:
             "network_health": {"analysis": "NO_DATA", "health": "UNKNOWN", "congestion": "UNKNOWN"},
             "whale_activity": {"analysis": "NO_DATA", "activity": "UNKNOWN", "impact": "UNKNOWN"},
             "onchain_sentiment": {"sentiment": "UNKNOWN", "strength": "WEAK", "confidence": 0.0},
+            "timestamp": time.time(),
+            "data_source": "default_fallback"
+        }
+    
+    def _get_default_pattern_analysis(self) -> Dict[str, Any]:
+        """Get default pattern analysis when data is unavailable"""
+        return {
+            "patterns": {
+                "reversal_patterns": [],
+                "continuation_patterns": [],
+                "triangle_patterns": [],
+                "channel_patterns": [],
+                "wedge_patterns": [],
+                "trend_patterns": []
+            },
+            "overall_confidence": 0.0,
+            "market_setup": {
+                "setup": "UNKNOWN",
+                "strength": "WEAK",
+                "bullish_patterns": 0,
+                "bearish_patterns": 0,
+                "neutral_patterns": 0,
+                "overall_confidence": 0.0,
+                "recommendation": "HOLD"
+            },
+            "pattern_count": 0,
             "timestamp": time.time(),
             "data_source": "default_fallback"
         }
