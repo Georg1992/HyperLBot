@@ -310,7 +310,7 @@ class ExecutionLayer:
             # Check strategy-specific confidence threshold
             confidence = prediction.get("confidence", 0.0)
             strategy = prediction.get("strategy", "default")
-            strategy_threshold = self.get_strategy_confidence_threshold(strategy)
+            strategy_threshold = self.get_strategy_execution_threshold(strategy)
             
             if confidence < strategy_threshold:
                 logger.warning(f"⚠️ Low win probability prediction: {confidence:.2f} < {strategy_threshold:.1f} ({strategy_threshold*100:.0f}% win rate) for {strategy}")
