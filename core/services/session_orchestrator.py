@@ -971,6 +971,15 @@ class SessionOrchestrator:
                 total_trades = execution_stats.get("total_trades", 0)
                 win_rate = execution_stats.get("win_rate", 0)
                 
+                # Get actual training data count from ML system
+                try:
+                    from core.ml.model_training import global_model_trainer
+                    training_stats = global_model_trainer.data_collector.get_data_statistics()
+                    actual_training_points = training_stats.get("data_points", 0)
+                except Exception as e:
+                    logger.error(f"❌ Failed to get training data count: {e}")
+                    actual_training_points = total_analyses  # Fallback to analysis count
+                
                 # Determine analysis type based on recent activity
                 if total_analyses > 0:
                     latest_analysis = analysis_history[-1]
@@ -993,7 +1002,7 @@ class SessionOrchestrator:
                 return {
                     "analysis_type": analysis_type,
                     "analysis_type_detail": analysis_type_detail,
-                    "training_data_points": total_analyses,
+                    "training_data_points": actual_training_points,
                     "accuracy": accuracy,
                     "confidence_correlation": confidence_correlation,
                     "retrain_status": "Auto",
@@ -1002,11 +1011,18 @@ class SessionOrchestrator:
                     "total_predictions": total_trades
                 }
             
-            # Fallback data if AI system not available
+            # Fallback data if AI system not available - still try to get training data
+            try:
+                from core.ml.model_training import global_model_trainer
+                training_stats = global_model_trainer.data_collector.get_data_statistics()
+                fallback_training_points = training_stats.get("data_points", 0)
+            except Exception:
+                fallback_training_points = 0
+            
             return {
                 "analysis_type": "Initializing",
                 "analysis_type_detail": "System Starting",
-                "training_data_points": 0,
+                "training_data_points": fallback_training_points,
                 "accuracy": 0.0,
                 "confidence_correlation": 0.0,
                 "retrain_status": "Pending",
