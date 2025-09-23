@@ -102,7 +102,11 @@ class AnalysisLayer:
                     signals
                 )
             
-            # Step 5: Collect training data for ML learning
+            # Step 5: Update prediction confidence based on entry price proximity
+            if prediction:
+                self._update_prediction_confidence(prediction, current_price, market_data)
+            
+            # Step 6: Collect training data for ML learning
             self._collect_training_data(signals, market_data, prediction)
             
             # Step 5: Determine market regime
@@ -541,6 +545,31 @@ class AnalysisLayer:
             
         except Exception as e:
             logger.error(f"❌ Failed to collect training data: {e}")
+    
+    def _update_prediction_confidence(self, prediction: Dict[str, Any], current_price: float, market_data: Dict[str, Any]):
+        """
+        Update prediction confidence based on real-time market behavior
+        
+        Args:
+            prediction: The prediction to update
+            current_price: Current market price
+            market_data: Current market data
+        """
+        try:
+            from core.ml.prediction_manager import global_prediction_manager
+            
+            # Use the prediction manager's confidence update method
+            updated_confidence = global_prediction_manager.update_prediction_confidence(
+                prediction, current_price, market_data
+            )
+            
+            # Update the prediction with new confidence
+            if updated_confidence is not None:
+                prediction["confidence"] = updated_confidence
+                logger.debug(f"🔄 Updated prediction confidence: {updated_confidence:.3f}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update prediction confidence: {e}")
 
 # Global instance
 global_analysis_layer = AnalysisLayer()
