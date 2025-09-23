@@ -921,101 +921,63 @@ class PredictionManager:
     
     def _calculate_high_vol_parameters(self, direction: str, current_price: float, market_data: Dict[str, Any], 
                                      signal_analysis: Dict[str, Any], account_balance: float) -> Dict[str, Any]:
-        """Calculate high volatility specific trading parameters"""
+        """Calculate high volatility specific trading parameters using hybrid position sizing"""
         try:
-            # High volatility: Very wide stops, large targets, smaller positions
+            from core.ml.hybrid_position_sizer import hybrid_position_sizer
             
-            base_risk_percent = 0.02  # 2% base risk
-            signal_confidence = signal_analysis.get("overall_confidence", 0.5)
-            confidence_multiplier = 0.4 + (signal_confidence * 0.6)  # 0.4-1.0x (smaller positions in high vol)
-            
-            position_risk_percent = base_risk_percent * confidence_multiplier
-            position_size_usd = account_balance * position_risk_percent
-            position_size_btc = position_size_usd / current_price
-            
-            entry_price = self._calculate_entry_price(direction, current_price, market_data)
-            
-            # High volatility: Very wide stops (1-3%)
-            volatility = market_data.get("volatility_5m", 0.001)
-            stop_percent = max(0.01, volatility * 5)  # At least 1% or 5x volatility
-            
-            if direction == "BUY":
-                stop_loss = entry_price * (1 - stop_percent)
-                target_price = entry_price * (1 + (stop_percent * 2))  # 2:1 R/R for high vol
-            else:  # SELL
-                stop_loss = entry_price * (1 + stop_percent)
-                target_price = entry_price * (1 - (stop_percent * 2))  # 2:1 R/R for high vol
-            
-            leverage = 40.0  # Maximum leverage for high volatility (stop loss manages risk)
+            # Use hybrid position sizing system
+            position_result = hybrid_position_sizer.calculate_optimal_position_size(
+                direction=direction,
+                current_price=current_price,
+                market_data=market_data,
+                signal_analysis=signal_analysis,
+                account_balance=account_balance,
+                strategy="high_volatility"
+            )
             
             return {
-                "entry_price": entry_price,
-                "size_btc": position_size_btc,
-                "size_usd": position_size_usd,
-                "stop_loss": stop_loss,
-                "target_price": target_price,
-                "leverage": leverage,
-                "risk_percent": position_risk_percent
+                "entry_price": current_price,  # Will be calculated by hybrid system
+                "size_btc": position_result.position_size_btc,
+                "size_usd": position_result.position_size_usd,
+                "stop_loss": position_result.stop_loss,
+                "target_price": position_result.target_price,
+                "leverage": position_result.leverage,
+                "risk_percent": position_result.final_risk_percent
             }
             
         except Exception as e:
             logger.error(f"❌ Failed to calculate high vol parameters: {e}")
-            return {
-                "entry_price": current_price,
-                "size_btc": 0.0,
-                "size_usd": 0.0,
-                "stop_loss": current_price,
-                "target_price": current_price
-            }
+            return self._get_default_parameters(direction, current_price, account_balance)
     
     def _calculate_standard_parameters(self, direction: str, current_price: float, market_data: Dict[str, Any], 
                                      signal_analysis: Dict[str, Any], account_balance: float) -> Dict[str, Any]:
-        """Calculate standard trading parameters"""
+        """Calculate standard trading parameters using hybrid position sizing"""
         try:
-            # Standard: Balanced approach
+            from core.ml.hybrid_position_sizer import hybrid_position_sizer
             
-            base_risk_percent = 0.01  # 1% base risk
-            signal_confidence = signal_analysis.get("overall_confidence", 0.5)
-            confidence_multiplier = 0.5 + (signal_confidence * 1.0)  # 0.5-1.5x
-            
-            position_risk_percent = base_risk_percent * confidence_multiplier
-            position_size_usd = account_balance * position_risk_percent
-            position_size_btc = position_size_usd / current_price
-            
-            entry_price = self._calculate_entry_price(direction, current_price, market_data)
-            
-            # Standard: Moderate stops (0.2-0.5%)
-            volatility = market_data.get("volatility_5m", 0.001)
-            stop_percent = max(0.002, volatility * 2)  # At least 0.2% or 2x volatility
-            
-            if direction == "BUY":
-                stop_loss = entry_price * (1 - stop_percent)
-                target_price = entry_price * (1 + (stop_percent * 2.5))  # 2.5:1 R/R
-            else:  # SELL
-                stop_loss = entry_price * (1 + stop_percent)
-                target_price = entry_price * (1 - (stop_percent * 2.5))  # 2.5:1 R/R
-            
-            leverage = 40.0  # Maximum leverage (stop loss manages risk)
+            # Use hybrid position sizing system
+            position_result = hybrid_position_sizer.calculate_optimal_position_size(
+                direction=direction,
+                current_price=current_price,
+                market_data=market_data,
+                signal_analysis=signal_analysis,
+                account_balance=account_balance,
+                strategy="standard"
+            )
             
             return {
-                "entry_price": entry_price,
-                "size_btc": position_size_btc,
-                "size_usd": position_size_usd,
-                "stop_loss": stop_loss,
-                "target_price": target_price,
-                "leverage": leverage,
-                "risk_percent": position_risk_percent
+                "entry_price": current_price,  # Will be calculated by hybrid system
+                "size_btc": position_result.position_size_btc,
+                "size_usd": position_result.position_size_usd,
+                "stop_loss": position_result.stop_loss,
+                "target_price": position_result.target_price,
+                "leverage": position_result.leverage,
+                "risk_percent": position_result.final_risk_percent
             }
             
         except Exception as e:
             logger.error(f"❌ Failed to calculate standard parameters: {e}")
-            return {
-                "entry_price": current_price,
-                "size_btc": 0.0,
-                "size_usd": 0.0,
-                "stop_loss": current_price,
-                "target_price": current_price
-            }
+            return self._get_default_parameters(direction, current_price, account_balance)
     
     def _cleanup_old_predictions(self):
         """Remove old predictions"""

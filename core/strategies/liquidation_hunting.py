@@ -237,39 +237,11 @@ class LiquidationHunter:
     
     def _calculate_position_size(self, exchange: ExchangeOpening, confidence: float) -> float:
         """
-        DEPRECATED: Use hybrid_position_sizer instead
-        This method is kept for backward compatibility but delegates to hybrid system
+        REMOVED: Position sizing is now handled by hybrid_position_sizer
+        This method is kept for backward compatibility but returns a simple fallback
         """
-        try:
-            from core.ml.hybrid_position_sizer import hybrid_position_sizer
-            
-            # Create mock market data and signal analysis
-            market_data = {
-                "volatility_5m": 0.003,  # Higher volatility for liquidation hunting
-                "current_price": 50000.0  # Default price
-            }
-            signal_analysis = {
-                "overall_confidence": confidence
-            }
-            
-            # Use hybrid position sizing system
-            position_result = hybrid_position_sizer.calculate_optimal_position_size(
-                direction="BUY",  # Default direction
-                current_price=50000.0,
-                market_data=market_data,
-                signal_analysis=signal_analysis,
-                account_balance=10000.0,  # Default balance
-                strategy="liquidation_hunting"
-            )
-            
-            # Convert to percentage of account
-            position_percentage = position_result.position_size_usd / 10000.0
-            
-            return min(self.max_position_size, max(0.01, position_percentage))
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to calculate position size: {e}")
-            return min(self.max_position_size, max(0.01, confidence * 0.05))  # Fallback
+        # Simple fallback - should be replaced with hybrid_position_sizer calls
+        return min(self.max_position_size, max(0.01, confidence * 0.05))
     
     def _log_opportunities(self, opportunities: List[LiquidationOpportunity]):
         """Log current liquidation opportunities"""
