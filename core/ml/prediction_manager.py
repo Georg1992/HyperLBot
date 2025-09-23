@@ -1317,6 +1317,89 @@ class PredictionManager:
             logger.error(f"❌ Win probability calculation failed: {e}")
             return 0.5  # Default to 50% if calculation fails
     
+    
+    def _get_entry_level_strength(self, entry_price: float, market_data: Dict[str, Any]) -> float:
+        """Get the strength of the entry level from our S/R system"""
+        try:
+            sr_data = market_data.get("support_resistance", {})
+            key_levels = sr_data.get("key_levels", [])
+            
+            # Find the level closest to entry price
+            closest_level = None
+            min_distance = float('inf')
+            
+            for level in key_levels:
+                level_price = level.get("level", 0)
+                distance = abs(level_price - entry_price) / entry_price
+                if distance < 0.01 and distance < min_distance:  # Within 1%
+                    closest_level = level
+                    min_distance = distance
+            
+            if closest_level:
+                # Use the level's score (0-10) converted to 0.1-1.0
+                level_score = closest_level.get("score", 5.0)
+                return max(0.1, min(1.0, level_score / 10.0))
+            else:
+                # No matching level found - use default
+                return 0.5
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to get entry level strength: {e}")
+            return 0.5
+    
+    def _calculate_momentum_toward_entry(self, entry_price: float, current_price: float, market_data: Dict[str, Any]) -> float:
+        """Calculate if price momentum is moving toward or away from entry"""
+        try:
+            # Get recent price movement
+            price_momentum = market_data.get("price_momentum", 0.0)
+            trend = market_data.get("trend", "NEUTRAL")
+            
+            # Determine if momentum is favorable
+            if entry_price < current_price:  # Entry below current (BUY setup)
+                # Favorable: price falling toward entry (negative momentum)
+                if price_momentum < 0:
+                    return 0.8  # Good momentum toward entry
+                elif price_momentum > 0:
+                    return 0.3  # Bad momentum, moving away
+                else:
+                    return 0.5  # Neutral
+            else:  # Entry above current (SELL setup)
+                # Favorable: price rising toward entry (positive momentum)
+                if price_momentum > 0:
+                    return 0.8  # Good momentum toward entry
+                elif price_momentum < 0:
+                    return 0.3  # Bad momentum, moving away
+                else:
+                    return 0.5  # Neutral
+                    
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate momentum toward entry: {e}")
+            return 0.5
+    
+    def _calculate_volatility_factor(self, market_data: Dict[str, Any]) -> float:
+        """Calculate how volatility affects the probability of reaching entry"""
+        try:
+            volatility_5m = market_data.get("volatility_5m", 0.001)
+            
+            # In low volatility, price might not move much (lower probability)
+            # In high volatility, price might overshoot (also lower probability)
+            # Moderate volatility is best for reaching entry levels
+            
+            if volatility_5m < 0.001:  # Very low
+                return 0.4  # Price might not move enough
+            elif volatility_5m < 0.003:  # Low to moderate
+                return 0.8  # Good for reaching levels
+            elif volatility_5m < 0.005:  # Moderate
+                return 0.9  # Optimal
+            elif volatility_5m < 0.008:  # High
+                return 0.7  # Might overshoot
+            else:  # Very high
+                return 0.5  # Likely to overshoot
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate volatility factor: {e}")
+            return 0.5
+    
     def _calculate_entry_proximity_probability(self, entry_price: float, current_price: float, market_data: Dict[str, Any]) -> float:
         """
         Calculate base confidence based on probability that current price will reach entry price and reverse
