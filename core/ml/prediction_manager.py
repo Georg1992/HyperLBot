@@ -1272,7 +1272,10 @@ class PredictionManager:
         7. Execution quality factors
         """
         try:
-            # Base win probability from historical data
+            # CORE LOGIC: Base confidence from entry price proximity probability
+            entry_proximity_probability = self._calculate_entry_proximity_probability(entry_price, current_price, market_data)
+            
+            # Base win probability from historical data (secondary factor)
             base_win_rate = self._get_historical_win_rate(individual_signals, market_data)
             
             # Adjust for current market conditions
@@ -1293,15 +1296,16 @@ class PredictionManager:
             # NEW: Execution quality factors
             execution_adjustment = self._calculate_execution_adjustment(market_data, entry_price, current_price)
             
-            # Calculate final win probability with all factors
-            win_probability = (base_win_rate * market_adjustment * alignment_adjustment * 
+            # Calculate final win probability with entry proximity as primary factor
+            # Entry proximity is the core probability, other factors are adjustments
+            win_probability = (entry_proximity_probability * market_adjustment * alignment_adjustment * 
                              risk_adjustment * time_adjustment * microstructure_adjustment * 
                              execution_adjustment)
             
             # Ensure it's within realistic bounds (0.1 to 0.95)
             win_probability = max(0.1, min(0.95, win_probability))
             
-            logger.debug(f"🎯 Win probability calculation: base={base_win_rate:.3f}, "
+            logger.debug(f"🎯 Win probability calculation: entry_proximity={entry_proximity_probability:.3f}, "
                         f"market={market_adjustment:.3f}, alignment={alignment_adjustment:.3f}, "
                         f"risk={risk_adjustment:.3f}, time={time_adjustment:.3f}, "
                         f"microstructure={microstructure_adjustment:.3f}, execution={execution_adjustment:.3f}, "
@@ -1311,6 +1315,75 @@ class PredictionManager:
             
         except Exception as e:
             logger.error(f"❌ Win probability calculation failed: {e}")
+            return 0.5  # Default to 50% if calculation fails
+    
+    def _calculate_entry_proximity_probability(self, entry_price: float, current_price: float, market_data: Dict[str, Any]) -> float:
+        """
+        Calculate base confidence based on probability that current price will reach entry price and reverse
+        
+        Args:
+            entry_price: The predicted entry price (e.g., support/resistance level)
+            current_price: Current market price
+            market_data: Market data including volatility, momentum, etc.
+            
+        Returns:
+            Probability (0.0 to 1.0) that price will reach entry and reverse
+        """
+        try:
+            if not entry_price or not current_price or entry_price <= 0:
+                return 0.5  # Default if no valid entry price
+            
+            # Calculate distance percentage
+            distance_percent = abs(current_price - entry_price) / current_price
+            
+            # Base probability from distance (closer = higher probability)
+            if distance_percent < 0.001:  # Within 0.1% - very close
+                base_probability = 0.9
+            elif distance_percent < 0.005:  # Within 0.5% - close
+                base_probability = 0.8
+            elif distance_percent < 0.01:  # Within 1% - moderate
+                base_probability = 0.7
+            elif distance_percent < 0.02:  # Within 2% - far
+                base_probability = 0.5
+            else:  # More than 2% - very far
+                base_probability = 0.3
+            
+            # Adjust for market momentum (is price moving toward or away from entry?)
+            momentum = market_data.get("price_momentum", 0.0)
+            volatility = market_data.get("volatility_5m", 0.001)
+            
+            # If price is moving toward entry, increase probability
+            # If price is moving away from entry, decrease probability
+            if current_price > entry_price:  # Price above entry (for BUY at support)
+                if momentum < 0:  # Price falling toward support
+                    momentum_boost = abs(momentum) * 0.2  # Up to 20% boost
+                else:  # Price rising away from support
+                    momentum_penalty = momentum * 0.1  # Up to 10% penalty
+                    momentum_boost = -momentum_penalty
+            else:  # Price below entry (for SELL at resistance)
+                if momentum > 0:  # Price rising toward resistance
+                    momentum_boost = momentum * 0.2  # Up to 20% boost
+                else:  # Price falling away from resistance
+                    momentum_penalty = abs(momentum) * 0.1  # Up to 10% penalty
+                    momentum_boost = -momentum_penalty
+            
+            # Adjust for volatility (higher volatility = more likely to reach entry)
+            volatility_adjustment = min(0.2, volatility * 20)  # Up to 20% boost for high volatility
+            
+            # Calculate final probability
+            final_probability = base_probability + momentum_boost + volatility_adjustment
+            
+            # Ensure it's within realistic bounds
+            final_probability = max(0.1, min(0.95, final_probability))
+            
+            logger.debug(f"🎯 Entry proximity probability: distance={distance_percent:.4f}, "
+                        f"base={base_probability:.3f}, momentum_boost={momentum_boost:.3f}, "
+                        f"volatility_adj={volatility_adjustment:.3f}, final={final_probability:.3f}")
+            
+            return final_probability
+            
+        except Exception as e:
+            logger.error(f"❌ Entry proximity probability calculation failed: {e}")
             return 0.5  # Default to 50% if calculation fails
     
     def update_prediction_confidence(self, prediction: Dict[str, Any], current_price: float, market_data: Dict[str, Any]) -> float:
