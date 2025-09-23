@@ -861,63 +861,33 @@ class PredictionManager:
     
     def _calculate_scalping_parameters(self, direction: str, current_price: float, market_data: Dict[str, Any], 
                                      signal_analysis: Dict[str, Any], account_balance: float) -> Dict[str, Any]:
-        """Calculate scalping-specific trading parameters"""
+        """Calculate scalping-specific trading parameters using hybrid position sizing"""
         try:
-            # Scalping: Very tight stops, quick targets, smaller positions, higher frequency
+            from core.ml.hybrid_position_sizer import hybrid_position_sizer
             
-            # Smaller position size for scalping (due to higher frequency)
-            base_risk_percent = 0.005  # 0.5% base risk (smaller than standard)
-            signal_confidence = signal_analysis.get("overall_confidence", 0.5)
-            confidence_multiplier = 0.3 + (signal_confidence * 0.4)  # 0.3-0.7x (smaller positions)
-            
-            position_risk_percent = base_risk_percent * confidence_multiplier
-            position_size_usd = account_balance * position_risk_percent
-            position_size_btc = position_size_usd / current_price
-            
-            # Calculate entry price for limit orders
-            entry_price = self._calculate_entry_price(direction, current_price, market_data)
-            
-            # Scalping: Wider stops for 40x leverage (0.15-0.35%)
-            # With 40x leverage, we need wider stops to avoid noise
-            volatility = market_data.get("volatility_5m", 0.001)
-            if volatility > 0.003:  # High volatility
-                stop_percent = 0.0035  # 0.35% stop (was 0.08%)
-            elif volatility > 0.001:  # Medium volatility
-                stop_percent = 0.0025  # 0.25% stop (was 0.05%)
-            else:  # Low volatility
-                stop_percent = 0.0015  # 0.15% stop (was 0.03%)
-            
-            if direction == "BUY":
-                stop_loss = entry_price * (1 - stop_percent)
-                target_price = entry_price * (1 + (stop_percent * 1.5))  # 1.5:1 R/R for scalping
-            else:  # SELL
-                stop_loss = entry_price * (1 + stop_percent)
-                target_price = entry_price * (1 - (stop_percent * 1.5))  # 1.5:1 R/R for scalping
-            
-            # Scalping: Maximum leverage (40x) with tight stops for quick exits
-            leverage = 40.0
-            
-            logger.info(f"🎯 Scalping parameters: stop={stop_percent*100:.3f}%, target={stop_percent*1.5*100:.3f}%, leverage={leverage}x")
+            # Use hybrid position sizing system
+            position_result = hybrid_position_sizer.calculate_optimal_position_size(
+                direction=direction,
+                current_price=current_price,
+                market_data=market_data,
+                signal_analysis=signal_analysis,
+                account_balance=account_balance,
+                strategy="scalping"
+            )
             
             return {
-                "entry_price": entry_price,
-                "size_btc": position_size_btc,
-                "size_usd": position_size_usd,
-                "stop_loss": stop_loss,
-                "target_price": target_price,
-                "leverage": leverage,
-                "risk_percent": position_risk_percent
+                "entry_price": current_price,  # Will be calculated by hybrid system
+                "size_btc": position_result.position_size_btc,
+                "size_usd": position_result.position_size_usd,
+                "stop_loss": position_result.stop_loss,
+                "target_price": position_result.target_price,
+                "leverage": position_result.leverage,
+                "risk_percent": position_result.final_risk_percent
             }
             
         except Exception as e:
             logger.error(f"❌ Failed to calculate scalping parameters: {e}")
-            return {
-                "entry_price": current_price,
-                "size_btc": 0.0,
-                "size_usd": 0.0,
-                "stop_loss": current_price,
-                "target_price": current_price
-            }
+            return self._get_default_parameters(direction, current_price, account_balance)
     
     def _calculate_trend_parameters(self, direction: str, current_price: float, market_data: Dict[str, Any], 
                                   signal_analysis: Dict[str, Any], account_balance: float) -> Dict[str, Any]:
