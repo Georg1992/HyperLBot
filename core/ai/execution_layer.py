@@ -106,6 +106,7 @@ class ExecutionLayer:
         self.max_monitoring_time = 300  # 5 minutes max monitoring time
         self.confidence_boost_threshold = 0.02  # 2% price movement toward entry boosts confidence
         
+        
         # Risk management
         self.max_concurrent_trades = 3
         self.max_position_size_usd = 1000.0  # $1000 max position

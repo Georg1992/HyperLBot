@@ -75,6 +75,11 @@ class PredictionManager:
         self.min_confidence_threshold = 0.2  # Lowered for testing
         self.max_prediction_age = 300  # 5 minutes
         
+        # Dynamic prediction management
+        self.best_prediction: Optional[TradingPrediction] = None
+        self.prediction_update_threshold = 0.05  # 5% improvement needed to update
+        self.entry_price_optimization_enabled = True  # Allow entry price updates for better profit
+        
         # Dynamic confidence adjustment parameters
         self.confidence_adjustment_rate = 0.05  # 5% adjustment per significant move
         self.price_movement_threshold = 0.001  # 0.1% price movement threshold
@@ -82,6 +87,126 @@ class PredictionManager:
         self.min_confidence_penalty = 0.10  # Maximum 10% confidence penalty
         
         logger.info("🎯 ML Prediction Manager initialized")
+    
+    def update_best_prediction(self, new_prediction: TradingPrediction, current_price: float, 
+                              market_data: Dict[str, Any]) -> bool:
+        """
+        Update the best prediction with new signals if it improves win rate or profit potential
+        
+        Args:
+            new_prediction: New prediction from analysis
+            current_price: Current market price
+            market_data: Current market data
+            
+        Returns:
+            bool: True if prediction was updated, False otherwise
+        """
+        try:
+            if not self.best_prediction:
+                # No existing prediction, use new one
+                self.best_prediction = new_prediction
+                logger.info("🎯 Set initial best prediction")
+                return True
+            
+            # Compare predictions
+            current_confidence = self.best_prediction.confidence
+            new_confidence = new_prediction.confidence
+            
+            # Check if new prediction is significantly better
+            confidence_improvement = new_confidence - current_confidence
+            
+            # Check if entry price optimization is beneficial
+            entry_optimization = self._evaluate_entry_price_optimization(
+                self.best_prediction, new_prediction, current_price, market_data
+            )
+            
+            # Update if significantly better confidence or better entry price
+            should_update = (
+                confidence_improvement >= self.prediction_update_threshold or
+                entry_optimization["should_update"]
+            )
+            
+            if should_update:
+                old_prediction = self.best_prediction
+                self.best_prediction = new_prediction
+                
+                # Add update reasoning to prediction
+                update_reasons = []
+                if confidence_improvement >= self.prediction_update_threshold:
+                    update_reasons.append(f"confidence +{confidence_improvement:.1%}")
+                if entry_optimization["should_update"]:
+                    update_reasons.append(f"entry price optimization ({entry_optimization['reason']})")
+                
+                # Update reasoning in the prediction
+                self.best_prediction.reasoning += f" | Updated: {', '.join(update_reasons)}"
+                
+                logger.info(f"🔄 Updated best prediction: {', '.join(update_reasons)}")
+                logger.debug(f"   Old: {old_prediction.confidence:.3f} confidence")
+                logger.debug(f"   New: {new_confidence:.3f} confidence")
+                
+                return True
+            else:
+                logger.debug(f"📊 New prediction not better enough: {confidence_improvement:.1%} < {self.prediction_update_threshold:.1%}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to update best prediction: {e}")
+            return False
+    
+    def _evaluate_entry_price_optimization(self, current_prediction: TradingPrediction, 
+                                         new_prediction: TradingPrediction, 
+                                         current_price: float, 
+                                         market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Evaluate if entry price optimization would improve profit potential
+        
+        Returns:
+            Dict with should_update, reason, and profit_improvement
+        """
+        try:
+            if not self.entry_price_optimization_enabled:
+                return {"should_update": False, "reason": "optimization disabled"}
+            
+            current_entry = current_prediction.entry_price
+            new_entry = new_prediction.entry_price
+            direction = new_prediction.direction
+            
+            # Calculate potential profit improvement
+            if direction == "BUY":
+                # For BUY: lower entry price = better profit
+                if new_entry < current_entry:
+                    profit_improvement = (current_entry - new_entry) / current_entry
+                    if profit_improvement > 0.001:  # 0.1% improvement
+                        return {
+                            "should_update": True,
+                            "reason": f"better BUY entry (-{profit_improvement:.1%})",
+                            "profit_improvement": profit_improvement
+                        }
+            else:  # SELL
+                # For SELL: higher entry price = better profit
+                if new_entry > current_entry:
+                    profit_improvement = (new_entry - current_entry) / current_entry
+                    if profit_improvement > 0.001:  # 0.1% improvement
+                        return {
+                            "should_update": True,
+                            "reason": f"better SELL entry (+{profit_improvement:.1%})",
+                            "profit_improvement": profit_improvement
+                        }
+            
+            return {"should_update": False, "reason": "no significant improvement"}
+            
+        except Exception as e:
+            logger.error(f"❌ Entry price optimization evaluation failed: {e}")
+            return {"should_update": False, "reason": f"evaluation error: {e}"}
+    
+    def get_best_prediction(self) -> Optional[TradingPrediction]:
+        """Get the current best prediction"""
+        return self.best_prediction
+    
+    def clear_best_prediction(self):
+        """Clear the best prediction (after execution or timeout)"""
+        self.best_prediction = None
+        logger.debug("🧹 Cleared best prediction")
     
     def update_prediction_confidence(self, prediction_id: str, current_price: float) -> Optional[TradingPrediction]:
         """
