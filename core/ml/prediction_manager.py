@@ -1354,7 +1354,9 @@ class PredictionManager:
         2. Market conditions and volatility
         3. Signal strength and alignment
         4. Risk factors
-        5. Entry price proximity to current price
+        5. Time-based factors
+        6. Market microstructure factors
+        7. Execution quality factors
         """
         try:
             # Base win probability from historical data
@@ -1369,15 +1371,28 @@ class PredictionManager:
             # Adjust for risk factors
             risk_adjustment = self._calculate_risk_adjustment(market_data)
             
-            # Calculate final win probability
-            win_probability = base_win_rate * market_adjustment * alignment_adjustment * risk_adjustment
+            # NEW: Time-based factors
+            time_adjustment = self._calculate_time_adjustment(market_data)
+            
+            # NEW: Market microstructure factors
+            microstructure_adjustment = self._calculate_microstructure_adjustment(market_data)
+            
+            # NEW: Execution quality factors
+            execution_adjustment = self._calculate_execution_adjustment(market_data, entry_price, current_price)
+            
+            # Calculate final win probability with all factors
+            win_probability = (base_win_rate * market_adjustment * alignment_adjustment * 
+                             risk_adjustment * time_adjustment * microstructure_adjustment * 
+                             execution_adjustment)
             
             # Ensure it's within realistic bounds (0.1 to 0.95)
             win_probability = max(0.1, min(0.95, win_probability))
             
             logger.debug(f"🎯 Win probability calculation: base={base_win_rate:.3f}, "
                         f"market={market_adjustment:.3f}, alignment={alignment_adjustment:.3f}, "
-                        f"risk={risk_adjustment:.3f}, final={win_probability:.3f}")
+                        f"risk={risk_adjustment:.3f}, time={time_adjustment:.3f}, "
+                        f"microstructure={microstructure_adjustment:.3f}, execution={execution_adjustment:.3f}, "
+                        f"final={win_probability:.3f}")
             
             return win_probability
             
@@ -1470,6 +1485,123 @@ class PredictionManager:
         except Exception as e:
             logger.error(f"❌ Failed to calculate market behavior score: {e}")
             return 0.5  # Neutral score if calculation fails
+    
+    def _calculate_time_adjustment(self, market_data: Dict[str, Any]) -> float:
+        """Calculate time-based confidence adjustment"""
+        try:
+            import time
+            current_time = time.time()
+            
+            # Time decay factor (predictions lose value over time)
+            prediction_age = market_data.get("prediction_age_seconds", 0)
+            time_decay = max(0.5, 1.0 - (prediction_age / 3600))  # 50% after 1 hour
+            
+            # Market session factor
+            session_factor = self._get_session_factor()
+            
+            # Time to entry factor
+            time_to_entry = market_data.get("time_to_entry_seconds", 0)
+            urgency_factor = max(0.7, 1.0 - (time_to_entry / 1800))  # 70% after 30 minutes
+            
+            # Combine time factors
+            time_adjustment = (time_decay * 0.4) + (session_factor * 0.4) + (urgency_factor * 0.2)
+            
+            logger.debug(f"⏰ Time adjustment: decay={time_decay:.3f}, session={session_factor:.3f}, urgency={urgency_factor:.3f}, final={time_adjustment:.3f}")
+            
+            return max(0.3, min(1.2, time_adjustment))
+            
+        except Exception as e:
+            logger.error(f"❌ Time adjustment calculation failed: {e}")
+            return 1.0
+    
+    def _calculate_microstructure_adjustment(self, market_data: Dict[str, Any]) -> float:
+        """Calculate market microstructure confidence adjustment"""
+        try:
+            # Bid-ask spread factor
+            spread = market_data.get("bid_ask_spread", 0.0)
+            spread_factor = max(0.5, 1.0 - (spread / 0.001))  # Penalty for wide spreads
+            
+            # Market depth factor
+            depth = market_data.get("market_depth", 0.0)
+            depth_factor = min(1.2, depth / 10.0)  # Boost for deep markets
+            
+            # Order flow factor
+            order_flow = market_data.get("order_flow_imbalance", 0.0)
+            flow_factor = 0.8 + (abs(order_flow) * 0.4)  # Boost for strong order flow
+            
+            # Liquidity factor
+            liquidity = market_data.get("liquidity_score", 0.5)
+            liquidity_factor = 0.5 + liquidity  # 0.5 to 1.5 range
+            
+            # Combine microstructure factors
+            microstructure_adjustment = (spread_factor * 0.3) + (depth_factor * 0.3) + (flow_factor * 0.2) + (liquidity_factor * 0.2)
+            
+            logger.debug(f"🔬 Microstructure: spread={spread_factor:.3f}, depth={depth_factor:.3f}, flow={flow_factor:.3f}, liquidity={liquidity_factor:.3f}, final={microstructure_adjustment:.3f}")
+            
+            return max(0.4, min(1.3, microstructure_adjustment))
+            
+        except Exception as e:
+            logger.error(f"❌ Microstructure adjustment calculation failed: {e}")
+            return 1.0
+    
+    def _calculate_execution_adjustment(self, market_data: Dict[str, Any], entry_price: float, current_price: float) -> float:
+        """Calculate execution quality confidence adjustment"""
+        try:
+            # Slippage risk factor
+            slippage_risk = market_data.get("slippage_risk", 0.0)
+            slippage_factor = max(0.6, 1.0 - (slippage_risk * 2))  # Penalty for high slippage risk
+            
+            # Execution speed factor
+            execution_speed = market_data.get("execution_speed_ms", 1000)
+            speed_factor = max(0.7, 1.0 - (execution_speed / 5000))  # Penalty for slow execution
+            
+            # Market impact factor
+            market_impact = market_data.get("market_impact", 0.0)
+            impact_factor = max(0.8, 1.0 - (market_impact * 5))  # Penalty for high market impact
+            
+            # Fill probability factor
+            fill_probability = market_data.get("fill_probability", 0.8)
+            fill_factor = 0.5 + (fill_probability * 0.5)  # 0.5 to 1.0 range
+            
+            # Entry price distance factor (closer = better execution)
+            distance_factor = 1.0
+            if entry_price and current_price:
+                price_distance = abs(entry_price - current_price) / current_price
+                distance_factor = max(0.7, 1.0 - (price_distance * 10))  # Penalty for far entry points
+            
+            # Combine execution factors
+            execution_adjustment = (slippage_factor * 0.25) + (speed_factor * 0.25) + (impact_factor * 0.25) + (fill_factor * 0.15) + (distance_factor * 0.1)
+            
+            logger.debug(f"⚡ Execution: slippage={slippage_factor:.3f}, speed={speed_factor:.3f}, impact={impact_factor:.3f}, fill={fill_factor:.3f}, distance={distance_factor:.3f}, final={execution_adjustment:.3f}")
+            
+            return max(0.5, min(1.2, execution_adjustment))
+            
+        except Exception as e:
+            logger.error(f"❌ Execution adjustment calculation failed: {e}")
+            return 1.0
+    
+    def _get_session_factor(self) -> float:
+        """Get market session confidence factor"""
+        try:
+            import datetime
+            
+            current_hour = datetime.datetime.now().hour
+            
+            # Asian session (0-8 UTC) - Lower volatility, more predictable
+            if 0 <= current_hour < 8:
+                return 1.1
+            # European session (8-16 UTC) - Good volatility, reliable
+            elif 8 <= current_hour < 16:
+                return 1.0
+            # US session (16-24 UTC) - High volatility, more unpredictable
+            elif 16 <= current_hour < 24:
+                return 0.9
+            else:
+                return 1.0
+                
+        except Exception as e:
+            logger.error(f"❌ Session factor calculation failed: {e}")
+            return 1.0
     
     def _get_historical_win_rate(self, signals: Dict[str, Any], market_data: Dict[str, Any]) -> float:
         """Get historical win rate for similar signal combinations"""
