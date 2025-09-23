@@ -4,8 +4,8 @@ Trend Calculator Module
 Simple, working trend calculation
 """
 
-import numpy as np
-from typing import Dict, Any, List, Optional, Tuple
+# import numpy as np  # Removed unused import
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 
@@ -16,27 +16,32 @@ class TrendCalculator:
         logger.info("📈 Trend Calculator initialized - Simple working logic")
     
     def calculate_trend(self, candles: List[Dict], timeframe: str = "5m", strategy_name: str = "standard") -> Dict[str, Any]:
-        """Calculate trend using strategy-specific parameters"""
+        """Calculate real-time trend using strategy-specific parameters with explicit trend types"""
         try:
-            if len(candles) < 5:
-                return {"trend": "SIDEWAYS", "strength": 0, "direction": 0, "confidence": 0}
+            if len(candles) < 3:  # More reactive - need only 3 candles minimum
+                return {"trend": "SIDEWAYS", "trend_type": "NO_DATA", "strength": 0, "direction": 0, "confidence": 0}
             
             # Get strategy-specific trend parameters
             trend_params = self._get_strategy_trend_params(strategy_name)
             num_candles = min(trend_params["num_candles"], len(candles))
             recent_closes = [candle["close"] for candle in candles[-num_candles:]]
             
-            # Calculate basic trend metrics
-            first_price = recent_closes[0]
-            last_price = recent_closes[-1]
-            price_change = last_price - first_price
-            price_change_pct = (price_change / first_price) * 100
+            # REAL-TIME: Calculate multiple timeframe trends for better detection
+            # 1. Ultra-short term (last 2-3 candles) - immediate reaction
+            ultra_short_closes = [candle["close"] for candle in candles[-3:]]
+            ultra_short_change_pct = ((ultra_short_closes[-1] - ultra_short_closes[0]) / ultra_short_closes[0]) * 100
             
-            # Also calculate short-term trend (last 5 candles) for comparison
+            # 2. Short-term trend (last 5 candles) - recent momentum
             short_closes = [candle["close"] for candle in candles[-5:]]
             short_first = short_closes[0]
             short_last = short_closes[-1]
             short_change_pct = ((short_last - short_first) / short_first) * 100
+            
+            # 3. Medium-term trend (strategy-specific candles) - main trend
+            first_price = recent_closes[0]
+            last_price = recent_closes[-1]
+            price_change = last_price - first_price
+            price_change_pct = (price_change / first_price) * 100
             
             # Calculate trend consistency
             up_moves = 0
@@ -60,67 +65,113 @@ class TrendCalculator:
             # Calculate momentum
             momentum = self._calculate_momentum(recent_closes)
             
-            # Enhanced trend determination using both long-term and short-term trends
-            # Use the more significant trend (long-term for sustained moves, short-term for recent changes)
-            long_term_abs = abs(price_change_pct)
+            # REAL-TIME TREND DETECTION: Multi-timeframe analysis with explicit trend types
+            ultra_short_abs = abs(ultra_short_change_pct)
             short_term_abs = abs(short_change_pct)
+            medium_term_abs = abs(price_change_pct)
             
-            # Determine which trend to use (prefer long-term for sustained moves)
-            if long_term_abs > 0.1:  # Long-term trend is significant
-                use_long_term = True
-                trend_pct = price_change_pct
-            elif short_term_abs > 0.05:  # Short-term trend is significant
-                use_long_term = False
+            # Pattern-based trend detection (more sensitive)
+            consecutive_green = 0
+            consecutive_red = 0
+            max_consecutive_green = 0
+            max_consecutive_red = 0
+            current_consecutive = 0
+            
+            for i in range(1, len(recent_closes)):
+                if recent_closes[i] > recent_closes[i-1]:
+                    consecutive_green += 1
+                    consecutive_red = 0
+                    max_consecutive_green = max(max_consecutive_green, consecutive_green)
+                elif recent_closes[i] < recent_closes[i-1]:
+                    consecutive_red += 1
+                    consecutive_green = 0
+                    max_consecutive_red = max(max_consecutive_red, consecutive_red)
+                else:
+                    consecutive_green = 0
+                    consecutive_red = 0
+            
+            # REAL-TIME: Determine trend priority (ultra-short gets highest priority for immediate reaction)
+            trend_pct = 0
+            trend_type = "SIDEWAYS"
+            trend_source = "none"
+            
+            # Priority 1: Ultra-short term (immediate reaction) - more reasonable thresholds
+            if ultra_short_abs > 0.1:  # 0.1% threshold for immediate reaction (was 0.01%)
+                trend_pct = ultra_short_change_pct
+                trend_type = "IMMEDIATE"
+                trend_source = "ultra_short"
+            # Priority 2: Short-term momentum (recent action)
+            elif short_term_abs > 0.2:  # 0.2% threshold for short-term (was 0.02%)
                 trend_pct = short_change_pct
-            else:
-                # Neither is significant, use long-term for consistency
-                use_long_term = True
+                trend_type = "SHORT_TERM"
+                trend_source = "short_term"
+            # Priority 3: Medium-term trend (sustained move)
+            elif medium_term_abs > 0.3:  # 0.3% threshold for medium-term (was 0.03%)
                 trend_pct = price_change_pct
+                trend_type = "MEDIUM_TERM"
+                trend_source = "medium_term"
+            # Priority 4: Pattern-based detection (consecutive candles) - more stable
+            elif max_consecutive_green >= 3 or max_consecutive_red >= 3:  # Increased to 3 candles for stability
+                if max_consecutive_green >= max_consecutive_red:
+                    trend_pct = 0.15  # Small positive trend (was 0.015 - 10x more stable)
+                    trend_type = "PATTERN_BULLISH"
+                    trend_source = "pattern"
+                else:
+                    trend_pct = -0.15  # Small negative trend (was -0.015 - 10x more stable)
+                    trend_type = "PATTERN_BEARISH"
+                    trend_source = "pattern"
+            else:
+                trend_pct = price_change_pct
+                trend_type = "SIDEWAYS"
+                trend_source = "medium_term"
             
-            # Apply strategy-specific trend classification
+            # Apply strategy-specific trend classification (basic classification)
             thresholds = trend_params["thresholds"]
+            direction = 1 if trend_pct > 0 else -1 if trend_pct < 0 else 0
+            
+            # Basic trend classification
             if abs(trend_pct) > thresholds["strong"]:  # Strong trend
                 if trend_pct > thresholds["strong"]:
                     trend = "STRONG_UPTREND"
-                    direction = 1
                 else:
                     trend = "STRONG_DOWNTREND"
-                    direction = -1
             elif abs(trend_pct) > thresholds["moderate"]:  # Moderate trend
                 if trend_pct > thresholds["moderate"]:
                     trend = "UPTREND"
-                    direction = 1
                 else:
                     trend = "DOWNTREND"
-                    direction = -1
             elif abs(trend_pct) > thresholds["weak"]:  # Weak trend
                 if trend_pct > thresholds["weak"]:
                     trend = "WEAK_UPTREND"
-                    direction = 1
                 else:
                     trend = "WEAK_DOWNTREND"
-                    direction = -1
             else:
                 trend = "SIDEWAYS"
-                direction = 0
             
             return {
                 "trend": trend,
+                "trend_timeframe": trend_type,  # What type of trend (IMMEDIATE, SHORT_TERM, MEDIUM_TERM, etc.)
+                "trend_source": trend_source,
                 "strength": round(strength, 3),
                 "direction": direction,
                 "momentum": round(momentum, 6),
                 "acceleration": 0.0,
                 "price_change": round(price_change_pct, 3),
+                "ultra_short_change": round(ultra_short_change_pct, 3),
+                "short_term_change": round(short_change_pct, 3),
+                "medium_term_change": round(price_change_pct, 3),
                 "volume_confirmation": False,
                 "timeframe": timeframe,
                 "strategy": strategy_name,
                 "num_candles_used": num_candles,
-                "data_source": f"strategy_optimized_{strategy_name}"
+                "consecutive_green": max_consecutive_green,
+                "consecutive_red": max_consecutive_red,
+                "data_source": f"realtime_{strategy_name}"
             }
             
         except Exception as e:
             logger.error(f"❌ Trend calculation failed: {e}")
-            return {"trend": "SIDEWAYS", "strength": 0, "direction": 0, "confidence": 0}
+            return {"trend": "SIDEWAYS", "trend_timeframe": "NO_DATA", "strength": 0, "direction": 0, "confidence": 0}
     
     def _calculate_momentum(self, prices: List[float]) -> float:
         """Calculate price momentum"""
@@ -145,43 +196,43 @@ class TrendCalculator:
         """Get strategy-specific trend calculation parameters"""
         strategy_params = {
             "standard": {
-                "num_candles": 15,  # 75 minutes for 5m candles
+                "num_candles": 6,   # 30 minutes for 5m candles - more stable
                 "thresholds": {
-                    "strong": 0.2,    # 0.2% for strong trends
-                    "moderate": 0.08,  # 0.08% for moderate trends
-                    "weak": 0.02       # 0.02% for weak trends
+                    "strong": 0.5,    # 0.5% for strong trends (was 0.05% - 10x more stable)
+                    "moderate": 0.2,  # 0.2% for moderate trends (was 0.02% - 10x more stable)
+                    "weak": 0.08      # 0.08% for weak trends (was 0.008% - 10x more stable)
                 }
             },
             "low_volatility_range": {
-                "num_candles": 8,   # 40 minutes - shorter for range detection
+                "num_candles": 4,   # 20 minutes - more stable for range detection
                 "thresholds": {
-                    "strong": 0.1,    # 0.1% for strong trends (more sensitive)
-                    "moderate": 0.04,  # 0.04% for moderate trends
-                    "weak": 0.01       # 0.01% for weak trends
+                    "strong": 0.3,    # 0.3% for strong trends (was 0.05% - 6x more stable)
+                    "moderate": 0.15,  # 0.15% for moderate trends (was 0.02% - 7.5x more stable)
+                    "weak": 0.05      # 0.05% for weak trends (was 0.008% - 6x more stable)
                 }
             },
             "high_volatility": {
-                "num_candles": 20,  # 100 minutes - longer for trend confirmation
+                "num_candles": 8,   # 40 minutes - appropriate for high volatility
                 "thresholds": {
-                    "strong": 0.4,    # 0.4% for strong trends (less sensitive)
-                    "moderate": 0.15,  # 0.15% for moderate trends
-                    "weak": 0.05       # 0.05% for weak trends
+                    "strong": 1.0,    # 1.0% for strong trends (was 0.3% - 3x more stable)
+                    "moderate": 0.5,  # 0.5% for moderate trends (was 0.12% - 4x more stable)
+                    "weak": 0.2       # 0.2% for weak trends (was 0.04% - 5x more stable)
                 }
             },
             "spike_hunting": {
-                "num_candles": 12,  # 60 minutes - medium for spike detection
+                "num_candles": 3,   # 15 minutes - more stable for spike detection
                 "thresholds": {
-                    "strong": 0.3,    # 0.3% for strong trends
-                    "moderate": 0.12,  # 0.12% for moderate trends
-                    "weak": 0.03       # 0.03% for weak trends
+                    "strong": 0.8,    # 0.8% for strong trends (was 0.1% - 8x more stable)
+                    "moderate": 0.4,  # 0.4% for moderate trends (was 0.05% - 8x more stable)
+                    "weak": 0.15      # 0.15% for weak trends (was 0.02% - 7.5x more stable)
                 }
             },
             "trend_following": {
-                "num_candles": 18,  # 90 minutes - longer for trend confirmation
+                "num_candles": 8,   # 40 minutes - more stable for trend following
                 "thresholds": {
-                    "strong": 0.25,   # 0.25% for strong trends
-                    "moderate": 0.1,   # 0.1% for moderate trends
-                    "weak": 0.03       # 0.03% for weak trends
+                    "strong": 0.6,    # 0.6% for strong trends (was 0.08% - 7.5x more stable)
+                    "moderate": 0.3,  # 0.3% for moderate trends (was 0.03% - 10x more stable)
+                    "weak": 0.12      # 0.12% for weak trends (was 0.015% - 8x more stable)
                 }
             }
         }

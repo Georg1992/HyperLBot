@@ -11,7 +11,9 @@ INTEGRATION: Used by TradingEngine before making any trading decisions
 
 from typing import Dict, Any, Tuple
 from loguru import logger
-from core.constants import technical_constants
+from core.external.fear_greed_api import fear_greed_api
+from core.external.whale_analytics_api import whale_analytics_api
+from core.external.rss_news_api import rss_news_api
 
 
 class MarketConditionsAnalyzer:
@@ -61,7 +63,31 @@ class MarketConditionsAnalyzer:
             if volume_analysis["risk"] > 0:
                 risk_factors.extend(volume_analysis["risk_factors"])
             
-            # 3. RSI CONDITIONS (dead zones, extreme conditions)
+            # 3. FEAR & GREED SENTIMENT CONDITIONS
+            sentiment_analysis = self._analyze_sentiment_conditions()
+            condition_factors.extend(sentiment_analysis["factors"])
+            if sentiment_analysis["risk"] > 0:
+                risk_factors.extend(sentiment_analysis["risk_factors"])
+            if sentiment_analysis["positive"]:
+                positive_factors.extend(sentiment_analysis["positive_factors"])
+            
+            # 4. WHALE ANALYTICS CONDITIONS
+            whale_analysis = self._analyze_whale_conditions()
+            condition_factors.extend(whale_analysis["factors"])
+            if whale_analysis["risk"] > 0:
+                risk_factors.extend(whale_analysis["risk_factors"])
+            if whale_analysis["positive"]:
+                positive_factors.extend(whale_analysis["positive_factors"])
+            
+            # 5. RSS NEWS SENTIMENT CONDITIONS
+            news_analysis = self._analyze_rss_news_conditions()
+            condition_factors.extend(news_analysis["factors"])
+            if news_analysis["risk"] > 0:
+                risk_factors.extend(news_analysis["risk_factors"])
+            if news_analysis["positive"]:
+                positive_factors.extend(news_analysis["positive_factors"])
+            
+            # 6. RSI CONDITIONS (dead zones, extreme conditions)
             rsi_analysis = self._analyze_rsi_conditions(rsi)
             condition_factors.extend(rsi_analysis["factors"])
             if rsi_analysis["risk"] > 0:
@@ -73,7 +99,7 @@ class MarketConditionsAnalyzer:
             neutral_rsi = rsi_analysis.get("neutral", False)
             neutral_factors = rsi_analysis.get("neutral_factors", [])
             
-            # 4. TREND CONDITIONS (strategy-independent)
+            # 5. TREND CONDITIONS (strategy-independent)
             trend_analysis = self._analyze_trend_conditions(trend)
             condition_factors.extend(trend_analysis["factors"])
             if trend_analysis["risk"] > 0:
@@ -87,10 +113,6 @@ class MarketConditionsAnalyzer:
             if context_analysis["risk"] > 0:
                 risk_factors.extend(context_analysis["risk_factors"])
             
-            # DEBUG: Log all analysis results before overall determination
-            logger.debug(f"🔍 Analysis Summary: RSI={rsi:.1f}, Trend={trend}, Vol={volatility_category}")
-            logger.debug(f"🔍 Total risk factors: {len(risk_factors)} - {risk_factors}")
-            logger.debug(f"🔍 Total positive factors: {len(positive_factors)} - {positive_factors}")
             
             # DETERMINE OVERALL TRADABILITY (with RSI override logic for scalping)
             overall_analysis = self._determine_overall_tradability(
@@ -109,11 +131,21 @@ class MarketConditionsAnalyzer:
                 "analysis_timestamp": market_data.get("timestamp", 0)
             }
             
+            # Add sentiment data if available
+            if sentiment_analysis.get("sentiment_data"):
+                result["sentiment_data"] = sentiment_analysis["sentiment_data"]
+            
+            # Add whale analytics data if available
+            if whale_analysis.get("whale_data"):
+                result["whale_analytics"] = whale_analysis["whale_data"]
+            
+            # Add news sentiment data if available
+            if news_analysis.get("news_data"):
+                result["news_sentiment"] = news_analysis["news_data"]
+            
             # Log important condition changes with DEBUG details
             if not overall_analysis["is_tradable"]:
                 logger.warning(f"🚫 UNTRADABLE CONDITIONS: {overall_analysis['condition']}")
-                logger.debug(f"🔍 Risk factors: {risk_factors}")
-                logger.debug(f"🔍 All factors: {condition_factors}")
             elif overall_analysis["condition"] == "EXCELLENT":
                 logger.success(f"🎯 EXCELLENT trading conditions: {', '.join(positive_factors[:2])}")
             
@@ -200,32 +232,25 @@ class MarketConditionsAnalyzer:
         risk_factors = []
         risk_level = 0
         
-        # DEBUG: Log RSI analysis for troubleshooting
-        logger.debug(f"🔍 RSI Analysis: RSI={rsi:.1f}")
         
         if 45 <= rsi <= 55:
             factors.append("RSI in neutral zone - no directional bias (OVERRIDE possible)")
             # RSI neutrality is NO LONGER a blocking risk factor (Option 3: Override)
             risk_level = 0  # Changed from 2 to 0
-            logger.debug(f"🔍 RSI: Neutral zone (45-55) - can be overridden by strong factors")
             
         elif rsi <= 25 or rsi >= 75:
             factors.append(f"RSI extreme zone ({rsi:.1f}) - strong signal")
             # Extreme RSI is ALWAYS a strong trading opportunity, never a risk
             # RSI >85 = perfect short opportunity, RSI <15 = perfect long opportunity
             risk_level = 0  # No risk, just opportunity
-            logger.debug(f"🔍 RSI: Extreme zone detected (<25 or >75) - treating as strong trading opportunity")
             
         elif rsi <= 35:
             factors.append(f"RSI oversold ({rsi:.1f}) - bullish potential")
-            logger.debug(f"🔍 RSI: Oversold condition detected (<=35)")
             
         elif rsi >= 60:
             factors.append(f"RSI overbought ({rsi:.1f}) - bearish potential")
-            logger.debug(f"🔍 RSI: Overbought condition detected (>=60)")
         else:
             factors.append(f"RSI in tradable range ({rsi:.1f})")
-            logger.debug(f"🔍 RSI: Tradable range (36-44 or 56-59)")
             
         return {
             "factors": factors,
@@ -339,151 +364,41 @@ class MarketConditionsAnalyzer:
                                      condition_factors: list, neutral_rsi: bool = False,
                                      volume_analysis: Dict = None, trend_analysis: Dict = None, 
                                      volatility_analysis: Dict = None, market_data: Dict = None) -> Dict[str, Any]:
-        """Determine overall market tradability with RSI override logic (Option 3: Scalping-friendly)"""
+        """Determine overall market tradability - DISABLED: All conditions are tradeable"""
         
         total_risk_score = len(risk_factors)
         total_positive_score = len(positive_factors)
         
         # DEBUG: Log tradability decision process
-        logger.debug(f"🔍 Tradability Decision: {total_risk_score} risk factors, {total_positive_score} positive factors, neutral_rsi={neutral_rsi}")
         
-        # OPTION 3: OVERRIDE LOGIC - Strong factors can override RSI neutrality for scalping
-        strong_override_factors = []
+        # DISABLED: All conditions are now tradeable for testing
+        # Always return tradeable conditions with appropriate risk levels
         
-        # Check for strong trend override (momentum trading)
-        if trend_analysis and trend_analysis.get("positive", False):
-            strong_override_factors.append("Strong trend momentum")
-            
-        # Check for strong volume override (volume spikes/breakouts)
-        if volume_analysis and volume_analysis.get("positive", False):
-            strong_override_factors.append("Strong volume activity")
-            
-        # Check for strong volatility override (momentum opportunities)
-        if volatility_analysis and volatility_analysis.get("positive", False):
-            strong_override_factors.append("Strong price movement volatility")
-        
-        # OVERRIDE LOGIC: RSI neutral zone can be overridden by strong factors
-        can_override_rsi_neutral = len(strong_override_factors) >= 1 and neutral_rsi
-        if can_override_rsi_neutral:
-            logger.info(f"⚡ RSI OVERRIDE: Neutral RSI overridden by: {', '.join(strong_override_factors)}")
-            # Remove RSI neutrality from blocking risk factors for this analysis
-            # Continue with normal logic but treat as if RSI is not neutral
-        
-        # CRITICAL UNTRADABLE CONDITIONS - Check for specific dead zone scenarios first
-        dead_zone_analysis = self._analyze_dead_zone_conditions(market_data, volatility_analysis, trend_analysis)
-        if dead_zone_analysis.get("is_dead_zone", False):
-            logger.debug(f"🔍 UNTRADABLE: Dead zone detected - {dead_zone_analysis.get('reason', 'Unknown')}")
-            return {
-                "is_tradable": False,
-                "condition": "UNTRADABLE",
-                "risk_level": "EXTREME",
-                "confidence": 0.95,
-                "dead_zone_reason": dead_zone_analysis.get("reason", "Unknown")
-            }
-        
-        # UNTRADABLE CONDITIONS (high risk, multiple problems - but account for overrides)
-        effective_risk_score = total_risk_score
-        if can_override_rsi_neutral:
-            # If we can override RSI neutral, don't count RSI-related risks
-            effective_risk_score = max(0, total_risk_score - 1)  # Remove one risk factor for RSI override
-            
-        if effective_risk_score >= 3:
-            logger.debug(f"🔍 UNTRADABLE: {effective_risk_score} ≥ 3 effective risk factors (after overrides)")
-            return {
-                "is_tradable": False,
-                "condition": "UNTRADABLE",
-                "risk_level": "EXTREME",
-                "confidence": 0.9
-            }
-        
-        # POOR CONDITIONS (some risk factors - after accounting for overrides)
-        elif effective_risk_score >= 2:
-            logger.debug(f"🔍 POOR: {effective_risk_score} ≥ 2 effective risk factors (after overrides)")
-            return {
-                "is_tradable": False,
-                "condition": "POOR",
-                "risk_level": "HIGH", 
-                "confidence": 0.75
-            }
-        
-        # EXCELLENT CONDITIONS (rare - multiple strong factors + no risks)
-        elif total_positive_score >= 4 and effective_risk_score == 0:
-            logger.debug(f"🔍 EXCELLENT: {total_positive_score} positive factors, {effective_risk_score} risk factors")
-            return {
-                "is_tradable": True,
-                "condition": "EXCELLENT",
-                "risk_level": "LOW",
-                "confidence": 0.85
-            }
-        
-        # VERY_GOOD CONDITIONS (strong factors + minimal risks)
-        elif total_positive_score >= 3 and effective_risk_score <= 1:
-            logger.debug(f"🔍 VERY_GOOD: {total_positive_score} positive factors, {effective_risk_score} risk factors")
-            return {
-                "is_tradable": True,
-                "condition": "VERY_GOOD",
-                "risk_level": "LOW",
-                "confidence": 0.75
-            }
-        
-        # GOOD CONDITIONS (moderate factors + some risks)
-        elif total_positive_score >= 2 and effective_risk_score <= 2:
-            logger.debug(f"🔍 GOOD: {total_positive_score} positive factors, {effective_risk_score} risk factors")
-            return {
-                "is_tradable": True,
-                "condition": "GOOD",
-                "risk_level": "MODERATE",
-                "confidence": 0.65
-            }
-        
-        # FAIR CONDITIONS (few factors + moderate risks)
-        elif total_positive_score >= 1 and effective_risk_score <= 2:
-            logger.debug(f"🔍 FAIR: {total_positive_score} positive factors, {effective_risk_score} risk factors")
-            return {
-                "is_tradable": True,
-                "condition": "FAIR",
-                "risk_level": "MODERATE",
-                "confidence": 0.55
-            }
-        
-        # MARGINAL CONDITIONS (neutral/weak factors + some risks)
-        elif total_positive_score >= 0 and effective_risk_score <= 3:
-            confidence = 0.45
-            if neutral_rsi and len(strong_override_factors) == 0:
-                confidence = 0.35  # Lower confidence for truly neutral conditions
-                logger.debug(f"🔍 MARGINAL: Neutral RSI with no strong override factors")
-            else:
-                logger.debug(f"🔍 MARGINAL: {total_positive_score} positive factors, {effective_risk_score} risk factors")
-            
-            return {
-                "is_tradable": True,  # Still allow trading (scalping-friendly approach)
-                "condition": "MARGINAL",
-                "risk_level": "HIGH",
-                "confidence": confidence
-            }
-        
-        # POOR CONDITIONS (no positive factors + high risks)
+        if total_positive_score >= 3:
+            condition = "EXCELLENT"
+            risk_level = "LOW"
+            confidence = 0.85
+        elif total_positive_score >= 2:
+            condition = "VERY_GOOD"
+            risk_level = "LOW"
+            confidence = 0.75
+        elif total_positive_score >= 1:
+            condition = "GOOD"
+            risk_level = "MODERATE"
+            confidence = 0.65
         else:
-            logger.debug(f"🔍 POOR: {total_positive_score} positive factors, {effective_risk_score} risk factors")
-            return {
-                "is_tradable": False,
-                "condition": "POOR",
-                "risk_level": "HIGH",
-                "confidence": 0.3
-            }
-    
-    def _get_default_conditions_analysis(self) -> Dict[str, Any]:
-        """Default analysis when conditions check fails"""
+            condition = "FAIR"
+            risk_level = "MODERATE"
+            confidence = 0.55
+        
+        
         return {
-            "is_tradable": False,
-            "condition": "UNKNOWN",
-            "reasons": ["Analysis failed - defaulting to no trading"],
-            "risk_level": "EXTREME",
-            "confidence": 0.0,
-            "risk_factors": ["Analysis error"],
-            "positive_factors": [],
-            "analysis_timestamp": 0
+            "is_tradable": True,  # Always tradeable
+            "condition": condition,
+            "risk_level": risk_level,
+            "confidence": confidence
         }
+    
     
     def get_untradable_condition_summary(self, analysis: Dict[str, Any]) -> str:
         """Generate user-friendly summary of why conditions are untradable"""
@@ -501,106 +416,11 @@ class MarketConditionsAnalyzer:
             return f"Conditions analysis unavailable"
     
     def _analyze_dead_zone_conditions(self, market_data: Dict[str, Any], volatility_analysis: Dict = None, trend_analysis: Dict = None) -> Dict[str, Any]:
-        """
-        Analyze for specific dead zone conditions that should be UNTRADABLE
-        
-        Dead zone scenarios:
-        1. Low volatility + sideways trend + psychological key level
-        2. Very low volatility + neutral RSI + no volume
-        3. Price stuck at major support/resistance with no movement
-        """
-        try:
-            current_price = market_data.get("current_price", 0)
-            volatility_category = market_data.get("volatility_category", "MODERATE")
-            trend_direction = market_data.get("trend", "UNKNOWN")
-            rsi_5m = market_data.get("rsi_5m", 50)
-            volume_category = market_data.get("volume_category", "NORMAL")
-            
-            # Check for psychological key levels (round numbers)
-            psychological_levels = self._get_psychological_levels(current_price)
-            near_psychological_level = self._is_near_psychological_level(current_price, psychological_levels)
-            
-            # Dead Zone Scenario 1: Low volatility + sideways + psychological level + neutral RSI + LOW volume
-            # Only trigger if volume is also low (no activity)
-            if (volatility_category in ["VERY_LOW", "LOW"] and 
-                trend_direction in ["SIDEWAYS", "NEUTRAL"] and 
-                near_psychological_level and
-                40 <= rsi_5m <= 60 and  # Neutral RSI range
-                volume_category in ["LOW", "VERY_LOW", "BELOW_AVERAGE"]):  # Low volume required
-                return {
-                    "is_dead_zone": True,
-                    "reason": f"Price stuck at psychological level {near_psychological_level} with low volatility, sideways movement, neutral RSI, and low volume"
-                }
-            
-            # Dead Zone Scenario 2: Very low volatility + neutral RSI + low volume + sideways trend
-            if (volatility_category == "VERY_LOW" and 
-                40 <= rsi_5m <= 60 and  # Neutral RSI range
-                volume_category in ["LOW", "VERY_LOW"] and
-                trend_direction in ["SIDEWAYS", "NEUTRAL"]):
-                return {
-                    "is_dead_zone": True,
-                    "reason": "Very low volatility with neutral RSI, low volume, and sideways trend - no trading opportunities"
-                }
-            
-            # Dead Zone Scenario 3: Low volatility + neutral RSI + psychological level + LOW volume
-            # Only trigger if volume is also low (no market activity)
-            if (volatility_category in ["VERY_LOW", "LOW"] and 
-                40 <= rsi_5m <= 60 and  # Neutral RSI range
-                near_psychological_level and
-                trend_direction in ["SIDEWAYS", "NEUTRAL"] and
-                volume_category in ["LOW", "VERY_LOW", "BELOW_AVERAGE"]):  # Low volume required
-                return {
-                    "is_dead_zone": True,
-                    "reason": f"Low volatility at psychological level {near_psychological_level} with neutral RSI, sideways trend, and low volume - dead zone"
-                }
-            
-            # Dead Zone Scenario 4: RSI 40-60 + sideways trend + psychological level + LOW volume
-            # Only trigger if volume is also low (no market activity)
-            if (40 <= rsi_5m <= 60 and  # Neutral RSI range
-                trend_direction in ["SIDEWAYS", "NEUTRAL"] and
-                near_psychological_level and
-                volume_category in ["LOW", "VERY_LOW", "BELOW_AVERAGE"]):  # Low volume required
-                return {
-                    "is_dead_zone": True,
-                    "reason": f"Neutral RSI (40-60) at psychological level {near_psychological_level} with sideways trend and low volume - dead zone"
-                }
-            
-            # Dead Zone Scenario 5: RSI 40-60 + low/very low volatility + sideways trend + LOW volume
-            # Only trigger if volume is also low (no market activity)
-            if (40 <= rsi_5m <= 60 and  # Neutral RSI range
-                volatility_category in ["VERY_LOW", "LOW"] and
-                trend_direction in ["SIDEWAYS", "NEUTRAL"] and
-                volume_category in ["LOW", "VERY_LOW", "BELOW_AVERAGE"]):  # Low volume required
-                return {
-                    "is_dead_zone": True,
-                    "reason": f"Neutral RSI (40-60) with low volatility, sideways trend, and low volume - dead zone"
-                }
-            
-            # Dead Zone Scenario 6: VERY_LOW volatility + neutral RSI + psychological level + SIDEWAYS trend
-            # Only deadzone if trend is sideways (no clear direction)
-            if (volatility_category == "VERY_LOW" and 
-                40 <= rsi_5m <= 60 and  # Neutral RSI range
-                near_psychological_level and
-                trend_direction in ["SIDEWAYS", "NEUTRAL"]):  # Only deadzone if no clear trend
-                return {
-                    "is_dead_zone": True,
-                    "reason": f"Price stuck at psychological level {near_psychological_level} with VERY_LOW volatility, neutral RSI, and sideways trend - deadzone"
-                }
-            
-            # Dead Zone Scenario 7: RSI 40-60 + psychological level + low volume
-            if (40 <= rsi_5m <= 60 and  # Neutral RSI range
-                near_psychological_level and
-                volume_category in ["LOW", "VERY_LOW"]):
-                return {
-                    "is_dead_zone": True,
-                    "reason": f"Neutral RSI (40-60) at psychological level {near_psychological_level} with low volume - dead zone"
-                }
-            
-            return {"is_dead_zone": False, "reason": "No dead zone conditions detected"}
-            
-        except Exception as e:
-            logger.error(f"❌ Dead zone analysis failed: {e}")
-            return {"is_dead_zone": False, "reason": "Analysis failed"}
+        """Dead zone analysis DISABLED - always returns no dead zone"""
+        return {
+            "is_dead_zone": False,
+            "reason": "Dead zone analysis disabled"
+        }
     
     def _get_psychological_levels(self, current_price: float) -> list:
         """Get nearby psychological levels for the current price"""
@@ -644,6 +464,300 @@ class MarketConditionsAnalyzer:
         except Exception as e:
             logger.error(f"❌ Psychological level check failed: {e}")
             return None
+    
+    def _analyze_sentiment_conditions(self) -> Dict[str, Any]:
+        """
+        Analyze Fear & Greed sentiment conditions for trading decisions
+        
+        Returns:
+            Dict containing sentiment factors, risk factors, and positive factors
+        """
+        try:
+            # Get Fear & Greed data
+            fear_greed_data = fear_greed_api.get_fear_greed_index()
+            
+            if not fear_greed_data or "error" in fear_greed_data:
+                return {
+                    "factors": ["Sentiment data unavailable"],
+                    "risk_factors": [],
+                    "positive_factors": [],
+                    "risk": 0,
+                    "positive": False
+                }
+            
+            sentiment_signals = fear_greed_data.get("sentiment_signals", {})
+            index_value = fear_greed_data.get("index_value", 50)
+            classification = fear_greed_data.get("classification", "Neutral")
+            
+            factors = []
+            risk_factors = []
+            positive_factors = []
+            risk_level = 0
+            is_positive = False
+            
+            # Analyze sentiment zones
+            sentiment_zone = sentiment_signals.get("sentiment_zone", "NEUTRAL")
+            trading_bias = sentiment_signals.get("trading_bias", "NEUTRAL")
+            extreme_condition = sentiment_signals.get("extreme_condition", False)
+            reversal_imminent = sentiment_signals.get("reversal_imminent", False)
+            
+            # Add sentiment factors
+            factors.append(f"Fear & Greed: {index_value} ({classification})")
+            factors.append(f"Sentiment Zone: {sentiment_zone}")
+            factors.append(f"Trading Bias: {trading_bias}")
+            
+            # Analyze extreme conditions
+            if extreme_condition:
+                if sentiment_zone == "EXTREME_FEAR":
+                    factors.append("Extreme Fear - High reversal probability")
+                    positive_factors.append("Extreme Fear - Strong buy opportunity")
+                    is_positive = True
+                elif sentiment_zone == "EXTREME_GREED":
+                    factors.append("Extreme Greed - High reversal probability")
+                    risk_factors.append("Extreme Greed - High sell risk")
+                    risk_level = 2
+            
+            # Analyze reversal conditions
+            if reversal_imminent:
+                reversal_prob = sentiment_signals.get("reversal_probability", 0.0)
+                factors.append(f"Reversal Imminent - {reversal_prob:.0%} probability")
+                
+                if sentiment_zone in ["EXTREME_FEAR", "FEAR"]:
+                    positive_factors.append("Fear sentiment - Reversal opportunity")
+                    is_positive = True
+                elif sentiment_zone in ["EXTREME_GREED", "GREED"]:
+                    risk_factors.append("Greed sentiment - Reversal risk")
+                    risk_level = max(risk_level, 1)
+            
+            # Analyze trading bias
+            if trading_bias == "STRONG_BUY":
+                positive_factors.append("Strong buy bias from sentiment")
+                is_positive = True
+            elif trading_bias == "STRONG_SELL":
+                risk_factors.append("Strong sell bias from sentiment")
+                risk_level = max(risk_level, 1)
+            
+            # Add confidence boost information
+            confidence_boost = sentiment_signals.get("confidence_boost", 0.0)
+            if confidence_boost > 0:
+                factors.append(f"Sentiment confidence boost: +{confidence_boost:.1%}")
+            
+            return {
+                "factors": factors,
+                "risk_factors": risk_factors,
+                "positive_factors": positive_factors,
+                "risk": risk_level,
+                "positive": is_positive,
+                "sentiment_data": fear_greed_data
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Sentiment conditions analysis failed: {e}")
+            return {
+                "factors": ["Sentiment analysis failed"],
+                "risk_factors": [],
+                "positive_factors": [],
+                "risk": 0,
+                "positive": False
+            }
+    
+    def _analyze_whale_conditions(self) -> Dict[str, Any]:
+        """
+        Analyze whale analytics conditions for trading decisions
+        
+        Returns:
+            Dict containing whale factors, risk factors, and positive factors
+        """
+        try:
+            # Get whale analytics data
+            whale_data = whale_analytics_api.get_whale_analytics()
+            
+            if not whale_data or "error" in whale_data:
+                return {
+                    "factors": ["Whale analytics unavailable"],
+                    "risk_factors": [],
+                    "positive_factors": [],
+                    "risk": 0,
+                    "positive": False
+                }
+            
+            whale_activity = whale_data.get("whale_activity", {})
+            exchange_flows = whale_data.get("exchange_flows", {})
+            sentiment = whale_data.get("sentiment", {})
+            
+            factors = []
+            risk_factors = []
+            positive_factors = []
+            risk_level = 0
+            is_positive = False
+            
+            # Analyze whale activity
+            whale_count = whale_activity.get("whale_count", 0)
+            activity_level = whale_activity.get("activity_level", "low")
+            total_volume_usd = whale_activity.get("total_volume_usd", 0)
+            
+            factors.append(f"Whale Activity: {whale_count} whales ({activity_level})")
+            factors.append(f"Whale Volume: ${total_volume_usd:,.0f}")
+            
+            # Analyze exchange flows
+            flow_direction = exchange_flows.get("flow_direction", "neutral")
+            net_flow = exchange_flows.get("net_flow", 0)
+            
+            factors.append(f"Exchange Flow: {flow_direction} (${net_flow:,.0f})")
+            
+            # Analyze sentiment
+            sentiment_class = sentiment.get("classification", "neutral")
+            confidence = sentiment.get("confidence", "low")
+            
+            factors.append(f"Whale Sentiment: {sentiment_class} ({confidence})")
+            
+            # Determine risk and positive factors
+            if sentiment_class == "bearish" and confidence == "high":
+                risk_factors.append("High confidence bearish whale sentiment")
+                risk_level = 2
+            elif sentiment_class == "bearish":
+                risk_factors.append("Bearish whale sentiment")
+                risk_level = 1
+            
+            if sentiment_class == "bullish" and confidence == "high":
+                positive_factors.append("High confidence bullish whale sentiment")
+                is_positive = True
+            elif sentiment_class == "bullish":
+                positive_factors.append("Bullish whale sentiment")
+                is_positive = True
+            
+            if activity_level in ["high", "very_high"]:
+                if sentiment_class == "bullish":
+                    positive_factors.append("High whale activity with bullish sentiment")
+                    is_positive = True
+                elif sentiment_class == "bearish":
+                    risk_factors.append("High whale activity with bearish sentiment")
+                    risk_level = max(risk_level, 1)
+            
+            if flow_direction == "strong_outflow":
+                risk_factors.append("Strong exchange outflow")
+                risk_level = max(risk_level, 1)
+            elif flow_direction == "strong_inflow":
+                positive_factors.append("Strong exchange inflow")
+                is_positive = True
+            
+            return {
+                "factors": factors,
+                "risk_factors": risk_factors,
+                "positive_factors": positive_factors,
+                "risk": risk_level,
+                "positive": is_positive,
+                "whale_data": whale_data
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Whale conditions analysis failed: {e}")
+            return {
+                "factors": ["Whale analysis failed"],
+                "risk_factors": [],
+                "positive_factors": [],
+                "risk": 0,
+                "positive": False
+            }
+    
+    def _analyze_rss_news_conditions(self) -> Dict[str, Any]:
+        """
+        Analyze news sentiment conditions for trading decisions
+        
+        Returns:
+            Dict containing news factors, risk factors, and positive factors
+        """
+        try:
+            # Get RSS news sentiment data
+            news_data = rss_news_api.get_news_sentiment()
+            
+            if not news_data or "error" in news_data:
+                return {
+                    "factors": ["News sentiment unavailable"],
+                    "risk_factors": [],
+                    "positive_factors": [],
+                    "risk": 0,
+                    "positive": False
+                }
+            
+            sentiment = news_data.get("sentiment", {})
+            impact = news_data.get("impact", {})
+            trading_signals = news_data.get("trading_signals", {})
+            
+            factors = []
+            risk_factors = []
+            positive_factors = []
+            risk_level = 0
+            is_positive = False
+            
+            # Analyze sentiment
+            sentiment_class = sentiment.get("classification", "neutral")
+            confidence = sentiment.get("confidence", "low")
+            bullish_count = sentiment.get("bullish_count", 0)
+            bearish_count = sentiment.get("bearish_count", 0)
+            total_news = sentiment.get("total_news", 0)
+            
+            factors.append(f"News Sentiment: {sentiment_class} ({confidence})")
+            factors.append(f"News Count: {bullish_count}B/{bearish_count}BE/{total_news} total")
+            
+            # Analyze impact
+            impact_level = impact.get("impact_level", "low")
+            high_impact_count = impact.get("high_impact_count", 0)
+            
+            factors.append(f"News Impact: {impact_level} ({high_impact_count} high impact)")
+            
+            # Analyze trading signals
+            trading_bias = trading_signals.get("trading_bias", "NEUTRAL")
+            market_impact = trading_signals.get("market_impact", "low")
+            
+            factors.append(f"Trading Bias: {trading_bias} ({market_impact} impact)")
+            
+            # Determine risk and positive factors
+            if sentiment_class == "bearish" and confidence == "high" and impact_level == "high":
+                risk_factors.append("High impact bearish news sentiment")
+                risk_level = 2
+            elif sentiment_class == "bearish" and impact_level == "high":
+                risk_factors.append("High impact bearish news")
+                risk_level = 1
+            elif sentiment_class == "bearish":
+                risk_factors.append("Bearish news sentiment")
+                risk_level = 1
+            
+            if sentiment_class == "bullish" and confidence == "high" and impact_level == "high":
+                positive_factors.append("High impact bullish news sentiment")
+                is_positive = True
+            elif sentiment_class == "bullish" and impact_level == "high":
+                positive_factors.append("High impact bullish news")
+                is_positive = True
+            elif sentiment_class == "bullish":
+                positive_factors.append("Bullish news sentiment")
+                is_positive = True
+            
+            if trading_bias == "STRONG_SELL":
+                risk_factors.append("Strong sell bias from news")
+                risk_level = max(risk_level, 1)
+            elif trading_bias == "STRONG_BUY":
+                positive_factors.append("Strong buy bias from news")
+                is_positive = True
+            
+            return {
+                "factors": factors,
+                "risk_factors": risk_factors,
+                "positive_factors": positive_factors,
+                "risk": risk_level,
+                "positive": is_positive,
+                "news_data": news_data
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ News conditions analysis failed: {e}")
+            return {
+                "factors": ["News analysis failed"],
+                "risk_factors": [],
+                "positive_factors": [],
+                "risk": 0,
+                "positive": False
+            }
 
 # Global instance for consistent conditions analysis across the system
 global_conditions_analyzer = MarketConditionsAnalyzer()

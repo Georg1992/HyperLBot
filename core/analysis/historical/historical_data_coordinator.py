@@ -5,10 +5,9 @@ Handles market data analysis and RSI calculations
 """
 
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
-from core.constants import magic_numbers
-from core.external.yahoo_data_fetcher import yahoo_data_fetcher
+from core.external.yahoo_api import yahoo_api
 from core.external.yahoo_momentum_analyzer import momentum_analyzer
 from core.market_data_manager import market_data_manager
 # Complex session tracking imports removed - over-engineered for minimal benefit
@@ -18,30 +17,11 @@ class MarketDataAnalyzer:
     
     def __init__(self):
         # Use global instances to eliminate duplicate objects and ensure consistency
-        self.yahoo_fetcher = yahoo_data_fetcher
+        self.yahoo_fetcher = yahoo_api
         self.momentum_analyzer = momentum_analyzer
         # Complex session tracking removed - over-engineered for minimal benefit
         logger.info("📊 Market Data Analyzer initialized - simplified for essential analysis only")
     
-    def get_current_price(self) -> Optional[float]:
-        """Get current price from Yahoo Finance (historical context only)"""
-        try:
-            # Get the most recent 5-minute candle
-            candles = self.get_5m_candles("BTC", 1)
-            if candles and len(candles) > 0:
-                return candles[0]['close']
-            return None
-        except Exception as e:
-            logger.error(f"❌ Failed to get current price: {e}")
-            return None
-    
-    def _calculate_sma(self, candles: List[Dict], period: int) -> float:
-        """Calculate Simple Moving Average"""
-        if len(candles) < period:
-            return 0.0
-        
-        prices = [c['close'] for c in candles[-period:]]
-        return sum(prices) / len(prices)
     
     # _determine_market_condition() REMOVED - unused trend logic, replaced by TrendCalculator
     
@@ -63,7 +43,7 @@ class MarketDataAnalyzer:
     # get_weekly_trend_analysis removed - duplicates TradingBot.get_weekly_trend_analysis()
     # Use TradingBot.get_weekly_trend_analysis() for consistency
     
-    # Note: Old prediction methods removed - PredictionEngine handles all prediction logic
+    # Note: Old prediction methods removed - AI system handles all prediction logic
     
     def get_update_status(self) -> Dict[str, Any]:
         """Get update status for dashboard using centralized MarketDataManager"""
@@ -103,25 +83,10 @@ class MarketDataAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Failed to get analysis: {e}")
-            # Return fallback with required fields
-            return {
-                "current_price": current_price,
-                "rsi": rsi,
-                "trend": "NEUTRAL",
-                # volume_category removed - TradingBot uses orderbook depth categorization only
-                "volatility_5m": volatility,
-                "market_condition": "NEUTRAL",
-                "analysis_type": "fallback",
-                "data_source": "fallback",
-                "timestamp": time.time()
-            }
+            raise Exception(f"Analysis failed: {e}")
     
     # _get_trend() REMOVED - unused trend logic, replaced by TrendCalculator
     
     # Volume category methods removed - TradingBot now uses orderbook depth categorization directly
     # This eliminates conflict between trading volume categorization (USD scale) and orderbook depth (BTC scale)
     
-    def end_session_tracking(self):
-        """End session tracking"""
-        self.session_manager.end_session()
-        logger.info("🛑 Session tracking ended")

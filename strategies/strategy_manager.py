@@ -9,7 +9,6 @@ import time
 from typing import Dict, Any, Optional, List
 from loguru import logger
 from config.config import TradingConfig
-from core.constants import VariabilityConstants
 
 
 class StrategyManager:
@@ -48,12 +47,11 @@ class StrategyManager:
             self.strategy_usage_count[strategy_name] = 0
         
         logger.info("🎯 Strategy Manager initialized - Centralized strategy management")
-        logger.info(f"   📊 Available strategies: {list(self.strategy_configs.keys())}")
         logger.info(f"   🎯 Current strategy: {self.current_strategy}")
     
     def detect_optimal_strategy(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> str:
         """
-        Detect the optimal strategy based on current market conditions
+        Detect the optimal strategy using ML-powered analysis
         
         Args:
             market_data: Current market data (price, volatility, trend, volume, etc.)
@@ -63,37 +61,42 @@ class StrategyManager:
             str: Optimal strategy name
         """
         try:
-            current_price = market_data.get("current_price", 0)
-            volatility_5m = market_data.get("volatility_5m", 0.0)
-            volatility_category = market_data.get("volatility_5m_category", "MODERATE")
-            trend = market_data.get("trend_5m", {}).get("trend", "NEUTRAL")
-            volume_category = market_data.get("hyperliquid_volume", {}).get("volume_category", "NORMAL")
-            rsi = market_data.get("rsi_5m", 50.0)
+            # Import ML Strategy Selector
+            from core.ml.strategy_selector import global_ml_strategy_selector
             
-            logger.info(f"🎯 STRATEGY DETECTION: Analyzing market conditions at ${current_price:.2f}")
-            logger.info(f"   📊 Volatility: {volatility_5m:.4f} ({volatility_category})")
-            logger.info(f"   📈 Trend: {trend}")
-            logger.info(f"   📊 Volume: {volume_category}")
-            logger.info(f"   📊 RSI: {rsi:.1f}")
-            
-            # Strategy detection logic based on market conditions
-            optimal_strategy = self._analyze_market_conditions(
-                volatility_5m, volatility_category, trend, volume_category, rsi, historical_context
+            # Get ML strategy recommendation
+            recommendation = global_ml_strategy_selector.select_strategy(
+                market_data
             )
+            
+            optimal_strategy = recommendation.strategy
+            confidence = recommendation.confidence
+            reasoning = recommendation.reasoning
+            
+            # Log ML strategy selection
+            logger.info(f"🤖 ML Strategy Analysis: {optimal_strategy} (confidence: {confidence:.3f})")
+            logger.info(f"   📊 Reasoning: {reasoning}")
             
             # Check if strategy switch is needed and allowed
             if optimal_strategy != self.current_strategy:
                 if self._can_switch_strategy():
-                    logger.info(f"🔄 Strategy switch detected: {self.current_strategy} → {optimal_strategy}")
+                    logger.info(f"🔄 ML Strategy switch: {self.current_strategy} → {optimal_strategy}")
                     self._switch_strategy(optimal_strategy)
+                    
+                    # Record strategy selection for learning
+                    self._record_strategy_selection(optimal_strategy, market_data, recommendation)
                 else:
-                    logger.info(f"⏳ Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}")
+                    logger.info(f"⏳ ML Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}")
+            else:
+                # Still record for learning even if no switch
+                self._record_strategy_selection(optimal_strategy, market_data, recommendation)
             
             return self.current_strategy
             
         except Exception as e:
-            logger.error(f"❌ Strategy detection failed: {e}")
-            return self.current_strategy
+            logger.error(f"❌ ML strategy detection failed: {e}")
+            # Fallback to rule-based selection
+            return self._fallback_rule_based_strategy(market_data, historical_context)
     
     def get_current_strategy_config(self) -> Dict[str, Any]:
         """Get current strategy configuration"""
@@ -103,93 +106,51 @@ class StrategyManager:
         """Get configuration for specific strategy"""
         return self.strategy_configs.get(strategy_name, self.strategy_configs["standard"]).copy()
     
-    def update_strategy_performance(self, strategy_name: str, trade_result: Dict[str, Any]):
-        """Update strategy performance tracking"""
-        try:
-            if strategy_name not in self.strategy_performance:
-                return
-            
-            performance = self.strategy_performance[strategy_name]
-            performance["total_trades"] += 1
-            performance["last_used"] = time.time()
-            
-            if trade_result.get("success", False):
-                performance["successful_trades"] += 1
-                performance["total_profit"] += trade_result.get("profit", 0.0)
-            
-            # Update usage count
-            self.strategy_usage_count[strategy_name] += 1
-            
-            logger.debug(f"📊 Strategy performance updated: {strategy_name} - {performance['successful_trades']}/{performance['total_trades']} successful")
-            
-        except Exception as e:
-            logger.error(f"❌ Strategy performance update failed: {e}")
     
-    def get_strategy_performance_summary(self) -> Dict[str, Any]:
-        """Get performance summary for all strategies"""
-        summary = {}
-        for strategy_name, performance in self.strategy_performance.items():
-            if performance["total_trades"] > 0:
-                success_rate = performance["successful_trades"] / performance["total_trades"]
-                avg_profit = performance["total_profit"] / performance["total_trades"]
-            else:
-                success_rate = 0.0
-                avg_profit = 0.0
-            
-            summary[strategy_name] = {
-                "total_trades": performance["total_trades"],
-                "success_rate": success_rate,
-                "avg_profit": avg_profit,
-                "total_profit": performance["total_profit"],
-                "usage_count": self.strategy_usage_count[strategy_name],
-                "last_used": performance["last_used"]
-            }
-        
-        return summary
     
     def _analyze_market_conditions(self, volatility_5m: float, volatility_category: str, 
                                  trend: str, volume_category: str, rsi: float, 
                                  historical_context: Dict[str, Any] = None) -> str:
-        """Analyze market conditions and determine optimal strategy"""
+        """Analyze market conditions using DISTINCT, NON-OVERLAPPING strategy conditions"""
         
-        # 1. VOLATILITY-BASED STRATEGY SELECTION
-        if volatility_category == "VERY_LOW":
-            # Very low volatility - use range trading strategy
-            logger.info("🎯 Strategy: VERY_LOW volatility → low_volatility_range")
-            return "low_volatility_range"
+        # DISTINCT STRATEGY CONDITIONS (same logic as ML fallback)
         
-        elif volatility_category == "LOW":
-            # Low volatility - use low volatility range strategy
-            logger.info("🎯 Strategy: LOW volatility → low_volatility_range")
-            return "low_volatility_range"
-        
-        elif volatility_category == "EXTREME":
-            # Extreme volatility - use spike hunting strategy
-            logger.info("🎯 Strategy: EXTREME volatility → spike_hunting")
+        # 1. SPIKE HUNTING - EXTREME volatility only (highest priority)
+        if volatility_category == "EXTREME" and volatility_5m > 0.05:  # >5% volatility
+            logger.info(f"🎯 Strategy: EXTREME volatility ({volatility_5m:.3f}) → spike_hunting")
             return "spike_hunting"
         
-        elif volatility_category == "HIGH":
-            # High volatility - use high volatility strategy
-            logger.info("🎯 Strategy: HIGH volatility → high_volatility")
+        # 2. SCALPING - MODERATE volatility + perfect liquidity conditions
+        elif (volatility_category == "MODERATE" and 
+              0.005 <= volatility_5m <= 0.02 and  # 0.5% - 2% volatility
+              30 <= rsi <= 70 and  # Avoid extreme RSI zones
+              volume_category in ["NORMAL", "HIGH", "VERY_HIGH"]):
+            logger.info(f"🎯 Strategy: MODERATE volatility ({volatility_5m:.3f}) + good conditions → scalping")
+            return "scalping"
+        
+        # 3. HIGH VOLATILITY - HIGH volatility but not extreme
+        elif (volatility_category == "HIGH" and 
+              0.02 < volatility_5m <= 0.05 and  # 2% - 5% volatility
+              trend not in ["STRONG_UPTREND", "STRONG_DOWNTREND"]):  # Not strong trending
+            logger.info(f"🎯 Strategy: HIGH volatility ({volatility_5m:.3f}) without strong trend → high_volatility")
             return "high_volatility"
         
-        # 2. TREND-BASED STRATEGY SELECTION (for MODERATE volatility)
-        elif volatility_category == "MODERATE":
-            if trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
-                logger.info("🎯 Strategy: MODERATE volatility + STRONG trend → trend_following")
-                return "trend_following"
-            else:
-                logger.info("🎯 Strategy: MODERATE volatility + NEUTRAL trend → standard")
-                return "standard"
+        # 4. TREND FOLLOWING - MODERATE volatility + STRONG trend
+        elif (volatility_category == "MODERATE" and 
+              0.01 <= volatility_5m <= 0.02 and  # 1% - 2% volatility
+              trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"] and
+              volume_category in ["HIGH", "VERY_HIGH"]):  # Need volume for trends
+            logger.info(f"🎯 Strategy: STRONG trend ({trend}) + MODERATE volatility ({volatility_5m:.3f}) → trend_following")
+            return "trend_following"
         
-        # 3. VOLUME-BASED STRATEGY SELECTION (fallback)
-        elif volume_category == "HIGH":
-            logger.info("🎯 Strategy: HIGH volume → high_volatility")
-            return "high_volatility"
+        # 5. LOW VOLATILITY RANGE - LOW/VERY_LOW volatility
+        elif volatility_category in ["LOW", "VERY_LOW"] and volatility_5m < 0.01:  # <1% volatility
+            logger.info(f"🎯 Strategy: {volatility_category} volatility ({volatility_5m:.3f}) → low_volatility_range")
+            return "low_volatility_range"
         
-        # 4. DEFAULT STRATEGY
+        # 6. STANDARD - Everything else (fallback)
         else:
-            logger.info("🎯 Strategy: Default conditions → standard")
+            logger.info(f"🎯 Strategy: Standard conditions ({volatility_category} volatility {volatility_5m:.3f}, {trend} trend) → standard")
             return "standard"
     
     def _can_switch_strategy(self) -> bool:
@@ -244,9 +205,130 @@ class StrategyManager:
             "low_volatility_range": "Optimized for LOW and VERY_LOW volatility, range-bound markets with support/resistance",
             "high_volatility": "Designed for high volatility, trending markets",
             "spike_hunting": "Specialized for extreme volatility and price spikes",
-            "trend_following": "Optimized for strong trending markets"
+            "trend_following": "Optimized for strong trending markets with momentum confirmation",
+            "scalping": "High-frequency scalping for small, quick profits with tight risk management",
+            "liquidation_hunting": "Advanced strategy targeting liquidation cascades during global exchange openings"
         }
         return descriptions.get(strategy_name, "Unknown strategy")
+    
+    def _fallback_rule_based_strategy(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> str:
+        """Fallback to rule-based strategy selection when ML fails"""
+        try:
+            current_price = market_data.get("current_price", 0)
+            volatility_5m = market_data.get("volatility_5m", 0.0)
+            volatility_category = market_data.get("volatility_5m_category", "MODERATE")
+            trend = market_data.get("trend_5m", {}).get("trend", "NEUTRAL")
+            volume_category = market_data.get("hyperliquid_volume", {}).get("volume_category", "NORMAL")
+            rsi = market_data.get("rsi_5m", 50.0)
+            
+            logger.info(f"🎯 FALLBACK Strategy Detection: Analyzing market conditions at ${current_price:.2f}")
+            logger.info(f"   📊 Volatility: {volatility_5m:.4f} ({volatility_category})")
+            logger.info(f"   📈 Trend: {trend}")
+            logger.info(f"   📊 Volume: {volume_category}")
+            logger.info(f"   📊 RSI: {rsi:.1f}")
+            
+            # Strategy detection logic based on market conditions
+            optimal_strategy = self._analyze_market_conditions(
+                volatility_5m, volatility_category, trend, volume_category, rsi, historical_context
+            )
+            
+            # Check if strategy switch is needed and allowed
+            if optimal_strategy != self.current_strategy:
+                if self._can_switch_strategy():
+                    logger.info(f"🔄 Fallback Strategy switch: {self.current_strategy} → {optimal_strategy}")
+                    self._switch_strategy(optimal_strategy)
+                else:
+                    logger.info(f"⏳ Fallback Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}")
+            
+            return self.current_strategy
+            
+        except Exception as e:
+            logger.error(f"❌ Fallback strategy detection failed: {e}")
+            return self.current_strategy
+    
+    def _record_strategy_selection(self, strategy: str, market_data: Dict[str, Any], recommendation) -> None:
+        """Record strategy selection for ML learning"""
+        try:
+            from core.ml.strategy_selector import global_ml_strategy_selector
+            
+            # Record the strategy selection (without outcome yet)
+            # The outcome will be recorded later when trades are executed
+            selection_record = {
+                "strategy": strategy,
+                "market_conditions": market_data,
+                "confidence": recommendation.confidence,
+                "reasoning": recommendation.reasoning,
+                "timestamp": time.time()
+            }
+            
+            # Store for later outcome recording
+            if not hasattr(self, 'pending_strategy_outcomes'):
+                self.pending_strategy_outcomes = []
+            
+            self.pending_strategy_outcomes.append(selection_record)
+            
+            # Keep only recent records
+            if len(self.pending_strategy_outcomes) > 100:
+                self.pending_strategy_outcomes = self.pending_strategy_outcomes[-100:]
+            
+            logger.debug(f"📊 Strategy selection recorded: {strategy} (confidence: {recommendation.confidence:.3f})")
+            
+        except Exception as e:
+            logger.error(f"❌ Strategy selection recording failed: {e}")
+    
+    def record_strategy_outcome(self, strategy: str, outcome: Dict[str, Any]) -> None:
+        """Record the outcome of a strategy for ML learning"""
+        try:
+            from core.ml.strategy_selector import global_ml_strategy_selector
+            
+            # Find the most recent selection for this strategy
+            if hasattr(self, 'pending_strategy_outcomes'):
+                for record in reversed(self.pending_strategy_outcomes):
+                    if record["strategy"] == strategy:
+                        # Record outcome with ML strategy selector
+                        global_ml_strategy_selector.record_strategy_outcome(
+                            strategy, record["market_conditions"], outcome
+                        )
+                        
+                        # Remove from pending
+                        self.pending_strategy_outcomes.remove(record)
+                        break
+            
+            # Also update local performance tracking
+            if strategy not in self.strategy_performance:
+                self.strategy_performance[strategy] = {
+                    "total_trades": 0,
+                    "successful_trades": 0,
+                    "total_profit": 0.0,
+                    "last_used": 0
+                }
+            
+            perf = self.strategy_performance[strategy]
+            perf["total_trades"] += 1
+            perf["last_used"] = time.time()
+            
+            # Calculate success and profit
+            profit = outcome.get("profit", 0.0)
+            success = outcome.get("success", profit > 0)
+            
+            if success:
+                perf["successful_trades"] += 1
+            
+            perf["total_profit"] += profit
+            
+            logger.info(f"📊 Strategy outcome recorded: {strategy} - Profit: {profit:.4f}, Success: {success}")
+            
+        except Exception as e:
+            logger.error(f"❌ Strategy outcome recording failed: {e}")
+    
+    def get_ml_strategy_performance(self) -> Dict[str, Any]:
+        """Get ML strategy performance statistics"""
+        try:
+            from core.ml.strategy_selector import global_ml_strategy_selector
+            return global_ml_strategy_selector.get_strategy_performance()
+        except Exception as e:
+            logger.error(f"❌ Failed to get ML strategy performance: {e}")
+            return {"error": str(e)}
     
     def _notify_session_strategy_change(self, new_strategy: str):
         """Notify SessionManager of strategy change for dashboard update"""

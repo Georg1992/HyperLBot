@@ -1,12 +1,12 @@
-# Advanced Trade Management System
+# Trade Management System
 
 ## Overview
 
-The HyperLBot now features an **Advanced Trade Management System** that makes intelligent decisions about trade placement and dynamically manages positions with sophisticated stop loss adjustments. This system ensures trades are placed wisely and positions are managed optimally based on changing market conditions.
+The HyperLBot now features a **Trade Management System** that makes decisions about trade placement and dynamically manages positions with stop loss adjustments. This system ensures trades are placed wisely and positions are managed optimally based on changing market conditions.
 
 ## 🎯 Key Features
 
-### 1. **Intelligent Trade Quality Evaluation**
+### 1. **Trade Quality Evaluation**
 
 The system evaluates every potential trade using a comprehensive scoring system:
 
@@ -26,7 +26,7 @@ The system evaluates every potential trade using a comprehensive scoring system:
 
 ### 2. **Dynamic Stop Loss Management**
 
-The system intelligently adjusts stop losses based on:
+The system adjusts stop losses based on:
 
 #### **Stop Adjustment Triggers:**
 - **Minimum Profit Threshold**: 0.3% profit before considering adjustments
@@ -35,7 +35,7 @@ The system intelligently adjusts stop losses based on:
 - **Cooldown Period**: 5 minutes between adjustments
 - **Maximum Adjustments**: 3 adjustments per position
 
-#### **Smart Stop Calculation:**
+#### **Stop Calculation:**
 - **Trailing Distance**: 0.2% trailing distance from current price
 - **Direction Protection**: Never moves stops in the wrong direction
 - **Entry Protection**: Prevents stops from getting too close to entry

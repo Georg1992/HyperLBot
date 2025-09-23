@@ -6,6 +6,7 @@ Centralized volatility calculations from different data sources
 
 from typing import Dict, Any, List, Optional
 from loguru import logger
+from core.constants import VariabilityConstants
 
 
 class VolatilityCalculator:
@@ -17,12 +18,12 @@ class VolatilityCalculator:
     def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m") -> float:
         """Calculate volatility from candle data using HIGHLY REACTIVE method for real-time trading"""
         try:
-            if len(candles) < 3:  # Reduced minimum requirement for faster response
-                logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 3")
-                return self._get_default_volatility(timeframe)
+            if len(candles) < 1:  # Allow single candle for current candle priority
+                logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 1")
+                raise Exception(f"Insufficient candles for volatility calculation: {len(candles)} < 1")
             
-            # Use only the most recent 6 candles for maximum reactivity (30 minutes of 5m data)
-            recent_candles = candles[-6:] if len(candles) >= 6 else candles
+            # Use the most recent 8 candles for better volatility detection (captures recent big moves)
+            recent_candles = candles[-8:] if len(candles) >= 8 else candles
             
             # Method 1: Weighted recent candle volatilities (most reactive to current market)
             weighted_volatilities = []
@@ -31,17 +32,29 @@ class VolatilityCalculator:
             for i, candle in enumerate(recent_candles):
                 if candle["close"] > 0 and candle["high"] > 0 and candle["low"] > 0:
                     range_vol = (candle["high"] - candle["low"]) / candle["close"]
-                    # Give exponentially more weight to recent candles
-                    weight = (i + 1) ** 2  # 1, 4, 9, 16, 25, 36 for 6 candles
+                    # Give exponentially more weight to recent candles (much more aggressive for big moves)
+                    weight = (i + 1) ** 2.5  # Much more aggressive weighting to capture recent big moves
                     weighted_volatilities.append(range_vol * weight)
                     total_weight += weight
             
             if weighted_volatilities and total_weight > 0:
                 # Calculate weighted average (most recent candles have much higher impact)
                 weighted_avg_volatility = sum(weighted_volatilities) / total_weight
+            
+                # CRITICAL: Use MAXIMUM volatility from recent candles to capture big moves immediately
+                max_volatility = max(weighted_volatilities) / max(weight for weight in [(i + 1) ** 2.5 for i in range(len(recent_candles))])
                 
-                # DEBUG: Log the calculation details
-                logger.debug(f"🔍 Volatility calculation: {len(recent_candles)} candles, weighted_avg={weighted_avg_volatility:.6f} ({weighted_avg_volatility*100:.4f}%)")
+                # CURRENT CANDLE PRIORITY: Give 80% weight to the most recent candle (current ongoing candle)
+                if len(recent_candles) >= 1:
+                    current_candle_range = (recent_candles[-1]["high"] - recent_candles[-1]["low"]) / recent_candles[-1]["close"]
+                    # Use 80% current candle + 20% historical average for maximum sensitivity
+                    primary_volatility = (current_candle_range * 0.8) + (weighted_avg_volatility * 0.2)
+                    logger.debug(f"🔍 Current candle priority: current_range={current_candle_range:.6f} ({current_candle_range*100:.4f}%), weighted_avg={weighted_avg_volatility:.6f}, final={primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
+                else:
+                    # Fallback to maximum approach
+                    primary_volatility = max(weighted_avg_volatility, max_volatility)
+                
+                logger.debug(f"🔍 Volatility calculation: {len(recent_candles)} candles, weighted_avg={weighted_avg_volatility:.6f} ({weighted_avg_volatility*100:.4f}%), max={max_volatility:.6f} ({max_volatility*100:.4f}%), using={primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
                 
                 # Method 2: Recent price momentum (captures directional movement)
                 if len(recent_candles) >= 3:
@@ -49,21 +62,23 @@ class VolatilityCalculator:
                     for i in range(1, len(recent_candles)):
                         if recent_candles[i-1]["close"] > 0:
                             momentum = abs(recent_candles[i]["close"] - recent_candles[i-1]["close"]) / recent_candles[i-1]["close"]
-                            # Give more weight to recent momentum
-                            weight = (len(recent_candles) - i) ** 1.5
+                            # Give much more weight to recent momentum (capture big moves immediately)
+                            weight = (len(recent_candles) - i) ** 2.0
                             recent_momentum += momentum * weight
                     
                     # Average momentum with weight
-                    momentum_weight = sum((len(recent_candles) - i) ** 1.5 for i in range(1, len(recent_candles)))
+                    momentum_weight = sum((len(recent_candles) - i) ** 2.0 for i in range(1, len(recent_candles)))
                     if momentum_weight > 0:
                         recent_momentum = recent_momentum / momentum_weight
                         
-                        # Combine weighted volatility with recent momentum (70% volatility, 30% momentum)
+                        # Use the HIGHER of primary volatility or combined volatility to capture big moves
                         combined_volatility = (weighted_avg_volatility * 0.7) + (recent_momentum * 0.3)
+                        final_volatility = max(primary_volatility, combined_volatility)
                         logger.debug(f"🔍 Combined volatility: {combined_volatility:.6f} ({combined_volatility*100:.4f}%) - momentum={recent_momentum:.6f}")
-                        return round(combined_volatility, 6)
+                        logger.debug(f"🔍 Final volatility: {final_volatility:.6f} ({final_volatility*100:.4f}%) - using max of primary and combined")
+                        return round(final_volatility, 6)
                 
-                return round(weighted_avg_volatility, 6)
+                return round(primary_volatility, 6)
             
             # Fallback: Calculate returns from close prices (original method)
             returns = []
@@ -73,7 +88,7 @@ class VolatilityCalculator:
                     returns.append(abs(ret))
             
             if not returns:
-                return self._get_default_volatility(timeframe)
+                raise Exception("No returns calculated for volatility analysis")
             
             # Use median for returns too (robust against outliers)
             returns.sort()
@@ -86,64 +101,179 @@ class VolatilityCalculator:
             return round(median_returns, 6)
             
         except Exception as e:
-            logger.warning(f"Candle volatility calculation failed: {e}")
-            return self._get_default_volatility(timeframe)
+            logger.error(f"❌ Candle volatility calculation failed: {e}")
+            raise Exception(f"Volatility calculation failed: {e}")
     
-    # Redundant wrapper methods removed - call calculate_candle_volatility() directly
     # Eliminated: calculate_volatility_5m, calculate_volatility_1h, calculate_volatility_1d
     
-    # calculate_orderbook_volatility() removed - redundant wrapper for OrderbookAnalyzer.get_volatility_analysis()
-    # Use OrderbookAnalyzer.get_volatility_analysis() directly instead
     
-    def categorize_5m_volatility_for_trading(self, volatility_5m: float) -> tuple:
-        """Categorize 5m volatility for trading decisions using centralized constants"""
+    def detect_volatility_change(self, candles: List[Dict], timeframe: str = "5m") -> Dict[str, Any]:
+        """Detect immediate volatility changes using only the most recent candles"""
+        try:
+            if len(candles) < 4:
+                return {
+                    "change_detected": False,
+                    "change_magnitude": 0.0,
+                    "change_direction": "NONE",
+                    "current_volatility": 0.0,
+                    "previous_volatility": 0.0,
+                    "urgency": "NONE"
+                }
+            
+            # Use only the last 2 candles for immediate change detection
+            current_candle = candles[-1]
+            previous_candle = candles[-2]
+            
+            # Calculate volatility for current candle (range-based)
+            current_range = (current_candle["high"] - current_candle["low"]) / current_candle["close"]
+            previous_range = (previous_candle["high"] - previous_candle["low"]) / previous_candle["close"]
+            
+            # Calculate change magnitude
+            if previous_range > 0:
+                change_magnitude = (current_range - previous_range) / previous_range
+            else:
+                change_magnitude = 0.0
+            
+            # Determine change direction
+            if change_magnitude > 0.5:  # 50% increase
+                change_direction = "SPIKE_UP"
+                urgency = "HIGH"
+            elif change_magnitude > 0.2:  # 20% increase
+                change_direction = "INCREASING"
+                urgency = "MEDIUM"
+            elif change_magnitude < -0.5:  # 50% decrease
+                change_direction = "SPIKE_DOWN"
+                urgency = "HIGH"
+            elif change_magnitude < -0.2:  # 20% decrease
+                change_direction = "DECREASING"
+                urgency = "MEDIUM"
+            else:
+                change_direction = "STABLE"
+                urgency = "LOW"
+            
+            # Check for extreme volatility - ULTRA SENSITIVE for current candle
+            if current_range > 0.003:  # >0.3% range in single candle (ultra sensitive for current candle)
+                change_direction = "EXTREME_SPIKE"
+                urgency = "CRITICAL"
+            elif current_range > 0.001:  # >0.1% range in single candle (moderate sensitivity)
+                change_direction = "SIGNIFICANT_MOVE"
+                urgency = "HIGH"
+            
+            logger.debug(f"🔍 Volatility change: {change_direction} ({change_magnitude*100:.1f}%) - urgency: {urgency}")
+            
+            return {
+                "change_detected": abs(change_magnitude) > 0.1,  # 10% change threshold
+                "change_magnitude": change_magnitude,
+                "change_direction": change_direction,
+                "current_volatility": current_range,
+                "previous_volatility": previous_range,
+                "urgency": urgency
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Volatility change detection failed: {e}")
+            return {
+                "change_detected": False,
+                "change_magnitude": 0.0,
+                "change_direction": "ERROR",
+                "current_volatility": 0.0,
+                "previous_volatility": 0.0,
+                "urgency": "NONE"
+            }
+
+    def categorize_volatility_for_trading(self, volatility: float, timeframe: str = "5m") -> tuple:
+        """Categorize volatility for trading decisions using timeframe-specific thresholds"""
         try:
             # Import centralized constants for consistency
-            from core.constants import VariabilityConstants
+            # VariabilityConstants already imported at top
             
-            # DEBUG: Log the input volatility
-            logger.debug(f"🔍 Categorizing volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%)")
+            logger.debug(f"🔍 Categorizing {timeframe} volatility: {volatility:.6f} ({volatility*100:.4f}%)")
             
-            # Use centralized 5-minute volatility thresholds (corrected range logic)
-            if volatility_5m >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 0.6% (extreme 5m movement)
-                category = "EXTREME"
-                trend = "VOLATILE"
-            elif volatility_5m >= VariabilityConstants.VOLATILITY_5M_HIGH:    # >= 0.3% (high 5m activity)
-                category = "HIGH"
-                trend = "ACTIVE"
-            elif volatility_5m >= VariabilityConstants.VOLATILITY_5M_MODERATE:  # >= 0.15% (moderate 5m movement)
-                category = "MODERATE" 
-                trend = "NORMAL"
-            elif volatility_5m >= VariabilityConstants.VOLATILITY_5M_LOW:     # >= 0.08% (low but noticeable 5m movement)
-                category = "LOW"
-                trend = "QUIET"
-            elif volatility_5m >= VariabilityConstants.VOLATILITY_5M_VERY_LOW: # >= 0.03% (very low 5m movement)
-                category = "LOW"  # FIXED: This should be LOW, not VERY_LOW
-                trend = "QUIET"
-            else:                                                              # < 0.03% (extremely low 5m movement)
-                category = "VERY_LOW"
-                trend = "BORING"
+            # Use timeframe-specific thresholds
+            if timeframe == "1m":
+                # 1-minute thresholds (more sensitive for scalping)
+                if volatility >= 0.0050:  # 0.50% (extreme 1m movement)
+                    category = "EXTREME"
+                    trend = "VOLATILE"
+                elif volatility >= 0.0025:  # 0.25% (high 1m activity)
+                    category = "HIGH"
+                    trend = "ACTIVE"
+                elif volatility >= 0.0010:  # 0.10% (moderate 1m movement)
+                    category = "MODERATE"
+                    trend = "NORMAL"
+                elif volatility >= 0.0003:  # 0.03% (low 1m movement)
+                    category = "LOW"
+                    trend = "QUIET"
+                else:  # < 0.03% (very low 1m movement)
+                    category = "VERY_LOW"
+                    trend = "BORING"
+            elif timeframe == "5m":
+                # 5-minute thresholds (updated for realistic Bitcoin volatility)
+                if volatility >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 0.50% (extreme 5m movement)
+                    category = "EXTREME"
+                    trend = "VOLATILE"
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_HIGH:    # >= 0.30% (high 5m activity)
+                    category = "HIGH"
+                    trend = "ACTIVE"
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_MODERATE:  # >= 0.15% (moderate 5m movement)
+                    category = "MODERATE" 
+                    trend = "NORMAL"
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_LOW:     # >= 0.06% (low 5m movement)
+                    category = "LOW"
+                    trend = "QUIET"
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_VERY_LOW: # >= 0.03% (very low 5m movement)
+                    category = "LOW"
+                    trend = "QUIET"
+                else:                                                              # < 0.03% (extremely low 5m movement)
+                    category = "VERY_LOW"
+                    trend = "BORING"
+            elif timeframe == "1h":
+                # 1-hour thresholds (trend confirmation)
+                if volatility >= 0.0200:  # 2.00% (extreme 1h movement)
+                    category = "EXTREME"
+                    trend = "VOLATILE"
+                elif volatility >= 0.0100:  # 1.00% (high 1h activity)
+                    category = "HIGH"
+                    trend = "ACTIVE"
+                elif volatility >= 0.0050:  # 0.50% (moderate 1h movement)
+                    category = "MODERATE"
+                    trend = "NORMAL"
+                elif volatility >= 0.0025:  # 0.25% (low 1h movement)
+                    category = "LOW"
+                    trend = "QUIET"
+                else:  # < 0.20% (very low 1h movement)
+                    category = "VERY_LOW"
+                    trend = "BORING"
+            elif timeframe == "1d":
+                # Daily thresholds (market context)
+                if volatility >= 0.0800:  # 8.00% (extreme daily movement)
+                    category = "EXTREME"
+                    trend = "VOLATILE"
+                elif volatility >= 0.0400:  # 4.00% (high daily activity)
+                    category = "HIGH"
+                    trend = "ACTIVE"
+                elif volatility >= 0.0200:  # 2.00% (moderate daily movement)
+                    category = "MODERATE"
+                    trend = "NORMAL"
+                elif volatility >= 0.0100:  # 1.00% (low daily movement)
+                    category = "LOW"
+                    trend = "QUIET"
+                else:  # < 1.00% (very low daily movement)
+                    category = "VERY_LOW"
+                    trend = "BORING"
+            else:
+                # Default to 5m thresholds
+                return self.categorize_volatility_for_trading(volatility, "5m")
             
-            # DEBUG: Log the final categorization
-            logger.debug(f"🔍 Volatility categorized as: {category} ({trend})")
+            logger.debug(f"🔍 {timeframe} volatility categorized as: {category} ({trend})")
             
             return category, trend
             
         except Exception as e:
-            logger.error(f"❌ 5m volatility categorization failed: {e}")
+            logger.error(f"❌ {timeframe} volatility categorization failed: {e}")
             return "ERROR", "ERROR"
     
-    # calculate_momentum_volatility() removed - dead code (never called)
+    
     # Complex 42-line momentum calculation that was never used
     
-    def _get_default_volatility(self, timeframe: str) -> float:
-        """Get default volatility values for different timeframes - REALISTIC Bitcoin ranges"""
-        defaults = {
-            "1m": 0.0005,    # 0.05% - very quiet Bitcoin 1-min
-            "5m": 0.001,     # 0.1% - quiet Bitcoin 5-min  
-            "1h": 0.002,     # 0.2% - normal Bitcoin 1-hour
-            "1d": 0.005      # 0.5% - normal Bitcoin daily
-        }
-        return defaults.get(timeframe, 0.001)
     
-    # _get_default_orderbook_volatility() removed - was only used by eliminated calculate_orderbook_volatility()

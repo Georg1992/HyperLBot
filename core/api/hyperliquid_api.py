@@ -21,16 +21,25 @@ class HyperliquidAPI:
         # Initialize orderbook data fetcher
         # Analysis functionality moved to dedicated calculators in MarketDataManager
         
+        # Only authenticate if not already authenticated
+        self._authenticated = False
         if self.wallet_address and self.wallet_private_key:
             self._authenticate()
     
     def _authenticate(self):
         """Authenticate with Hyperliquid API using wallet"""
         try:
+            # Skip if already authenticated
+            if self._authenticated:
+                return
+                
             # For wallet-based authentication, we use the wallet address directly
             # No additional headers needed for basic info requests
             logger.debug("Using wallet-based authentication")
             logger.debug(f"Wallet address: {self.wallet_address}")
+            
+            # Mark as authenticated
+            self._authenticated = True
             
         except Exception as e:
             logger.error(f"Authentication failed: {e}")
@@ -247,7 +256,7 @@ class HyperliquidAPI:
     # get_pressure() REMOVED - Pressure logic moved to PressureCalculator for clean architecture
     # MarketDataManager now handles pressure analysis using PressureCalculator delegation
 
-    def get_historical_candles(self, symbol: str = None, interval: str = "1m", limit: int = 12) -> Optional[List[Dict[str, Any]]]:
+    def get_historical_candles(self, symbol: str = None, interval: str = "1m", limit: int = 20) -> Optional[List[Dict[str, Any]]]:
         """
         Get historical candle data from Hyperliquid API
         
@@ -400,3 +409,14 @@ class HyperliquidAPI:
     # _sign_order, _create_signed_order_payload
     # (540 lines of dead trading code eliminated)
     # ==================================================================================
+
+# Global instance to avoid multiple authentication calls
+_global_hyperliquid_api = None
+
+def get_hyperliquid_api() -> HyperliquidAPI:
+    """Get the global HyperliquidAPI instance (singleton pattern)"""
+    global _global_hyperliquid_api
+    if _global_hyperliquid_api is None:
+        _global_hyperliquid_api = HyperliquidAPI()
+        logger.info("🔌 Created global HyperliquidAPI instance")
+    return _global_hyperliquid_api

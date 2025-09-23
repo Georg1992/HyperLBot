@@ -6,13 +6,11 @@ Uses composition and delegation following Single Responsibility Principle
 """
 
 import time
-import os
 from typing import Dict, Any, Optional, List
 from loguru import logger
 
 # Configuration
 from config.config import TradingConfig
-from core.constants import constants, ui_constants
 
 # Core Services (Clean Architecture)
 from core.services.trading_engine import TradingEngine
@@ -26,11 +24,10 @@ from core.analysis.historical.variability_analyzer import VariabilityAnalyzer
 from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
 from core.execution.trade_quality_manager import TradeManager
 from core.execution.position_lifecycle_manager import TradingExecution
-from core.engines.prediction_engine import PredictionEngine
+from core.ai import global_unified_ai_system
 from strategies.strategy_manager import StrategyManager
 from core.execution.fee_manager import FeeManager
 from core.logging.trading_logger import TradingLogger
-from core.state.trade_state_manager import trade_state_manager
 from core.simulated_account_manager import account_manager
 
 class TradingOrchestrator:
@@ -62,7 +59,7 @@ class TradingOrchestrator:
         self.variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
         self.historical_data_coordinator = MarketDataAnalyzer()
         self.strategy_manager = StrategyManager(self.config)
-        self.prediction_engine = PredictionEngine()
+        self.ai_system = global_unified_ai_system
         self.fee_manager = FeeManager()
         self.trading_logger = TradingLogger()
         
@@ -79,7 +76,7 @@ class TradingOrchestrator:
         )
         
         # State management should be handled by dedicated managers, not orchestrator
-        # TODO: Refactor PositionLifecycleManager to not depend on TradingOrchestrator state
+        # PositionLifecycleManager manages position lifecycle independently
         
         logger.info("🔧 Supporting components initialized")
     
@@ -142,9 +139,9 @@ class TradingOrchestrator:
                         # Update cached price
                         self.market_data_service.update_cached_websocket_price(current_price)
                         
-                        # Real-time RSI updates (enhanced sensitivity for scalping)
+                        # Real-time RSI updates (sensitivity for scalping)
                         try:
-                            # Calculate real-time RSI (enhanced sensitivity for scalping)
+                            # Calculate real-time RSI (sensitivity for scalping)
                             from core.market_data_manager import global_rsi_calculator
                             rsi_data = global_rsi_calculator.update_realtime_rsi(current_price)
                             current_rsi = rsi_data.get("rsi", 50.0)
@@ -162,7 +159,7 @@ class TradingOrchestrator:
                                 "rsi_trend": rsi_data.get("rsi_trend", "NEUTRAL"),
                                 "timestamp": time.time(),
                                 "price_source": "hyperliquid_websocket_realtime",
-                                "rsi_source": "realtime_enhanced_sensitivity"
+                                "rsi_source": "realtime_sensitivity"
                             })
                             
                             self.dashboard_service.update_rtm_market(existing_data)
@@ -177,20 +174,6 @@ class TradingOrchestrator:
             logger.error(f"❌ Connection failed: {init_result.get('error', 'Unknown error')}")
             return False
     
-    def run_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
-        """Run paper trading (delegate to SessionOrchestrator)"""
-        if not self.system_initializer.connected:
-            logger.error("❌ Not connected to APIs")
-            return
-        
-        # Delegate to session orchestrator
-        result = self.session_orchestrator.run_paper_trading_session(
-            max_trades, check_interval,
-            self.system_initializer, self.market_data_service, 
-            self.trading_engine, self.dashboard_service, self.strategy_manager
-        )
-        
-        return result
     
     def close_session(self):
         """Close session gracefully (delegate to DashboardService)"""
@@ -236,11 +219,11 @@ class TradingOrchestrator:
         """Update RTM activity (delegate to DashboardService)"""
         self.dashboard_service.update_rtm_activity(message, level)
     
-    def run_yahoo_hyperliquid_paper_trading(self, max_trades: int = 10, check_interval: int = 5):
+    def run_yahoo_hyperliquid_paper_trading(self, check_interval: int = 5):
         """Run paper trading (backward compatibility - delegate to SessionOrchestrator)"""
         # Set session manager reference so PositionLifecycleManager can access it
         result = self.session_orchestrator.run_paper_trading_session(
-            max_trades, check_interval,
+            check_interval,
             self.system_initializer, self.market_data_service, 
             self.trading_engine, self.dashboard_service, self.strategy_manager
         )

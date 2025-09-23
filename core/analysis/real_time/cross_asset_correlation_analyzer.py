@@ -5,8 +5,8 @@ Analyzes correlations with DXY, Gold, and Stock indices for market context
 """
 
 import time
-import requests
-from typing import Dict, List, Any, Optional
+# import requests  # Removed unused import
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 class CrossAssetCorrelationAnalyzer:
@@ -45,7 +45,7 @@ class CrossAssetCorrelationAnalyzer:
                 "dxy_correlation": self._analyze_dxy_correlation(dxy_data, btc_price),
                 "gold_correlation": self._analyze_gold_correlation(gold_data, btc_price),
                 "stock_correlation": self._analyze_stock_correlation(stock_data, btc_price),
-                "market_regime": self._determine_market_regime(dxy_data, gold_data, stock_data),
+                "market_regime": self._determine_cross_asset_regime(dxy_data, gold_data, stock_data),
                 "risk_sentiment": self._analyze_risk_sentiment(dxy_data, gold_data, stock_data),
                 "correlation_trends": self._analyze_correlation_trends(),
                 "timestamp": time.time(),
@@ -59,7 +59,7 @@ class CrossAssetCorrelationAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Cross-asset correlation analysis failed: {e}")
-            return self._get_default_correlation_analysis()
+            raise Exception(f"Cross-asset correlation analysis failed: {e}")
     
     def _get_dxy_data(self) -> Dict[str, Any]:
         """Get DXY (Dollar Index) data"""
@@ -300,7 +300,7 @@ class CrossAssetCorrelationAnalyzer:
             logger.error(f"❌ Stock correlation analysis failed: {e}")
             return {"correlation": 0.0, "strength": "ERROR", "interpretation": "Analysis failed"}
     
-    def _determine_market_regime(self, dxy_data: Dict[str, Any], gold_data: Dict[str, Any], stock_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _determine_cross_asset_regime(self, dxy_data: Dict[str, Any], gold_data: Dict[str, Any], stock_data: Dict[str, Any]) -> Dict[str, Any]:
         """Determine overall market regime based on cross-asset analysis"""
         try:
             # Analyze each asset's trend
@@ -469,15 +469,3 @@ class CrossAssetCorrelationAnalyzer:
         self._data_cache[key] = data
         self._cache_timestamps[key] = time.time()
     
-    def _get_default_correlation_analysis(self) -> Dict[str, Any]:
-        """Return default analysis when external data is unavailable"""
-        return {
-            "dxy_correlation": {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No data"},
-            "gold_correlation": {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No data"},
-            "stock_correlation": {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No data"},
-            "market_regime": {"regime": "UNKNOWN", "description": "No data", "btc_outlook": "UNCERTAIN"},
-            "risk_sentiment": {"sentiment": "UNKNOWN", "strength": "WEAK", "btc_implication": "UNCERTAIN"},
-            "correlation_trends": {"trend": "UNKNOWN", "direction": "UNKNOWN"},
-            "timestamp": time.time(),
-            "data_source": "default_fallback"
-        }

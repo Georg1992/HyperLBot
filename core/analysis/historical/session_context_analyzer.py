@@ -11,7 +11,7 @@ USED BY: TradingEngine, strategies for better decision making
 
 import time
 import statistics
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 from datetime import datetime, timedelta
 
@@ -34,7 +34,7 @@ class SessionContextAnalyzer:
             
             if not candles_1d or len(candles_1d) < 30:
                 logger.warning("⚠️ Insufficient daily data for historical context")
-                return self._get_default_context()
+                raise Exception("Insufficient daily data for historical context")
             
             # 1. MAJOR SUPPORT/RESISTANCE LEVELS (Critical for range trading)
             major_levels = self._identify_major_levels(candles_1d, candles_1h, candles_5m)
@@ -82,41 +82,77 @@ class SessionContextAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Session context analysis failed: {e}")
-            return self._get_default_context()
+            raise Exception(f"Session context analysis failed: {e}")
     
     def _identify_major_levels(self, candles_1d: List[Dict], candles_1h: List[Dict], candles_5m: List[Dict] = None) -> Dict[str, Any]:
-        """Identify major support/resistance levels from historical data"""
+        """Identify major support/resistance levels from historical data using multi-factor detection"""
         try:
-            # Get significant price levels from daily data
-            daily_highs = [candle["high"] for candle in candles_1d]
-            daily_lows = [candle["low"] for candle in candles_1d]
+            # Use the SupportResistanceCalculator for level detection
+            from core.analysis.real_time.support_resistance_calculator import SupportResistanceCalculator
+            sr_calculator = SupportResistanceCalculator()
             
-            # Find recurring levels (simplified approach)
-            all_levels = daily_highs + daily_lows
+            # 1. DAILY LEVELS (Major long-term support/resistance)
+            daily_levels = sr_calculator.identify_key_levels(candles_1d, min_touches=2) if candles_1d else {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
             
-            # Group levels by proximity (within 1% of each other)
-            level_groups = self._group_nearby_levels(all_levels, proximity_pct=0.01)
+            # 2. HOURLY LEVELS (Medium-term levels like $116,650-116,750)
+            hourly_levels = sr_calculator.identify_key_levels(candles_1h, min_touches=3) if candles_1h and len(candles_1h) >= 20 else {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
             
-            # Get strongest levels (most touches)
-            major_resistance = sorted([level for level in level_groups if level > statistics.median(all_levels)])[:5]
-            major_support = sorted([level for level in level_groups if level < statistics.median(all_levels)], reverse=True)[:5]
-            
-            # ENHANCED: Add 5-minute range levels for range trading
+            # 3. 5-MINUTE RANGE LEVELS (Short-term for range trading)
             range_levels = self._identify_5m_range_levels(candles_5m) if candles_5m else {"support": [], "resistance": []}
             
-            # Combine daily levels with 5-minute range levels
-            combined_support = major_support + range_levels["support"]
-            combined_resistance = major_resistance + range_levels["resistance"]
+            # Combine all levels with priority weighting
+            all_key_levels = []
+            
+            # Add daily levels (highest priority)
+            for level in daily_levels.get("key_levels", []):
+                level["priority"] = "daily"
+                level["timeframe"] = "1d"
+                all_key_levels.append(level)
+            
+            # Add hourly levels (medium priority) - these should catch $116,650-116,750
+            for level in hourly_levels.get("key_levels", []):
+                level["priority"] = "hourly"
+                level["timeframe"] = "1h"
+                all_key_levels.append(level)
+            
+            # Add 5m range levels (lowest priority)
+            for level in range_levels.get("support", []):
+                all_key_levels.append({"level": level, "type": "support", "touches": 2, "priority": "5m", "timeframe": "5m"})
+            for level in range_levels.get("resistance", []):
+                all_key_levels.append({"level": level, "type": "resistance", "touches": 2, "priority": "5m", "timeframe": "5m"})
+            
+            # Sort by strength (touches) and priority
+            all_key_levels.sort(key=lambda x: (x.get("touches", 0), x.get("priority", "5m")), reverse=True)
+            
+            # Separate support and resistance
+            support_levels = [lvl for lvl in all_key_levels if lvl["type"] == "support"]
+            resistance_levels = [lvl for lvl in all_key_levels if lvl["type"] == "resistance"]
+            
+            # Get strongest levels
+            strongest_support = support_levels[0]["level"] if support_levels else 0.0
+            strongest_resistance = resistance_levels[0]["level"] if resistance_levels else 0.0
+            
+            # Get current range from daily data
+            daily_highs = [candle["high"] for candle in candles_1d] if candles_1d else []
+            daily_lows = [candle["low"] for candle in candles_1d] if candles_1d else []
             
             return {
-                "support": combined_support,
-                "resistance": combined_resistance,
+                "support": [lvl["level"] for lvl in support_levels[:5]],  # Top 5 support levels
+                "resistance": [lvl["level"] for lvl in resistance_levels[:5]],  # Top 5 resistance levels
+                "key_levels": all_key_levels[:10],  # Top 10 key levels with metadata
+                "strongest_support": strongest_support,
+                "strongest_resistance": strongest_resistance,
                 "current_range": {
-                    "low": min(daily_lows[-7:]),  # Last week's low
-                    "high": max(daily_highs[-7:])  # Last week's high
+                    "low": min(daily_lows[-7:]) if daily_lows else 0,  # Last week's low
+                    "high": max(daily_highs[-7:]) if daily_highs else 0  # Last week's high
                 },
                 "range_levels": range_levels,  # 5-minute range levels for range trading
-                "analysis_confidence": min(1.0, len(candles_1d) / 30)  # More data = higher confidence
+                "analysis_confidence": min(1.0, len(candles_1d) / 30) if candles_1d else 0.0,  # More data = higher confidence
+                "timeframes_analyzed": {
+                    "daily": len(candles_1d) if candles_1d else 0,
+                    "hourly": len(candles_1h) if candles_1h else 0,
+                    "5min": len(candles_5m) if candles_5m else 0
+                }
             }
             
         except Exception as e:
@@ -141,28 +177,38 @@ class SessionContextAnalyzer:
             range_high = max(highs)
             range_width = range_high - range_low
             
-            # Only consider this a range if it's relatively tight (less than 1% of price)
+            # Get current price for level classification
             current_price = recent_candles[-1]["close"]
-            if range_width / current_price > 0.01:  # More than 1% range
-                return {"support": [], "resistance": []}
+            
+            # Remove the restrictive range condition - Bitcoin naturally has >1% ranges
+            # This was preventing detection of valid support/resistance levels
             
             # Find levels that have been tested multiple times
             support_levels = []
             resistance_levels = []
             
-            # Look for support levels (price bounces from lows)
-            for low in lows:
-                # Round to nearest $10 for level detection
-                level = round(low, -1)
-                if level not in support_levels and level <= range_low + (range_width * 0.3):
-                    support_levels.append(level)
+            # PRECISE: Use clustering approach for exact level detection
+            from core.analysis.real_time.support_resistance_calculator import SupportResistanceCalculator
+            sr_calculator = SupportResistanceCalculator()
             
-            # Look for resistance levels (price rejects from highs)
-            for high in highs:
-                # Round to nearest $10 for level detection
-                level = round(high, -1)
-                # Only add resistance levels that are above the current price
-                if level not in resistance_levels and level >= range_high - (range_width * 0.3) and level > current_price:
+            # Calculate precise levels using the new method structure
+            price_range = max(highs) - min(lows)
+            level_tolerance = price_range * 0.001  # 0.1% tolerance for precision
+            
+            # Use the simple identify_key_levels method
+            sr_result = sr_calculator.identify_key_levels(recent_candles, min_touches=2)
+            support_levels_data = [level for level in sr_result.get("key_levels", []) if level["type"] == "support"]
+            resistance_levels_data = [level for level in sr_result.get("key_levels", []) if level["type"] == "resistance"]
+            
+            # Combine the results
+            precise_levels = support_levels_data + resistance_levels_data
+            
+            # Extract support and resistance levels
+            for level_data in precise_levels:
+                level = level_data["level"]
+                if level_data["type"] == "support":
+                    support_levels.append(level)
+                elif level_data["type"] == "resistance":
                     resistance_levels.append(level)
             
             # Sort and limit to most relevant levels
@@ -261,22 +307,75 @@ class SessionContextAnalyzer:
     def _analyze_historical_ranges(self, candles_1d: List[Dict], candles_1h: List[Dict]) -> Dict[str, Any]:
         """Analyze historical ranging behavior for range trading strategy"""
         try:
-            # TODO: Implement sophisticated range analysis
-            # - Identify historical ranges and their duration
-            # - Success rate of range trading
-            # - Typical range sizes
-            # - Breakout patterns
+            if not candles_1d or len(candles_1d) < 7:
+                return {"ranges": [], "avg_range_duration": 0, "range_success_rate": 0.0}
+            
+            # Analyze recent daily ranges
+            ranges = []
+            current_range_start = 0
+            current_range_high = candles_1d[0]["high"]
+            current_range_low = candles_1d[0]["low"]
+            
+            for i, candle in enumerate(candles_1d[1:], 1):
+                # Check if price broke out of current range
+                if candle["high"] > current_range_high * 1.02 or candle["low"] < current_range_low * 0.98:
+                    # Range ended, record it
+                    range_duration = i - current_range_start
+                    range_size = (current_range_high - current_range_low) / current_range_low
+                    
+                    ranges.append({
+                        "start_index": current_range_start,
+                        "end_index": i,
+                        "duration_days": range_duration,
+                        "high": current_range_high,
+                        "low": current_range_low,
+                        "size_pct": range_size * 100,
+                        "breakout_direction": "up" if candle["high"] > current_range_high * 1.02 else "down"
+                    })
+                    
+                    # Start new range
+                    current_range_start = i
+                    current_range_high = candle["high"]
+                    current_range_low = candle["low"]
+                else:
+                    # Update current range
+                    current_range_high = max(current_range_high, candle["high"])
+                    current_range_low = min(current_range_low, candle["low"])
+            
+            # Add the last range if it exists
+            if current_range_start < len(candles_1d) - 1:
+                range_duration = len(candles_1d) - 1 - current_range_start
+                range_size = (current_range_high - current_range_low) / current_range_low
+                ranges.append({
+                    "start_index": current_range_start,
+                    "end_index": len(candles_1d) - 1,
+                    "duration_days": range_duration,
+                    "high": current_range_high,
+                    "low": current_range_low,
+                    "size_pct": range_size * 100,
+                    "breakout_direction": "ongoing"
+                })
+            
+            # Calculate statistics
+            avg_duration = sum(r["duration_days"] for r in ranges) / len(ranges) if ranges else 0
+            avg_size = sum(r["size_pct"] for r in ranges) / len(ranges) if ranges else 0
+            
+            # Calculate success rate (ranges that held for at least 3 days)
+            successful_ranges = [r for r in ranges if r["duration_days"] >= 3]
+            success_rate = len(successful_ranges) / len(ranges) if ranges else 0.0
             
             return {
-                "typical_range_size_pct": 0.05,  # Placeholder: 5% typical ranges
-                "range_success_rate": 0.65,      # Placeholder: 65% range trading success
-                "average_range_duration": 7,     # Placeholder: 7 days average
-                "analysis_ready": False          # TODO: Complete implementation
+                "ranges": ranges[-5:],  # Last 5 ranges
+                "avg_range_duration": avg_duration,
+                "avg_range_size_pct": avg_size,
+                "range_success_rate": success_rate,
+                "total_ranges_analyzed": len(ranges),
+                "analysis_ready": True
             }
             
         except Exception as e:
             logger.error(f"❌ Range analysis failed: {e}")
-            return {"analysis_ready": False}
+            return {"ranges": [], "avg_range_duration": 0, "range_success_rate": 0.0, "analysis_ready": False}
     
     def _recommend_strategies(self, major_levels: Dict, volatility_regime: Dict, 
                             market_regime: Dict, range_analysis: Dict) -> Dict[str, Any]:
@@ -292,7 +391,7 @@ class SessionContextAnalyzer:
             # Strategy recommendations based on analysis
             if market_regime.get("regime") in ["RANGING", "TIGHT_RANGING"]:
                 recommendations["primary"] = "low_volatility_range"
-                recommendations["secondary"] = "micro_scalping"  # TODO: Implement
+                recommendations["secondary"] = "scalping"  # Use scalping as secondary strategy
                 recommendations["reasoning"] = f"Market in {market_regime.get('regime')} phase"
             
             if volatility_regime.get("regime") == "LOW_VOLATILITY":
@@ -379,18 +478,3 @@ class SessionContextAnalyzer:
             logger.error(f"❌ Level grouping failed: {e}")
             return []
     
-    def _get_default_context(self) -> Dict[str, Any]:
-        """Get default context when analysis fails"""
-        return {
-            "analysis_timestamp": time.time(),
-            "analysis_datetime": datetime.now().isoformat(),
-            "data_period": "insufficient",
-            "major_levels": {"support": [], "resistance": [], "analysis_confidence": 0.0},
-            "volatility_regime": {"regime": "UNKNOWN", "confidence": 0.0},
-            "market_regime": {"regime": "UNKNOWN", "confidence": 0.0},
-            "range_analysis": {"analysis_ready": False},
-            "strategy_recommendations": {"primary": "standard", "secondary": "low_volatility_range", "avoid": []},
-            "risk_context": {"analysis_ready": False},
-            "session_strategy_guidance": {"guidance_ready": False},
-            "analysis_status": "FAILED"
-        }

@@ -4,11 +4,11 @@ Yahoo Finance Momentum Analyzer
 Handles momentum analysis, RSI calculations, and trend detection
 """
 
-import time
-from typing import Dict, List, Any, Optional
+# import time  # Removed unused import
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
-from datetime import datetime, timedelta
-from core.constants import technical_constants, data_constants
+# # from datetime import datetime, timedelta  # Removed unused import  # Removed unused import
+# from core.constants import technical_constants, data_constants  # Removed unused import
 
 class YahooMomentumAnalyzer:
     """Momentum analysis and RSI calculations for Yahoo Finance data"""
@@ -100,105 +100,6 @@ class YahooMomentumAnalyzer:
                 "data_source": "yahoo_finance"
             }
     
-    def detect_consecutive_patterns(self, candles: List[Dict]) -> Optional[Dict[str, Any]]:
-        """Detect consecutive green/red candle patterns"""
-        try:
-            if not candles or len(candles) < 3:
-                return None
-            
-            recent_candles = candles[-5:]  # Last 5 candles
-            
-            # Count consecutive green and red candles
-            consecutive_green = 0
-            consecutive_red = 0
-            
-            for candle in reversed(recent_candles):
-                if candle["close"] > candle["open"]:
-                    if consecutive_red == 0:
-                        consecutive_green += 1
-                    else:
-                        break
-                elif candle["close"] < candle["open"]:
-                    if consecutive_green == 0:
-                        consecutive_red += 1
-                    else:
-                        break
-                else:
-                    break  # Doji candle, stop counting
-            
-            # Analyze patterns
-            if consecutive_green >= 3:
-                # 3+ consecutive green candles = immediate uptrend
-                pattern_start = len(recent_candles) - consecutive_green
-                price_change = (recent_candles[-1]["close"] - recent_candles[pattern_start]["open"]) / recent_candles[pattern_start]["open"]
-                
-                if price_change > technical_constants.TREND_STRENGTH_HIGH:
-                    return {
-                        "trend": "UP",
-                        "strength": min(abs(price_change), technical_constants.VOLATILITY_MAX_CAP),
-                        "direction": 1,
-                        "raw_change": price_change,
-                        "pattern_type": f"consecutive_green_{consecutive_green}",
-                        "pattern_override": True
-                    }
-                elif price_change > technical_constants.PRICE_CHANGE_MINOR:
-                    return {
-                        "trend": "WEAK_UP",
-                        "strength": min(abs(price_change) * 2, technical_constants.VOLATILITY_MAX_CAP),
-                        "direction": 1,
-                        "raw_change": price_change,
-                        "pattern_type": f"consecutive_green_{consecutive_green}_weak",
-                        "pattern_override": True
-                    }
-                else:
-                    return {
-                        "trend": "SIDEWAYS",
-                        "strength": technical_constants.TREND_STRENGTH_LOW,
-                        "direction": 0,
-                        "raw_change": price_change,
-                        "pattern_type": f"consecutive_green_{consecutive_green}_sideways",
-                        "pattern_override": True
-                    }
-            
-            elif consecutive_red >= 3:
-                # 3+ consecutive red candles = immediate downtrend
-                pattern_start = len(recent_candles) - consecutive_red
-                price_change = (recent_candles[-1]["close"] - recent_candles[pattern_start]["open"]) / recent_candles[pattern_start]["open"]
-                
-                if price_change < -technical_constants.TREND_STRENGTH_HIGH:
-                    return {
-                        "trend": "DOWN", 
-                        "strength": min(abs(price_change), technical_constants.VOLATILITY_MAX_CAP),
-                        "direction": -1,
-                        "raw_change": price_change,
-                        "pattern_type": f"consecutive_red_{consecutive_red}",
-                        "pattern_override": True
-                    }
-                elif price_change < -technical_constants.PRICE_CHANGE_MINOR:
-                    return {
-                        "trend": "WEAK_DOWN",
-                        "strength": min(abs(price_change) * 2, technical_constants.VOLATILITY_MAX_CAP),
-                        "direction": -1,
-                        "raw_change": price_change,
-                        "pattern_type": f"consecutive_red_{consecutive_red}_weak", 
-                        "pattern_override": True
-                    }
-                else:
-                    return {
-                        "trend": "SIDEWAYS",
-                        "strength": technical_constants.TREND_STRENGTH_LOW,
-                        "direction": 0,
-                        "raw_change": price_change,
-                        "pattern_type": f"consecutive_red_{consecutive_red}_sideways",
-                        "pattern_override": True
-                    }
-            
-            # No significant consecutive pattern found
-            return None
-            
-        except Exception as e:
-            logger.error(f"Failed to detect consecutive patterns: {e}")
-            return None
 
 # Global instance
 momentum_analyzer = YahooMomentumAnalyzer()

@@ -108,6 +108,23 @@ class TradingConfig:
             "momentum_alignment_required": True,
             "description": "Optimized for strong trending markets with momentum confirmation"
         },
+        "scalping": {
+            "min_range_percentage": 0.0005,  # 0.05% minimum range (very tight)
+            "volatility_threshold": ["moderate", "high"],  # Needs some volatility for opportunities
+            "confidence_threshold": 0.2,  # Lower confidence needed for quick trades
+            "min_interval": 5,  # 5 seconds between trades (very frequent)
+            "max_leverage": 50,  # High leverage for small moves
+            "profit_target": 0.002,  # 0.2% profit target (small but frequent)
+            "stop_loss": 0.001,  # 0.1% stop loss (very tight)
+            "position_size": 0.3,  # 30% of balance (larger size for small moves)
+            "require_high_liquidity": True,  # Need tight spreads
+            "require_low_slippage": True,  # Minimize execution costs
+            "max_hold_time_seconds": 300,  # 5 minutes max hold time
+            "volume_spike_required": False,  # Don't need volume spikes for scalping
+            "rsi_range": [30, 70],  # Avoid extreme RSI zones
+            "spread_threshold": 0.0001,  # Max spread of 0.01%
+            "description": "High-frequency scalping for small, quick profits with tight risk management"
+        },
     }
     
     # Default strategy

@@ -11,7 +11,7 @@ import json
 from typing import Dict, Any
 from loguru import logger
 from core.dashboard.dashboard_data_manager import simple_rtm
-from core.constants import technical_constants
+# from core.constants import technical_constants  # Removed unused import
 
 class DashboardService:
     """Dashboard coordination service - handles RTM updates and heartbeats"""
@@ -36,7 +36,8 @@ class DashboardService:
         """Update SimpleRTM data status"""
         try:
             # Direct RTM update (no wrapper needed)
-            logger.debug(f"📊 Data status update: {data_status}")
+            # logger.debug(f"📊 Data status update: {data_status}")  # Too frequent
+            pass  # Placeholder for future RTM update
         except Exception as e:
             logger.error(f"❌ Could not update SimpleRTM data status: {e}")
     
@@ -44,7 +45,7 @@ class DashboardService:
         """Update SimpleRTM with activity"""
         try:
             simple_rtm.add_activity(message, level, "bot")
-            logger.info(f"📊 RTM Activity: {message}")
+            # logger.info(f"📊 RTM Activity: {message}")  # Dashboard shows this info
         except Exception as e:
             logger.error(f"❌ Could not update SimpleRTM activity: {e}")
     

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced Hyperliquid Simulator
+Hyperliquid Simulator
 Mimics real Hyperliquid trading behavior for accurate paper trading simulation
 """
 
@@ -8,11 +8,11 @@ import time
 import copy
 import random
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
-from loguru import logger
+# # from datetime import datetime, timedelta  # Removed unused import  # Removed unused import
+# from loguru import logger  # Removed unused import
 
 class HyperliquidSimulator:
-    """Enhanced Hyperliquid trading simulator with realistic behavior"""
+    """Hyperliquid trading simulator with realistic behavior"""
     
     def __init__(self):
         self.order_book_snapshot = None

@@ -51,7 +51,7 @@ class HyperliquidWebSocket:
     def add_price_callback(self, callback: Callable[[Dict[str, Any]], None]):
         """Add callback function to be called on price updates"""
         self._price_callbacks.append(callback)
-        logger.debug(f"📞 Added price callback: {callback.__name__ if hasattr(callback, '__name__') else 'anonymous'}")
+        # logger.debug(f"📞 Added price callback: {callback.__name__ if hasattr(callback, '__name__') else 'anonymous'}")
     
     def get_current_price(self) -> Optional[float]:
         """Get current price from cache (thread-safe)"""
@@ -194,7 +194,8 @@ class HyperliquidWebSocket:
             elif "error" in data:
                 logger.error(f"❌ WebSocket error message: {data['error']}")
             else:
-                logger.debug(f"📨 Received message: {data}")
+                # logger.debug(f"📨 Received message: {data}")
+                pass  # Placeholder for future debug logging
                 
         except json.JSONDecodeError:
             logger.warning(f"⚠️ Invalid JSON message: {message}")

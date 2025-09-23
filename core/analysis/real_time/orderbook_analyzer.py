@@ -5,7 +5,7 @@ Analyzes order book data for market microstructure insights
 """
 
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 class OrderBookAnalyzer:
@@ -27,14 +27,51 @@ class OrderBookAnalyzer:
         """
         try:
             if not orderbook_data:
-                return self._get_default_orderbook_analysis()
+                raise Exception("No orderbook data provided")
             
-            # Extract bids and asks from order book
-            bids = orderbook_data.get('levels', [])[:10]  # Top 10 bid levels
-            asks = orderbook_data.get('levels', [])[10:]  # Top 10 ask levels
+            # Extract bids and asks from order book - handle ANY format
+            bids = []
+            asks = []
+            
+            
+            if isinstance(orderbook_data, list):
+                if len(orderbook_data) == 2:
+                    # Format: [bids_list, asks_list]
+                    bids = orderbook_data[0][:10] if orderbook_data[0] else []
+                    asks = orderbook_data[1][:10] if orderbook_data[1] else []
+                else:
+                    # Format: [level1, level2, ...] - need to separate by side
+                    for level in orderbook_data:
+                        if isinstance(level, dict):
+                            if level.get('side') == 'B':
+                                bids.append(level)
+                            elif level.get('side') == 'A':
+                                asks.append(level)
+                    bids = bids[:10]
+                    asks = asks[:10]
+            elif isinstance(orderbook_data, dict):
+                # Format: {"levels": [bids_list, asks_list]}
+                levels = orderbook_data.get('levels', [])
+                if len(levels) == 2:
+                    # Hyperliquid format: levels[0] = bids, levels[1] = asks
+                    bids = levels[0][:10] if levels[0] else []
+                    asks = levels[1][:10] if levels[1] else []
+                else:
+                    # Legacy format: levels with side field
+                    for level in levels:
+                        if isinstance(level, dict):
+                            if level.get('side') == 'B':
+                                bids.append(level)
+                            elif level.get('side') == 'A':
+                                asks.append(level)
+                    bids = bids[:10]
+                    asks = asks[:10]
+            else:
+                raise Exception(f"Unexpected orderbook data format: {type(orderbook_data)}")
             
             if not bids or not asks:
-                return self._get_default_orderbook_analysis()
+                raise Exception(f"Insufficient orderbook data - found {len(bids)} bids, {len(asks)} asks")
+            
             
             # Calculate key metrics
             analysis = {
@@ -51,7 +88,7 @@ class OrderBookAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Order book analysis failed: {e}")
-            return self._get_default_orderbook_analysis()
+            raise Exception(f"Order book analysis failed: {e}")
     
     def _calculate_spread(self, bids: List[Dict], asks: List[Dict], current_price: float) -> Dict[str, Any]:
         """Calculate bid-ask spread metrics"""
@@ -59,13 +96,16 @@ class OrderBookAnalyzer:
             if not bids or not asks:
                 return {"absolute": 0.0, "percentage": 0.0, "category": "UNKNOWN"}
             
-            best_bid = float(bids[0].get('px', 0))
-            best_ask = float(asks[0].get('px', 0))
+            # Extract prices from Hyperliquid format: {"px": "117200.0", "sz": "5.77662", "n": 11}
+            best_bid = float(bids[0]['px']) if bids and 'px' in bids[0] else 0.0
+            best_ask = float(asks[0]['px']) if asks and 'px' in asks[0] else 0.0
             
             if best_bid == 0 or best_ask == 0:
                 return {"absolute": 0.0, "percentage": 0.0, "category": "UNKNOWN"}
             
             absolute_spread = best_ask - best_bid
+            if current_price <= 0:
+                raise Exception(f"Invalid current price for spread calculation: {current_price}")
             percentage_spread = (absolute_spread / current_price) * 100
             
             # Categorize spread
@@ -97,8 +137,8 @@ class OrderBookAnalyzer:
                 return {"ratio": 1.0, "category": "BALANCED", "bias": 0.0}
             
             # Calculate total size on each side
-            total_bid_size = sum(float(bid.get('sz', 0)) for bid in bids)
-            total_ask_size = sum(float(ask.get('sz', 0)) for ask in asks)
+            total_bid_size = sum(float(bid['sz']) if 'sz' in bid else 0.0 for bid in bids)
+            total_ask_size = sum(float(ask['sz']) if 'sz' in ask else 0.0 for ask in asks)
             
             if total_bid_size == 0 and total_ask_size == 0:
                 return {"ratio": 1.0, "category": "BALANCED", "bias": 0.0}
@@ -149,8 +189,8 @@ class OrderBookAnalyzer:
             total_levels = bid_levels + ask_levels
             
             # Calculate average size per level
-            avg_bid_size = sum(float(bid.get('sz', 0)) for bid in bids) / bid_levels if bid_levels > 0 else 0
-            avg_ask_size = sum(float(ask.get('sz', 0)) for ask in asks) / ask_levels if ask_levels > 0 else 0
+            avg_bid_size = sum(float(bid['sz']) if 'sz' in bid else 0.0 for bid in bids) / bid_levels if bid_levels > 0 else 0
+            avg_ask_size = sum(float(ask['sz']) if 'sz' in ask else 0.0 for ask in asks) / ask_levels if ask_levels > 0 else 0
             avg_size = (avg_bid_size + avg_ask_size) / 2
             
             # Calculate depth score (0-100)
@@ -197,12 +237,12 @@ class OrderBookAnalyzer:
             
             for i, bid in enumerate(top_bids):
                 weight = 3 - i  # 3, 2, 1 weights
-                size = float(bid.get('sz', 0))
+                size = float(bid['sz']) if 'sz' in bid else 0.0
                 bid_pressure += size * weight
             
             for i, ask in enumerate(top_asks):
                 weight = 3 - i  # 3, 2, 1 weights
-                size = float(ask.get('sz', 0))
+                size = float(ask['sz']) if 'sz' in ask else 0.0
                 ask_pressure += size * weight
             
             # Calculate net pressure
@@ -241,12 +281,15 @@ class OrderBookAnalyzer:
             if not bids or not asks:
                 return {"support_strength": 0.0, "resistance_strength": 0.0, "category": "WEAK"}
             
+            if current_price <= 0:
+                raise Exception(f"Invalid current price for S/R strength calculation: {current_price}")
+            
             # Calculate support strength (bids below current price)
             support_strength = 0.0
             for bid in bids:
-                bid_price = float(bid.get('px', 0))
+                bid_price = float(bid['px']) if 'px' in bid else 0.0
                 if bid_price < current_price:
-                    size = float(bid.get('sz', 0))
+                    size = float(bid['sz']) if 'sz' in bid else 0.0
                     # Weight by proximity to current price
                     proximity_weight = (current_price - bid_price) / current_price
                     support_strength += size * (1 - proximity_weight)
@@ -254,9 +297,9 @@ class OrderBookAnalyzer:
             # Calculate resistance strength (asks above current price)
             resistance_strength = 0.0
             for ask in asks:
-                ask_price = float(ask.get('px', 0))
+                ask_price = float(ask['px']) if 'px' in ask else 0.0
                 if ask_price > current_price:
-                    size = float(ask.get('sz', 0))
+                    size = float(ask['sz']) if 'sz' in ask else 0.0
                     # Weight by proximity to current price
                     proximity_weight = (ask_price - current_price) / current_price
                     resistance_strength += size * (1 - proximity_weight)
@@ -283,14 +326,3 @@ class OrderBookAnalyzer:
             logger.error(f"❌ Support/resistance strength calculation failed: {e}")
             return {"support_strength": 0.0, "resistance_strength": 0.0, "category": "ERROR"}
     
-    def _get_default_orderbook_analysis(self) -> Dict[str, Any]:
-        """Return default analysis when order book data is unavailable"""
-        return {
-            "bid_ask_spread": {"absolute": 0.0, "percentage": 0.0, "category": "UNKNOWN"},
-            "order_imbalance": {"ratio": 1.0, "category": "BALANCED", "bias": 0.0},
-            "liquidity_depth": {"depth_score": 0.0, "category": "LOW", "levels_analyzed": 0},
-            "market_pressure": {"pressure": 0.0, "direction": "NEUTRAL", "strength": "WEAK"},
-            "support_resistance_strength": {"support_strength": 0.0, "resistance_strength": 0.0, "category": "WEAK"},
-            "timestamp": time.time(),
-            "data_source": "default_fallback"
-        }

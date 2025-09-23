@@ -5,8 +5,8 @@ Analyzes blockchain data for exchange flows, active addresses, and mining metric
 """
 
 import time
-import requests
-from typing import Dict, List, Any, Optional
+# import requests  # Removed unused import
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 class OnChainDataAnalyzer:
@@ -60,7 +60,7 @@ class OnChainDataAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ On-chain data analysis failed: {e}")
-            return self._get_default_onchain_analysis()
+            raise Exception(f"On-chain data analysis failed: {e}")
     
     def _get_exchange_flows(self) -> Dict[str, Any]:
         """Get exchange inflow/outflow data"""
@@ -612,15 +612,3 @@ class OnChainDataAnalyzer:
         self._data_cache[key] = data
         self._cache_timestamps[key] = time.time()
     
-    def _get_default_onchain_analysis(self) -> Dict[str, Any]:
-        """Return default analysis when on-chain data is unavailable"""
-        return {
-            "exchange_flows": {"analysis": "NO_DATA", "sentiment": "UNKNOWN", "impact": "UNKNOWN"},
-            "active_addresses": {"analysis": "NO_DATA", "trend": "UNKNOWN", "health": "UNKNOWN"},
-            "mining_metrics": {"analysis": "NO_DATA", "security": "UNKNOWN", "trend": "UNKNOWN"},
-            "network_health": {"analysis": "NO_DATA", "health": "UNKNOWN", "congestion": "UNKNOWN"},
-            "whale_activity": {"analysis": "NO_DATA", "activity": "UNKNOWN", "impact": "UNKNOWN"},
-            "onchain_sentiment": {"sentiment": "UNKNOWN", "strength": "WEAK", "confidence": 0.0},
-            "timestamp": time.time(),
-            "data_source": "default_fallback"
-        }

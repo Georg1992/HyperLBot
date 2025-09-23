@@ -93,7 +93,7 @@ class MarketDataService:
             )
             
             if "error" not in analysis:
-                logger.info(f"[CHART] Yahoo Finance analysis: ${analysis.get('current_price', 0):,.2f} - Market data retrieved")
+                # logger.info(f"[CHART] Yahoo Finance analysis: ${analysis.get('current_price', 0):,.2f} - Market data retrieved")  # Dashboard shows this
                 
                 # YAHOO CORRECTION: Auto-correct real-time RSI with validated Yahoo RSI
                 yahoo_rsi = analysis.get("rsi_5m")
@@ -109,8 +109,7 @@ class MarketDataService:
                         global_rsi_calculator.current_rsi = yahoo_rsi
                         global_rsi_calculator.baseline_rsi = yahoo_rsi
                         
-                        # Clean correction logging: Show both values at correction moment
-                        logger.info(f"📊 RSI Correction: Yahoo {yahoo_rsi:.2f} ← Real-time {current_realtime_rsi:.2f} (gap: {accuracy_gap:.2f})")
+                        # RSI correction logging removed - not needed for dashboard monitoring
                 
                 return analysis
             else:

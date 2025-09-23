@@ -5,18 +5,18 @@ Manages trade execution and position tracking
 """
 
 import time
-import json
-from typing import Dict, Any, List, Optional
+# import json  # Removed unused import
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
-from collections import deque
+# from collections import deque  # Removed unused import
 
 # Import core module to setup paths
-import core
+# import core  # Removed unused import
 
 from config.config import TradingConfig
 
 class TradeManager:
-    """Advanced trade management with intelligent placement and dynamic stops"""
+    """Trade management with placement and dynamic stops"""
     
     def __init__(self, strategy_config: Dict[str, Any]):
         self.strategy_config = strategy_config
@@ -39,7 +39,7 @@ class TradeManager:
             "condition_change_threshold": 0.2  # 20% change in market conditions
         }
         
-        logger.info("🎯 Advanced Trade Manager initialized")
+        logger.info("🎯 Trade Manager initialized")
     
     def evaluate_trade_quality(self, signal_data: Dict[str, Any], market_analysis: Dict[str, Any], 
                                current_price: float) -> Dict[str, Any]:
@@ -176,7 +176,7 @@ class TradeManager:
     
     def should_place_trade(self, signal_data: Dict[str, Any], market_analysis: Dict[str, Any], 
                           current_price: float, open_positions: List[Dict]) -> Dict[str, Any]:
-        """Intelligent decision making for trade placement"""
+        """Decision making for trade placement"""
         try:
             # 1. Basic signal validation
             if not signal_data.get("should_trade", False):

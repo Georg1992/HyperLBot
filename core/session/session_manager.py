@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced Session Manager
+Session Manager
 Handles trading session lifecycle management
 Automatically syncs with SimpleRTM for real-time dashboard updates
 Single Responsibility: Session lifecycle and state management
@@ -41,7 +41,7 @@ class SessionManager:
         self.current_session_id = None
         self.historical_context = None  # Initialize historical context
         
-        logger.success("📅 Enhanced Session Manager initialized")
+        logger.success("📅 Session Manager initialized")
     
     def set_historical_context(self, historical_context: Dict[str, Any]):
         """Store historical context for session (business logic data for strategies)"""
@@ -93,7 +93,16 @@ class SessionManager:
                     "win_rate": 0.0,
                     "balance_change": 0.0,
                     "balance_change_pct": 0.0,
-                    "session_time": "0m"  # Pre-calculated session time
+                    "session_time": "0m",  # Pre-calculated session time
+                    
+                    # Additional performance metrics
+                    "best_trade": 0.0,
+                    "worst_trade": 0.0,
+                    "daily_pnl": 0.0,
+                    "daily_pnl_reset": time.time(),
+                    "active_positions": 0,
+                    "avg_trade_time": "0m",
+                    "avg_trade_time_minutes": 0.0
                 }
                 
                 # Initialize historical context storage (business logic data for strategies)
@@ -339,6 +348,43 @@ class SessionManager:
                 total_trades = self.current_session_data["total_trades"]
                 winning_trades = self.current_session_data["winning_trades"]
                 self.current_session_data["win_rate"] = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+                
+                # Update additional performance metrics
+                pnl = trade_data.get("pnl", 0)
+                
+                # Update best/worst trade
+                current_best = self.current_session_data.get("best_trade", 0)
+                current_worst = self.current_session_data.get("worst_trade", 0)
+                
+                if pnl > current_best:
+                    self.current_session_data["best_trade"] = pnl
+                if pnl < current_worst:
+                    self.current_session_data["worst_trade"] = pnl
+                
+                # Update total P&L
+                self.current_session_data["total_pnl"] = self.current_session_data.get("total_pnl", 0) + pnl
+                
+                # Update daily P&L (reset daily at midnight)
+                current_time = time.time()
+                last_reset = self.current_session_data.get("daily_pnl_reset", current_time)
+                if current_time - last_reset > 86400:  # 24 hours
+                    self.current_session_data["daily_pnl"] = pnl
+                    self.current_session_data["daily_pnl_reset"] = current_time
+                else:
+                    self.current_session_data["daily_pnl"] = self.current_session_data.get("daily_pnl", 0) + pnl
+                
+                # Update active positions (count open trades)
+                active_trades = simple_rtm.get_trades()
+                open_trades = [t for t in active_trades if t.get("status") == "OPEN"]
+                self.current_session_data["active_positions"] = len(open_trades)
+                
+                # Update average trade time (simplified - use trade duration if available)
+                trade_duration = trade_data.get("duration_minutes", 0)
+                if trade_duration > 0:
+                    avg_time = self.current_session_data.get("avg_trade_time_minutes", 0)
+                    new_avg = ((avg_time * (total_trades - 1)) + trade_duration) / total_trades
+                    self.current_session_data["avg_trade_time_minutes"] = new_avg
+                    self.current_session_data["avg_trade_time"] = f"{int(new_avg)}m"
                 
                 # Update session time before syncing
                 self._update_session_time()

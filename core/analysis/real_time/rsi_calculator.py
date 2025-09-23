@@ -163,13 +163,13 @@ class RSICalculator:
     
     def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
         """
-        Update real-time RSI between Yahoo correction points (enhanced sensitivity for scalping)
+        Update real-time RSI between Yahoo correction points (sensitivity for scalping)
         Method: RSI interpolation based on price movement with Yahoo baseline correction
         """
         try:
             if not self.rsi_initialized:
                 logger.warning("⚠️ RSI not initialized - use calculate_yahoo_baseline_rsi() first")
-                return self._get_default_rsi_data()
+                raise Exception("RSI not initialized - use calculate_yahoo_baseline_rsi() first")
             
             # Store current RSI as previous for momentum calculation
             self.previous_rsi = self.current_rsi
@@ -182,7 +182,7 @@ class RSICalculator:
                 # First real-time update - set Yahoo price as reference
                 self.last_price = new_price  
                 self.current_rsi = self.baseline_rsi  # Start with accurate Yahoo RSI
-                logger.debug(f"🔬 Real-time RSI started: ${new_price:,.2f} with Yahoo RSI {self.baseline_rsi:.2f}")
+                # logger.debug(f"🔬 Real-time RSI started: ${new_price:,.2f} with Yahoo RSI {self.baseline_rsi:.2f}")
             else:
                 # FIXED: RSI interpolation based on price movement (not broken tick-by-tick)
                 price_change_pct = (new_price - self.last_price) / self.last_price
@@ -225,7 +225,7 @@ class RSICalculator:
             
         except Exception as e:
             logger.error(f"❌ Scientific real-time RSI update failed: {e}")
-            return self._get_default_rsi_data()
+            raise Exception(f"Scientific real-time RSI update failed: {e}")
     
     def _get_rsi_trend(self, rsi_value: float) -> str:
         """Determine RSI trend using constants"""
@@ -264,7 +264,7 @@ class RSICalculator:
     def get_current_rsi_data(self) -> Dict[str, Any]:
         """Get current RSI data for trading decisions"""
         if not self.rsi_initialized:
-            return self._get_default_rsi_data()
+            raise Exception("RSI not initialized")
         
         return {
             "rsi": self.current_rsi,
@@ -277,15 +277,3 @@ class RSICalculator:
             "data_source": "rsi_calculator"
         }
     
-    def _get_default_rsi_data(self) -> Dict[str, Any]:
-        """Get default RSI data when calculation fails"""
-        return {
-            "rsi": technical_constants.RSI_NEUTRAL,
-            "rsi_baseline": technical_constants.RSI_NEUTRAL,
-            "rsi_trend": "NEUTRAL",
-            "rsi_signal": "NEUTRAL", 
-            "rsi_momentum": 0.0,
-            "periods": self.periods,
-            "initialized": False,
-            "data_source": "default_fallback"
-        }

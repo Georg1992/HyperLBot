@@ -5,7 +5,7 @@ Analyzes funding rates for market sentiment and trend insights
 """
 
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 class FundingRateAnalyzer:
@@ -30,7 +30,7 @@ class FundingRateAnalyzer:
         """
         try:
             if not funding_data:
-                return self._get_default_funding_analysis()
+                raise Exception("No funding rate data provided")
             
             # Extract funding rate
             funding_rate = funding_data.get('funding_rate', 0.0)
@@ -56,7 +56,7 @@ class FundingRateAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Funding rate analysis failed: {e}")
-            return self._get_default_funding_analysis()
+            raise Exception(f"Funding rate analysis failed: {e}")
     
     def _update_funding_history(self, funding_rate: float, funding_data: Dict[str, Any]):
         """Update funding rate history for trend analysis"""
@@ -250,16 +250,3 @@ class FundingRateAnalyzer:
             logger.error(f"❌ Funding volatility calculation failed: {e}")
             return {"volatility": 0.0, "category": "ERROR"}
     
-    def _get_default_funding_analysis(self) -> Dict[str, Any]:
-        """Return default analysis when funding rate data is unavailable"""
-        return {
-            "current_funding_rate": 0.0,
-            "current_funding_rate_pct": 0.0,
-            "funding_trend": {"trend": "UNKNOWN", "direction": "NEUTRAL", "strength": 0.0},
-            "funding_sentiment": {"sentiment": "UNKNOWN", "description": "No data", "risk_level": "UNKNOWN"},
-            "extreme_funding_detection": {"is_extreme": False, "extreme_type": "NORMAL", "description": "No data"},
-            "funding_volatility": {"volatility": 0.0, "category": "UNKNOWN"},
-            "next_funding_time": 0,
-            "data_source": "default_fallback",
-            "timestamp": time.time()
-        }

@@ -6,7 +6,7 @@ Identifies important trading patterns for BTC market setups
 
 import time
 import numpy as np
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Callable, Union
 from loguru import logger
 
 class PatternRecognitionEngine:
@@ -37,7 +37,8 @@ class PatternRecognitionEngine:
         """
         try:
             if len(candles) < self.min_pattern_length:
-                return self._get_default_pattern_analysis()
+                logger.warning(f"⚠️ Insufficient candles for pattern analysis: {len(candles)} < {self.min_pattern_length}")
+                raise Exception(f"Insufficient candles for pattern analysis: {len(candles)} < {self.min_pattern_length}")
             
             # Extract price data
             prices = self._extract_price_data(candles)
@@ -69,7 +70,7 @@ class PatternRecognitionEngine:
             
         except Exception as e:
             logger.error(f"❌ Pattern analysis failed: {e}")
-            return self._get_default_pattern_analysis()
+            raise Exception(f"Pattern analysis failed: {e}")
     
     def _extract_price_data(self, candles: List[Dict[str, Any]]) -> Dict[str, List[float]]:
         """Extract price data from candles"""
@@ -124,23 +125,37 @@ class PatternRecognitionEngine:
         return patterns
     
     def _detect_triangle_patterns(self, prices: Dict[str, List[float]]) -> List[Dict[str, Any]]:
-        """Detect triangle patterns"""
+        """Detect triangle patterns with proper conflict resolution"""
         patterns = []
         
-        # Ascending Triangle
+        # Detect all triangle types
         asc_triangle = self._detect_ascending_triangle(prices)
-        if asc_triangle:
-            patterns.append(asc_triangle)
-        
-        # Descending Triangle
         desc_triangle = self._detect_descending_triangle(prices)
-        if desc_triangle:
-            patterns.append(desc_triangle)
-        
-        # Symmetrical Triangle
         sym_triangle = self._detect_symmetrical_triangle(prices)
+        
+        # Get all valid triangle patterns
+        triangle_patterns = []
+        if asc_triangle:
+            triangle_patterns.append(asc_triangle)
+        if desc_triangle:
+            triangle_patterns.append(desc_triangle)
         if sym_triangle:
-            patterns.append(sym_triangle)
+            triangle_patterns.append(sym_triangle)
+        
+        # Only return ONE triangle pattern - the one with highest confidence
+        if triangle_patterns:
+            # Sort by confidence (highest first)
+            triangle_patterns.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+            best_pattern = triangle_patterns[0]
+            
+            # Only add if confidence is significantly higher than others
+            if len(triangle_patterns) > 1:
+                second_best = triangle_patterns[1].get("confidence", 0)
+                if best_pattern.get("confidence", 0) > second_best + 0.1:  # 10% difference
+                    patterns.append(best_pattern)
+                # If confidence is too close, don't show any triangle
+            else:
+                patterns.append(best_pattern)
         
         return patterns
     
@@ -227,6 +242,10 @@ class PatternRecognitionEngine:
                                     "peaks": [peak1_val, peak2_val],
                                     "valley": valley_val,
                                     "indices": [peak1_idx, valley_idx, peak2_idx],
+                                    "start_candle_index": min(peak1_idx, peak2_idx),
+                                    "end_candle_index": max(peak1_idx, peak2_idx),
+                                    "pattern_high": max(peak1_val, peak2_val),
+                                    "pattern_low": valley_val,
                                     "description": "Double top reversal pattern - bearish signal"
                                 }
             return None
@@ -270,6 +289,10 @@ class PatternRecognitionEngine:
                                     "valleys": [valley1_val, valley2_val],
                                     "peak": peak_val,
                                     "indices": [valley1_idx, peak_idx, valley2_idx],
+                                    "start_candle_index": min(valley1_idx, valley2_idx),
+                                    "end_candle_index": max(valley1_idx, valley2_idx),
+                                    "pattern_high": peak_val,
+                                    "pattern_low": min(valley1_val, valley2_val),
                                     "description": "Double bottom reversal pattern - bullish signal"
                                 }
             return None
@@ -310,6 +333,10 @@ class PatternRecognitionEngine:
                         "head": head[1],
                         "shoulders": [left_shoulder[1], right_shoulder[1]],
                         "indices": [left_shoulder[0], head[0], right_shoulder[0]],
+                        "start_candle_index": left_shoulder[0],
+                        "end_candle_index": right_shoulder[0],
+                        "pattern_high": head[1],
+                        "pattern_low": min(left_shoulder[1], right_shoulder[1]),
                         "description": "Head and shoulders reversal pattern - bearish signal"
                     }
             return None
@@ -350,6 +377,10 @@ class PatternRecognitionEngine:
                         "head": head[1],
                         "shoulders": [left_shoulder[1], right_shoulder[1]],
                         "indices": [left_shoulder[0], head[0], right_shoulder[0]],
+                        "start_candle_index": left_shoulder[0],
+                        "end_candle_index": right_shoulder[0],
+                        "pattern_high": max(left_shoulder[1], right_shoulder[1]),
+                        "pattern_low": head[1],
                         "description": "Inverse head and shoulders reversal pattern - bullish signal"
                     }
             return None
@@ -386,6 +417,10 @@ class PatternRecognitionEngine:
                         "confidence": confidence,
                         "resistance_level": resistance_level,
                         "support_slope": support_slope,
+                        "start_candle_index": len(highs) - 10,
+                        "end_candle_index": len(highs) - 1,
+                        "pattern_high": resistance_level,
+                        "pattern_low": min(recent_lows),
                         "description": "Ascending triangle - bullish continuation pattern"
                     }
             return None
@@ -449,6 +484,14 @@ class PatternRecognitionEngine:
             if high_slope < 0 and low_slope > 0:
                 convergence_rate = abs(high_slope) + abs(low_slope)
                 confidence = min(0.8, convergence_rate * 10)
+                
+                # Calculate pattern bounds for chart visualization (relative to last 20 candles shown on chart)
+                # Chart shows last 20 candles, so indices should be relative to that window
+                pattern_start_idx = max(0, 20 - 10)  # Start 10 candles from the end of visible window
+                pattern_end_idx = 19  # End at the last visible candle (index 19 for 20 candles)
+                pattern_high = max(recent_highs[-10:]) if len(recent_highs) >= 10 else max(recent_highs)
+                pattern_low = min(recent_lows[-10:]) if len(recent_lows) >= 10 else min(recent_lows)
+                
                 return {
                     "pattern": "SYMMETRICAL_TRIANGLE",
                     "type": "CONTINUATION",
@@ -457,6 +500,10 @@ class PatternRecognitionEngine:
                     "high_slope": high_slope,
                     "low_slope": low_slope,
                     "convergence_rate": convergence_rate,
+                    "start_candle_index": pattern_start_idx,
+                    "end_candle_index": pattern_end_idx,
+                    "pattern_high": pattern_high,
+                    "pattern_low": pattern_low,
                     "description": "Symmetrical triangle - neutral continuation pattern"
                 }
             return None
@@ -491,6 +538,10 @@ class PatternRecognitionEngine:
                     "resistance_level": np.mean(recent_highs),
                     "support_level": np.mean(recent_lows),
                     "channel_width": channel_width,
+                    "start_candle_index": len(highs) - 10,
+                    "end_candle_index": len(highs) - 1,
+                    "pattern_high": np.mean(recent_highs),
+                    "pattern_low": np.mean(recent_lows),
                     "description": "Horizontal channel - neutral continuation pattern"
                 }
             return None
@@ -585,6 +636,14 @@ class PatternRecognitionEngine:
             if high_slope > 0 and low_slope > 0 and high_slope > low_slope:  # Converging upward
                 convergence_rate = high_slope - low_slope
                 confidence = min(0.8, convergence_rate * 20)
+                
+                # Calculate pattern bounds for chart visualization (relative to last 20 candles shown on chart)
+                # Chart shows last 20 candles, so indices should be relative to that window
+                pattern_start_idx = max(0, 20 - 15)  # Start 15 candles from the end of visible window
+                pattern_end_idx = 19  # End at the last visible candle (index 19 for 20 candles)
+                pattern_high = max(recent_highs[-15:]) if len(recent_highs) >= 15 else max(recent_highs)
+                pattern_low = min(recent_lows[-15:]) if len(recent_lows) >= 15 else min(recent_lows)
+                
                 return {
                     "pattern": "RISING_WEDGE",
                     "type": "REVERSAL",
@@ -593,6 +652,10 @@ class PatternRecognitionEngine:
                     "high_slope": high_slope,
                     "low_slope": low_slope,
                     "convergence_rate": convergence_rate,
+                    "start_candle_index": pattern_start_idx,
+                    "end_candle_index": pattern_end_idx,
+                    "pattern_high": pattern_high,
+                    "pattern_low": pattern_low,
                     "description": "Rising wedge - bearish reversal pattern"
                 }
             return None
@@ -658,6 +721,10 @@ class PatternRecognitionEngine:
                     "confidence": confidence,
                     "higher_highs": higher_highs,
                     "higher_lows": higher_lows,
+                    "start_candle_index": len(closes) - 10,
+                    "end_candle_index": len(closes) - 1,
+                    "pattern_high": max(recent_closes),
+                    "pattern_low": min(recent_closes),
                     "description": "Bullish trend continuation pattern"
                 }
             return None
@@ -848,16 +915,108 @@ class PatternRecognitionEngine:
         except Exception:
             return 0.0
     
+    def _resolve_pattern_conflicts(self, patterns: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+        """Resolve conflicting patterns by prioritizing the strongest/most recent"""
+        try:
+            resolved_patterns = {}
+            
+            for pattern_type, pattern_list in patterns.items():
+                if not pattern_list:
+                    resolved_patterns[pattern_type] = []
+                    continue
+                
+                # Group patterns by conflicting types
+                conflicting_groups = {
+                    "HEAD_SHOULDERS": [],
+                    "INVERSE_HEAD_SHOULDERS": [],
+                    "DOUBLE_TOP": [],
+                    "DOUBLE_BOTTOM": [],
+                    "OTHER": []
+                }
+                
+                for pattern in pattern_list:
+                    pattern_name = pattern.get("pattern", "")
+                    if pattern_name in conflicting_groups:
+                        conflicting_groups[pattern_name].append(pattern)
+                    else:
+                        conflicting_groups["OTHER"].append(pattern)
+                
+                # Resolve conflicts within each group
+                resolved_list = []
+                
+                # Handle HEAD_SHOULDERS vs INVERSE_HEAD_SHOULDERS conflict
+                hs_patterns = conflicting_groups["HEAD_SHOULDERS"]
+                ihs_patterns = conflicting_groups["INVERSE_HEAD_SHOULDERS"]
+                
+                if hs_patterns and ihs_patterns:
+                    # Both patterns detected - choose the one with higher confidence and more recent
+                    best_hs = max(hs_patterns, key=lambda p: (p.get("confidence", 0), p.get("end_candle_index", 0)))
+                    best_ihs = max(ihs_patterns, key=lambda p: (p.get("confidence", 0), p.get("end_candle_index", 0)))
+                    
+                    # Choose the pattern with higher confidence, or if equal, the more recent one
+                    if best_hs.get("confidence", 0) > best_ihs.get("confidence", 0):
+                        resolved_list.append(best_hs)
+                        logger.info(f"📊 Pattern conflict resolved: Selected HEAD_SHOULDERS ({best_hs.get('confidence', 0):.1%}) over INVERSE_HEAD_SHOULDERS ({best_ihs.get('confidence', 0):.1%})")
+                    elif best_ihs.get("confidence", 0) > best_hs.get("confidence", 0):
+                        resolved_list.append(best_ihs)
+                        logger.info(f"📊 Pattern conflict resolved: Selected INVERSE_HEAD_SHOULDERS ({best_ihs.get('confidence', 0):.1%}) over HEAD_SHOULDERS ({best_hs.get('confidence', 0):.1%})")
+                    else:
+                        # Equal confidence - choose the more recent one
+                        if best_hs.get("end_candle_index", 0) > best_ihs.get("end_candle_index", 0):
+                            resolved_list.append(best_hs)
+                            logger.info(f"📊 Pattern conflict resolved: Selected HEAD_SHOULDERS (more recent) over INVERSE_HEAD_SHOULDERS")
+                        else:
+                            resolved_list.append(best_ihs)
+                            logger.info(f"📊 Pattern conflict resolved: Selected INVERSE_HEAD_SHOULDERS (more recent) over HEAD_SHOULDERS")
+                else:
+                    # No conflict - add all patterns from both groups
+                    resolved_list.extend(hs_patterns)
+                    resolved_list.extend(ihs_patterns)
+                
+                # Handle DOUBLE_TOP vs DOUBLE_BOTTOM conflict
+                dt_patterns = conflicting_groups["DOUBLE_TOP"]
+                db_patterns = conflicting_groups["DOUBLE_BOTTOM"]
+                
+                if dt_patterns and db_patterns:
+                    # Both patterns detected - choose the one with higher confidence
+                    best_dt = max(dt_patterns, key=lambda p: p.get("confidence", 0))
+                    best_db = max(db_patterns, key=lambda p: p.get("confidence", 0))
+                    
+                    if best_dt.get("confidence", 0) > best_db.get("confidence", 0):
+                        resolved_list.append(best_dt)
+                        logger.info(f"📊 Pattern conflict resolved: Selected DOUBLE_TOP ({best_dt.get('confidence', 0):.1%}) over DOUBLE_BOTTOM ({best_db.get('confidence', 0):.1%})")
+                    else:
+                        resolved_list.append(best_db)
+                        logger.info(f"📊 Pattern conflict resolved: Selected DOUBLE_BOTTOM ({best_db.get('confidence', 0):.1%}) over DOUBLE_TOP ({best_dt.get('confidence', 0):.1%})")
+                else:
+                    # No conflict - add all patterns from both groups
+                    resolved_list.extend(dt_patterns)
+                    resolved_list.extend(db_patterns)
+                
+                # Add all other non-conflicting patterns
+                resolved_list.extend(conflicting_groups["OTHER"])
+                
+                resolved_patterns[pattern_type] = resolved_list
+            
+            return resolved_patterns
+            
+        except Exception as e:
+            logger.error(f"❌ Pattern conflict resolution failed: {e}")
+            return patterns  # Return original patterns if resolution fails
+    
     def _determine_market_setup(self, patterns: Dict[str, List[Dict[str, Any]]], 
                                overall_confidence: float) -> Dict[str, Any]:
-        """Determine overall market setup based on patterns"""
+        """Determine overall market setup based on patterns with conflict resolution"""
         try:
-            # Count patterns by direction
+            # Resolve conflicting patterns first
+            resolved_patterns = self._resolve_pattern_conflicts(patterns)
+            
+            # Count patterns by direction after conflict resolution
             bullish_count = 0
             bearish_count = 0
             neutral_count = 0
             
-            for pattern_list in patterns.values():
+            for pattern_list in resolved_patterns.values():
                 for pattern in pattern_list:
                     direction = pattern.get("direction", "NEUTRAL")
                     if direction == "BULLISH":
@@ -917,28 +1076,3 @@ class PatternRecognitionEngine:
         else:
             return "HOLD"
     
-    def _get_default_pattern_analysis(self) -> Dict[str, Any]:
-        """Return default analysis when pattern detection fails"""
-        return {
-            "patterns": {
-                "reversal_patterns": [],
-                "continuation_patterns": [],
-                "triangle_patterns": [],
-                "channel_patterns": [],
-                "wedge_patterns": [],
-                "trend_patterns": []
-            },
-            "overall_confidence": 0.0,
-            "market_setup": {
-                "setup": "UNKNOWN",
-                "strength": "WEAK",
-                "bullish_patterns": 0,
-                "bearish_patterns": 0,
-                "neutral_patterns": 0,
-                "overall_confidence": 0.0,
-                "recommendation": "HOLD"
-            },
-            "pattern_count": 0,
-            "timestamp": time.time(),
-            "data_source": "default_fallback"
-        }

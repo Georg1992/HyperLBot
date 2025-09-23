@@ -4,6 +4,7 @@ Logging Module
 Contains trading logging and session management
 """
 
-from .trading_logger import TradingLogger
+# Lazy imports to prevent circular dependencies
+# Use direct imports in code instead of importing everything in __init__.py
 
 __all__ = ['TradingLogger']

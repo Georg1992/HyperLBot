@@ -13,7 +13,6 @@ from core.api.hyperliquid_api import HyperliquidAPI
 from core.api.hyperliquid_websocket import HyperliquidWebSocket
 from core.api.hyperliquid_simulator import HyperliquidSimulator
 from core.market_data_manager import market_data_manager
-from core.constants import technical_constants
 
 class SystemInitializer:
     """System initialization service - handles setup and connections"""
@@ -81,7 +80,8 @@ class SystemInitializer:
         try:
             # Initialize Hyperliquid API
             try:
-                hyperliquid_api = HyperliquidAPI()
+                from core.api.hyperliquid_api import get_hyperliquid_api
+                hyperliquid_api = get_hyperliquid_api()
                 logger.info("✅ Connected to Hyperliquid API")
             except Exception as e:
                 logger.error(f"❌ Failed to create HyperliquidAPI instance: {e}")

@@ -5,7 +5,7 @@ Analyzes trade size distribution and flow patterns for market insights
 """
 
 import time
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 class VolumeProfileAnalyzer:
@@ -31,7 +31,7 @@ class VolumeProfileAnalyzer:
         """
         try:
             if not trades_data or len(trades_data) == 0:
-                return self._get_default_volume_profile()
+                raise Exception("No trades data provided")
             
             # Update trade history
             self._update_trade_history(trades_data)
@@ -52,7 +52,7 @@ class VolumeProfileAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Volume profile analysis failed: {e}")
-            return self._get_default_volume_profile()
+            raise Exception(f"Volume profile analysis failed: {e}")
     
     def _update_trade_history(self, trades_data: List[Dict[str, Any]]):
         """Update trade history for analysis"""
@@ -428,15 +428,3 @@ class VolumeProfileAnalyzer:
             logger.error(f"❌ Market microstructure analysis failed: {e}")
             return {"microstructure": "ERROR", "characteristics": []}
     
-    def _get_default_volume_profile(self) -> Dict[str, Any]:
-        """Return default analysis when trade data is unavailable"""
-        return {
-            "trade_size_distribution": {"distribution": "UNKNOWN", "categories": {}},
-            "trade_flow_analysis": {"flow": "UNKNOWN", "direction": "NEUTRAL", "strength": "WEAK"},
-            "volume_weighted_price": {"vwap": 0.0, "deviation": 0.0, "category": "UNKNOWN"},
-            "large_trade_detection": {"large_trades": [], "count": 0, "impact": "UNKNOWN"},
-            "trade_frequency_analysis": {"frequency": "UNKNOWN", "pattern": "UNKNOWN"},
-            "market_microstructure": {"microstructure": "UNKNOWN", "characteristics": []},
-            "timestamp": time.time(),
-            "data_source": "default_fallback"
-        }

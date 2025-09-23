@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 """
-External Data Sources Module
-Contains Yahoo Finance and other external data providers
+External API Clients Module
+Contains all external API clients for data fetching
 """
 
-from .yahoo_data_fetcher import YahooDataFetcher
-from .yahoo_momentum_analyzer import YahooMomentumAnalyzer
-__all__ = ['YahooDataFetcher', 'YahooMomentumAnalyzer']
+# Lazy imports to prevent circular dependencies
+# Use direct imports in code instead of importing everything in __init__.py
+
+__all__ = [
+    'YahooAPI', 
+    'BinanceAPI',
+    'binance_api',
+    'FearGreedAPI', 
+    'WhaleAnalyticsAPI', 
+    'RSSNewsAPI',
+    'YahooMomentumAnalyzer'
+]

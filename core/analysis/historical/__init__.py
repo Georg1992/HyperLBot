@@ -12,8 +12,7 @@ These modules work with historical data from sources like Yahoo Finance
 and provide analysis for backtesting and trend identification.
 """
 
-from .historical_data_coordinator import MarketDataAnalyzer
-from .variability_analyzer import VariabilityAnalyzer
-from .session_context_analyzer import SessionContextAnalyzer
+# Lazy imports to prevent circular dependencies
+# Use direct imports in code instead of importing everything in __init__.py
 
 __all__ = ['MarketDataAnalyzer', 'VariabilityAnalyzer', 'SessionContextAnalyzer']

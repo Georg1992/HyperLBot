@@ -19,7 +19,8 @@ class PressureCalculator:
         """Calculate market pressure from orderbook data"""
         try:
             if not bids or not asks:
-                return self._get_default_pressure()
+                logger.error("❌ No orderbook data available for pressure calculation")
+                raise Exception("No orderbook data available")
             
             # Calculate depth metrics
             bid_depth_5 = sum(float(level.get('sz', 0)) for level in bids[:5])
@@ -31,7 +32,8 @@ class PressureCalculator:
             total_depth_10 = bid_depth_10 + ask_depth_10
             
             if total_depth_5 == 0:
-                return self._get_default_pressure()
+                logger.error("❌ No orderbook depth available for pressure calculation")
+                raise Exception("No orderbook depth available")
             
             # Calculate pressure metrics
             bid_pressure_ratio = bid_depth_5 / total_depth_5
@@ -63,7 +65,7 @@ class PressureCalculator:
             
         except Exception as e:
             logger.error(f"❌ Orderbook pressure calculation failed: {e}")
-            return self._get_default_pressure()
+            raise Exception(f"Orderbook pressure calculation failed: {e}")
     
     def _categorize_pressure_direction(self, pressure_imbalance: float, depth_concentration: float) -> Tuple[str, float]:
         """Categorize pressure direction and strength"""
@@ -138,19 +140,3 @@ class PressureCalculator:
             logger.warning(f"Pressure trend determination failed: {e}")
             return "NEUTRAL"
     
-    def _get_default_pressure(self) -> Dict[str, Any]:
-        """Get default pressure data when calculation fails"""
-        return {
-            "direction": "NEUTRAL",
-            "confidence": "0%",
-            "strength": MagicNumbers.DEFAULT_STRENGTH,
-            "trend": "UNKNOWN",
-            "bid_pressure_ratio": MagicNumbers.DEFAULT_STRENGTH,  # 50/50 split
-            "ask_pressure_ratio": MagicNumbers.DEFAULT_STRENGTH,  # 50/50 split  
-            "pressure_imbalance": 0.0,
-            "depth_concentration": 0.0,
-            "bid_depth_5": 0.0,
-            "ask_depth_5": 0.0,
-            "total_depth_5": 0.0,
-            "data_source": "default_fallback"
-        }

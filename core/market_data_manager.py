@@ -61,25 +61,28 @@ class MarketDataManager:
         self.pattern_recognition_engine = PatternRecognitionEngine()
         # RSI calculator moved to global singleton to prevent multiple instances
         
+        # Initialize cached Hyperliquid API instance to prevent repeated authentication
+        self._hyperliquid_api = None
+        
         logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
     
-    def get_historical_candles(self, symbol: str = "BTC", interval: str = "5m", limit: int = 12, force_refresh: bool = False, include_ongoing: bool = True) -> List[Dict[str, Any]]:
+    def get_historical_candles(self, symbol: str = "BTC", interval: str = "5m", limit: int = 20, force_refresh: bool = False, include_ongoing: bool = True) -> List[Dict[str, Any]]:
         """
-        Get historical candles with simple 12-candle rolling window
+        Get historical candles with simple 20-candle rolling window
         
         Simple approach:
-        - Always show exactly 12 candles: 11 historical + 1 current ongoing
+        - Always show exactly 20 candles: 19 historical + 1 current ongoing
         - Remove oldest candle when new one completes
         
         Args:
             symbol: Trading symbol (default: BTC)
             interval: Candle interval (default: 5m)
-            limit: Number of candles to return (default: 12)
+            limit: Number of candles to return (default: 20)
             force_refresh: Force refresh from API (default: False)
             include_ongoing: Include current ongoing candle (default: True)
             
         Returns:
-            List of exactly 12 candle dictionaries: 11 historical + 1 ongoing
+            List of exactly 20 candle dictionaries: 19 historical + 1 ongoing
         """
         try:
             # Check if we have recent data and don't need to refresh
@@ -94,25 +97,32 @@ class MarketDataManager:
                     # logger.debug(f"🕯️ Using cached candles (age: {time_diff:.0f}s)")
                     return self._candle_buffer
             
-            from core.api.hyperliquid_api import HyperliquidAPI
+            # Use the existing Hyperliquid API instance instead of creating a new one
+            # This prevents repeated authentication calls
+            from core.services.system_initializer import SystemInitializer
+            # Note: In a proper implementation, we'd pass the API instance to MarketDataManager
+            # For now, we'll create it only when needed but cache it
+            if not hasattr(self, '_hyperliquid_api') or self._hyperliquid_api is None:
+                from core.api.hyperliquid_api import get_hyperliquid_api
+                self._hyperliquid_api = get_hyperliquid_api()
+                logger.debug("🔌 Using global HyperliquidAPI instance for MarketDataManager")
             
-            # Create Hyperliquid API instance
-            hyperliquid_api = HyperliquidAPI()
+            hyperliquid_api = self._hyperliquid_api
             
             # Fetch latest candles from Hyperliquid (get enough for 12-candle window)
             logger.info(f"🕯️ Fetching {interval} candles for {symbol}...")
             new_candles = hyperliquid_api.get_historical_candles(
                 symbol=symbol,
                 interval=interval,
-                limit=12  # Get exactly 12 candles
+                limit=20  # Get exactly 20 candles
             )
             
-            if not new_candles or len(new_candles) < 12:
-                logger.error(f"❌ Insufficient data from Hyperliquid: {len(new_candles) if new_candles else 0} candles (need 12)")
+            if not new_candles or len(new_candles) < 20:
+                logger.error(f"❌ Insufficient data from Hyperliquid: {len(new_candles) if new_candles else 0} candles (need 20)")
                 raise Exception(f"Hyperliquid API returned insufficient data: {len(new_candles) if new_candles else 0} candles")
             
-            # Simple 12-candle rolling window: always return exactly 12 candles
-            latest_candles = new_candles[-12:]
+            # Simple 20-candle rolling window: always return exactly 20 candles
+            latest_candles = new_candles[-20:]
             logger.info(f"🕯️ Simple rolling window: {len(latest_candles)} candles")
             
             # Mark the last candle as ongoing if it's the current incomplete candle
@@ -223,7 +233,15 @@ class MarketDataManager:
                         pressure_data["data_source"] = "hyperliquid_orderbook"
                         
                         # Use OrderBookAnalyzer for comprehensive order book analysis
+                        # Calculate current price from orderbook data (mid-price of best bid/ask)
                         current_price = market_data.get('markPrice', 0) if 'markPrice' in market_data else 0
+                        
+                        # If markPrice is not available, calculate from orderbook
+                        if current_price <= 0 and bids and asks and 'px' in bids[0] and 'px' in asks[0]:
+                            best_bid = float(bids[0]['px'])
+                            best_ask = float(asks[0]['px'])
+                            current_price = (best_bid + best_ask) / 2
+                        
                         orderbook_analysis = self.orderbook_analyzer.analyze_orderbook(market_data, current_price)
                         
                         # Get and analyze funding rate data
@@ -395,7 +413,7 @@ class MarketDataManager:
     
     def _get_default_pressure_data(self) -> Dict[str, Any]:
         """Get default pressure data when orderbook is unavailable"""
-        return self.pressure_calculator._get_default_pressure()
+        raise Exception("Pressure data unavailable - orderbook data required")
     
     def _get_default_orderbook_analysis(self) -> Dict[str, Any]:
         """Get default order book analysis when data is unavailable"""
@@ -529,7 +547,7 @@ class MarketDataManager:
             return cached_result
         
         # Delegate to SupportResistanceCalculator (ALL calculation logic in calculator)
-        result = self.support_resistance_calculator.calculate_support_resistance(candles, lookback)
+        result = self.support_resistance_calculator.identify_key_levels(candles, min_touches=2)
         self._cache_data(cache_key, result, self._indicator_cache_duration)
         return result
     
@@ -581,7 +599,7 @@ class MarketDataManager:
             
             # Fetch candles for all timeframes (only when cache expires)
             candles_1m = hyperliquid_api.get_historical_candles(symbol, "1m", 20)  # 20 minutes
-            candles_5m = hyperliquid_api.get_historical_candles(symbol, "5m", 12)  # 1 hour
+            candles_5m = hyperliquid_api.get_historical_candles(symbol, "5m", 8)  # 40 minutes - fast response
             candles_1h = hyperliquid_api.get_historical_candles(symbol, "1h", 24)  # 1 day
             candles_1d = hyperliquid_api.get_historical_candles(symbol, "1d", 7)   # 1 week
             
@@ -603,16 +621,44 @@ class MarketDataManager:
             else:
                 volatility_analysis.update(self._get_default_timeframe_volatility("1m"))
             
-            # Calculate 5-minute volatility (for position management)
+            # Calculate 5-minute volatility (for position management) - INCLUDE CURRENT ONGOING CANDLE
             if candles_5m and len(candles_5m) >= 3:
-                volatility_5m = self.calculate_volatility(candles_5m)
+                # Get current ongoing candle for real-time volatility detection
+                ongoing_candle = hyperliquid_api.get_ongoing_candle(symbol, "5m")
+                if ongoing_candle:
+                    # Combine historical candles with current ongoing candle for maximum sensitivity
+                    all_candles_5m = candles_5m + [ongoing_candle]
+                    logger.debug(f"🔍 Processing {len(all_candles_5m)} 5m candles (historical + current ongoing) for volatility calculation")
+                else:
+                    all_candles_5m = candles_5m
+                    logger.debug(f"🔍 Processing {len(candles_5m)} 5m candles for volatility calculation")
+                
+                # Log first and last candle for debugging
+                if all_candles_5m:
+                    first_candle = all_candles_5m[0]
+                    last_candle = all_candles_5m[-1]
+                    logger.debug(f"🔍 First candle: O={first_candle.get('open', 0):.2f} H={first_candle.get('high', 0):.2f} L={first_candle.get('low', 0):.2f} C={first_candle.get('close', 0):.2f}")
+                    logger.debug(f"🔍 Last candle: O={last_candle.get('open', 0):.2f} H={last_candle.get('high', 0):.2f} L={last_candle.get('low', 0):.2f} C={last_candle.get('close', 0):.2f}")
+                
+                volatility_5m = self.calculate_volatility(all_candles_5m)
                 volatility_5m_category, volatility_5m_trend = self.volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
+                
+                # Detect immediate volatility changes (use combined candles for better detection)
+                volatility_change = self.volatility_calculator.detect_volatility_change(all_candles_5m, "5m")
+                
                 volatility_analysis.update({
                     "volatility_5m": volatility_5m,
                     "volatility_5m_category": volatility_5m_category,
-                    "volatility_5m_trend": volatility_5m_trend
+                    "volatility_5m_trend": volatility_5m_trend,
+                    "volatility_change": volatility_change
                 })
-                # logger.info(f"📊 5m volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%) → {volatility_5m_category}")  # Dashboard shows this
+                
+                # Log volatility change if detected
+                if volatility_change["change_detected"]:
+                    logger.warning(f"🚨 VOLATILITY CHANGE DETECTED: {volatility_change['change_direction']} "
+                                 f"({volatility_change['change_magnitude']*100:.1f}%) - Urgency: {volatility_change['urgency']}")
+                
+                logger.info(f"📊 5m volatility: {volatility_5m:.6f} ({volatility_5m*100:.4f}%) → {volatility_5m_category}")  # Dashboard shows this
             else:
                 volatility_analysis.update(self._get_default_timeframe_volatility("5m"))
             
@@ -642,8 +688,8 @@ class MarketDataManager:
             else:
                 volatility_analysis.update(self._get_default_timeframe_volatility("1d"))
             
-            # Cache the result to avoid excessive API calls
-            self._cache_data(cache_key, volatility_analysis, 120)  # 2 minute cache
+            # Cache the result to avoid excessive API calls (shorter cache for faster volatility detection)
+            self._cache_data(cache_key, volatility_analysis, 30)  # 30 second cache for immediate changes
             
             return volatility_analysis
             
@@ -706,7 +752,7 @@ class MarketDataManager:
             volatility_1d = self.calculate_volatility(candles_1d) if candles_1d else 0.0
             
             # Add 5-minute trading categorization (use VolatilityCalculator for volatility expertise)
-            volatility_5m_category, volatility_5m_trend = self.volatility_calculator.categorize_5m_volatility_for_trading(volatility_5m)
+            volatility_5m_category, volatility_5m_trend = self.volatility_calculator.categorize_volatility_for_trading(volatility_5m, timeframe="5m")
             
             # Get strategy-specific trend analysis using TrendCalculator (proper delegation)
             trend_5m = self.calculate_trend(candles_5m, "5m", strategy_name) if candles_5m else {"trend": "NEUTRAL"}

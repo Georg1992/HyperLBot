@@ -4,6 +4,7 @@ Configuration Module
 Contains all configuration and settings
 """
 
-from .config import TradingConfig
+# Lazy imports to prevent circular dependencies
+# Use direct imports in code instead of importing everything in __init__.py
 
 __all__ = ['TradingConfig']

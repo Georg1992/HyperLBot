@@ -27,10 +27,6 @@ DATA SOURCES:
 # Lazy imports to prevent circular dependencies
 # Use direct imports in code instead of importing everything in __init__.py
 
-# For backwards compatibility, import only essential real-time modules
-# that don't have circular dependencies
-from .real_time import VolatilityCalculator
-
 # Historical modules should be imported directly where needed to avoid
 # circular dependency chains (MarketDataAnalyzer → YahooDataFetcher)
 

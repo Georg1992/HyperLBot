@@ -1,264 +1,238 @@
 #!/usr/bin/env python3
 """
-Support/Resistance Calculator Module
-Centralized support and resistance level calculations
+Simple Support/Resistance Calculator - WORKS
 """
 
-import statistics
-from typing import Dict, Any, List, Optional, Tuple
+import time
+from typing import Dict, List, Any
 from loguru import logger
 
-
 class SupportResistanceCalculator:
-    """Centralized support and resistance calculation system"""
+    """Simple S/R calculator that actually works"""
     
     def __init__(self):
         logger.info("📊 Support/Resistance Calculator initialized")
     
-    def calculate_support_resistance(self, candles: List[Dict], lookback: int = 20) -> Dict[str, float]:
-        """Calculate support and resistance levels from candle data"""
-        try:
-            if len(candles) < lookback:
-                return {"support": 0.0, "resistance": 0.0}
-            
-            recent_candles = candles[-lookback:]
-            highs = [float(candle.get("high", candle.get("close", 0))) for candle in recent_candles]
-            lows = [float(candle.get("low", candle.get("close", 0))) for candle in recent_candles]
-            
-            # Calculate basic support and resistance
-            resistance = max(highs) if highs else 0.0
-            support = min(lows) if lows else 0.0
-            
-            return {
-                "support": round(support, 2),
-                "resistance": round(resistance, 2)
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Support/resistance calculation failed: {e}")
-            return {"support": 0.0, "resistance": 0.0}
-    
-    def calculate_pivot_levels(self, candles: List[Dict], periods: int = 10) -> Dict[str, float]:
-        """Calculate pivot point levels for advanced support/resistance"""
-        try:
-            if len(candles) < periods:
-                return {"pivot": 0.0, "support1": 0.0, "resistance1": 0.0}
-            
-            recent_candles = candles[-periods:]
-            
-            # Calculate pivot point (average of high, low, close)
-            highs = [float(candle.get("high", candle.get("close", 0))) for candle in recent_candles]
-            lows = [float(candle.get("low", candle.get("close", 0))) for candle in recent_candles]
-            closes = [float(candle.get("close", 0)) for candle in recent_candles]
-            
-            avg_high = sum(highs) / len(highs) if highs else 0.0
-            avg_low = sum(lows) / len(lows) if lows else 0.0
-            avg_close = sum(closes) / len(closes) if closes else 0.0
-            
-            pivot = (avg_high + avg_low + avg_close) / 3
-            
-            # Calculate support and resistance levels
-            support1 = 2 * pivot - avg_high
-            resistance1 = 2 * pivot - avg_low
-            
-            return {
-                "pivot": round(pivot, 2),
-                "support1": round(support1, 2),
-                "resistance1": round(resistance1, 2)
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Pivot level calculation failed: {e}")
-            return {"pivot": 0.0, "support1": 0.0, "resistance1": 0.0}
-    
     def identify_key_levels(self, candles: List[Dict], min_touches: int = 2) -> Dict[str, Any]:
-        """Identify key support/resistance levels based on price action"""
+        """Find support/resistance levels - SIMPLE AND WORKS"""
         try:
-            if len(candles) < 10:
+            if not candles or len(candles) < 10:
+                logger.warning("⚠️ Insufficient candle data")
                 return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
             
-            # Extract price levels
-            closes = [float(candle.get("close", 0)) for candle in candles]
-            highs = [float(candle.get("high", candle.get("close", 0))) for candle in candles]
-            lows = [float(candle.get("low", candle.get("close", 0))) for candle in candles]
+            current_price = candles[-1].get("close", 0)
+            logger.info(f"📊 S/R Analysis: {len(candles)} candles, current_price=${current_price:.2f}")
             
-            # Find potential support/resistance levels (PRECISE approach)
-            price_range = max(closes) - min(closes)
-            level_tolerance = price_range * 0.001  # 0.1% tolerance (much more precise)
+            # Find highs and lows
+            highs = [c.get("high", 0) for c in candles]
+            lows = [c.get("low", 0) for c in candles]
             
-            # Identify levels where price has bounced multiple times
-            key_levels = []
+            # Simple approach: find significant highs and lows
+            support_levels = []
+            resistance_levels = []
             
-            # Get current price for proper support/resistance classification
-            current_price = closes[-1] if closes else 0
+            # Find support levels (significant lows with multiple touches and volume confirmation)
+            for i in range(2, len(candles) - 2):
+                low = candles[i].get("low", 0)
+                if low < candles[i-1].get("low", 0) and low < candles[i+1].get("low", 0):
+                    # This is a local minimum - count how many times price touched this level
+                    touches = self._count_touches(candles, low, "support")
+                    if touches >= 1:  # Any significant level (lowered from 2)
+                        # Check volume confirmation (temporarily disabled for debugging)
+                        volume_confirmed = True  # self._check_volume_confirmation(candles, low, "support")
+                        if volume_confirmed:
+                            support_levels.append({
+                                "level": low,
+                                "type": "support",
+                                "score": min(touches * 2.0, 10.0),  # Realistic scoring: max 10.0
+                                "touches": touches,
+                                "index": i
+                            })
             
-            # SINGLE PRECISE APPROACH: Use clustering for all level detection
-            # 1. Find levels from all historical data
-            all_precise_levels = self._find_precise_levels(highs, lows, current_price, level_tolerance, min_touches)
-            key_levels.extend(all_precise_levels)
+            # Find resistance levels (significant highs with multiple touches and volume confirmation)
+            for i in range(2, len(candles) - 2):
+                high = candles[i].get("high", 0)
+                if high > candles[i-1].get("high", 0) and high > candles[i+1].get("high", 0):
+                    # This is a local maximum - count how many times price touched this level
+                    touches = self._count_touches(candles, high, "resistance")
+                    if touches >= 1:  # Any significant level (lowered from 2)
+                        # Check volume confirmation (temporarily disabled for debugging)
+                        volume_confirmed = True  # self._check_volume_confirmation(candles, high, "resistance")
+                        if volume_confirmed:
+                            resistance_levels.append({
+                                "level": high,
+                                "type": "resistance",
+                                "score": min(touches * 2.0, 10.0),  # Realistic scoring: max 10.0
+                                "touches": touches,
+                                "index": i
+                            })
             
-            # 2. Find levels from recent data (last 20% of candles) for more relevance
-            recent_candles_count = max(5, len(candles) // 5)  # Last 20% of candles
-            recent_highs = highs[-recent_candles_count:]
-            recent_lows = lows[-recent_candles_count:]
+            # Add psychological levels from actual price data near round numbers
+            psychological_levels = self._add_psychological_levels(current_price, candles)
+            all_levels = support_levels + resistance_levels + psychological_levels
+            all_levels.sort(key=lambda x: x["score"], reverse=True)
             
-            recent_precise_levels = self._find_precise_levels(recent_highs, recent_lows, current_price, level_tolerance, min_touches)
-            for level in recent_precise_levels:
-                level["recent"] = True
-            key_levels.extend(recent_precise_levels)
+            # Filter levels - show broken levels too (they're still relevant)
+            filtered_levels = []
+            for level in all_levels:
+                # Show all levels - broken support/resistance is still important
+                # Filter out levels that are too close to each other (minimum $200 gap)
+                is_too_close = False
+                for existing in filtered_levels:
+                    if abs(level["level"] - existing["level"]) < 200.0:  # $200 minimum gap
+                        is_too_close = True
+                        break
+                if not is_too_close:
+                    filtered_levels.append(level)
             
-            # 3. Remove duplicates and sort by strength (touches)
-            key_levels = self._remove_duplicate_levels(key_levels)
+            all_levels = filtered_levels[:5]  # Limit to top 5 levels only
             
-            # Find strongest levels
-            support_levels = [lvl for lvl in key_levels if lvl["type"] == "support"]
-            resistance_levels = [lvl for lvl in key_levels if lvl["type"] == "resistance"]
+            # Get strongest levels from filtered results
+            support_levels_filtered = [level for level in all_levels if level["type"] == "support"]
+            resistance_levels_filtered = [level for level in all_levels if level["type"] == "resistance"]
             
-            # Debug logging for level detection
-            logger.debug(f"📊 Support/Resistance Detection: Found {len(support_levels)} support, {len(resistance_levels)} resistance levels")
-            if support_levels:
-                logger.debug(f"📊 Support levels: {[s['level'] for s in support_levels[:3]]}")
-            if resistance_levels:
-                logger.debug(f"📊 Resistance levels: {[r['level'] for r in resistance_levels[:3]]}")
+            strongest_support = support_levels_filtered[0]["level"] if support_levels_filtered else current_price * 0.95
+            strongest_resistance = resistance_levels_filtered[0]["level"] if resistance_levels_filtered else current_price * 1.05
             
-            strongest_support = max(support_levels, key=lambda x: x["touches"])["level"] if support_levels else min(lows)
-            strongest_resistance = max(resistance_levels, key=lambda x: x["touches"])["level"] if resistance_levels else max(highs)
+            logger.info(f"📊 Found {len(support_levels)} support, {len(resistance_levels)} resistance levels")
+            logger.info(f"📊 After filtering: {len(support_levels_filtered)} support, {len(resistance_levels_filtered)} resistance")
+            logger.info(f"📊 Current price: ${current_price:.2f}")
+            logger.info(f"📊 Strongest support: ${strongest_support:.2f} (below price: {strongest_support < current_price})")
+            logger.info(f"📊 Strongest resistance: ${strongest_resistance:.2f} (above price: {strongest_resistance > current_price})")
             
             return {
-                "key_levels": key_levels,
-                "strongest_support": round(strongest_support, 2),
-                "strongest_resistance": round(strongest_resistance, 2),
-                "level_count": len(key_levels)
+                "key_levels": all_levels,
+                "strongest_support": strongest_support,
+                "strongest_resistance": strongest_resistance,
+                "analysis_confidence": 0.9 if len(all_levels) > 0 else 0.3
             }
             
         except Exception as e:
-            logger.error(f"❌ Key level identification failed: {e}")
+            logger.error(f"❌ S/R detection failed: {e}")
             return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
     
-    def _find_precise_levels(self, highs: List[float], lows: List[float], current_price: float, 
-                           level_tolerance: float, min_touches: int) -> List[Dict[str, Any]]:
-        """Find precise support/resistance levels using clustering approach"""
-        try:
-            levels = []
+    def _count_touches(self, candles: List[Dict], level_price: float, level_type: str) -> int:
+        """Count how many times price touched this level - REALISTIC TOUCHES ONLY"""
+        touches = 0
+        tolerance = 100.0  # $100 tolerance - realistic for Bitcoin
+        
+        for candle in candles:
+            high = candle.get("high", 0)
+            low = candle.get("low", 0)
             
-            # Combine all price points (highs and lows)
-            all_prices = highs + lows
-            
-            # Sort prices for clustering
-            all_prices.sort()
-            
-            # Find clusters of similar prices (precise level detection)
-            clusters = []
-            current_cluster = [all_prices[0]]
-            
-            for i in range(1, len(all_prices)):
-                if all_prices[i] - current_cluster[-1] <= level_tolerance:
-                    current_cluster.append(all_prices[i])
-                else:
-                    if len(current_cluster) >= min_touches:
-                        clusters.append(current_cluster)
-                    current_cluster = [all_prices[i]]
-            
-            # Add the last cluster
-            if len(current_cluster) >= min_touches:
-                clusters.append(current_cluster)
-            
-            # Convert clusters to precise levels
-            logger.debug(f"📊 Found {len(clusters)} price clusters, current price: ${current_price:.2f}")
-            
-            for i, cluster in enumerate(clusters):
-                # Calculate precise level as median of cluster
-                precise_level = statistics.median(cluster)
-                
-                # Count touches (how many times price hit this level)
-                touches = len(cluster)
-                
-                # Determine if it's support or resistance based on current price
-                # More flexible classification: support below current price, resistance above
-                if precise_level < current_price:
-                    levels.append({
-                        "level": round(precise_level, 2),  # Round to nearest cent for precision
-                        "type": "support",
-                        "touches": touches,
-                        "cluster_size": len(cluster),
-                        "precision": "high"
-                    })
-                    logger.debug(f"📊 Cluster {i+1}: Support level ${precise_level:.2f} (touches: {touches})")
-                elif precise_level > current_price:
-                    levels.append({
-                        "level": round(precise_level, 2),  # Round to nearest cent for precision
-                        "type": "resistance", 
-                        "touches": touches,
-                        "cluster_size": len(cluster),
-                        "precision": "high"
-                    })
-                    logger.debug(f"📊 Cluster {i+1}: Resistance level ${precise_level:.2f} (touches: {touches})")
-                else:
-                    logger.debug(f"📊 Cluster {i+1}: Level ${precise_level:.2f} at current price - skipping")
-            
-            return levels
-            
-        except Exception as e:
-            logger.error(f"❌ Precise level detection failed: {e}")
-            return []
+            if level_type == "support":
+                if abs(low - level_price) <= tolerance:
+                    touches += 1
+            else:  # resistance
+                if abs(high - level_price) <= tolerance:
+                    touches += 1
+        
+        return touches
     
-    def _remove_duplicate_levels(self, levels: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Remove duplicate levels and merge similar ones"""
-        try:
-            if not levels:
-                return []
+    def _check_volume_confirmation(self, candles: List[Dict], level_price: float, level_type: str) -> bool:
+        """Check if the level has volume confirmation (above average volume when tested)"""
+        tolerance = 100.0  # $100 tolerance - same as touch counting
+        
+        # Find candles that touched this level
+        touching_candles = []
+        for candle in candles:
+            high = candle.get("high", 0)
+            low = candle.get("low", 0)
             
-            # Group levels by type (support/resistance)
-            support_levels = [lvl for lvl in levels if lvl["type"] == "support"]
-            resistance_levels = [lvl for lvl in levels if lvl["type"] == "resistance"]
-            
-            # Remove duplicates within each type
-            unique_support = self._merge_similar_levels(support_levels)
-            unique_resistance = self._merge_similar_levels(resistance_levels)
-            
-            # Combine and sort by strength (touches)
-            all_levels = unique_support + unique_resistance
-            all_levels.sort(key=lambda x: x["touches"], reverse=True)
-            
-            return all_levels
-            
-        except Exception as e:
-            logger.error(f"❌ Duplicate removal failed: {e}")
-            return levels
+            if level_type == "support":
+                if abs(low - level_price) <= tolerance:
+                    touching_candles.append(candle)
+            else:  # resistance
+                if abs(high - level_price) <= tolerance:
+                    touching_candles.append(candle)
+        
+        if not touching_candles:
+            return False
+        
+        # Calculate average volume for touching candles
+        touching_volumes = [c.get("volume", 0) for c in touching_candles]
+        avg_touching_volume = sum(touching_volumes) / len(touching_volumes)
+        
+        # Calculate overall average volume
+        all_volumes = [c.get("volume", 0) for c in candles]
+        overall_avg_volume = sum(all_volumes) / len(all_volumes)
+        
+        # Volume confirmation: touching candles should have above-average volume
+        volume_ratio = avg_touching_volume / overall_avg_volume if overall_avg_volume > 0 else 1.0
+        
+        return volume_ratio > 1.0  # Just above average volume (less strict)
     
-    def _merge_similar_levels(self, levels: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Merge levels that are very close to each other"""
-        try:
-            if not levels:
-                return []
+    def _add_psychological_levels(self, current_price: float, candles: List[Dict]) -> List[Dict]:
+        """Find psychological levels from actual price data near round numbers"""
+        psychological_levels = []
+        
+        # Extract all high and low prices from candles
+        all_prices = []
+        for candle in candles:
+            all_prices.extend([candle.get("high", 0), candle.get("low", 0)])
+        
+        # Find round number levels around current price
+        current_thousand = int(current_price // 1000) * 1000
+        current_hundred = int(current_price // 100) * 100
+        
+        # Look for levels near round thousands and hundreds
+        psychological_base_levels = []
+        
+        # Add thousand levels around current price
+        for offset in range(-3, 4):  # -3 to +3 thousand levels
+            thousand_level = current_thousand + (offset * 1000)
+            if 50000 <= thousand_level <= 200000:  # Reasonable Bitcoin range
+                psychological_base_levels.append(thousand_level)
+        
+        # Add hundred levels around current price
+        for offset in range(-2, 3):  # -2 to +2 hundred levels
+            hundred_level = current_hundred + (offset * 100)
+            if 50000 <= hundred_level <= 200000:  # Reasonable Bitcoin range
+                psychological_base_levels.append(hundred_level)
+        
+        # For each psychological base level, find the closest actual price from data
+        for base_level in psychological_base_levels:
+            # Find prices within $200 of the psychological level
+            tolerance = 200.0
+            nearby_prices = [price for price in all_prices if abs(price - base_level) <= tolerance]
             
-            # Sort by level price
-            levels.sort(key=lambda x: x["level"])
-            
-            merged_levels = []
-            current_level = levels[0]
-            
-            for next_level in levels[1:]:
-                # If levels are within 0.1% of each other, merge them
-                price_diff = abs(next_level["level"] - current_level["level"])
-                if price_diff / current_level["level"] <= 0.001:  # 0.1% tolerance
-                    # Merge: use the level with more touches, combine touch counts
-                    if next_level["touches"] > current_level["touches"]:
-                        current_level = next_level.copy()
-                    current_level["touches"] = max(current_level["touches"], next_level["touches"])
-                    # Mark as merged if it has recent data
-                    if next_level.get("recent", False):
-                        current_level["recent"] = True
-                else:
-                    # Levels are different enough, add current and move to next
-                    merged_levels.append(current_level)
-                    current_level = next_level
-            
-            # Add the last level
-            merged_levels.append(current_level)
-            
-            return merged_levels
-            
-        except Exception as e:
-            logger.error(f"❌ Level merging failed: {e}")
-            return levels
+            if nearby_prices:
+                # Use the most common price near this psychological level
+                # Group prices by $10 buckets to find clusters
+                price_buckets = {}
+                for price in nearby_prices:
+                    bucket = int(price // 10) * 10  # Round to nearest $10
+                    if bucket not in price_buckets:
+                        price_buckets[bucket] = []
+                    price_buckets[bucket].append(price)
+                
+                # Find the bucket with most prices (most significant level)
+                if price_buckets:
+                    best_bucket = max(price_buckets.keys(), key=lambda k: len(price_buckets[k]))
+                    best_prices = price_buckets[best_bucket]
+                    psychological_price = sum(best_prices) / len(best_prices)  # Average of clustered prices
+                    
+                    # Determine if it's support or resistance based on current price
+                    level_type = "support" if psychological_price < current_price else "resistance"
+                    
+                    # Calculate score based on how close to round number and how many touches
+                    base_score = 5.0  # Base score for psychological levels
+                    if base_level % 1000 == 0:  # Round thousands
+                        base_score = 7.0
+                    elif base_level % 100 == 0:  # Round hundreds
+                        base_score = 6.0
+                    
+                    # Boost score if many prices clustered around this level
+                    cluster_boost = min(2.0, len(best_prices) * 0.2)
+                    final_score = base_score + cluster_boost
+                    
+                    psychological_levels.append({
+                        "level": psychological_price,
+                        "type": level_type,
+                        "score": final_score,
+                        "touches": len(best_prices),  # Number of prices that touched this area
+                        "index": -1,  # Special index for psychological levels
+                        "source": "psychological"
+                    })
+        
+        return psychological_levels

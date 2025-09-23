@@ -3,8 +3,6 @@
 Test dashboard WebSocket connection and data flow
 """
 
-import time
-import json
 from core.dashboard.dashboard_data_manager import simple_rtm
 
 def test_dashboard_data_flow():

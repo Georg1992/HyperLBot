@@ -3,6 +3,7 @@ Dashboard Data Management Module
 Contains dashboard-specific data management and coordination
 """
 
-from .dashboard_data_manager import simple_rtm
+# Lazy imports to prevent circular dependencies
+# Use direct imports in code instead of importing everything in __init__.py
 
 __all__ = ['simple_rtm']

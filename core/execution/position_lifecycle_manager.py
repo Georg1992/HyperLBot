@@ -6,7 +6,7 @@ Contains trade execution and position management methods extracted from hybrid_p
 
 import time
 import json
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 from core.constants import constants, MagicNumbers, trading_constants, time_constants
@@ -101,7 +101,7 @@ class TradingExecution:
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
             
-            # Use enhanced Hyperliquid simulator for realistic order execution
+            # Use Hyperliquid simulator for realistic order execution
             execution_result = self.hyperliquid_simulator.simulate_order_execution(
                 order_type="LIMIT",
                 side=side,
@@ -198,7 +198,7 @@ class TradingExecution:
                 "trend_5m": signal_data.get("trend_5m") if signal_data else None,
                 "trend_1h": signal_data.get("trend_1h") if signal_data else None,
                 "variability_score": None,  # Variability analysis is handled separately
-                "market_condition": None,  # Market condition is available in enhanced_analysis
+                "market_condition": None,  # Market condition is available in analysis
                 "signal_reason": signal_data.get("reason") if signal_data else None,
                 "profit_target": position["target_price"],
                 "stop_loss": position["stop_price"],
@@ -296,7 +296,7 @@ class TradingExecution:
             return False
     
     def close_paper_position(self, position: Dict, exit_reason: str, exit_price: float):
-        """Close a paper trading position using enhanced Hyperliquid simulator"""
+        """Close a paper trading position using Hyperliquid simulator"""
         try:
             entry_price = position["entry_price"]
             side = position["side"]
@@ -316,7 +316,7 @@ class TradingExecution:
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
             
-            # Use enhanced Hyperliquid simulator for realistic exit execution
+            # Use Hyperliquid simulator for realistic exit execution
             exit_side = "SELL" if side == "BUY" else "BUY"  # Opposite of entry
             execution_result = self.hyperliquid_simulator.simulate_order_execution(
                 order_type="MARKET",  # Market order for exit
@@ -467,7 +467,7 @@ class TradingExecution:
             return False
     
     def check_position_exits(self, hyperliquid_price: float, current_analysis: Dict[str, Any] = None):
-        """Advanced position management with dynamic stops and intelligent exits"""
+        """Position management with dynamic stops and exits"""
         positions_to_close = []
         positions_to_adjust = []
         
@@ -529,7 +529,7 @@ class TradingExecution:
                 if stop_adjustment["should_adjust"]:
                     positions_to_adjust.append((position, stop_adjustment))
                 
-                # Enhanced market condition tracking
+                # Market condition tracking
                 original_analysis = position.get("original_market_analysis", {})
                 if original_analysis:
                     condition_change = self.trade_manager._analyze_condition_change(original_analysis, current_analysis)

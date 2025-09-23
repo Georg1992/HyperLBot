@@ -282,7 +282,8 @@ class AnalysisLayer:
             confidence = reactive_signal.get("confidence", 0.8)
             
             # Calculate reactive trade size (smaller for urgent trades)
-            account_balance = 455.0  # TODO: Get from account manager
+            # Get account balance from market data or use default
+            account_balance = market_data.get("account_balance", 455.0)
             size_usd = account_balance * 0.02  # 2% for reactive trades
             size_btc = size_usd / current_price
             
