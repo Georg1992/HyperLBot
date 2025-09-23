@@ -276,6 +276,11 @@ class ExecutionLayer:
             self._cleanup_expired_predictions()
             
             return valid_predictions
+            
+        except Exception as e:
+            logger.error(f"❌ Prediction monitoring failed: {e}")
+            # Fallback to old behavior on error
+            return self._filter_predictions_old_way(predictions, current_price, market_data)
     
     def discard_prediction_on_order_fill(self, prediction_id: str, trade_id: str):
         """
