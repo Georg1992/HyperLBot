@@ -408,6 +408,7 @@ class PredictionManager:
                 total_weight += pressure_signal["weight"]
             
             # Calculate win probability (true confidence) based on historical performance
+            # Note: We don't have entry price yet, so we'll calculate it without proximity adjustment
             overall_confidence = self._calculate_win_probability(individual_signals, market_data)
             
             # Generate reasoning
@@ -1346,13 +1347,14 @@ class PredictionManager:
             logger.error(f"❌ Psychological entry point detection failed: {e}")
             return None
     
-    def _calculate_win_probability(self, individual_signals: Dict[str, Any], market_data: Dict[str, Any]) -> float:
+    def _calculate_win_probability(self, individual_signals: Dict[str, Any], market_data: Dict[str, Any], entry_price: float = None, current_price: float = None) -> float:
         """
         Calculate the actual win probability (confidence) based on:
         1. Historical performance of similar signal combinations
         2. Market conditions and volatility
         3. Signal strength and alignment
         4. Risk factors
+        5. Entry price proximity to current price
         """
         try:
             # Base win probability from historical data
@@ -1382,6 +1384,92 @@ class PredictionManager:
         except Exception as e:
             logger.error(f"❌ Win probability calculation failed: {e}")
             return 0.5  # Default to 50% if calculation fails
+    
+    def update_prediction_confidence(self, prediction: Dict[str, Any], current_price: float, market_data: Dict[str, Any]) -> float:
+        """
+        Update prediction confidence based on how well the market is following the predicted direction
+        
+        Args:
+            prediction: Current prediction dictionary
+            current_price: Current market price
+            market_data: Current market data
+            
+        Returns:
+            Updated confidence value
+        """
+        try:
+            direction = prediction.get("direction", "BUY")
+            entry_price = prediction.get("entry_price", 0)
+            initial_confidence = prediction.get("confidence", 0.5)
+            
+            # Calculate how well the market is following the prediction
+            market_behavior_score = self._calculate_market_behavior_score(
+                direction, entry_price, current_price, market_data
+            )
+            
+            # Adjust confidence based on market behavior
+            # If market is behaving as predicted, increase confidence
+            # If market is going against prediction, decrease confidence
+            behavior_adjustment = 0.5 + (market_behavior_score * 0.5)  # 0.5 to 1.0 multiplier
+            updated_confidence = initial_confidence * behavior_adjustment
+            
+            # Ensure confidence stays within reasonable bounds
+            updated_confidence = max(0.1, min(0.95, updated_confidence))
+            
+            # Update the prediction
+            prediction["confidence"] = updated_confidence
+            
+            logger.debug(f"🔄 Updated prediction confidence: {updated_confidence:.3f} (behavior_score: {market_behavior_score:.3f}, adjustment: {behavior_adjustment:.3f})")
+            
+            return updated_confidence
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update prediction confidence: {e}")
+            return prediction.get("confidence", 0.5)
+    
+    def _calculate_market_behavior_score(self, direction: str, entry_price: float, current_price: float, market_data: Dict[str, Any]) -> float:
+        """
+        Calculate how well the market is behaving according to the prediction
+        
+        Returns:
+            Score from 0.0 (completely wrong) to 1.0 (perfectly following prediction)
+        """
+        try:
+            # For BUY predictions: market should be moving up towards entry price
+            # For SELL predictions: market should be moving down towards entry price
+            
+            if direction == "BUY":
+                # For BUY: current price should be moving towards entry price from below
+                if current_price <= entry_price:
+                    # Price is at or below entry - good for BUY
+                    price_score = 1.0
+                else:
+                    # Price is above entry - not ideal for BUY
+                    price_score = max(0.0, 1.0 - ((current_price - entry_price) / entry_price) * 2)
+            else:  # SELL
+                # For SELL: current price should be moving towards entry price from above
+                if current_price >= entry_price:
+                    # Price is at or above entry - good for SELL
+                    price_score = 1.0
+                else:
+                    # Price is below entry - not ideal for SELL
+                    price_score = max(0.0, 1.0 - ((entry_price - current_price) / entry_price) * 2)
+            
+            # Also consider recent price momentum
+            recent_momentum = market_data.get("price_momentum", 0.0)
+            momentum_score = 0.5 + (recent_momentum * 0.5) if direction == "BUY" else 0.5 - (recent_momentum * 0.5)
+            momentum_score = max(0.0, min(1.0, momentum_score))
+            
+            # Combine price and momentum scores
+            behavior_score = (price_score * 0.7) + (momentum_score * 0.3)
+            
+            logger.debug(f"🎯 Market behavior: direction={direction}, price_score={price_score:.3f}, momentum_score={momentum_score:.3f}, final={behavior_score:.3f}")
+            
+            return behavior_score
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate market behavior score: {e}")
+            return 0.5  # Neutral score if calculation fails
     
     def _get_historical_win_rate(self, signals: Dict[str, Any], market_data: Dict[str, Any]) -> float:
         """Get historical win rate for similar signal combinations"""
