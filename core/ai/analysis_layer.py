@@ -102,6 +102,9 @@ class AnalysisLayer:
                     signals
                 )
             
+            # Step 5: Collect training data for ML learning
+            self._collect_training_data(signals, market_data, prediction)
+            
             # Step 5: Determine market regime
             market_regime = self._determine_market_regime(market_data)
             
@@ -515,6 +518,29 @@ class AnalysisLayer:
         except Exception as e:
             logger.error(f"❌ Failed to get strategy performance: {e}")
             return {}
+    
+    def _collect_training_data(self, signals: Dict[str, Any], market_data: Dict[str, Any], prediction: Optional[Dict[str, Any]]):
+        """Collect training data for ML learning"""
+        try:
+            from core.ml.model_training import global_model_trainer
+            
+            # Calculate actual outcome based on prediction confidence and market movement
+            actual_outcome = 0.0
+            if prediction:
+                # Use prediction confidence as a proxy for actual outcome
+                actual_outcome = prediction.get("confidence", 0.0)
+            
+            # Collect training data
+            global_model_trainer.collect_training_data_from_signals(
+                signals=signals,
+                market_data=market_data,
+                actual_outcome=actual_outcome
+            )
+            
+            logger.debug(f"📊 Collected training data: outcome={actual_outcome:.3f}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to collect training data: {e}")
 
 # Global instance
 global_analysis_layer = AnalysisLayer()

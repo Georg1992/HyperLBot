@@ -159,6 +159,10 @@ class ExecutionLayer:
             if self._execute_order(order):
                 self.active_orders[order.order_id] = order
                 logger.info(f"⚡ Order executed: {order.direction} {order.size_btc:.6f} BTC at ${order.price:.2f}")
+                
+                # Collect training data from executed trade
+                self._collect_trade_outcome_data(prediction, order, current_price, market_data)
+                
                 return order
             else:
                 logger.warning(f"⚠️ Order execution failed")
@@ -834,6 +838,35 @@ class ExecutionLayer:
             
         except Exception as e:
             logger.error(f"❌ Failed to cleanup expired predictions: {e}")
+    
+    def _collect_trade_outcome_data(self, prediction: Dict[str, Any], order: Order, current_price: float, market_data: Dict[str, Any]):
+        """Collect training data from trade outcomes"""
+        try:
+            from core.ml.model_training import global_model_trainer
+            
+            # Calculate actual outcome based on trade execution
+            # This is a simplified calculation - in practice, you'd track actual trade results
+            actual_outcome = prediction.get("confidence", 0.0)
+            
+            # Create signals dictionary for data collection
+            signals = {
+                "signal_consensus": actual_outcome,
+                "signal_count": 1,
+                "dominant_direction": order.direction,
+                "confidence": actual_outcome
+            }
+            
+            # Collect training data
+            global_model_trainer.collect_training_data_from_signals(
+                signals=signals,
+                market_data=market_data,
+                actual_outcome=actual_outcome
+            )
+            
+            logger.debug(f"📊 Collected trade outcome data: outcome={actual_outcome:.3f}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to collect trade outcome data: {e}")
 
 # Global instance
 global_execution_layer = ExecutionLayer()

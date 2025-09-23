@@ -29,7 +29,7 @@ class LearningTrigger:
 class LearningConfig:
     """Configuration for continuous learning"""
     retrain_interval_hours: float = 24.0  # Retrain every 24 hours
-    min_data_points: int = 100  # Minimum data points for retraining
+    min_data_points: int = 10  # Minimum data points for retraining
     performance_threshold: float = 0.6  # Retrain if accuracy drops below this
     confidence_threshold: float = 0.3  # Retrain if confidence correlation drops below this
     max_retrain_frequency_hours: float = 4.0  # Maximum retrain frequency

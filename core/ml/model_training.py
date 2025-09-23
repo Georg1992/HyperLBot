@@ -269,7 +269,7 @@ class ModelTrainer:
             from core.ml.ml_models import global_ml_manager
             
             # Get training data
-            features, targets = self.data_collector.get_training_data(min_data_points=50)
+            features, targets = self.data_collector.get_training_data(min_data_points=10)
             
             if len(features) == 0:
                 return {"error": "No training data available"}
@@ -303,7 +303,7 @@ class ModelTrainer:
             from core.ml.ml_models import global_ml_manager
             
             # Get training data
-            features, targets = self.data_collector.get_training_data(min_data_points=50)
+            features, targets = self.data_collector.get_training_data(min_data_points=10)
             
             if len(features) == 0:
                 return {"error": "No training data available"}
@@ -328,7 +328,7 @@ class ModelTrainer:
             from core.ml.ml_models import global_ml_manager
             
             # Get training data
-            features, targets = self.data_collector.get_training_data(min_data_points=50)
+            features, targets = self.data_collector.get_training_data(min_data_points=10)
             
             if len(features) == 0:
                 return {"error": "No training data available"}
