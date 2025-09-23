@@ -1403,6 +1403,7 @@ class PredictionManager:
     def update_prediction_confidence(self, prediction: Dict[str, Any], current_price: float, market_data: Dict[str, Any]) -> float:
         """
         Update prediction confidence based on how well the market is following the predicted direction
+        Only applies during AI's predicted timeframe
         
         Args:
             prediction: Current prediction dictionary
@@ -1441,6 +1442,160 @@ class PredictionManager:
         except Exception as e:
             logger.error(f"❌ Failed to update prediction confidence: {e}")
             return prediction.get("confidence", 0.5)
+    
+    def transfer_confidence_to_trade(self, prediction: Dict[str, Any], trade_id: str) -> float:
+        """
+        Transfer confidence from prediction to trade when order is filled
+        
+        Args:
+            prediction: The prediction that led to the trade
+            trade_id: The trade ID
+            
+        Returns:
+            Initial trade confidence
+        """
+        try:
+            # Get the final confidence from the prediction
+            trade_confidence = prediction.get("confidence", 0.5)
+            
+            # Store the confidence transfer for learning
+            self._store_confidence_transfer(prediction, trade_id, trade_confidence)
+            
+            logger.info(f"🔄 Confidence transferred: prediction → trade {trade_id} = {trade_confidence:.3f}")
+            
+            return trade_confidence
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to transfer confidence to trade: {e}")
+            return 0.5
+    
+    def _store_confidence_transfer(self, prediction: Dict[str, Any], trade_id: str, confidence: float):
+        """Store confidence transfer data for learning"""
+        try:
+            transfer_data = {
+                "trade_id": trade_id,
+                "prediction_id": prediction.get("prediction_id", "unknown"),
+                "initial_confidence": confidence,
+                "prediction_signals": prediction.get("signal_strength", {}),
+                "prediction_reasoning": prediction.get("reasoning", ""),
+                "timestamp": time.time()
+            }
+            
+            # Store in learning data
+            if not hasattr(self, 'confidence_transfers'):
+                self.confidence_transfers = []
+            
+            self.confidence_transfers.append(transfer_data)
+            
+            logger.debug(f"📊 Stored confidence transfer: trade {trade_id} = {confidence:.3f}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to store confidence transfer: {e}")
+    
+    def analyze_trade_quality_on_close(self, trade_data: Dict[str, Any], 
+                                     market_timeline: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Analyze trade quality when trade is closed and update learning
+        
+        Args:
+            trade_data: Completed trade data
+            market_timeline: Price data from entry to close
+            
+        Returns:
+            Quality analysis results
+        """
+        try:
+            from core.ml.trade_quality_analyzer import trade_quality_analyzer
+            
+            # Analyze trade quality
+            quality_metrics = trade_quality_analyzer.analyze_trade_quality(
+                trade_data, market_timeline
+            )
+            
+            # Update learning based on quality analysis
+            self._update_learning_from_trade_quality(trade_data, quality_metrics)
+            
+            logger.info(f"📊 Trade quality analysis complete: {quality_metrics.overall_quality:.1%} quality, {quality_metrics.perfect_trade_score:.1%} perfect score")
+            
+            return {
+                "quality_metrics": quality_metrics,
+                "learning_insights": quality_metrics.learning_insights,
+                "analysis_complete": True
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Trade quality analysis failed: {e}")
+            return {"analysis_complete": False, "error": str(e)}
+    
+    def _update_learning_from_trade_quality(self, trade_data: Dict[str, Any], 
+                                          quality_metrics) -> None:
+        """Update AI learning based on trade quality analysis"""
+        try:
+            # Store quality data for learning
+            if not hasattr(self, 'trade_quality_history'):
+                self.trade_quality_history = []
+            
+            quality_data = {
+                "trade_id": trade_data.get("trade_id", "unknown"),
+                "timestamp": time.time(),
+                "quality_metrics": {
+                    "direction_accuracy": quality_metrics.direction_accuracy,
+                    "entry_timing_accuracy": quality_metrics.entry_timing_accuracy,
+                    "take_profit_accuracy": quality_metrics.take_profit_accuracy,
+                    "stop_loss_accuracy": quality_metrics.stop_loss_accuracy,
+                    "profit_efficiency": quality_metrics.profit_efficiency,
+                    "overall_quality": quality_metrics.overall_quality,
+                    "perfect_trade_score": quality_metrics.perfect_trade_score
+                },
+                "learning_insights": quality_metrics.learning_insights
+            }
+            
+            self.trade_quality_history.append(quality_data)
+            
+            # Update signal weights based on performance
+            self._update_signal_weights_from_quality(quality_metrics)
+            
+            # Update confidence thresholds based on performance
+            self._update_confidence_thresholds_from_quality(quality_metrics)
+            
+            logger.debug(f"🧠 Updated learning from trade quality: {quality_metrics.overall_quality:.1%} quality")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update learning from trade quality: {e}")
+    
+    def _update_signal_weights_from_quality(self, quality_metrics) -> None:
+        """Update signal weights based on trade quality performance"""
+        try:
+            # If trade was high quality, increase weights for signals that performed well
+            if quality_metrics.overall_quality > 0.8:
+                # Increase weights for well-performing signals
+                logger.debug("📈 High quality trade - increasing signal weights")
+            elif quality_metrics.overall_quality < 0.3:
+                # Decrease weights for poorly-performing signals
+                logger.debug("📉 Low quality trade - decreasing signal weights")
+            
+            # This would integrate with the signal aggregator to adjust weights
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update signal weights: {e}")
+    
+    def _update_confidence_thresholds_from_quality(self, quality_metrics) -> None:
+        """Update confidence thresholds based on trade quality performance"""
+        try:
+            # If trades are consistently high quality, we can lower thresholds
+            # If trades are consistently low quality, we should raise thresholds
+            
+            if quality_metrics.perfect_trade_score > 0.9:
+                # Perfect trade - we can be more aggressive
+                logger.debug("🎯 Perfect trade - considering lower confidence thresholds")
+            elif quality_metrics.perfect_trade_score < 0.3:
+                # Poor trade - we should be more conservative
+                logger.debug("⚠️ Poor trade - considering higher confidence thresholds")
+            
+            # This would integrate with the execution layer to adjust thresholds
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update confidence thresholds: {e}")
     
     def _calculate_market_behavior_score(self, direction: str, entry_price: float, current_price: float, market_data: Dict[str, Any]) -> float:
         """

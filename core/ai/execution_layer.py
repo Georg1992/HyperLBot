@@ -230,7 +230,7 @@ class ExecutionLayer:
     def discard_bad_predictions(self, predictions: List[Dict[str, Any]], 
                               current_price: float, market_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Intelligently monitor predictions instead of immediately discarding them
+        Intelligently monitor predictions - only discard when orders are filled or prediction expires
         
         Args:
             predictions: List of predictions to filter
@@ -276,10 +276,36 @@ class ExecutionLayer:
             self._cleanup_expired_predictions()
             
             return valid_predictions
-            
+    
+    def discard_prediction_on_order_fill(self, prediction_id: str, trade_id: str):
+        """
+        Discard prediction only when order is filled (not when placed)
+        
+        Args:
+            prediction_id: ID of the prediction to discard
+            trade_id: ID of the trade that was created
+        """
+        try:
+            if prediction_id in self.monitored_predictions:
+                # Transfer confidence to trade before discarding
+                prediction = self.monitored_predictions[prediction_id]
+                from core.ml.prediction_manager import global_prediction_manager
+                
+                # Transfer confidence from prediction to trade
+                trade_confidence = global_prediction_manager.transfer_confidence_to_trade(
+                    prediction, trade_id
+                )
+                
+                # Now discard the prediction
+                del self.monitored_predictions[prediction_id]
+                
+                logger.info(f"🔄 Prediction {prediction_id} discarded after order fill → trade {trade_id} (confidence: {trade_confidence:.3f})")
+                
+            else:
+                logger.warning(f"⚠️ Prediction {prediction_id} not found in monitored predictions")
+                
         except Exception as e:
-            logger.error(f"❌ Intelligent prediction monitoring failed: {e}")
-            return self._filter_predictions_old_way(predictions, current_price, market_data)
+            logger.error(f"❌ Failed to discard prediction on order fill: {e}")
     
     def _validate_prediction(self, prediction: Dict[str, Any], current_price: float, 
                            market_data: Dict[str, Any]) -> bool:
