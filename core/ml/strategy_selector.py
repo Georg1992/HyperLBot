@@ -221,17 +221,17 @@ class MLStrategySelector:
             volatility_5m = self._safe_get(market_data, "volatility_5m", 0.0)
             
             if volatility_5m > 0.005:
-                strategy = "high_volatility"
+                strategy = "scalping"  # Scalping needs HIGH volatility for quick movements
                 confidence = 0.8
-                reasoning = f"High volatility detected: {volatility_5m:.4f}"
+                reasoning = f"High volatility detected: {volatility_5m:.4f} - ideal for scalping"
             elif volatility_5m < 0.001:
-                strategy = "scalping"
+                strategy = "standard"  # Low volatility - use standard strategy
                 confidence = 0.7
-                reasoning = f"Low volatility detected: {volatility_5m:.4f}"
+                reasoning = f"Low volatility detected: {volatility_5m:.4f} - use standard strategy"
             else:
-                strategy = "standard"
+                strategy = "trend_following"  # Moderate volatility - good for trend following
                 confidence = 0.6
-                reasoning = f"Moderate volatility: {volatility_5m:.4f}"
+                reasoning = f"Moderate volatility: {volatility_5m:.4f} - good for trend following"
             
             return StrategyRecommendation(
                 strategy=strategy,

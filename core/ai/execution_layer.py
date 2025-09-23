@@ -91,7 +91,7 @@ class ExecutionLayer:
         # AI generates predictions with REAL probability to win
         # Different strategies have different risk tolerance
         self.strategy_execution_thresholds = {
-            "scalping": 0.55,      # 55% - faster execution, more opportunities
+            "scalping": 0.30,      # 30% - very aggressive for scalping opportunities
             "standard": 0.60,       # 60% - balanced approach
             "trend": 0.65,          # 65% - more selective, higher quality
             "high_vol": 0.50,       # 50% - volatile conditions, lower threshold
