@@ -71,17 +71,54 @@ class SimpleRTM:
             logger.warning(f"⚠️ Could not load existing data: {e}")
     
     def _save_data(self):
-        """Save data to file"""
+        """Save data to file with Windows-compatible error handling"""
         try:
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(self._data_file), exist_ok=True)
+            
             # Write to a temporary file first, then rename to prevent corruption
             temp_file = f"{self._data_file}.tmp"
-            with open(temp_file, 'w') as f:
-                json.dump(self._data, f, indent=2, default=str)
             
-            # Atomic rename to prevent race conditions
-            os.replace(temp_file, self._data_file)
+            # Try multiple times for Windows file locking issues
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    # Check if target file is locked by trying to open it
+                    if os.path.exists(self._data_file):
+                        try:
+                            with open(self._data_file, 'r') as test_f:
+                                test_f.read(1)  # Try to read one byte
+                        except (PermissionError, OSError):
+                            logger.warning(f"⚠️ Target file is locked, waiting...")
+                            time.sleep(0.2)
+                            continue
+                    
+                    with open(temp_file, 'w') as f:
+                        json.dump(self._data, f, indent=2, default=str)
+                    
+                    # Atomic rename to prevent race conditions
+                    os.replace(temp_file, self._data_file)
+                    break  # Success, exit retry loop
+                    
+                except (PermissionError, OSError) as e:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"⚠️ File access retry {attempt + 1}/{max_retries}: {e}")
+                        time.sleep(0.2)  # Longer delay for Windows file locking
+                        continue
+                    else:
+                        raise e  # Final attempt failed
+                        
         except Exception as e:
-            logger.error(f"❌ Failed to save data: {e}")
+            logger.error(f"❌ Failed to save data after {max_retries} attempts: {e}")
+            # Try direct write as fallback (less safe but better than losing data)
+            try:
+                logger.warning("⚠️ Attempting direct write fallback...")
+                with open(self._data_file, 'w') as f:
+                    json.dump(self._data, f, indent=2, default=str)
+                logger.info("✅ Direct write fallback successful")
+            except Exception as fallback_error:
+                logger.error(f"❌ Direct write fallback also failed: {fallback_error}")
+            
             # Clean up temp file if it exists
             try:
                 if os.path.exists(f"{self._data_file}.tmp"):
