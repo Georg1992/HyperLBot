@@ -4,8 +4,8 @@ Psychological Levels Calculator Module
 Detects and analyzes psychological price levels for Bitcoin trading
 """
 
-import math
-from typing import Dict, List, Any, Tuple
+# import math  # Removed unused import
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 
@@ -24,6 +24,9 @@ class PsychologicalLevelsCalculator:
             "round_fifties": [50, 150, 250, 350, 450, 550, 650, 750, 850, 950],
             "round_twenty_fives": [25, 75, 125, 175, 225, 275, 325, 375, 425, 475, 525, 575, 625, 675, 725, 775, 825, 875, 925, 975],
             
+            # Minor psychological levels at every $1000 (very important for Bitcoin)
+            "minor_thousands": self._generate_minor_thousands(),
+            
             # Fibonacci levels (common in crypto)
             "fibonacci": [0.236, 0.382, 0.5, 0.618, 0.786],
             
@@ -36,6 +39,16 @@ class PsychologicalLevelsCalculator:
         }
         
         logger.info("🧠 Psychological Levels Calculator initialized")
+    
+    def _generate_minor_thousands(self) -> List[int]:
+        """Generate minor psychological levels at every $1000"""
+        minor_levels = []
+        
+        # Generate levels from $10,000 to $200,000 (covers current Bitcoin range)
+        for i in range(10, 201):  # 10k to 200k
+            minor_levels.append(i * 1000)
+        
+        return minor_levels
     
     def calculate_psychological_levels(self, current_price: float, price_range: float = 5000) -> Dict[str, Any]:
         """
@@ -76,7 +89,7 @@ class PsychologicalLevelsCalculator:
             
         except Exception as e:
             logger.error(f"❌ Psychological levels calculation failed: {e}")
-            return self._get_default_psychological_levels(current_price)
+            raise Exception(f"Psychological levels calculation failed: {e}")
     
     def _find_relevant_levels(self, current_price: float, price_range: float) -> List[Dict[str, Any]]:
         """Find psychological levels within the specified price range"""
@@ -149,6 +162,7 @@ class PsychologicalLevelsCalculator:
         strength_map = {
             "round_thousands": 1.0,      # Strongest - round thousands
             "round_hundreds": 0.9,       # Very strong - round hundreds
+            "minor_thousands": 0.85,     # Very strong - minor thousands (every $1000)
             "historical_ath": 0.8,       # Strong - historical ATH
             "round_fifties": 0.7,        # Moderate-strong - round fifties
             "half_levels": 0.6,          # Moderate - half levels
@@ -270,29 +284,29 @@ class PsychologicalLevelsCalculator:
             # Determine primary direction based on relative distances and proximity
             distance_ratio = support_distance / resistance_distance if resistance_distance > 0 else 1.0
             
-            # CORRECTED direction determination
-            if distance_ratio < 0.7:  # Support is significantly closer - look for BUY opportunity
-                implications["primary_direction"] = "BUY"
+            # CORRECTED direction determination - FIXED LOGIC
+            if distance_ratio < 0.7:  # Support is significantly closer - price likely to FALL to support = SELL
+                implications["primary_direction"] = "SELL"
                 implications["confidence"] = min(0.9, support_level["strength"] + 0.2)  # Boost confidence
                 implications["target_levels"].append(support_level["level"])
-                implications["trading_bias"] = "BULLISH"
-            elif distance_ratio > 1.4:  # Resistance is significantly closer - look for SELL opportunity
-                implications["primary_direction"] = "SELL"
+                implications["trading_bias"] = "BEARISH"
+            elif distance_ratio > 1.4:  # Resistance is significantly closer - price likely to RISE to resistance = BUY
+                implications["primary_direction"] = "BUY"
                 implications["confidence"] = min(0.9, resistance_level["strength"] + 0.2)  # Boost confidence
                 implications["target_levels"].append(resistance_level["level"])
-                implications["trading_bias"] = "BEARISH"
+                implications["trading_bias"] = "BULLISH"
             else:
                 # Close distances - use level strength to determine bias
                 if support_level["strength"] > resistance_level["strength"]:
-                    implications["primary_direction"] = "BUY"  # Strong support = BUY opportunity
+                    implications["primary_direction"] = "SELL"  # Strong support = price likely to fall to it = SELL
                     implications["confidence"] = support_level["strength"]
                     implications["target_levels"].append(support_level["level"])
-                    implications["trading_bias"] = "BULLISH"
+                    implications["trading_bias"] = "BEARISH"
                 elif resistance_level["strength"] > support_level["strength"]:
-                    implications["primary_direction"] = "SELL"  # Strong resistance = SELL opportunity
+                    implications["primary_direction"] = "BUY"  # Strong resistance = price likely to rise to it = BUY
                     implications["confidence"] = resistance_level["strength"]
                     implications["target_levels"].append(resistance_level["level"])
-                    implications["trading_bias"] = "BEARISH"
+                    implications["trading_bias"] = "BULLISH"
         
         # Add risk levels (levels that could cause reversals)
         for category in ["strong_support", "strong_resistance", "moderate_support", "moderate_resistance"]:
@@ -302,30 +316,6 @@ class PsychologicalLevelsCalculator:
         
         return implications
     
-    def _get_default_psychological_levels(self, current_price: float) -> Dict[str, Any]:
-        """Return default psychological levels when calculation fails"""
-        return {
-            "current_price": current_price,
-            "relevant_levels": [],
-            "categorized_levels": {
-                "strong_support": [],
-                "strong_resistance": [],
-                "moderate_support": [],
-                "moderate_resistance": [],
-                "weak_support": [],
-                "weak_resistance": []
-            },
-            "significance_scores": {},
-            "nearest_levels": {},
-            "attraction_probability": {},
-            "trading_implications": {
-                "primary_direction": "NEUTRAL",
-                "confidence": 0.5,
-                "target_levels": [],
-                "risk_levels": [],
-                "trading_bias": "NEUTRAL"
-            }
-        }
     
     def get_psychological_level_signal(self, current_price: float, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -345,7 +335,7 @@ class PsychologicalLevelsCalculator:
             # Get trading implications
             implications = psychological_analysis["trading_implications"]
             
-            # Combine with market data for enhanced signal
+            # Combine with market data for signal
             rsi = market_data.get("rsi", 50)
             trend = market_data.get("trend", "NEUTRAL")
             
@@ -391,7 +381,7 @@ class PsychologicalLevelsCalculator:
                 "target_level": None,
                 "risk_levels": [],
                 "trading_bias": "NEUTRAL",
-                "psychological_analysis": self._get_default_psychological_levels(current_price),
+                "psychological_analysis": {"levels": [], "confidence": 0.0},
                 "reasoning": "Psychological level analysis failed"
             }
     
