@@ -263,46 +263,46 @@ class FeeManager:
     def optimize_position_size(self, available_capital: float, target_profit: float, 
                              entry_price: float, target_price: float, leverage: int = 30) -> Dict[str, Any]:
         """
-        Optimize position size to achieve target profit after fees
-        
-        Args:
-            available_capital: Available capital in USD
-            target_profit: Target profit in USD
-            entry_price: Entry price
-            target_price: Target exit price
-            leverage: Leverage to use
-        
-        Returns:
-            Dictionary with optimized position size
+        DEPRECATED: Use hybrid_position_sizer instead
+        This method is kept for backward compatibility but delegates to hybrid system
         """
-        # Start with maximum position size
-        max_position_size = (available_capital * leverage) / entry_price
-        
-        # Binary search for optimal position size
-        min_size = 0.001  # Minimum position size
-        max_size = max_position_size
-        
-        optimal_size = min_size
-        optimal_profit = 0
-        
-        for _ in range(10):  # Max 10 iterations
-            test_size = (min_size + max_size) / 2
+        try:
+            from core.ml.hybrid_position_sizer import hybrid_position_sizer
             
-            profit_analysis = self.calculate_profit_after_fees(entry_price, target_price, test_size, leverage)
+            # Create mock market data and signal analysis
+            market_data = {
+                "volatility_5m": 0.002,  # Default volatility
+                "current_price": entry_price
+            }
+            signal_analysis = {
+                "overall_confidence": 0.7  # Default confidence
+            }
             
-            if profit_analysis["net_pnl"] >= target_profit:
-                optimal_size = test_size
-                optimal_profit = profit_analysis["net_pnl"]
-                max_size = test_size
-            else:
-                min_size = test_size
-        
-        return {
-            "optimal_position_size": optimal_size,
-            "expected_profit": optimal_profit,
-            "required_capital": (optimal_size * entry_price) / leverage,
-            "capital_efficiency": optimal_profit / ((optimal_size * entry_price) / leverage) * 100
-        }
+            # Use hybrid position sizing system
+            position_result = hybrid_position_sizer.calculate_optimal_position_size(
+                direction="BUY",  # Default direction
+                current_price=entry_price,
+                market_data=market_data,
+                signal_analysis=signal_analysis,
+                account_balance=available_capital,
+                strategy="default"
+            )
+            
+            return {
+                "optimal_position_size": position_result.position_size_btc,
+                "expected_profit": position_result.expected_return,
+                "required_capital": position_result.position_size_usd,
+                "capital_efficiency": (position_result.expected_return / position_result.position_size_usd) * 100 if position_result.position_size_usd > 0 else 0
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to optimize position size: {e}")
+            return {
+                "optimal_position_size": 0.001,
+                "expected_profit": 0.0,
+                "required_capital": available_capital * 0.01,
+                "capital_efficiency": 0.0
+            }
     
     def get_fee_breakdown_for_strategy(self, strategy_params: Dict[str, Any]) -> Dict[str, Any]:
         """

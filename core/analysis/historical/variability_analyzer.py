@@ -283,58 +283,55 @@ class VariabilityAnalyzer:
             return "EXTREME_VOLATILITY_AVOID"
     
     def _calculate_optimal_trading_params(self, volatility: float, variability_score: float, balance: float = 1000.0) -> Dict[str, Any]:
-        """Calculate optimal trading parameters based on variability"""
-        # Base parameters - use percentage of balance instead of fixed size
-        base_position_size_pct = trading_constants.BASE_POSITION_SIZE  # 10% of balance as base
-        base_position_size = (balance * base_position_size_pct) / 114000  # Convert to BTC at current price
-        base_leverage = trading_constants.DEFAULT_LEVERAGE
-        base_profit_target = trading_constants.BASE_PROFIT_TARGET  # 0.3%
-        base_stop_loss = trading_constants.BASE_STOP_LOSS     # 0.15%
-        
-        # Adjust based on volatility
-        if volatility < self.variability_thresholds["low_volatility"]:
-            # Low volatility - reduce position size, increase targets
-            position_multiplier = 0.5
-            profit_target_multiplier = 1.5
-            stop_loss_multiplier = 1.2
-            leverage_multiplier = 0.8
-        elif volatility < self.variability_thresholds["medium_volatility"]:
-            # Medium volatility - standard parameters
-            position_multiplier = 1.0
-            profit_target_multiplier = 1.0
-            stop_loss_multiplier = 1.0
-            leverage_multiplier = 1.0
-        elif volatility < self.variability_thresholds["high_volatility"]:
-            # High volatility - increase position size, reduce targets
-            position_multiplier = 1.5
-            profit_target_multiplier = 0.8
-            stop_loss_multiplier = 0.8
-            leverage_multiplier = 1.2
-        else:
-            # Extreme volatility - reduce position size, increase targets
-            position_multiplier = 0.7
-            profit_target_multiplier = 1.3
-            stop_loss_multiplier = 1.1
-            leverage_multiplier = 0.9
-        
-        # Adjust based on variability score
-        if variability_score > self.condition_scores["optimal_trading"]:
-            # Optimal conditions - increase position size
-            position_multiplier *= 1.2
-        elif variability_score < self.condition_scores["poor_trading"]:
-            # Poor conditions - reduce position size
-            position_multiplier *= 0.7
-        
-        return {
-            "position_size": base_position_size * position_multiplier,
-            "leverage": int(base_leverage * leverage_multiplier),
-            "profit_target": base_profit_target * profit_target_multiplier,
-            "stop_loss": base_stop_loss * stop_loss_multiplier,
-            "position_multiplier": position_multiplier,
-            "profit_target_multiplier": profit_target_multiplier,
-            "stop_loss_multiplier": stop_loss_multiplier,
-            "leverage_multiplier": leverage_multiplier
-        }
+        """
+        DEPRECATED: Use hybrid_position_sizer instead
+        This method is kept for backward compatibility but delegates to hybrid system
+        """
+        try:
+            from core.ml.hybrid_position_sizer import hybrid_position_sizer
+            
+            # Create mock market data and signal analysis
+            market_data = {
+                "volatility_5m": volatility,
+                "current_price": 50000.0  # Default price
+            }
+            signal_analysis = {
+                "overall_confidence": min(0.9, max(0.3, variability_score))  # Map variability to confidence
+            }
+            
+            # Use hybrid position sizing system
+            position_result = hybrid_position_sizer.calculate_optimal_position_size(
+                direction="BUY",  # Default direction
+                current_price=50000.0,
+                market_data=market_data,
+                signal_analysis=signal_analysis,
+                account_balance=balance,
+                strategy="default"
+            )
+            
+            return {
+                "position_size": position_result.position_size_btc,
+                "leverage": int(position_result.leverage),
+                "profit_target": (position_result.target_price - 50000.0) / 50000.0,
+                "stop_loss": (50000.0 - position_result.stop_loss) / 50000.0,
+                "position_multiplier": 1.0,  # Hybrid system handles this internally
+                "profit_target_multiplier": 1.0,
+                "stop_loss_multiplier": 1.0,
+                "leverage_multiplier": 1.0
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate optimal trading params: {e}")
+            return {
+                "position_size": 0.001,
+                "leverage": 25,
+                "profit_target": 0.003,
+                "stop_loss": 0.0015,
+                "position_multiplier": 1.0,
+                "profit_target_multiplier": 1.0,
+                "stop_loss_multiplier": 1.0,
+                "leverage_multiplier": 1.0
+            }
     
     def _analyze_volatility_trend(self) -> Dict[str, Any]:
         """Analyze volatility trend over time"""

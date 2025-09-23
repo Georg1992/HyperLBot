@@ -891,52 +891,33 @@ class PredictionManager:
     
     def _calculate_trend_parameters(self, direction: str, current_price: float, market_data: Dict[str, Any], 
                                   signal_analysis: Dict[str, Any], account_balance: float) -> Dict[str, Any]:
-        """Calculate trend-following specific trading parameters"""
+        """Calculate trend-following specific trading parameters using hybrid position sizing"""
         try:
-            # Trend following: Wider stops, larger targets, medium positions
+            from core.ml.hybrid_position_sizer import hybrid_position_sizer
             
-            base_risk_percent = 0.015  # 1.5% base risk
-            signal_confidence = signal_analysis.get("overall_confidence", 0.5)
-            confidence_multiplier = 0.5 + (signal_confidence * 1.0)  # 0.5-1.5x
-            
-            position_risk_percent = base_risk_percent * confidence_multiplier
-            position_size_usd = account_balance * position_risk_percent
-            position_size_btc = position_size_usd / current_price
-            
-            entry_price = self._calculate_entry_price(direction, current_price, market_data)
-            
-            # Trend following: Wider stops (0.5-1%)
-            volatility = market_data.get("volatility_5m", 0.001)
-            stop_percent = max(0.005, volatility * 2)  # At least 0.5% or 2x volatility
-            
-            if direction == "BUY":
-                stop_loss = entry_price * (1 - stop_percent)
-                target_price = entry_price * (1 + (stop_percent * 3))  # 3:1 R/R for trend following
-            else:  # SELL
-                stop_loss = entry_price * (1 + stop_percent)
-                target_price = entry_price * (1 - (stop_percent * 3))  # 3:1 R/R for trend following
-            
-            leverage = 40.0  # Maximum leverage for trend following (stop loss manages risk)
+            # Use hybrid position sizing system
+            position_result = hybrid_position_sizer.calculate_optimal_position_size(
+                direction=direction,
+                current_price=current_price,
+                market_data=market_data,
+                signal_analysis=signal_analysis,
+                account_balance=account_balance,
+                strategy="trend_following"
+            )
             
             return {
-                "entry_price": entry_price,
-                "size_btc": position_size_btc,
-                "size_usd": position_size_usd,
-                "stop_loss": stop_loss,
-                "target_price": target_price,
-                "leverage": leverage,
-                "risk_percent": position_risk_percent
+                "entry_price": current_price,  # Will be calculated by hybrid system
+                "size_btc": position_result.position_size_btc,
+                "size_usd": position_result.position_size_usd,
+                "stop_loss": position_result.stop_loss,
+                "target_price": position_result.target_price,
+                "leverage": position_result.leverage,
+                "risk_percent": position_result.final_risk_percent
             }
             
         except Exception as e:
             logger.error(f"❌ Failed to calculate trend parameters: {e}")
-            return {
-                "entry_price": current_price,
-                "size_btc": 0.0,
-                "size_usd": 0.0,
-                "stop_loss": current_price,
-                "target_price": current_price
-            }
+            return self._get_default_parameters(direction, current_price, account_balance)
     
     def _calculate_high_vol_parameters(self, direction: str, current_price: float, market_data: Dict[str, Any], 
                                      signal_analysis: Dict[str, Any], account_balance: float) -> Dict[str, Any]:
