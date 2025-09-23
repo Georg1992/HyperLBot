@@ -274,6 +274,5 @@ class VolatilityCalculator:
             return "ERROR", "ERROR"
     
     
-    # Complex 42-line momentum calculation that was never used
     
     

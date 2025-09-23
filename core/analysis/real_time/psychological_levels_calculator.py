@@ -4,7 +4,6 @@ Psychological Levels Calculator Module
 Detects and analyzes psychological price levels for Bitcoin trading
 """
 
-# import math  # Removed unused import
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 

@@ -7,7 +7,6 @@ Note: User-configurable parameters (like balance, leverage, etc.) are now in con
 This file contains only non-configurable system constants and magic numbers.
 """
 
-# import os  # Removed unused import
 
 class TradingConstants:
     """All trading-related constants in one place"""
