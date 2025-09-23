@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Enhanced Simple RTM - Ultimate Central Data Hub
+Simple RTM - Central Data Hub
 Single source of truth for all dashboard data
 Clear data flow: AccountManager + SessionManager → SimpleRTM → Dashboard
 """
@@ -10,7 +10,7 @@ import os
 import threading
 import time
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
 class SimpleRTM:
@@ -57,17 +57,37 @@ class SimpleRTM:
                 with open(self._data_file, 'r') as f:
                     loaded_data = json.load(f)
                     self._data.update(loaded_data)
-                    logger.debug(f"✅ Loaded existing data from {self._data_file}")
+                    # logger.debug(f"✅ Loaded existing data from {self._data_file}")
+        except json.JSONDecodeError as e:
+            logger.warning(f"⚠️ JSON decode error in {self._data_file}: {e}")
+            # Try to backup the corrupted file and start fresh
+            try:
+                backup_file = f"{self._data_file}.corrupted_{int(time.time())}"
+                os.rename(self._data_file, backup_file)
+                logger.info(f"📁 Backed up corrupted file to {backup_file}")
+            except Exception as backup_error:
+                logger.error(f"❌ Failed to backup corrupted file: {backup_error}")
         except Exception as e:
             logger.warning(f"⚠️ Could not load existing data: {e}")
     
     def _save_data(self):
         """Save data to file"""
         try:
-            with open(self._data_file, 'w') as f:
+            # Write to a temporary file first, then rename to prevent corruption
+            temp_file = f"{self._data_file}.tmp"
+            with open(temp_file, 'w') as f:
                 json.dump(self._data, f, indent=2, default=str)
+            
+            # Atomic rename to prevent race conditions
+            os.replace(temp_file, self._data_file)
         except Exception as e:
             logger.error(f"❌ Failed to save data: {e}")
+            # Clean up temp file if it exists
+            try:
+                if os.path.exists(f"{self._data_file}.tmp"):
+                    os.remove(f"{self._data_file}.tmp")
+            except:
+                pass
     
     def sync_from_account_manager(self, account_data: Dict[str, Any]):
         """Sync data from AccountManager - PERSISTENT DATA"""
@@ -174,7 +194,7 @@ class SimpleRTM:
             self._save_data()
     
     def add_signal(self, signal_data: Dict[str, Any]):
-        """Add trading signal"""
+        """Add trading signal (legacy method - use add_prediction for predictions)"""
         with self._lock:
             signal = {
                 "timestamp": datetime.now().isoformat(),
@@ -193,7 +213,9 @@ class SimpleRTM:
                 "rsi": signal_data.get("rsi", 50),
                 "trend": signal_data.get("trend", "NEUTRAL"),
                 "strategy_used": signal_data.get("strategy_used", "unknown"),  # Add strategy information
-                "prediction_data": signal_data.get("prediction_data", {})
+                "prediction_data": signal_data.get("prediction_data", {}),
+                # FIXED: Store candle data for dashboard visualization
+                "candleData": signal_data.get("candleData", None)
             }
             self._data["predictions"].append(signal)
             
@@ -206,6 +228,11 @@ class SimpleRTM:
             
             confidence = signal_data.get('confidence', 0) or 0
             # Reduced logging frequency
+    
+    def add_prediction(self, prediction_data: Dict[str, Any]):
+        """Add ML prediction (properly named method)"""
+        # Use the existing add_signal method but with proper naming
+        self.add_signal(prediction_data)
     
     def add_trade(self, trade_data: Dict[str, Any]):
         """Add trade entry"""
@@ -247,8 +274,12 @@ class SimpleRTM:
                 return False
             
             # Read heartbeat data
-            with open(heartbeat_file, 'r') as f:
-                heartbeat_data = json.load(f)
+            try:
+                with open(heartbeat_file, 'r') as f:
+                    heartbeat_data = json.load(f)
+            except json.JSONDecodeError as e:
+                logger.warning(f"⚠️ JSON decode error in heartbeat file {heartbeat_file}: {e}")
+                return False
             
             bot_running = heartbeat_data.get("bot_running", False)
             last_heartbeat = heartbeat_data.get("last_heartbeat", 0)
@@ -307,6 +338,10 @@ class SimpleRTM:
             # Map market_data to market for dashboard compatibility
             if "market_data" in data:
                 data["market"] = data["market_data"]
+            
+            # Map predictions to signals for dashboard compatibility
+            if "predictions" in data:
+                data["signals"] = data["predictions"]
             
             return data
     

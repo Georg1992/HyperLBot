@@ -7,7 +7,7 @@ Note: User-configurable parameters (like balance, leverage, etc.) are now in con
 This file contains only non-configurable system constants and magic numbers.
 """
 
-import os
+# import os  # Removed unused import
 
 class TradingConstants:
     """All trading-related constants in one place"""
@@ -149,9 +149,6 @@ class MagicNumbers:
     PRESSURE_LOW_CONCENTRATION = 0.6     # Low depth concentration threshold
     
     
-    # Price fallbacks
-    FALLBACK_BTC_PRICE = 50000.0
-    FALLBACK_BALANCE = 100.0
     
     # Position size defaults
     DEFAULT_POSITION_SIZE_BTC = 0.001
@@ -346,13 +343,13 @@ class VariabilityConstants:
     HIGH_VOLATILITY = 0.03           # 3.0% - active Bitcoin trading
     EXTREME_VOLATILITY = 0.08        # 8.0% - very volatile Bitcoin market
     
-    # 5-Minute Volatility Thresholds (for real-time trading) - ULTRA SENSITIVE Bitcoin 5m trading thresholds
-    # Adjusted to be extremely sensitive to small movements and market changes for real-time reactivity
-    VOLATILITY_5M_VERY_LOW = 0.0003   # 0.03% - tight ranging markets (very small moves)
-    VOLATILITY_5M_LOW = 0.0006        # 0.06% - low movement (quiet market, small moves)
-    VOLATILITY_5M_MODERATE = 0.0012   # 0.12% - moderate movement (normal trading, noticeable moves)
-    VOLATILITY_5M_HIGH = 0.0020       # 0.20% - high movement (active trading, significant moves)
-    VOLATILITY_5M_EXTREME = 0.0030    # 0.30% - extreme movement (volatile market, large moves)
+    # 5-Minute Volatility Thresholds (for real-time trading) - REALISTIC Bitcoin 5m thresholds
+    # FIXED: Based on actual Bitcoin 5m candle analysis - chart shows significant movement
+    VOLATILITY_5M_VERY_LOW = 0.0002    # 0.02% - almost no movement
+    VOLATILITY_5M_LOW = 0.0005         # 0.05% - minimal movement  
+    VOLATILITY_5M_MODERATE = 0.0015    # 0.15% - normal movement - CHART SHOULD BE HERE
+    VOLATILITY_5M_HIGH = 0.0030       # 0.30% - active movement
+    VOLATILITY_5M_EXTREME = 0.0050    # 0.50% - very active movement
     
     # Trading Condition Scores
     OPTIMAL_TRADING_SCORE = 0.7      # 70% score for optimal conditions
