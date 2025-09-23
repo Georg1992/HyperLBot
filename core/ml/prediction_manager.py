@@ -1423,11 +1423,21 @@ class PredictionManager:
                 direction, entry_price, current_price, market_data
             )
             
-            # Adjust confidence based on market behavior
+            # NEW: Check for conflicting signals and signal reinforcement
+            signal_analysis = self._analyze_signal_alignment(direction, market_data)
+            signal_conflict_penalty = signal_analysis["conflict_penalty"]
+            signal_reinforcement_boost = signal_analysis["reinforcement_boost"]
+            
+            # Adjust confidence based on market behavior and signal alignment
             # If market is behaving as predicted, increase confidence
             # If market is going against prediction, decrease confidence
+            # If signals conflict with prediction, decrease confidence
+            # If signals reinforce prediction, increase confidence
             behavior_adjustment = 0.5 + (market_behavior_score * 0.5)  # 0.5 to 1.0 multiplier
-            updated_confidence = initial_confidence * behavior_adjustment
+            conflict_adjustment = 1.0 - signal_conflict_penalty  # 0.0 to 1.0 multiplier
+            reinforcement_adjustment = 1.0 + signal_reinforcement_boost  # 1.0 to 1.3 multiplier
+            
+            updated_confidence = initial_confidence * behavior_adjustment * conflict_adjustment * reinforcement_adjustment
             
             # Ensure confidence stays within reasonable bounds
             updated_confidence = max(0.1, min(0.95, updated_confidence))
@@ -1435,13 +1445,148 @@ class PredictionManager:
             # Update the prediction
             prediction["confidence"] = updated_confidence
             
-            logger.debug(f"🔄 Updated prediction confidence: {updated_confidence:.3f} (behavior_score: {market_behavior_score:.3f}, adjustment: {behavior_adjustment:.3f})")
+            logger.debug(f"🔄 Updated prediction confidence: {updated_confidence:.3f} "
+                        f"(behavior: {market_behavior_score:.3f}, conflict: {signal_conflict_penalty:.3f}, "
+                        f"reinforcement: {signal_reinforcement_boost:.3f}, behavior_adj: {behavior_adjustment:.3f}, "
+                        f"conflict_adj: {conflict_adjustment:.3f}, reinforcement_adj: {reinforcement_adjustment:.3f})")
             
             return updated_confidence
             
         except Exception as e:
             logger.error(f"❌ Failed to update prediction confidence: {e}")
             return prediction.get("confidence", 0.5)
+    
+    def _analyze_signal_alignment(self, prediction_direction: str, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Analyze signal alignment with prediction direction, tracking processed signals
+        
+        Args:
+            prediction_direction: BUY or SELL
+            market_data: Current market data with signals
+            
+        Returns:
+            Dictionary with conflict_penalty and reinforcement_boost
+        """
+        try:
+            # Get current signals from market data
+            current_signals = market_data.get("current_signals", {})
+            
+            if not current_signals:
+                return {"conflict_penalty": 0.0, "reinforcement_boost": 0.0}
+            
+            # Get previously processed signals for this prediction
+            prediction_id = market_data.get("prediction_id", "unknown")
+            processed_signals = self._get_processed_signals(prediction_id)
+            
+            # Analyze new signals only
+            new_buy_signals = 0
+            new_sell_signals = 0
+            new_neutral_signals = 0
+            total_new_signals = 0
+            
+            for signal_type, signal_data in current_signals.items():
+                if isinstance(signal_data, dict) and "direction" in signal_data:
+                    # Create signal identifier
+                    signal_id = f"{signal_type}_{signal_data.get('timestamp', time.time())}"
+                    
+                    # Skip if already processed
+                    if signal_id in processed_signals:
+                        continue
+                    
+                    direction = signal_data["direction"]
+                    confidence = signal_data.get("confidence", 0.5)
+                    weight = signal_data.get("weight", 1.0)
+                    
+                    # Weight the signal by its confidence and weight
+                    signal_strength = confidence * weight
+                    total_new_signals += signal_strength
+                    
+                    if direction == "BUY":
+                        new_buy_signals += signal_strength
+                    elif direction == "SELL":
+                        new_sell_signals += signal_strength
+                    else:  # NEUTRAL
+                        new_neutral_signals += signal_strength
+                    
+                    # Mark signal as processed
+                    self._mark_signal_processed(prediction_id, signal_id)
+            
+            if total_new_signals == 0:
+                return {"conflict_penalty": 0.0, "reinforcement_boost": 0.0}
+            
+            # Calculate new signal distribution
+            new_buy_ratio = new_buy_signals / total_new_signals
+            new_sell_ratio = new_sell_signals / total_new_signals
+            new_neutral_ratio = new_neutral_signals / total_new_signals
+            
+            # Calculate conflict penalty and reinforcement boost
+            if prediction_direction == "BUY":
+                # For BUY predictions: penalty from new SELL signals, boost from new BUY signals
+                conflict_penalty = new_sell_ratio * 0.3  # 0.0 to 0.3 penalty
+                reinforcement_boost = new_buy_ratio * 0.2  # 0.0 to 0.2 boost
+                
+                # Extra penalty if new SELL signals are stronger than new BUY
+                if new_sell_ratio > new_buy_ratio:
+                    conflict_penalty += (new_sell_ratio - new_buy_ratio) * 0.2
+                    
+            else:  # SELL prediction
+                # For SELL predictions: penalty from new BUY signals, boost from new SELL signals
+                conflict_penalty = new_buy_ratio * 0.3  # 0.0 to 0.3 penalty
+                reinforcement_boost = new_sell_ratio * 0.2  # 0.0 to 0.2 boost
+                
+                # Extra penalty if new BUY signals are stronger than new SELL
+                if new_buy_ratio > new_sell_ratio:
+                    conflict_penalty += (new_buy_ratio - new_sell_ratio) * 0.2
+            
+            # Cap the values
+            conflict_penalty = min(0.5, conflict_penalty)
+            reinforcement_boost = min(0.3, reinforcement_boost)
+            
+            logger.debug(f"🔍 Signal alignment analysis: pred={prediction_direction}, "
+                        f"new_buy={new_buy_ratio:.3f}, new_sell={new_sell_ratio:.3f}, "
+                        f"new_neutral={new_neutral_ratio:.3f}, conflict={conflict_penalty:.3f}, "
+                        f"reinforcement={reinforcement_boost:.3f}")
+            
+            return {
+                "conflict_penalty": conflict_penalty,
+                "reinforcement_boost": reinforcement_boost
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Signal alignment analysis failed: {e}")
+            return {"conflict_penalty": 0.0, "reinforcement_boost": 0.0}
+    
+    def _get_processed_signals(self, prediction_id: str) -> set:
+        """Get set of processed signal IDs for a prediction"""
+        try:
+            if not hasattr(self, 'processed_signals'):
+                self.processed_signals = {}
+            
+            return self.processed_signals.get(prediction_id, set())
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get processed signals: {e}")
+            return set()
+    
+    def _mark_signal_processed(self, prediction_id: str, signal_id: str):
+        """Mark a signal as processed for a prediction"""
+        try:
+            if not hasattr(self, 'processed_signals'):
+                self.processed_signals = {}
+            
+            if prediction_id not in self.processed_signals:
+                self.processed_signals[prediction_id] = set()
+            
+            self.processed_signals[prediction_id].add(signal_id)
+            
+            # Clean up old processed signals (keep only last 50 per prediction)
+            if len(self.processed_signals[prediction_id]) > 50:
+                # Remove oldest signals (simple cleanup)
+                signals_list = list(self.processed_signals[prediction_id])
+                self.processed_signals[prediction_id] = set(signals_list[-50:])
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to mark signal as processed: {e}")
     
     def transfer_confidence_to_trade(self, prediction: Dict[str, Any], trade_id: str) -> float:
         """
