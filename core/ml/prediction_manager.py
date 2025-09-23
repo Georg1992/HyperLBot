@@ -1445,14 +1445,22 @@ class PredictionManager:
     def _calculate_market_behavior_score(self, direction: str, entry_price: float, current_price: float, market_data: Dict[str, Any]) -> float:
         """
         Calculate how well the market is behaving according to the prediction
+        Only applies during AI's predicted timeframe
         
         Returns:
             Score from 0.0 (completely wrong) to 1.0 (perfectly following prediction)
         """
         try:
-            # For BUY predictions: market should be moving up towards entry price
-            # For SELL predictions: market should be moving down towards entry price
+            # Check if we're still within AI's predicted timeframe
+            predicted_time_to_entry = market_data.get("predicted_time_to_entry_seconds", 300)
+            time_elapsed = market_data.get("prediction_age_seconds", 0)
             
+            # If we've exceeded the predicted timeframe, don't adjust based on price movement
+            if time_elapsed > predicted_time_to_entry:
+                logger.debug(f"🎯 Exceeded predicted timeframe: {time_elapsed}s/{predicted_time_to_entry}s, no price movement adjustments")
+                return 0.5  # Neutral score - no adjustments
+            
+            # During predicted timeframe - calculate market behavior score
             if direction == "BUY":
                 # For BUY: current price should be moving towards entry price from below
                 if current_price <= entry_price:
@@ -1470,7 +1478,7 @@ class PredictionManager:
                     # Price is below entry - not ideal for SELL
                     price_score = max(0.0, 1.0 - ((entry_price - current_price) / entry_price) * 2)
             
-            # Also consider recent price momentum
+            # Also consider recent price momentum (only during predicted timeframe)
             recent_momentum = market_data.get("price_momentum", 0.0)
             momentum_score = 0.5 + (recent_momentum * 0.5) if direction == "BUY" else 0.5 - (recent_momentum * 0.5)
             momentum_score = max(0.0, min(1.0, momentum_score))
@@ -1478,7 +1486,7 @@ class PredictionManager:
             # Combine price and momentum scores
             behavior_score = (price_score * 0.7) + (momentum_score * 0.3)
             
-            logger.debug(f"🎯 Market behavior: direction={direction}, price_score={price_score:.3f}, momentum_score={momentum_score:.3f}, final={behavior_score:.3f}")
+            logger.debug(f"🎯 Market behavior (within timeframe): direction={direction}, price_score={price_score:.3f}, momentum_score={momentum_score:.3f}, final={behavior_score:.3f}")
             
             return behavior_score
             
@@ -1487,28 +1495,30 @@ class PredictionManager:
             return 0.5  # Neutral score if calculation fails
     
     def _calculate_time_adjustment(self, market_data: Dict[str, Any]) -> float:
-        """Calculate time-based confidence adjustment"""
+        """Calculate time-based confidence adjustment based on AI's predicted entry timeframe"""
         try:
             import time
-            current_time = time.time()
             
-            # Time decay factor (predictions lose value over time)
-            prediction_age = market_data.get("prediction_age_seconds", 0)
-            time_decay = max(0.5, 1.0 - (prediction_age / 3600))  # 50% after 1 hour
+            # Get AI's predicted timeframe for entry
+            predicted_time_to_entry = market_data.get("predicted_time_to_entry_seconds", 300)  # Default 5 minutes
+            time_elapsed = market_data.get("prediction_age_seconds", 0)
             
-            # Market session factor
+            # Market session factor (always applies)
             session_factor = self._get_session_factor()
             
-            # Time to entry factor
-            time_to_entry = market_data.get("time_to_entry_seconds", 0)
-            urgency_factor = max(0.7, 1.0 - (time_to_entry / 1800))  # 70% after 30 minutes
+            # Check if we're still within AI's predicted timeframe
+            if time_elapsed <= predicted_time_to_entry:
+                # During AI's predicted timeframe - no time decay, just session factor
+                time_adjustment = session_factor
+                logger.debug(f"⏰ Within predicted timeframe: {time_elapsed}s/{predicted_time_to_entry}s, session={session_factor:.3f}")
+            else:
+                # After AI's predicted timeframe - apply time decay
+                time_overdue = time_elapsed - predicted_time_to_entry
+                decay_factor = max(0.1, 1.0 - (time_overdue / (predicted_time_to_entry * 2)))  # 50% decay after 2x predicted time
+                time_adjustment = session_factor * decay_factor
+                logger.debug(f"⏰ Exceeded predicted timeframe: {time_elapsed}s/{predicted_time_to_entry}s, overdue={time_overdue}s, decay={decay_factor:.3f}")
             
-            # Combine time factors
-            time_adjustment = (time_decay * 0.4) + (session_factor * 0.4) + (urgency_factor * 0.2)
-            
-            logger.debug(f"⏰ Time adjustment: decay={time_decay:.3f}, session={session_factor:.3f}, urgency={urgency_factor:.3f}, final={time_adjustment:.3f}")
-            
-            return max(0.3, min(1.2, time_adjustment))
+            return max(0.1, min(1.2, time_adjustment))
             
         except Exception as e:
             logger.error(f"❌ Time adjustment calculation failed: {e}")
