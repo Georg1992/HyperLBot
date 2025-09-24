@@ -284,28 +284,28 @@ class PsychologicalLevelsCalculator:
             distance_ratio = support_distance / resistance_distance if resistance_distance > 0 else 1.0
             
             # CORRECTED direction determination - FIXED LOGIC
-            if distance_ratio < 0.7:  # Support is significantly closer - price likely to FALL to support = SELL
-                implications["primary_direction"] = "SELL"
+            if distance_ratio < 0.7:  # Support is significantly closer - price likely to BOUNCE OFF support = BUY
+                implications["primary_direction"] = "BUY"
                 implications["confidence"] = min(0.9, support_level["strength"] + 0.2)  # Boost confidence
                 implications["target_levels"].append(support_level["level"])
-                implications["trading_bias"] = "BEARISH"
-            elif distance_ratio > 1.4:  # Resistance is significantly closer - price likely to RISE to resistance = BUY
-                implications["primary_direction"] = "BUY"
+                implications["trading_bias"] = "BULLISH"
+            elif distance_ratio > 1.4:  # Resistance is significantly closer - price likely to BOUNCE OFF resistance = SELL
+                implications["primary_direction"] = "SELL"
                 implications["confidence"] = min(0.9, resistance_level["strength"] + 0.2)  # Boost confidence
                 implications["target_levels"].append(resistance_level["level"])
-                implications["trading_bias"] = "BULLISH"
+                implications["trading_bias"] = "BEARISH"
             else:
                 # Close distances - use level strength to determine bias
                 if support_level["strength"] > resistance_level["strength"]:
-                    implications["primary_direction"] = "SELL"  # Strong support = price likely to fall to it = SELL
+                    implications["primary_direction"] = "BUY"  # Strong support = price likely to bounce off it = BUY
                     implications["confidence"] = support_level["strength"]
                     implications["target_levels"].append(support_level["level"])
-                    implications["trading_bias"] = "BEARISH"
+                    implications["trading_bias"] = "BULLISH"
                 elif resistance_level["strength"] > support_level["strength"]:
-                    implications["primary_direction"] = "BUY"  # Strong resistance = price likely to rise to it = BUY
+                    implications["primary_direction"] = "SELL"  # Strong resistance = price likely to bounce off it = SELL
                     implications["confidence"] = resistance_level["strength"]
                     implications["target_levels"].append(resistance_level["level"])
-                    implications["trading_bias"] = "BULLISH"
+                    implications["trading_bias"] = "BEARISH"
         
         # Add risk levels (levels that could cause reversals)
         for category in ["strong_support", "strong_resistance", "moderate_support", "moderate_resistance"]:
