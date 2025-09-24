@@ -1096,19 +1096,19 @@ class PredictionManager:
         try:
             # PRIORITY 1: Look for reversal points first
             reversal_entry = self._find_reversal_entry_point(direction, current_price, market_data)
-            if reversal_entry:
+            if reversal_entry and self._validate_entry_price(direction, reversal_entry, current_price):
                 logger.info(f"🎯 Using reversal entry point: ${reversal_entry:.2f} for {direction}")
                 return reversal_entry
             
             # PRIORITY 2: Look for support/resistance levels
             sr_entry = self._find_sr_entry_point(direction, current_price, market_data)
-            if sr_entry:
+            if sr_entry and self._validate_entry_price(direction, sr_entry, current_price):
                 logger.info(f"🎯 Using S/R entry point: ${sr_entry:.2f} for {direction}")
                 return sr_entry
             
             # PRIORITY 3: Use psychological levels
             psych_entry = self._find_psychological_entry_point(direction, current_price, market_data)
-            if psych_entry:
+            if psych_entry and self._validate_entry_price(direction, psych_entry, current_price):
                 logger.info(f"🎯 Using psychological entry point: ${psych_entry:.2f} for {direction}")
                 return psych_entry
             
@@ -1259,6 +1259,22 @@ class PredictionManager:
         except Exception as e:
             logger.error(f"❌ Psychological entry point detection failed: {e}")
             return None
+    
+    def _validate_entry_price(self, direction: str, entry_price: float, current_price: float) -> bool:
+        """Validate that entry price makes sense for the direction"""
+        try:
+            if direction == "BUY":
+                # BUY signals should have entry price BELOW current price (buy the dip)
+                return entry_price < current_price
+            elif direction == "SELL":
+                # SELL signals should have entry price ABOVE current price (sell the rally)
+                return entry_price > current_price
+            else:
+                return True  # Unknown direction, allow it
+                
+        except Exception as e:
+            logger.error(f"❌ Entry price validation failed: {e}")
+            return False
     
     def _calculate_win_probability(self, individual_signals: Dict[str, Any], market_data: Dict[str, Any], entry_price: float = None, current_price: float = None) -> float:
         """
@@ -2055,16 +2071,23 @@ class PredictionManager:
             buy_signals = 0
             sell_signals = 0
             neutral_signals = 0
+            strong_signals = 0  # Count strong signals (high confidence)
             
             for signal_name, signal_data in signals.items():
                 if isinstance(signal_data, dict) and "signal" in signal_data:
                     signal_direction = signal_data["signal"]
+                    signal_confidence = signal_data.get("confidence", 0.5)
+                    
                     if signal_direction == "BUY":
                         buy_signals += 1
                     elif signal_direction == "SELL":
                         sell_signals += 1
                     else:
                         neutral_signals += 1
+                    
+                    # Count strong signals (confidence > 0.7)
+                    if signal_confidence > 0.7:
+                        strong_signals += 1
             
             total_signals = buy_signals + sell_signals + neutral_signals
             if total_signals == 0:
@@ -2074,8 +2097,11 @@ class PredictionManager:
             max_direction = max(buy_signals, sell_signals, neutral_signals)
             alignment_ratio = max_direction / total_signals
             
-            # Convert to adjustment factor (0.7 to 1.3)
-            alignment_adjustment = 0.7 + (alignment_ratio * 0.6)
+            # Boost for strong signals
+            strong_signal_boost = 1.0 + (strong_signals * 0.1)  # 10% boost per strong signal
+            
+            # Convert to adjustment factor (0.7 to 1.5) with strong signal boost
+            alignment_adjustment = (0.7 + (alignment_ratio * 0.6)) * strong_signal_boost
             
             return alignment_adjustment
             

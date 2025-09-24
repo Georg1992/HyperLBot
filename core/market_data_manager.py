@@ -522,21 +522,61 @@ class MarketDataManager:
     
     def calculate_volatility(self, candles: List[Dict], periods: int = 6) -> float:
         """Calculate volatility using VolatilityCalculator (SRP - delegate to calculator)"""
-        cache_key = f"volatility_{periods}_{hash(str(candles[-periods:]))}"
-        cached_result = self._get_cached_data(cache_key, self._indicator_cache_duration)
-        
-        if cached_result:
-            return cached_result
-        
+        # NO CACHE for volatility - always calculate fresh to capture real-time movements
         try:
+            # Update current ongoing candle with live price data for accurate volatility
+            updated_candles = self._update_current_candle_with_live_price(candles)
+            
             # Delegate directly to VolatilityCalculator (handles minimum candle requirements internally)
-            result = self.volatility_calculator.calculate_candle_volatility(candles, "5m")
-            self._cache_data(cache_key, result, self._indicator_cache_duration)
+            result = self.volatility_calculator.calculate_candle_volatility(updated_candles, "5m")
             return result
             
         except Exception as e:
             logger.error(f"❌ Volatility calculation failed: {e}")
             return 0.0
+    
+    def _update_current_candle_with_live_price(self, candles: List[Dict]) -> List[Dict]:
+        """Update the current ongoing candle with live price data for accurate volatility calculation"""
+        try:
+            if not candles:
+                return candles
+            
+            # Get current live price from Hyperliquid API
+            try:
+                from core.api.hyperliquid_api import get_hyperliquid_api
+                api = get_hyperliquid_api()
+                current_price = api.get_current_price("BTC")
+                if not current_price or current_price <= 0:
+                    return candles
+            except Exception as e:
+                logger.debug(f"⚠️ Could not get current price: {e}")
+                return candles
+            
+            # Update the last candle (current ongoing candle) with live price
+            updated_candles = candles.copy()
+            current_candle = updated_candles[-1].copy()
+            
+            # Update high if current price is higher
+            if current_price > current_candle.get("high", 0):
+                current_candle["high"] = current_price
+            
+            # Update low if current price is lower
+            if current_price < current_candle.get("low", 0):
+                current_candle["low"] = current_price
+            
+            # Update close to current price
+            current_candle["close"] = current_price
+            
+            # Replace the last candle with updated data
+            updated_candles[-1] = current_candle
+            
+            logger.debug(f"🔄 Updated current candle: high={current_candle['high']:.2f}, low={current_candle['low']:.2f}, close={current_price:.2f}")
+            
+            return updated_candles
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update current candle with live price: {e}")
+            return candles
     
     def calculate_support_resistance(self, candles: List[Dict], lookback: int = 20) -> Dict[str, float]:
         """Calculate support/resistance using SupportResistanceCalculator (SRP - delegate to calculator)"""

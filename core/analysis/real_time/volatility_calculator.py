@@ -25,7 +25,29 @@ class VolatilityCalculator:
             # Use the most recent 8 candles for better volatility detection (captures recent big moves)
             recent_candles = candles[-8:] if len(candles) >= 8 else candles
             
-            # Method 1: Weighted recent candle volatilities (most reactive to current market)
+            # Method 1: Calculate overall price movement across all candles (captures big moves)
+            if len(recent_candles) >= 2:
+                # Calculate total price range across all candles
+                all_highs = [candle["high"] for candle in recent_candles if candle["high"] > 0]
+                all_lows = [candle["low"] for candle in recent_candles if candle["low"] > 0]
+                
+                if all_highs and all_lows:
+                    max_high = max(all_highs)
+                    min_low = min(all_lows)
+                    total_range = max_high - min_low
+                    avg_price = sum(candle["close"] for candle in recent_candles if candle["close"] > 0) / len([c for c in recent_candles if c["close"] > 0])
+                    
+                    if avg_price > 0:
+                        overall_volatility = total_range / avg_price
+                        logger.debug(f"🔍 Overall price movement: ${min_low:.2f} - ${max_high:.2f} = ${total_range:.2f} ({overall_volatility*100:.4f}%)")
+                    else:
+                        overall_volatility = 0.0
+                else:
+                    overall_volatility = 0.0
+            else:
+                overall_volatility = 0.0
+            
+            # Method 2: Weighted recent candle volatilities (most reactive to current market)
             weighted_volatilities = []
             total_weight = 0
             
@@ -53,6 +75,34 @@ class VolatilityCalculator:
                 else:
                     # Fallback to maximum approach
                     primary_volatility = max(weighted_avg_volatility, max_volatility)
+                
+                # COMBINE: Use the HIGHER of overall movement or individual candle analysis
+                primary_volatility = max(primary_volatility, overall_volatility)
+                logger.debug(f"🔍 Combined volatility: {primary_volatility:.6f} ({primary_volatility*100:.4f}%) - overall={overall_volatility:.6f}, individual={primary_volatility:.6f}")
+                
+                # PRIORITY: If overall volatility is significantly higher, use it as the primary measure
+                if overall_volatility > primary_volatility * 1.5:  # Overall is 50% higher
+                    primary_volatility = overall_volatility
+                    logger.debug(f"🔍 Using overall volatility as primary: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
+                    
+                    # If overall volatility is high enough, return it immediately (no need for momentum calculation)
+                    if overall_volatility > 0.003:  # Above HIGH threshold
+                        logger.debug(f"🔍 Overall volatility is HIGH/EXTREME, returning immediately: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
+                        return round(primary_volatility, 6)
+                else:
+                    # Even if not significantly higher, check if overall volatility is high enough
+                    if overall_volatility > 0.003:  # Above HIGH threshold
+                        primary_volatility = overall_volatility
+                        logger.debug(f"🔍 Overall volatility is HIGH/EXTREME, using as primary: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
+                        return round(primary_volatility, 6)
+            else:
+                # Fallback to overall volatility only
+                primary_volatility = overall_volatility
+                
+                # If overall volatility is high enough, return it immediately
+                if overall_volatility > 0.003:  # Above HIGH threshold
+                    logger.debug(f"🔍 Overall volatility is HIGH/EXTREME, returning immediately: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
+                    return round(primary_volatility, 6)
                 
                 logger.debug(f"🔍 Volatility calculation: {len(recent_candles)} candles, weighted_avg={weighted_avg_volatility:.6f} ({weighted_avg_volatility*100:.4f}%), max={max_volatility:.6f} ({max_volatility*100:.4f}%), using={primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
                 
