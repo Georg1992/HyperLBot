@@ -4,11 +4,9 @@ Real-Time Event-Driven Trading Dashboard
 WebSocket-based architecture for instant updates without polling
 """
 
-import os
 import json
 import time
 import threading
-import re
 import socket
 import requests
 from datetime import datetime, timedelta
@@ -85,9 +83,9 @@ class EventDrivenTradingDashboard:
             if result == 0:
                 logger.info(f"⚠️ Port {port} is in use, but dashboard may not be responding")
                 return True
-        except Exception:
+        except Exception as e:
             # Port check failed, assume not running
-            pass
+            logger.debug(f"Port check failed: {e}")
         
         return False
     
@@ -113,8 +111,8 @@ class EventDrivenTradingDashboard:
                 active_connections = health_data.get('active_connections', 0)
                 logger.info(f"📊 Dashboard has {active_connections} active browser connections")
                 return active_connections > 0
-        except requests.exceptions.RequestException:
-            pass
+        except requests.exceptions.RequestException as e:
+            logger.debug(f"Dashboard health check failed: {e}")
         return False
     
     def _setup_websocket_handlers(self):
@@ -217,7 +215,7 @@ class EventDrivenTradingDashboard:
             hash_data = {
                 'price': data.get('market', {}).get('current_price', 0),
                 'rsi': data.get('market', {}).get('rsi', 0),
-                'volume': data.get('market', {}).get('volume_depth', 0),
+                'volume': data.get('market', {}).get('current_volume_btc', 0),
                 'volume_category': data.get('market', {}).get('volume_category', 'UNKNOWN'),
                 'balance': data.get('session', {}).get('current_balance', 0),
                 'trades': data.get('session', {}).get('total_trades', 0),
@@ -275,6 +273,26 @@ class EventDrivenTradingDashboard:
             # Dashboard ONLY displays data - NO calculations
             session_data = rtm_data.get("session", {})
             
+            # Extract candle data from market data or predictions
+            predictions = rtm_data.get("predictions", [])
+            market_data = rtm_data.get("market", {})
+            candle_data = None
+            
+            # First check market data for candle data (new structure)
+            if market_data.get("candleData"):
+                candle_data = market_data.get("candleData")
+            elif predictions:
+                # Fallback: Look for the most recent prediction with candle data
+                for prediction in reversed(predictions):
+                    if prediction.get("candleData"):
+                        candle_data = prediction.get("candleData")
+                        break
+            
+            # Extract AI system status and ML performance from market data
+            market_data_dict = rtm_data.get("market", {})
+            ai_system_status = market_data_dict.get("ai_system_status", {})
+            ml_performance = market_data_dict.get("ml_performance", {})
+            
             # Format data for dashboard - RTM ONLY
             dashboard_data = {
                 "session": {
@@ -289,12 +307,15 @@ class EventDrivenTradingDashboard:
                     "win_rate": session_data.get("win_rate", 0.0),
                     "total_trades": session_data.get("total_trades", 0)
                 },
-                "market": rtm_data.get("market", {}),
+                "market": market_data_dict,
+                "ai_system_status": ai_system_status,  # Add AI system status
+                "ml_performance": ml_performance,  # Add ML performance data
                 "logs": rtm_data.get("logs", []),
-                "predictions": rtm_data.get("predictions", []),
+                "predictions": predictions,
                 "trades": rtm_data.get("trades", []),
                 "orderbook": {"bids": [], "asks": []},
                 "global_volume": {"volume": 0.0},
+                "candleData": candle_data,  # Add candle data to dashboard data
                 "timestamp": rtm_data.get("timestamp", ""),
                 "data_source": "SimpleRTM - Single Source of Truth",
                 "connection_status": "✅ Connected"
