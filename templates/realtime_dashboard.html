@@ -482,10 +482,6 @@
                             <span class="data-value" id="overview-conditions-risk">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Win Probability:</span>
-                            <span class="data-value" id="overview-conditions-confidence">Loading...</span>
-                        </div>
-                        <div class="data-item">
                             <span class="data-label">Fear & Greed:</span>
                             <span class="data-value" id="overview-fear-greed-index">Loading...</span>
                         </div>
@@ -640,7 +636,7 @@
                                         <div id="ml-take-profit" style="font-size: 14px; color: #9C27B0;">$0.00</div>
                                     </div>
                                     <div style="background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.3); border-radius: 8px; padding: 15px;">
-                                        <div style="color: #4CAF50; font-weight: bold; margin-bottom: 5px;">📈 Win Probability</div>
+                                        <div style="color: #4CAF50; font-weight: bold; margin-bottom: 5px;">📈 Confidence</div>
                                         <div id="ml-confidence" style="font-size: 14px; color: #4CAF50;">0%</div>
                                     </div>
                                 </div>
@@ -1336,11 +1332,6 @@
                         overviewRiskElement.style.color = '#ccc';
                     }
                     
-                    // Overview Confidence
-                    const overviewConfidenceElement = document.getElementById('overview-conditions-confidence');
-                    const confidenceValue = conditions.confidence || 0;
-                    const confidencePercent = confidenceValue <= 1 ? confidenceValue * 100 : confidenceValue;
-                    overviewConfidenceElement.textContent = `${confidencePercent.toFixed(0)}%`;
                     
                     // UPDATE FEAR & GREED DATA
                     if (conditions.sentiment_data) {
@@ -1458,7 +1449,6 @@
                     document.getElementById('overview-conditions-status').textContent = 'N/A';
                     document.getElementById('overview-conditions-condition').textContent = 'N/A';
                     document.getElementById('overview-conditions-risk').textContent = 'N/A';
-                    document.getElementById('overview-conditions-confidence').textContent = 'N/A';
                     document.getElementById('overview-fear-greed-index').textContent = 'N/A';
                     document.getElementById('overview-sentiment-zone').textContent = 'N/A';
                     document.getElementById('overview-whale-activity').textContent = 'N/A';
