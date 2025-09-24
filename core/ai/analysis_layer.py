@@ -558,15 +558,62 @@ class AnalysisLayer:
         try:
             from core.ml.prediction_manager import global_prediction_manager
             
-            # Use the prediction manager's confidence update method
-            updated_confidence = global_prediction_manager.update_prediction_confidence(
-                prediction, current_price, market_data
-            )
-            
-            # Update the prediction with new confidence
-            if updated_confidence is not None:
-                prediction["confidence"] = updated_confidence
-                logger.debug(f"🔄 Updated prediction confidence: {updated_confidence:.3f}")
+            # Convert prediction dict to TradingPrediction object if needed
+            if isinstance(prediction, dict):
+                # Create a temporary TradingPrediction object for the update
+                from core.ml.prediction_manager import TradingPrediction
+                
+                # Extract values safely
+                prediction_id = prediction.get("prediction_id", "temp")
+                direction = prediction.get("direction", "NEUTRAL")
+                entry_price = prediction.get("entry_price", current_price)
+                target_price = prediction.get("target_price", current_price * 1.01)
+                stop_loss = prediction.get("stop_loss", current_price * 0.99)
+                size_btc = prediction.get("size_btc", 0.01)
+                leverage = prediction.get("leverage", 5.0)
+                base_confidence = prediction.get("base_confidence", 0.5)
+                signal_multiplier = prediction.get("signal_multiplier", 1.0)
+                market_multiplier = prediction.get("market_multiplier", 1.0)
+                final_confidence = prediction.get("final_confidence", 0.5)
+                entry_reasoning = prediction.get("entry_reasoning", "Updated")
+                entry_strength = prediction.get("entry_strength", 0.5)
+                strategy = prediction.get("strategy", "standard")
+                timestamp = prediction.get("timestamp", time.time())
+                
+                # Create TradingPrediction object
+                trading_prediction = TradingPrediction(
+                    prediction_id=prediction_id,
+                    direction=direction,
+                    entry_price=entry_price,
+                    target_price=target_price,
+                    stop_loss=stop_loss,
+                    size_btc=size_btc,
+                    leverage=leverage,
+                    base_confidence=base_confidence,
+                    signal_multiplier=signal_multiplier,
+                    market_multiplier=market_multiplier,
+                    final_confidence=final_confidence,
+                    entry_reasoning=entry_reasoning,
+                    entry_strength=entry_strength,
+                    strategy=strategy,
+                    timestamp=timestamp
+                )
+                
+                # Use the prediction manager's confidence update method
+                updated_result = global_prediction_manager.update_prediction_confidence(
+                    current_price, market_data, {}
+                )
+                
+                # Update the prediction with new confidence
+                if updated_result and isinstance(updated_result, dict):
+                    new_confidence = updated_result.get("confidence", final_confidence)
+                    prediction["confidence"] = new_confidence
+                    prediction["final_confidence"] = new_confidence
+                    logger.debug(f"🔄 Updated prediction confidence: {new_confidence:.3f}")
+                else:
+                    logger.debug("🔄 No confidence update available")
+            else:
+                logger.warning(f"⚠️ Prediction is not a dictionary: {type(prediction)}")
             
         except Exception as e:
             logger.error(f"❌ Failed to update prediction confidence: {e}")

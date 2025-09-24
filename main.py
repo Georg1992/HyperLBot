@@ -260,7 +260,7 @@ def run_paper_trading():
                 initial_balance = new_balance
             
             print(f"\nConfiguration:")
-            print(f"💰 Balance: ${initial_balance:.2f} (simulated)")
+            print(f"Balance: ${initial_balance:.2f} (simulated)")
             
             # Start dashboard
             if start_dashboard():

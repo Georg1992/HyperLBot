@@ -419,7 +419,7 @@ class RSSNewsAPI:
                 }
         
         return {
-            'signal': 'HOLD',
+            'signal': 'NEUTRAL',
             'strength': 'weak',
             'reasoning': f'Neutral news sentiment ({confidence:.1%} confidence)'
         }
@@ -440,7 +440,7 @@ class RSSNewsAPI:
                 'article_count': 0
             },
             'trading_signal': {
-                'signal': 'HOLD',
+                'signal': 'NEUTRAL',
                 'strength': 'weak',
                 'reasoning': 'No recent news available'
             },
@@ -464,7 +464,7 @@ class RSSNewsAPI:
                 'article_count': 0
             },
             'trading_signal': {
-                'signal': 'HOLD',
+                'signal': 'NEUTRAL',
                 'strength': 'weak',
                 'reasoning': 'News analysis temporarily unavailable'
             },

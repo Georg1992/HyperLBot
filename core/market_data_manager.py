@@ -499,7 +499,7 @@ class MarketDataManager:
                 "bearish_patterns": 0,
                 "neutral_patterns": 0,
                 "overall_confidence": 0.0,
-                "recommendation": "HOLD"
+                "recommendation": "NEUTRAL"
             },
             "pattern_count": 0,
             "timestamp": time.time(),

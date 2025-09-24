@@ -214,7 +214,7 @@ class FearGreedAPI:
         elif index_value <= 45:
             return "CAUTIOUS_BUY"
         elif index_value <= 55:
-            return "HOLD"
+            return "NEUTRAL"
         elif index_value <= 65:
             return "CAUTIOUS_SELL"
         elif index_value <= 75:
@@ -252,7 +252,7 @@ class FearGreedAPI:
             "confidence_boost": 0.0,
             "risk_level": "LOW",
             "reversal_probability": 0.30,
-            "recommended_action": "HOLD",
+            "recommended_action": "NEUTRAL",
             "extreme_condition": False,
             "buy_signal_strength": "WEAK",
             "sell_signal_strength": "WEAK",

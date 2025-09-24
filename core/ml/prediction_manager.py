@@ -44,6 +44,30 @@ class TradingPrediction:
     timestamp: float
     is_active: bool = True
     is_discarded: bool = False
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert TradingPrediction to dictionary"""
+        return {
+            "prediction_id": self.prediction_id,
+            "direction": self.direction,
+            "entry_price": self.entry_price,
+            "target_price": self.target_price,
+            "stop_loss": self.stop_loss,
+            "size_btc": self.size_btc,
+            "leverage": self.leverage,
+            "base_confidence": self.base_confidence,
+            "signal_multiplier": self.signal_multiplier,
+            "market_multiplier": self.market_multiplier,
+            "final_confidence": self.final_confidence,
+            "confidence": self.final_confidence,  # Add confidence field for dashboard compatibility
+            "entry_reasoning": self.entry_reasoning,
+            "entry_strength": self.entry_strength,
+            "reasoning": self.entry_reasoning,  # Add reasoning field for dashboard compatibility
+            "strategy": self.strategy,
+            "timestamp": self.timestamp,
+            "is_active": self.is_active,
+            "is_discarded": self.is_discarded
+        }
 
 class PredictionManager:
     """
@@ -85,15 +109,18 @@ class PredictionManager:
             
             # 1. CALCULATE BASE CONFIDENCE (Probability Theory + Global Market Conditions)
             base_confidence = self._calculate_base_confidence(market_data, global_conditions)
-            if base_confidence < 0.3:  # Too low base confidence
-                logger.debug(f"📊 Base confidence too low: {base_confidence:.3f}")
-                return None
+            # Always generate prediction, even with low confidence
+            if base_confidence < 0.3:
+                logger.debug(f"📊 Low base confidence: {base_confidence:.3f} - will use forced direction if needed")
             
             # 2. DETERMINE DIRECTION
             direction = self._determine_direction(market_data, global_conditions)
+            forced_direction = False
             if direction not in ["BUY", "SELL"]:
-                logger.debug("📊 No clear direction determined")
-                return None
+                # Force a direction based on available signals with low confidence
+                direction = self._force_direction_from_signals(market_data, global_conditions)
+                forced_direction = True
+                logger.debug(f"📊 Forced direction: {direction} (low confidence)")
             
             # 3. CALCULATE ADVANCED ENTRY PRICE
             entry_price, entry_reasoning, entry_strength = self._calculate_entry_price(
@@ -121,6 +148,12 @@ class PredictionManager:
             
             # 8. CALCULATE FINAL CONFIDENCE
             final_confidence = base_confidence * signal_multiplier * market_multiplier
+            
+            # If this was a forced direction, reduce confidence significantly
+            if forced_direction:
+                final_confidence *= 0.3  # Reduce confidence to 30% of calculated value
+                logger.debug(f"📊 Forced direction confidence reduced: {final_confidence:.3f}")
+            
             final_confidence = min(1.0, max(0.0, final_confidence))
             
             # 9. CREATE PREDICTION
@@ -505,19 +538,56 @@ class PredictionManager:
             return None, f"Error: {str(e)}", 0.0
     
     def _calculate_fallback_entry(self, direction: str, current_price: float, market_data: Dict[str, Any]) -> Tuple[Optional[float], str]:
-        """Calculate fallback entry price based on volatility"""
+        """Calculate fallback entry price based on volatility and market conditions"""
         try:
             volatility = market_data.get("volatility_5m", 0.001)
+            rsi = market_data.get("rsi_5m", 50)
+            trend = market_data.get("trend_5m", "NEUTRAL")
+            volume = market_data.get("volume_5m", 0)
+            
+            # Build comprehensive reasoning
+            reasoning_parts = []
+            
+            # Volatility analysis
+            if volatility < 0.001:
+                reasoning_parts.append("Low volatility market")
+            elif volatility > 0.01:
+                reasoning_parts.append("High volatility market")
+            else:
+                reasoning_parts.append("Moderate volatility market")
+            
+            # RSI analysis
+            if rsi < 30:
+                reasoning_parts.append("Oversold conditions (RSI<30)")
+            elif rsi > 70:
+                reasoning_parts.append("Overbought conditions (RSI>70)")
+            elif 40 <= rsi <= 60:
+                reasoning_parts.append("Neutral RSI conditions")
+            
+            # Trend analysis
+            if trend == "UP":
+                reasoning_parts.append("Uptrend detected")
+            elif trend == "DOWN":
+                reasoning_parts.append("Downtrend detected")
+            else:
+                reasoning_parts.append("Sideways market")
+            
+            # Volume analysis
+            if volume > 0:
+                reasoning_parts.append(f"Volume: {volume:.0f}")
+            
+            # Combine reasoning
+            comprehensive_reasoning = " | ".join(reasoning_parts)
             
             if direction == "BUY":
                 entry_price = current_price * (1 - volatility * 0.5)
                 if self._validate_entry_price(direction, entry_price, current_price):
-                    return entry_price, f"Volatility-based entry (vol: {volatility:.4f})"
+                    return entry_price, f"Comprehensive analysis: {comprehensive_reasoning}"
             
             elif direction == "SELL":
                 entry_price = current_price * (1 + volatility * 0.5)
                 if self._validate_entry_price(direction, entry_price, current_price):
-                    return entry_price, f"Volatility-based entry (vol: {volatility:.4f})"
+                    return entry_price, f"Comprehensive analysis: {comprehensive_reasoning}"
             
             return None, "No fallback entry possible"
             
@@ -592,6 +662,31 @@ class PredictionManager:
             logger.error(f"❌ Direction determination failed: {e}")
             return "NEUTRAL"
     
+    def _force_direction_from_signals(self, market_data: Dict[str, Any], global_conditions: Dict[str, Any]) -> str:
+        """Force a direction when no clear signal is available - use weak signals with low confidence"""
+        try:
+            # Get basic market indicators
+            rsi = market_data.get("rsi", 50)
+            trend = market_data.get("trend_5m", "NEUTRAL")
+            volatility = market_data.get("volatility_5m", 0.001)
+            
+            # Simple fallback logic
+            if rsi < 40:  # Oversold
+                return "BUY"
+            elif rsi > 60:  # Overbought
+                return "SELL"
+            elif trend == "UP":
+                return "BUY"
+            elif trend == "DOWN":
+                return "SELL"
+            else:
+                # Default to BUY with very low confidence
+                return "BUY"
+                
+        except Exception as e:
+            logger.error(f"❌ Force direction failed: {e}")
+            return "BUY"  # Default fallback
+    
     def _calculate_target_and_stop_loss(self, direction: str, entry_price: float, 
                                       current_price: float, market_data: Dict[str, Any]) -> Tuple[float, float]:
         """Calculate target price and stop loss"""
@@ -660,16 +755,22 @@ class PredictionManager:
             
             # RSI multiplier
             rsi = market_data.get("rsi", 50.0)
-            if rsi < 25 or rsi > 75:
-                multiplier *= 1.2
-            elif rsi < 35 or rsi > 65:
-                multiplier *= 1.1
-            elif 45 <= rsi <= 55:
-                multiplier *= 0.9
+            if isinstance(rsi, (int, float)):
+                if rsi < 25 or rsi > 75:
+                    multiplier *= 1.2
+                elif rsi < 35 or rsi > 65:
+                    multiplier *= 1.1
+                elif 45 <= rsi <= 55:
+                    multiplier *= 0.9
             
-            # Volume multiplier
+            # Volume multiplier - handle both dict and direct values
             volume_data = market_data.get("volume_data", {})
-            volume_category = volume_data.get("volume_category", "NORMAL")
+            if isinstance(volume_data, dict):
+                volume_category = volume_data.get("volume_category", "NORMAL")
+            else:
+                # If volume_data is not a dict, treat it as a direct value
+                volume_category = "NORMAL"
+            
             if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
                 multiplier *= 1.1
             elif volume_category in ["LOW", "VERY_LOW"]:
@@ -677,19 +778,21 @@ class PredictionManager:
             
             # Volatility multiplier
             volatility = market_data.get("volatility_5m", 0.0)
-            if 0.0005 <= volatility <= 0.002:
-                multiplier *= 1.1
-            elif volatility > 0.005:
-                multiplier *= 0.8
-            elif volatility < 0.0001:
-                multiplier *= 0.9
+            if isinstance(volatility, (int, float)):
+                if 0.0005 <= volatility <= 0.002:
+                    multiplier *= 1.1
+                elif volatility > 0.005:
+                    multiplier *= 0.8
+                elif volatility < 0.0001:
+                    multiplier *= 0.9
             
             # Trend multiplier
             trend = market_data.get("trend", "NEUTRAL")
-            if trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
-                multiplier *= 1.1
-            elif trend == "SIDEWAYS":
-                multiplier *= 0.9
+            if isinstance(trend, str):
+                if trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
+                    multiplier *= 1.1
+                elif trend == "SIDEWAYS":
+                    multiplier *= 0.9
             
             return min(1.5, max(0.5, multiplier))
             

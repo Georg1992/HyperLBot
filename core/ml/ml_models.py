@@ -316,13 +316,13 @@ class MLModelManager:
                 confidence = sell_confidence
                 reasoning = f"Strong sell signal (confidence: {sell_confidence:.3f})"
             else:
-                signal = "HOLD"
+                signal = "NEUTRAL"
                 confidence = max(buy_confidence, sell_confidence)
                 reasoning = f"Uncertain signals (buy: {buy_confidence:.3f}, sell: {sell_confidence:.3f})"
             
-            # Apply overall confidence threshold
+            # Apply overall confidence threshold - let confidence system handle low confidence
             if overall_confidence < 0.5:
-                signal = "HOLD"
+                signal = "NEUTRAL"
                 reasoning += f" - Low overall confidence ({overall_confidence:.3f})"
             
             # Calculate complete trading parameters
@@ -349,7 +349,7 @@ class MLModelManager:
         except Exception as e:
             logger.error(f"❌ Trading signal prediction failed: {e}")
             return {
-                "signal": "HOLD",
+                "signal": "NEUTRAL",
                 "entry_price": current_price,
                 "size_btc": 0.0,
                 "size_usd": 0.0,
@@ -417,7 +417,7 @@ class MLModelManager:
         except Exception as e:
             logger.error(f"❌ Fallback trading prediction failed: {e}")
             return {
-                "signal": "HOLD",
+                "signal": "NEUTRAL",
                 "entry_price": current_price,
                 "size_btc": 0.0,
                 "size_usd": 0.0,

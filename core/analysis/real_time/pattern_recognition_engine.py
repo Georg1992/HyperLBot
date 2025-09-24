@@ -1052,12 +1052,12 @@ class PatternRecognitionEngine:
             
         except Exception as e:
             logger.error(f"❌ Market setup determination failed: {e}")
-            return {"setup": "UNKNOWN", "strength": "WEAK", "recommendation": "HOLD"}
+            return {"setup": "UNKNOWN", "strength": "WEAK", "recommendation": "NEUTRAL"}
     
     def _get_trading_recommendation(self, setup: str, strength: str, confidence: float) -> str:
         """Get trading recommendation based on setup"""
         if confidence < 0.4:
-            return "HOLD"
+            return "NEUTRAL"
         
         if setup == "BULLISH_SETUP":
             if strength == "STRONG" and confidence > 0.7:
@@ -1074,5 +1074,5 @@ class PatternRecognitionEngine:
             else:
                 return "WEAK_SELL"
         else:
-            return "HOLD"
+            return "NEUTRAL"
     

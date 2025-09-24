@@ -361,12 +361,11 @@ class SessionOrchestrator:
     
     def _main_trading_loop(self, check_interval: int, hyperliquid_api,
                           market_data_service, trading_engine, dashboard_service, strategy_manager=None) -> Dict[str, Any]:
-        """Main monitoring loop - simplified for candle data display"""
+        """Main trading loop with AI analysis and trading logic"""
         initial_analysis_generated = False
         
-        logger.info(f"🔄 Starting continuous monitoring loop (interval: {check_interval}s)")
+        logger.info(f"🔄 Starting AI trading loop (interval: {check_interval}s)")
         
-        # Continuous loop - no trading logic to interfere
         while True:
             try:
                 # Update session time
@@ -400,7 +399,7 @@ class SessionOrchestrator:
                     optimal_strategy = strategy_manager.detect_optimal_strategy(market_data)
                     current_strategy = optimal_strategy
                 
-                # Update dashboard with current market data (CRITICAL for candle display)
+                # Update dashboard with current market data
                 self._update_dashboard_market_data(hyperliquid_price, yahoo_analysis, market_data_service, dashboard_service, current_strategy)
                 
                 # Generate initial market analysis AFTER strategy is determined (only once)
@@ -408,12 +407,63 @@ class SessionOrchestrator:
                     self._generate_initial_market_analysis(market_data_service, dashboard_service, current_strategy)
                     initial_analysis_generated = True
                 
+                # 🧠 AI ANALYSIS AND TRADING - THE MISSING PIECE!
+                if self.ai_system:
+                    try:
+                        logger.info(f"🤖 AI system available, calling analyze_and_trade...")
+                        
+                        # Ensure AI system is initialized (only once per session)
+                        if not hasattr(self, '_ai_system_initialized') or not self._ai_system_initialized:
+                            logger.info("🔧 Initializing AI system (first time)...")
+                            readiness = self.ai_system.initialize_system(yahoo_analysis)
+                            if not readiness.is_ready:
+                                logger.warning(f"⚠️ AI system initialization failed: {len(readiness.errors)} errors")
+                                continue
+                            else:
+                                logger.success("✅ AI system initialized successfully")
+                                self._ai_system_initialized = True
+                        
+                        # Prepare comprehensive market data for AI analysis
+                        ai_market_data = yahoo_analysis.copy()
+                        ai_market_data.update({
+                            "current_price": hyperliquid_price,
+                            "timestamp": time.time(),
+                            "strategy": current_strategy
+                        })
+                        
+                        # Call AI system for analysis and trading decisions
+                        ai_results = self.ai_system.analyze_and_trade(hyperliquid_price, ai_market_data)
+                        logger.info(f"🤖 AI analysis completed, results: {ai_results is not None}")
+                        
+                        # Log AI analysis results
+                        if ai_results and "analysis" in ai_results:
+                            analysis = ai_results["analysis"]
+                            if analysis.get("prediction"):
+                                pred = analysis["prediction"]
+                                logger.info(f"🎯 AI Prediction: {pred.get('direction', 'N/A')} "
+                                          f"(confidence: {pred.get('confidence', 0.0):.2f})")
+                            if analysis.get("reasoning"):
+                                logger.debug(f"🧠 AI Reasoning: {analysis['reasoning']}")
+                        
+                        # Log execution results
+                        if ai_results and "execution" in ai_results:
+                            execution = ai_results["execution"]
+                            if execution.get("trades_executed", 0) > 0:
+                                logger.success(f"⚡ AI executed {execution['trades_executed']} trades")
+                            if execution.get("predictions_discarded", 0) > 0:
+                                logger.warning(f"🗑️ AI discarded {execution['predictions_discarded']} predictions")
+                                
+                    except Exception as e:
+                        logger.error(f"❌ AI analysis failed: {e}")
+                else:
+                    logger.warning(f"⚠️ AI system not available (ai_system={self.ai_system}) - running in monitoring mode only")
+                
                 # Update heartbeat with current strategy
                 dashboard_service.update_heartbeat(self.session_manager, current_strategy, self.initial_balance)
                 
                 # Simple monitoring log
                 dashboard_service.update_rtm_activity(
-                    f"📊 Monitoring: ${hyperliquid_price:.2f}, RSI: {yahoo_analysis.get('rsi_5m', 50.0):.1f}, Strategy: {current_strategy}", 
+                    f"📊 Trading: ${hyperliquid_price:.2f}, RSI: {yahoo_analysis.get('rsi_5m', 50.0):.1f}, Strategy: {current_strategy}", 
                     "INFO"
                 )
                 
@@ -421,10 +471,10 @@ class SessionOrchestrator:
                 time.sleep(check_interval)
                 
             except KeyboardInterrupt:
-                logger.info("🛑 Keyboard interrupt - stopping monitoring loop")
+                logger.info("🛑 Keyboard interrupt - stopping trading loop")
                 break
             except Exception as e:
-                logger.error(f"❌ Monitoring loop error: {e}")
+                logger.error(f"❌ Trading loop error: {e}")
                 time.sleep(check_interval)
         
         # End session only on keyboard interrupt
@@ -601,7 +651,7 @@ class SessionOrchestrator:
                             elif ai_prediction:
                                 # Use regular prediction data (now includes current prediction even if discarded)
                                 current_prediction = {
-                                    "direction": ai_prediction.get("direction", "HOLD"),
+                                    "direction": ai_prediction.get("direction", "NEUTRAL"),
                                     "confidence": ai_prediction.get("confidence", 0.0),
                                     "strategy": ai_prediction.get("strategy", analysis.get("strategy", "unknown")),
                                     "reasoning": ai_prediction.get("reasoning", "AI prediction"),
@@ -613,9 +663,9 @@ class SessionOrchestrator:
                                     "is_discarded": ai_prediction.get("is_discarded", False)
                                 }
                             else:
-                                # Fallback to analysis data
+                                # Fallback to analysis data - let confidence system handle
                                 current_prediction = {
-                                    "direction": "HOLD",
+                                    "direction": "NEUTRAL",
                                     "confidence": analysis.get("analysis_confidence", 0.3),
                                     "strategy": analysis.get("strategy", "unknown"),
                                     "reasoning": analysis.get("reasoning", "AI analysis - no trade"),
@@ -1197,12 +1247,14 @@ class SessionOrchestrator:
             logger.info(f"   📊 Final relevant levels: {len(relevant_levels)}")
             
             if support_levels:
-                logger.info(f"   📊 Support levels: {[(s['level'], f'score:{s.get('score', 0):.1f}', s['timeframe']) for s in support_levels[:3]]}")
+                support_info = [(s['level'], f'score:{s.get("score", 0):.1f}', s['timeframe']) for s in support_levels[:3]]
+                logger.info(f"   📊 Support levels: {support_info}")
             else:
                 logger.warning(f"   ⚠️ No support levels found! Current price: ${current_price:.2f}")
             
             if resistance_levels:
-                logger.info(f"   📊 Resistance levels: {[(r['level'], f'score:{r.get('score', 0):.1f}', r['timeframe']) for r in resistance_levels[:3]]}")
+                resistance_info = [(r['level'], f'score:{r.get("score", 0):.1f}', r['timeframe']) for r in resistance_levels[:3]]
+                logger.info(f"   📊 Resistance levels: {resistance_info}")
             else:
                 logger.warning(f"   ⚠️ No resistance levels found! Current price: ${current_price:.2f}")
             

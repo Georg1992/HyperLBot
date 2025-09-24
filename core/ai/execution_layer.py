@@ -85,7 +85,7 @@ class ExecutionLayer:
         self.trade_history: List[Trade] = []
         
         # Trading control
-        self.trading_enabled = False  # DISABLED by default - requires explicit enable
+        self.trading_enabled = True  # ENABLED for paper trading mode
         
         # Strategy-specific execution thresholds (minimum confidence to execute)
         # AI generates predictions with REAL probability to win
@@ -316,6 +316,11 @@ class ExecutionLayer:
                            market_data: Dict[str, Any]) -> bool:
         """Validate prediction before execution"""
         try:
+            # Ensure prediction is a dictionary
+            if not isinstance(prediction, dict):
+                logger.warning(f"⚠️ Prediction is not a dictionary: {type(prediction)}")
+                return False
+            
             # Check if prediction has required fields
             required_fields = ["direction", "entry_price", "size_btc", "stop_loss", "target_price"]
             for field in required_fields:
@@ -325,7 +330,7 @@ class ExecutionLayer:
             
             # Check if entry price is reasonable
             entry_price = prediction["entry_price"]
-            if entry_price <= 0 or abs(entry_price - current_price) / current_price > 0.05:  # 5% max deviation
+            if not isinstance(entry_price, (int, float)) or entry_price <= 0 or abs(entry_price - current_price) / current_price > 0.05:  # 5% max deviation
                 logger.warning(f"⚠️ Entry price unreasonable: ${entry_price:.2f} vs current ${current_price:.2f}")
                 return False
             
@@ -333,6 +338,11 @@ class ExecutionLayer:
             stop_loss = prediction["stop_loss"]
             target_price = prediction["target_price"]
             direction = prediction["direction"]
+            
+            # Ensure stop_loss and target_price are numbers
+            if not isinstance(stop_loss, (int, float)) or not isinstance(target_price, (int, float)):
+                logger.warning(f"⚠️ Stop loss or target price is not a number: stop={type(stop_loss)}, target={type(target_price)}")
+                return False
             
             if direction == "BUY":
                 if stop_loss >= entry_price or target_price <= entry_price:
@@ -345,6 +355,10 @@ class ExecutionLayer:
             
             # Check strategy-specific confidence threshold
             confidence = prediction.get("confidence", 0.0)
+            if not isinstance(confidence, (int, float)):
+                logger.warning(f"⚠️ Confidence is not a number: {type(confidence)}")
+                return False
+            
             strategy = prediction.get("strategy", "default")
             strategy_threshold = self.get_strategy_execution_threshold(strategy)
             
@@ -708,9 +722,24 @@ class ExecutionLayer:
                                 market_data: Dict[str, Any]) -> bool:
         """Determine if a prediction should be monitored instead of executed immediately"""
         try:
+            # Ensure prediction is a dictionary and extract values safely
+            if not isinstance(prediction, dict):
+                logger.warning(f"⚠️ Prediction is not a dictionary: {type(prediction)}")
+                return False
+            
             confidence = prediction.get("confidence", 0.0)
             entry_price = prediction.get("entry_price", 0)
-            direction = prediction.get("direction", "HOLD")
+            direction = prediction.get("direction", "NEUTRAL")
+            
+            # Ensure confidence is a number
+            if not isinstance(confidence, (int, float)):
+                logger.warning(f"⚠️ Confidence is not a number: {type(confidence)}")
+                return False
+            
+            # Ensure entry_price is a number
+            if not isinstance(entry_price, (int, float)):
+                logger.warning(f"⚠️ Entry price is not a number: {type(entry_price)}")
+                return False
             
             # Don't monitor if confidence is too low (below 20%)
             if confidence < 0.2:
@@ -763,7 +792,7 @@ class ExecutionLayer:
             
             prediction = self.monitored_predictions[prediction_id]
             entry_price = prediction.get("entry_price", 0)
-            direction = prediction.get("direction", "HOLD")
+            direction = prediction.get("direction", "NEUTRAL")
             initial_confidence = prediction.get("initial_confidence", 0.0)
             
             # Calculate price movement toward entry
@@ -795,7 +824,7 @@ class ExecutionLayer:
         try:
             initial_confidence = prediction.get("initial_confidence", 0.0)
             entry_price = prediction.get("entry_price", 0)
-            direction = prediction.get("direction", "HOLD")
+            direction = prediction.get("direction", "NEUTRAL")
             
             # Base confidence boost for moving toward entry price
             if price_movement > 0:  # Moving toward entry
@@ -804,9 +833,30 @@ class ExecutionLayer:
                 confidence_penalty = min(abs(price_movement) * 1.5, 0.3)  # Max 30% penalty
                 confidence_boost = -confidence_penalty
             
-            # Time decay - reduce confidence over time
+            # Time decay - reduce confidence over time with initial period
             monitoring_time = time.time() - prediction.get("monitoring_start_time", time.time())
-            time_decay = min(monitoring_time / 300, 0.1)  # Max 10% decay over 5 minutes
+            
+            # Strategy-specific initial periods (no decay during this time)
+            initial_periods = {
+                "scalping": 60,      # 1 minute initial period
+                "standard": 300,      # 5 minutes initial period  
+                "trend": 180,         # 3 minutes initial period
+                "high_vol": 120,      # 2 minutes initial period
+                "liquidation_hunting": 600,  # 10 minutes initial period
+                "default": 300        # 5 minutes default
+            }
+            
+            strategy = prediction.get("strategy", "default")
+            initial_period = initial_periods.get(strategy, 300)  # Default 5 minutes
+            
+            # No decay during initial period
+            if monitoring_time <= initial_period:
+                time_decay = 0.0
+            else:
+                # Decay starts after initial period
+                decay_time = monitoring_time - initial_period
+                max_decay_time = 300  # 5 minutes of decay period
+                time_decay = min(decay_time / max_decay_time, 0.1)  # Max 10% decay over 5 minutes
             
             # Calculate new confidence
             new_confidence = initial_confidence + confidence_boost - time_decay
