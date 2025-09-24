@@ -1336,9 +1336,9 @@ class PredictionManager:
                     min_distance = distance
             
             if closest_level:
-                # Use the level's score (0-10) converted to 0.1-1.0
-                level_score = closest_level.get("score", 5.0)
-                return max(0.1, min(1.0, level_score / 10.0))
+                # Use the level's score (0-100) converted to 0.1-1.0
+                level_score = closest_level.get("score", 50.0)
+                return max(0.1, min(1.0, level_score / 100.0))
             else:
                 # No matching level found - use default
                 return 0.5

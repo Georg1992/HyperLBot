@@ -41,10 +41,13 @@ class SupportResistanceCalculator:
                         # Check volume confirmation (temporarily disabled for debugging)
                         volume_confirmed = True  # self._check_volume_confirmation(candles, low, "support")
                         if volume_confirmed:
+                            # Calculate comprehensive score (0-100)
+                            score = self._calculate_level_score(candles, low, "support", touches, i)
+                            
                             support_levels.append({
                                 "level": low,
                                 "type": "support",
-                                "score": min(touches * 2.0, 10.0),  # Realistic scoring: max 10.0
+                                "score": score,
                                 "touches": touches,
                                 "index": i
                             })
@@ -59,10 +62,13 @@ class SupportResistanceCalculator:
                         # Check volume confirmation (temporarily disabled for debugging)
                         volume_confirmed = True  # self._check_volume_confirmation(candles, high, "resistance")
                         if volume_confirmed:
+                            # Calculate comprehensive score (0-100)
+                            score = self._calculate_level_score(candles, high, "resistance", touches, i)
+                            
                             resistance_levels.append({
                                 "level": high,
                                 "type": "resistance",
-                                "score": min(touches * 2.0, 10.0),  # Realistic scoring: max 10.0
+                                "score": score,
                                 "touches": touches,
                                 "index": i
                             })
@@ -236,3 +242,238 @@ class SupportResistanceCalculator:
                     })
         
         return psychological_levels
+    
+    def _calculate_level_score(self, candles: List[Dict], level_price: float, level_type: str, touches: int, index: int) -> float:
+        """
+        Calculate comprehensive level score (0-100) based on multiple factors:
+        1. Number of touches (20 points max)
+        2. Volume confirmation (20 points max)
+        3. Time span (15 points max)
+        4. Recent activity (15 points max)
+        5. Price consistency (10 points max)
+        6. Volume consistency (10 points max)
+        7. Proximity to current price (10 points max)
+        """
+        try:
+            total_score = 0.0
+            
+            # 1. Touch count factor (20 points max)
+            touch_score = min(20.0, touches * 4.0)  # 4 points per touch, max 20
+            total_score += touch_score
+            
+            # 2. Volume confirmation (20 points max)
+            volume_score = self._calculate_volume_score(candles, level_price, level_type, index)
+            total_score += volume_score
+            
+            # 3. Time span factor (15 points max)
+            time_span_score = self._calculate_time_span_score(candles, index)
+            total_score += time_span_score
+            
+            # 4. Recent activity (15 points max)
+            recent_activity_score = self._calculate_recent_activity_score(candles, level_price, level_type, index)
+            total_score += recent_activity_score
+            
+            # 5. Price consistency (10 points max)
+            price_consistency_score = self._calculate_price_consistency_score(candles, level_price, level_type, index)
+            total_score += price_consistency_score
+            
+            # 6. Volume consistency (10 points max)
+            volume_consistency_score = self._calculate_volume_consistency_score(candles, level_price, level_type, index)
+            total_score += volume_consistency_score
+            
+            # 7. Proximity to current price (10 points max)
+            current_price = candles[-1].get("close", 0)
+            proximity_score = self._calculate_proximity_score(level_price, current_price)
+            total_score += proximity_score
+            
+            # Ensure score is between 0 and 100
+            final_score = max(0.0, min(100.0, total_score))
+            
+            logger.debug(f"📊 Level score calculation: {level_type} at ${level_price:.2f} = {final_score:.1f} "
+                        f"(touches={touch_score:.1f}, volume={volume_score:.1f}, time={time_span_score:.1f}, "
+                        f"recent={recent_activity_score:.1f}, price_consistency={price_consistency_score:.1f}, "
+                        f"vol_consistency={volume_consistency_score:.1f}, proximity={proximity_score:.1f})")
+            
+            return final_score
+            
+        except Exception as e:
+            logger.error(f"❌ Level score calculation failed: {e}")
+            return 10.0  # Default fallback score
+    
+    def _calculate_volume_score(self, candles: List[Dict], level_price: float, level_type: str, index: int) -> float:
+        """Calculate volume confirmation score (0-20 points)"""
+        try:
+            # Find candles that touched this level
+            touching_candles = []
+            for i, candle in enumerate(candles):
+                if self._candle_touched_level(candle, level_price, level_type):
+                    touching_candles.append(candle)
+            
+            if not touching_candles:
+                return 0.0
+            
+            # Calculate average volume at touches
+            total_volume = sum(candle.get("volume", 0) for candle in touching_candles)
+            avg_volume = total_volume / len(touching_candles)
+            
+            # Calculate average volume for all candles
+            all_volumes = [candle.get("volume", 0) for candle in candles if candle.get("volume", 0) > 0]
+            if not all_volumes:
+                return 5.0  # Default if no volume data
+            
+            overall_avg_volume = sum(all_volumes) / len(all_volumes)
+            
+            # Volume ratio (higher = better confirmation)
+            volume_ratio = avg_volume / overall_avg_volume if overall_avg_volume > 0 else 1.0
+            
+            # Score based on volume ratio
+            if volume_ratio > 2.0:
+                return 20.0  # Excellent volume confirmation
+            elif volume_ratio > 1.5:
+                return 15.0  # Good volume confirmation
+            elif volume_ratio > 1.0:
+                return 10.0  # Average volume confirmation
+            else:
+                return 5.0   # Below average volume
+            
+        except Exception as e:
+            logger.error(f"❌ Volume score calculation failed: {e}")
+            return 5.0
+    
+    def _calculate_time_span_score(self, candles: List[Dict], index: int) -> float:
+        """Calculate time span score (0-15 points)"""
+        try:
+            total_candles = len(candles)
+            position_from_start = index / total_candles if total_candles > 0 else 0.5
+            
+            # Score based on how much time has passed since level was established
+            # More time = more reliable level
+            if position_from_start < 0.1:  # Very recent
+                return 5.0
+            elif position_from_start < 0.3:  # Recent
+                return 10.0
+            elif position_from_start < 0.7:  # Mid-term
+                return 15.0
+            else:  # Long-term
+                return 12.0  # Slightly lower for very old levels
+            
+        except Exception as e:
+            logger.error(f"❌ Time span score calculation failed: {e}")
+            return 8.0
+    
+    def _calculate_recent_activity_score(self, candles: List[Dict], level_price: float, level_type: str, index: int) -> float:
+        """Calculate recent activity score (0-15 points)"""
+        try:
+            # Check last 10 candles for recent touches
+            recent_candles = candles[-10:] if len(candles) >= 10 else candles
+            recent_touches = 0
+            
+            for candle in recent_candles:
+                if self._candle_touched_level(candle, level_price, level_type):
+                    recent_touches += 1
+            
+            # Score based on recent activity
+            if recent_touches >= 3:
+                return 15.0  # Very active recently
+            elif recent_touches >= 2:
+                return 12.0  # Active recently
+            elif recent_touches >= 1:
+                return 8.0   # Some recent activity
+            else:
+                return 3.0  # No recent activity
+            
+        except Exception as e:
+            logger.error(f"❌ Recent activity score calculation failed: {e}")
+            return 5.0
+    
+    def _calculate_price_consistency_score(self, candles: List[Dict], level_price: float, level_type: str, index: int) -> float:
+        """Calculate price consistency score (0-10 points)"""
+        try:
+            # Find all touches and calculate price variance
+            touching_prices = []
+            for candle in candles:
+                if self._candle_touched_level(candle, level_price, level_type):
+                    if level_type == "support":
+                        touching_prices.append(candle.get("low", level_price))
+                    else:  # resistance
+                        touching_prices.append(candle.get("high", level_price))
+            
+            if len(touching_prices) < 2:
+                return 5.0  # Default if not enough data
+            
+            # Calculate standard deviation
+            mean_price = sum(touching_prices) / len(touching_prices)
+            variance = sum((price - mean_price) ** 2 for price in touching_prices) / len(touching_prices)
+            std_dev = variance ** 0.5
+            
+            # Score based on consistency (lower std dev = higher score)
+            price_consistency = 1.0 - (std_dev / level_price) if level_price > 0 else 0.5
+            
+            return max(0.0, min(10.0, price_consistency * 10.0))
+            
+        except Exception as e:
+            logger.error(f"❌ Price consistency score calculation failed: {e}")
+            return 5.0
+    
+    def _calculate_volume_consistency_score(self, candles: List[Dict], level_price: float, level_type: str, index: int) -> float:
+        """Calculate volume consistency score (0-10 points)"""
+        try:
+            # Find volumes at touches
+            touching_volumes = []
+            for candle in candles:
+                if self._candle_touched_level(candle, level_price, level_type):
+                    touching_volumes.append(candle.get("volume", 0))
+            
+            if len(touching_volumes) < 2:
+                return 5.0  # Default if not enough data
+            
+            # Calculate volume consistency
+            mean_volume = sum(touching_volumes) / len(touching_volumes)
+            if mean_volume == 0:
+                return 5.0
+            
+            variance = sum((vol - mean_volume) ** 2 for vol in touching_volumes) / len(touching_volumes)
+            std_dev = variance ** 0.5
+            
+            # Score based on volume consistency
+            volume_consistency = 1.0 - (std_dev / mean_volume)
+            return max(0.0, min(10.0, volume_consistency * 10.0))
+            
+        except Exception as e:
+            logger.error(f"❌ Volume consistency score calculation failed: {e}")
+            return 5.0
+    
+    def _calculate_proximity_score(self, level_price: float, current_price: float) -> float:
+        """Calculate proximity to current price score (0-10 points)"""
+        try:
+            if current_price <= 0:
+                return 5.0  # Default if no current price
+            
+            # Calculate distance percentage
+            distance_percent = abs(current_price - level_price) / current_price
+            
+            # Score based on proximity (closer = higher score)
+            if distance_percent < 0.001:  # Within 0.1%
+                return 10.0
+            elif distance_percent < 0.005:  # Within 0.5%
+                return 8.0
+            elif distance_percent < 0.01:   # Within 1%
+                return 6.0
+            elif distance_percent < 0.02:   # Within 2%
+                return 4.0
+            else:
+                return 2.0  # Far away
+            
+        except Exception as e:
+            logger.error(f"❌ Proximity score calculation failed: {e}")
+            return 5.0
+    
+    def _candle_touched_level(self, candle: Dict, level_price: float, level_type: str) -> bool:
+        """Check if a candle touched the level"""
+        try:
+            if level_type == "support":
+                return candle.get("low", 0) <= level_price * 1.001  # Within 0.1% tolerance
+            else:  # resistance
+                return candle.get("high", 0) >= level_price * 0.999  # Within 0.1% tolerance
+        except:
+            return False
