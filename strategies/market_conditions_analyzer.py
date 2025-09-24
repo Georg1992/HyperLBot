@@ -801,15 +801,23 @@ class MarketConditionsAnalyzer:
                     "market_status": "NEUTRAL"
                 }
             
+            # CRITICAL FIX: Use exactly the last 7 candles (not all returned candles)
+            # The API returns more than 7 candles, so we need to take the last 7
+            last_7_candles = candles_1d[-7:] if len(candles_1d) >= 7 else candles_1d
+            
+            logger.info(f"📊 Using last 7 candles from {len(candles_1d)} returned candles")
+            for i, candle in enumerate(last_7_candles):
+                logger.info(f"  Day {i+1}: Close=${candle['close']:,.2f}")
+            
             # Calculate trend from 7-day candles
-            start_price = candles_1d[0]["close"]
-            end_price = candles_1d[-1]["close"]
+            start_price = last_7_candles[0]["close"]
+            end_price = last_7_candles[-1]["close"]
             price_change = end_price - start_price
             price_change_pct = (price_change / start_price) * 100
             
             # Calculate trend strength
-            highs = [candle["high"] for candle in candles_1d]
-            lows = [candle["low"] for candle in candles_1d]
+            highs = [candle["high"] for candle in last_7_candles]
+            lows = [candle["low"] for candle in last_7_candles]
             max_high = max(highs)
             min_low = min(lows)
             range_pct = ((max_high - min_low) / min_low) * 100
