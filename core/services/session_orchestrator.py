@@ -1079,24 +1079,18 @@ class SessionOrchestrator:
             # Note: find_next_significant_resistance method was removed during cleanup
             # The main level detection above should already find relevant resistance levels
             
-            # 6. Filtering: Always show important levels for trading decisions
+            # 6. GUARANTEED S/R LEVELS: Always show at least 1 support and 1 resistance
             relevant_levels = []
             
-            # Get all support levels below current price
-            support_levels_below = [lvl for lvl in all_levels if lvl["type"] == "support" and lvl["level"] < current_price]
-            # Get all resistance levels above current price
-            resistance_levels_above = [lvl for lvl in all_levels if lvl["type"] == "resistance" and lvl["level"] > current_price]
-            
-            # Enhanced debug logging to understand the filtering
-            logger.info(f"📊 S/R Filtering: Current price: ${current_price:.2f}")
-            logger.info(f"📊 Total levels found: {len(all_levels)}")
-            logger.info(f"📊 Support levels below price: {len(support_levels_below)}")
-            logger.info(f"📊 Resistance levels above price: {len(resistance_levels_above)}")
-            
-            # Log all levels found for debugging
+            # Separate all levels by type
             all_support_levels = [lvl for lvl in all_levels if lvl["type"] == "support"]
             all_resistance_levels = [lvl for lvl in all_levels if lvl["type"] == "resistance"]
             
+            # Enhanced debug logging
+            logger.info(f"📊 S/R Analysis: Current price: ${current_price:.2f}")
+            logger.info(f"📊 Total levels found: {len(all_levels)} (Support: {len(all_support_levels)}, Resistance: {len(all_resistance_levels)})")
+            
+            # Log all levels found for debugging
             logger.info(f"📊 All support levels found ({len(all_support_levels)}):")
             for sup in all_support_levels:
                 below_current = sup['level'] < current_price
@@ -1107,37 +1101,83 @@ class SessionOrchestrator:
                 above_current = res['level'] > current_price
                 logger.info(f"   Resistance: ${res['level']:.2f} (above current: {above_current}, score: {res.get('score', 0):.1f})")
             
-            # Support level selection - ALWAYS show at least 1 support level
-            if support_levels_below:
-                # Sort by combined score (score * weight)
-                support_levels_below.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
+            # SUPPORT LEVEL SELECTION - ALWAYS show at least 1 support
+            if all_support_levels:
+                # Sort all support levels by score (best first)
+                all_support_levels.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
                 
-                # ALWAYS include at least 1 support level, up to 3 if they have decent scores
-                for support in support_levels_below:
-                    combined_score = support.get("score", 0) * support.get("weight", 1.0)
-                    if len([l for l in relevant_levels if l["type"] == "support"]) < 1 or combined_score > 0.2:
-                        relevant_levels.append(support)
-                    if len([l for l in relevant_levels if l["type"] == "support"]) >= 3:
-                        break
+                # Prefer levels below current price, but if none exist, use the closest one
+                support_levels_below = [lvl for lvl in all_support_levels if lvl["level"] < current_price]
+                
+                if support_levels_below:
+                    # Use levels below current price (preferred)
+                    for support in support_levels_below:
+                        combined_score = support.get("score", 0) * support.get("weight", 1.0)
+                        if len([l for l in relevant_levels if l["type"] == "support"]) < 1 or combined_score > 0.2:
+                            relevant_levels.append(support)
+                        if len([l for l in relevant_levels if l["type"] == "support"]) >= 3:
+                            break
+                else:
+                    # No support below current price - use the closest support from historical data
+                    closest_support = all_support_levels[0]  # Already sorted by score
+                    relevant_levels.append(closest_support)
+                    logger.info(f"📊 Using closest historical support: ${closest_support['level']:.2f} (score: {closest_support.get('score', 0):.1f})")
             else:
-                logger.warning("⚠️ No support levels found - S/R detection needs improvement")
+                logger.warning("⚠️ No support levels found in historical data")
             
-            # Resistance level selection - ALWAYS show resistance levels
-            if resistance_levels_above:
-                # Sort by combined score (score * weight)
-                resistance_levels_above.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
+            # RESISTANCE LEVEL SELECTION - ALWAYS show at least 1 resistance
+            if all_resistance_levels:
+                # Sort all resistance levels by score (best first)
+                all_resistance_levels.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
                 
-                # ALWAYS include at least 2 resistance levels, up to 5 if they have decent scores
-                for resistance in resistance_levels_above:
-                    combined_score = resistance.get("score", 0) * resistance.get("weight", 1.0)
-                    if len([l for l in relevant_levels if l["type"] == "resistance"]) < 2 or combined_score > 0.2:
-                        relevant_levels.append(resistance)
-                    if len([l for l in relevant_levels if l["type"] == "resistance"]) >= 5:
-                        break
+                # Prefer levels above current price, but if none exist, use the closest one
+                resistance_levels_above = [lvl for lvl in all_resistance_levels if lvl["level"] > current_price]
                 
-                # Note: persistent_resistance logic was removed during cleanup
+                if resistance_levels_above:
+                    # Use levels above current price (preferred)
+                    for resistance in resistance_levels_above:
+                        combined_score = resistance.get("score", 0) * resistance.get("weight", 1.0)
+                        if len([l for l in relevant_levels if l["type"] == "resistance"]) < 1 or combined_score > 0.2:
+                            relevant_levels.append(resistance)
+                        if len([l for l in relevant_levels if l["type"] == "resistance"]) >= 3:
+                            break
+                else:
+                    # No resistance above current price - use the closest resistance from historical data
+                    closest_resistance = all_resistance_levels[0]  # Already sorted by score
+                    relevant_levels.append(closest_resistance)
+                    logger.info(f"📊 Using closest historical resistance: ${closest_resistance['level']:.2f} (score: {closest_resistance.get('score', 0):.1f})")
+            else:
+                logger.warning("⚠️ No resistance levels found in historical data")
             
-            # No emergency levels - let the AI work with real data only
+            # EMERGENCY FALLBACK: If still no levels found, create basic levels
+            if not relevant_levels:
+                logger.warning("⚠️ No S/R levels found - creating emergency fallback levels")
+                # Create basic support/resistance based on recent price action
+                if candles_5m and len(candles_5m) >= 5:
+                    recent_high = max(candle["high"] for candle in candles_5m[-5:])
+                    recent_low = min(candle["low"] for candle in candles_5m[-5:])
+                    
+                    # Add emergency support (recent low)
+                    relevant_levels.append({
+                        "level": recent_low,
+                        "type": "support",
+                        "score": 0.5,
+                        "weight": 0.5,
+                        "timeframe": "emergency",
+                        "touches": 1
+                    })
+                    
+                    # Add emergency resistance (recent high)
+                    relevant_levels.append({
+                        "level": recent_high,
+                        "type": "resistance", 
+                        "score": 0.5,
+                        "weight": 0.5,
+                        "timeframe": "emergency",
+                        "touches": 1
+                    })
+                    
+                    logger.info(f"📊 Emergency levels: Support ${recent_low:.2f}, Resistance ${recent_high:.2f}")
             
             # 8. Sort by combined score (score * weight)
             relevant_levels.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
