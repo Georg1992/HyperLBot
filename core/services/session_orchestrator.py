@@ -770,7 +770,6 @@ class SessionOrchestrator:
                 "condition": conditions_analysis["condition"], 
                 "risk_level": conditions_analysis["risk_level"],
                 "main_reasons": conditions_analysis["reasons"][:3],
-                "confidence": conditions_analysis["confidence"],
                 "market_status": conditions_analysis.get("market_status", "NEUTRAL"),
                 # Include whale analytics and news sentiment data
                 "whale_analytics": conditions_analysis.get("whale_analytics"),
