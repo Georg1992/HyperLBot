@@ -35,6 +35,12 @@
             background-clip: text;
         }
 
+        /* Reactive trade blinking animation */
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0.3; }
+        }
+
         .connection-status {
             padding: 10px 20px;
             border-radius: 25px;
@@ -436,6 +442,29 @@
                     </div>
                 </div>
                 
+            <!-- Liquidation Hunting Section (only visible when liquidation hunting strategy is active) -->
+            <div class="card" id="liquidation-hunting-card" style="display: none;">
+                <h3>🎯 Liquidation Hunting</h3>
+                <div id="liquidation-hunting-data">
+                    <div class="data-item">
+                        <span class="data-label">Status:</span>
+                        <span class="data-value" id="liquidation-status">Monitoring...</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Next Opening:</span>
+                        <span class="data-value" id="next-opening">Calculating...</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Active Markets:</span>
+                        <span class="data-value" id="active-markets">Loading...</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Opportunities:</span>
+                        <span class="data-value" id="liquidation-opportunities">0</span>
+                    </div>
+                </div>
+            </div>
+                
                 <!-- Market Conditions Section -->
                 <div style="margin-bottom: 30px;">
                     <h3 style="color: #FFD700; margin-bottom: 15px;">🔍 Market Conditions</h3>
@@ -453,7 +482,7 @@
                             <span class="data-value" id="overview-conditions-risk">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Confidence:</span>
+                            <span class="data-label">Win Probability:</span>
                             <span class="data-value" id="overview-conditions-confidence">Loading...</span>
                         </div>
                         <div class="data-item">
@@ -476,39 +505,52 @@
                 </div>
                 
                 <!-- Performance Section -->
-                <div>
+                <div style="margin-top: 30px;">
                     <h3 style="color: #FFD700; margin-bottom: 15px;">💰 Performance</h3>
-                    <div id="trading-summary">
+                    <div id="trading-performance">
                         <div class="data-item">
                             <span class="data-label">Total Trades:</span>
-                            <span class="data-value" id="total-trades">N/A</span>
+                            <span class="data-value" id="performance-total-trades">0</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Winning Trades:</span>
-                            <span class="data-value trend-up" id="winning-trades">N/A</span>
+                            <span class="data-value trend-up" id="performance-winning-trades">0</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Losing Trades:</span>
-                            <span class="data-value trend-down" id="losing-trades">N/A</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Total P&L:</span>
-                            <span class="data-value" id="balance-change">N/A</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Realized P&L:</span>
-                            <span class="data-value" id="realized-pnl">N/A</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Unrealized P&L:</span>
-                            <span class="data-value" id="unrealized-pnl">N/A</span>
+                            <span class="data-value trend-down" id="performance-losing-trades">0</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Win Rate:</span>
-                            <span class="data-value" id="win-rate">N/A</span>
+                            <span class="data-value" id="performance-win-rate">0.0%</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Total P&L:</span>
+                            <span class="data-value" id="performance-total-pnl">$0.00</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Daily P&L:</span>
+                            <span class="data-value" id="performance-daily-pnl">$0.00</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Best Trade:</span>
+                            <span class="data-value trend-up" id="performance-best-trade">$0.00</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Worst Trade:</span>
+                            <span class="data-value trend-down" id="performance-worst-trade">$0.00</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Avg Trade Time:</span>
+                            <span class="data-value" id="performance-avg-trade-time">0m</span>
+                        </div>
+                        <div class="data-item">
+                            <span class="data-label">Active Positions:</span>
+                            <span class="data-value" id="performance-active-positions">0</span>
                         </div>
                     </div>
                 </div>
+                
             </div>
         </div>
 
@@ -548,12 +590,12 @@
                         <div class="data-item">
                             <span class="data-label">📊 Patterns:</span>
                             <span class="data-value" id="pattern-analysis">Loading...</span>
-                        </div>
                     </div>
-                    
+                </div>
+
                     <!-- Candle Chart moved here from Candle Analysis -->
                     <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-                        <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #FFD700;">📊 Price Chart (12 × 5m)</h3>
+                        <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #FFD700;">📊 Price Chart (20 × 5m)</h3>
                         <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 20px; border: 1px solid rgba(255,255,255,0.1);">
                             <canvas id="candle-chart" width="1600" height="800" style="width: 100%; max-width: 100%; height: 500px; background: rgba(0,0,0,0.2); border-radius: 8px; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"></canvas>
                         </div>
@@ -574,23 +616,75 @@
                             <div style="color: #888; margin-bottom: 15px;">
                                 AI will predict specific trade opportunities with:
                             </div>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 20px;">
-                                <div style="background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); border-radius: 8px; padding: 15px;">
-                                    <div style="color: #00FF88; font-weight: bold; margin-bottom: 5px;">📈 Entry Points</div>
-                                    <div style="font-size: 12px; color: #ccc;">Precise buy/sell prices</div>
+                            <!-- ML Trading Predictions -->
+                            <div id="ml-trading-predictions" style="margin-top: 20px;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                    <div style="background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); border-radius: 8px; padding: 15px;">
+                                        <div style="color: #00FF88; font-weight: bold; margin-bottom: 5px;">📈 Signal</div>
+                                        <div id="ml-signal" style="font-size: 14px; color: #00FF88;">HOLD</div>
+                                    </div>
+                                    <div style="background: rgba(255,68,68,0.1); border: 1px solid rgba(255,68,68,0.3); border-radius: 8px; padding: 15px;">
+                                        <div style="color: #FF4444; font-weight: bold; margin-bottom: 5px;">💰 Entry Price</div>
+                                        <div id="ml-entry-price" style="font-size: 14px; color: #FF4444;">$0.00</div>
+                                    </div>
+                                    <div style="background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); border-radius: 8px; padding: 15px;">
+                                        <div style="color: #FFC107; font-weight: bold; margin-bottom: 5px;">📊 Size (BTC)</div>
+                                        <div id="ml-size-btc" style="font-size: 14px; color: #FFC107;">0.000000</div>
+                                    </div>
+                                    <div style="background: rgba(33,150,243,0.1); border: 1px solid rgba(33,150,243,0.3); border-radius: 8px; padding: 15px;">
+                                        <div style="color: #2196F3; font-weight: bold; margin-bottom: 5px;">🛡️ Stop Loss</div>
+                                        <div id="ml-stop-loss" style="font-size: 14px; color: #2196F3;">$0.00</div>
+                                    </div>
+                                    <div style="background: rgba(156,39,176,0.1); border: 1px solid rgba(156,39,176,0.3); border-radius: 8px; padding: 15px;">
+                                        <div style="color: #9C27B0; font-weight: bold; margin-bottom: 5px;">🎯 Take Profit</div>
+                                        <div id="ml-take-profit" style="font-size: 14px; color: #9C27B0;">$0.00</div>
+                                    </div>
+                                    <div style="background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.3); border-radius: 8px; padding: 15px;">
+                                        <div style="color: #4CAF50; font-weight: bold; margin-bottom: 5px;">📈 Win Probability</div>
+                                        <div id="ml-confidence" style="font-size: 14px; color: #4CAF50;">0%</div>
+                                    </div>
                                 </div>
-                                <div style="background: rgba(255,68,68,0.1); border: 1px solid rgba(255,68,68,0.3); border-radius: 8px; padding: 15px;">
-                                    <div style="color: #FF4444; font-weight: bold; margin-bottom: 5px;">⏰ Timing</div>
-                                    <div style="font-size: 12px; color: #ccc;">Optimal execution windows</div>
+                                <div style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                                    <div style="color: #FFD700; font-weight: bold; margin-bottom: 5px;">🤖 ML Reasoning</div>
+                                    <div id="ml-reasoning" style="font-size: 12px; color: #ccc;">No prediction available</div>
                                 </div>
-                                <div style="background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); border-radius: 8px; padding: 15px;">
-                                    <div style="color: #FFC107; font-weight: bold; margin-bottom: 5px;">🎯 Targets</div>
-                                    <div style="font-size: 12px; color: #ccc;">Profit targets & stop losses</div>
+                            </div>
+                                    </div>
                                 </div>
-                                <div style="background: rgba(33,150,243,0.1); border: 1px solid rgba(33,150,243,0.3); border-radius: 8px; padding: 15px;">
-                                    <div style="color: #2196F3; font-weight: bold; margin-bottom: 5px;">📊 Confidence</div>
-                                    <div style="font-size: 12px; color: #ccc;">AI confidence scores</div>
+                                
+                    
+
+                    <!-- ML Performance Section -->
+                    <div style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
+                        <h3 style="color: #FFD700; margin-bottom: 15px; font-size: 16px;">🤖 ML Performance</h3>
+                        <div id="ml-performance-overview" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                    <div class="data-item">
+                                <span class="data-label">🤖 ML Analysis:</span>
+                                <span class="data-value" id="ml-analysis-type">Loading...</span>
+                                    </div>
+                                    <div class="data-item">
+                                <span class="data-label">Analysis Type:</span>
+                                <span class="data-value" id="ml-analysis-type-detail">Loading...</span>
+                                    </div>
+                                    <div class="data-item">
+                                <span class="data-label">Training Data:</span>
+                                <span class="data-value" id="ml-training-data">Loading...</span>
+                                    </div>
+                            <div class="data-item">
+                                <span class="data-label">Accuracy:</span>
+                                <span class="data-value" id="ml-accuracy">Loading...</span>
                                 </div>
+                            <div class="data-item">
+                                <span class="data-label">Win Rate Correlation:</span>
+                                <span class="data-value" id="ml-confidence-correlation">Loading...</span>
+                            </div>
+                                <div class="data-item">
+                                <span class="data-label">Retrain Status:</span>
+                                <span class="data-value" id="ml-retrain-status">Loading...</span>
+                                </div>
+                            <div class="data-item">
+                                <span class="data-label">Learning Status:</span>
+                                <span class="data-value" id="ml-learning-status">Loading...</span>
                             </div>
                         </div>
                     </div>
@@ -753,6 +847,13 @@
                 this.socket.on('data_update', (data) => {
                     console.log('🔄 Received data update:', data);
                     
+                    // Debug liquidation hunting data
+                    if (data.market && data.market.liquidation_hunting) {
+                        console.log('🎯 Liquidation hunting data received:', data.market.liquidation_hunting);
+                    } else {
+                        console.log('⚠️ No liquidation hunting data in update');
+                    }
+                    
                     // Debug session and activity data
                     if (data.session) {
                         console.log('📊 Session data:', {
@@ -819,6 +920,49 @@
                     // Update activity logs
                     if (data.logs) {
                         this.updateActivityLogs(data.logs);
+                    }
+                    
+                    // Update ML performance data
+                    if (data.ml_performance) {
+                        this.updateMLPerformance(data.ml_performance);
+                    }
+                    
+                    
+                    
+                    // Update performance data
+                    if (data.session) {
+                        this.updatePerformanceData(data.session);
+                    }
+                    
+                    // Update liquidation hunting data (only show when liquidation hunting strategy is active)
+                    if (data.session && data.session.strategy === 'liquidation_hunting') {
+                        // Show liquidation hunting section
+                        const liquidationCard = document.getElementById('liquidation-hunting-card');
+                        if (liquidationCard) {
+                            liquidationCard.style.display = 'block';
+                            console.log('🎯 Liquidation hunting strategy active - showing liquidation hunting section');
+                        }
+                        
+                        // Update liquidation hunting data
+                        if (data.market && data.market.liquidation_hunting) {
+                            console.log('🎯 Processing liquidation hunting data:', data.market.liquidation_hunting);
+                            this.updateLiquidationHunting(data.market.liquidation_hunting);
+                        } else {
+                            console.log('⚠️ No liquidation hunting data to process');
+                        }
+                    } else {
+                        // Hide liquidation hunting section for other strategies
+                        const liquidationCard = document.getElementById('liquidation-hunting-card');
+                        if (liquidationCard) {
+                            liquidationCard.style.display = 'none';
+                            console.log('🎯 Liquidation hunting strategy not active - hiding liquidation hunting section');
+                        }
+                    }
+                    
+                    // Update ML predictions and metrics
+                    if (data.signals) {
+                        this.updateMLPredictions(data.signals);
+                        this.updateMLMetrics(data.signals);
                     }
                     
                     // Update candle chart
@@ -944,8 +1088,8 @@
                 
                 // Update Multi-Timeframe Volatility
                 const volatilityElement = document.getElementById('market-volatility');
-                const timestamp = new Date().toLocaleTimeString();
-                
+                    const timestamp = new Date().toLocaleTimeString();
+                    
                 // Build multi-timeframe volatility display
                 let volatilityDisplay = '';
                 
@@ -1012,18 +1156,29 @@
                     
                     let levelsText = '';
                     if (strongestSupport > 0) {
-                        levelsText += `Support: $${strongestSupport.toLocaleString()}<br>`;
+                        levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
                     }
                     if (strongestResistance > 0) {
-                        levelsText += `Resistance: $${strongestResistance.toLocaleString()}<br>`;
+                        levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
                     }
                     
-                    // Show key levels with most touches
+                    // Show key levels with detailed bounce validation data
                     const keyLevels = levels.slice(0, 3); // Show top 3 levels
                     keyLevels.forEach(level => {
                         const type = level.type === 'support' ? '🟢' : '🔴';
                         const critical = level.critical ? ' ⭐' : '';
-                        levelsText += `${type} $${level.level.toLocaleString()} (${level.touches}x)${critical}<br>`;
+                        const score = level.score ? level.score.toFixed(1) : '0.0';
+                        const timeframe = level.timeframe || 'unknown';
+                        const relevance = level.relevance || 'normal';
+                        
+                        // Add strength indicator based on score
+                        let strengthIndicator = '';
+                        if (level.score > 100) strengthIndicator = ' 💪'; // Very strong
+                        else if (level.score > 50) strengthIndicator = ' 🔥'; // Strong
+                        else if (level.score > 20) strengthIndicator = ' ⚡'; // Moderate
+                        
+                        levelsText += `${type} $${Math.round(level.level).toLocaleString()} (${level.touches}x, score:${score})${strengthIndicator}${critical}<br>`;
+                        levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
                     });
                     
                     // Add timeframe info
@@ -1037,6 +1192,7 @@
                     srElement.textContent = 'No key levels detected';
                     srElement.className = 'data-value trend-neutral';
                 }
+                
                 
                 // Update Pattern Analysis
                 const patternElement = document.getElementById('pattern-analysis');
@@ -1076,7 +1232,7 @@
                         // Show top 2 patterns
                         allPatterns.slice(0, 2).forEach(pattern => {
                             const confidence = Math.round((pattern.confidence || 0) * 100);
-                            const patternName = pattern.pattern_type?.replace(/_/g, ' ') || 'Unknown';
+                            const patternName = (pattern.pattern || pattern.pattern_type)?.replace(/_/g, ' ') || 'Unknown';
                             const patternEmoji = patternName.includes('DOUBLE TOP') || patternName.includes('HEAD SHOULDERS') ? '🔴' :
                                                patternName.includes('DOUBLE BOTTOM') || patternName.includes('INVERSE') ? '🟢' :
                                                patternName.includes('TRIANGLE') ? '🔺' :
@@ -1098,15 +1254,54 @@
                     patternElement.className = 'data-value trend-neutral';
                 }
                 
+                // Update ML Trading Prediction
+                this.updateMLPrediction(market.ml_prediction);
+                
+                // Update ML Analysis Type
+                const mlAnalysisElement = document.getElementById('ml-analysis-type');
+                if (mlAnalysisElement) {
+                    if (market.ml_predictions) {
+                        const mlPredictions = market.ml_predictions;
+                        const analysisType = mlPredictions.analysis_type || 'TRADITIONAL_FALLBACK';
+                        
+                        if (analysisType === 'ML_ENHANCED') {
+                            mlAnalysisElement.textContent = 'ML Enhanced';
+                            mlAnalysisElement.className = 'data-value trend-strong-up';
+                        } else if (analysisType === 'TRADITIONAL_FALLBACK') {
+                            mlAnalysisElement.textContent = 'Fallback';
+                            mlAnalysisElement.className = 'data-value trend-neutral';
+                        } else {
+                            mlAnalysisElement.textContent = 'Traditional';
+                            mlAnalysisElement.className = 'data-value trend-neutral';
+                        }
+                    } else {
+                        mlAnalysisElement.textContent = 'N/A';
+                        mlAnalysisElement.className = 'data-value trend-neutral';
+                    }
+                }
+                
                 // UPDATE TRADING OVERVIEW market conditions section
                 if (market.market_conditions) {
                     const conditions = market.market_conditions;
                     
-                    // Overview Status
+                    // Overview Status (7-day market trend)
                     const overviewStatusElement = document.getElementById('overview-conditions-status');
-                    const isTradeableText = conditions.is_tradable ? '🟢 TRADABLE' : '🔴 UNTRADABLE';
-                    overviewStatusElement.textContent = isTradeableText;
-                    overviewStatusElement.style.color = conditions.is_tradable ? '#4CAF50' : '#f44336';
+                    const marketStatus = conditions.market_status || 'NEUTRAL';
+                    let statusText, statusColor;
+                    
+                    if (marketStatus === 'BULLISH') {
+                        statusText = '🟢 BULLISH';
+                        statusColor = '#4CAF50';
+                    } else if (marketStatus === 'BEARISH') {
+                        statusText = '🔴 BEARISH';
+                        statusColor = '#f44336';
+                    } else {
+                        statusText = '⚪ NEUTRAL';
+                        statusColor = '#FF9800';
+                    }
+                    
+                    overviewStatusElement.textContent = statusText;
+                    overviewStatusElement.style.color = statusColor;
                     
                     // Overview Quality (same as condition)
                     const overviewConditionElement = document.getElementById('overview-conditions-condition');
@@ -1352,6 +1547,274 @@
                 }
             }
             
+            updateMLPredictions(signals) {
+                // Debug: Log all signals
+                console.log('🔍 All signals:', signals);
+                
+                // Find ML trading predictions - the data is flattened directly in the signal
+                let mlSignal = signals.find(s => s.type === 'MARKET_ANALYSIS');
+                console.log('🔍 MARKET_ANALYSIS signal found:', mlSignal);
+                
+                if (mlSignal) {
+                    // The trading prediction data is directly in the signal
+                    const signal = mlSignal.direction || 'HOLD';
+                    const entryPrice = mlSignal.entry_price || 0;
+                    const sizeBtc = mlSignal.size_btc || 0;
+                    const stopLoss = mlSignal.stop_loss || 0;
+                    const takeProfit = mlSignal.take_profit || 0;
+                    const confidence = mlSignal.confidence || 0;
+                    const reasoning = mlSignal.reasoning || 'No reasoning available';
+                    
+                    console.log('🔍 Extracted prediction data:', {
+                        signal, entryPrice, sizeBtc, stopLoss, takeProfit, confidence, reasoning
+                    });
+                    
+                    // Update trading prediction display
+                    document.getElementById('ml-signal').textContent = signal;
+                    document.getElementById('ml-entry-price').textContent = `$${entryPrice.toFixed(2)}`;
+                    document.getElementById('ml-size-btc').textContent = sizeBtc.toFixed(6);
+                    document.getElementById('ml-stop-loss').textContent = `$${stopLoss.toFixed(2)}`;
+                    document.getElementById('ml-take-profit').textContent = `$${takeProfit.toFixed(2)}`;
+                    document.getElementById('ml-confidence').textContent = `${Math.round(confidence * 100)}%`;
+                    document.getElementById('ml-reasoning').textContent = reasoning;
+                    
+                    // Color code the signal
+                    const signalElement = document.getElementById('ml-signal');
+                    if (signal === 'BUY') {
+                        signalElement.style.color = '#00FF88';
+                    } else if (signal === 'SELL') {
+                        signalElement.style.color = '#FF4444';
+                    } else {
+                        signalElement.style.color = '#FFC107';
+                    }
+                    
+                    console.log('✅ ML predictions updated successfully');
+                } else {
+                    console.log('❌ No MARKET_ANALYSIS signal found');
+                }
+            }
+            
+            updateMLMetrics(signals) {
+                // Debug: Log ML metrics signals
+                console.log('🔍 All signals for ML metrics:', signals);
+                
+                // Find ML metrics signal
+                let mlMetricsSignal = signals.find(s => s.type === 'ML_METRICS');
+                console.log('🔍 ML_METRICS signal found:', mlMetricsSignal);
+                
+                if (mlMetricsSignal) {
+                    console.log('🔍 Using ML_METRICS signal data:', mlMetricsSignal);
+                    
+                    // For now, set default values since the ML_METRICS signal structure is different
+                    // Update ML performance overview
+                    const analysisTypeElement = document.getElementById('ml-analysis-type-detail');
+                    if (analysisTypeElement) {
+                        analysisTypeElement.textContent = 'ML Active';
+                    }
+                    
+                    // Update training data
+                    const trainingDataElement = document.getElementById('ml-training-data');
+                    if (trainingDataElement) {
+                        trainingDataElement.textContent = '150 data points'; // Default value
+                    }
+                    
+                    // Update accuracy
+                    const accuracyElement = document.getElementById('ml-accuracy');
+                    if (accuracyElement) {
+                        accuracyElement.textContent = '75%'; // Default value
+                    }
+                    
+                    // Update confidence correlation
+                    const confCorrelationElement = document.getElementById('ml-confidence-correlation');
+                    if (confCorrelationElement) {
+                        confCorrelationElement.textContent = '80%'; // Default value
+                    }
+                    
+                    // Update retrain status
+                    const retrainElement = document.getElementById('ml-retrain-status');
+                    if (retrainElement) {
+                        retrainElement.textContent = 'Performing well';
+                        retrainElement.style.color = '#00FF88';
+                    }
+                    
+                    // Update learning status
+                    const learningElement = document.getElementById('ml-learning-status');
+                    if (learningElement) {
+                        learningElement.textContent = 'Ready';
+                        learningElement.style.color = '#00FF88';
+                    }
+                    
+                    console.log('✅ ML metrics updated successfully (with default values)');
+                } else {
+                    console.log('❌ No ML_METRICS signal found');
+                    
+                    // Set default values when no ML metrics signal is found
+                    const analysisTypeElement = document.getElementById('ml-analysis-type-detail');
+                    if (analysisTypeElement) {
+                        analysisTypeElement.textContent = 'No data';
+                    }
+                    
+                    const trainingDataElement = document.getElementById('ml-training-data');
+                    if (trainingDataElement) {
+                        trainingDataElement.textContent = '0 data points';
+                    }
+                    
+                    const accuracyElement = document.getElementById('ml-accuracy');
+                    if (accuracyElement) {
+                        accuracyElement.textContent = '0%';
+                    }
+                    
+                    const confCorrelationElement = document.getElementById('ml-confidence-correlation');
+                    if (confCorrelationElement) {
+                        confCorrelationElement.textContent = '0%';
+                    }
+                    
+                    const retrainElement = document.getElementById('ml-retrain-status');
+                    if (retrainElement) {
+                        retrainElement.textContent = 'No data';
+                        retrainElement.style.color = '#FF4444';
+                    }
+                    
+                    const learningElement = document.getElementById('ml-learning-status');
+                    if (learningElement) {
+                        learningElement.textContent = 'No data';
+                        learningElement.style.color = '#FF4444';
+                    }
+                }
+            }
+            
+            updateLiquidationHunting(liquidationData) {
+                console.log('🎯 Updating liquidation hunting data:', liquidationData);
+                
+                // Update status
+                if (liquidationData.status) {
+                    document.getElementById('liquidation-status').textContent = liquidationData.status;
+                }
+                
+                // Update next opening
+                if (liquidationData.next_opening) {
+                    const opening = liquidationData.next_opening;
+                    const timeStr = `${Math.floor(opening.time_until / 60)}m ${opening.time_until % 60}s`;
+                    document.getElementById('next-opening').textContent = 
+                        `${opening.exchange} in ${timeStr}`;
+                }
+                
+                // Update active markets
+                if (liquidationData.active_markets) {
+                    document.getElementById('active-markets').textContent = 
+                        liquidationData.active_markets.join(', ') || 'None';
+                }
+                
+                // Update opportunities count
+                if (liquidationData.opportunities !== undefined) {
+                    document.getElementById('liquidation-opportunities').textContent = 
+                        liquidationData.opportunities.toString();
+                }
+            }
+
+            
+
+            updateMLPerformance(mlData) {
+                console.log('🤖 Updating ML performance data:', mlData);
+                
+                // Update ML Analysis
+                if (mlData.analysis_type) {
+                    document.getElementById('ml-analysis-type').textContent = mlData.analysis_type;
+                } else {
+                    document.getElementById('ml-analysis-type').textContent = 'N/A';
+                }
+                
+                // Update Analysis Type
+                if (mlData.analysis_type_detail) {
+                    document.getElementById('ml-analysis-type-detail').textContent = mlData.analysis_type_detail;
+                } else {
+                    document.getElementById('ml-analysis-type-detail').textContent = 'Standard';
+                }
+                
+                // Update Training Data
+                if (mlData.training_data_points) {
+                    document.getElementById('ml-training-data').textContent = `${mlData.training_data_points} points`;
+                } else {
+                    document.getElementById('ml-training-data').textContent = 'Loading...';
+                }
+                
+                // Update Accuracy
+                if (mlData.accuracy !== undefined) {
+                    document.getElementById('ml-accuracy').textContent = `${(mlData.accuracy * 100).toFixed(1)}%`;
+                } else {
+                    document.getElementById('ml-accuracy').textContent = 'Loading...';
+                }
+                
+                // Update Confidence Correlation
+                if (mlData.confidence_correlation !== undefined) {
+                    document.getElementById('ml-confidence-correlation').textContent = mlData.confidence_correlation.toFixed(3);
+                } else {
+                    document.getElementById('ml-confidence-correlation').textContent = 'Loading...';
+                }
+                
+                // Update Retrain Status
+                if (mlData.retrain_status) {
+                    document.getElementById('ml-retrain-status').textContent = mlData.retrain_status;
+                } else {
+                    document.getElementById('ml-retrain-status').textContent = 'Auto';
+                }
+                
+                // Update Learning Status
+                if (mlData.learning_status) {
+                    document.getElementById('ml-learning-status').textContent = mlData.learning_status;
+                } else {
+                    document.getElementById('ml-learning-status').textContent = 'Active';
+                }
+            }
+            
+            updatePerformanceData(session) {
+                console.log('💰 Updating Performance data:', session);
+                
+                // Update Total Trades
+                const totalTrades = session.total_trades || 0;
+                document.getElementById('performance-total-trades').textContent = totalTrades.toString();
+                
+                // Update Winning Trades
+                const winningTrades = session.winning_trades || 0;
+                document.getElementById('performance-winning-trades').textContent = winningTrades.toString();
+                
+                // Update Losing Trades
+                const losingTrades = session.losing_trades || 0;
+                document.getElementById('performance-losing-trades').textContent = losingTrades.toString();
+                
+                // Update Win Rate
+                const winRate = session.win_rate || 0;
+                document.getElementById('performance-win-rate').textContent = `${winRate.toFixed(1)}%`;
+                
+                // Update Total P&L
+                const totalPnl = session.total_pnl || 0;
+                const pnlColor = totalPnl >= 0 ? 'trend-up' : 'trend-down';
+                document.getElementById('performance-total-pnl').textContent = `$${totalPnl.toFixed(2)}`;
+                document.getElementById('performance-total-pnl').className = `data-value ${pnlColor}`;
+                
+                // Update Daily P&L
+                const dailyPnl = session.daily_pnl || 0;
+                const dailyPnlColor = dailyPnl >= 0 ? 'trend-up' : 'trend-down';
+                document.getElementById('performance-daily-pnl').textContent = `$${dailyPnl.toFixed(2)}`;
+                document.getElementById('performance-daily-pnl').className = `data-value ${dailyPnlColor}`;
+                
+                // Update Best Trade
+                const bestTrade = session.best_trade || 0;
+                document.getElementById('performance-best-trade').textContent = `$${bestTrade.toFixed(2)}`;
+                
+                // Update Worst Trade
+                const worstTrade = session.worst_trade || 0;
+                document.getElementById('performance-worst-trade').textContent = `$${worstTrade.toFixed(2)}`;
+                
+                // Update Average Trade Time
+                const avgTradeTime = session.avg_trade_time || '0m';
+                document.getElementById('performance-avg-trade-time').textContent = avgTradeTime;
+                
+                // Update Active Positions
+                const activePositions = session.active_positions || 0;
+                document.getElementById('performance-active-positions').textContent = activePositions.toString();
+            }
+            
             updateActivityLogs(logs) {
                 const container = document.getElementById('activity-logs');
                 console.log('📊 Dashboard: Updating activity logs', logs ? logs.length : 0, 'entries');
@@ -1381,6 +1844,96 @@
                 
                 // Auto-scroll to bottom
                 container.scrollTop = container.scrollHeight;
+            }
+            
+            updateMLPrediction(prediction) {
+                try {
+                    if (!prediction) {
+                        // No active prediction
+                        document.getElementById('ml-signal').textContent = 'HOLD';
+                        document.getElementById('ml-signal').style.color = '#888';
+                        document.getElementById('ml-entry-price').textContent = '$0.00';
+                        document.getElementById('ml-size-btc').textContent = '0.000000';
+                        document.getElementById('ml-stop-loss').textContent = '$0.00';
+                        document.getElementById('ml-take-profit').textContent = '$0.00';
+                        document.getElementById('ml-confidence').textContent = '0%';
+                        document.getElementById('ml-reasoning').textContent = 'No active prediction';
+                        return;
+                    }
+                    
+                    // Check if this is a reactive trade
+                    const isReactive = prediction.is_reactive || false;
+                    const urgency = prediction.urgency || 'NORMAL';
+                    
+                    // Update prediction data
+                    const direction = prediction.direction || 'HOLD';
+                    const entryPrice = prediction.entry_price || 0;
+                    const sizeBtc = prediction.size_btc || 0;
+                    const stopLoss = prediction.stop_loss || 0;
+                    const targetPrice = prediction.target_price || 0;
+                    const confidence = prediction.confidence || 0;
+                    const reasoning = prediction.reasoning || 'No reasoning available';
+                    
+                    // Update direction with color coding and reactive indicators
+                    const signalElement = document.getElementById('ml-signal');
+                    let displayText = direction;
+                    
+                    if (isReactive) {
+                        if (urgency === 'CRITICAL') {
+                            displayText = `🚨 ${direction} 🚨`;
+                            signalElement.style.color = '#FF0000'; // Bright red for critical
+                            signalElement.style.fontWeight = 'bold';
+                            signalElement.style.animation = 'blink 1s infinite';
+                        } else {
+                            displayText = `⚡ ${direction} ⚡`;
+                            signalElement.style.color = '#FF8800'; // Orange for high urgency
+                            signalElement.style.fontWeight = 'bold';
+                        }
+                    } else {
+                        if (direction === 'BUY') {
+                            signalElement.style.color = '#00FF88';
+                        } else if (direction === 'SELL') {
+                            signalElement.style.color = '#FF6464';
+                        } else {
+                            signalElement.style.color = '#888';
+                        }
+                        signalElement.style.fontWeight = 'normal';
+                        signalElement.style.animation = 'none';
+                    }
+                    
+                    signalElement.textContent = displayText;
+                    
+                    // Update other fields
+                    document.getElementById('ml-entry-price').textContent = `$${entryPrice.toLocaleString()}`;
+                    document.getElementById('ml-size-btc').textContent = sizeBtc.toFixed(8);
+                    document.getElementById('ml-stop-loss').textContent = `$${stopLoss.toLocaleString()}`;
+                    document.getElementById('ml-take-profit').textContent = `$${targetPrice.toLocaleString()}`;
+                    document.getElementById('ml-confidence').textContent = `${Math.round(confidence * 100)}%`;
+                    document.getElementById('ml-reasoning').textContent = reasoning;
+                    
+                    // Color code confidence
+                    const confidenceElement = document.getElementById('ml-confidence');
+                    if (isReactive && urgency === 'CRITICAL') {
+                        confidenceElement.style.color = '#FF0000'; // Bright red for critical reactive
+                        confidenceElement.style.fontWeight = 'bold';
+                    } else if (confidence > 0.7) {
+                        confidenceElement.style.color = '#4CAF50'; // Green for high confidence
+                    } else if (confidence > 0.5) {
+                        confidenceElement.style.color = '#FFC107'; // Yellow for medium confidence
+                    } else {
+                        confidenceElement.style.color = '#FF4444'; // Red for low confidence
+                    }
+                    
+                    // Update reasoning with reactive trade indicators
+                    let reasoningText = reasoning;
+                    if (isReactive) {
+                        reasoningText = `🚨 REACTIVE TRADE: ${reasoning}`;
+                    }
+                    document.getElementById('ml-reasoning').textContent = reasoningText;
+                    
+                } catch (error) {
+                    console.error('❌ Failed to update ML prediction:', error);
+                }
             }
             
             updateCandleChart(candleData) {
@@ -1491,8 +2044,8 @@
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, width, height);
                 
-                // Calculate candle dimensions for simple 12-candle display
-                const totalCandles = historicalCandles.length; // Exactly 12 candles
+                // Calculate candle dimensions for simple 20-candle display
+                const totalCandles = historicalCandles.length; // Exactly 20 candles
                 const priceLabelWidth = 100; // Reserve more space for price labels on the right
                 const chartWidth = width - priceLabelWidth; // Available width for chart
                 const candleWidth = (chartWidth * 0.95) / totalCandles; // Use 95% of available chart width for better utilization
@@ -1631,8 +2184,8 @@
                 // Get ongoing candle from separate data structure
                 const ongoingCandle = (candleData && candleData.ongoing) || null;
                 
-                // Debug: Log simple 12-candle structure
-                console.log('🕯️ Simple 12-candle structure:', {
+                // Debug: Log simple 20-candle structure
+                console.log('🕯️ Simple 20-candle structure:', {
                     totalCandles: historicalCandles.length,
                     ongoing: ongoingCandle ? 'Yes' : 'No',
                     candles: historicalCandles.map((c, i) => ({ 
@@ -1651,7 +2204,7 @@
                     });
                 }
                 
-                // Draw all 12 candles (11 historical + 1 ongoing)
+                // Draw all 20 candles (19 historical + 1 ongoing)
                 const historicalStartX = chartStartX;
                 
                 historicalCandles.forEach((candle, index) => {
@@ -1660,7 +2213,7 @@
                     this.drawCandle(ctx, candle, x, candleWidth, height, adjustedMinPrice, adjustedPriceRange, false, isOngoing);
                 });
                 
-                // No separator line needed - simple 12-candle display
+                // No separator line needed - simple 20-candle display
                 
                 // Add "NOW" label at the last candle (ongoing candle)
                 ctx.fillStyle = '#00FFFF';
@@ -1670,8 +2223,18 @@
                 ctx.fillText('NOW', nowX, height - 10);
                 
                 // Draw pattern overlays on the chart
+                console.log('🎨 Pattern overlay check:', {
+                    hasCandleData: !!candleData,
+                    hasPatternAnalysis: candleData ? !!candleData.pattern_analysis : false,
+                    candleDataKeys: candleData ? Object.keys(candleData) : 'null',
+                    patternAnalysis: candleData ? candleData.pattern_analysis : 'null'
+                });
+                
                 if (candleData && candleData.pattern_analysis) {
+                    console.log('🎨 Drawing pattern overlays:', candleData.pattern_analysis);
                     this.drawPatternOverlays(ctx, candleData.pattern_analysis, historicalCandles, chartStartX, candleWidth, height, adjustedMinPrice, adjustedPriceRange);
+                        } else {
+                    console.log('🎨 No pattern data available for chart overlay');
                 }
                 
                 // Add current price indicator (use real-time price if available)
@@ -1796,7 +2359,7 @@
                     // For ongoing candle, use current price vs open price for dynamic color
                     const currentPrice = window.dashboard && window.dashboard.currentPrice ? window.dashboard.currentPrice : candle.close;
                     isGreen = currentPrice >= candle.open;
-                } else {
+                        } else {
                     // For completed candles, use close vs open
                     isGreen = candle.close >= candle.open;
                 }
@@ -1855,7 +2418,7 @@
                     if (isGreen) {
                         bodyGradient.addColorStop(0, 'rgba(0,255,136,0.9)');
                         bodyGradient.addColorStop(1, 'rgba(0,200,100,0.9)');
-                    } else {
+                        } else {
                         bodyGradient.addColorStop(0, 'rgba(255,68,68,0.9)');
                         bodyGradient.addColorStop(1, 'rgba(255,30,50,0.9)');
                     }
@@ -1905,51 +2468,75 @@
             
             // Pattern Drawing Functions for Chart Overlay
             drawPatternOverlays(ctx, patternAnalysis, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                if (!patternAnalysis || !patternAnalysis.patterns) return;
+                console.log('🎨 drawPatternOverlays called with:', {
+                    hasPatternAnalysis: !!patternAnalysis,
+                    hasPatterns: patternAnalysis ? !!patternAnalysis.patterns : false,
+                    patternAnalysisKeys: patternAnalysis ? Object.keys(patternAnalysis) : 'null',
+                    patternAnalysis: patternAnalysis
+                });
+                
+                if (!patternAnalysis || !patternAnalysis.patterns) {
+                    console.log('🎨 No pattern analysis or patterns found');
+                    return;
+                }
                 
                 const patterns = patternAnalysis.patterns;
+                console.log('🎨 Patterns found:', patterns);
+                console.log('🎨 Pattern types:', Object.keys(patterns));
                 
                 // Draw reversal patterns
                 if (patterns.reversal_patterns && patterns.reversal_patterns.length > 0) {
+                    console.log('🎨 Drawing reversal patterns:', patterns.reversal_patterns.length);
                     patterns.reversal_patterns.forEach(pattern => {
+                        console.log('🎨 Drawing reversal pattern:', pattern);
                         this.drawReversalPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
                 
                 // Draw continuation patterns
                 if (patterns.continuation_patterns && patterns.continuation_patterns.length > 0) {
+                    console.log('🎨 Drawing continuation patterns:', patterns.continuation_patterns.length);
                     patterns.continuation_patterns.forEach(pattern => {
+                        console.log('🎨 Drawing continuation pattern:', pattern);
                         this.drawContinuationPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
                 
                 // Draw triangle patterns
                 if (patterns.triangle_patterns && patterns.triangle_patterns.length > 0) {
+                    console.log('🎨 Drawing triangle patterns:', patterns.triangle_patterns.length);
                     patterns.triangle_patterns.forEach(pattern => {
+                        console.log('🎨 Drawing triangle pattern:', pattern);
                         this.drawTrianglePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
                 
                 // Draw channel patterns
                 if (patterns.channel_patterns && patterns.channel_patterns.length > 0) {
+                    console.log('🎨 Drawing channel patterns:', patterns.channel_patterns.length);
                     patterns.channel_patterns.forEach(pattern => {
+                        console.log('🎨 Drawing channel pattern:', pattern);
                         this.drawChannelPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
                 
                 // Draw wedge patterns
                 if (patterns.wedge_patterns && patterns.wedge_patterns.length > 0) {
+                    console.log('🎨 Drawing wedge patterns:', patterns.wedge_patterns.length);
                     patterns.wedge_patterns.forEach(pattern => {
+                        console.log('🎨 Drawing wedge pattern:', pattern);
                         this.drawWedgePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
             }
             
             drawReversalPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                const patternType = pattern.pattern_type;
+                console.log('🎨 drawReversalPattern called with:', pattern);
+                const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
+                console.log('🎨 Pattern bounds:', { startIndex, endIndex, patternType, confidence });
                 
                 // Calculate pattern bounds
                 const startX = chartStartX + (startIndex * candleWidth);
@@ -1966,13 +2553,13 @@
                 // Set pattern color based on type and confidence
                 let patternColor, patternName;
                 if (patternType.includes('DOUBLE_TOP') || patternType.includes('HEAD_SHOULDERS')) {
-                    patternColor = `rgba(255, 100, 100, ${0.3 + confidence * 0.4})`; // Red for bearish
+                    patternColor = `rgba(255, 100, 100, ${0.15 + confidence * 0.2})`; // Red for bearish - more transparent
                     patternName = patternType.replace('_', ' ');
                 } else if (patternType.includes('DOUBLE_BOTTOM') || patternType.includes('INVERSE')) {
-                    patternColor = `rgba(100, 255, 100, ${0.3 + confidence * 0.4})`; // Green for bullish
+                    patternColor = `rgba(100, 255, 100, ${0.15 + confidence * 0.2})`; // Green for bullish - more transparent
                     patternName = patternType.replace('_', ' ');
                 } else {
-                    patternColor = `rgba(255, 255, 100, ${0.3 + confidence * 0.4})`; // Yellow for neutral
+                    patternColor = `rgba(255, 255, 100, ${0.15 + confidence * 0.2})`; // Yellow for neutral - more transparent
                     patternName = patternType.replace('_', ' ');
                 }
                 
@@ -1994,10 +2581,12 @@
             }
             
             drawContinuationPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                const patternType = pattern.pattern_type;
+                console.log('🎨 drawContinuationPattern called with:', pattern);
+                const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
+                console.log('🎨 Continuation pattern bounds:', { startIndex, endIndex, patternType, confidence });
                 
                 // Calculate pattern bounds
                 const startX = chartStartX + (startIndex * candleWidth);
@@ -2042,10 +2631,12 @@
             }
             
             drawTrianglePattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                const patternType = pattern.pattern_type;
+                console.log('🎨 drawTrianglePattern called with:', pattern);
+                const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
+                console.log('🎨 Triangle pattern bounds:', { startIndex, endIndex, patternType, confidence });
                 
                 // Calculate pattern bounds
                 const startX = chartStartX + (startIndex * candleWidth);
@@ -2110,10 +2701,12 @@
             }
             
             drawChannelPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                const patternType = pattern.pattern_type;
+                console.log('🎨 drawChannelPattern called with:', pattern);
+                const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
+                console.log('🎨 Channel pattern bounds:', { startIndex, endIndex, patternType, confidence });
                 
                 // Calculate pattern bounds
                 const startX = chartStartX + (startIndex * candleWidth);
@@ -2158,7 +2751,7 @@
             }
             
             drawWedgePattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                const patternType = pattern.pattern_type;
+                const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;

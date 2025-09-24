@@ -29,11 +29,11 @@ class MarketConditionsAnalyzer:
         Comprehensive market conditions analysis for trading decisions
         
         RETURNS: {
-            "is_tradable": bool,
-            "condition": str,  # EXCELLENT, GOOD, POOR, UNTRADABLE
+            "condition": str,  # EXCELLENT, GOOD, FAIR, POOR
             "reasons": [str],  # List of condition factors
             "risk_level": str, # LOW, MODERATE, HIGH, EXTREME
-            "confidence": float # 0.0-1.0 confidence in analysis
+            "confidence": float, # 0.0-1.0 confidence in analysis
+            "market_status": str  # BEARISH/NEUTRAL/BULLISH based on 7-day trend
         }
         """
         try:
@@ -113,22 +113,25 @@ class MarketConditionsAnalyzer:
             if context_analysis["risk"] > 0:
                 risk_factors.extend(context_analysis["risk_factors"])
             
+            # 6. 7-DAY MARKET TREND STATUS ANALYSIS
+            market_status_analysis = self._analyze_7day_market_trend(current_price)
+            condition_factors.extend(market_status_analysis["factors"])
             
-            # DETERMINE OVERALL TRADABILITY (with RSI override logic for scalping)
-            overall_analysis = self._determine_overall_tradability(
+            # DETERMINE OVERALL CONDITIONS (no tradable/untradable logic)
+            overall_analysis = self._determine_overall_conditions(
                 risk_factors, positive_factors, condition_factors, 
                 neutral_rsi, volume_analysis, trend_analysis, volatility_analysis, market_data
             )
             
             result = {
-                "is_tradable": overall_analysis["is_tradable"],
                 "condition": overall_analysis["condition"],
                 "reasons": condition_factors,
                 "risk_level": overall_analysis["risk_level"], 
                 "confidence": overall_analysis["confidence"],
                 "risk_factors": risk_factors,
                 "positive_factors": positive_factors,
-                "analysis_timestamp": market_data.get("timestamp", 0)
+                "analysis_timestamp": market_data.get("timestamp", 0),
+                "market_status": market_status_analysis["market_status"]
             }
             
             # Add sentiment data if available
@@ -143,17 +146,26 @@ class MarketConditionsAnalyzer:
             if news_analysis.get("news_data"):
                 result["news_sentiment"] = news_analysis["news_data"]
             
-            # Log important condition changes with DEBUG details
-            if not overall_analysis["is_tradable"]:
-                logger.warning(f"🚫 UNTRADABLE CONDITIONS: {overall_analysis['condition']}")
-            elif overall_analysis["condition"] == "EXCELLENT":
-                logger.success(f"🎯 EXCELLENT trading conditions: {', '.join(positive_factors[:2])}")
+            # Log important condition changes
+            if overall_analysis["condition"] == "EXCELLENT":
+                logger.success(f"🎯 EXCELLENT market conditions: {', '.join(positive_factors[:2])}")
+            elif overall_analysis["condition"] == "POOR":
+                logger.warning(f"⚠️ POOR market conditions: {', '.join(risk_factors[:2])}")
             
             return result
             
         except Exception as e:
             logger.error(f"❌ Market conditions analysis failed: {e}")
-            return self._get_default_conditions_analysis()
+            return {
+                "condition": "POOR",
+                "reasons": [f"Analysis failed: {str(e)}"],
+                "risk_level": "HIGH",
+                "confidence": 0.3,
+                "risk_factors": [f"Analysis error: {str(e)}"],
+                "positive_factors": [],
+                "analysis_timestamp": market_data.get("timestamp", 0),
+                "market_status": "NEUTRAL"
+            }
     
     def _analyze_volatility_conditions(self, volatility_5m: float, category: str) -> Dict[str, Any]:
         """Analyze volatility for trading suitability"""
@@ -360,58 +372,63 @@ class MarketConditionsAnalyzer:
             "positive_factors": []
         }
     
-    def _determine_overall_tradability(self, risk_factors: list, positive_factors: list, 
+    def _determine_overall_conditions(self, risk_factors: list, positive_factors: list, 
                                      condition_factors: list, neutral_rsi: bool = False,
                                      volume_analysis: Dict = None, trend_analysis: Dict = None, 
                                      volatility_analysis: Dict = None, market_data: Dict = None) -> Dict[str, Any]:
-        """Determine overall market tradability - DISABLED: All conditions are tradeable"""
+        """Determine overall market conditions based on factors"""
         
         total_risk_score = len(risk_factors)
         total_positive_score = len(positive_factors)
         
-        # DEBUG: Log tradability decision process
-        
-        # DISABLED: All conditions are now tradeable for testing
-        # Always return tradeable conditions with appropriate risk levels
-        
+        # Determine condition based on positive factors and risk factors
         if total_positive_score >= 3:
             condition = "EXCELLENT"
             risk_level = "LOW"
             confidence = 0.85
         elif total_positive_score >= 2:
-            condition = "VERY_GOOD"
+            condition = "GOOD"
             risk_level = "LOW"
             confidence = 0.75
         elif total_positive_score >= 1:
-            condition = "GOOD"
+            condition = "FAIR"
             risk_level = "MODERATE"
             confidence = 0.65
         else:
-            condition = "FAIR"
+            condition = "POOR"
             risk_level = "MODERATE"
             confidence = 0.55
         
+        # Adjust for high risk factors
+        if total_risk_score >= 3:
+            condition = "POOR"
+            risk_level = "HIGH"
+            confidence = max(0.3, confidence - 0.2)
+        elif total_risk_score >= 2:
+            risk_level = "MODERATE"
+            confidence = max(0.4, confidence - 0.1)
         
         return {
-            "is_tradable": True,  # Always tradeable
             "condition": condition,
             "risk_level": risk_level,
             "confidence": confidence
         }
     
     
-    def get_untradable_condition_summary(self, analysis: Dict[str, Any]) -> str:
-        """Generate user-friendly summary of why conditions are untradable"""
-        if analysis.get("is_tradable", True):
-            return ""
-        
+    def get_condition_summary(self, analysis: Dict[str, Any]) -> str:
+        """Generate user-friendly summary of market conditions"""
         condition = analysis.get("condition", "UNKNOWN")
         main_risks = analysis.get("risk_factors", [])[:2]  # Top 2 risk factors
+        main_positives = analysis.get("positive_factors", [])[:2]  # Top 2 positive factors
         
-        if condition == "UNTRADABLE":
-            return f"Market unsuitable for trading: {', '.join(main_risks)}"
+        if condition == "EXCELLENT":
+            return f"Excellent conditions: {', '.join(main_positives)}"
+        elif condition == "GOOD":
+            return f"Good conditions: {', '.join(main_positives)}"
+        elif condition == "FAIR":
+            return f"Fair conditions"
         elif condition == "POOR": 
-            return f"Poor trading conditions: {', '.join(main_risks)}"
+            return f"Poor conditions: {', '.join(main_risks)}"
         else:
             return f"Conditions analysis unavailable"
     
@@ -757,6 +774,91 @@ class MarketConditionsAnalyzer:
                 "positive_factors": [],
                 "risk": 0,
                 "positive": False
+            }
+    
+    def _analyze_7day_market_trend(self, current_price: float) -> Dict[str, Any]:
+        """
+        Analyze 7-day market trend to determine market status (BEARISH/NEUTRAL/BULLISH)
+        
+        Returns:
+            Dict containing market status and factors
+        """
+        try:
+            # Get 7-day historical candles (1d timeframe)
+            from core.market_data_manager import market_data_manager
+            from core.api.hyperliquid_api import get_hyperliquid_api
+            
+            # Get Hyperliquid API instance
+            hyperliquid_api = get_hyperliquid_api()
+            
+            # Fetch 7 days of daily candles
+            candles_1d = market_data_manager.get_historical_candles("BTC", "1d", 7, force_refresh=True)
+            
+            if not candles_1d or len(candles_1d) < 7:
+                logger.warning("⚠️ Insufficient 7-day data for market status analysis")
+                return {
+                    "factors": ["Insufficient 7-day data for trend analysis"],
+                    "market_status": "NEUTRAL"
+                }
+            
+            # Calculate trend from 7-day candles
+            start_price = candles_1d[0]["close"]
+            end_price = candles_1d[-1]["close"]
+            price_change = end_price - start_price
+            price_change_pct = (price_change / start_price) * 100
+            
+            # Calculate trend strength
+            highs = [candle["high"] for candle in candles_1d]
+            lows = [candle["low"] for candle in candles_1d]
+            max_high = max(highs)
+            min_low = min(lows)
+            range_pct = ((max_high - min_low) / min_low) * 100
+            
+            # Determine market status based on price change and volatility
+            if price_change_pct > 5.0:  # Strong bullish trend (>5% gain)
+                market_status = "BULLISH"
+                factors = [f"Strong 7-day uptrend: +{price_change_pct:.1f}%"]
+            elif price_change_pct > 2.0:  # Moderate bullish trend (2-5% gain)
+                market_status = "BULLISH"
+                factors = [f"Moderate 7-day uptrend: +{price_change_pct:.1f}%"]
+            elif price_change_pct < -5.0:  # Strong bearish trend (>5% loss)
+                market_status = "BEARISH"
+                factors = [f"Strong 7-day downtrend: {price_change_pct:.1f}%"]
+            elif price_change_pct < -2.0:  # Moderate bearish trend (2-5% loss)
+                market_status = "BEARISH"
+                factors = [f"Moderate 7-day downtrend: {price_change_pct:.1f}%"]
+            else:  # Neutral trend (-2% to +2%)
+                market_status = "NEUTRAL"
+                factors = [f"Neutral 7-day trend: {price_change_pct:+.1f}%"]
+            
+            # Add volatility context
+            if range_pct > 15.0:  # High volatility
+                factors.append(f"High volatility: {range_pct:.1f}% range")
+            elif range_pct < 5.0:  # Low volatility
+                factors.append(f"Low volatility: {range_pct:.1f}% range")
+            else:  # Normal volatility
+                factors.append(f"Normal volatility: {range_pct:.1f}% range")
+            
+            # Add price context
+            factors.append(f"7-day range: ${min_low:,.0f} - ${max_high:,.0f}")
+            factors.append(f"Current: ${current_price:,.0f}")
+            
+            logger.info(f"📊 7-day market status: {market_status} ({price_change_pct:+.1f}%, {range_pct:.1f}% range)")
+            
+            return {
+                "factors": factors,
+                "market_status": market_status,
+                "price_change_pct": price_change_pct,
+                "range_pct": range_pct,
+                "start_price": start_price,
+                "end_price": end_price
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ 7-day market trend analysis failed: {e}")
+            return {
+                "factors": [f"7-day trend analysis failed: {str(e)}"],
+                "market_status": "NEUTRAL"
             }
 
 # Global instance for consistent conditions analysis across the system

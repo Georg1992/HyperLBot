@@ -335,11 +335,12 @@ class SessionOrchestrator:
             # Store market conditions in RTM for dashboard
             simple_rtm.update_market({
                 "market_conditions": {
-                    "is_tradable": market_conditions_data["is_tradable"],
+                    "condition": market_conditions_data["condition"],
                     "risk_level": market_conditions_data["risk_level"],
                     "reasons": market_conditions_data.get("reasons", []),  # Use 'reasons' instead of 'factors'
                     "positive_factors": market_conditions_data.get("positive_factors", []),
-                    "risk_factors": market_conditions_data.get("risk_factors", [])
+                    "risk_factors": market_conditions_data.get("risk_factors", []),
+                    "market_status": market_conditions_data.get("market_status", "NEUTRAL")  # Add 7-day market status
                 },
                 "support_resistance": support_resistance_data  # Add support/resistance levels
             })
@@ -766,11 +767,11 @@ class SessionOrchestrator:
             
             # Add market conditions to market data for dashboard
             market_data["market_conditions"] = {
-                "is_tradable": conditions_analysis["is_tradable"],
                 "condition": conditions_analysis["condition"], 
                 "risk_level": conditions_analysis["risk_level"],
                 "main_reasons": conditions_analysis["reasons"][:3],
                 "confidence": conditions_analysis["confidence"],
+                "market_status": conditions_analysis.get("market_status", "NEUTRAL"),
                 # Include whale analytics and news sentiment data
                 "whale_analytics": conditions_analysis.get("whale_analytics"),
                 "news_sentiment": conditions_analysis.get("news_sentiment"),
