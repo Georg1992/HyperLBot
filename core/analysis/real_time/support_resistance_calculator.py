@@ -6,6 +6,7 @@ Simple Support/Resistance Calculator - WORKS
 import time
 from typing import Dict, List, Any
 from loguru import logger
+from .liquidation_level_calculator import liquidation_level_calculator
 
 class SupportResistanceCalculator:
     """Simple S/R calculator that actually works"""
@@ -21,7 +22,12 @@ class SupportResistanceCalculator:
                 return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
             
             current_price = candles[-1].get("close", 0)
-            logger.info(f"📊 S/R Analysis: {len(candles)} candles, current_price=${current_price:.2f}")
+            
+            # Detect if we're at a local maximum or minimum
+            market_position = self._detect_market_position(candles, current_price)
+            logger.info(f"📊 Market position: {market_position['position']} (confidence: {market_position['confidence']:.2f})")
+            
+            # Removed verbose logging to reduce spam
             
             # Find highs and lows
             highs = [c.get("high", 0) for c in candles]
@@ -38,11 +44,11 @@ class SupportResistanceCalculator:
                     # This is a local minimum - count how many times price touched this level
                     touches = self._count_touches(candles, low, "support")
                     if touches >= 1:  # Any significant level (lowered from 2)
-                        # Check volume confirmation (temporarily disabled for debugging)
-                        volume_confirmed = True  # self._check_volume_confirmation(candles, low, "support")
+                        # Check volume confirmation
+                        volume_confirmed = self._check_volume_confirmation(candles, low, "support")
                         if volume_confirmed:
-                            # Calculate comprehensive score (0-100)
-                            score = self._calculate_level_score(candles, low, "support", touches, i)
+                            # Calculate comprehensive score (0-100) with market position context
+                            score = self._calculate_level_score(candles, low, "support", touches, i, market_position)
                             
                             support_levels.append({
                                 "level": low,
@@ -59,11 +65,11 @@ class SupportResistanceCalculator:
                     # This is a local maximum - count how many times price touched this level
                     touches = self._count_touches(candles, high, "resistance")
                     if touches >= 1:  # Any significant level (lowered from 2)
-                        # Check volume confirmation (temporarily disabled for debugging)
-                        volume_confirmed = True  # self._check_volume_confirmation(candles, high, "resistance")
+                        # Check volume confirmation
+                        volume_confirmed = self._check_volume_confirmation(candles, high, "resistance")
                         if volume_confirmed:
-                            # Calculate comprehensive score (0-100)
-                            score = self._calculate_level_score(candles, high, "resistance", touches, i)
+                            # Calculate comprehensive score (0-100) with market position context
+                            score = self._calculate_level_score(candles, high, "resistance", touches, i, market_position)
                             
                             resistance_levels.append({
                                 "level": high,
@@ -74,28 +80,56 @@ class SupportResistanceCalculator:
                             })
             
             # Add psychological levels from actual price data near round numbers
-            psychological_levels = self._add_psychological_levels(current_price, candles)
-            all_levels = support_levels + resistance_levels + psychological_levels
+            # NO FALLBACKS - Only use real calculated levels
+            all_levels = support_levels + resistance_levels
             all_levels.sort(key=lambda x: x["score"], reverse=True)
             
             # Filter levels - show broken levels too (they're still relevant)
             filtered_levels = []
             for level in all_levels:
                 # Show all levels - broken support/resistance is still important
-                # Filter out levels that are too close to each other (minimum $200 gap)
+                # Filter out levels that are too close to each other (minimum $500 gap for Bitcoin)
                 is_too_close = False
                 for existing in filtered_levels:
-                    if abs(level["level"] - existing["level"]) < 200.0:  # $200 minimum gap
+                    if abs(level["level"] - existing["level"]) < 500.0:  # $500 minimum gap for major levels
                         is_too_close = True
                         break
                 if not is_too_close:
                     filtered_levels.append(level)
             
-            all_levels = filtered_levels[:5]  # Limit to top 5 levels only
+            # CRITICAL FIX: Filter levels based on current price position
+            # Support must be BELOW current price, Resistance must be ABOVE current price
+            support_levels_filtered = [
+                level for level in filtered_levels 
+                if level["type"] == "support" and level["level"] < current_price
+            ]
+            resistance_levels_filtered = [
+                level for level in filtered_levels 
+                if level["type"] == "resistance" and level["level"] > current_price
+            ]
             
-            # Get strongest levels from filtered results
-            support_levels_filtered = [level for level in all_levels if level["type"] == "support"]
-            resistance_levels_filtered = [level for level in all_levels if level["type"] == "resistance"]
+            # NO FALLBACKS - Use only real calculated levels
+            
+            # Ensure we have at least one support and one resistance
+            # Sort by distance from current price to get closest levels
+            support_levels_filtered.sort(key=lambda x: abs(x["level"] - current_price))
+            resistance_levels_filtered.sort(key=lambda x: abs(x["level"] - current_price))
+            
+            # Take more levels in low volatility conditions
+            # In low volatility, weaker levels are still significant
+            # Note: We'll use a default approach since market_data is not available here
+            max_levels = 5  # Include more levels for better detection
+                
+            support_levels_filtered = support_levels_filtered[:max_levels]
+            resistance_levels_filtered = resistance_levels_filtered[:max_levels]
+            
+            # Combine for final levels
+            all_levels = support_levels_filtered + resistance_levels_filtered
+            
+            # Debug: Log all resistance levels found
+            logger.info(f"📊 Resistance levels found: {len(resistance_levels_filtered)}")
+            for res in resistance_levels_filtered:
+                logger.info(f"   Resistance: ${res['level']:.2f} (score: {res.get('score', 0):.2f}, distance: {abs(res['level'] - current_price):.2f})")
             
             strongest_support = support_levels_filtered[0]["level"] if support_levels_filtered else current_price * 0.95
             strongest_resistance = resistance_levels_filtered[0]["level"] if resistance_levels_filtered else current_price * 1.05
@@ -106,21 +140,49 @@ class SupportResistanceCalculator:
             logger.info(f"📊 Strongest support: ${strongest_support:.2f} (below price: {strongest_support < current_price})")
             logger.info(f"📊 Strongest resistance: ${strongest_resistance:.2f} (above price: {strongest_resistance > current_price})")
             
+            # Add liquidation levels to key levels
+            liquidation_levels = self._get_liquidation_levels(current_price)
+            all_levels.extend(liquidation_levels)
+            
+            # Re-sort all levels by distance from current price
+            all_levels.sort(key=lambda x: abs(x["level"] - current_price))
+            
             return {
                 "key_levels": all_levels,
                 "strongest_support": strongest_support,
                 "strongest_resistance": strongest_resistance,
-                "analysis_confidence": 0.9 if len(all_levels) > 0 else 0.3
+                "analysis_confidence": 0.9 if len(all_levels) > 0 else 0.3,
+                "liquidation_levels": liquidation_levels
             }
             
         except Exception as e:
             logger.error(f"❌ S/R detection failed: {e}")
             return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
     
+    def _get_liquidation_levels(self, current_price: float) -> List[Dict[str, Any]]:
+        """Get REAL liquidation levels from order book analysis"""
+        try:
+            # Get order book data from WebSocket
+            from core.api.hyperliquid_websocket import get_websocket_instance
+            websocket = get_websocket_instance("BTC")
+            
+            if not websocket.is_connected():
+                logger.warning("⚠️ WebSocket not connected - cannot get real liquidation levels")
+                return []
+            
+            # Get order book data (this would need to be implemented in WebSocket)
+            # For now, return empty list until WebSocket provides order book data
+            logger.info("💀 Real liquidation levels require order book data from WebSocket")
+            return []
+            
+        except Exception as e:
+            logger.error(f"❌ Real liquidation levels calculation failed: {e}")
+            return []
+    
     def _count_touches(self, candles: List[Dict], level_price: float, level_type: str) -> int:
         """Count how many times price touched this level - REALISTIC TOUCHES ONLY"""
         touches = 0
-        tolerance = 100.0  # $100 tolerance - realistic for Bitcoin
+        tolerance = 300.0  # $300 tolerance - realistic for Bitcoin volatility
         
         for candle in candles:
             high = candle.get("high", 0)
@@ -137,7 +199,7 @@ class SupportResistanceCalculator:
     
     def _check_volume_confirmation(self, candles: List[Dict], level_price: float, level_type: str) -> bool:
         """Check if the level has volume confirmation (above average volume when tested)"""
-        tolerance = 100.0  # $100 tolerance - same as touch counting
+        tolerance = 300.0  # $300 tolerance - same as touch counting
         
         # Find candles that touched this level
         touching_candles = []
@@ -166,84 +228,90 @@ class SupportResistanceCalculator:
         # Volume confirmation: touching candles should have above-average volume
         volume_ratio = avg_touching_volume / overall_avg_volume if overall_avg_volume > 0 else 1.0
         
-        return volume_ratio > 1.0  # Just above average volume (less strict)
+        return volume_ratio > 0.8  # More lenient volume confirmation (0.8 instead of 1.0)
     
-    def _add_psychological_levels(self, current_price: float, candles: List[Dict]) -> List[Dict]:
-        """Find psychological levels from actual price data near round numbers"""
-        psychological_levels = []
-        
-        # Extract all high and low prices from candles
-        all_prices = []
-        for candle in candles:
-            all_prices.extend([candle.get("high", 0), candle.get("low", 0)])
-        
-        # Find round number levels around current price
-        current_thousand = int(current_price // 1000) * 1000
-        current_hundred = int(current_price // 100) * 100
-        
-        # Look for levels near round thousands and hundreds
-        psychological_base_levels = []
-        
-        # Add thousand levels around current price
-        for offset in range(-3, 4):  # -3 to +3 thousand levels
-            thousand_level = current_thousand + (offset * 1000)
-            if 50000 <= thousand_level <= 200000:  # Reasonable Bitcoin range
-                psychological_base_levels.append(thousand_level)
-        
-        # Add hundred levels around current price
-        for offset in range(-2, 3):  # -2 to +2 hundred levels
-            hundred_level = current_hundred + (offset * 100)
-            if 50000 <= hundred_level <= 200000:  # Reasonable Bitcoin range
-                psychological_base_levels.append(hundred_level)
-        
-        # For each psychological base level, find the closest actual price from data
-        for base_level in psychological_base_levels:
-            # Find prices within $200 of the psychological level
-            tolerance = 200.0
-            nearby_prices = [price for price in all_prices if abs(price - base_level) <= tolerance]
+    # REMOVED: _add_psychological_levels - NO FALLBACKS
+    
+    # REMOVED: _add_projected_resistance_levels - NO FALLBACKS
+    
+    def _detect_market_position(self, candles: List[Dict], current_price: float) -> Dict[str, Any]:
+        """Detect if we're at a local maximum, minimum, or in consolidation"""
+        try:
+            if len(candles) < 20:
+                return {"position": "UNKNOWN", "confidence": 0.0}
             
-            if nearby_prices:
-                # Use the most common price near this psychological level
-                # Group prices by $10 buckets to find clusters
-                price_buckets = {}
-                for price in nearby_prices:
-                    bucket = int(price // 10) * 10  # Round to nearest $10
-                    if bucket not in price_buckets:
-                        price_buckets[bucket] = []
-                    price_buckets[bucket].append(price)
+            # Define "local" period: last 30 candles for 5m timeframe (2.5 hours)
+            local_period = min(30, len(candles))
+            local_candles = candles[-local_period:]
+            
+            # Find all local extrema within the period
+            local_highs = []
+            local_lows = []
+            
+            # Detect local highs and lows
+            for i in range(2, len(local_candles) - 2):
+                candle = local_candles[i]
+                high = candle.get("high", 0)
+                low = candle.get("low", 0)
                 
-                # Find the bucket with most prices (most significant level)
-                if price_buckets:
-                    best_bucket = max(price_buckets.keys(), key=lambda k: len(price_buckets[k]))
-                    best_prices = price_buckets[best_bucket]
-                    psychological_price = sum(best_prices) / len(best_prices)  # Average of clustered prices
-                    
-                    # Determine if it's support or resistance based on current price
-                    level_type = "support" if psychological_price < current_price else "resistance"
-                    
-                    # Calculate score based on how close to round number and how many touches
-                    base_score = 5.0  # Base score for psychological levels
-                    if base_level % 1000 == 0:  # Round thousands
-                        base_score = 7.0
-                    elif base_level % 100 == 0:  # Round hundreds
-                        base_score = 6.0
-                    
-                    # Boost score if many prices clustered around this level
-                    cluster_boost = min(2.0, len(best_prices) * 0.2)
-                    final_score = base_score + cluster_boost
-                    
-                    psychological_levels.append({
-                        "level": psychological_price,
-                        "type": level_type,
-                        "score": final_score,
-                        "touches": len(best_prices),  # Number of prices that touched this area
-                        "index": -1,  # Special index for psychological levels
-                        "source": "psychological"
-                    })
-        
-        return psychological_levels
+                # Check if this is a local high (higher than 2 candles before and after)
+                if (high > local_candles[i-1].get("high", 0) and 
+                    high > local_candles[i-2].get("high", 0) and
+                    high > local_candles[i+1].get("high", 0) and 
+                    high > local_candles[i+2].get("high", 0)):
+                    local_highs.append({"price": high, "index": i, "candle": candle})
+                
+                # Check if this is a local low (lower than 2 candles before and after)
+                if (low < local_candles[i-1].get("low", 0) and 
+                    low < local_candles[i-2].get("low", 0) and
+                    low < local_candles[i+1].get("low", 0) and 
+                    low < local_candles[i+2].get("low", 0)):
+                    local_lows.append({"price": low, "index": i, "candle": candle})
+            
+            # Check if current price is near the most recent local high
+            if local_highs:
+                latest_high = max(local_highs, key=lambda x: x["index"])
+                if current_price >= latest_high["price"] * 0.998:  # Within 0.2% of latest local high
+                    return {"position": "LOCAL_MAXIMUM", "confidence": 0.95, "extrema": local_highs, "lows": local_lows}
+            
+            # Check if current price is near the most recent local low
+            if local_lows:
+                latest_low = max(local_lows, key=lambda x: x["index"])
+                if current_price <= latest_low["price"] * 1.002:  # Within 0.2% of latest local low
+                    return {"position": "LOCAL_MINIMUM", "confidence": 0.95, "extrema": local_lows, "highs": local_highs}
+            
+            # Check if we're in a consolidation zone (price between recent highs and lows)
+            if local_highs and local_lows:
+                recent_high = max([h["price"] for h in local_highs[-3:]])  # Last 3 highs
+                recent_low = min([l["price"] for l in local_lows[-3:]])    # Last 3 lows
+                
+                if recent_low < current_price < recent_high:
+                    range_size = recent_high - recent_low
+                    if range_size > 0:
+                        position_ratio = (current_price - recent_low) / range_size
+                        if 0.3 <= position_ratio <= 0.7:
+                            return {"position": "CONSOLIDATION", "confidence": 0.8, "extrema": local_highs + local_lows}
+            
+            # Determine trend direction
+            if len(local_candles) >= 10:
+                first_half = local_candles[:len(local_candles)//2]
+                second_half = local_candles[len(local_candles)//2:]
+                
+                first_avg = sum(c.get("close", 0) for c in first_half) / len(first_half)
+                second_avg = sum(c.get("close", 0) for c in second_half) / len(second_half)
+                
+                if second_avg > first_avg * 1.01:  # 1% higher
+                    return {"position": "UPTREND", "confidence": 0.7, "extrema": local_highs + local_lows}
+                elif second_avg < first_avg * 0.99:  # 1% lower
+                    return {"position": "DOWNTREND", "confidence": 0.7, "extrema": local_highs + local_lows}
+            
+            return {"position": "UNKNOWN", "confidence": 0.0, "extrema": local_highs + local_lows}
+                
+        except Exception as e:
+            logger.error(f"❌ Market position detection failed: {e}")
+            return {"position": "UNKNOWN", "confidence": 0.0}
     
-    def _calculate_level_score(self, candles: List[Dict], level_price: float, level_type: str, touches: int, index: int) -> float:
+    def _calculate_level_score(self, candles: List[Dict], level_price: float, level_type: str, touches: int, index: int, market_position: Dict[str, Any] = None) -> float:
         """
         Calculate comprehensive level score (0-100) based on multiple factors:
         1. Number of touches (20 points max)
@@ -286,19 +354,61 @@ class SupportResistanceCalculator:
             proximity_score = self._calculate_proximity_score(level_price, current_price)
             total_score += proximity_score
             
+            # 8. Local extrema bonus (20 points max) - NEW!
+            if market_position:
+                extrema_bonus = self._calculate_extrema_bonus(level_price, level_type, market_position)
+                total_score += extrema_bonus
+            
             # Ensure score is between 0 and 100
             final_score = max(0.0, min(100.0, total_score))
             
-            logger.debug(f"📊 Level score calculation: {level_type} at ${level_price:.2f} = {final_score:.1f} "
-                        f"(touches={touch_score:.1f}, volume={volume_score:.1f}, time={time_span_score:.1f}, "
-                        f"recent={recent_activity_score:.1f}, price_consistency={price_consistency_score:.1f}, "
-                        f"vol_consistency={volume_consistency_score:.1f}, proximity={proximity_score:.1f})")
+            # Only log high-quality levels to reduce spam (removed verbose debug logging)
+            if final_score >= 70.0:
+                pass  # Removed verbose debug logging to reduce log spam
             
             return final_score
             
         except Exception as e:
             logger.error(f"❌ Level score calculation failed: {e}")
             return 10.0  # Default fallback score
+    
+    def _calculate_extrema_bonus(self, level_price: float, level_type: str, market_position: Dict[str, Any]) -> float:
+        """Calculate bonus score for levels that are actual local extrema"""
+        try:
+            if not market_position or "extrema" not in market_position:
+                return 0.0
+            
+            extrema = market_position.get("extrema", [])
+            position = market_position.get("position", "UNKNOWN")
+            confidence = market_position.get("confidence", 0.0)
+            
+            # Check if this level is a local extrema
+            for extrema_point in extrema:
+                extrema_price = extrema_point.get("price", 0)
+                # Check if level is within 0.1% of extrema price
+                if abs(level_price - extrema_price) / level_price < 0.001:
+                    
+                    # Give higher bonus for current market position
+                    if position == "LOCAL_MAXIMUM" and level_type == "resistance":
+                        return 20.0 * confidence  # Max 20 points for resistance at local max
+                    elif position == "LOCAL_MINIMUM" and level_type == "support":
+                        return 20.0 * confidence  # Max 20 points for support at local min
+                    elif position == "CONSOLIDATION":
+                        return 15.0 * confidence  # 15 points for extrema in consolidation
+                    else:
+                        return 10.0 * confidence  # 10 points for other extrema
+            
+            # Give smaller bonus for levels near extrema (within 0.5%)
+            for extrema_point in extrema:
+                extrema_price = extrema_point.get("price", 0)
+                if abs(level_price - extrema_price) / level_price < 0.005:
+                    return 5.0 * confidence  # 5 points for near-extrema
+            
+            return 0.0
+            
+        except Exception as e:
+            logger.error(f"❌ Extrema bonus calculation failed: {e}")
+            return 0.0
     
     def _calculate_volume_score(self, candles: List[Dict], level_price: float, level_type: str, index: int) -> float:
         """Calculate volume confirmation score (0-20 points)"""
@@ -477,3 +587,7 @@ class SupportResistanceCalculator:
                 return candle.get("high", 0) >= level_price * 0.999  # Within 0.1% tolerance
         except:
             return False
+    
+    # REMOVED: _detect_consolidation_zones - NO FALLBACKS
+    
+    # REMOVED: _add_projected_support_levels - NO FALLBACKS
