@@ -14,7 +14,7 @@ import csv
 from pathlib import Path
 
 class TradingLogger:
-    def __init__(self, log_directory: str = "trading_logs"):
+    def __init__(self, log_directory: str = "logs"):
         """Initialize the trading logger"""
         self.log_directory = Path(log_directory)
         self.log_directory.mkdir(exist_ok=True)

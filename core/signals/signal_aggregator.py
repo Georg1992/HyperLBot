@@ -10,8 +10,8 @@ from dataclasses import dataclass
 from loguru import logger
 
 from .signal_sources import SignalType, SignalSource, global_signal_sources_manager
-from core.analysis.real_time.psychological_levels_calculator import global_psychological_levels_calculator
-from core.market_data_manager import global_rsi_calculator
+from core.analysis.real_time.psychological_levels_analyzer import get_global_psychological_levels_analyzer
+from core.analysis.real_time.rsi_calculator import get_global_rsi_calculator
 from core.analysis.real_time.pressure_calculator import PressureCalculator
 from core.analysis.real_time.volume_calculator import VolumeCalculator
 from core.external.whale_analytics_api import whale_analytics_api
@@ -147,7 +147,7 @@ class SignalAggregator:
         rsi = market_data.get("rsi", 50)
         if rsi == 50:  # If not provided in market_data, try calculator
             try:
-                rsi_data = global_rsi_calculator.get_current_rsi_data()
+                rsi_data = get_global_rsi_calculator().get_current_rsi_data()
                 rsi = rsi_data.get("rsi", 50)
             except Exception as e:
                 logger.warning(f"⚠️ RSI calculator not available: {e}, using fallback RSI=50")
@@ -632,10 +632,10 @@ class SignalAggregator:
         """Generate Psychological Levels signal (20% weight)"""
         try:
             # Get psychological levels analysis
-            psychological_analysis = global_psychological_levels_calculator.calculate_psychological_levels(current_price)
+            psychological_analysis = get_global_psychological_levels_analyzer().calculate_psychological_levels(current_price)
             
             # Generate signal
-            signal = global_psychological_levels_calculator.get_psychological_level_signal(current_price, market_data)
+            signal = get_global_psychological_levels_analyzer().get_psychological_level_signal(current_price, market_data)
             
             # Get signal source configuration
             signal_source = self.signal_sources_manager.get_signal_source(SignalType.PSYCHOLOGICAL_LEVELS)
@@ -2148,5 +2148,6 @@ class SignalAggregator:
             return {"strength": 0.0, "direction": "NEUTRAL", "reasoning_parts": []}
 
 
-# Global instance for easy access
-global_signal_aggregator = SignalAggregator()
+# Global instance for easy access - lazy initialization
+def global_signal_aggregator():
+    return SignalAggregator()

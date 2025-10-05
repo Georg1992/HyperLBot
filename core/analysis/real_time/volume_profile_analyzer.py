@@ -8,6 +8,16 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
+# Singleton pattern implementation
+_global_volume_profile_analyzer = None
+
+def get_global_volume_profile_analyzer() -> 'VolumeProfileAnalyzer':
+    """Get the global VolumeProfileAnalyzer singleton instance"""
+    global _global_volume_profile_analyzer
+    if _global_volume_profile_analyzer is None:
+        _global_volume_profile_analyzer = VolumeProfileAnalyzer()
+    return _global_volume_profile_analyzer
+
 class VolumeProfileAnalyzer:
     """Analyzes trade size distribution and flow patterns for market insights"""
     

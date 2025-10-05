@@ -2,7 +2,7 @@
 """
 Session Manager
 Handles trading session lifecycle management
-Automatically syncs with SimpleRTM for real-time dashboard updates
+Automatically syncs with dashboard service for real-time dashboard updates
 Single Responsibility: Session lifecycle and state management
 """
 
@@ -12,12 +12,9 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from datetime import datetime
 
-from core.dashboard.dashboard_data_manager import simple_rtm
-
-
 class SessionManager:
     """
-    Manages trading session lifecycle with RTM integration
+    Manages trading session lifecycle with dashboard integration
     Single Responsibility: Session creation, management, and cleanup
     """
     
@@ -73,7 +70,7 @@ class SessionManager:
                 if session_id is None:
                     session_id = f"session_{int(time.time())}"
                 
-                # Close any existing session first (but don't clear RTM yet)
+                # Close any existing session first
                 self._close_existing_session()
                 
                 self.current_session_id = session_id
@@ -112,11 +109,13 @@ class SessionManager:
                 # Calculate and update session time before syncing
                 self._update_session_time()
                 
-                # Sync to RTM immediately
-                simple_rtm.sync_from_session_manager(self.current_session_data)
-                
-                # Add startup activity to SimpleRTM
-                simple_rtm.add_activity(f"🚀 Trading session started - {strategy} strategy initialized", "SUCCESS", "session")
+                # Sync to dashboard immediately
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                if dashboard_service:
+                    dashboard_service.sync_from_session_manager(self.current_session_data)
+                    dashboard_service.add_activity(f"🚀 Trading session started - {strategy} strategy initialized", "SUCCESS", "session")
                 
                 logger.success(f"🚀 Trading session started: {session_id} ({strategy})")
                 return session_id
@@ -128,19 +127,25 @@ class SessionManager:
     def _close_existing_session(self):
         """Close any existing active session"""
         try:
-            # Check RTM for any active sessions
-            from core.dashboard.dashboard_data_manager import simple_rtm
-            rtm_data = simple_rtm.get_data()
-            rtm_session = rtm_data.get("session", {})
+            # Check dashboard for any active sessions
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+            if dashboard_service:
+                dashboard_data = dashboard_service.get_data()
+            else:
+                dashboard_data = {"session": {}}
+            dashboard_session = dashboard_data.get("session", {})
             
             # Check for ANY existing session (ACTIVE or COMPLETED) that needs cleanup
-            if rtm_session.get("session_id") != "no_session" and rtm_session.get("session_id"):
-                logger.info(f"🔄 Found existing session in RTM: {rtm_session.get('session_id')}")
-                logger.info(f"   Status: {rtm_session.get('status')}")
-                logger.info(f"   Balance: ${rtm_session.get('current_balance', 0):.2f}")
+            if dashboard_session.get("session_id") != "no_session" and dashboard_session.get("session_id"):
+                logger.info(f"🔄 Found existing session in dashboard: {dashboard_session.get('session_id')}")
+                logger.info(f"   Status: {dashboard_session.get('status')}")
+                logger.info(f"   Balance: ${dashboard_session.get('current_balance', 0):.2f}")
                 
                 # Clear any existing session data to ensure clean start
-                simple_rtm.clear_session_data()
+                if dashboard_service:
+                    dashboard_service.clear_session_data()
                 logger.info("🧹 Cleared existing session data for fresh start")
             
             # Close current session if exists
@@ -196,11 +201,13 @@ class SessionManager:
                 # Update final session time
                 self._update_session_time()
                 
-                # Sync to RTM
-                simple_rtm.sync_from_session_manager(self.current_session_data)
-                
-                # Add completion activity
-                simple_rtm.add_activity(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes", "SUCCESS", "session")
+                # Sync to dashboard
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                if dashboard_service:
+                    dashboard_service.sync_from_session_manager(self.current_session_data)
+                    dashboard_service.add_activity(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes", "SUCCESS", "session")
                 
                 logger.success(f"✅ Session ended: {self.current_session_id}")
                 logger.info(f"   Duration: {session_data.get('duration_minutes', 0):.1f} minutes")
@@ -215,11 +222,11 @@ class SessionManager:
                 return False
     
     def _close_orphaned_sessions(self):
-        """Close any orphaned sessions - simplified for SimpleRTM"""
+        """Close any orphaned sessions - simplified for dashboard service"""
         try:
-            # SimpleRTM handles session cleanup automatically
+            # Dashboard service handles session cleanup automatically
             # No need for complex database operations
-            logger.debug("✅ Session cleanup handled by SimpleRTM")
+            logger.debug("✅ Session cleanup handled by dashboard service")
                 
         except Exception as e:
             logger.error(f"Error in session cleanup: {e}")
@@ -285,7 +292,7 @@ class SessionManager:
                 if not self.current_session_id:
                     return {"error": "No active session"}
                 
-                # Return internal session data - no dependency on SimpleRTM
+                # Return internal session data - no dependency on dashboard service
                 return self.current_session_data
                 
             except Exception as e:
@@ -316,11 +323,10 @@ class SessionManager:
                 # Update session time before syncing
                 self._update_session_time()
                 
-                # Sync to RTM
-                simple_rtm.sync_from_session_manager(self.current_session_data)
-                
-                # Add activity record to SimpleRTM
-                simple_rtm.add_activity(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}", "INFO", "account")
+                # Sync to dashboard
+                if dashboard_service:
+                    dashboard_service.sync_from_session_manager(self.current_session_data)
+                    dashboard_service.add_activity(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}", "INFO", "account")
                 
             except Exception as e:
                 logger.error(f"Error updating session balance: {e}")
@@ -333,8 +339,9 @@ class SessionManager:
                     logger.warning("⚠️ No active session to add trade")
                     return
                 
-                # Add trade to SimpleRTM
-                simple_rtm.add_trade(trade_data)
+                # Add trade to dashboard
+                if dashboard_service:
+                    dashboard_service.add_trade(trade_data)
                 
                 # Update internal session data
                 if hasattr(self, 'current_session_data') and self.current_session_data:
@@ -374,7 +381,10 @@ class SessionManager:
                     self.current_session_data["daily_pnl"] = self.current_session_data.get("daily_pnl", 0) + pnl
                 
                 # Update active positions (count open trades)
-                active_trades = simple_rtm.get_trades()
+                if dashboard_service:
+                    active_trades = dashboard_service.get_trades()
+                else:
+                    active_trades = []
                 open_trades = [t for t in active_trades if t.get("status") == "OPEN"]
                 self.current_session_data["active_positions"] = len(open_trades)
                 
@@ -389,15 +399,16 @@ class SessionManager:
                 # Update session time before syncing
                 self._update_session_time()
                 
-                # Sync to RTM
-                simple_rtm.sync_from_session_manager(self.current_session_data)
-                
-                # Add trade activity
-                side = trade_data.get("side", "UNKNOWN")
-                pnl = trade_data.get("pnl", 0)
-                pnl_pct = trade_data.get("pnl_pct", 0)
-                
-                simple_rtm.add_activity(f"📊 Trade completed: {side} {pnl:+.2f} ({pnl_pct*100:+.1f}%)", "SUCCESS" if trade_data.get("was_profitable", False) else "WARNING", "trade")
+                # Sync to dashboard
+                if dashboard_service:
+                    dashboard_service.sync_from_session_manager(self.current_session_data)
+                    
+                    # Add trade activity
+                    side = trade_data.get("side", "UNKNOWN")
+                    pnl = trade_data.get("pnl", 0)
+                    pnl_pct = trade_data.get("pnl_pct", 0)
+                    
+                    dashboard_service.add_activity(f"📊 Trade completed: {side} {pnl:+.2f} ({pnl_pct*100:+.1f}%)", "SUCCESS" if trade_data.get("was_profitable", False) else "WARNING", "trade")
                 
                 logger.info(f"📊 Trade added to session: {trade_data.get('trade_id')}")
                 
@@ -451,9 +462,12 @@ class SessionManager:
                 # Update session time
                 self._update_session_time()
                 
-                # Sync to RTM
-                from core.dashboard.dashboard_data_manager import simple_rtm
-                simple_rtm.sync_from_session_manager(self.current_session_data)
+                # Sync to dashboard
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                if dashboard_service:
+                    dashboard_service.sync_from_session_manager(self.current_session_data)
                 
                 return True
                 
@@ -485,5 +499,16 @@ class SessionManager:
             except Exception as e:
                 logger.error(f"Error coordinating with account data: {e}")
 
-# Global instance (singleton)
-session_manager = SessionManager()
+# Singleton pattern implementation
+_global_session_manager = None
+
+def get_global_session_manager() -> 'SessionManager':
+    """Get the global SessionManager singleton instance"""
+    global _global_session_manager
+    if _global_session_manager is None:
+        _global_session_manager = SessionManager()
+    return _global_session_manager
+
+# Backward compatibility - lazy initialization
+def session_manager():
+    return get_global_session_manager()

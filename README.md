@@ -219,7 +219,7 @@ Enable debug logging by setting `LOG_LEVEL=DEBUG` in your `.env` file.
 The bot creates detailed logs in the following structure:
 
 ```
-trading_logs/
+logs/
 ├── trades/          # Trade records
 ├── market_data/     # Market data points
 ├── signals/         # Trading signals

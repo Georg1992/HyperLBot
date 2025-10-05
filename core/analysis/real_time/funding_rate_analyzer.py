@@ -8,6 +8,16 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
+# Singleton pattern implementation
+_global_funding_rate_analyzer = None
+
+def get_global_funding_rate_analyzer() -> 'FundingRateAnalyzer':
+    """Get the global FundingRateAnalyzer singleton instance"""
+    global _global_funding_rate_analyzer
+    if _global_funding_rate_analyzer is None:
+        _global_funding_rate_analyzer = FundingRateAnalyzer()
+    return _global_funding_rate_analyzer
+
 class FundingRateAnalyzer:
     """Analyzes funding rates for market sentiment and trend insights"""
     

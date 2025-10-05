@@ -8,6 +8,16 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
+# Singleton pattern implementation
+_global_orderbook_analyzer = None
+
+def get_global_orderbook_analyzer() -> 'OrderBookAnalyzer':
+    """Get the global OrderBookAnalyzer singleton instance"""
+    global _global_orderbook_analyzer
+    if _global_orderbook_analyzer is None:
+        _global_orderbook_analyzer = OrderBookAnalyzer()
+    return _global_orderbook_analyzer
+
 class OrderBookAnalyzer:
     """Analyzes order book data for market microstructure insights"""
     

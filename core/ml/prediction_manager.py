@@ -83,7 +83,6 @@ class PredictionManager:
             "scalping": 0.55,        # Lower threshold - quick trades
             "trend_following": 0.65,  # Medium threshold - trend-based
             "range_trading": 0.60,    # Medium threshold - range-based
-            "liquidation_hunting": 0.70,  # Higher threshold - high-risk strategy
             "spike_hunting": 0.75,   # High threshold - volatile strategy
             "standard": 0.60         # Default threshold
         }
@@ -368,12 +367,12 @@ class PredictionManager:
             if psych_entry and psych_strength > 0.4:
                 return psych_entry, f"Psychological: {psych_reasoning}", psych_strength
             
-            # FALLBACK: Volatility-based entry
-            fallback_entry, fallback_reasoning = self._calculate_fallback_entry(
+            # Volatility-based entry when S/R levels unavailable
+            volatility_entry, volatility_reasoning = self._calculate_volatility_entry(
                 direction, current_price, market_data
             )
-            if fallback_entry:
-                return fallback_entry, f"Volatility: {fallback_reasoning}", 0.3
+            if volatility_entry:
+                return volatility_entry, f"Volatility: {volatility_reasoning}", 0.3
             
             return None, "No valid entry point found", 0.0
             
@@ -537,8 +536,8 @@ class PredictionManager:
             logger.error(f"❌ Psychological entry detection failed: {e}")
             return None, f"Error: {str(e)}", 0.0
     
-    def _calculate_fallback_entry(self, direction: str, current_price: float, market_data: Dict[str, Any]) -> Tuple[Optional[float], str]:
-        """Calculate fallback entry price based on volatility and market conditions"""
+    def _calculate_volatility_entry(self, direction: str, current_price: float, market_data: Dict[str, Any]) -> Tuple[Optional[float], str]:
+        """Calculate volatility-based entry price when S/R levels are unavailable"""
         try:
             volatility = market_data.get("volatility_5m", 0.001)
             rsi = market_data.get("rsi_5m", 50)
@@ -589,10 +588,10 @@ class PredictionManager:
                 if self._validate_entry_price(direction, entry_price, current_price):
                     return entry_price, f"Comprehensive analysis: {comprehensive_reasoning}"
             
-            return None, "No fallback entry possible"
+            return None, "No volatility entry possible"
             
         except Exception as e:
-            logger.error(f"❌ Fallback entry calculation failed: {e}")
+            logger.error(f"❌ Volatility entry calculation failed: {e}")
             return None, f"Error: {str(e)}"
     
     def _validate_entry_price(self, direction: str, entry_price: float, current_price: float) -> bool:
@@ -670,7 +669,7 @@ class PredictionManager:
             trend = market_data.get("trend_5m", "NEUTRAL")
             volatility = market_data.get("volatility_5m", 0.001)
             
-            # Simple fallback logic
+            # Simple rule-based logic
             if rsi < 40:  # Oversold
                 return "BUY"
             elif rsi > 60:  # Overbought
@@ -685,7 +684,7 @@ class PredictionManager:
                 
         except Exception as e:
             logger.error(f"❌ Force direction failed: {e}")
-            return "BUY"  # Default fallback
+            raise ValueError("Unable to determine direction - NO FALLBACKS")
     
     def _calculate_target_and_stop_loss(self, direction: str, entry_price: float, 
                                       current_price: float, market_data: Dict[str, Any]) -> Tuple[float, float]:
@@ -726,7 +725,6 @@ class PredictionManager:
                 "scalping": 0.5,
                 "trend_following": 1.0,
                 "range_trading": 0.8,
-                "liquidation_hunting": 0.3,
                 "spike_hunting": 0.4,
                 "standard": 1.0
             }

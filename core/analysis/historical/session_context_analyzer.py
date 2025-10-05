@@ -232,14 +232,15 @@ class SessionContextAnalyzer:
         """Analyze historical volatility patterns to understand current regime"""
         try:
             # Use centralized MarketDataManager for consistent volatility calculation
-            from core.market_data_manager import market_data_manager
+            from core.market_data_manager import get_global_market_data_manager
+            market_data_manager = get_global_market_data_manager()
             
             if not candles_1d or len(candles_1d) < 2:
                 return {"regime": "UNKNOWN", "confidence": 0.0}
             
             # Calculate daily volatility using the same method as VolatilityCalculator
-            avg_volatility = market_data_manager.calculate_volatility(candles_1d, len(candles_1d))
-            recent_volatility = market_data_manager.calculate_volatility(candles_1d[-7:], 7) if len(candles_1d) >= 7 else avg_volatility
+            avg_volatility = market_data_manager.calculate_volatility(candles_1d)
+            recent_volatility = market_data_manager.calculate_volatility(candles_1d[-7:]) if len(candles_1d) >= 7 else avg_volatility
             
             # Volatility regime classification using centralized constants (adjusted for daily timeframe)
             from core.constants import VariabilityConstants

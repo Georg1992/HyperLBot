@@ -21,14 +21,14 @@ HISTORICAL ANALYSIS (core/analysis/historical/):
 
 DATA SOURCES:
 - Real-time: Hyperliquid API, live orderbooks
-- Historical: Yahoo Finance, historical candlesticks
+- Historical: Hyperliquid, historical candlesticks
 """
 
 # Lazy imports to prevent circular dependencies
 # Use direct imports in code instead of importing everything in __init__.py
 
 # Historical modules should be imported directly where needed to avoid
-# circular dependency chains (MarketDataAnalyzer → YahooDataFetcher)
+# circular dependency chains (MarketDataAnalyzer → HyperliquidDataFetcher)
 
 __all__ = [
     # Real-time analysis (safe imports)

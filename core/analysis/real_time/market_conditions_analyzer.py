@@ -491,7 +491,8 @@ class MarketConditionsAnalyzer:
         """
         try:
             # Get Fear & Greed data
-            fear_greed_data = fear_greed_api.get_fear_greed_index()
+            from core.external.fear_greed_api import get_global_fear_greed_api
+            fear_greed_data = get_global_fear_greed_api().get_fear_greed_index()
             
             if not fear_greed_data or "error" in fear_greed_data:
                 return {
@@ -785,10 +786,11 @@ class MarketConditionsAnalyzer:
         """
         try:
             # Get 7-day historical candles (1d timeframe)
-            from core.market_data_manager import market_data_manager
+            from core.market_data_manager import get_global_market_data_manager
             from core.api.hyperliquid_api import get_hyperliquid_api
             
-            # Get Hyperliquid API instance
+            # Get instances
+            market_data_manager = get_global_market_data_manager()
             hyperliquid_api = get_hyperliquid_api()
             
             # Fetch 7 days of daily candles

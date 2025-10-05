@@ -6,7 +6,16 @@ Simple Support/Resistance Calculator - WORKS
 import time
 from typing import Dict, List, Any
 from loguru import logger
-from .liquidation_level_calculator import liquidation_level_calculator
+
+# Singleton pattern implementation
+_global_support_resistance_calculator = None
+
+def get_global_support_resistance_calculator() -> 'SupportResistanceCalculator':
+    """Get the global SupportResistanceCalculator singleton instance"""
+    global _global_support_resistance_calculator
+    if _global_support_resistance_calculator is None:
+        _global_support_resistance_calculator = SupportResistanceCalculator()
+    return _global_support_resistance_calculator
 
 class SupportResistanceCalculator:
     """Simple S/R calculator that actually works"""
@@ -88,10 +97,10 @@ class SupportResistanceCalculator:
             filtered_levels = []
             for level in all_levels:
                 # Show all levels - broken support/resistance is still important
-                # Filter out levels that are too close to each other (minimum $500 gap for Bitcoin)
+                # Filter out levels that are too close to each other (minimum $100 gap for Bitcoin)
                 is_too_close = False
                 for existing in filtered_levels:
-                    if abs(level["level"] - existing["level"]) < 500.0:  # $500 minimum gap for major levels
+                    if abs(level["level"] - existing["level"]) < 100.0:  # $100 minimum gap for major levels
                         is_too_close = True
                         break
                 if not is_too_close:
@@ -118,7 +127,7 @@ class SupportResistanceCalculator:
             # Take more levels in low volatility conditions
             # In low volatility, weaker levels are still significant
             # Note: We'll use a default approach since market_data is not available here
-            max_levels = 5  # Include more levels for better detection
+            max_levels = 5  # Include fewer levels for better quality
                 
             support_levels_filtered = support_levels_filtered[:max_levels]
             resistance_levels_filtered = resistance_levels_filtered[:max_levels]
@@ -131,8 +140,29 @@ class SupportResistanceCalculator:
             for res in resistance_levels_filtered:
                 logger.info(f"   Resistance: ${res['level']:.2f} (score: {res.get('score', 0):.2f}, distance: {abs(res['level'] - current_price):.2f})")
             
-            strongest_support = support_levels_filtered[0]["level"] if support_levels_filtered else current_price * 0.95
-            strongest_resistance = resistance_levels_filtered[0]["level"] if resistance_levels_filtered else current_price * 1.05
+            # Get strongest support (prefer levels below current price with good distance)
+            strongest_support = 0.0
+            if support_levels_filtered:
+                # Prefer support levels that are significantly below current price
+                support_below = [s for s in support_levels_filtered if s["level"] < current_price - 200]  # At least $200 below
+                if support_below:
+                    strongest_support = support_below[0]["level"]  # Closest significant support
+                else:
+                    # If no significant support below, use the lowest support level
+                    lowest_support = min(support_levels_filtered, key=lambda x: x["level"])
+                    strongest_support = lowest_support["level"]
+            
+            # Get strongest resistance (prefer levels above current price with good distance)
+            strongest_resistance = 0.0
+            if resistance_levels_filtered:
+                # Prefer resistance levels that are significantly above current price
+                resistance_above = [r for r in resistance_levels_filtered if r["level"] > current_price + 200]  # At least $200 above
+                if resistance_above:
+                    strongest_resistance = resistance_above[0]["level"]  # Closest significant resistance
+                else:
+                    # If no significant resistance above, use the highest resistance level
+                    highest_resistance = max(resistance_levels_filtered, key=lambda x: x["level"])
+                    strongest_resistance = highest_resistance["level"]
             
             logger.info(f"📊 Found {len(support_levels)} support, {len(resistance_levels)} resistance levels")
             logger.info(f"📊 After filtering: {len(support_levels_filtered)} support, {len(resistance_levels_filtered)} resistance")
@@ -140,9 +170,6 @@ class SupportResistanceCalculator:
             logger.info(f"📊 Strongest support: ${strongest_support:.2f} (below price: {strongest_support < current_price})")
             logger.info(f"📊 Strongest resistance: ${strongest_resistance:.2f} (above price: {strongest_resistance > current_price})")
             
-            # Add liquidation levels to key levels
-            liquidation_levels = self._get_liquidation_levels(current_price)
-            all_levels.extend(liquidation_levels)
             
             # Re-sort all levels by distance from current price
             all_levels.sort(key=lambda x: abs(x["level"] - current_price))
@@ -151,33 +178,13 @@ class SupportResistanceCalculator:
                 "key_levels": all_levels,
                 "strongest_support": strongest_support,
                 "strongest_resistance": strongest_resistance,
-                "analysis_confidence": 0.9 if len(all_levels) > 0 else 0.3,
-                "liquidation_levels": liquidation_levels
+                "analysis_confidence": 0.9 if len(all_levels) > 0 else 0.3
             }
             
         except Exception as e:
             logger.error(f"❌ S/R detection failed: {e}")
             return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
     
-    def _get_liquidation_levels(self, current_price: float) -> List[Dict[str, Any]]:
-        """Get REAL liquidation levels from order book analysis"""
-        try:
-            # Get order book data from WebSocket
-            from core.api.hyperliquid_websocket import get_websocket_instance
-            websocket = get_websocket_instance("BTC")
-            
-            if not websocket.is_connected():
-                logger.warning("⚠️ WebSocket not connected - cannot get real liquidation levels")
-                return []
-            
-            # Get order book data (this would need to be implemented in WebSocket)
-            # For now, return empty list until WebSocket provides order book data
-            logger.info("💀 Real liquidation levels require order book data from WebSocket")
-            return []
-            
-        except Exception as e:
-            logger.error(f"❌ Real liquidation levels calculation failed: {e}")
-            return []
     
     def _count_touches(self, candles: List[Dict], level_price: float, level_type: str) -> int:
         """Count how many times price touched this level - REALISTIC TOUCHES ONLY"""
@@ -370,7 +377,7 @@ class SupportResistanceCalculator:
             
         except Exception as e:
             logger.error(f"❌ Level score calculation failed: {e}")
-            return 10.0  # Default fallback score
+            raise ValueError("Level score calculation failed - NO FALLBACKS")
     
     def _calculate_extrema_bonus(self, level_price: float, level_type: str, market_position: Dict[str, Any]) -> float:
         """Calculate bonus score for levels that are actual local extrema"""

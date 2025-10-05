@@ -505,4 +505,15 @@ class RSSNewsAPI:
 
 
 # Global instance
-rss_news_api = RSSNewsAPI()
+# Singleton pattern implementation
+_global_rss_news_api = None
+
+def get_global_rss_news_api() -> RSSNewsAPI:
+    """Get the global RSSNewsAPI singleton instance"""
+    global _global_rss_news_api
+    if _global_rss_news_api is None:
+        _global_rss_news_api = RSSNewsAPI()
+    return _global_rss_news_api
+
+# Backward compatibility
+rss_news_api = get_global_rss_news_api()

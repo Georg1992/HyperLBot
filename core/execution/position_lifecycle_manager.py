@@ -34,12 +34,15 @@ class TradingExecution:
         self.closed_positions = []
         self.last_trade_time = 0
         self.strategy_name = "standard"
-        self.yahoo_analysis = {}
     
     def place_paper_trade(self, side: str, size: float = trading_constants.DEFAULT_POSITION_SIZE, leverage: int = trading_constants.DEFAULT_LEVERAGE, signal_data: Dict = None) -> bool:
         """Place a PREDICTIVE paper trade using predicted entry points and time-based order management"""
         try:
-            hyperliquid_price = self.hyperliquid_api.get_current_price() if self.hyperliquid_api else None
+            # Get price from MarketDataService (single source of truth)
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            market_data_service = system_initializer.singleton_systems.get("market_data_service")
+            hyperliquid_price = market_data_service.get_hyperliquid_price() if market_data_service else None
             if not hyperliquid_price:
                 return False
             
@@ -90,7 +93,8 @@ class TradingExecution:
             
             # Update simulator with real order book data
             try:
-                orderbook = self.hyperliquid_api.get_orderbook("BTC") if self.hyperliquid_api else None
+                # Get orderbook from MarketDataService (single source of truth)
+                orderbook = market_data_service.get_orderbook("BTC") if market_data_service else None
                 if orderbook and not orderbook.get('error'):
                     # Ensure orderbook has required format for simulator
                     if 'bids' in orderbook and 'asks' in orderbook and self.hyperliquid_simulator:
@@ -150,7 +154,7 @@ class TradingExecution:
                 "entry_timeframe": entry_timeframe,
                 "time_to_execution": execution_result.get("time_to_execution", 0),
                 "order_status": execution_result.get("order_status", "FILLED"),
-                "original_market_analysis": self.yahoo_analysis.copy(),  # Store original analysis for comparison
+                "original_market_analysis": {},  # Store original analysis for comparison
                 "quality_evaluation": signal_data.get("quality_evaluation", {}),
                 "stop_adjustment_count": 0,
                 "partial_closes": [],
@@ -214,7 +218,7 @@ class TradingExecution:
             if self.session_manager:
                 self.session_manager.add_session_trade(trade_data)
             
-            # Trade and balance updates handled by AccountManager (SimpleRTM integration)
+            # Trade and balance updates handled by AccountManager
             
             self.trade_history.append(trade_data)
             if self.fee_manager:
@@ -305,7 +309,8 @@ class TradingExecution:
             
             # Update simulator with real order book data
             try:
-                orderbook = self.hyperliquid_api.get_orderbook("BTC") if self.hyperliquid_api else None
+                # Get orderbook from MarketDataService (single source of truth)
+                orderbook = market_data_service.get_orderbook("BTC") if market_data_service else None
                 if orderbook and not orderbook.get('error'):
                     # Ensure orderbook has required format for simulator
                     if 'bids' in orderbook and 'asks' in orderbook and self.hyperliquid_simulator:
@@ -329,8 +334,10 @@ class TradingExecution:
                 logger.error(f"❌ Position close failed: {execution_result.get('error', 'Unknown error')}")
                 return False
             
-            # Use execution price from simulator or fallback to provided exit price
-            actual_exit_price = execution_result.get("execution_price", exit_price)
+            # Use execution price from simulator (no fallbacks)
+            actual_exit_price = execution_result.get("execution_price")
+            if not actual_exit_price:
+                raise ValueError("No execution price available - NO FALLBACKS")
             
             # Calculate P&L
             if side == "BUY":
@@ -447,7 +454,7 @@ class TradingExecution:
             
             # Trade result logged above
             
-            # Trade and balance updates handled by AccountManager (SimpleRTM integration)
+            # Trade and balance updates handled by AccountManager
             
             # Calculate position value in USD
             position_value_usd = size * entry_price
@@ -583,7 +590,7 @@ class TradingExecution:
             })
             
             # Log partial close
-            self._update_simple_rtm_activity(f"💰 Partial close: {close_percentage*100:.1f}% of {position['trade_id']}", "INFO")
+            self.dashboard_service.add_activity(f"💰 Partial close: {close_percentage*100:.1f}% of {position['trade_id']}", "INFO")
             
         except Exception as e:
             logger.error(f"❌ Failed to execute partial close: {e}")
@@ -608,7 +615,7 @@ class TradingExecution:
             position["entry_price"] = new_entry_price
             
             # Log scale-in
-            self._update_simple_rtm_activity(f"📈 Scale-in: {scale_size} BTC to {position['trade_id']}", "INFO")
+            self.dashboard_service.add_activity(f"📈 Scale-in: {scale_size} BTC to {position['trade_id']}", "INFO")
             
         except Exception as e:
             logger.error(f"❌ Failed to execute scale-in: {e}")

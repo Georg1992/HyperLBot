@@ -32,13 +32,13 @@ class TradingConstants:
     
     # File Paths
     LOCK_FILE = "data/temp/bot_instance.lock"
-    RTM_STATE_FILE = "data/cache/rtm_state.json"
+    DASHBOARD_STATE_FILE = "data/cache/dashboard_state.json"
     POSITIONS_FILE = "data/open_positions.json"
-    SIMULATED_ACCOUNT_FILE = "data/sessions/simulated_account.json"
+    SIMULATED_ACCOUNT_FILE = "data/accounts/simulated_account.json"
     
     # Log Configuration
     DEFAULT_LOG_LEVEL = "INFO"
-    LOG_DIR = "trading_logs"
+    LOG_DIR = "logs"
     
     # Note: Configurable values like LEVERAGE, MAX_POSITION_SIZE, DASHBOARD_PORT, etc. 
     # are now defined in config/config.py for environment variable support
@@ -204,14 +204,12 @@ class MagicNumbers:
 class DataFetchingConstants:
     """Data fetching and update interval constants"""
     
-    # Yahoo Finance Update Intervals (seconds)
-    YAHOO_UPDATE_INTERVAL = 300      # 5 minutes for full analysis
     HOURLY_UPDATE_INTERVAL = 900     # 15 minutes for 1h candles
     DAILY_UPDATE_INTERVAL = 3600     # 1 hour for daily candles
-    # RSI_UPDATE_INTERVAL removed - now real-time with Yahoo corrections
+    # RSI_UPDATE_INTERVAL removed - now real-time with Hyperliquid corrections
     
     # Cache Durations
-    YAHOO_CACHE_DURATION = 5         # 5 seconds cache for ultra-frequent updates
+    HYPERLIQUID_CACHE_DURATION = 5   # 5 seconds cache for ultra-frequent updates
     MARKET_DATA_CACHE_DURATION = 5   # 5 seconds for real-time data
     INDICATOR_CACHE_DURATION = 5     # 5 seconds for calculated indicators (temporarily reduced for trend fix testing)
     TREND_CACHE_DURATION = 30        # 30 seconds for trend data

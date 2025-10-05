@@ -34,9 +34,15 @@ class HyperliquidWebSocket:
             "ask": 0.0,
             "timestamp": 0.0,
             "source": "websocket",
-            "last_update": "",
-            "connection_status": "disconnected"
+            "last_update": ""
         }
+        
+        # Orderbook cache
+        self.orderbook_cache = {}
+        
+        # Trades cache for volume calculation
+        self.trades_cache = []
+        self.max_trades_cache = 1000  # Keep last 1000 trades
         
         # Thread safety
         self._lock = threading.RLock()
@@ -51,7 +57,6 @@ class HyperliquidWebSocket:
     def add_price_callback(self, callback: Callable[[Dict[str, Any]], None]):
         """Add callback function to be called on price updates"""
         self._price_callbacks.append(callback)
-        # logger.debug(f"📞 Added price callback: {callback.__name__ if hasattr(callback, '__name__') else 'anonymous'}")
     
     def get_current_price(self) -> Optional[float]:
         """Get current price from cache (thread-safe)"""
@@ -194,8 +199,11 @@ class HyperliquidWebSocket:
             elif "error" in data:
                 logger.error(f"❌ WebSocket error message: {data['error']}")
             else:
-                # logger.debug(f"📨 Received message: {data}")
-                pass  # Placeholder for future debug logging
+                # Check if this is orderbook data in a different format
+                if "data" in data and isinstance(data["data"], dict):
+                    if "levels" in data["data"]:
+                        logger.info(f"🔍 Found orderbook data in message: {data}")
+                        await self._process_orderbook_update(data["data"])
                 
         except json.JSONDecodeError:
             logger.warning(f"⚠️ Invalid JSON message: {message}")
@@ -203,7 +211,7 @@ class HyperliquidWebSocket:
             logger.error(f"❌ Error processing message: {e}")
     
     async def _process_trades_update(self, trades_data: Dict[str, Any]):
-        """Process trades update and extract latest price"""
+        """Process trades update and extract latest price and volume"""
         try:
             if isinstance(trades_data, list) and len(trades_data) > 0:
                 # Get the latest trade
@@ -222,6 +230,21 @@ class HyperliquidWebSocket:
                             "last_update": datetime.now().strftime("%H:%M:%S"),
                             "connection_status": "connected"
                         })
+                        
+                        # Store trades for volume calculation
+                        for trade in trades_data:
+                            if "px" in trade and "sz" in trade:
+                                trade_data = {
+                                    "price": float(trade["px"]),
+                                    "size": float(trade["sz"]),
+                                    "timestamp": time.time(),
+                                    "side": trade.get("side", "unknown")
+                                }
+                                self.trades_cache.append(trade_data)
+                                
+                                # Keep only recent trades
+                                if len(self.trades_cache) > self.max_trades_cache:
+                                    self.trades_cache.pop(0)
                     
                     # Call price callbacks
                     for callback in self._price_callbacks:
@@ -235,6 +258,68 @@ class HyperliquidWebSocket:
         except Exception as e:
             logger.error(f"❌ Error processing trades update: {e}")
     
+    def get_orderbook_data(self) -> Dict[str, Any]:
+        """Get current orderbook data from WebSocket cache"""
+        try:
+            with self._lock:
+                if hasattr(self, 'orderbook_cache') and self.orderbook_cache:
+                    return self.orderbook_cache
+                return {}
+        except Exception as e:
+            logger.error(f"❌ Failed to get orderbook data: {e}")
+            return {}
+    
+    def get_trades_data(self) -> List[Dict[str, Any]]:
+        """Get cached trades data"""
+        try:
+            with self._lock:
+                if hasattr(self, 'trades_cache') and self.trades_cache:
+                    return self.trades_cache.copy()
+                return []
+        except Exception as e:
+            logger.error(f"❌ Failed to get trades data: {e}")
+            return []
+    
+    def get_current_5m_volume(self) -> float:
+        """Calculate volume for current 5m candle from real-time trades (UTC synchronized)"""
+        try:
+            current_time = time.time()
+            
+            # Calculate the start of the current 5m candle using UTC time for global synchronization
+            import datetime
+            current_dt = datetime.datetime.utcfromtimestamp(current_time)  # Use UTC for global sync
+            
+            # Get the current minute and calculate the start of the current 5m candle
+            current_minute = current_dt.minute
+            candle_start_minute = (current_minute // 5) * 5  # Round down to nearest 5-minute boundary
+            
+            # Create the start time of the current 5m candle in UTC
+            candle_start_dt = current_dt.replace(minute=candle_start_minute, second=0, microsecond=0)
+            candle_start_timestamp = candle_start_dt.timestamp()
+            
+            with self._lock:
+                if not hasattr(self, 'trades_cache') or not self.trades_cache:
+                    return 0.0
+                
+                # Filter trades from the current 5m candle only
+                current_candle_trades = [
+                    trade for trade in self.trades_cache 
+                    if trade.get('timestamp', 0) >= candle_start_timestamp
+                ]
+                
+                # Sum up the volume for the current candle
+                total_volume = sum(trade.get('size', 0) for trade in current_candle_trades)
+                
+                # Calculate time remaining in current candle
+                next_candle_start = candle_start_timestamp + (5 * 60)  # Next 5m boundary
+                time_remaining = next_candle_start - current_time
+                
+                return total_volume
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to calculate current 5m volume: {e}")
+            return 0.0
+    
     async def _process_orderbook_update(self, orderbook_data: Dict[str, Any]):
         """Process orderbook update and extract price"""
         try:
@@ -246,6 +331,10 @@ class HyperliquidWebSocket:
                     best_bid = float(bids[0]["px"])
                     best_ask = float(asks[0]["px"])
                     mid_price = (best_bid + best_ask) / 2
+                    
+                    # Update orderbook cache
+                    with self._lock:
+                        self.orderbook_cache = orderbook_data
                     
                     # Update price cache
                     with self._lock:

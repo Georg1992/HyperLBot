@@ -9,6 +9,16 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
+# Singleton pattern implementation
+_global_onchain_data_analyzer = None
+
+def get_global_onchain_data_analyzer() -> 'OnChainDataAnalyzer':
+    """Get the global OnChainDataAnalyzer singleton instance"""
+    global _global_onchain_data_analyzer
+    if _global_onchain_data_analyzer is None:
+        _global_onchain_data_analyzer = OnChainDataAnalyzer()
+    return _global_onchain_data_analyzer
+
 class OnChainDataAnalyzer:
     """Analyzes on-chain data for blockchain insights"""
     

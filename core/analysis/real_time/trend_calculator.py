@@ -240,5 +240,16 @@ class TrendCalculator:
         return strategy_params.get(strategy_name, strategy_params["standard"])
 
 
-# Global instance for easy access
-global_trend_calculator = TrendCalculator()
+# Singleton pattern implementation
+_global_trend_calculator = None
+
+def get_global_trend_calculator() -> TrendCalculator:
+    """Get the global TrendCalculator singleton instance"""
+    global _global_trend_calculator
+    if _global_trend_calculator is None:
+        _global_trend_calculator = TrendCalculator()
+    return _global_trend_calculator
+
+# Backward compatibility - lazy initialization
+def global_trend_calculator():
+    return get_global_trend_calculator()

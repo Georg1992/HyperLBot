@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 from collections import deque
 from core.constants import variability_constants, trading_constants, simulation_constants
-from core.market_data_manager import market_data_manager
+from core.market_data_manager import get_global_market_data_manager
 
 class VariabilityAnalyzer:
     def __init__(self, lookback_periods: int = 100):

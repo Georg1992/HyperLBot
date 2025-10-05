@@ -54,7 +54,7 @@ core/analysis/
 ### Modules:
 
 #### 1. `market_data_analyzer.py`
-- **Data Source**: Yahoo Finance historical data
+- **Data Source**: Hyperliquid historical data
 - **Analysis Types**:
   - RSI calculations
   - Historical market analysis

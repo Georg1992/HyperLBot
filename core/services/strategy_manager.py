@@ -95,8 +95,8 @@ class StrategyManager:
             
         except Exception as e:
             logger.error(f"❌ ML strategy detection failed: {e}")
-            # Fallback to rule-based selection
-            return self._fallback_rule_based_strategy(market_data, historical_context)
+            # Use rule-based selection when ML fails
+            return self._rule_based_strategy(market_data, historical_context)
     
     def get_current_strategy_config(self) -> Dict[str, Any]:
         """Get current strategy configuration"""
@@ -113,7 +113,7 @@ class StrategyManager:
                                  historical_context: Dict[str, Any] = None) -> str:
         """Analyze market conditions using DISTINCT, NON-OVERLAPPING strategy conditions"""
         
-        # DISTINCT STRATEGY CONDITIONS (same logic as ML fallback)
+        # DISTINCT STRATEGY CONDITIONS (rule-based logic)
         
         # 1. SPIKE HUNTING - EXTREME volatility only (highest priority)
         if volatility_category == "EXTREME" and volatility_5m > 0.05:  # >5% volatility
@@ -148,7 +148,7 @@ class StrategyManager:
             logger.info(f"🎯 Strategy: {volatility_category} volatility ({volatility_5m:.3f}) → low_volatility_range")
             return "low_volatility_range"
         
-        # 6. STANDARD - Everything else (fallback)
+        # 6. STANDARD - Everything else (default)
         else:
             logger.info(f"🎯 Strategy: Standard conditions ({volatility_category} volatility {volatility_5m:.3f}, {trend} trend) → standard")
             return "standard"
@@ -207,12 +207,11 @@ class StrategyManager:
             "spike_hunting": "Specialized for extreme volatility and price spikes",
             "trend_following": "Optimized for strong trending markets with momentum confirmation",
             "scalping": "High-frequency scalping for small, quick profits with tight risk management",
-            "liquidation_hunting": "Advanced strategy targeting liquidation cascades during global exchange openings"
         }
         return descriptions.get(strategy_name, "Unknown strategy")
     
-    def _fallback_rule_based_strategy(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> str:
-        """Fallback to rule-based strategy selection when ML fails"""
+    def _rule_based_strategy(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> str:
+        """Rule-based strategy selection when ML is unavailable"""
         try:
             current_price = market_data.get("current_price", 0)
             volatility_5m = market_data.get("volatility_5m", 0.0)
@@ -335,17 +334,19 @@ class StrategyManager:
         try:
             # Import here to avoid circular imports
             from core.session.session_manager import session_manager
-            from core.dashboard.dashboard_data_manager import simple_rtm
             
             # Update session data with new strategy
             if hasattr(session_manager, 'current_session_data') and session_manager.current_session_data:
                 session_manager.current_session_data["strategy"] = new_strategy
                 
-                # Sync updated session data to SimpleRTM for dashboard
-                simple_rtm.sync_from_session_manager(session_manager.current_session_data)
-                
-                # Add activity log for strategy change
-                simple_rtm.add_activity(f"🔄 Strategy switched to: {new_strategy}", "INFO", "strategy")
+                # Sync updated session data to dashboard
+                # Get dashboard service and update
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                if dashboard_service:
+                    dashboard_service.sync_from_session_manager(session_manager.current_session_data)
+                    dashboard_service.add_activity(f"🔄 Strategy switched to: {new_strategy}", "INFO", "strategy")
                 
                 logger.info(f"📊 Dashboard notified of strategy change: {new_strategy}")
             

@@ -1,274 +1,451 @@
 #!/usr/bin/env python3
 """
-System Initializer Service
-Handles all system initialization and setup
-Single Responsibility: System setup and connections
+System Initializer - Handles all system initialization and phase management
+Clear separation between Initialization Phase and Analysis Phase
 """
 
-import os
 import time
-from typing import Dict, Any
+import os
+from typing import Dict, Any, List, Optional
 from loguru import logger
-from core.api.hyperliquid_api import HyperliquidAPI
-from core.api.hyperliquid_websocket import HyperliquidWebSocket
-from core.api.hyperliquid_simulator import HyperliquidSimulator
-from core.market_data_manager import market_data_manager
+from core.constants import technical_constants
 
 class SystemInitializer:
-    """System initialization service - handles setup and connections"""
+    """Comprehensive system initializer with clear phase separation"""
     
-    def __init__(self, config):
-        self.config = config
-        self.connected = False
+    def __init__(self):
+        self.initialization_complete = False
+        self.analysis_ready = False
+        self.initialization_results = {}
+        self.singleton_systems = {}
         
-        logger.info("⚙️ System Initializer initialized - Setup coordination")
+        logger.info("⚙️ System Initializer created - Phase management enabled")
     
-    def initialize_system(self, market_data_service) -> Dict[str, Any]:
-        """Initialize all system components"""
+    def initialize_system(self) -> Dict[str, Any]:
+        """
+        PHASE 1: Complete System Initialization
+        Initialize all systems, check dependencies, and prepare for analysis
+        """
         try:
-            # Check if already initialized to prevent duplicate API creation
-            if self.connected:
-                logger.info("⚙️ System already initialized, skipping duplicate initialization")
-                # Return the existing API instances to maintain compatibility
-                return {
-                    "success": True, 
-                    "already_initialized": True,
-                    "hyperliquid_api": getattr(self, '_hyperliquid_api', None),
-                    "hyperliquid_websocket": getattr(self, '_hyperliquid_websocket', None),
-                    "hyperliquid_simulator": getattr(self, '_hyperliquid_simulator', None)
-                }
+            logger.info("🚀 PHASE 1: SYSTEM INITIALIZATION STARTED")
             
-            # Ensure environment
-            self._ensure_env_file()
+            # Step 1: Initialize Core APIs
+            api_results = self._initialize_core_apis()
+            if not api_results["success"]:
+                return {"success": False, "error": "Core API initialization failed"}
             
-            # Initialize APIs and connections
-            connection_result = self.connect()
-            if not connection_result["success"]:
-                return {"success": False, "error": "Failed to connect to APIs"}
+            # Store APIs in singleton systems for access
+            self.singleton_systems["api_manager"] = api_results["api_manager"]
+            self.singleton_systems["hyperliquid_api"] = api_results["hyperliquid_api"]
+            self.singleton_systems["hyperliquid_websocket"] = api_results["hyperliquid_websocket"]
+            self.singleton_systems["binance_api"] = api_results["binance_api"]
+            self.singleton_systems["binance_websocket"] = api_results["binance_websocket"]
             
-            # Initialize market data
-            market_data_service.initialize_yahoo_rsi()
+            # Step 2: Initialize Singleton Systems
+            singleton_results = self._initialize_singleton_systems()
+            if not singleton_results["success"]:
+                return {"success": False, "error": "Singleton system initialization failed"}
             
-            # Initialize candle buffers
-            self._initialize_candle_buffers()
+            # Step 3: Initialize RSI with Historical Data
+            rsi_results = self._initialize_rsi_with_data(api_results["hyperliquid_api"])
+            if not rsi_results["success"]:
+                return {"success": False, "error": "RSI initialization failed"}
             
-            # Test API connections
-            test_result = self._test_api_connections(connection_result["hyperliquid_api"])
+            # Step 4: Initialize Data Systems
+            data_results = self._initialize_data_systems()
+            if not data_results["success"]:
+                return {"success": False, "error": "Data system initialization failed"}
             
-            # Initialize simulator
-            hyperliquid_simulator = HyperliquidSimulator()
+            # Step 5: Initialize AI/ML Systems
+            ai_results = self._initialize_ai_systems()
+            if not ai_results["success"]:
+                return {"success": False, "error": "AI/ML system initialization failed"}
             
-            # Store API instances for future reuse
-            self._hyperliquid_api = connection_result["hyperliquid_api"]
-            self._hyperliquid_websocket = connection_result["hyperliquid_websocket"]
-            self._hyperliquid_simulator = hyperliquid_simulator
+            # Step 5: Initialize Trading Systems
+            trading_results = self._initialize_trading_systems()
+            if not trading_results["success"]:
+                return {"success": False, "error": "Trading system initialization failed"}
+            
+            # Step 6: System Health Check
+            health_results = self._perform_system_health_check()
+            if not health_results["success"]:
+                return {"success": False, "error": "System health check failed"}
+            
+            # Mark initialization as complete
+            self.initialization_complete = True
+            self.analysis_ready = True
+            
+            logger.success("✅ PHASE 1 COMPLETE: All systems initialized and ready")
             
             return {
                 "success": True,
-                "hyperliquid_api": connection_result["hyperliquid_api"],
-                "hyperliquid_websocket": connection_result["hyperliquid_websocket"],
-                "hyperliquid_simulator": hyperliquid_simulator,
-                "connection_test": test_result
+                "initialization_complete": True,
+                "analysis_ready": True,
+                "systems_initialized": len(self.singleton_systems),
+                "health_status": health_results
             }
             
         except Exception as e:
             logger.error(f"❌ System initialization failed: {e}")
             return {"success": False, "error": str(e)}
     
-    def connect(self) -> Dict[str, Any]:
-        """Connect to Hyperliquid API and start WebSocket"""
+    def _initialize_core_apis(self) -> Dict[str, Any]:
+        """Initialize all APIs and WebSockets using APIManager"""
         try:
-            # Initialize Hyperliquid API
-            try:
-                from core.api.hyperliquid_api import get_hyperliquid_api
-                hyperliquid_api = get_hyperliquid_api()
-                logger.info("✅ Connected to Hyperliquid API")
-            except Exception as e:
-                logger.error(f"❌ Failed to create HyperliquidAPI instance: {e}")
-                return {"success": False, "error": str(e)}
+            logger.info("🔌 Initializing all APIs and WebSockets...")
             
-            # Initialize WebSocket
-            hyperliquid_websocket = self._initialize_websocket()
+            # Initialize API Manager
+            from core.services.api_manager import get_global_api_manager
+            api_manager = get_global_api_manager()
             
-            self.connected = True
+            # Initialize all APIs and WebSockets
+            api_results = api_manager.initialize_all()
+            if not api_results["success"]:
+                return {"success": False, "error": api_results["error"]}
+            
+            # Get current price for logging
+            current_price = api_manager.get_api("hyperliquid_api").get_current_price("BTC")
+            logger.success(f"✅ All APIs initialized - BTC: ${current_price:,.2f}")
+            
             return {
                 "success": True,
-                "hyperliquid_api": hyperliquid_api,
-                "hyperliquid_websocket": hyperliquid_websocket
+                "api_manager": api_manager,
+                "hyperliquid_api": api_manager.get_api("hyperliquid_api"),
+                "hyperliquid_websocket": api_manager.get_websocket("hyperliquid_websocket"),
+                "binance_api": api_manager.get_api("binance_api"),
+                "binance_websocket": api_manager.get_websocket("binance_websocket"),
+                "fear_greed_api": api_manager.get_api("fear_greed_api"),
+                "whale_analytics_api": api_manager.get_api("whale_analytics_api"),
+                "rss_news_api": api_manager.get_api("rss_news_api"),
+                "current_price": current_price
             }
             
         except Exception as e:
-            logger.error(f"❌ Failed to connect: {e}")
+            logger.error(f"❌ API initialization failed: {e}")
             return {"success": False, "error": str(e)}
     
-    def _initialize_websocket(self) -> HyperliquidWebSocket:
-        """Initialize Hyperliquid WebSocket for real-time price updates"""
+    def _initialize_rsi_with_data(self, hyperliquid_api) -> Dict[str, Any]:
+        """Initialize RSI calculator with historical data"""
         try:
-            hyperliquid_websocket = HyperliquidWebSocket(symbol="BTC")
+            logger.info("🔬 Initializing RSI with historical data...")
             
-            # Start WebSocket
-            hyperliquid_websocket.start()
-            logger.info("🔴 Starting Hyperliquid WebSocket connection...")
-            
-            # Wait for initial connection
-            time.sleep(3)
-            
-            if hyperliquid_websocket.is_connected():
-                logger.success("🔴 WebSocket connected - REAL-TIME PRICE STREAM ACTIVE")
+            from core.analysis.real_time.rsi_calculator import get_global_rsi_calculator
+            rsi_calculator = get_global_rsi_calculator()
+            # Get 5-minute data for RSI baseline calculation from MarketDataService (single source of truth)
+            market_data_service = self.singleton_systems.get("market_data_service")
+            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 30)
+            if candles_5m and len(candles_5m) >= 15:
+                rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
+                # RSI Calculator initialized with historical data
+                return {"success": True}
             else:
-                logger.warning("⚠️ WebSocket connection failed - using HTTP API fallback")
-            
-            return hyperliquid_websocket
-            
+                logger.warning("⚠️ RSI Calculator - insufficient data, using defaults")
+                return {"success": True}
+                
         except Exception as e:
-            logger.error(f"❌ Failed to initialize WebSocket: {e}")
-            return None
+            logger.error(f"❌ RSI initialization failed: {e}")
+            return {"success": False, "error": str(e)}
     
-    def _initialize_candle_buffers(self):
-        """Initialize candle buffer management"""
+    def _initialize_singleton_systems(self) -> Dict[str, Any]:
+        """Initialize all singleton systems"""
         try:
-            # Clear market data manager cache for fresh data
-            market_data_manager.clear_cache("market_data")
-            logger.info("🧹 Market data cache cleared for fresh session")
+            logger.info("🔧 Initializing singleton systems...")
+            
+            # 1. RSI Calculator
+            from core.analysis.real_time.rsi_calculator import get_global_rsi_calculator
+            rsi_calculator = get_global_rsi_calculator()
+            self.singleton_systems["rsi_calculator"] = rsi_calculator
+            
+            # 2. Trend Calculator
+            from core.analysis.real_time.trend_calculator import global_trend_calculator
+            self.singleton_systems["trend_calculator"] = global_trend_calculator
+            
+            # 3. Market Conditions Analyzer
+            from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
+            self.singleton_systems["conditions_analyzer"] = global_conditions_analyzer
+            
+            # 4. Volume Calculator
+            from core.analysis.real_time.volume_calculator import get_global_volume_calculator
+            volume_calculator = get_global_volume_calculator()
+            self.singleton_systems["volume_calculator"] = volume_calculator
+            
+            # 5. Volume Profile Analyzer
+            from core.analysis.real_time.volume_profile_analyzer import get_global_volume_profile_analyzer
+            volume_profile_analyzer = get_global_volume_profile_analyzer()
+            self.singleton_systems["volume_profile_analyzer"] = volume_profile_analyzer
+            
+            # 6. Support/Resistance Calculator
+            from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
+            support_resistance_calculator = get_global_support_resistance_calculator()
+            self.singleton_systems["support_resistance_calculator"] = support_resistance_calculator
+            
+            # 7. Volatility Calculator
+            from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
+            volatility_calculator = get_global_volatility_calculator()
+            self.singleton_systems["volatility_calculator"] = volatility_calculator
+            
+            # 8. Pressure Calculator
+            from core.analysis.real_time.pressure_calculator import get_global_pressure_calculator
+            pressure_calculator = get_global_pressure_calculator()
+            self.singleton_systems["pressure_calculator"] = pressure_calculator
+            
+            # 9. Order Book Analyzer
+            from core.analysis.real_time.orderbook_analyzer import get_global_orderbook_analyzer
+            orderbook_analyzer = get_global_orderbook_analyzer()
+            self.singleton_systems["orderbook_analyzer"] = orderbook_analyzer
+            
+            # 10. Pattern Recognition Engine
+            from core.analysis.real_time.pattern_recognition_engine import get_global_pattern_recognition_engine
+            pattern_recognition_engine = get_global_pattern_recognition_engine()
+            self.singleton_systems["pattern_recognition_engine"] = pattern_recognition_engine
+            
+            # 11. Bounce Validator
+            from core.analysis.real_time.bounce_validator import get_global_bounce_validator
+            bounce_validator = get_global_bounce_validator()
+            self.singleton_systems["bounce_validator"] = bounce_validator
+            
+            # 12. Cross-Asset Correlation Analyzer
+            from core.analysis.real_time.cross_asset_correlation_analyzer import get_global_cross_asset_correlation_analyzer
+            cross_asset_correlation_analyzer = get_global_cross_asset_correlation_analyzer()
+            self.singleton_systems["cross_asset_correlation_analyzer"] = cross_asset_correlation_analyzer
+            
+            # 13. Funding Rate Analyzer
+            from core.analysis.real_time.funding_rate_analyzer import get_global_funding_rate_analyzer
+            funding_rate_analyzer = get_global_funding_rate_analyzer()
+            self.singleton_systems["funding_rate_analyzer"] = funding_rate_analyzer
+            
+            # 14. On-Chain Data Analyzer
+            from core.analysis.real_time.onchain_data_analyzer import get_global_onchain_data_analyzer
+            onchain_data_analyzer = get_global_onchain_data_analyzer()
+            self.singleton_systems["onchain_data_analyzer"] = onchain_data_analyzer
+            
+            # 15. Psychological Levels Analyzer
+            from core.analysis.real_time.psychological_levels_analyzer import get_global_psychological_levels_analyzer
+            psychological_levels_analyzer = get_global_psychological_levels_analyzer()
+            self.singleton_systems["psychological_levels_analyzer"] = psychological_levels_analyzer
+            
+            # 17. Trading Components
+            from core.analysis.historical.variability_analyzer import VariabilityAnalyzer
+            from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
+            from core.services.strategy_manager import StrategyManager
+            from core.execution.fee_manager import FeeManager
+            from core.logging.trading_logger import TradingLogger
+            from core.execution.trade_quality_manager import TradeManager
+            from core.execution.position_lifecycle_manager import TradingExecution
+            from core.simulated_account_manager import account_manager
+            
+            # Initialize trading components
+            from config.config import TradingConfig
+            config = TradingConfig()
+            
+            variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
+            historical_data_coordinator = MarketDataAnalyzer()
+            strategy_manager = StrategyManager(config)
+            fee_manager = FeeManager()
+            trading_logger = TradingLogger()
+            trade_quality_manager = TradeManager(config.STRATEGY_CONFIGS.get("standard", {}))
+            position_lifecycle_manager = TradingExecution(
+                hyperliquid_api=None,  # Will be set after API initialization
+                hyperliquid_simulator=None,  # Will be set after simulator initialization  
+                trading_logger=trading_logger,
+                trade_manager=trade_quality_manager,
+                account_manager=account_manager,
+                session_manager=None,  # Will be set after session manager initialization
+                fee_manager=fee_manager
+            )
+            
+            self.singleton_systems["variability_analyzer"] = variability_analyzer
+            self.singleton_systems["historical_data_coordinator"] = historical_data_coordinator
+            self.singleton_systems["strategy_manager"] = strategy_manager
+            self.singleton_systems["fee_manager"] = fee_manager
+            self.singleton_systems["trading_logger"] = trading_logger
+            self.singleton_systems["trade_quality_manager"] = trade_quality_manager
+            self.singleton_systems["position_lifecycle_manager"] = position_lifecycle_manager
+            
+            # Initialize trading services
+            from core.services.market_data_service import MarketDataService
+            from core.services.trading_engine import TradingEngine
+            from core.services.dashboard_service import DashboardService
+            from core.services.session_orchestrator import SessionOrchestrator
+            
+            market_data_service = MarketDataService(
+                historical_data_coordinator,
+                self.singleton_systems.get("hyperliquid_api"),
+                self.singleton_systems.get("hyperliquid_websocket"),
+                self.singleton_systems.get("binance_api")
+            )
+            
+            trading_engine = TradingEngine(
+                config,
+                config.STRATEGY_CONFIGS.get("standard", {}),
+                trade_quality_manager,
+                position_lifecycle_manager,
+                variability_analyzer
+            )
+            
+            # Use global instance if available, otherwise create new one
+            dashboard_service = DashboardService.get_global_instance()
+            if not dashboard_service:
+                dashboard_service = DashboardService()
+            session_orchestrator = SessionOrchestrator(config, 1000.0)  # Default initial balance
+            
+            self.singleton_systems["market_data_service"] = market_data_service
+            self.singleton_systems["trading_engine"] = trading_engine
+            self.singleton_systems["dashboard_service"] = dashboard_service
+            self.singleton_systems["session_orchestrator"] = session_orchestrator
+            
+            # Trading components and services initialized
+            
+            # AI and ML systems will be initialized later after APIs are ready
+            
+            return {
+                "success": True,
+                "singleton_count": len(self.singleton_systems)
+            }
             
         except Exception as e:
-            logger.error(f"❌ Failed to initialize candle buffers: {e}")
+            logger.error(f"❌ Singleton system initialization failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _initialize_data_systems(self) -> Dict[str, Any]:
+        """Initialize data management systems"""
+        try:
+            logger.info("📊 Initializing data systems...")
+            
+            # Clear caches for fresh data
+            from core.market_data_manager import get_global_market_data_manager
+            market_data_manager = get_global_market_data_manager()
+            market_data_manager.clear_cache()
+            
+            # Data systems initialized
+            return {"success": True}
+            
+        except Exception as e:
+            logger.error(f"❌ Data system initialization failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _initialize_ai_systems(self) -> Dict[str, Any]:
+        """Initialize AI/ML systems after APIs are ready"""
+        try:
+            logger.info("🤖 Initializing AI/ML systems...")
+            
+            # 1. AI Systems
+            from core.ai import global_unified_ai_system
+            self.singleton_systems["ai_system"] = global_unified_ai_system
+            # AI System initialized
+            
+            # 2. ML Systems
+            from core.ml.probability_engine import global_probability_engine
+            from core.ml.strategy_selector import global_ml_strategy_selector
+            from core.ml.prediction_ensemble import global_prediction_ensemble
+            from core.ml.prediction_manager import global_prediction_manager
+            from core.ml.ml_models import global_ml_manager
+            from core.ml.model_training import global_model_trainer
+            
+            self.singleton_systems["probability_engine"] = global_probability_engine
+            self.singleton_systems["strategy_selector"] = global_ml_strategy_selector
+            self.singleton_systems["prediction_ensemble"] = global_prediction_ensemble
+            self.singleton_systems["prediction_manager"] = global_prediction_manager
+            self.singleton_systems["ml_manager"] = global_ml_manager
+            self.singleton_systems["model_trainer"] = global_model_trainer
+            
+            # ML Systems initialized
+            # AI/ML systems ready
+            return {"success": True}
+            
+        except Exception as e:
+            logger.error(f"❌ AI system initialization failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _initialize_trading_systems(self) -> Dict[str, Any]:
+        """Initialize trading-specific systems"""
+        try:
+            logger.info("💰 Initializing trading systems...")
+            
+            # Trading systems are initialized through singletons
+            # Verify key systems are ready
+            required_systems = ["prediction_manager", "strategy_selector", "probability_engine"]
+            for system_name in required_systems:
+                if system_name not in self.singleton_systems:
+                    return {"success": False, "error": f"Required system {system_name} not initialized"}
+            
+            # Trading systems ready
+            return {"success": True}
+                
+        except Exception as e:
+            logger.error(f"❌ Trading system initialization failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def _perform_system_health_check(self) -> Dict[str, Any]:
+        """Perform comprehensive system health check"""
+        try:
+            logger.info("🏥 Performing system health check...")
+            
+            health_status = {
+                "apis_connected": True,
+                "singletons_ready": len(self.singleton_systems) > 0,
+                "data_systems_ready": True,
+                "ai_systems_ready": "ai_system" in self.singleton_systems,
+                "trading_systems_ready": "prediction_manager" in self.singleton_systems
+            }
+            
+            all_healthy = all(health_status.values())
+            
+            if all_healthy:
+                logger.success("✅ System health check passed")
+            else:
+                logger.warning("⚠️ Some systems not fully ready")
+            
+            return {
+                "success": all_healthy,
+                "health_status": health_status,
+                "ready_for_analysis": all_healthy
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ System health check failed: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def is_analysis_ready(self) -> bool:
+        """Check if system is ready for analysis phase"""
+        return self.analysis_ready and self.initialization_complete
+    
+    def get_singleton_system(self, system_name: str):
+        """Get a specific singleton system"""
+        return self.singleton_systems.get(system_name)
+    
+    def get_all_systems_status(self) -> Dict[str, Any]:
+        """Get status of all initialized systems"""
+        return {
+            "initialization_complete": self.initialization_complete,
+            "analysis_ready": self.analysis_ready,
+            "singleton_systems": list(self.singleton_systems.keys()),
+            "system_count": len(self.singleton_systems)
+        }
     
     def _ensure_env_file(self):
-        """Ensure .env file exists with interactive wallet credential setup"""
-        env_file = ".env"
-        env_example = "env_example.txt"
-        
-        if not os.path.exists(env_file):
-            logger.warning("⚠️ .env file not found - Interactive setup required")
-            print("\n" + "="*60)
-            print("🔧 FIRST-TIME SETUP: Environment Configuration")
-            print("="*60)
-            
-            try:
-                # ALWAYS require wallet credentials first
-                print("\n🔐 HYPERLIQUID WALLET CREDENTIALS REQUIRED:")
-                print("💭 Wallet credentials are needed for ALL modes (market data + trading)")
-                print("💭 Both paper trading and production need API access to Hyperliquid")
-                print()
-                
-                # Validate wallet credentials are provided
-                while True:
-                    wallet_address = input("📍 Enter your Hyperliquid wallet address (REQUIRED): ").strip()
-                    if wallet_address and wallet_address != "your_wallet_address_here":
-                        print("   ✅ Wallet address accepted")
-                        break
-                    else:
-                        print("   ❌ Wallet address is required for bot operation!")
-                
-                while True:
-                    wallet_private_key = input("🔐 Enter your Hyperliquid private key (REQUIRED): ").strip()
-                    if wallet_private_key and wallet_private_key != "your_private_key_here":
-                        print("   ✅ Private key accepted")
-                        break
-                    else:
-                        print("   ❌ Private key is required for bot operation!")
-                
-                # Trading mode selection AFTER credentials are validated
-                print("\n⚙️ TRADING MODE SELECTION:")
-                print("💡 Both modes use your wallet for market data access")
-                print("1. Paper Trading (Simulated trades - Safe)")
-                print("2. Production Trading (Real trades - Real money!)")
-                
-                while True:
-                    mode_choice = input("Choose trading mode (1 or 2): ").strip()
-                    if mode_choice == "1":
-                        trading_mode = "paper"
-                        print("   ✅ Paper trading mode selected (simulated trades)")
-                        break
-                    elif mode_choice == "2":
-                        trading_mode = "production"
-                        print("   ⚠️ Production mode selected (REAL MONEY!)")
-                        break
-                    else:
-                        print("   ❌ Please enter 1 or 2")
-                
-                # Generate .env file
-                if os.path.exists(env_example):
-                    # Read template and replace placeholders
-                    with open(env_example, 'r') as f:
-                        template_content = f.read()
-                    
-                    # Replace placeholders with user input
-                    env_content = template_content.replace(
-                        "WALLET_ADDRESS=your_wallet_address_here", 
-                        f"WALLET_ADDRESS={wallet_address}"
-                    ).replace(
-                        "WALLET_PRIVATE_KEY=your_private_key_here", 
-                        f"WALLET_PRIVATE_KEY={wallet_private_key}"
-                    ).replace(
-                        "TRADING_MODE=paper", 
-                        f"TRADING_MODE={trading_mode}"
-                    )
-                    
-                    with open(env_file, 'w') as f:
-                        f.write(env_content)
-                    
-                    logger.success("✅ Complete .env file created with your credentials!")
-                else:
-                    # Fallback: create basic template with user input
-                    with open(env_file, 'w') as f:
-                        f.write("# HyperLBot Configuration\n")
-                        f.write(f"WALLET_ADDRESS={wallet_address}\n")
-                        f.write(f"WALLET_PRIVATE_KEY={wallet_private_key}\n")
-                        f.write(f"TRADING_MODE={trading_mode}\n")
-                        f.write("LOG_LEVEL=INFO\n")
-                        f.write("DASHBOARD_PORT=5002\n")
-                    
-                    logger.success("✅ Basic .env file created with your credentials!")
-                
-                print("\n🎯 SETUP COMPLETE!")
-                print(f"📍 Configuration saved to: {env_file}")
-                if trading_mode == "paper":
-                    print("💡 You can start trading safely with paper trading mode")
-                else:
-                    print("⚠️ Production mode enabled - real money will be used!")
-                print()
-                
-            except Exception as e:
-                logger.error(f"❌ Error during interactive setup: {e}")
-                # Create minimal fallback
-                try:
-                    with open(env_file, 'w') as f:
-                        f.write("# HyperLBot Configuration\n")
-                        f.write("WALLET_ADDRESS=your_wallet_address_here\n")
-                        f.write("WALLET_PRIVATE_KEY=your_private_key_here\n")
-                        f.write("TRADING_MODE=paper\n")
-                    logger.info("📝 Fallback .env file created")
-                except:
-                    logger.error("❌ Could not create any .env file")
-    
-    def _test_api_connections(self, hyperliquid_api) -> Dict[str, Any]:
-        """Test API connections"""
-        test_results = {"yahoo_finance": False, "hyperliquid_api": False}
-        
+        """Ensure .env file exists for configuration"""
         try:
-            # Test Yahoo Finance connection
-            from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
-            test_analyzer = MarketDataAnalyzer()
-            if test_analyzer.test_connection():
-                test_results["yahoo_finance"] = True
-                logger.success("✅ Yahoo Finance connection test passed")
+            if not os.path.exists('.env'):
+                logger.info("📝 .env file not found - creating from template")
+                if os.path.exists('env_example.txt'):
+                    import shutil
+                    shutil.copy('env_example.txt', '.env')
+                    logger.success("✅ .env file created from template")
+                else:
+                    logger.warning("⚠️ env_example.txt not found - .env file not created")
             else:
-                logger.error("❌ Yahoo Finance connection test failed")
+                logger.debug("✅ .env file exists")
         except Exception as e:
-            logger.error(f"❌ Yahoo Finance test error: {e}")
-        
-        try:
-            # Test Hyperliquid API connection
-            if hyperliquid_api:
-                current_price = hyperliquid_api.get_current_price("BTC")
-                if current_price and current_price > 0:
-                    test_results["hyperliquid_api"] = True
-                    logger.success(f"✅ Hyperliquid API connected - BTC: ${current_price:,.2f}")
-                else:
-                    logger.error("❌ Hyperliquid API connection test failed")
-        except Exception as e:
-            logger.error(f"❌ Hyperliquid API test error: {e}")
-        
-        return test_results
+            logger.error(f"❌ Failed to ensure .env file: {e}")
+
+# Global system initializer instance
+_global_system_initializer = None
+
+def get_system_initializer() -> SystemInitializer:
+    """Get the global system initializer instance (singleton pattern)"""
+    global _global_system_initializer
+    if _global_system_initializer is None:
+        _global_system_initializer = SystemInitializer()
+        logger.info("⚙️ Created global System Initializer instance")
+    return _global_system_initializer

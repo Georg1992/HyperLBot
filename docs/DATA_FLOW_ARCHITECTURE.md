@@ -1,15 +1,15 @@
 # Data Flow Architecture
 
-## Core Principle: RTM and Dashboard are NEVER sources of data
+## Core Principle: DashboardService and Dashboard are NEVER sources of data
 
 ### Data Flow Direction
 ```
-SOURCE SYSTEMS → RTM → DASHBOARD
+SOURCE SYSTEMS → DashboardService → DASHBOARD
 ```
 
 **NEVER:**
 ```
-RTM → SOURCE SYSTEMS (WRONG!)
+DashboardService → SOURCE SYSTEMS (WRONG!)
 DASHBOARD → SOURCE SYSTEMS (WRONG!)
 ```
 

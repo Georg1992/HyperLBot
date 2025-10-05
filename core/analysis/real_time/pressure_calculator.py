@@ -8,6 +8,15 @@ from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 from core.constants import MagicNumbers
 
+# Singleton pattern implementation
+_global_pressure_calculator = None
+
+def get_global_pressure_calculator() -> 'PressureCalculator':
+    """Get the global PressureCalculator singleton instance"""
+    global _global_pressure_calculator
+    if _global_pressure_calculator is None:
+        _global_pressure_calculator = PressureCalculator()
+    return _global_pressure_calculator
 
 class PressureCalculator:
     """Centralized market pressure calculation system"""

@@ -36,7 +36,7 @@ class RSICalculator:
     def calculate_standalone_rsi(self, candles: List[Dict], periods: int = 14) -> float:
         """
         Calculate standalone RSI from candles (doesn't affect instance state)
-        Perfect for Yahoo analysis - just calculates and returns RSI value
+        Perfect for Hyperliquid analysis - just calculates and returns RSI value
         """
         try:
             if len(candles) < periods + 1:
@@ -89,7 +89,7 @@ class RSICalculator:
             logger.error(f"❌ Standalone RSI calculation failed: {e}")
             return technical_constants.RSI_NEUTRAL
     
-    def calculate_yahoo_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
+    def calculate_hyperliquid_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
         """
         Calculate scientifically accurate baseline RSI using Wilder's smoothing
         Reference: Chart shows RSI ~44.79 - this is the scientific standard to match
@@ -163,13 +163,13 @@ class RSICalculator:
     
     def update_realtime_rsi(self, new_price: float) -> Dict[str, Any]:
         """
-        Update real-time RSI between Yahoo correction points (sensitivity for scalping)
-        Method: RSI interpolation based on price movement with Yahoo baseline correction
+        Update real-time RSI between Hyperliquid correction points (sensitivity for scalping)
+        Method: RSI interpolation based on price movement with Hyperliquid baseline correction
         """
         try:
             if not self.rsi_initialized:
-                logger.warning("⚠️ RSI not initialized - use calculate_yahoo_baseline_rsi() first")
-                raise Exception("RSI not initialized - use calculate_yahoo_baseline_rsi() first")
+                logger.warning("⚠️ RSI not initialized - use calculate_hyperliquid_baseline_rsi() first")
+                raise Exception("RSI not initialized - use calculate_hyperliquid_baseline_rsi() first")
             
             # Store current RSI as previous for momentum calculation
             self.previous_rsi = self.current_rsi
@@ -177,12 +177,12 @@ class RSICalculator:
             # Add new price to history
             self.price_history.append(new_price)
             
-            # FIXED APPROACH: RSI interpolation between Yahoo points (proper method)
+            # FIXED APPROACH: RSI interpolation between Hyperliquid points (proper method)
             if self.last_price == 0.0:
-                # First real-time update - set Yahoo price as reference
+                # First real-time update - set Hyperliquid price as reference
                 self.last_price = new_price  
-                self.current_rsi = self.baseline_rsi  # Start with accurate Yahoo RSI
-                # logger.debug(f"🔬 Real-time RSI started: ${new_price:,.2f} with Yahoo RSI {self.baseline_rsi:.2f}")
+                self.current_rsi = self.baseline_rsi  # Start with accurate Hyperliquid RSI
+                # logger.debug(f"🔬 Real-time RSI started: ${new_price:,.2f} with Hyperliquid RSI {self.baseline_rsi:.2f}")
             else:
                 # FIXED: RSI interpolation based on price movement (not broken tick-by-tick)
                 price_change_pct = (new_price - self.last_price) / self.last_price
@@ -194,14 +194,14 @@ class RSICalculator:
                 # Calculate RSI adjustment based on price movement
                 rsi_adjustment = price_change_pct * 100 * rsi_sensitivity
                 
-                # Apply adjustment to Yahoo baseline (much more responsive)
+                # Apply adjustment to Hyperliquid baseline (much more responsive)
                 dampening = 0.8  # 80% of calculated adjustment (immediate reaction to price moves)
                 self.current_rsi = self.baseline_rsi + (rsi_adjustment * dampening)
                 
                 # Keep RSI in valid range [0, 100]
                 self.current_rsi = max(0.0, min(100.0, self.current_rsi))
                 
-                # Don't update last_price here - keep Yahoo price as reference point
+                # Don't update last_price here - keep Hyperliquid price as reference point
             
             # Get comprehensive RSI analysis
             rsi_trend = self._get_rsi_trend(self.current_rsi)
@@ -276,4 +276,15 @@ class RSICalculator:
             "initialized": self.rsi_initialized,
             "data_source": "rsi_calculator"
         }
-    
+
+
+# Singleton pattern implementation
+_global_rsi_calculator = None
+
+def get_global_rsi_calculator() -> RSICalculator:
+    """Get the global RSICalculator singleton instance"""
+    global _global_rsi_calculator
+    if _global_rsi_calculator is None:
+        _global_rsi_calculator = RSICalculator()
+    return _global_rsi_calculator
+

@@ -29,7 +29,7 @@ class EventDrivenTradingDashboard:
         self.log_dir = constants.LOG_DIR
         
         # Flask app with SocketIO
-        self.app = Flask(__name__)
+        self.app = Flask(__name__, template_folder='templates')
         self.app.config['SECRET_KEY'] = 'trading_dashboard_secret'
         self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading')
         
@@ -39,7 +39,7 @@ class EventDrivenTradingDashboard:
         # Data change tracking for smart updates
         self.last_data_hash = {}
         
-        # SimpleRTM is the single source of truth
+        # DashboardService is the single source of truth
         
         # Force update counter for reliability
         self.force_update_counter = 0
@@ -212,11 +212,21 @@ class EventDrivenTradingDashboard:
         """Calculate hash of data for change detection"""
         try:
             # Create a simplified hash of key changing fields
+            market_data = data.get('market', {})
+            trend_analysis = market_data.get('trend_analysis', {})
+            
             hash_data = {
-                'price': data.get('market', {}).get('current_price', 0),
-                'rsi': data.get('market', {}).get('rsi', 0),
-                'volume': data.get('market', {}).get('current_volume_btc', 0),
-                'volume_category': data.get('market', {}).get('volume_category', 'UNKNOWN'),
+                'price': market_data.get('current_price', 0),
+                'rsi': market_data.get('rsi', 0),
+                'overall_trend': trend_analysis.get('overall_trend'),
+                'trading_volume_btc': market_data.get('trading_volume_btc', 0),
+                'trading_volume_category': market_data.get('trading_volume_category'),
+                'volatility_5m': market_data.get('volatility_5m', 0),
+                'volatility_5m_category': market_data.get('volatility_5m_category'),
+                'pressure': market_data.get('pressure'),
+                'pressure_confidence': market_data.get('pressure_confidence', 0),
+                'key_levels': len(market_data.get('key_levels', [])),
+                'patterns': bool(market_data.get('patterns', {})),
                 'balance': data.get('session', {}).get('current_balance', 0),
                 'trades': data.get('session', {}).get('total_trades', 0),
                 'session_id': data.get('session', {}).get('session_id', ''),
@@ -251,11 +261,36 @@ class EventDrivenTradingDashboard:
         except Exception as e:
             logger.error(f"❌ Failed to emit data update: {e}")
     
-    def _get_dashboard_data(self) -> Dict[str, Any]:
-        """Get dashboard data from SimpleRTM - SINGLE SOURCE OF TRUTH"""
+    def force_data_update(self):
+        """Force immediate data update emission"""
         try:
-            # Use the global RTM instance - SINGLE SOURCE OF TRUTH
-            from core.dashboard.dashboard_data_manager import simple_rtm
+            data = self._get_dashboard_data()
+            self._emit_data_update(data)
+            logger.debug("📡 Force data update emitted")
+        except Exception as e:
+            logger.error(f"❌ Failed to force data update: {e}")
+    
+    def _get_dashboard_data(self) -> Dict[str, Any]:
+        """Get dashboard data from DashboardService - SINGLE SOURCE OF TRUTH"""
+        try:
+            # Get the global dashboard service instance directly
+            from core.services.dashboard_service import DashboardService
+            dashboard_service = DashboardService.get_global_instance()
+            
+            if not dashboard_service:
+                # Try to get from system initializer first
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                
+                if not dashboard_service:
+                    # Create dashboard service if not available
+                    dashboard_service = DashboardService()
+                    logger.info("🎛️ Created dashboard service instance")
+            
+            if not dashboard_service:
+                logger.error("❌ Dashboard service not available")
+                return self._get_error_data("Dashboard service not available")
             
             # Check for stale sessions and auto-cleanup (less aggressive)
             # Only cleanup every 30 seconds to avoid interfering with fresh sessions
@@ -264,18 +299,18 @@ class EventDrivenTradingDashboard:
             
             current_time = time.time()
             if current_time - self._last_cleanup_time > 30:  # 30 second interval
-                simple_rtm.auto_cleanup_stale_sessions()
+                dashboard_service.auto_cleanup_stale_sessions()
                 self._last_cleanup_time = current_time
             
-            # Get ALL data from SimpleRTM - SINGLE SOURCE OF TRUTH
-            rtm_data = simple_rtm.get_data()
+            # Get ALL data from DashboardService - SINGLE SOURCE OF TRUTH
+            dashboard_data = dashboard_service.get_data()
             
             # Dashboard ONLY displays data - NO calculations
-            session_data = rtm_data.get("session", {})
+            session_data = dashboard_data.get("session", {})
             
             # Extract candle data from market data or predictions
-            predictions = rtm_data.get("predictions", [])
-            market_data = rtm_data.get("market", {})
+            predictions = dashboard_data.get("predictions", [])
+            market_data = dashboard_data.get("market", {})
             candle_data = None
             
             # First check market data for candle data (new structure)
@@ -289,11 +324,11 @@ class EventDrivenTradingDashboard:
                         break
             
             # Extract AI system status and ML performance from market data
-            market_data_dict = rtm_data.get("market", {})
+            market_data_dict = dashboard_data.get("market", {})
             ai_system_status = market_data_dict.get("ai_system_status", {})
             ml_performance = market_data_dict.get("ml_performance", {})
             
-            # Format data for dashboard - RTM ONLY
+            # Format data for dashboard - DashboardService ONLY
             dashboard_data = {
                 "session": {
                     "session_id": session_data.get("session_id", "no_session"),
@@ -310,14 +345,14 @@ class EventDrivenTradingDashboard:
                 "market": market_data_dict,
                 "ai_system_status": ai_system_status,  # Add AI system status
                 "ml_performance": ml_performance,  # Add ML performance data
-                "logs": rtm_data.get("logs", []),
+                "logs": dashboard_data.get("logs", []),
                 "predictions": predictions,
-                "trades": rtm_data.get("trades", []),
+                "trades": dashboard_data.get("trades", []),
                 "orderbook": {"bids": [], "asks": []},
                 "global_volume": {"volume": 0.0},
                 "candleData": candle_data,  # Add candle data to dashboard data
-                "timestamp": rtm_data.get("timestamp", ""),
-                "data_source": "SimpleRTM - Single Source of Truth",
+                "timestamp": dashboard_data.get("timestamp", ""),
+                "data_source": "DashboardService - Single Source of Truth",
                 "connection_status": "✅ Connected"
             }
             
@@ -344,12 +379,33 @@ class EventDrivenTradingDashboard:
                 "connection_status": "❌ Error"
             }
     
+    def _get_error_data(self, error_message: str) -> Dict[str, Any]:
+        """Get error data structure for dashboard"""
+        return {
+            "session": {
+                "session_id": "error",
+                "status": "ERROR", 
+                "session_time": "0s",
+                "error": error_message
+            },
+            "market": {"error": error_message},
+            "logs": [],
+            "predictions": [],
+            "trades": [],
+            "orderbook": {"error": error_message},
+            "global_volume": {"error": error_message},
+            "timestamp": datetime.now().isoformat(),
+            "data_source": "error",
+            "connection_status": "❌ Error"
+        }
+    
+    
     def run(self, host='0.0.0.0', port=5002, debug=False):
         """Run the event-driven dashboard"""
         try:
             logger.info(f"🚀 Starting Event-Driven Dashboard on http://{host}:{port}")
             logger.info("✅ WebSocket real-time updates enabled")
-            logger.info("✅ SimpleRTM - Single source of truth")
+            logger.info("✅ DashboardService - Single source of truth")
             
             self.socketio.run(
                 self.app,

@@ -406,4 +406,15 @@ class WhaleAnalyticsAPI:
 
 
 # Global instance for easy access
-whale_analytics_api = WhaleAnalyticsAPI()
+# Singleton pattern implementation
+_global_whale_analytics_api = None
+
+def get_global_whale_analytics_api() -> WhaleAnalyticsAPI:
+    """Get the global WhaleAnalyticsAPI singleton instance"""
+    global _global_whale_analytics_api
+    if _global_whale_analytics_api is None:
+        _global_whale_analytics_api = WhaleAnalyticsAPI()
+    return _global_whale_analytics_api
+
+# Backward compatibility
+whale_analytics_api = get_global_whale_analytics_api()

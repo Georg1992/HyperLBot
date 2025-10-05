@@ -8,11 +8,9 @@ Contains all external API clients for data fetching
 # Use direct imports in code instead of importing everything in __init__.py
 
 __all__ = [
-    'YahooAPI', 
     'BinanceAPI',
     'binance_api',
     'FearGreedAPI', 
     'WhaleAnalyticsAPI', 
     'RSSNewsAPI',
-    'YahooMomentumAnalyzer'
 ]

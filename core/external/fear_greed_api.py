@@ -280,7 +280,18 @@ class FearGreedAPI:
 
 
 # Global instance for consistent usage across the codebase
-fear_greed_api = FearGreedAPI()
+# Singleton pattern implementation
+_global_fear_greed_api = None
+
+def get_global_fear_greed_api() -> FearGreedAPI:
+    """Get the global FearGreedAPI singleton instance"""
+    global _global_fear_greed_api
+    if _global_fear_greed_api is None:
+        _global_fear_greed_api = FearGreedAPI()
+    return _global_fear_greed_api
+
+# Backward compatibility
+fear_greed_api = get_global_fear_greed_api()
 
 
 def main():

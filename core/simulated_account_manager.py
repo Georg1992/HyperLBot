@@ -2,7 +2,7 @@
 """
 Enhanced Simulated Account Manager
 Handles creation, loading, and persistence of simulated trading accounts
-Automatically syncs with SimpleRTM for real-time dashboard updates
+Automatically syncs with dashboard service for real-time dashboard updates
 """
 
 import os
@@ -13,21 +13,30 @@ from typing import Dict, Any, Optional
 from loguru import logger
 
 class SimulatedAccountManager:
-    """Manages simulated trading account data and persistence with RTM integration"""
+    """Manages simulated trading account data and persistence with dashboard integration"""
     
     def __init__(self):
         # Ensure data directories exist
-        os.makedirs("data/sessions", exist_ok=True)
-        self.account_file = "data/sessions/simulated_account.json"
+        os.makedirs("data/accounts", exist_ok=True)
+        self.account_file = "data/accounts/simulated_account.json"
         self.account_data = None
         
-        # Import RTM for integration
-        try:
-            from core.dashboard.dashboard_data_manager import simple_rtm
-            self.rtm = simple_rtm
-        except ImportError:
-            self.rtm = None
-            logger.warning("⚠️ SimpleRTM not available - AccountManager will work independently")
+        # Dashboard service will be initialized lazily when needed
+        self.dashboard_service = None
+        self._dashboard_initialized = False
+    
+    def _ensure_dashboard_initialized(self):
+        """Ensure dashboard service is available (lazy initialization)"""
+        if not self._dashboard_initialized:
+            try:
+                # Get dashboard service from system initializer
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                self.dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                self._dashboard_initialized = True
+            except Exception:
+                self.dashboard_service = None
+                logger.warning("⚠️ Dashboard service not available - AccountManager will work independently")
     
     def account_exists(self) -> bool:
         """Check if a simulated account file exists"""
@@ -56,9 +65,7 @@ class SimulatedAccountManager:
         }
         
         self.account_data = account_data
-        self._save_account()
-        
-        self._sync_to_rtm()
+        self.save_account()
         
         logger.success(f"✅ Created new simulated account with balance: ${initial_balance:.2f}")
         return account_data
@@ -72,7 +79,7 @@ class SimulatedAccountManager:
             with open(self.account_file, 'r') as f:
                 self.account_data = json.load(f)
             
-            self._sync_to_rtm()
+            self._sync_to_dashboard()
             
             logger.success(f"✅ Loaded existing simulated account (Balance: ${self.account_data['current_balance']:.2f})")
             return self.account_data
@@ -81,23 +88,22 @@ class SimulatedAccountManager:
             logger.error(f"❌ Error loading account: {e}")
             return None
     
-    def _sync_to_rtm(self):
-        """Simple helper to sync account data to RTM - reduces code duplication"""
-        if self.rtm and self.account_data:
-            self.rtm.sync_from_account_manager(self.get_account_summary())
+    def _sync_to_dashboard(self):
+        """Simple helper to sync account data to dashboard - reduces code duplication"""
+        self._ensure_dashboard_initialized()
+        if self.dashboard_service and self.account_data:
+            self.dashboard_service.sync_from_account_manager(self.get_account_summary())
     
     def save_account(self):
-        """Save current account data to file"""
-        if self.account_data:
-            self._save_account()
-            self._sync_to_rtm()
-    
-    def _save_account(self):
-        """Internal method to save account data"""
+        """Save current account data to file and sync to dashboard"""
+        if not self.account_data:
+            return
+            
         try:
             self.account_data["last_updated"] = datetime.now().isoformat()
             with open(self.account_file, 'w') as f:
                 json.dump(self.account_data, f, indent=2, default=str)
+            self._sync_to_dashboard()
         except Exception as e:
             logger.error(f"❌ Error saving account: {e}")
     
@@ -114,8 +120,7 @@ class SimulatedAccountManager:
                 self.account_data["unrealized_pnl"] += pnl_change
             
             logger.info(f"💰 Account balance updated: ${old_balance:.2f} → ${new_balance:.2f} (PnL: ${pnl_change:.2f})")
-            self._save_account()
-            self._sync_to_rtm()
+            self.save_account()
     
     def add_trade(self, trade_data: Dict[str, Any]):
         """Add a completed trade to account history"""
@@ -136,9 +141,7 @@ class SimulatedAccountManager:
             if len(self.account_data["trade_history"]) > 100:
                 self.account_data["trade_history"] = self.account_data["trade_history"][-100:]
             
-            self._save_account()
-            
-            self._sync_to_rtm()
+            self.save_account()
     
     def add_session(self, session_data: Dict[str, Any]):
         """Add session data to account history"""
@@ -152,15 +155,13 @@ class SimulatedAccountManager:
             if len(self.account_data["session_history"]) > 50:
                 self.account_data["session_history"] = self.account_data["session_history"][-50:]
             
-            self._save_account()
+            self.save_account()
     
     def update_open_positions(self, positions: list):
         """Update open positions in account"""
         if self.account_data:
             self.account_data["open_positions"] = positions
-            self._save_account()
-            
-            self._sync_to_rtm()
+            self.save_account()
     
     def reset_account(self) -> bool:
         """Delete existing account file to allow creation of new account"""
@@ -169,9 +170,9 @@ class SimulatedAccountManager:
                 os.remove(self.account_file)
                 self.account_data = None
                 
-                # Clear RTM session data when account is reset
-                if self.rtm:
-                    self.rtm.clear_session_data()
+                # Clear dashboard session data when account is reset
+                if self.dashboard_service:
+                    self.dashboard_service.clear_session_data()
                 
                 logger.success("✅ Existing account deleted - ready for new account creation")
                 return True
@@ -204,11 +205,10 @@ class SimulatedAccountManager:
             "last_updated": self.account_data["last_updated"]
         }
     
-    def sync_with_rtm(self):
-        """Manual sync with RTM - useful for ensuring consistency"""
-        if self.rtm and self.account_data:
-            self.rtm.sync_from_account_manager(self.get_account_summary())
-            logger.debug("🔄 AccountManager synced with RTM")
+    def sync_with_dashboard(self):
+        """Manual sync with dashboard - useful for ensuring consistency"""
+        self._sync_to_dashboard()
+        logger.debug("🔄 AccountManager synced with dashboard")
 
 # Global instance
 account_manager = SimulatedAccountManager()

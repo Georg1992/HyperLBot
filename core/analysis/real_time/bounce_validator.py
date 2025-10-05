@@ -8,6 +8,15 @@ import time
 from typing import Dict, Any, List
 from loguru import logger
 
+# Singleton pattern implementation
+_global_bounce_validator = None
+
+def get_global_bounce_validator() -> 'BounceValidator':
+    """Get the global BounceValidator singleton instance"""
+    global _global_bounce_validator
+    if _global_bounce_validator is None:
+        _global_bounce_validator = BounceValidator()
+    return _global_bounce_validator
 
 class BounceValidator:
     """Validates that price levels show actual bounce behavior (not just touchpoints)"""

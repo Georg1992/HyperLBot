@@ -8,6 +8,15 @@ from typing import Dict, Any, List, Optional
 from loguru import logger
 from core.constants import VariabilityConstants
 
+# Singleton pattern implementation
+_global_volatility_calculator = None
+
+def get_global_volatility_calculator() -> 'VolatilityCalculator':
+    """Get the global VolatilityCalculator singleton instance"""
+    global _global_volatility_calculator
+    if _global_volatility_calculator is None:
+        _global_volatility_calculator = VolatilityCalculator()
+    return _global_volatility_calculator
 
 class VolatilityCalculator:
     """Centralized volatility calculation system"""

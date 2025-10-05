@@ -30,16 +30,22 @@ from core.constants import constants
 from core.instance_manager import instance_manager, check_single_instance
 
 # Global variables to track active instances for graceful shutdown
-active_bot_instance = None
+active_session_orchestrator = None
 dashboard_started_this_session = False
 
-def signal_handler(signum, frame):
+def shutdown_handler(signum, frame):
     """Handle Ctrl+C and other termination signals"""
     logger.info("🛑 Shutting down...")
     
-    if active_bot_instance:
+    if active_session_orchestrator:
         try:
-            active_bot_instance.close_session()
+            # Get dashboard service for cleanup
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+            if dashboard_service:
+                dashboard_service.cleanup_heartbeat()
+                dashboard_service.add_activity("🏁 Trading session closed gracefully", "SUCCESS")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
     
@@ -47,18 +53,67 @@ def signal_handler(signum, frame):
 
 def cleanup_on_exit():
     """Cleanup function called on normal exit"""
-    if active_bot_instance:
+    if active_session_orchestrator:
         try:
-            active_bot_instance.close_session()
+            # Get dashboard service for cleanup
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+            if dashboard_service:
+                dashboard_service.cleanup_heartbeat()
         except Exception as e:
             print(f"Warning: Error during cleanup: {e}")
 
 # Register signal handlers
-signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
-signal.signal(signal.SIGTERM, signal_handler)  # Termination signal
+signal.signal(signal.SIGINT, shutdown_handler)  # Ctrl+C
+signal.signal(signal.SIGTERM, shutdown_handler)  # Termination signal
 
 # Register cleanup function
 atexit.register(cleanup_on_exit)
+
+def main():
+    """Main entry point with simplified menu"""
+    global dashboard_started_this_session
+    
+    dashboard_started_this_session = False
+    
+    logger.info("HyperLBot - Trading Bot")
+    
+    # Check for existing instance first
+    if not check_single_instance():
+        return
+    
+    # Check and install dependencies
+    if not check_and_install_dependencies():
+        logger.error("Failed to install required dependencies")
+        return
+    
+    while True:
+        print("\nHyperLBot Menu:")
+        print("1. Paper Trading (Testing Mode)")
+        print("2. Real Trading (Production Mode)")
+        print("3. Start Dashboard Only")
+        print("4. Exit")
+        
+        choice = input("Enter your choice (1-4): ").strip()
+        
+        if choice == "1":
+            run_paper_trading()
+        elif choice == "2":
+            run_real_trading()
+        elif choice == "3":
+            from core.services.system_initializer import get_system_initializer
+            temp_initializer = get_system_initializer()
+            temp_initializer._ensure_env_file()
+            
+            if start_dashboard():
+                input("Press Enter to stop the dashboard...")
+            else:
+                logger.error("Failed to start dashboard")
+        elif choice == "4":
+            break
+        else:
+            print("Invalid choice. Please enter 1-4.")
 
 def check_and_install_dependencies():
     """Check and automatically install missing dependencies"""
@@ -105,7 +160,7 @@ def start_dashboard():
     global dashboard_started_this_session
     
     try:
-        from web_dashboard import create_dashboard, EventDrivenTradingDashboard
+        from core.dashboard.web_dashboard import create_dashboard, EventDrivenTradingDashboard
         
         # Check if dashboard is already running
         if EventDrivenTradingDashboard.is_dashboard_running(
@@ -158,58 +213,14 @@ def start_dashboard():
         logger.error(f"Failed to start dashboard: {e}")
         return False
 
-def main():
-    """Main entry point with simplified menu"""
-    global dashboard_started_this_session
-    
-    dashboard_started_this_session = False
-    
-    logger.info("HyperLBot - Trading Bot")
-    
-    # Check for existing instance first
-    if not check_single_instance():
-        return
-    
-    # Check and install dependencies
-    if not check_and_install_dependencies():
-        logger.error("Failed to install required dependencies")
-        return
-    
-    while True:
-        print("\nHyperLBot Menu:")
-        print("1. Paper Trading (Testing Mode)")
-        print("2. Real Trading (Production Mode)")
-        print("3. Start Dashboard Only")
-        print("4. Exit")
-        
-        choice = input("Enter your choice (1-4): ").strip()
-        
-        if choice == "1":
-            run_paper_trading()
-        elif choice == "2":
-            run_real_trading()
-        elif choice == "3":
-            from core.services.system_initializer import SystemInitializer
-            temp_initializer = SystemInitializer(config)
-            temp_initializer._ensure_env_file()
-            
-            if start_dashboard():
-                logger.info("Dashboard started successfully!")
-                input("Press Enter to stop the dashboard...")
-            else:
-                logger.error("Failed to start dashboard")
-        elif choice == "4":
-            break
-        else:
-            print("Invalid choice. Please enter 1-4.")
 
 def run_paper_trading():
     """Run the Hyperliquid paper trading bot for testing"""
-    global active_bot_instance
+    global active_session_orchestrator
     
     # Ensure .env file exists
-    from core.services.system_initializer import SystemInitializer
-    temp_initializer = SystemInitializer(config)
+    from core.services.system_initializer import get_system_initializer
+    temp_initializer = get_system_initializer()
     temp_initializer._ensure_env_file()
     
     # Reload config after potential .env creation
@@ -219,7 +230,8 @@ def run_paper_trading():
     # Acquire instance lock
     with instance_manager:
         try:
-            from core.bot.trading_orchestrator import YahooHyperliquidPaperTradingBot
+            from core.services.system_initializer import get_system_initializer
+            from core.services.session_orchestrator import SessionOrchestrator
             from core.simulated_account_manager import account_manager
             
             logger.info("Starting Paper Trading Bot...")
@@ -262,36 +274,44 @@ def run_paper_trading():
             print(f"\nConfiguration:")
             print(f"Balance: ${initial_balance:.2f} (simulated)")
             
-            # Start dashboard
-            if start_dashboard():
-                logger.info("Dashboard started successfully!")
+            # Initialize system and get services (using singletons)
+            system_initializer = get_system_initializer()
+            if not system_initializer.initialize_system():
+                logger.error("Failed to initialize system")
+                return
             
-            # Initialize and run the bot
-            bot = YahooHyperliquidPaperTradingBot(
-                initial_balance=initial_balance,
-                strategy_name=config.DEFAULT_STRATEGY,
-                balance_mode="simulated"
-            )
+            # Get services from system initializer (all singletons)
+            market_data_service = system_initializer.singleton_systems.get("market_data_service")
+            trading_engine = system_initializer.singleton_systems.get("trading_engine")
+            dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+            session_orchestrator = system_initializer.singleton_systems.get("session_orchestrator")
+            strategy_manager = system_initializer.singleton_systems.get("strategy_manager")
             
-            active_bot_instance = bot
+            if not all([market_data_service, dashboard_service, session_orchestrator]):
+                logger.error("Failed to get required services")
+                return
             
             logger.info("Starting bot...")
             logger.info("Press Ctrl+C to stop")
             
-            # Connect to Hyperliquid
-            if not bot.connect():
-                logger.error("Failed to connect to Hyperliquid API")
-                return
+            # Start dashboard after system is initialized
+            start_dashboard()
             
-            bot.run_yahoo_hyperliquid_paper_trading(
-                check_interval=config.DEFAULT_CHECK_INTERVAL
+            # Set active session orchestrator for shutdown handling
+            active_session_orchestrator = session_orchestrator
+            
+            # Run paper trading session directly (no facade needed)
+            session_orchestrator.run_paper_trading_session(
+                config.DEFAULT_CHECK_INTERVAL,
+                system_initializer, market_data_service, trading_engine, 
+                dashboard_service, strategy_manager
             )
             
         except Exception as e:
             logger.error(f"Error in paper trading: {e}")
             input("Press Enter to continue...")
         finally:
-            active_bot_instance = None
+            active_session_orchestrator = None
 
 def run_real_trading():
     """Run the Hyperliquid real trading bot for production"""

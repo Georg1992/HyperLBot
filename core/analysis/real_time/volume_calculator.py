@@ -8,6 +8,15 @@ from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 # from core.constants import MagicNumbers  # Removed unused import
 
+# Singleton pattern implementation
+_global_volume_calculator = None
+
+def get_global_volume_calculator() -> 'VolumeCalculator':
+    """Get the global VolumeCalculator singleton instance"""
+    global _global_volume_calculator
+    if _global_volume_calculator is None:
+        _global_volume_calculator = VolumeCalculator()
+    return _global_volume_calculator
 
 class VolumeCalculator:
     """Centralized volume calculation and analysis system"""
@@ -112,20 +121,18 @@ class VolumeCalculator:
         """
         try:
             if not historical_volumes or len(historical_volumes) < 5:
-                # Use realistic Bitcoin volume thresholds for real-time trading (per minute)
-                if current_volume_btc >= 100:  # 100+ BTC per minute (EXTREMELY high - major market event)
-                    volume_category = "EXTREMELY_HIGH"
-                elif current_volume_btc >= 50:  # 50+ BTC per minute (massive spike)
+                # Use updated Bitcoin volume thresholds for 5m candle trading volume
+                if current_volume_btc >= 500:  # 500+ BTC per 5m candle (EXTREME - major market event)
+                    volume_category = "EXTREME"
+                elif current_volume_btc >= 150:  # 150+ BTC per 5m candle (very high activity)
                     volume_category = "VERY_HIGH"
-                elif current_volume_btc >= 20:  # 20+ BTC per minute (high activity)
+                elif current_volume_btc >= 80:  # 80+ BTC per 5m candle (high activity)
                     volume_category = "HIGH"
-                elif current_volume_btc >= 10:  # 10+ BTC per minute (above average)
-                    volume_category = "ABOVE_AVERAGE"
-                elif current_volume_btc >= 5:  # 5+ BTC per minute (normal)
-                    volume_category = "NORMAL"
-                elif current_volume_btc >= 2:  # 2+ BTC per minute (low)
+                elif current_volume_btc >= 20:  # 20+ BTC per 5m candle (moderate activity)
+                    volume_category = "MODERATE"
+                elif current_volume_btc >= 10:  # 10+ BTC per 5m candle (low activity)
                     volume_category = "LOW"
-                else:  # <2 BTC per minute (very low)
+                else:  # <10 BTC per 5m candle (very low activity)
                     volume_category = "VERY_LOW"
                 
                 return {
@@ -183,4 +190,4 @@ class VolumeCalculator:
     
     # Old volume spike detection method removed - using Binance real-time volume spike detection instead
     
-    # Old Yahoo volume categorization removed - using Binance real-time volume data instead
+    # Old volume categorization removed - using Binance real-time volume data instead

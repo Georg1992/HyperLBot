@@ -182,10 +182,17 @@ class HyperliquidAPI:
                 logger.warning(f"No recent trades available for ongoing candle")
                 return None
             
-            # Calculate the current candle start time
+            # Calculate the current candle start time using UTC for global synchronization
             current_time = time.time()
             interval_seconds = self._get_interval_seconds(interval)
-            current_candle_start = (int(current_time // interval_seconds)) * interval_seconds
+            
+            # Use UTC time for global candle synchronization
+            import datetime
+            utc_dt = datetime.datetime.utcfromtimestamp(current_time)
+            utc_minute = utc_dt.minute
+            candle_start_minute = (utc_minute // (interval_seconds // 60)) * (interval_seconds // 60)
+            candle_start_dt = utc_dt.replace(minute=candle_start_minute, second=0, microsecond=0)
+            current_candle_start = candle_start_dt.timestamp()
             
             # Filter trades that belong to the current ongoing candle
             ongoing_trades = []
@@ -275,25 +282,42 @@ class HyperliquidAPI:
             url = f"{self.base_url}/info"
             
             # Calculate time range based on interval
-            interval_minutes = {
-                "1m": 1,
-                "5m": 5,
-                "1h": 60,
-                "1d": 1440
-            }.get(interval, 1)
+            if interval == "1d":
+                # For daily candles, use calendar-based dates, not rolling windows
+                from datetime import datetime, timedelta
+                now = datetime.now()
+                # Use start of today as end time to get completed daily candles
+                end_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                start_time = end_time - timedelta(days=limit-1)  # Go back (limit-1) days
+                
+                start_timestamp = int(start_time.timestamp() * 1000)
+                end_timestamp = int(end_time.timestamp() * 1000)
+            else:
+                # For intraday candles, use rolling window approach
+                interval_minutes = {
+                    "1m": 1,
+                    "5m": 5,
+                    "1h": 60
+                }.get(interval, 1)
+                
+                start_timestamp = int((time.time() - (limit * interval_minutes * 60)) * 1000)
+                end_timestamp = int(time.time() * 1000)
             
-            # Request payload for historical candles (include ongoing candle for rolling window)
+            # Request payload for historical candles
             payload = {
                 "type": "candleSnapshot",
                 "req": {
                     "coin": symbol,
                     "interval": interval,
-                    "startTime": int((time.time() - (limit * interval_minutes * 60)) * 1000),  # Convert to milliseconds
-                    "endTime": int(time.time() * 1000)  # Include current ongoing candle
+                    "startTime": start_timestamp,
+                    "endTime": end_timestamp
                 }
             }
             
-            logger.info(f"🕯️ Requesting {limit} {interval} candles for {symbol} (rolling window approach)")
+            if interval == "1d":
+                logger.info(f"🕯️ Requesting {limit} {interval} candles for {symbol} (calendar-based dates)")
+            else:
+                logger.info(f"🕯️ Requesting {limit} {interval} candles for {symbol} (rolling window approach)")
             logger.debug(f"🕯️ Payload: {payload}")
             
             response = self.session.post(url, json=payload, timeout=10)

@@ -9,6 +9,16 @@ import numpy as np
 from typing import Dict, List, Any, Optional, Tuple, Callable, Union
 from loguru import logger
 
+# Singleton pattern implementation
+_global_pattern_recognition_engine = None
+
+def get_global_pattern_recognition_engine() -> 'PatternRecognitionEngine':
+    """Get the global PatternRecognitionEngine singleton instance"""
+    global _global_pattern_recognition_engine
+    if _global_pattern_recognition_engine is None:
+        _global_pattern_recognition_engine = PatternRecognitionEngine()
+    return _global_pattern_recognition_engine
+
 class PatternRecognitionEngine:
     """Recognizes trading patterns for BTC market setups"""
     

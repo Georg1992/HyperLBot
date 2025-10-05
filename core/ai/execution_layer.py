@@ -95,8 +95,7 @@ class ExecutionLayer:
             "standard": 0.60,       # 60% - balanced approach
             "trend": 0.65,          # 65% - more selective, higher quality
             "high_vol": 0.50,       # 50% - volatile conditions, lower threshold
-            "liquidation_hunting": 0.70,  # 70% - high risk strategy, very selective
-            "default": 0.60        # 60% - fallback execution threshold
+            "default": 0.60        # 60% - standard execution threshold
         }
         self.min_confidence_threshold = 0.7  # Legacy - will be overridden by strategy-specific
         
@@ -637,12 +636,10 @@ class ExecutionLayer:
             logger.error(f"❌ Failed to get execution stats: {e}")
             return {}
     
-    def sync_trades_to_rtm(self):
-        """Sync AI execution layer trades to RTM for dashboard display"""
+    def sync_trades_to_dashboard(self):
+        """Sync AI execution layer trades to dashboard for display"""
         try:
-            from core.dashboard.dashboard_data_manager import simple_rtm
-            
-            # Convert AI execution layer trades to RTM format
+            # Convert AI execution layer trades to dashboard format
             for trade_id, trade in self.active_trades.items():
                 trade_data = {
                     "trade_id": trade_id,
@@ -665,13 +662,17 @@ class ExecutionLayer:
                     "exit_reason": None
                 }
                 
-                # Add to RTM (this will update existing or add new)
-                simple_rtm.add_trade(trade_data)
+                # Add to dashboard service
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                if dashboard_service:
+                    dashboard_service.add_trade(trade_data)
             
-            logger.debug(f"🔄 Synced {len(self.active_trades)} AI trades to RTM")
+            logger.debug(f"🔄 Synced {len(self.active_trades)} AI trades to dashboard")
             
         except Exception as e:
-            logger.error(f"❌ Failed to sync AI trades to RTM: {e}")
+            logger.error(f"❌ Failed to sync AI trades to dashboard: {e}")
     
     def enable_trading(self):
         """Enable AI trading execution"""
@@ -705,7 +706,7 @@ class ExecutionLayer:
     
     def _filter_predictions_old_way(self, predictions: List[Dict[str, Any]], current_price: float, 
                                    market_data: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Old prediction filtering method (fallback)"""
+        """Legacy prediction filtering method"""
         try:
             valid_predictions = []
             for prediction in predictions:
@@ -842,7 +843,6 @@ class ExecutionLayer:
                 "standard": 300,      # 5 minutes initial period  
                 "trend": 180,         # 3 minutes initial period
                 "high_vol": 120,      # 2 minutes initial period
-                "liquidation_hunting": 600,  # 10 minutes initial period
                 "default": 300        # 5 minutes default
             }
             

@@ -9,6 +9,16 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
+# Singleton pattern implementation
+_global_cross_asset_correlation_analyzer = None
+
+def get_global_cross_asset_correlation_analyzer() -> 'CrossAssetCorrelationAnalyzer':
+    """Get the global CrossAssetCorrelationAnalyzer singleton instance"""
+    global _global_cross_asset_correlation_analyzer
+    if _global_cross_asset_correlation_analyzer is None:
+        _global_cross_asset_correlation_analyzer = CrossAssetCorrelationAnalyzer()
+    return _global_cross_asset_correlation_analyzer
+
 class CrossAssetCorrelationAnalyzer:
     """Analyzes cross-asset correlations for broader market context"""
     

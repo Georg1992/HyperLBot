@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 """
-Psychological Levels Calculator Module
+Psychological Levels Analyzer Module
 Detects and analyzes psychological price levels for Bitcoin trading
 """
 
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 
+# Singleton pattern implementation
+_global_psychological_levels_analyzer = None
 
-class PsychologicalLevelsCalculator:
+def get_global_psychological_levels_analyzer() -> 'PsychologicalLevelsAnalyzer':
+    """Get the global PsychologicalLevelsAnalyzer singleton instance"""
+    global _global_psychological_levels_analyzer
+    if _global_psychological_levels_analyzer is None:
+        _global_psychological_levels_analyzer = PsychologicalLevelsAnalyzer()
+    return _global_psychological_levels_analyzer
+
+class PsychologicalLevelsAnalyzer:
     """
-    Calculates psychological price levels that traders focus on
+    Analyzes psychological price levels that traders focus on
     These are key levels that create support/resistance zones
     """
     
@@ -37,7 +46,7 @@ class PsychologicalLevelsCalculator:
             "half_levels": [500, 1500, 2500, 3500, 4500, 5500, 6500, 7500, 8500, 9500, 105000, 115000, 125000, 135000, 145000]
         }
         
-        logger.info("🧠 Psychological Levels Calculator initialized")
+        logger.info("🧠 Psychological Levels Analyzer initialized")
     
     def _generate_minor_thousands(self) -> List[int]:
         """Generate minor psychological levels at every $1000"""
@@ -443,5 +452,4 @@ class PsychologicalLevelsCalculator:
         return " | ".join(reasoning_parts) if reasoning_parts else "No clear psychological level signal"
 
 
-# Global instance for easy access
-global_psychological_levels_calculator = PsychologicalLevelsCalculator()
+# Global instance for easy access (legacy compatibility)

@@ -7,7 +7,7 @@ Provides real-time volume data via WebSocket for scalping strategies
 import time
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
-# from .binance_websocket import get_binance_websocket, start_binance_websocket  # Removed unused import
+from .binance_websocket import get_binance_websocket, start_binance_websocket
 
 class BinanceAPI:
     """Binance API client for real-time volume data"""
@@ -100,5 +100,15 @@ class BinanceAPI:
             }
 
 
-# Global instance
-binance_api = BinanceAPI("BTCUSDT")
+# Singleton pattern implementation
+_global_binance_api = None
+
+def get_global_binance_api() -> BinanceAPI:
+    """Get the global BinanceAPI singleton instance"""
+    global _global_binance_api
+    if _global_binance_api is None:
+        _global_binance_api = BinanceAPI("BTCUSDT")
+    return _global_binance_api
+
+# Backward compatibility
+binance_api = get_global_binance_api()

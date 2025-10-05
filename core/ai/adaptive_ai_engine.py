@@ -38,7 +38,6 @@ class AdaptiveAIEngine:
             "scalping": ScalpingAdapter(),
             "trend_following": TrendFollowingAdapter(),
             "range_trading": RangeTradingAdapter(),
-            "liquidation_hunting": LiquidationHuntingAdapter()
         }
         
         logger.info("🧠 Adaptive AI Engine initialized")
@@ -400,14 +399,6 @@ class RangeTradingAdapter:
         # This would integrate with support/resistance analysis
         return prediction
 
-class LiquidationHuntingAdapter:
-    """Liquidation hunting strategy adapter"""
-    
-    def adapt_prediction(self, prediction: TradingPrediction, market_conditions: Dict[str, Any]) -> TradingPrediction:
-        """Adapt prediction for liquidation hunting strategy"""
-        # Liquidation hunting needs to target specific price levels
-        # This would integrate with liquidation level analysis
-        return prediction
 
 # Global instance
 global_adaptive_ai = AdaptiveAIEngine()

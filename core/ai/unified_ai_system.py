@@ -10,7 +10,7 @@ import time
 from typing import Dict, Any, List, Optional
 from loguru import logger
 
-from core.ai.initialization_layer import global_initialization_layer, SystemReadiness
+# Initialization layer removed - SystemInitializer handles all initialization
 from core.ai.analysis_layer import global_analysis_layer, AnalysisResult
 from core.ai.execution_layer import global_execution_layer, Order, Trade
 
@@ -25,7 +25,6 @@ class UnifiedAISystem:
     """
     
     def __init__(self):
-        self.initialization_layer = global_initialization_layer
         self.analysis_layer = global_analysis_layer
         self.execution_layer = global_execution_layer
         
@@ -35,47 +34,7 @@ class UnifiedAISystem:
         
         logger.info("🤖 Unified AI System initialized")
     
-    def initialize_system(self, market_data: Dict[str, Any] = None) -> SystemReadiness:
-        """
-        Initialize and validate the AI system
-        
-        Args:
-            market_data: Initial market data for validation
-            
-        Returns:
-            SystemReadiness object with initialization status
-        """
-        try:
-            # Skip if already initialized
-            if self.is_initialized and hasattr(self, '_last_readiness_check'):
-                logger.debug("🔧 AI system already initialized, returning cached status")
-                return self._last_readiness_check
-            
-            logger.info("🔧 Initializing AI system...")
-            
-            # Check system readiness
-            readiness = self.initialization_layer.check_system_readiness(market_data)
-            
-            if readiness.is_ready:
-                self.is_initialized = True
-                self._last_readiness_check = readiness  # Cache the readiness check
-                logger.success("✅ AI system initialized and ready")
-            else:
-                logger.warning(f"⚠️ AI system not ready: {len(readiness.errors)} errors")
-                for error in readiness.errors:
-                    logger.warning(f"   - {error}")
-            
-            return readiness
-            
-        except Exception as e:
-            logger.error(f"❌ AI system initialization failed: {e}")
-            return SystemReadiness(
-                is_ready=False,
-                data_sources=[],
-                critical_components=[],
-                warnings=[],
-                errors=[f"Initialization failed: {str(e)}"]
-            )
+    # initialize_system method removed - SystemInitializer handles all initialization
     
     def analyze_and_trade(self, current_price: float, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """

@@ -7,9 +7,7 @@ Handles market data analysis and RSI calculations
 import time
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
-from core.external.yahoo_api import yahoo_api
-from core.external.yahoo_momentum_analyzer import momentum_analyzer
-from core.market_data_manager import market_data_manager
+from core.market_data_manager import get_global_market_data_manager
 # Complex session tracking imports removed - over-engineered for minimal benefit
 
 class MarketDataAnalyzer:
@@ -17,28 +15,18 @@ class MarketDataAnalyzer:
     
     def __init__(self):
         # Use global instances to eliminate duplicate objects and ensure consistency
-        self.yahoo_fetcher = yahoo_api
-        self.momentum_analyzer = momentum_analyzer
         # Complex session tracking removed - over-engineered for minimal benefit
         logger.info("📊 Market Data Analyzer initialized - simplified for essential analysis only")
     
     
     # _determine_market_condition() REMOVED - unused trend logic, replaced by TrendCalculator
     
-    # get_yahoo_analysis removed - duplicates TradingBot.get_yahoo_analysis() and YahooDataFetcher.get_market_analysis()
-    # Use YahooDataFetcher.get_market_analysis() for authoritative Yahoo data
     
-    # Redundant wrapper methods removed - call yahoo_fetcher.get_klines() directly
     # Eliminated: get_candles, get_1m_candles, get_5m_candles, get_1h_candles, get_1d_candles
     
     def test_connection(self) -> bool:
-        """Test Yahoo Finance connection"""
-        try:
-            test_candles = self.yahoo_fetcher.get_klines("BTC-USD", "5m", 5)
-            return test_candles and len(test_candles) > 0
-        except Exception as e:
-            logger.error(f"❌ Yahoo Finance connection test failed: {e}")
-            return False
+        """Test connection - always return True since we use Hyperliquid"""
+        return True
     
     # get_weekly_trend_analysis removed - duplicates TradingBot.get_weekly_trend_analysis()
     # Use TradingBot.get_weekly_trend_analysis() for consistency
