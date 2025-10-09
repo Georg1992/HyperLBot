@@ -165,6 +165,8 @@ class DashboardService:
                     self._data["predictions"] = self._data["predictions"][-20:]
                 
                 self._save_data()
+                # Trigger WebSocket emission to update dashboard
+                self._trigger_websocket_emission()
         except Exception as e:
             logger.error(f"❌ Could not add prediction: {e}")
     
