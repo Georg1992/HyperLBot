@@ -225,7 +225,9 @@ class RealtimePredictionEngine:
             # MODULE 8: KELLY POSITION SIZING
             kelly_result = self._calculate_kelly_position(
                 confidence=calibrated_result['confidence'] if calibrated_result else confidence,
-                risk_reward=risk_reward,
+                entry_price=entry_price,
+                take_profit=take_profit,
+                stop_loss=stop_loss,
                 capital=10000.0  # Default capital for position size calculation
             )
             
@@ -1118,19 +1120,27 @@ class RealtimePredictionEngine:
         try:
             calibration = get_global_calibration_tracker()
             
-            # Get calibrated confidence
-            calibrated_conf = calibration.get_calibration_adjustment(confidence)
+            # Get calibrated confidence (returns tuple: (calibrated_conf, reasoning))
+            calibrated_conf, reasoning = calibration.get_calibration_adjustment(confidence)
             adjustment = calibrated_conf - confidence
             
             return {
                 'confidence': calibrated_conf,
-                'adjustment': adjustment
+                'adjustment': adjustment,
+                'reasoning': reasoning
             }
         except Exception as e:
             logger.warning(f"⚠️ Calibration adjustment failed: {e}")
             return None
     
-    def _calculate_kelly_position(self, confidence: float, risk_reward: float, capital: float) -> Optional[Dict[str, Any]]:
+    def _calculate_kelly_position(
+        self, 
+        confidence: float, 
+        entry_price: float,
+        take_profit: float,
+        stop_loss: float,
+        capital: float
+    ) -> Optional[Dict[str, Any]]:
         """
         Calculate Kelly-optimal position size
         
@@ -1142,8 +1152,10 @@ class RealtimePredictionEngine:
             
             kelly_result = prob_engine.calculate_kelly_position_size(
                 confidence=confidence,
-                reward_risk_ratio=risk_reward,
-                capital=capital
+                entry_price=entry_price,
+                take_profit=take_profit,
+                stop_loss=stop_loss,
+                total_capital=capital
             )
             
             return {
