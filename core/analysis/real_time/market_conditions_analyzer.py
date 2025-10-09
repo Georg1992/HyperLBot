@@ -24,7 +24,7 @@ class MarketConditionsAnalyzer:
         logger.info("🔍 Market Conditions Analyzer initialized - Untradable condition detection")
     
     def analyze_trading_conditions(self, market_data: Dict[str, Any], 
-                                 historical_context: Dict[str, Any] = None) -> Dict[str, Any]:
+                                 historical_context: Dict[str, Any] = None, candles_1d=None) -> Dict[str, Any]:
         """
         Comprehensive market conditions analysis for trading decisions
         
@@ -114,7 +114,7 @@ class MarketConditionsAnalyzer:
                 risk_factors.extend(context_analysis["risk_factors"])
             
             # 6. 7-DAY MARKET TREND STATUS ANALYSIS
-            market_status_analysis = self._analyze_7day_market_trend(current_price)
+            market_status_analysis = self._analyze_7day_market_trend(current_price, candles_1d)
             condition_factors.extend(market_status_analysis["factors"])
             
             # DETERMINE OVERALL CONDITIONS (no tradable/untradable logic)
@@ -777,7 +777,7 @@ class MarketConditionsAnalyzer:
                 "positive": False
             }
     
-    def _analyze_7day_market_trend(self, current_price: float) -> Dict[str, Any]:
+    def _analyze_7day_market_trend(self, current_price: float, candles_1d=None) -> Dict[str, Any]:
         """
         Analyze 7-day market trend to determine market status (BEARISH/NEUTRAL/BULLISH)
         
@@ -793,8 +793,9 @@ class MarketConditionsAnalyzer:
             market_data_manager = get_global_market_data_manager()
             hyperliquid_api = get_hyperliquid_api()
             
-            # Fetch 7 days of daily candles
-            candles_1d = market_data_manager.get_historical_candles("BTC", "1d", 7, force_refresh=True)
+            # Use passed data or fetch as fallback (1d candles change only once per day)
+            if candles_1d is None:
+                candles_1d = market_data_manager.get_historical_candles("BTC", "1d", 7)
             
             if not candles_1d or len(candles_1d) < 7:
                 logger.warning("⚠️ Insufficient 7-day data for market status analysis")

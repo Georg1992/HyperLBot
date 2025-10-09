@@ -355,7 +355,9 @@ class SessionOrchestrator:
                     # Use centralized cache (100 candles) for better S/R analysis
                     # This will use the same cached data as all other requests
                     if candles_5m_for_sr and len(candles_5m_for_sr) >= 20:
-                        support_resistance = sr_calculator.identify_key_levels(candles_5m_for_sr, current_price)
+                        support_resistance = sr_calculator.calculate_multi_timeframe_levels(
+                            current_price, market_data_service, candles_5m_for_sr, candles_1h, candles_1d
+                        )
                         logger.debug(f"📊 S/R calculated with {len(candles_5m_for_sr)} candles from centralized cache")
                     else:
                         support_resistance = {}
@@ -470,7 +472,7 @@ class SessionOrchestrator:
             from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
             
             try:
-                market_conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(market_data) if market_data else {}
+                market_conditions_analysis = global_conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d) if market_data else {}
             except Exception as e:
                 logger.warning(f"⚠️ Market conditions analysis failed: {e}")
                 market_conditions_analysis = {}
@@ -1117,7 +1119,7 @@ class SessionOrchestrator:
             # DELEGATE: Get market conditions from MarketConditionsAnalyzer
             from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
             market_conditions = global_conditions_analyzer.analyze_trading_conditions(
-                hyperliquid_analysis, hyperliquid_data
+                hyperliquid_analysis, hyperliquid_data, candles_1d
             )
             # Market conditions calculated successfully
             

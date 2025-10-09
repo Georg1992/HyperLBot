@@ -64,10 +64,11 @@ class MarketDataService(BaseDataManager):
             logger.error(f"❌ Failed to get Hyperliquid price: {e}")
             return None
     
-    def get_weekly_trend_analysis(self) -> Dict[str, Any]:
+    def get_weekly_trend_analysis(self, candles_1d=None) -> Dict[str, Any]:
         """Get weekly trend analysis from Hyperliquid"""
         try:
-            candles_1d = self.hyperliquid_api.get_historical_candles("BTC", "1d", 7)
+            if candles_1d is None:
+                candles_1d = self.get_historical_candles("BTC", "1d", 7)
             if candles_1d and len(candles_1d) >= 7:
                 return {
                     "weekly_trend": "UP" if candles_1d[-1]["close"] > candles_1d[0]["close"] else "DOWN",

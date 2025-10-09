@@ -64,6 +64,10 @@ class MarketDataManager:
         support_broken = last_support > 0 and current_price < last_support
         resistance_broken = last_resistance > 0 and current_price > last_resistance
         
+        # Also recalculate if we had no resistance before but now we need it
+        if last_resistance == 0.0 and current_price > 0:
+            return True, "no resistance found previously, need recalculation"
+        
         if support_broken:
             return True, f"support broken (${last_support:.2f} -> ${current_price:.2f})"
         if resistance_broken:
@@ -230,7 +234,9 @@ class MarketDataManager:
                             sr_calculator = get_global_support_resistance_calculator()
                             
                             # First try with 5m candles
-                            support_resistance_data = sr_calculator.identify_key_levels(candles_5m)
+                            support_resistance_data = sr_calculator.calculate_multi_timeframe_levels(
+                                current_price, None, candles_5m, candles_1h, candles_1d
+                            )
                             strongest_support = support_resistance_data.get("strongest_support", 0)
                             strongest_resistance = support_resistance_data.get("strongest_resistance", 0)
                             

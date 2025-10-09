@@ -636,7 +636,7 @@ class SupportResistanceCalculator:
     
     # REMOVED: _add_projected_support_levels - NO FALLBACKS
     
-    def calculate_multi_timeframe_levels(self, current_price: float, market_data_service) -> Dict[str, Any]:
+    def calculate_multi_timeframe_levels(self, current_price: float, market_data_service, candles_5m=None, candles_1h=None, candles_1d=None) -> Dict[str, Any]:
         """
         Calculate S/R levels using multiple timeframes with intelligent caching and expansion.
         
@@ -663,10 +663,13 @@ class SupportResistanceCalculator:
                 logger.info("📊 Using cached S/R data (no level breaks detected)")
                 return self._sr_cache.get('data', {})
             
-            # Fetch multi-timeframe candle data from centralized cache
-            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 100)
-            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)
-            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
+            # Use passed data or fetch as fallback
+            if candles_5m is None:
+                candles_5m = market_data_service.get_historical_candles("BTC", "5m", 100)
+            if candles_1h is None:
+                candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)
+            if candles_1d is None:
+                candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
             
             if not candles_5m or not candles_1h or not candles_1d:
                 raise ValueError("Candle data not available - NO FALLBACKS")
