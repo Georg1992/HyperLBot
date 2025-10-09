@@ -183,6 +183,12 @@ class SimulatedAccountManager:
             logger.error(f"❌ Error resetting account: {e}")
             return False
     
+    def get_account_balance(self) -> float:
+        """Get current account balance"""
+        if not self.account_data:
+            return 0.0
+        return float(self.account_data.get("current_balance", 0.0))
+    
     def get_account_summary(self) -> Dict[str, Any]:
         """Get a summary of account performance"""
         if not self.account_data:
