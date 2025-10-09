@@ -1159,7 +1159,7 @@ class RealtimePredictionEngine:
             )
             
             return {
-                'position_pct': kelly_result['position_pct'],
+                'position_pct': kelly_result['position_size_pct'],
                 'position_dollars': kelly_result['position_size_dollars']
             }
         except Exception as e:
