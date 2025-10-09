@@ -133,6 +133,8 @@ class DashboardService:
                     self._data["logs"] = self._data["logs"][-100:]
                 
                 self._save_data()
+                # Trigger WebSocket emission to update dashboard
+                self._trigger_websocket_emission()
         except Exception as e:
             logger.error(f"❌ Could not add activity: {e}")
     
@@ -150,6 +152,8 @@ class DashboardService:
                     self._data["signals"] = self._data["signals"][-50:]
                 
                 self._save_data()
+                # Trigger WebSocket emission to update dashboard
+                self._trigger_websocket_emission()
         except Exception as e:
             logger.error(f"❌ Could not add signal: {e}")
     
@@ -165,6 +169,8 @@ class DashboardService:
                     self._data["predictions"] = self._data["predictions"][-20:]
                 
                 self._save_data()
+                # Trigger WebSocket emission to update dashboard
+                self._trigger_websocket_emission()
         except Exception as e:
             logger.error(f"❌ Could not add prediction: {e}")
     
@@ -180,6 +186,8 @@ class DashboardService:
                     self._data["trades"] = self._data["trades"][-100:]
                 
                 self._save_data()
+                # Trigger WebSocket emission to update dashboard
+                self._trigger_websocket_emission()
         except Exception as e:
             logger.error(f"❌ Could not add trade: {e}")
     
