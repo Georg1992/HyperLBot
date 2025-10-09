@@ -1116,6 +1116,9 @@ class SessionOrchestrator:
             if not hyperliquid_data or "error" in hyperliquid_data:
                 return None
             
+            # Fetch 1d candles for market conditions analyzer
+            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
+            
             # DELEGATE: Get market conditions from MarketConditionsAnalyzer
             from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
             market_conditions = global_conditions_analyzer.analyze_trading_conditions(
