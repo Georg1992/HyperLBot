@@ -118,6 +118,12 @@ class SessionOrchestrator:
             system_init = get_system_initializer()
             system_init.singleton_systems["session_manager"] = self.session_manager
             
+            # Update trading execution wrapper with session manager
+            trading_execution = system_init.singleton_systems.get("trading_execution")
+            if trading_execution and hasattr(trading_execution, 'session_manager'):
+                trading_execution.session_manager = self.session_manager
+                logger.info("✅ Trading execution wrapper updated with session manager")
+            
             # Create initial heartbeat
             dashboard_service.create_initial_heartbeat(self.session_manager, "standard", self.initial_balance)
             
@@ -336,15 +342,19 @@ class SessionOrchestrator:
                 volatility_5m = 0.0
                 volatility_5m_category = ("UNKNOWN", "ERROR")
             
-            # Get support/resistance from the S/R calculator singleton (single source)
-            from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
-            sr_calculator = get_global_support_resistance_calculator()
+            # Get support/resistance from hyperliquid_data (already recalculated by market_data_manager)
+            support_resistance = hyperliquid_data.get("support_resistance", {})
             
-            try:
-                support_resistance = sr_calculator.identify_key_levels(candles_5m, current_price) if len(candles_5m) >= 1 else {}
-            except Exception as e:
-                logger.warning(f"⚠️ Support/Resistance calculation failed: {e}")
-                support_resistance = {}
+            # If no S/R data available, fallback to direct calculation
+            if not support_resistance:
+                from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
+                sr_calculator = get_global_support_resistance_calculator()
+                
+                try:
+                    support_resistance = sr_calculator.identify_key_levels(candles_5m, current_price) if len(candles_5m) >= 1 else {}
+                except Exception as e:
+                    logger.warning(f"⚠️ Support/Resistance calculation failed: {e}")
+                    support_resistance = {}
             
             # Get pressure data from the pressure calculator singleton (single source)
             from core.analysis.real_time.pressure_calculator import get_global_pressure_calculator
@@ -726,6 +736,10 @@ class SessionOrchestrator:
                             logger.warning(f"⚠️ Trade execution declined: {result.get('reason')}")
                     else:
                         logger.error("❌ Required services not available for trade execution")
+                        logger.debug(f"   trading_execution: {trading_execution is not None}")
+                        logger.debug(f"   account_manager: {account_manager is not None}")
+                        logger.debug(f"   session_manager_inst: {session_manager_inst is not None}")
+                        logger.debug(f"   Available singletons: {list(system_initializer.singleton_systems.keys())}")
                         
                 except Exception as e:
                     logger.error(f"❌ Trade execution error: {e}")

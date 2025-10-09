@@ -165,11 +165,13 @@ class MarketDataManager:
                         if current_price > 0 and (strongest_support == 0 or strongest_support >= current_price):
                             needs_deeper_data = True
                             reason.append("support broken/missing")
+                            logger.warning(f"🔍 SUPPORT BROKEN: Current=${current_price:.2f}, Support=${strongest_support:.2f} (Support >= Price: {strongest_support >= current_price})")
                         
                         # Check if resistance is broken (price above resistance or no resistance found)
                         if current_price > 0 and (strongest_resistance == 0 or strongest_resistance <= current_price):
                             needs_deeper_data = True
                             reason.append("resistance broken/missing")
+                            logger.warning(f"🔍 RESISTANCE BROKEN: Current=${current_price:.2f}, Resistance=${strongest_resistance:.2f} (Resistance <= Price: {strongest_resistance <= current_price})")
                         
                         # Fetch deeper historical data if needed
                         if needs_deeper_data:
@@ -178,7 +180,13 @@ class MarketDataManager:
                             candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)  # 48 hours
                             if candles_1h and len(candles_1h) >= 10:
                                 support_resistance_data = sr_calculator.identify_key_levels(candles_1h)
-                                logger.info(f"📊 S/R recalculated from 1h data: Support=${support_resistance_data.get('strongest_support', 0):,.2f}, Resistance=${support_resistance_data.get('strongest_resistance', 0):,.2f}")
+                                new_support = support_resistance_data.get('strongest_support', 0)
+                                new_resistance = support_resistance_data.get('strongest_resistance', 0)
+                                logger.success(f"✅ S/R RECALCULATED from 1h data: Support=${new_support:,.2f}, Resistance=${new_resistance:,.2f}")
+                                logger.info(f"   📊 New support below current price: {new_support < current_price}")
+                                logger.info(f"   📊 New resistance above current price: {new_resistance > current_price}")
+                            else:
+                                logger.error(f"❌ Failed to get sufficient 1h candles for S/R recalculation: {len(candles_1h) if candles_1h else 0} candles")
                     else:
                         raise ValueError("Insufficient orderbook data")
                 else:

@@ -143,8 +143,59 @@ class RealtimePredictionEngine:
         
         logger.info("🧠 Real-time Prediction Engine initialized - Continuous tracking")
         logger.info(f"   📊 Confidence threshold: {self.confidence_threshold:.1%}")
-        logger.info(f"   🎯 Strategy: Recalculate direction, entry, confidence on EVERY market update")
+        logger.info(f"   🎯 Strategy: Try both LONG/SHORT directions and pick highest confidence")
         logger.info(f"   ⚡ Reactive: Adjusts prediction fields continuously with market")
+    
+    def _find_optimal_direction(self, market_data: Dict[str, Any]) -> tuple:
+        """
+        Try both LONG and SHORT directions and return the one with highest confidence
+        
+        Returns:
+            tuple: (best_direction, best_score, best_confidence, best_reasoning)
+        """
+        try:
+            # Try LONG direction
+            long_direction, long_score, long_reasoning = self.recognize_direction(market_data, forced_direction="LONG")
+            long_confidence, _, _, _ = self.calculate_confidence(
+                direction=long_direction,
+                score=long_score,
+                market_data=market_data
+            )
+            
+            # Try SHORT direction
+            short_direction, short_score, short_reasoning = self.recognize_direction(market_data, forced_direction="SHORT")
+            short_confidence, _, _, _ = self.calculate_confidence(
+                direction=short_direction,
+                score=short_score,
+                market_data=market_data
+            )
+            
+            # Compare confidences and pick the best
+            if long_confidence > short_confidence:
+                best_direction = "LONG"
+                best_score = long_score
+                best_confidence = long_confidence
+                best_reasoning = f"LONG chosen (LONG: {long_confidence:.1%}, SHORT: {short_confidence:.1%}) - {'; '.join(long_reasoning)}"
+                logger.debug(f"🎯 Direction selection: LONG ({long_confidence:.1%}) > SHORT ({short_confidence:.1%})")
+            else:
+                best_direction = "SHORT"
+                best_score = short_score
+                best_confidence = short_confidence
+                best_reasoning = f"SHORT chosen (SHORT: {short_confidence:.1%}, LONG: {long_confidence:.1%}) - {'; '.join(short_reasoning)}"
+                logger.debug(f"🎯 Direction selection: SHORT ({short_confidence:.1%}) > LONG ({long_confidence:.1%})")
+            
+            return best_direction, best_score, best_confidence, best_reasoning
+            
+        except Exception as e:
+            logger.error(f"❌ Optimal direction selection failed: {e}")
+            # Fallback to original method
+            direction, score, reasoning = self.recognize_direction(market_data)
+            confidence, _, _, _ = self.calculate_confidence(
+                direction=direction,
+                score=score,
+                market_data=market_data
+            )
+            return direction, score, confidence, reasoning
     
     def update_prediction(self, market_data: Dict[str, Any], strategy: str = "standard") -> str:
         """
@@ -163,11 +214,13 @@ class RealtimePredictionEngine:
             if not current_price or current_price <= 0:
                 return "NO_SIGNAL"
             
-            # MODULE 1: DIRECTION RECOGNITION
-            direction, score, direction_reasoning = self.recognize_direction(market_data)
+            # MODULE 1: OPTIMAL DIRECTION SELECTION (try both directions for best confidence)
+            best_direction, best_score, best_confidence, best_reasoning = self._find_optimal_direction(market_data)
             
-            # Allow NEUTRAL predictions - just mark them as low confidence
-            # No longer cancel on NEUTRAL direction
+            direction = best_direction
+            score = best_score
+            direction_reasoning = best_reasoning
+            confidence = best_confidence
             
             # MODULE 2: ENTRY PRICE CALCULATION
             entry_price = self.calculate_entry_price(
@@ -176,12 +229,13 @@ class RealtimePredictionEngine:
                 market_data=market_data
             )
             
-            # MODULE 3: CONFIDENCE CALCULATION
-            confidence, base_confidence, boosts, confidence_reasoning = self.calculate_confidence(
+            # MODULE 3: CONFIDENCE CALCULATION (get detailed breakdown for final confidence)
+            final_confidence, base_confidence, boosts, confidence_reasoning = self.calculate_confidence(
                 direction=direction,
                 score=score,
                 market_data=market_data
             )
+            confidence = final_confidence  # Use the detailed calculation
             
             # Always maintain a prediction, even with low confidence
             # No longer cancel based on confidence threshold
@@ -248,7 +302,7 @@ class RealtimePredictionEngine:
                     confidence_history=[final_confidence],
                     current_price=current_price,
                     score=score,
-                    reasoning=direction_reasoning + confidence_reasoning,
+                    reasoning=direction_reasoning + "; " + "; ".join(confidence_reasoning),
                     # EV data
                     expected_value=ev_result.ev_percent,
                     expected_value_dollars=ev_result.ev_dollars,
@@ -295,7 +349,7 @@ class RealtimePredictionEngine:
                     confidence_history=[confidence],
                     current_price=current_price,
                     score=score,
-                    reasoning=direction_reasoning + confidence_reasoning,
+                    reasoning=direction_reasoning + "; " + "; ".join(confidence_reasoning),
                     # EV data
                     expected_value=ev_result.ev_percent,
                     expected_value_dollars=ev_result.ev_dollars,
@@ -316,7 +370,7 @@ class RealtimePredictionEngine:
             self.active_prediction.confidence_history.append(confidence)
             self.active_prediction.current_price = current_price
             self.active_prediction.score = score
-            self.active_prediction.reasoning = direction_reasoning + confidence_reasoning
+            self.active_prediction.reasoning = direction_reasoning + "; " + "; ".join(confidence_reasoning)
             self.active_prediction.last_updated = time.time()
             # Update EV data
             self.active_prediction.expected_value = ev_result.ev_percent
@@ -356,7 +410,7 @@ class RealtimePredictionEngine:
     # MODULE 1: DIRECTION RECOGNITION
     # ==========================================
     
-    def recognize_direction(self, market_data: Dict[str, Any]) -> Tuple[str, float, List[str]]:
+    def recognize_direction(self, market_data: Dict[str, Any], forced_direction: Optional[str] = None) -> Tuple[str, float, List[str]]:
         """
         Recognize market direction using multiple signals
         
@@ -528,7 +582,11 @@ class RealtimePredictionEngine:
         
         # Determine initial direction (without pressure)
         # ALWAYS choose LONG or SHORT - never NEUTRAL
-        if score >= 0:
+        if forced_direction:
+            # Use forced direction for confidence comparison
+            direction = forced_direction
+            reasoning.append(f"🎯 Forced direction: {forced_direction}")
+        elif score >= 0:
             direction = "LONG"
         else:
             direction = "SHORT"
