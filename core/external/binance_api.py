@@ -52,30 +52,13 @@ class BinanceAPI:
                     logger.warning("⚠️ Using cached Binance volume data (WebSocket disconnected)")
                     return self.last_volume_data
                 else:
-                    return self._get_fallback_volume_data()
+                    raise ValueError("No Binance volume data available - NO FALLBACKS")
                     
         except Exception as e:
             logger.error(f"❌ Failed to get Binance volume data: {e}")
-            return self._get_fallback_volume_data()
+            raise ValueError(f"Binance volume data fetch failed - NO FALLBACKS: {e}")
     
-    def _get_fallback_volume_data(self) -> Dict[str, Any]:
-        """Get fallback volume data when WebSocket is unavailable"""
-        return {
-            "current_volume_btc": 0.0,
-            "current_volume_usd": 0.0,
-            "volume_per_minute": 0.0,
-            "volume_per_second": 0.0,
-            "trade_count_per_minute": 0,
-            "trade_count_per_second": 0,
-            "volume_spike_detected": False,
-            "volume_ratio": 1.0,
-            "timestamp": time.time(),
-            "data_source": "fallback",
-            "symbol": self.symbol,
-            "real_time": False,
-            "scalping_ready": False,
-            "error": "WebSocket unavailable"
-        }
+    # _get_fallback_volume_data method removed - NO FALLBACKS policy
     
     def is_connected(self) -> bool:
         """Check if WebSocket is connected"""

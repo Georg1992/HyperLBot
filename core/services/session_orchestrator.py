@@ -19,15 +19,13 @@ class SessionOrchestrator:
         self.initial_balance = initial_balance
         self.session_manager = None
         self.weekly_trend_analysis = {}
-        self.ai_results = None  # Store AI results for dashboard access
         
-        # Market conditions tracking for prediction generation
-        self.last_market_conditions = None
-        self.market_conditions_hash = None
+        # Strategy Manager for dynamic strategy selection
+        self.strategy_manager = None
+        self._strategy_manager_initialized = False
         
-        # AI service will be initialized lazily when needed
-        self.ai_service = None
-        self._ai_service_initialized = False
+        # Price prediction
+        self.current_prediction = None
         
         # Market opening service for dashboard display
         try:
@@ -37,22 +35,29 @@ class SessionOrchestrator:
         except Exception as e:
             logger.warning(f"⚠️ Market opening service initialization failed: {e}")
             self.market_opening_service = None
+        
+        logger.info("🔄 Session Orchestrator initialized - Strategy-driven trading loop")
     
-    def _ensure_ai_service_initialized(self):
-        """Ensure AI service is initialized (lazy initialization)"""
-        if not self._ai_service_initialized:
+    def _ensure_strategy_manager_initialized(self, system_initializer):
+        """Ensure Strategy Manager is initialized (lazy initialization)"""
+        if not self._strategy_manager_initialized:
             try:
-                from core.ai import global_unified_ai_system
-                self.ai_service = global_unified_ai_system
-                self._ai_service_initialized = True
-                logger.info("🤖 AI service initialized")
+                # Try to get from system initializer singleton
+                self.strategy_manager = system_initializer.get_singleton_system("strategy_manager")
+                if not self.strategy_manager:
+                    # Fallback: create new instance
+                    from core.services.strategy_manager import StrategyManager
+                    self.strategy_manager = StrategyManager(self.config)
+                    logger.info("🎯 Strategy Manager created (new instance)")
+                else:
+                    logger.info("🎯 Strategy Manager initialized (singleton)")
+                
+                self._strategy_manager_initialized = True
             except Exception as e:
-                logger.warning(f"⚠️ Failed to initialize AI service: {e}")
-                self.ai_service = None
+                logger.error(f"❌ Failed to initialize Strategy Manager: {e}")
+                self.strategy_manager = None
         
-        # Reaction engine functionality is integrated into the AI analysis layer
-        
-        logger.info("🔄 Session Orchestrator initialized - Trading loop coordination")
+        return self.strategy_manager
     
     def run_paper_trading_session(self, check_interval: int,
                                  system_initializer, market_data_service, trading_engine, dashboard_service, strategy_manager=None) -> Dict[str, Any]:
@@ -273,10 +278,15 @@ class SessionOrchestrator:
             rsi_calculator = get_global_rsi_calculator()
             
             try:
-                # Update RSI with current price first
-                rsi_calculator.update_realtime_rsi(current_price)
-                rsi_data = rsi_calculator.get_current_rsi_data()
-                current_rsi = rsi_data.get("rsi")
+                # Calculate RSI directly from 5m candles to match HyperLiquid exactly
+                # Get fresh 5m candles for RSI calculation
+                candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 30)
+                if candles_5m_for_rsi and len(candles_5m_for_rsi) >= 15:
+                    # Use standalone RSI calculation (matches HyperLiquid exactly)
+                    current_rsi = rsi_calculator.calculate_standalone_rsi(candles_5m_for_rsi, periods=14)
+                else:
+                    logger.warning(f"⚠️ Insufficient candles for RSI: {len(candles_5m_for_rsi) if candles_5m_for_rsi else 0}")
+                    current_rsi = None
             except Exception as e:
                 logger.warning(f"⚠️ RSI calculation failed: {e}")
                 current_rsi = None
@@ -402,50 +412,36 @@ class SessionOrchestrator:
                 bounce_analysis = {}
             
             # Get cross-asset correlation from the cross-asset correlation analyzer singleton (single source)
-            from core.analysis.real_time.cross_asset_correlation_analyzer import get_global_cross_asset_correlation_analyzer
-            cross_asset_analyzer = get_global_cross_asset_correlation_analyzer()
-            
+            # OPTIONAL: Skip cross-asset analysis if not available (don't block main data flow)
+            cross_asset_analysis = {}
             try:
+                from core.analysis.real_time.cross_asset_correlation_analyzer import get_global_cross_asset_correlation_analyzer
+                cross_asset_analyzer = get_global_cross_asset_correlation_analyzer()
                 cross_asset_analysis = cross_asset_analyzer.analyze_cross_asset_correlations(current_price) if current_price else {}
             except Exception as e:
-                logger.warning(f"⚠️ Cross-asset correlation analysis failed: {e}")
-                cross_asset_analysis = {}
+                logger.warning(f"⚠️ Cross-asset correlation analysis skipped - real data not available: {e}")
+                cross_asset_analysis = {"error": "Real cross-asset data not available", "data_source": "skipped"}
             
             # Get funding rate analysis from the funding rate analyzer singleton (single source)
-            from core.analysis.real_time.funding_rate_analyzer import get_global_funding_rate_analyzer
-            funding_rate_analyzer = get_global_funding_rate_analyzer()
-            
+            # OPTIONAL: Skip funding rate analysis if not available (don't block main data flow)
+            funding_analysis = {}
             try:
+                from core.analysis.real_time.funding_rate_analyzer import get_global_funding_rate_analyzer
+                funding_rate_analyzer = get_global_funding_rate_analyzer()
+                
                 # Get funding data from market data
                 funding_data = market_data.get("hyperliquid_data", {}).get("funding_rate", {})
                 if funding_data:
                     funding_analysis = funding_rate_analyzer.analyze_funding_rate(funding_data)
                 else:
-                    funding_analysis = {}
+                    funding_analysis = {"error": "No funding rate data available", "data_source": "skipped"}
             except Exception as e:
-                logger.warning(f"⚠️ Funding rate analysis failed: {e}")
-                funding_analysis = {}
+                logger.warning(f"⚠️ Funding rate analysis skipped - real data not available: {e}")
+                funding_analysis = {"error": "Real funding rate data not available", "data_source": "skipped"}
             
-            # Get on-chain data analysis from the on-chain data analyzer singleton (single source)
-            from core.analysis.real_time.onchain_data_analyzer import get_global_onchain_data_analyzer
-            onchain_analyzer = get_global_onchain_data_analyzer()
-            
-            try:
-                onchain_analysis = onchain_analyzer.analyze_onchain_data(current_price)
-            except Exception as e:
-                logger.warning(f"⚠️ On-chain data analysis failed: {e}")
-                onchain_analysis = {}
-            
-            # Get psychological levels from the psychological levels analyzer singleton (single source)
-            from core.analysis.real_time.psychological_levels_analyzer import get_global_psychological_levels_analyzer
-            psychological_analyzer = get_global_psychological_levels_analyzer()
-            
-            try:
-                # PsychologicalLevelsAnalyzer method name needs to be checked, skip for now
-                psychological_analysis = {}
-            except Exception as e:
-                logger.warning(f"⚠️ Psychological levels analysis failed: {e}")
-                psychological_analysis = {}
+            # On-Chain Data & Psychological Levels features removed - not implemented
+            onchain_analysis = {}
+            psychological_analysis = {}
             
             # Get market conditions from the market conditions analyzer singleton (single source)
             from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
@@ -476,6 +472,27 @@ class SessionOrchestrator:
                 if market_data_service.hyperliquid_websocket:
                     real_time_volume = market_data_service.hyperliquid_websocket.get_current_5m_volume()
                 
+                # Check if we need to convert the last ongoing candle to historical
+                if hasattr(self, 'last_ongoing_candle') and self.last_ongoing_candle:
+                    last_candle_timestamp = self.last_ongoing_candle.get('timestamp', 0)
+                    if last_candle_timestamp != candle_start_timestamp:
+                        # Convert completed ongoing candle to historical
+                        completed_candle = self.last_ongoing_candle.copy()
+                        completed_candle['is_ongoing'] = False  # Mark as completed
+                        completed_candle['close'] = current_price  # Final close price
+                        completed_candle['high'] = max(completed_candle.get('open', current_price), current_price)
+                        completed_candle['low'] = min(completed_candle.get('open', current_price), current_price)
+                        
+                        # CRITICAL FIX: Keep only 19 candles before appending new ongoing candle
+                        # This prevents extra candles bug (19 historical + 1 ongoing = 20 total display)
+                        if len(chart_candles_5m) >= 19:
+                            chart_candles_5m = chart_candles_5m[-19:]  # Keep only last 19
+                        
+                        # Add completed candle to end (most recent)
+                        chart_candles_5m.append(completed_candle)
+                        
+                        logger.info(f"🕯️ Converted ongoing candle to historical: {completed_candle.get('timestamp', 0)} -> {candle_start_timestamp}")
+                
                 ongoing_candle = {
                     "open": chart_candles_5m[-1]["close"] if chart_candles_5m else current_price,  # Start from last candle's close
                     "close": current_price,  # Current real-time price
@@ -488,10 +505,17 @@ class SessionOrchestrator:
                     "last_trade_time": current_time
                 }
                 
+                # Store current ongoing candle for next iteration
+                self.last_ongoing_candle = ongoing_candle.copy()
+                
+                # Add ongoing candle to historical candles array for chart display
+                chart_candles_with_ongoing = chart_candles_5m.copy()
+                chart_candles_with_ongoing.append(ongoing_candle)
+                
                 # Prepare chart data
                 candle_data = {
-                    "historical": chart_candles_5m,
-                    "ongoing": ongoing_candle,
+                    "historical": chart_candles_with_ongoing,  # Include ongoing candle in historical array
+                    "ongoing": ongoing_candle,  # Keep separate for reference
                     "predicted": [],
                     "pattern_analysis": pattern_analysis
                 }
@@ -610,6 +634,9 @@ class SessionOrchestrator:
                 "psychological_analysis": unified_data.get("psychological_analysis", {}),
                 "market_conditions_analysis": unified_data.get("market_conditions_analysis", {}),
                 
+                # CRITICAL FIX: JavaScript looks for "market_conditions" NOT "market_conditions_analysis"
+                "market_conditions": unified_data.get("market_conditions_analysis", {}),
+                
                 # Chart data
                 "candleData": unified_data.get("candleData", {}),
                 "chart_data": unified_data.get("chart_data", {}),
@@ -645,25 +672,147 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Failed to update dashboard with unified data: {e}")
     
-    def _pass_data_to_signal_aggregator(self, unified_data: Dict[str, Any]):
-        """Pass unified market data to Signal Aggregator for AI processing"""
+    def _generate_price_prediction(self, unified_data: Dict[str, Any], strategy: str):
+        """Update singleton prediction based on real-time market conditions"""
         try:
-            # Signal Aggregator can now use the unified data directly
-            # The unified_data structure matches what Signal Aggregator expects
+            from core.ml.realtime_prediction_engine import get_global_realtime_prediction_engine
             
-            # Store for AI access (Signal Aggregator will pick this up)
-            self.signal_aggregator_data = unified_data
+            prediction_engine = get_global_realtime_prediction_engine()
             
-            logger.debug(f"📊 Signal Aggregator data ready: RSI={unified_data.get('rsi')}, Trend={unified_data.get('trend')}")
+            # Update singleton prediction with current market data
+            action = prediction_engine.update_prediction(unified_data, strategy)
+            
+            # Get the active prediction (singleton)
+            active_prediction = prediction_engine.get_active_prediction()
+            
+            if action == "EXECUTE":
+                # Ready to execute!
+                logger.success(f"🔮 EXECUTE: {active_prediction.direction} @ ${active_prediction.entry_price:,.2f}")
+                logger.success(f"   Confidence: {active_prediction.confidence:.1%} ✅")
+                logger.info(f"   Stop Loss: ${active_prediction.stop_loss:,.2f} | Take Profit: ${active_prediction.take_profit:,.2f}")
+                
+                # Store for trading engine
+                self.current_prediction = active_prediction
+                
+                # Update dashboard
+                self._update_dashboard_with_prediction(active_prediction)
+                
+                # Execute limit order via PredictionExecutor
+                try:
+                    from core.execution.prediction_executor import get_global_prediction_executor
+                    from core.services.system_initializer import get_system_initializer
+                    
+                    system_initializer = get_system_initializer()
+                    trading_execution = system_initializer.singleton_systems.get("trading_execution")
+                    account_manager = system_initializer.singleton_systems.get("account_manager")
+                    session_manager_inst = system_initializer.singleton_systems.get("session_manager")
+                    
+                    if all([trading_execution, account_manager, session_manager_inst]):
+                        executor = get_global_prediction_executor(trading_execution, account_manager, session_manager_inst)
+                        
+                        # Execute prediction
+                        result = executor.execute_prediction(active_prediction.to_dict(), strategy)
+                        
+                        if result.get("success"):
+                            logger.success(f"✅ Trade executed successfully!")
+                            prediction_engine.clear_prediction()  # Clear after successful execution
+                            self.current_prediction = None
+                        else:
+                            logger.warning(f"⚠️ Trade execution declined: {result.get('reason')}")
+                    else:
+                        logger.error("❌ Required services not available for trade execution")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Trade execution error: {e}")
+                
+            elif action == "CREATED":
+                # New prediction created
+                logger.info(f"🎯 NEW prediction: {active_prediction.direction} @ ${active_prediction.entry_price:,.2f} ({active_prediction.confidence:.1%})")
+                self.current_prediction = active_prediction
+                self._update_dashboard_with_prediction(active_prediction)
+                
+            elif action == "UPDATED":
+                # Prediction fields updated
+                logger.debug(f"🔄 Prediction updated: {active_prediction.direction} @ ${active_prediction.entry_price:,.2f} ({active_prediction.confidence:.1%})")
+                self.current_prediction = active_prediction
+                self._update_dashboard_with_prediction(active_prediction)
+                
+            elif action == "CANCELLED":
+                # Prediction cancelled
+                logger.warning(f"❌ Prediction cancelled")
+                self.current_prediction = None
+                
+            elif action == "NO_SIGNAL":
+                # No clear signal
+                logger.debug("📊 No clear signal - waiting for market conditions")
+                self.current_prediction = None
+                
+            else:  # NO_CHANGE
+                # Market hasn't changed significantly - skip update
+                pass
             
         except Exception as e:
-            logger.error(f"❌ Failed to pass data to Signal Aggregator: {e}")
+            logger.error(f"❌ Failed to update prediction: {e}")
+            self.current_prediction = None
+    
+    def _update_dashboard_with_prediction(self, prediction):
+        """Update dashboard with prediction data"""
+        try:
+            from core.services.dashboard_service import DashboardService
+            dashboard_service = DashboardService.get_global_instance()
+            
+            if dashboard_service:
+                dashboard_service.add_prediction(prediction.to_dict())
+                logger.debug("📊 Dashboard updated with prediction")
+                
+        except Exception as e:
+            logger.debug(f"⚠️ Could not update dashboard with prediction: {e}")
+    
+    def _detect_and_update_strategy(self, unified_data: Dict[str, Any], dashboard_service) -> str:
+        """
+        Detect optimal strategy based on current market conditions and historical data
+        Uses ML Strategy Selector with fallback to rule-based selection
+        """
+        try:
+            # Ensure Strategy Manager is initialized
+            if not self.strategy_manager:
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                self._ensure_strategy_manager_initialized(system_initializer)
+            
+            if not self.strategy_manager:
+                logger.warning("⚠️ Strategy Manager not available - using default strategy")
+                return "standard"
+            
+            # Get historical context from session manager
+            historical_context = None
+            if self.session_manager and hasattr(self.session_manager, 'get_historical_context'):
+                historical_context = self.session_manager.get_historical_context()
+            
+            # Detect optimal strategy using ML + historical data
+            optimal_strategy = self.strategy_manager.detect_optimal_strategy(
+                market_data=unified_data,
+                historical_context=historical_context
+            )
+            
+            # Update session manager with new strategy
+            if self.session_manager and hasattr(self.session_manager, 'current_session_data'):
+                if self.session_manager.current_session_data:
+                    self.session_manager.current_session_data["strategy"] = optimal_strategy
+            
+            return optimal_strategy
+            
+        except Exception as e:
+            logger.error(f"❌ Strategy detection failed: {e}")
+            return "standard"  # Fallback to standard strategy
     
     def _main_data_loop(self, check_interval: int, hyperliquid_api,
                        market_data_service, dashboard_service) -> Dict[str, Any]:
         """Main data collection and dashboard update loop (no trading)"""
         last_loop_time = 0
         min_loop_interval = 1.0  # Minimum 1 second between loop iterations
+        last_5m_boundary = None  # Track 5-minute boundaries for immediate updates
+        last_ongoing_candle = None  # Track the last ongoing candle to convert it to historical
         
         logger.info(f"🔄 Starting data collection loop (interval: {check_interval}s)")
         
@@ -672,6 +821,20 @@ class SessionOrchestrator:
                 # Update session time
                 if self.session_manager:
                     self.session_manager.update_session_time_if_active()
+                
+                # Check for 5-minute boundary change (for immediate candle/volume reset)
+                current_time = time.time()
+                import datetime as dt
+                current_dt = dt.datetime.fromtimestamp(current_time, tz=dt.timezone.utc)
+                current_5m_boundary = (current_dt.minute // 5) * 5
+                
+                # Detect 5-minute boundary change
+                boundary_changed = False
+                if last_5m_boundary is not None and current_5m_boundary != last_5m_boundary:
+                    boundary_changed = True
+                    logger.info(f"🕐 5-minute boundary reached: {last_5m_boundary:02d}:00 -> {current_5m_boundary:02d}:00 UTC - Volume reset and new candle!")
+                
+                last_5m_boundary = current_5m_boundary
                 
                 # Get current price
                 hyperliquid_price = market_data_service.get_hyperliquid_price()
@@ -690,11 +853,32 @@ class SessionOrchestrator:
                 # Prepare unified market data for both Signal Aggregator and Dashboard
                 unified_data = self._prepare_unified_market_data(market_data, hyperliquid_price, market_data_service)
                 
+                # STRATEGY SELECTION: Detect optimal strategy based on market conditions
+                current_strategy = self._detect_and_update_strategy(unified_data, dashboard_service)
+                unified_data["current_strategy"] = current_strategy
+                
                 # Update dashboard with unified data
                 self._update_dashboard_with_unified_data(unified_data, dashboard_service)
                 
-                # Pass unified data to Signal Aggregator (ready for AI)
-                self._pass_data_to_signal_aggregator(unified_data)
+                # Force immediate dashboard update if 5-minute boundary changed
+                if boundary_changed:
+                    logger.info("🔄 Forcing immediate dashboard update due to 5-minute boundary change")
+                    
+                    # Clear old trades from WebSocket cache to ensure clean volume reset
+                    if market_data_service.hyperliquid_websocket:
+                        # Clear trades older than current 5m candle start
+                        import datetime as dt
+                        current_dt = dt.datetime.fromtimestamp(current_time, tz=dt.timezone.utc)
+                        candle_start_minute = (current_dt.minute // 5) * 5
+                        candle_start_dt = current_dt.replace(minute=candle_start_minute, second=0, microsecond=0)
+                        cutoff_timestamp = candle_start_dt.timestamp()
+                        market_data_service.hyperliquid_websocket.clear_old_trades(cutoff_timestamp)
+                    
+                    # Trigger additional WebSocket emission for immediate update
+                    dashboard_service._trigger_websocket_emission()
+                
+                # Generate price prediction
+                self._generate_price_prediction(unified_data, current_strategy)
                 
                 # Simple monitoring log
                 rsi_value = market_data.get("hyperliquid_analysis", {}).get('rsi_5m')
@@ -802,12 +986,12 @@ class SessionOrchestrator:
                 # Volume data
                 "hyperliquid_volume": hyperliquid_data.get("volume_data", {}),
                 
-                # Sentiment data
-                "sentiment_data": hyperliquid_analysis.get("sentiment_data", {"index_value": 50, "sentiment_signals": {}}),
+                # Sentiment data - Using Yahoo Finance
+                "sentiment_data": hyperliquid_analysis.get("sentiment_data", {}),
                 
-                # External data
-                "whale_analytics": hyperliquid_analysis.get("whale_analytics", {"whale_activity": {"activity_level": "low"}}),
-                "news_sentiment": hyperliquid_analysis.get("news_sentiment", {"sentiment": {"classification": "neutral"}}),
+                # External data - Using Yahoo Finance
+                "whale_analytics": hyperliquid_analysis.get("whale_analytics", {}),
+                "news_sentiment": hyperliquid_analysis.get("news_sentiment", {}),
                 
                 # Support/Resistance data - use cached data from main loop
                 "support_resistance": {"key_levels": []},  # Will be populated by main loop
@@ -840,15 +1024,14 @@ class SessionOrchestrator:
                 "volatility_5m_category": hyperliquid_analysis.get("volatility_5m_category"),
                 "trend_5m": hyperliquid_analysis.get("trend_5m"),
                 "hyperliquid_volume": {},
-                "sentiment_data": {"index_value": 50, "sentiment_signals": {}},
-                "whale_analytics": {"whale_activity": {"activity_level": "low"}},
-                "news_sentiment": {"sentiment": {"classification": "neutral"}},
+                "sentiment_data": {},
+                "whale_analytics": {},
+                "news_sentiment": {},
                 "support_resistance": {"key_levels": []},
-                "volatility_change": {"change_detected": False, "change_direction": "STABLE", "urgency": "LOW"},
+                "volatility_change": {"error": "Real volatility change not implemented - NO FALLBACKS", "data_source": "failed"},
                 "market_conditions": {
-                    "condition": "FAIR",
-                    "risk_level": "MODERATE", 
-                    "market_status": "SIDEWAYS"
+                    "error": "Real market conditions not implemented - NO FALLBACKS",
+                    "data_source": "failed"
                 }
             }
     
@@ -1511,44 +1694,17 @@ class SessionOrchestrator:
         try:
             if volume_btc_per_min < 5:
                 return "VERY_LOW"
-            elif volume_btc_per_min < 20:
+            elif volume_btc_per_min < 10:
                 return "LOW"
-            elif volume_btc_per_min < 50:
+            elif volume_btc_per_min < 20:
                 return "NORMAL"
-            elif volume_btc_per_min < 100:
+            elif volume_btc_per_min < 50:
                 return "HIGH"
-            elif volume_btc_per_min < 200:
+            elif volume_btc_per_min < 100:
                 return "VERY_HIGH"
             else:
                 return "EXTREME"
         except Exception as e:
             logger.error(f"❌ Failed to categorize global volume: {e}")
             return "UNKNOWN"
-    
-    
-
-            dashboard_service.add_signal(ml_metrics_data)
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to add ML metrics to dashboard: {e}")
-    
-    def _categorize_global_volume(self, volume_btc_per_min: float) -> str:
-        """Categorize global volume based on BTC/min thresholds for global Bitcoin market"""
-        try:
-            if volume_btc_per_min < 5:
-                return "VERY_LOW"
-            elif volume_btc_per_min < 20:
-                return "LOW"
-            elif volume_btc_per_min < 50:
-                return "NORMAL"
-            elif volume_btc_per_min < 100:
-                return "HIGH"
-            elif volume_btc_per_min < 200:
-                return "VERY_HIGH"
-            else:
-                return "EXTREME"
-        except Exception as e:
-            logger.error(f"❌ Failed to categorize global volume: {e}")
-            return "UNKNOWN"
-    
     

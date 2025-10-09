@@ -31,7 +31,7 @@ class RSICalculator:
         self.rsi_initialized = False
         self.last_price = 0.0
         
-        logger.info("🔬 RSI Calculator initialized - Scientific every-tick Wilder's smoothing")
+        logger.info("🔬 RSI Calculator initialized - RSI(14) with real-time updates")
     
     def calculate_standalone_rsi(self, candles: List[Dict], periods: int = 14) -> float:
         """
@@ -188,8 +188,8 @@ class RSICalculator:
                 price_change_pct = (new_price - self.last_price) / self.last_price
                 
                 # RSI sensitivity: ULTRA responsive for real-time trading (user requested immediate reaction)
-                # 1% price move ≈ 8-10 RSI points (much more sensitive for green/red candles)
-                rsi_sensitivity = 8.0  # Ultra sensitive for immediate reaction to price moves
+                # 1% price move ≈ 9 RSI points (highly sensitive for price moves)
+                rsi_sensitivity = 9.0  # Increased sensitivity for faster reaction
                 
                 # Calculate RSI adjustment based on price movement
                 rsi_adjustment = price_change_pct * 100 * rsi_sensitivity

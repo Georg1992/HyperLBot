@@ -43,49 +43,26 @@ class FearGreedAPI:
                 logger.debug("📊 Using cached Fear & Greed data")
                 return self.cached_data
             
-            # Fetch fresh data
-            logger.info("😨 Fetching Fear & Greed Index from API...")
-            response = requests.get(self.api_url, timeout=10)
-            response.raise_for_status()
+            # Use Yahoo Finance API for Fear & Greed data
+            from core.external.yahoo_finance_api import get_global_yahoo_finance_api
+            yahoo_api = get_global_yahoo_finance_api()
             
-            data = response.json()
+            fear_greed_data = yahoo_api.get_fear_greed_data()
             
-            if "data" not in data or not data["data"]:
-                logger.error("❌ Invalid Fear & Greed API response")
-                return self._get_default_data()
-            
-            # Extract index data
-            index_data = data["data"][0]
-            index_value = int(index_data["value"])
-            classification = index_data["value_classification"]
-            
-            # Generate sentiment signals
-            sentiment_signals = self._generate_sentiment_signals(index_value, classification)
-            
-            # Compile result
-            result = {
-                "index_value": index_value,
-                "classification": classification,
-                "sentiment_signals": sentiment_signals,
-                "timestamp": time.time(),
-                "fetch_time": datetime.now().isoformat(),
-                "data_source": "alternative.me",
-                "cache_duration": self.cache_duration
-            }
-            
-            # Cache the result
-            self.cached_data = result
-            self.last_fetch_time = time.time()
-            
-            logger.success(f"✅ Fear & Greed Index: {index_value} ({classification})")
-            return result
-            
-        except requests.exceptions.RequestException as e:
-            logger.error(f"❌ Fear & Greed API request failed: {e}")
-            return self._get_default_data()
+            if fear_greed_data and "error" not in fear_greed_data:
+                # Cache the result
+                self.cached_data = fear_greed_data
+                self.last_fetch_time = time.time()
+                
+                logger.success(f"✅ Fear & Greed Index: {fear_greed_data.get('index_value', 'unknown')} ({fear_greed_data.get('sentiment', 'unknown')})")
+                return fear_greed_data
+            else:
+                logger.warning("⚠️ Failed to fetch Fear & Greed data from Yahoo Finance")
+                raise ValueError("Real Fear & Greed data not available - NO FALLBACKS")
+                
         except Exception as e:
-            logger.error(f"❌ Fear & Greed data processing failed: {e}")
-            return self._get_default_data()
+            logger.error(f"❌ Fear & Greed Index fetch failed: {e}")
+            raise ValueError(f"Real Fear & Greed data not available - NO FALLBACKS: {e}")
     
     def _generate_sentiment_signals(self, index_value: int, classification: str) -> Dict[str, Any]:
         """
@@ -232,34 +209,10 @@ class FearGreedAPI:
     
     def _get_default_data(self) -> Dict[str, Any]:
         """Get default data when API fails"""
-        return {
-            "index_value": 50,
-            "classification": "Neutral",
-            "sentiment_signals": self._get_default_signals(),
-            "timestamp": time.time(),
-            "fetch_time": datetime.now().isoformat(),
-            "data_source": "default_fallback",
-            "cache_duration": self.cache_duration,
-            "error": "API unavailable, using default values"
-        }
+        # NO FALLBACKS - Real Fear & Greed data not available
+        raise ValueError("Real Fear & Greed data not available - NO FALLBACKS")
     
-    def _get_default_signals(self) -> Dict[str, Any]:
-        """Get default sentiment signals"""
-        return {
-            "market_sentiment": "Neutral",
-            "sentiment_zone": "NEUTRAL",
-            "trading_bias": "NEUTRAL",
-            "confidence_boost": 0.0,
-            "risk_level": "LOW",
-            "reversal_probability": 0.30,
-            "recommended_action": "NEUTRAL",
-            "extreme_condition": False,
-            "buy_signal_strength": "WEAK",
-            "sell_signal_strength": "WEAK",
-            "market_oversold": False,
-            "market_overbought": False,
-            "reversal_imminent": False
-        }
+    # _get_default_signals method removed - NO FALLBACKS policy
     
     def test_connection(self) -> bool:
         """Test connection to Fear & Greed API"""

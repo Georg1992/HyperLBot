@@ -320,6 +320,20 @@ class HyperliquidWebSocket:
             logger.error(f"❌ Failed to calculate current 5m volume: {e}")
             return 0.0
     
+    def clear_old_trades(self, cutoff_timestamp: float):
+        """Clear trades older than cutoff timestamp to free memory"""
+        try:
+            with self._lock:
+                if hasattr(self, 'trades_cache') and self.trades_cache:
+                    # Keep only trades newer than cutoff
+                    self.trades_cache = [
+                        trade for trade in self.trades_cache 
+                        if trade.get('timestamp', 0) >= cutoff_timestamp
+                    ]
+                    logger.debug(f"🧹 Cleared old trades, {len(self.trades_cache)} trades remaining")
+        except Exception as e:
+            logger.error(f"❌ Failed to clear old trades: {e}")
+    
     async def _process_orderbook_update(self, orderbook_data: Dict[str, Any]):
         """Process orderbook update and extract price"""
         try:

@@ -21,7 +21,7 @@ class SystemInitializer:
         
         logger.info("⚙️ System Initializer created - Phase management enabled")
     
-    def initialize_system(self) -> Dict[str, Any]:
+    def initialize_system(self, initial_balance: float) -> Dict[str, Any]:
         """
         PHASE 1: Complete System Initialization
         Initialize all systems, check dependencies, and prepare for analysis
@@ -42,7 +42,7 @@ class SystemInitializer:
             self.singleton_systems["binance_websocket"] = api_results["binance_websocket"]
             
             # Step 2: Initialize Singleton Systems
-            singleton_results = self._initialize_singleton_systems()
+            singleton_results = self._initialize_singleton_systems(initial_balance)
             if not singleton_results["success"]:
                 return {"success": False, "error": "Singleton system initialization failed"}
             
@@ -56,10 +56,10 @@ class SystemInitializer:
             if not data_results["success"]:
                 return {"success": False, "error": "Data system initialization failed"}
             
-            # Step 5: Initialize AI/ML Systems
-            ai_results = self._initialize_ai_systems()
-            if not ai_results["success"]:
-                return {"success": False, "error": "AI/ML system initialization failed"}
+            # Step 5: Initialize ML Systems (AI prediction logic removed)
+            ml_results = self._initialize_ml_systems()
+            if not ml_results["success"]:
+                return {"success": False, "error": "ML system initialization failed"}
             
             # Step 5: Initialize Trading Systems
             trading_results = self._initialize_trading_systems()
@@ -146,7 +146,7 @@ class SystemInitializer:
             logger.error(f"❌ RSI initialization failed: {e}")
             return {"success": False, "error": str(e)}
     
-    def _initialize_singleton_systems(self) -> Dict[str, Any]:
+    def _initialize_singleton_systems(self, initial_balance: float) -> Dict[str, Any]:
         """Initialize all singleton systems"""
         try:
             logger.info("🔧 Initializing singleton systems...")
@@ -214,17 +214,9 @@ class SystemInitializer:
             funding_rate_analyzer = get_global_funding_rate_analyzer()
             self.singleton_systems["funding_rate_analyzer"] = funding_rate_analyzer
             
-            # 14. On-Chain Data Analyzer
-            from core.analysis.real_time.onchain_data_analyzer import get_global_onchain_data_analyzer
-            onchain_data_analyzer = get_global_onchain_data_analyzer()
-            self.singleton_systems["onchain_data_analyzer"] = onchain_data_analyzer
+            # On-Chain Data & Psychological Levels Analyzers removed (not implemented)
             
-            # 15. Psychological Levels Analyzer
-            from core.analysis.real_time.psychological_levels_analyzer import get_global_psychological_levels_analyzer
-            psychological_levels_analyzer = get_global_psychological_levels_analyzer()
-            self.singleton_systems["psychological_levels_analyzer"] = psychological_levels_analyzer
-            
-            # 17. Trading Components
+            # 14. Trading Components
             from core.analysis.historical.variability_analyzer import VariabilityAnalyzer
             from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
             from core.services.strategy_manager import StrategyManager
@@ -287,7 +279,7 @@ class SystemInitializer:
             dashboard_service = DashboardService.get_global_instance()
             if not dashboard_service:
                 dashboard_service = DashboardService()
-            session_orchestrator = SessionOrchestrator(config, 1000.0)  # Default initial balance
+            session_orchestrator = SessionOrchestrator(config, initial_balance)  # Use real account balance
             
             self.singleton_systems["market_data_service"] = market_data_service
             self.singleton_systems["trading_engine"] = trading_engine
@@ -324,30 +316,25 @@ class SystemInitializer:
             logger.error(f"❌ Data system initialization failed: {e}")
             return {"success": False, "error": str(e)}
     
-    def _initialize_ai_systems(self) -> Dict[str, Any]:
-        """Initialize AI/ML systems after APIs are ready"""
+    def _initialize_ml_systems(self) -> Dict[str, Any]:
+        """Initialize ML systems (AI prediction logic removed)"""
         try:
-            logger.info("🤖 Initializing AI/ML systems...")
+            logger.info("🤖 Initializing ML systems...")
             
-            # 1. AI Systems
-            from core.ai import global_unified_ai_system
-            self.singleton_systems["ai_system"] = global_unified_ai_system
-            # AI System initialized
-            
-            # 2. ML Systems
-            from core.ml.probability_engine import global_probability_engine
+            # ML Systems (strategy selection only - predictions removed)
+            from core.ml.probability_engine import get_global_probability_engine
+            from core.ml.calibration_tracker import get_global_calibration_tracker
+            from core.ml.monte_carlo_simulator import get_global_monte_carlo_simulator
+            from core.ml.bayesian_fusion import get_global_bayesian_fusion
+            from core.ml.multitimeframe_probability import get_global_multitimeframe_probability
             from core.ml.strategy_selector import global_ml_strategy_selector
-            from core.ml.prediction_ensemble import global_prediction_ensemble
-            from core.ml.prediction_manager import global_prediction_manager
-            from core.ml.ml_models import global_ml_manager
-            from core.ml.model_training import global_model_trainer
             
-            self.singleton_systems["probability_engine"] = global_probability_engine
+            self.singleton_systems["probability_engine"] = get_global_probability_engine()
+            self.singleton_systems["calibration_tracker"] = get_global_calibration_tracker()
+            self.singleton_systems["monte_carlo_simulator"] = get_global_monte_carlo_simulator()
+            self.singleton_systems["bayesian_fusion"] = get_global_bayesian_fusion()
+            self.singleton_systems["multitimeframe_probability"] = get_global_multitimeframe_probability()
             self.singleton_systems["strategy_selector"] = global_ml_strategy_selector
-            self.singleton_systems["prediction_ensemble"] = global_prediction_ensemble
-            self.singleton_systems["prediction_manager"] = global_prediction_manager
-            self.singleton_systems["ml_manager"] = global_ml_manager
-            self.singleton_systems["model_trainer"] = global_model_trainer
             
             # ML Systems initialized
             # AI/ML systems ready
@@ -364,7 +351,14 @@ class SystemInitializer:
             
             # Trading systems are initialized through singletons
             # Verify key systems are ready
-            required_systems = ["prediction_manager", "strategy_selector", "probability_engine"]
+            required_systems = [
+                "strategy_selector", 
+                "probability_engine", 
+                "calibration_tracker", 
+                "monte_carlo_simulator",
+                "bayesian_fusion",
+                "multitimeframe_probability"
+            ]
             for system_name in required_systems:
                 if system_name not in self.singleton_systems:
                     return {"success": False, "error": f"Required system {system_name} not initialized"}
@@ -385,8 +379,8 @@ class SystemInitializer:
                 "apis_connected": True,
                 "singletons_ready": len(self.singleton_systems) > 0,
                 "data_systems_ready": True,
-                "ai_systems_ready": "ai_system" in self.singleton_systems,
-                "trading_systems_ready": "prediction_manager" in self.singleton_systems
+                "ml_systems_ready": "strategy_selector" in self.singleton_systems,
+                "trading_systems_ready": "probability_engine" in self.singleton_systems
             }
             
             all_healthy = all(health_status.values())

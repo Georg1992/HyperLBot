@@ -169,6 +169,15 @@
             color: #FF9800;
         }
 
+        .trend-error {
+            color: #FF4444;
+            font-weight: bold;
+            background: rgba(255, 68, 68, 0.1);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid #FF4444;
+        }
+
         /* Prediction Card Styles */
         .prediction-main-card {
             transition: all 0.3s ease;
@@ -500,36 +509,6 @@
                     </div>
                 </div>
                 
-                <!-- On-Chain Data Section -->
-                <div style="margin-bottom: 30px;">
-                    <h3 style="color: #FFD700; margin-bottom: 15px;">⛓️ On-Chain Data</h3>
-                    <div id="onchain-data">
-                        <div class="data-item">
-                            <span class="data-label">Exchange Flows:</span>
-                            <span class="data-value" id="onchain-exchange-flows">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Active Addresses:</span>
-                            <span class="data-value" id="onchain-active-addresses">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Mining Health:</span>
-                            <span class="data-value" id="onchain-mining-health">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Network Health:</span>
-                            <span class="data-value" id="onchain-network-health">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Whale Activity:</span>
-                            <span class="data-value" id="onchain-whale-activity">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">On-Chain Sentiment:</span>
-                            <span class="data-value" id="onchain-sentiment">Loading...</span>
-                        </div>
-                    </div>
-                </div>
                 
                 <!-- Cross Asset & Funding Analysis Section -->
                 <div style="margin-bottom: 30px;">
@@ -666,13 +645,21 @@
 
                 <!-- Trade Predictions Card -->
                 <div class="card">
-                    <h2>🎯 Trade Predictions <span style="font-size: 14px; color: #4CAF50; font-weight: normal;">(Coming Soon)</span></h2>
+                    <h2>🎯 AI Prediction <span id="prediction-status" style="font-size: 14px; color: #888; font-weight: normal;">(Analyzing...)</span></h2>
                     <div style="font-size: 12px; color: #666; margin-bottom: 15px; font-style: italic;">
-                        AI-powered trade predictions with entry/exit points and timing
+                        Real-time AI prediction with entry/exit points and confidence
                     </div>
                     <div id="trade-predictions-container">
-                        <!-- Trade Predictions Placeholder -->
-                        <div style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 30px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1); text-align: center;">
+                        <!-- Active Prediction Display -->
+                        <div id="active-prediction" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 20px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+                            <div style="text-align: center; color: #888; padding: 20px;">
+                                <div style="font-size: 36px; margin-bottom: 10px;">🧠</div>
+                                <div>Waiting for market data...</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Prediction Placeholder (hidden when active) -->
+                        <div id="prediction-placeholder" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 30px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1); text-align: center; display: none;">
                             <div style="font-size: 48px; margin-bottom: 20px;">🎯</div>
                             <div style="font-size: 18px; color: #FFD700; margin-bottom: 10px;"><strong>Trade Predictions</strong></div>
                             <div style="color: #888; margin-bottom: 15px;">
@@ -960,6 +947,11 @@
                         this.updateMarketData(data.market);
                     }
                     
+                    // Update prediction
+                    if (data.prediction) {
+                        this.updatePrediction(data.prediction);
+                    }
+                    
                     // Update trading summary
                     if (data.summary) {
                         this.updateTradingSummary(data.summary);
@@ -1240,42 +1232,61 @@
                 
                 // Update Support/Resistance Levels
                 const srElement = document.getElementById('support-resistance-levels');
-                if (market.support_resistance && market.support_resistance.key_levels && market.support_resistance.key_levels.length > 0) {
-                    const levels = market.support_resistance.key_levels;
+                if (market.support_resistance) {
+                    const levels = market.support_resistance.key_levels || [];
                     const strongestSupport = market.support_resistance.strongest_support;
                     const strongestResistance = market.support_resistance.strongest_resistance;
                     
                     let levelsText = '';
+                    const currentPrice = market.current_price || 0;
+                    
                     if (strongestSupport > 0) {
-                        levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
+                        // Check if support is actually below price (valid) or above (broken)
+                        if (strongestSupport < currentPrice) {
+                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
+                        } else {
+                            levelsText += `<span style="color: #888;">🔴</span> Support: $${Math.round(strongestSupport).toLocaleString()} (broken)<br>`;
+                        }
+                    } else {
+                        levelsText += `<span style="color: #888;">⚪</span> Support: None<br>`;
                     }
+                    
                     if (strongestResistance > 0) {
-                        levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
+                        // Check if resistance is actually above price (valid) or below (broken)
+                        if (strongestResistance > currentPrice) {
+                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
+                        } else {
+                            levelsText += `<span style="color: #888;">🟢</span> Resistance: $${Math.round(strongestResistance).toLocaleString()} (broken)<br>`;
+                        }
+                    } else {
+                        levelsText += `<span style="color: #888;">⚪</span> Resistance: None<br>`;
                     }
                     
                     // Show key levels with detailed bounce validation data
-                    const keyLevels = levels.slice(0, 3); // Show top 3 levels
-                    keyLevels.forEach(level => {
-                        const type = level.type === 'support' ? '🟢' : '🔴';
-                        const critical = level.critical ? ' ⭐' : '';
-                        const score = level.score ? level.score.toFixed(1) : '0.0';
-                        const timeframe = level.timeframe;
-                        const relevance = level.relevance;
+                    if (levels.length > 0) {
+                        const keyLevels = levels.slice(0, 3); // Show top 3 levels
+                        keyLevels.forEach(level => {
+                            const type = level.type === 'support' ? '🟢' : '🔴';
+                            const critical = level.critical ? ' ⭐' : '';
+                            const score = level.score ? level.score.toFixed(1) : '0.0';
+                            const timeframe = level.timeframe || '5m';
+                            const relevance = level.relevance || 'active';
+                            
+                            // Add strength indicator based on score
+                            let strengthIndicator = '';
+                            if (level.score > 100) strengthIndicator = ' 💪'; // Very strong
+                            else if (level.score > 50) strengthIndicator = ' 🔥'; // Strong
+                            else if (level.score > 20) strengthIndicator = ' ⚡'; // Moderate
+                            
+                            levelsText += `${type} $${Math.round(level.level).toLocaleString()} (${level.touches}x, score:${score})${strengthIndicator}${critical}<br>`;
+                            levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
+                        });
                         
-                        // Add strength indicator based on score
-                        let strengthIndicator = '';
-                        if (level.score > 100) strengthIndicator = ' 💪'; // Very strong
-                        else if (level.score > 50) strengthIndicator = ' 🔥'; // Strong
-                        else if (level.score > 20) strengthIndicator = ' ⚡'; // Moderate
-                        
-                        levelsText += `${type} $${Math.round(level.level).toLocaleString()} (${level.touches}x, score:${score})${strengthIndicator}${critical}<br>`;
-                        levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
-                    });
-                    
-                    // Add timeframe info
-                    const timeframe = market.support_resistance.timeframe;
-                    const candlesAnalyzed = market.support_resistance.candles_analyzed || 0;
-                    levelsText += `<span style="font-size: 10px; color: #666;">From ${candlesAnalyzed} ${timeframe} candles</span>`;
+                        // Add timeframe info
+                        const timeframe = market.support_resistance.timeframe || '5m';
+                        const candlesAnalyzed = market.support_resistance.candles_analyzed || 0;
+                        levelsText += `<span style="font-size: 10px; color: #666;">From ${candlesAnalyzed} ${timeframe} candles</span>`;
+                    }
                     
                     srElement.innerHTML = levelsText;
                     srElement.className = 'data-value trend-positive';
@@ -1506,7 +1517,6 @@
                         whaleElement.className = `data-value ${whaleColor}`;
                     } else {
                         // No whale data
-                        document.getElementById('overview-whale-activity').textContent = 'N/A';
                     }
                     
                     // UPDATE NEWS SENTIMENT DATA
@@ -1546,179 +1556,233 @@
                     document.getElementById('overview-conditions-risk').textContent = 'N/A';
                     document.getElementById('overview-fear-greed-index').textContent = 'N/A';
                     document.getElementById('overview-sentiment-zone').textContent = 'N/A';
-                    document.getElementById('overview-whale-activity').textContent = 'N/A';
                     document.getElementById('overview-news-sentiment').textContent = 'N/A';
                 }
-                
-                // Update On-Chain Data
-                this.updateOnChainData(market);
                 
                 // Update Cross Asset & Funding Data
                 this.updateCrossAssetFundingData(market);
             }
             
-            updateOnChainData(market) {
-                // Update Exchange Flows
-                const exchangeFlowsElement = document.getElementById('onchain-exchange-flows');
-                if (market.onchain_analysis && market.onchain_analysis.exchange_flows) {
-                    const flows = market.onchain_analysis.exchange_flows;
-                    const flowDirection = flows.direction || 'NEUTRAL';
-                    const flowAmount = flows.net_flow_btc || 0;
-                    exchangeFlowsElement.textContent = `${flowDirection} (${flowAmount.toFixed(2)} BTC)`;
-                    exchangeFlowsElement.className = 'data-value ' + this.getTrendClass(flowDirection);
-                } else {
-                    exchangeFlowsElement.textContent = 'N/A';
-                    exchangeFlowsElement.className = 'data-value trend-neutral';
-                }
+            
+        updateCrossAssetFundingData(market) {
+            // Update DXY Correlation
+            const dxyCorrelationElement = document.getElementById('cross-asset-dxy-correlation');
+            if (market.cross_asset_analysis && market.cross_asset_analysis.dxy_correlation && !market.cross_asset_analysis.error) {
+                const dxy = market.cross_asset_analysis.dxy_correlation;
+                const correlation = dxy.correlation || 0;
+                const strength = dxy.strength || 'UNKNOWN';
+                dxyCorrelationElement.textContent = `${(correlation * 100).toFixed(1)}% (${strength})`;
+                dxyCorrelationElement.className = 'data-value ' + this.getTrendClass(strength);
+            } else {
+                dxyCorrelationElement.textContent = 'ERROR - NO FALLBACKS';
+                dxyCorrelationElement.className = 'data-value trend-error';
+            }
                 
-                // Update Active Addresses
-                const activeAddressesElement = document.getElementById('onchain-active-addresses');
-                if (market.onchain_analysis && market.onchain_analysis.active_addresses) {
-                    const addresses = market.onchain_analysis.active_addresses;
-                    const count = addresses.daily_active || 0;
-                    const trend = addresses.trend || 'STABLE';
-                    activeAddressesElement.textContent = `${count.toLocaleString()} (${trend})`;
-                    activeAddressesElement.className = 'data-value ' + this.getTrendClass(trend);
-                } else {
-                    activeAddressesElement.textContent = 'N/A';
-                    activeAddressesElement.className = 'data-value trend-neutral';
-                }
+            // Update Gold Correlation
+            const goldCorrelationElement = document.getElementById('cross-asset-gold-correlation');
+            if (market.cross_asset_analysis && market.cross_asset_analysis.gold_correlation && !market.cross_asset_analysis.error) {
+                const gold = market.cross_asset_analysis.gold_correlation;
+                const correlation = gold.correlation || 0;
+                const strength = gold.strength || 'UNKNOWN';
+                goldCorrelationElement.textContent = `${(correlation * 100).toFixed(1)}% (${strength})`;
+                goldCorrelationElement.className = 'data-value ' + this.getTrendClass(strength);
+            } else {
+                goldCorrelationElement.textContent = 'ERROR - NO FALLBACKS';
+                goldCorrelationElement.className = 'data-value trend-error';
+            }
                 
-                // Update Mining Health
-                const miningHealthElement = document.getElementById('onchain-mining-health');
-                if (market.onchain_analysis && market.onchain_analysis.mining_metrics) {
-                    const mining = market.onchain_analysis.mining_metrics;
-                    const health = mining.security || 'UNKNOWN';
-                    const trend = mining.trend || 'STABLE';
-                    miningHealthElement.textContent = `${health} (${trend})`;
-                    miningHealthElement.className = 'data-value ' + this.getTrendClass(health);
-                } else {
-                    miningHealthElement.textContent = 'N/A';
-                    miningHealthElement.className = 'data-value trend-neutral';
-                }
+            // Update Stock Correlation
+            const stockCorrelationElement = document.getElementById('cross-asset-stock-correlation');
+            if (market.cross_asset_analysis && market.cross_asset_analysis.stock_correlation && !market.cross_asset_analysis.error) {
+                const stock = market.cross_asset_analysis.stock_correlation;
+                const correlation = stock.correlation || 0;
+                const strength = stock.strength || 'UNKNOWN';
+                stockCorrelationElement.textContent = `${(correlation * 100).toFixed(1)}% (${strength})`;
+                stockCorrelationElement.className = 'data-value ' + this.getTrendClass(strength);
+            } else {
+                stockCorrelationElement.textContent = 'ERROR - NO FALLBACKS';
+                stockCorrelationElement.className = 'data-value trend-error';
+            }
                 
-                // Update Network Health
-                const networkHealthElement = document.getElementById('onchain-network-health');
-                if (market.onchain_analysis && market.onchain_analysis.network_health) {
-                    const network = market.onchain_analysis.network_health;
-                    const health = network.health || 'UNKNOWN';
-                    const congestion = network.congestion || 'UNKNOWN';
-                    networkHealthElement.textContent = `${health} (${congestion} congestion)`;
-                    networkHealthElement.className = 'data-value ' + this.getTrendClass(health);
-                } else {
-                    networkHealthElement.textContent = 'N/A';
-                    networkHealthElement.className = 'data-value trend-neutral';
-                }
+            // Update Market Regime
+            const marketRegimeElement = document.getElementById('cross-asset-market-regime');
+            if (market.cross_asset_analysis && market.cross_asset_analysis.market_regime && !market.cross_asset_analysis.error) {
+                const regime = market.cross_asset_analysis.market_regime;
+                const regimeType = regime.regime || 'UNKNOWN';
+                const confidence = regime.confidence || 0;
+                marketRegimeElement.textContent = `${regimeType} (${(confidence * 100).toFixed(0)}%)`;
+                marketRegimeElement.className = 'data-value ' + this.getTrendClass(regimeType);
+            } else {
+                marketRegimeElement.textContent = 'ERROR - NO FALLBACKS';
+                marketRegimeElement.className = 'data-value trend-error';
+            }
                 
-                // Update Whale Activity
-                const whaleActivityElement = document.getElementById('onchain-whale-activity');
-                if (market.onchain_analysis && market.onchain_analysis.whale_activity) {
-                    const whale = market.onchain_analysis.whale_activity;
-                    const activity = whale.activity || 'NORMAL';
-                    const largeTransactions = whale.large_tx_count || 0;
-                    whaleActivityElement.textContent = `${activity} (${largeTransactions} large txs)`;
-                    whaleActivityElement.className = 'data-value ' + this.getTrendClass(activity);
-                } else {
-                    whaleActivityElement.textContent = 'N/A';
-                    whaleActivityElement.className = 'data-value trend-neutral';
-                }
+            // Update Funding Rate
+            const fundingRateElement = document.getElementById('funding-rate-current');
+            if (market.funding_analysis && market.funding_analysis.current_funding_rate_pct !== undefined && !market.funding_analysis.error) {
+                const funding = market.funding_analysis;
+                const rate = funding.current_funding_rate_pct || 0;
+                const trendObj = funding.funding_trend || {};
+                const trend = trendObj.trend || 'STABLE';
+                fundingRateElement.textContent = `${rate.toFixed(4)}% (${trend})`;
+                fundingRateElement.className = 'data-value ' + this.getTrendClass(trend);
+            } else {
+                fundingRateElement.textContent = 'ERROR - NO FALLBACKS';
+                fundingRateElement.className = 'data-value trend-error';
+            }
                 
-                // Update On-Chain Sentiment
-                const onchainSentimentElement = document.getElementById('onchain-sentiment');
-                if (market.onchain_analysis && market.onchain_analysis.onchain_sentiment) {
-                    const sentiment = market.onchain_analysis.onchain_sentiment;
-                    const overall = sentiment.sentiment || 'NEUTRAL';
-                    const confidence = sentiment.confidence || 0;
-                    onchainSentimentElement.textContent = `${overall} (${(confidence * 100).toFixed(0)}%)`;
-                    onchainSentimentElement.className = 'data-value ' + this.getTrendClass(overall);
-                } else {
-                    onchainSentimentElement.textContent = 'N/A';
-                    onchainSentimentElement.className = 'data-value trend-neutral';
-                }
+            // Update Funding Sentiment
+            const fundingSentimentElement = document.getElementById('funding-rate-sentiment');
+            if (market.funding_analysis && market.funding_analysis.funding_sentiment && !market.funding_analysis.error) {
+                const funding = market.funding_analysis;
+                const sentimentObj = funding.funding_sentiment || {};
+                const sentiment = sentimentObj.sentiment || 'NEUTRAL';
+                const extreme = funding.extreme_funding_detection || {};
+                const isExtreme = extreme.is_extreme || false;
+                const displayText = isExtreme ? `${sentiment} (EXTREME)` : sentiment;
+                fundingSentimentElement.textContent = displayText;
+                fundingSentimentElement.className = 'data-value ' + this.getTrendClass(sentiment);
+            } else {
+                fundingSentimentElement.textContent = 'ERROR - NO FALLBACKS';
+                fundingSentimentElement.className = 'data-value trend-error';
+            }
             }
             
-            updateCrossAssetFundingData(market) {
-                // Update DXY Correlation
-                const dxyCorrelationElement = document.getElementById('cross-asset-dxy-correlation');
-                if (market.cross_asset_analysis && market.cross_asset_analysis.dxy_correlation) {
-                    const dxy = market.cross_asset_analysis.dxy_correlation;
-                    const correlation = dxy.correlation || 0;
-                    const strength = dxy.strength || 'UNKNOWN';
-                    dxyCorrelationElement.textContent = `${(correlation * 100).toFixed(1)}% (${strength})`;
-                    dxyCorrelationElement.className = 'data-value ' + this.getTrendClass(strength);
-                } else {
-                    dxyCorrelationElement.textContent = 'N/A';
-                    dxyCorrelationElement.className = 'data-value trend-neutral';
+            updatePrediction(prediction) {
+                console.log('🔮 Updating prediction:', prediction);
+                
+                const activePrediction = document.getElementById('active-prediction');
+                const predictionStatus = document.getElementById('prediction-status');
+                
+                if (!prediction || !prediction.direction) {
+                    // No active prediction
+                    activePrediction.innerHTML = `
+                        <div style="text-align: center; color: #888; padding: 20px;">
+                            <div style="font-size: 36px; margin-bottom: 10px;">⚪</div>
+                            <div style="font-size: 16px; margin-bottom: 5px;">No Clear Signal</div>
+                            <div style="font-size: 12px;">Waiting for market conditions...</div>
+                        </div>
+                    `;
+                    predictionStatus.textContent = '(No Signal)';
+                    predictionStatus.style.color = '#888';
+                    return;
                 }
                 
-                // Update Gold Correlation
-                const goldCorrelationElement = document.getElementById('cross-asset-gold-correlation');
-                if (market.cross_asset_analysis && market.cross_asset_analysis.gold_correlation) {
-                    const gold = market.cross_asset_analysis.gold_correlation;
-                    const correlation = gold.correlation || 0;
-                    const strength = gold.strength || 'UNKNOWN';
-                    goldCorrelationElement.textContent = `${(correlation * 100).toFixed(1)}% (${strength})`;
-                    goldCorrelationElement.className = 'data-value ' + this.getTrendClass(strength);
+                // Determine colors based on direction
+                const isLong = prediction.direction === 'LONG';
+                const directionColor = isLong ? '#00FF88' : '#FF4444';
+                const directionIcon = isLong ? '📈' : '📉';
+                const directionBg = isLong ? 'rgba(0,255,136,0.1)' : 'rgba(255,68,68,0.1)';
+                const directionBorder = isLong ? 'rgba(0,255,136,0.3)' : 'rgba(255,68,68,0.3)';
+                
+                // Confidence color
+                const confidence = prediction.confidence || 0;
+                let confidenceColor = '#888';
+                let confidenceStatus = 'Low';
+                if (confidence >= 0.75) {
+                    confidenceColor = '#00FF88';
+                    confidenceStatus = 'READY TO EXECUTE';
+                } else if (confidence >= 0.65) {
+                    confidenceColor = '#FFD700';
+                    confidenceStatus = 'Building';
+                } else if (confidence >= 0.60) {
+                    confidenceColor = '#FFA500';
+                    confidenceStatus = 'Tracking';
                 } else {
-                    goldCorrelationElement.textContent = 'N/A';
-                    goldCorrelationElement.className = 'data-value trend-neutral';
+                    confidenceColor = '#888';
+                    confidenceStatus = 'Low';
                 }
                 
-                // Update Stock Correlation
-                const stockCorrelationElement = document.getElementById('cross-asset-stock-correlation');
-                if (market.cross_asset_analysis && market.cross_asset_analysis.stock_correlation) {
-                    const stock = market.cross_asset_analysis.stock_correlation;
-                    const correlation = stock.correlation || 0;
-                    const strength = stock.strength || 'UNKNOWN';
-                    stockCorrelationElement.textContent = `${(correlation * 100).toFixed(1)}% (${strength})`;
-                    stockCorrelationElement.className = 'data-value ' + this.getTrendClass(strength);
-                } else {
-                    stockCorrelationElement.textContent = 'N/A';
-                    stockCorrelationElement.className = 'data-value trend-neutral';
+                // Build reasoning list
+                let reasoningHTML = '';
+                if (prediction.reasoning && prediction.reasoning.length > 0) {
+                    const topReasons = prediction.reasoning.slice(0, 5); // Show top 5 reasons
+                    reasoningHTML = topReasons.map(reason => 
+                        `<div style="font-size: 11px; color: #aaa; padding: 3px 0; border-left: 2px solid ${directionColor}; padding-left: 8px;">${reason}</div>`
+                    ).join('');
                 }
                 
-                // Update Market Regime
-                const marketRegimeElement = document.getElementById('cross-asset-market-regime');
-                if (market.cross_asset_analysis && market.cross_asset_analysis.market_regime) {
-                    const regime = market.cross_asset_analysis.market_regime;
-                    const regimeType = regime.regime || 'UNKNOWN';
-                    const confidence = regime.confidence || 0;
-                    marketRegimeElement.textContent = `${regimeType} (${(confidence * 100).toFixed(0)}%)`;
-                    marketRegimeElement.className = 'data-value ' + this.getTrendClass(regimeType);
-                } else {
-                    marketRegimeElement.textContent = 'N/A';
-                    marketRegimeElement.className = 'data-value trend-neutral';
+                // Build confidence boosts
+                let boostsHTML = '';
+                if (prediction.confidence_boosts && prediction.confidence_boosts.length > 0) {
+                    const boosts = prediction.confidence_boosts.filter(b => b.boost > 0).slice(0, 3);
+                    const penalties = prediction.confidence_boosts.filter(b => b.boost < 0).slice(0, 2);
+                    
+                    if (boosts.length > 0) {
+                        boostsHTML += '<div style="font-size: 11px; margin-top: 8px; color: #888;">Confidence Boosts:</div>';
+                        boosts.forEach(b => {
+                            boostsHTML += `<div style="font-size: 10px; color: #00FF88; padding: 2px 0;">✅ ${b.reason} (+${(b.boost * 100).toFixed(0)}%)</div>`;
+                        });
+                    }
+                    
+                    if (penalties.length > 0) {
+                        boostsHTML += '<div style="font-size: 11px; margin-top: 5px; color: #888;">Penalties:</div>';
+                        penalties.forEach(p => {
+                            boostsHTML += `<div style="font-size: 10px; color: #FF4444; padding: 2px 0;">⚠️ ${p.reason} (${(p.boost * 100).toFixed(0)}%)</div>`;
+                        });
+                    }
                 }
                 
-                // Update Funding Rate
-                const fundingRateElement = document.getElementById('funding-rate-current');
-                if (market.funding_analysis && market.funding_analysis.current_funding_rate_pct !== undefined) {
-                    const funding = market.funding_analysis;
-                    const rate = funding.current_funding_rate_pct || 0;
-                    const trendObj = funding.funding_trend || {};
-                    const trend = trendObj.trend || 'STABLE';
-                    fundingRateElement.textContent = `${rate.toFixed(4)}% (${trend})`;
-                    fundingRateElement.className = 'data-value ' + this.getTrendClass(trend);
-                } else {
-                    fundingRateElement.textContent = 'N/A';
-                    fundingRateElement.className = 'data-value trend-neutral';
-                }
+                // Update display
+                activePrediction.innerHTML = `
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <!-- Direction -->
+                        <div style="background: ${directionBg}; border: 2px solid ${directionBorder}; border-radius: 10px; padding: 15px; text-align: center;">
+                            <div style="font-size: 32px; margin-bottom: 5px;">${directionIcon}</div>
+                            <div style="font-size: 20px; font-weight: bold; color: ${directionColor}; margin-bottom: 5px;">${prediction.direction}</div>
+                            <div style="font-size: 11px; color: #888;">Direction</div>
+                        </div>
+                        
+                        <!-- Confidence -->
+                        <div style="background: rgba(255,255,255,0.05); border: 2px solid ${confidenceColor}; border-radius: 10px; padding: 15px; text-align: center;">
+                            <div style="font-size: 28px; font-weight: bold; color: ${confidenceColor}; margin-bottom: 5px;">${(confidence * 100).toFixed(1)}%</div>
+                            <div style="font-size: 12px; color: ${confidenceColor}; margin-bottom: 3px;">${confidenceStatus}</div>
+                            <div style="font-size: 11px; color: #888;">Confidence</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Entry & Targets -->
+                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Entry Price</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #FFD700;">$${prediction.entry_price ? prediction.entry_price.toLocaleString() : 'N/A'}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Stop Loss</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #FF4444;">$${prediction.stop_loss ? prediction.stop_loss.toLocaleString() : 'N/A'}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Take Profit</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #00FF88;">$${prediction.take_profit ? prediction.take_profit.toLocaleString() : 'N/A'}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Reasoning -->
+                    ${reasoningHTML ? `
+                    <div style="margin-top: 15px; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px; max-height: 150px; overflow-y: auto;">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 8px; font-weight: bold;">Analysis:</div>
+                        ${reasoningHTML}
+                    </div>
+                    ` : ''}
+                    
+                    <!-- Confidence Boosts -->
+                    ${boostsHTML ? `
+                    <div style="margin-top: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px; max-height: 120px; overflow-y: auto;">
+                        ${boostsHTML}
+                    </div>
+                    ` : ''}
+                    
+                    <!-- Score & Age -->
+                    <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 10px; color: #666;">
+                        <div>Score: ${prediction.score ? prediction.score.toFixed(3) : 'N/A'}</div>
+                        <div>Age: ${prediction.age_seconds ? prediction.age_seconds.toFixed(0) + 's' : 'N/A'}</div>
+                        <div>Strategy: ${prediction.strategy || 'standard'}</div>
+                    </div>
+                `;
                 
-                // Update Funding Sentiment
-                const fundingSentimentElement = document.getElementById('funding-rate-sentiment');
-                if (market.funding_analysis && market.funding_analysis.funding_sentiment) {
-                    const funding = market.funding_analysis;
-                    const sentimentObj = funding.funding_sentiment || {};
-                    const sentiment = sentimentObj.sentiment || 'NEUTRAL';
-                    const extreme = funding.extreme_funding_detection || {};
-                    const isExtreme = extreme.is_extreme || false;
-                    const displayText = isExtreme ? `${sentiment} (EXTREME)` : sentiment;
-                    fundingSentimentElement.textContent = displayText;
-                    fundingSentimentElement.className = 'data-value ' + this.getTrendClass(sentiment);
-                } else {
-                    fundingSentimentElement.textContent = 'N/A';
-                    fundingSentimentElement.className = 'data-value trend-neutral';
-                }
+                // Update status
+                predictionStatus.textContent = `(${confidenceStatus})`;
+                predictionStatus.style.color = confidenceColor;
             }
             
             updateTradingSummary(summary) {
@@ -2459,9 +2523,10 @@
                     });
                 }
                 
-                // Draw all 20 candles (19 historical + 1 ongoing)
+                // Draw all candles (historical + ongoing)
                 const historicalStartX = chartStartX;
                 
+                // Draw all candles including the ongoing candle (now included in historical array)
                 historicalCandles.forEach((candle, index) => {
                     const x = historicalStartX + (index * candleWidth);
                     const isOngoing = candle.is_ongoing || false;
@@ -3256,19 +3321,30 @@
                 const timestamp = trade.timestamp || trade.created_at;
                 const timeDisplay = timestamp ? new Date(timestamp).toLocaleTimeString() : 'N/A';
                 
+                // Format entry price with fallback
+                const entryPrice = trade.entry_price || trade.price;
+                
                 tradeDiv.innerHTML = `
                     <div class="trade-header">
                         <span class="${sideClass}">${trade.side || 'N/A'} ${trade.symbol || 'BTC'}</span>
-                        <span class="${statusClass}">${trade.status || 'N/A'}</span>
+                        <span class="${statusClass}">${trade.type || 'MARKET'} - ${trade.status || 'N/A'}</span>
                     </div>
                     <div class="trade-details">
                         <div class="trade-detail">
                             <span>Entry:</span>
-                            <span>$${trade.price ? parseFloat(trade.price).toLocaleString() : 'N/A'}</span>
+                            <span>$${entryPrice ? parseFloat(entryPrice).toLocaleString() : 'N/A'}</span>
                         </div>
                         ${trade.exit_price ? `<div class="trade-detail">
                             <span>Exit:</span>
                             <span>$${parseFloat(trade.exit_price).toLocaleString()}</span>
+                        </div>` : ''}
+                        ${trade.stop_loss ? `<div class="trade-detail">
+                            <span>Stop Loss:</span>
+                            <span style="color: #dc3545;">$${parseFloat(trade.stop_loss).toLocaleString()}</span>
+                        </div>` : ''}
+                        ${trade.take_profit ? `<div class="trade-detail">
+                            <span>Take Profit:</span>
+                            <span style="color: #28a745;">$${parseFloat(trade.take_profit).toLocaleString()}</span>
                         </div>` : ''}
                         <div class="trade-detail">
                             <span>Size:</span>
@@ -3276,8 +3352,12 @@
                         </div>
                         <div class="trade-detail">
                             <span>Leverage:</span>
-                            <span>${trade.leverage || 1}x</span>
+                            <span>${trade.leverage || 30}x</span>
                         </div>
+                        ${trade.strategy ? `<div class="trade-detail">
+                            <span>Strategy:</span>
+                            <span style="color: #17a2b8;">${trade.strategy.toUpperCase()}</span>
+                        </div>` : ''}
                         <div class="trade-detail">
                             <span>P&L:</span>
                             <span class="${pnlClass}">${pnlDisplay}</span>
@@ -3292,8 +3372,12 @@
                         </div>` : ''}
                         <div class="trade-detail">
                             <span>Confidence:</span>
-                            <span>${trade.confidence ? trade.confidence + '%' : 'N/A'}</span>
+                            <span>${trade.confidence ? (trade.confidence * 100).toFixed(1) + '%' : 'N/A'}</span>
                         </div>
+                        ${trade.expected_value ? `<div class="trade-detail">
+                            <span>EV:</span>
+                            <span style="color: ${trade.expected_value > 0 ? '#28a745' : '#dc3545'};">${(trade.expected_value > 0 ? '+' : '')}${(trade.expected_value * 100).toFixed(2)}%</span>
+                        </div>` : ''}
                     </div>
                 `;
                 

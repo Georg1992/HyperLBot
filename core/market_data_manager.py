@@ -19,7 +19,7 @@ from core.analysis.real_time.pressure_calculator import get_global_pressure_calc
 from core.analysis.real_time.orderbook_analyzer import get_global_orderbook_analyzer
 from core.analysis.real_time.funding_rate_analyzer import get_global_funding_rate_analyzer
 from core.analysis.real_time.cross_asset_correlation_analyzer import get_global_cross_asset_correlation_analyzer
-from core.analysis.real_time.onchain_data_analyzer import get_global_onchain_data_analyzer
+# On-Chain Data analyzer removed - no free APIs available
 from core.analysis.real_time.pattern_recognition_engine import get_global_pattern_recognition_engine
 
 class MarketDataManager:
@@ -117,8 +117,12 @@ class MarketDataManager:
                         # Use OrderBookAnalyzer for comprehensive order book analysis
                         orderbook_analysis = get_global_orderbook_analyzer().analyze_orderbook(market_data, current_price)
                         
-                        # Analyze funding rate data (from MarketDataService)
-                        funding_analysis = get_global_funding_rate_analyzer().analyze_funding_rate(funding_rate)
+                        # Analyze funding rate data (from MarketDataService) - OPTIONAL
+                        try:
+                            funding_analysis = get_global_funding_rate_analyzer().analyze_funding_rate(funding_rate)
+                        except Exception as e:
+                            logger.warning(f"⚠️ Funding rate analysis skipped - real data not available: {e}")
+                            funding_analysis = {"error": "Real funding rate data not available", "data_source": "skipped"}
                         
                         # Analyze volume profile from recent trades (from MarketDataService)
                         if recent_trades and isinstance(recent_trades, list):
@@ -126,11 +130,15 @@ class MarketDataManager:
                         else:
                             raise ValueError("Insufficient recent trades for volume profile analysis")
                         
-                        # Analyze cross-asset correlations for broader market context
-                        cross_asset_analysis = get_global_cross_asset_correlation_analyzer().analyze_cross_asset_correlations(current_price)
+                        # Analyze cross-asset correlations for broader market context (OPTIONAL)
+                        try:
+                            cross_asset_analysis = get_global_cross_asset_correlation_analyzer().analyze_cross_asset_correlations(current_price)
+                        except Exception as e:
+                            logger.warning(f"⚠️ Cross-asset analysis skipped - real data not available: {e}")
+                            cross_asset_analysis = {"error": "Real cross-asset data not available", "data_source": "skipped"}
                         
-                        # Analyze on-chain data for blockchain insights
-                        onchain_analysis = get_global_onchain_data_analyzer().analyze_onchain_data(current_price)
+                        # On-Chain Data feature removed - no free APIs provide required metrics
+                        onchain_analysis = {"error": "On-Chain data feature removed - no free APIs available", "data_source": "removed"}
                         
                         # Analyze trading patterns for market setups (from MarketDataService)
                         if candles_5m and len(candles_5m) >= 10:
@@ -140,7 +148,22 @@ class MarketDataManager:
                         
                         # Calculate support/resistance levels using SupportResistanceCalculator
                         from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
-                        support_resistance_data = get_global_support_resistance_calculator().identify_key_levels(candles_5m)
+                        sr_calculator = get_global_support_resistance_calculator()
+                        
+                        # First try with 5m candles
+                        support_resistance_data = sr_calculator.identify_key_levels(candles_5m)
+                        
+                        # If no valid support found (or support is broken), fetch more historical data
+                        current_price = candles_5m[-1].get("close", 0) if candles_5m else 0
+                        strongest_support = support_resistance_data.get("strongest_support", 0)
+                        
+                        if current_price > 0 and (strongest_support == 0 or strongest_support >= current_price):
+                            logger.warning(f"⚠️ No valid support in 5m data - fetching 1h historical candles")
+                            # Fetch more historical data (1h candles for deeper history)
+                            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)  # 48 hours
+                            if candles_1h and len(candles_1h) >= 10:
+                                support_resistance_data = sr_calculator.identify_key_levels(candles_1h)
+                                logger.info(f"📊 S/R recalculated from 1h data: Support=${support_resistance_data.get('strongest_support', 0):,.2f}, Resistance=${support_resistance_data.get('strongest_resistance', 0):,.2f}")
                     else:
                         raise ValueError("Insufficient orderbook data")
                 else:
@@ -195,6 +218,39 @@ class MarketDataManager:
                 "current_price": current_price,
                 "timestamp": time.time()
             }
+            
+            # Add external API data using Yahoo Finance
+            try:
+                # Get Fear & Greed data
+                from core.external.fear_greed_api import get_global_fear_greed_api
+                fear_greed_api = get_global_fear_greed_api()
+                sentiment_data = fear_greed_api.get_fear_greed_index()
+                result["sentiment_data"] = sentiment_data
+            except Exception as e:
+                logger.warning(f"⚠️ Fear & Greed data skipped: {e}")
+                result["sentiment_data"] = {"error": "Fear & Greed data not available", "data_source": "failed"}
+            
+            try:
+                # Get News Sentiment data
+                from core.external.rss_news_api import get_global_rss_news_api
+                rss_news_api = get_global_rss_news_api()
+                news_sentiment = rss_news_api.get_news_sentiment()
+                result["news_sentiment"] = news_sentiment
+            except Exception as e:
+                logger.warning(f"⚠️ News Sentiment data skipped: {e}")
+                result["news_sentiment"] = {"error": "News Sentiment data not available", "data_source": "failed"}
+            
+            try:
+                # Get Whale Analytics data (COMPLETELY FREE)
+                from core.external.whale_analytics_api import get_global_whale_analytics_api
+                whale_analytics_api = get_global_whale_analytics_api()
+                whale_analytics = whale_analytics_api.get_whale_analytics()
+                result["whale_analytics"] = whale_analytics
+            except Exception as e:
+                logger.warning(f"⚠️ Whale Analytics data skipped: {e}")
+                result["whale_analytics"] = {"error": "Whale Analytics data not available", "data_source": "failed"}
+            
+            return result
             
         except Exception as e:
             logger.error(f"❌ MarketDataManager failed: {e}")

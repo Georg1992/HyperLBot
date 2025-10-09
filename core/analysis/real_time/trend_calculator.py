@@ -16,28 +16,38 @@ class TrendCalculator:
         logger.info("📈 Trend Calculator initialized - Simple working logic")
     
     def calculate_trend(self, candles: List[Dict], timeframe: str = "5m", strategy_name: str = "standard") -> Dict[str, Any]:
-        """Calculate real-time trend using strategy-specific parameters with explicit trend types"""
+        """
+        Calculate real-time trend using strategy-specific parameters with explicit trend types
+        Returns BOTH short-term (3 candles/15min) and medium-term (6 candles/30min) trends
+        """
         try:
             if len(candles) < 3:  # More reactive - need only 3 candles minimum
-                return {"trend": "SIDEWAYS", "trend_type": "NO_DATA", "strength": 0, "direction": 0, "confidence": 0}
+                return {
+                    "trend": "SIDEWAYS", 
+                    "trend_short": "SIDEWAYS",
+                    "trend_medium": "SIDEWAYS",
+                    "trend_type": "NO_DATA", 
+                    "strength": 0, 
+                    "direction": 0, 
+                    "confidence": 0
+                }
             
             # Get strategy-specific trend parameters
             trend_params = self._get_strategy_trend_params(strategy_name)
             num_candles = min(trend_params["num_candles"], len(candles))
             recent_closes = [candle["close"] for candle in candles[-num_candles:]]
             
-            # REAL-TIME: Calculate multiple timeframe trends for better detection
-            # 1. Ultra-short term (last 2-3 candles) - immediate reaction
-            ultra_short_closes = [candle["close"] for candle in candles[-3:]]
-            ultra_short_change_pct = ((ultra_short_closes[-1] - ultra_short_closes[0]) / ultra_short_closes[0]) * 100
+            # DUAL-TIMEFRAME TREND ANALYSIS
+            # 1. Short-term (3 candles / 15 min) - Momentum confirmation
+            short_closes = [float(candle["close"]) for candle in candles[-3:]]
+            short_change_pct = ((short_closes[-1] - short_closes[0]) / short_closes[0]) * 100
             
-            # 2. Short-term trend (last 5 candles) - recent momentum
-            short_closes = [candle["close"] for candle in candles[-5:]]
-            short_first = short_closes[0]
-            short_last = short_closes[-1]
-            short_change_pct = ((short_last - short_first) / short_first) * 100
+            # 2. Medium-term (24 candles / 2 hours) - Intraday trend direction
+            medium_candles = candles[-24:] if len(candles) >= 24 else candles
+            medium_closes = [float(candle["close"]) for candle in medium_candles]
+            medium_change_pct = ((medium_closes[-1] - medium_closes[0]) / medium_closes[0]) * 100
             
-            # 3. Medium-term trend (strategy-specific candles) - main trend
+            # For backward compatibility
             first_price = recent_closes[0]
             last_price = recent_closes[-1]
             price_change = last_price - first_price
@@ -65,113 +75,59 @@ class TrendCalculator:
             # Calculate momentum
             momentum = self._calculate_momentum(recent_closes)
             
-            # REAL-TIME TREND DETECTION: Multi-timeframe analysis with explicit trend types
-            ultra_short_abs = abs(ultra_short_change_pct)
-            short_term_abs = abs(short_change_pct)
-            medium_term_abs = abs(price_change_pct)
+            # CLASSIFY EACH TIMEFRAME INDEPENDENTLY
+            # Thresholds for classification
+            short_thresholds = {"strong": 0.3, "moderate": 0.15, "weak": 0.05}
+            medium_thresholds = {"strong": 1.0, "moderate": 0.5, "weak": 0.2}  # 2-hour trend needs bigger moves
             
-            # Pattern-based trend detection (more sensitive)
-            consecutive_green = 0
-            consecutive_red = 0
-            max_consecutive_green = 0
-            max_consecutive_red = 0
-            current_consecutive = 0
+            # Classify short-term trend (15 min)
+            trend_short = self._classify_trend(short_change_pct, short_thresholds)
             
-            for i in range(1, len(recent_closes)):
-                if recent_closes[i] > recent_closes[i-1]:
-                    consecutive_green += 1
-                    consecutive_red = 0
-                    max_consecutive_green = max(max_consecutive_green, consecutive_green)
-                elif recent_closes[i] < recent_closes[i-1]:
-                    consecutive_red += 1
-                    consecutive_green = 0
-                    max_consecutive_red = max(max_consecutive_red, consecutive_red)
-                else:
-                    consecutive_green = 0
-                    consecutive_red = 0
+            # Classify medium-term trend (2 hours)
+            trend_medium = self._classify_trend(medium_change_pct, medium_thresholds)
             
-            # REAL-TIME: Determine trend priority (ultra-short gets highest priority for immediate reaction)
-            trend_pct = 0
-            trend_type = "SIDEWAYS"
-            trend_source = "none"
-            
-            # Priority 1: Ultra-short term (immediate reaction) - more reasonable thresholds
-            if ultra_short_abs > 0.1:  # 0.1% threshold for immediate reaction (was 0.01%)
-                trend_pct = ultra_short_change_pct
-                trend_type = "IMMEDIATE"
-                trend_source = "ultra_short"
-            # Priority 2: Short-term momentum (recent action)
-            elif short_term_abs > 0.2:  # 0.2% threshold for short-term (was 0.02%)
-                trend_pct = short_change_pct
-                trend_type = "SHORT_TERM"
-                trend_source = "short_term"
-            # Priority 3: Medium-term trend (sustained move)
-            elif medium_term_abs > 0.3:  # 0.3% threshold for medium-term (was 0.03%)
-                trend_pct = price_change_pct
-                trend_type = "MEDIUM_TERM"
-                trend_source = "medium_term"
-            # Priority 4: Pattern-based detection (consecutive candles) - more stable
-            elif max_consecutive_green >= 3 or max_consecutive_red >= 3:  # Increased to 3 candles for stability
-                if max_consecutive_green >= max_consecutive_red:
-                    trend_pct = 0.15  # Small positive trend (was 0.015 - 10x more stable)
-                    trend_type = "PATTERN_BULLISH"
-                    trend_source = "pattern"
-                else:
-                    trend_pct = -0.15  # Small negative trend (was -0.015 - 10x more stable)
-                    trend_type = "PATTERN_BEARISH"
-                    trend_source = "pattern"
-            else:
-                trend_pct = price_change_pct
-                trend_type = "SIDEWAYS"
-                trend_source = "medium_term"
-            
-            # Apply strategy-specific trend classification (basic classification)
-            thresholds = trend_params["thresholds"]
+            # Primary trend (for backward compatibility) - use medium-term
+            trend = trend_medium
+            trend_pct = medium_change_pct
             direction = 1 if trend_pct > 0 else -1 if trend_pct < 0 else 0
             
-            # Basic trend classification
-            if abs(trend_pct) > thresholds["strong"]:  # Strong trend
-                if trend_pct > thresholds["strong"]:
-                    trend = "STRONG_UPTREND"
-                else:
-                    trend = "STRONG_DOWNTREND"
-            elif abs(trend_pct) > thresholds["moderate"]:  # Moderate trend
-                if trend_pct > thresholds["moderate"]:
-                    trend = "UPTREND"
-                else:
-                    trend = "DOWNTREND"
-            elif abs(trend_pct) > thresholds["weak"]:  # Weak trend
-                if trend_pct > thresholds["weak"]:
-                    trend = "WEAK_UPTREND"
-                else:
-                    trend = "WEAK_DOWNTREND"
-            else:
-                trend = "SIDEWAYS"
-            
             return {
+                # Primary trend (medium-term for backward compatibility)
                 "trend": trend,
-                "trend_timeframe": trend_type,  # What type of trend (IMMEDIATE, SHORT_TERM, MEDIUM_TERM, etc.)
-                "trend_source": trend_source,
-                "strength": round(strength, 3),
                 "direction": direction,
+                "strength": round(strength, 3),
                 "momentum": round(momentum, 6),
-                "acceleration": 0.0,
-                "price_change": round(price_change_pct, 3),
-                "ultra_short_change": round(ultra_short_change_pct, 3),
-                "short_term_change": round(short_change_pct, 3),
-                "medium_term_change": round(price_change_pct, 3),
-                "volume_confirmation": False,
+                "price_change": round(trend_pct, 3),
+                
+                # Dual-timeframe trends for prediction
+                "trend_short": trend_short,           # 15 min - momentum confirmation
+                "trend_medium": trend_medium,         # 2 hours - intraday direction
+                "short_change_pct": round(short_change_pct, 3),
+                "medium_change_pct": round(medium_change_pct, 3),
+                
+                # Metadata
                 "timeframe": timeframe,
                 "strategy": strategy_name,
                 "num_candles_used": num_candles,
-                "consecutive_green": max_consecutive_green,
-                "consecutive_red": max_consecutive_red,
                 "data_source": f"realtime_{strategy_name}"
             }
             
         except Exception as e:
             logger.error(f"❌ Trend calculation failed: {e}")
             return {"trend": "SIDEWAYS", "trend_timeframe": "NO_DATA", "strength": 0, "direction": 0, "confidence": 0}
+    
+    def _classify_trend(self, change_pct: float, thresholds: Dict[str, float]) -> str:
+        """Classify trend based on percentage change and thresholds"""
+        abs_change = abs(change_pct)
+        
+        if abs_change > thresholds["strong"]:
+            return "STRONG_UPTREND" if change_pct > 0 else "STRONG_DOWNTREND"
+        elif abs_change > thresholds["moderate"]:
+            return "UPTREND" if change_pct > 0 else "DOWNTREND"
+        elif abs_change > thresholds["weak"]:
+            return "WEAK_UPTREND" if change_pct > 0 else "WEAK_DOWNTREND"
+        else:
+            return "SIDEWAYS"
     
     def _calculate_momentum(self, prices: List[float]) -> float:
         """Calculate price momentum"""

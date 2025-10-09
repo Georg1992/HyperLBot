@@ -59,26 +59,8 @@ class BaseDataManager(ABC):
             logger.error(f"❌ Failed to get ongoing candle: {e}")
             return None
     
-    def get_current_price(self, symbol: str = "BTC") -> float:
-        """Get current price - common implementation"""
-        try:
-            cache_key = f"price_{symbol}"
-            
-            # Check cache first
-            if self._is_cache_valid(cache_key, cache_duration=30):  # 30 second cache for price
-                return self.cache[cache_key]
-            
-            # Fetch from API
-            price = self._fetch_current_price(symbol)
-            
-            # Cache the result
-            self._cache_data(cache_key, price)
-            
-            return price
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get current price: {e}")
-            return 0.0
+    # get_current_price method removed - WebSocket is the only price source
+    # Price data comes exclusively from HyperliquidWebSocket.get_current_price()
     
     def _is_cache_valid(self, key: str, cache_duration: Optional[int] = None) -> bool:
         """Check if cached data is still valid"""

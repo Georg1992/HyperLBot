@@ -61,9 +61,8 @@ class SessionManager:
     
     def start_session(self, session_id: str = None, strategy: str = "standard", initial_balance: float = None) -> str:
         """Start a new trading session"""
-        from core.constants import MagicNumbers
         if initial_balance is None:
-            initial_balance = MagicNumbers.FALLBACK_BALANCE
+            raise ValueError("Initial balance is required - NO FALLBACKS")
         with self.session_lock:
             try:
                 # Generate session ID if not provided

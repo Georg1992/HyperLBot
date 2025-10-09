@@ -137,6 +137,11 @@ class APIManager:
         try:
             logger.info("🧪 Testing all connections...")
             
+            # Wait for WebSocket to be ready before testing
+            logger.info("⏳ Waiting for WebSocket connections to establish...")
+            import time
+            time.sleep(3)  # Give WebSocket time to connect
+            
             # Test Hyperliquid API
             current_price = self.hyperliquid_api.get_current_price("BTC")
             if not current_price:

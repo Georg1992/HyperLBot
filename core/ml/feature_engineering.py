@@ -26,7 +26,7 @@ class FeatureEngineer:
         
         Args:
             market_data: Raw market data from MarketDataManager
-            signals: Signal data from SignalAggregator
+            signals: Optional signal data (deprecated, kept for backward compatibility)
             
         Returns:
             numpy array of engineered features

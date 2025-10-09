@@ -248,26 +248,42 @@ def run_paper_trading():
                     print(f"   Trades: {summary['total_trades']}")
                     print(f"   Win Rate: {summary['win_rate']:.1f}%")
                     
-                    choice = input("\n1. Continue with existing account\n2. Create new account\nChoice (1-2): ").strip()
-                    
-                    if choice == "1":
+                    # Check if running in background mode (no stdin available)
+                    import sys
+                    if not sys.stdin.isatty():
+                        # Running in background mode - automatically use existing account
+                        logger.info("🤖 Background mode detected - using existing account automatically")
                         initial_balance = account_data["current_balance"]
-                    elif choice == "2":
-                        if account_manager.reset_account():
-                            new_balance = float(input(f"Enter initial balance (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
-                            account_data = account_manager.create_account(new_balance)
-                            initial_balance = new_balance
-                        else:
-                            logger.error("Failed to reset account")
-                            return
                     else:
-                        print("Invalid choice")
-                        return
+                        # Interactive mode - ask user for choice
+                        choice = input("\n1. Continue with existing account\n2. Create new account\nChoice (1-2): ").strip()
+                        
+                        if choice == "1":
+                            initial_balance = account_data["current_balance"]
+                        elif choice == "2":
+                            if account_manager.reset_account():
+                                new_balance = float(input(f"Enter initial balance (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
+                                account_data = account_manager.create_account(new_balance)
+                                initial_balance = new_balance
+                            else:
+                                logger.error("Failed to reset account")
+                                return
+                        else:
+                            print("Invalid choice")
+                            return
                 else:
                     logger.error("Failed to load existing account")
                     return
             else:
-                new_balance = float(input(f"Enter initial balance (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
+                # Check if running in background mode
+                import sys
+                if not sys.stdin.isatty():
+                    # Running in background mode - use default balance
+                    logger.info("🤖 Background mode detected - creating new account with default balance")
+                    new_balance = config.DEFAULT_INITIAL_BALANCE
+                else:
+                    # Interactive mode - ask user for balance
+                    new_balance = float(input(f"Enter initial balance (default {config.DEFAULT_INITIAL_BALANCE}): ") or str(config.DEFAULT_INITIAL_BALANCE))
                 account_data = account_manager.create_account(new_balance)
                 initial_balance = new_balance
             
@@ -276,7 +292,7 @@ def run_paper_trading():
             
             # Initialize system and get services (using singletons)
             system_initializer = get_system_initializer()
-            if not system_initializer.initialize_system():
+            if not system_initializer.initialize_system(initial_balance):
                 logger.error("Failed to initialize system")
                 return
             

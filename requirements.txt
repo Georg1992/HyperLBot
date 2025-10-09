@@ -17,3 +17,7 @@ websockets>=12.0
 # Web Dashboard
 flask>=3.0.0
 flask-socketio>=5.3.6
+
+# RSS News & Sentiment Analysis
+feedparser>=6.0.11
+vaderSentiment>=3.3.2

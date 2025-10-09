@@ -115,24 +115,37 @@ class RSSNewsAPI:
                     logger.debug("📰 Using cached news sentiment data")
                     return cached_data
             
-            # Fetch and analyze news
+            # Fetch real RSS news articles
+            logger.info("📰 Fetching real news from RSS feeds...")
             all_articles = self._fetch_all_news()
-            if not all_articles:
-                logger.warning("⚠️ No news articles fetched")
-                return self._create_fallback_sentiment()
             
-            # Analyze sentiment
+            if not all_articles:
+                logger.warning("⚠️ No articles fetched from RSS feeds")
+                raise ValueError("Real news sentiment data not available - NO FALLBACKS: No articles fetched")
+            
+            # Analyze sentiment from real articles
             sentiment_analysis = self._analyze_sentiment(all_articles)
             
-            # Create comprehensive result
+            # Create comprehensive result with all required fields
+            sentiment_data = sentiment_analysis['sentiment']
             result = {
-                'sentiment': sentiment_analysis['sentiment'],
+                'sentiment': {
+                    'classification': sentiment_data['classification'],
+                    'score': sentiment_data['score'],
+                    'confidence': sentiment_analysis['confidence'],
+                    'bullish_count': sentiment_data.get('bullish_count', 0),
+                    'bearish_count': sentiment_data.get('bearish_count', 0),
+                    'neutral_count': sentiment_data.get('neutral_count', 0),
+                    'total_news': len(all_articles)  # Total articles analyzed
+                },
                 'impact': sentiment_analysis['impact'],
                 'trading_signal': sentiment_analysis['trading_signal'],
                 'confidence': sentiment_analysis['confidence'],
-                'articles_analyzed': len(all_articles),
+                'articles': all_articles[:10],  # Include top 10 articles for reference
+                'total_articles': len(all_articles),
                 'sources': list(set([article['source'] for article in all_articles])),
                 'timestamp': current_time,
+                'data_source': 'rss_feeds',
                 'cache_duration': self.cache_duration
             }
             
@@ -146,11 +159,12 @@ class RSSNewsAPI:
             
         except Exception as e:
             logger.error(f"❌ News sentiment analysis failed: {e}")
-            return self._create_fallback_sentiment()
+            raise ValueError(f"News sentiment analysis failed - NO FALLBACKS: {e}")
     
     def _fetch_all_news(self) -> List[Dict[str, Any]]:
         """Fetch news from all RSS feeds"""
         all_articles = []
+        successful_feeds = 0
         
         for source_name, source_config in self.rss_feeds.items():
             # Skip disabled feeds
@@ -160,18 +174,22 @@ class RSSNewsAPI:
                 
             try:
                 articles = self._fetch_rss_feed(source_name, source_config)
-                all_articles.extend(articles)
-                logger.debug(f"📰 Fetched {len(articles)} articles from {source_name}")
+                if articles:
+                    all_articles.extend(articles)
+                    successful_feeds += 1
+                    logger.info(f"✅ Fetched {len(articles)} BTC articles from {source_name}")
+                else:
+                    logger.debug(f"📰 No BTC articles from {source_name}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to fetch from {source_name}: {e}")
-                # Temporarily disable feed if it fails consistently
-                self.disabled_feeds.add(source_name)
-                logger.warning(f"🚫 Temporarily disabled feed: {source_name}")
+                # Don't disable feeds immediately - they might be temporarily down
                 continue
         
-        # Remove duplicates and sort by date
+        logger.info(f"📊 RSS Fetch Summary: {successful_feeds}/{len(self.rss_feeds)} feeds successful, {len(all_articles)} total articles")
+        
+        # Remove duplicates and sort by date (using timestamp for sorting)
         unique_articles = self._remove_duplicates(all_articles)
-        sorted_articles = sorted(unique_articles, key=lambda x: x['published'], reverse=True)
+        sorted_articles = sorted(unique_articles, key=lambda x: x['published_timestamp'], reverse=True)
         
         return sorted_articles[:self.news_limit]
     
@@ -191,11 +209,13 @@ class RSSNewsAPI:
             
             for entry in feed.entries:
                 # Extract article data
+                published_date = self._parse_date(entry.get('published', ''))
                 article = {
                     'title': entry.get('title', ''),
                     'summary': entry.get('summary', ''),
                     'link': entry.get('link', ''),
-                    'published': self._parse_date(entry.get('published', '')),
+                    'published': published_date.isoformat() if published_date else None,  # Convert to ISO string for JSON
+                    'published_timestamp': published_date.timestamp() if published_date else time.time(),  # For sorting
                     'source': source_name,
                     'weight': source_config['weight'],
                     'btc_keywords': source_config['btc_keywords']
@@ -448,30 +468,7 @@ class RSSNewsAPI:
             'articles': []
         }
     
-    def _create_fallback_sentiment(self) -> Dict[str, Any]:
-        """Create fallback sentiment when analysis fails"""
-        return {
-            'sentiment': {
-                'classification': 'neutral',
-                'score': 0.0,
-                'bullish_count': 0,
-                'bearish_count': 0,
-                'neutral_count': 0
-            },
-            'impact': {
-                'impact_level': 'low',
-                'strength': 0.0,
-                'article_count': 0
-            },
-            'trading_signal': {
-                'signal': 'NEUTRAL',
-                'strength': 'weak',
-                'reasoning': 'News analysis temporarily unavailable'
-            },
-            'confidence': 0.1,
-            'articles': [],
-            'error': True
-        }
+    # _create_fallback_sentiment method removed - NO FALLBACKS policy
     
     def test_connection(self) -> Dict[str, Any]:
         """Test RSS feed connections"""

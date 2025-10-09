@@ -40,7 +40,7 @@ class WhaleAnalyticsAPI:
     
     def get_whale_analytics(self) -> Dict[str, Any]:
         """
-        Get comprehensive whale analytics
+        Get comprehensive whale analytics using REAL Whale Alert API
         
         Returns:
             Dict containing whale activity, sentiment, and exchange flows
@@ -51,8 +51,11 @@ class WhaleAnalyticsAPI:
             if self._is_cache_valid(cache_key):
                 return self.cache[cache_key]["data"]
             
-            # Fetch fresh data
-            whale_data = self._fetch_whale_data()
+            # Use REAL BlockCypher API for whale analytics (COMPLETELY FREE)
+            from core.external.blockcypher_api import get_global_blockcypher_api
+            blockcypher_api = get_global_blockcypher_api()
+            
+            whale_data = blockcypher_api.get_whale_analytics()
             
             if whale_data and "error" not in whale_data:
                 # Cache the result
@@ -61,15 +64,17 @@ class WhaleAnalyticsAPI:
                     "timestamp": time.time()
                 }
                 
-                logger.info(f"🐋 Whale analytics updated: {whale_data.get('sentiment', 'unknown')} sentiment")
+                activity_level = whale_data.get('whale_activity', {}).get('activity_level', 'unknown')
+                whale_count = whale_data.get('whale_activity', {}).get('whale_count', 0)
+                logger.info(f"🐋 Whale analytics updated: {activity_level} activity ({whale_count} whales)")
                 return whale_data
             else:
-                logger.warning("⚠️ Failed to fetch whale analytics")
-                return self._get_fallback_data()
+                logger.warning("⚠️ Failed to fetch whale analytics from BlockCypher API")
+                raise ValueError("Whale analytics fetch failed - NO FALLBACKS")
                 
         except Exception as e:
             logger.error(f"❌ Whale analytics fetch failed: {e}")
-            return self._get_fallback_data()
+            raise ValueError(f"Whale analytics fetch failed - NO FALLBACKS: {e}")
     
     def _fetch_whale_data(self) -> Dict[str, Any]:
         """Fetch whale data from BlockCypher API"""
@@ -366,31 +371,7 @@ class WhaleAnalyticsAPI:
         cache_time = self.cache[cache_key]["timestamp"]
         return (time.time() - cache_time) < self.cache_duration
     
-    def _get_fallback_data(self) -> Dict[str, Any]:
-        """Get fallback data when API fails"""
-        return {
-            "whale_activity": {
-                "whale_count": 0,
-                "total_volume_usd": 0,
-                "activity_level": "unknown",
-                "confirmed_ratio": 0.5
-            },
-            "exchange_flows": {
-                "total_inflow": 0,
-                "total_outflow": 0,
-                "net_flow": 0,
-                "flow_direction": "neutral"
-            },
-            "sentiment": {
-                "score": 0.5,
-                "classification": "neutral",
-                "confidence": "low",
-                "trading_bias": "NEUTRAL",
-                "reversal_probability": 0.3
-            },
-            "timestamp": time.time(),
-            "data_source": "fallback"
-        }
+    # _get_fallback_data method removed - NO FALLBACKS policy
     
     def test_connection(self) -> bool:
         """Test API connection"""

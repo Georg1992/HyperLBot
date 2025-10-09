@@ -80,26 +80,20 @@ class CrossAssetCorrelationAnalyzer:
             if cached_data:
                 return cached_data
             
-            # Use Alpha Vantage API for DXY data (free tier)
-            api_key = "demo"  # Replace with actual API key for production
-            url = f"https://www.alphavantage.co/query?function=FX_DAILY&from_symbol=USD&to_symbol=USD&apikey={api_key}"
+            # Use Yahoo Finance API for DXY data
+            from core.external.yahoo_finance_api import get_global_yahoo_finance_api
+            yahoo_api = get_global_yahoo_finance_api()
             
-            # For demo purposes, return mock data
-            dxy_data = {
-                "current_price": 103.45,  # Mock DXY price
-                "change_24h": -0.12,
-                "change_24h_pct": -0.12,
-                "trend": "WEAK_DOWN",
-                "timestamp": time.time(),
-                "data_source": "mock_dxy"
-            }
+            dxy_data = yahoo_api.get_dxy_data()
             
+            # Cache the data
             self._cache_data(cache_key, dxy_data)
+            
             return dxy_data
             
         except Exception as e:
             logger.error(f"❌ Failed to get DXY data: {e}")
-            return {"current_price": 0.0, "change_24h": 0.0, "trend": "UNKNOWN", "error": str(e)}
+            raise ValueError(f"DXY data fetch failed - NO FALLBACKS: {e}")
     
     def _get_gold_data(self) -> Dict[str, Any]:
         """Get Gold price data"""
@@ -110,26 +104,20 @@ class CrossAssetCorrelationAnalyzer:
             if cached_data:
                 return cached_data
             
-            # Use Alpha Vantage API for Gold data
-            api_key = "demo"  # Replace with actual API key for production
-            url = f"https://www.alphavantage.co/query?function=DIGITAL_CURRENCY_DAILY&symbol=GOLD&market=USD&apikey={api_key}"
+            # Use Yahoo Finance API for Gold data
+            from core.external.yahoo_finance_api import get_global_yahoo_finance_api
+            yahoo_api = get_global_yahoo_finance_api()
             
-            # For demo purposes, return mock data
-            gold_data = {
-                "current_price": 2025.50,  # Mock Gold price
-                "change_24h": 8.25,
-                "change_24h_pct": 0.41,
-                "trend": "WEAK_UP",
-                "timestamp": time.time(),
-                "data_source": "mock_gold"
-            }
+            gold_data = yahoo_api.get_gold_data()
             
+            # Cache the data
             self._cache_data(cache_key, gold_data)
+            
             return gold_data
             
         except Exception as e:
             logger.error(f"❌ Failed to get Gold data: {e}")
-            return {"current_price": 0.0, "change_24h": 0.0, "trend": "UNKNOWN", "error": str(e)}
+            raise ValueError(f"Gold data fetch failed - NO FALLBACKS: {e}")
     
     def _get_stock_indices_data(self) -> Dict[str, Any]:
         """Get major stock indices data"""
@@ -140,45 +128,29 @@ class CrossAssetCorrelationAnalyzer:
             if cached_data:
                 return cached_data
             
-            # For demo purposes, return mock data for major indices
-            stock_data = {
-                "sp500": {
-                    "current_price": 4450.25,
-                    "change_24h": -12.50,
-                    "change_24h_pct": -0.28,
-                    "trend": "WEAK_DOWN"
-                },
-                "nasdaq": {
-                    "current_price": 13850.75,
-                    "change_24h": -45.25,
-                    "change_24h_pct": -0.33,
-                    "trend": "WEAK_DOWN"
-                },
-                "dow": {
-                    "current_price": 34500.00,
-                    "change_24h": -85.50,
-                    "change_24h_pct": -0.25,
-                    "trend": "WEAK_DOWN"
-                },
-                "timestamp": time.time(),
-                "data_source": "mock_stocks"
-            }
+            # Use Yahoo Finance API for Stock indices data
+            from core.external.yahoo_finance_api import get_global_yahoo_finance_api
+            yahoo_api = get_global_yahoo_finance_api()
             
+            stock_data = yahoo_api.get_stock_indices_data()
+            
+            # Cache the data
             self._cache_data(cache_key, stock_data)
+            
             return stock_data
             
         except Exception as e:
             logger.error(f"❌ Failed to get stock indices data: {e}")
-            return {"sp500": {}, "nasdaq": {}, "dow": {}, "error": str(e)}
+            raise ValueError(f"Stock data fetch failed - NO FALLBACKS: {e}")
     
     def _analyze_dxy_correlation(self, dxy_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze DXY correlation with Bitcoin"""
         try:
-            if not dxy_data or dxy_data.get("current_price", 0) == 0:
+            if not dxy_data or dxy_data.get("price", 0) == 0:
                 return {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No DXY data"}
             
-            dxy_price = dxy_data["current_price"]
-            dxy_change = dxy_data.get("change_24h_pct", 0)
+            dxy_price = dxy_data["price"]
+            dxy_change = dxy_data.get("change_percent", 0)
             
             # Historical correlation: DXY and BTC typically have negative correlation
             # Strong DXY (dollar strength) usually correlates with weaker BTC
@@ -217,11 +189,11 @@ class CrossAssetCorrelationAnalyzer:
     def _analyze_gold_correlation(self, gold_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze Gold correlation with Bitcoin"""
         try:
-            if not gold_data or gold_data.get("current_price", 0) == 0:
+            if not gold_data or gold_data.get("price", 0) == 0:
                 return {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No Gold data"}
             
-            gold_price = gold_data["current_price"]
-            gold_change = gold_data.get("change_24h_pct", 0)
+            gold_price = gold_data["price"]
+            gold_change = gold_data.get("change_percent", 0)
             
             # Historical correlation: Gold and BTC have positive correlation (both safe havens)
             base_correlation = 0.4  # Historical positive correlation
@@ -259,18 +231,22 @@ class CrossAssetCorrelationAnalyzer:
     def _analyze_stock_correlation(self, stock_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze stock market correlation with Bitcoin"""
         try:
-            if not stock_data or not stock_data.get("sp500"):
+            if not stock_data or not stock_data.get("indices"):
                 return {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No stock data"}
             
+            # Use composite data from Yahoo Finance
+            composite_change = stock_data.get("composite_change", 0)
+            composite_price = stock_data.get("composite_price", 0)
+            indices_data = stock_data.get("indices", {})
+            
             # Calculate average stock market performance
-            indices = ["sp500", "nasdaq", "dow"]
             changes = []
             trends = []
             
-            for index in indices:
-                if index in stock_data and stock_data[index]:
-                    changes.append(stock_data[index].get("change_24h_pct", 0))
-                    trends.append(stock_data[index].get("trend", "UNKNOWN"))
+            for index_name, index_data in indices_data.items():
+                if index_data:
+                    changes.append(index_data.get("change_percent", 0))
+                    trends.append("UNKNOWN")  # Yahoo Finance doesn't provide trend
             
             if not changes:
                 return {"correlation": 0.0, "strength": "UNKNOWN", "interpretation": "No valid stock data"}
@@ -303,7 +279,7 @@ class CrossAssetCorrelationAnalyzer:
                 "interpretation": interpretation,
                 "avg_stock_change_pct": avg_change,
                 "stock_trends": trends,
-                "indices_data": {k: v for k, v in stock_data.items() if k in indices}
+                "indices_data": indices_data
             }
             
         except Exception as e:

@@ -77,16 +77,30 @@ class StrategyManager:
             logger.info(f"🤖 ML Strategy Analysis: {optimal_strategy} (confidence: {confidence:.3f})")
             logger.info(f"   📊 Reasoning: {reasoning}")
             
+            # CRITICAL: Validate ML strategy against rule-based logic
+            rule_based_strategy = self._rule_based_strategy(market_data, historical_context)
+            
+            # If ML and rules disagree significantly, use rule-based (more reliable)
+            if optimal_strategy != rule_based_strategy:
+                logger.warning(f"⚠️ ML/Rule mismatch: ML={optimal_strategy}, Rules={rule_based_strategy}")
+                
+                # Use rule-based if confidence is low or strategies are incompatible
+                if confidence < 0.7 or self._are_strategies_incompatible(optimal_strategy, market_data):
+                    logger.warning(f"🔄 Overriding ML with rule-based strategy: {rule_based_strategy}")
+                    optimal_strategy = rule_based_strategy
+                else:
+                    logger.info(f"✅ ML strategy validated with high confidence ({confidence:.3f})")
+            
             # Check if strategy switch is needed and allowed
             if optimal_strategy != self.current_strategy:
                 if self._can_switch_strategy():
-                    logger.info(f"🔄 ML Strategy switch: {self.current_strategy} → {optimal_strategy}")
+                    logger.info(f"🔄 Strategy switch: {self.current_strategy} → {optimal_strategy}")
                     self._switch_strategy(optimal_strategy)
                     
                     # Record strategy selection for learning
                     self._record_strategy_selection(optimal_strategy, market_data, recommendation)
                 else:
-                    logger.info(f"⏳ ML Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}")
+                    logger.info(f"⏳ Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}")
             else:
                 # Still record for learning even if no switch
                 self._record_strategy_selection(optimal_strategy, market_data, recommendation)
@@ -152,6 +166,70 @@ class StrategyManager:
         else:
             logger.info(f"🎯 Strategy: Standard conditions ({volatility_category} volatility {volatility_5m:.3f}, {trend} trend) → standard")
             return "standard"
+    
+    def _are_strategies_incompatible(self, strategy: str, market_data: Dict[str, Any]) -> bool:
+        """
+        Validate if a strategy is incompatible with current market conditions
+        Returns True if strategy SHOULD NOT be used
+        """
+        try:
+            trend = market_data.get("trend", "SIDEWAYS")
+            volatility_5m = market_data.get("volatility_5m", 0)
+            volatility_category = market_data.get("volatility_category", "LOW")
+            volume_category = market_data.get("volume_category", "LOW")
+            
+            # TREND FOLLOWING incompatibility checks
+            if strategy == "trend_following":
+                # CRITICAL: Trend Following requires STRONG trend
+                if trend not in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
+                    logger.warning(f"❌ INCOMPATIBLE: trend_following requires STRONG trend, got {trend}")
+                    return True
+                # Requires HIGH/VERY_HIGH volume
+                if volume_category not in ["HIGH", "VERY_HIGH"]:
+                    logger.warning(f"❌ INCOMPATIBLE: trend_following requires HIGH volume, got {volume_category}")
+                    return True
+                # Requires MODERATE volatility
+                if volatility_category not in ["MODERATE"]:
+                    logger.warning(f"❌ INCOMPATIBLE: trend_following requires MODERATE volatility, got {volatility_category}")
+                    return True
+            
+            # SPIKE HUNTING incompatibility checks
+            elif strategy == "spike_hunting":
+                if volatility_category != "EXTREME":
+                    logger.warning(f"❌ INCOMPATIBLE: spike_hunting requires EXTREME volatility, got {volatility_category}")
+                    return True
+            
+            # SCALPING incompatibility checks
+            elif strategy == "scalping":
+                if volatility_category != "MODERATE":
+                    logger.warning(f"❌ INCOMPATIBLE: scalping requires MODERATE volatility, got {volatility_category}")
+                    return True
+                if volume_category == "VERY_LOW":
+                    logger.warning(f"❌ INCOMPATIBLE: scalping requires decent volume, got {volume_category}")
+                    return True
+            
+            # HIGH VOLATILITY incompatibility checks
+            elif strategy == "high_volatility":
+                if volatility_category != "HIGH":
+                    logger.warning(f"❌ INCOMPATIBLE: high_volatility requires HIGH volatility, got {volatility_category}")
+                    return True
+                # Should NOT be used with strong trends (that's trend following territory)
+                if trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
+                    logger.warning(f"❌ INCOMPATIBLE: high_volatility conflicts with STRONG trend {trend}")
+                    return True
+            
+            # LOW VOLATILITY RANGE incompatibility checks
+            elif strategy == "low_volatility_range":
+                if volatility_category not in ["LOW", "VERY_LOW"]:
+                    logger.warning(f"❌ INCOMPATIBLE: low_volatility_range requires LOW volatility, got {volatility_category}")
+                    return True
+            
+            # Strategy is compatible
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Strategy compatibility check failed: {e}")
+            return False  # Allow strategy if check fails
     
     def _can_switch_strategy(self) -> bool:
         """Check if strategy switching is allowed (cooldown period)"""

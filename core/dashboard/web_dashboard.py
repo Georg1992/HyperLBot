@@ -347,6 +347,7 @@ class EventDrivenTradingDashboard:
                 "ml_performance": ml_performance,  # Add ML performance data
                 "logs": dashboard_data.get("logs", []),
                 "predictions": predictions,
+                "prediction": predictions[-1] if predictions else None,  # Current active prediction
                 "trades": dashboard_data.get("trades", []),
                 "orderbook": {"bids": [], "asks": []},
                 "global_volume": {"volume": 0.0},

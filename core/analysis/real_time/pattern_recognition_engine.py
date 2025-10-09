@@ -33,7 +33,103 @@ class PatternRecognitionEngine:
         self.medium_confidence = 0.6
         self.low_confidence = 0.4
         
-        logger.info("📊 Pattern Recognition Engine initialized")
+        # Pattern expiration times (in minutes) for 5m chart
+        # Formula: candle_interval (5m) × number_of_candles
+        self.pattern_expiration = {
+            # Reversal patterns - discard after 8 candles (40 minutes)
+            "HEAD_SHOULDERS": 40,
+            "INVERSE_HEAD_SHOULDERS": 40,
+            "DOUBLE_TOP": 40,
+            "DOUBLE_BOTTOM": 40,
+            "TREND_CHANGE": 40,
+            
+            # Triangle patterns - discard after 6 candles (30 minutes)
+            "ASCENDING_TRIANGLE": 30,
+            "DESCENDING_TRIANGLE": 30,
+            "SYMMETRICAL_TRIANGLE": 30,
+            
+            # Wedge patterns - discard after 6 candles (30 minutes)
+            "RISING_WEDGE": 30,
+            "FALLING_WEDGE": 30,
+            
+            # Channel patterns - longer validity (10 candles = 50 minutes)
+            "HORIZONTAL_CHANNEL": 50,
+            "ASCENDING_CHANNEL": 50,
+            "DESCENDING_CHANNEL": 50,
+            
+            # Continuation patterns - shorter validity (6 candles = 30 minutes)
+            "BULLISH_CONTINUATION": 30,
+            "BEARISH_CONTINUATION": 30,
+            
+            # Candlestick patterns - very short validity (3 candles = 15 minutes)
+            "BULLISH_ENGULFING": 15,
+            "BEARISH_ENGULFING": 15,
+            "HAMMER": 15,
+            "INVERTED_HAMMER": 15,
+            "SHOOTING_STAR": 15,
+            "HANGING_MAN": 15,
+            "DOJI": 10,
+            "DRAGONFLY_DOJI": 10,
+            "GRAVESTONE_DOJI": 10,
+            "THREE_WHITE_SOLDIERS": 20,
+            "THREE_BLACK_CROWS": 20,
+        }
+        
+        # Pattern weights for prediction engine (normalized impact scores)
+        # Higher weight = more significant for trading decisions
+        self.pattern_weights = {
+            # Tier 1: Strong Reversal Patterns (18-20%)
+            "HEAD_SHOULDERS": 0.20,
+            "INVERSE_HEAD_SHOULDERS": 0.20,
+            "DOUBLE_TOP": 0.18,
+            "DOUBLE_BOTTOM": 0.18,
+            
+            # Tier 2: Triangle Patterns (14-16%)
+            "ASCENDING_TRIANGLE": 0.16,
+            "DESCENDING_TRIANGLE": 0.16,
+            "SYMMETRICAL_TRIANGLE": 0.14,
+            
+            # Tier 3: Wedge Patterns (14-16%)
+            "FALLING_WEDGE": 0.16,
+            "RISING_WEDGE": 0.16,
+            
+            # Tier 4: Engulfing Patterns (15%) - Very reliable on 5m charts
+            "BULLISH_ENGULFING": 0.15,
+            "BEARISH_ENGULFING": 0.15,
+            
+            # Tier 5: Three Soldiers/Crows (14%) - Strong trend confirmation
+            "THREE_WHITE_SOLDIERS": 0.14,
+            "THREE_BLACK_CROWS": 0.14,
+            
+            # Tier 6: Hammer/Shooting Star (12%) - Local reversals
+            "HAMMER": 0.12,
+            "INVERTED_HAMMER": 0.12,
+            "SHOOTING_STAR": 0.12,
+            "HANGING_MAN": 0.12,
+            
+            # Tier 7: Channel Patterns (10-12%)
+            "ASCENDING_CHANNEL": 0.12,
+            "DESCENDING_CHANNEL": 0.12,
+            "HORIZONTAL_CHANNEL": 0.10,
+            
+            # Tier 8: Continuation Patterns (10%)
+            "BULLISH_CONTINUATION": 0.10,
+            "BEARISH_CONTINUATION": 0.10,
+            "TREND_CHANGE": 0.10,
+            
+            # Tier 9: Doji Patterns (8%) - Indecision signals
+            "DOJI": 0.08,
+            "DRAGONFLY_DOJI": 0.08,
+            "GRAVESTONE_DOJI": 0.08,
+        }
+        
+        # Pattern history to track first detection time
+        self.pattern_history = {}
+        
+        logger.info("📊 Pattern Recognition Engine initialized with pattern-specific weights")
+        logger.info(f"   ⚡ {len(self.pattern_weights)} pattern types with differentiated weights (8%-20%)")
+        logger.info(f"   🕯️ {len([p for p in self.pattern_weights.keys() if 'ENGULFING' in p or 'HAMMER' in p or 'DOJI' in p or 'SOLDIERS' in p or 'CROWS' in p])} candlestick patterns added")
+        logger.info(f"   ⏰ Pattern expiration: 10-50 minutes based on pattern type")
     
     def analyze_patterns(self, candles: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -50,6 +146,8 @@ class PatternRecognitionEngine:
                 logger.warning(f"⚠️ Insufficient candles for pattern analysis: {len(candles)} < {self.min_pattern_length}")
                 raise Exception(f"Insufficient candles for pattern analysis: {len(candles)} < {self.min_pattern_length}")
             
+            current_time = time.time()
+            
             # Extract price data
             prices = self._extract_price_data(candles)
             
@@ -60,8 +158,19 @@ class PatternRecognitionEngine:
                 "triangle_patterns": self._detect_triangle_patterns(prices),
                 "channel_patterns": self._detect_channel_patterns(prices),
                 "wedge_patterns": self._detect_wedge_patterns(prices),
-                "trend_patterns": self._detect_trend_patterns(prices)
+                "trend_patterns": self._detect_trend_patterns(prices),
+                "candlestick_patterns": self._detect_candlestick_patterns(candles)
             }
+            
+            # Track pattern first detection time and add timestamps
+            self._track_pattern_timestamps(patterns, current_time)
+            
+            # Filter out expired patterns
+            patterns = self._filter_expired_patterns(patterns, current_time)
+            
+            # CRITICAL FIX: Resolve conflicting patterns BEFORE returning to dashboard
+            # This ensures only viable patterns are displayed on the chart
+            patterns = self._resolve_pattern_conflicts(patterns)
             
             # Calculate overall pattern confidence
             overall_confidence = self._calculate_overall_confidence(patterns)
@@ -74,13 +183,106 @@ class PatternRecognitionEngine:
                 "overall_confidence": overall_confidence,
                 "market_setup": market_setup,
                 "pattern_count": sum(len(p) for p in patterns.values()),
-                "timestamp": time.time(),
+                "timestamp": current_time,
                 "data_source": "pattern_recognition"
             }
             
         except Exception as e:
             logger.error(f"❌ Pattern analysis failed: {e}")
             raise Exception(f"Pattern analysis failed: {e}")
+    
+    def _track_pattern_timestamps(self, patterns: Dict[str, List[Dict[str, Any]]], current_time: float):
+        """
+        Track when patterns were first detected and add timestamps to pattern data
+        
+        Args:
+            patterns: Dictionary of pattern lists
+            current_time: Current timestamp
+        """
+        for pattern_type, pattern_list in patterns.items():
+            for pattern in pattern_list:
+                pattern_name = pattern.get("pattern", "UNKNOWN")
+                pattern_key = self._get_pattern_key(pattern)
+                
+                # If pattern is new, record first detection time
+                if pattern_key not in self.pattern_history:
+                    self.pattern_history[pattern_key] = {
+                        "first_detected": current_time,
+                        "pattern_name": pattern_name,
+                        "pattern_type": pattern_type
+                    }
+                    logger.debug(f"📊 New pattern detected: {pattern_name}")
+                
+                # Add timestamp fields to pattern
+                pattern["first_detected"] = self.pattern_history[pattern_key]["first_detected"]
+                pattern["age_minutes"] = (current_time - pattern["first_detected"]) / 60.0
+    
+    def _filter_expired_patterns(self, patterns: Dict[str, List[Dict[str, Any]]], current_time: float) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Filter out patterns that have exceeded their expiration time
+        
+        Args:
+            patterns: Dictionary of pattern lists
+            current_time: Current timestamp
+            
+        Returns:
+            Filtered dictionary with only valid (non-expired) patterns
+        """
+        filtered_patterns = {}
+        expired_count = 0
+        
+        for pattern_type, pattern_list in patterns.items():
+            valid_patterns = []
+            
+            for pattern in pattern_list:
+                pattern_name = pattern.get("pattern", "UNKNOWN")
+                age_minutes = pattern.get("age_minutes", 0)
+                max_age = self.pattern_expiration.get(pattern_name, 40)  # Default 40 minutes
+                
+                if age_minutes <= max_age:
+                    # Pattern is still valid
+                    valid_patterns.append(pattern)
+                else:
+                    # Pattern expired - remove from history and discard
+                    pattern_key = self._get_pattern_key(pattern)
+                    if pattern_key in self.pattern_history:
+                        del self.pattern_history[pattern_key]
+                    
+                    expired_count += 1
+                    logger.info(f"⏰ Pattern EXPIRED: {pattern_name} (age: {age_minutes:.1f}m > max: {max_age}m) - DISCARDED")
+            
+            filtered_patterns[pattern_type] = valid_patterns
+        
+        if expired_count > 0:
+            logger.info(f"🧹 Cleaned up {expired_count} expired pattern(s)")
+        
+        return filtered_patterns
+    
+    def _get_pattern_key(self, pattern: Dict[str, Any]) -> str:
+        """
+        Generate a unique key for a pattern based on its characteristics
+        
+        Args:
+            pattern: Pattern dictionary
+            
+        Returns:
+            Unique string key for the pattern
+        """
+        pattern_name = pattern.get("pattern", "UNKNOWN")
+        
+        # Use pattern-specific identifiers to create unique key
+        if "indices" in pattern:
+            # For patterns with specific indices (H&S, Double Top/Bottom)
+            indices = pattern["indices"]
+            return f"{pattern_name}_{indices[0]}_{indices[-1]}"
+        elif "start_candle_index" in pattern and "end_candle_index" in pattern:
+            # For patterns with start/end indices
+            return f"{pattern_name}_{pattern['start_candle_index']}_{pattern['end_candle_index']}"
+        else:
+            # Generic key based on pattern name and rough price levels
+            pattern_high = pattern.get("pattern_high", 0)
+            pattern_low = pattern.get("pattern_low", 0)
+            return f"{pattern_name}_{int(pattern_high)}_{int(pattern_low)}"
     
     def _extract_price_data(self, candles: List[Dict[str, Any]]) -> Dict[str, List[float]]:
         """Extract price data from candles"""
@@ -216,6 +418,263 @@ class PatternRecognitionEngine:
             patterns.append(trend_change)
         
         return patterns
+    
+    def _detect_candlestick_patterns(self, candles: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Detect candlestick patterns (single or multi-candle formations)"""
+        patterns = []
+        
+        if len(candles) < 3:
+            return patterns
+        
+        # Check last 3 candles for patterns
+        recent_candles = candles[-3:]
+        
+        # Engulfing patterns (2 candles)
+        if len(recent_candles) >= 2:
+            engulfing = self._detect_engulfing(recent_candles[-2:])
+            if engulfing:
+                patterns.append(engulfing)
+        
+        # Hammer, Shooting Star, Doji (single candle)
+        single_pattern = self._detect_single_candlestick(recent_candles[-1])
+        if single_pattern:
+            patterns.append(single_pattern)
+        
+        # Three Soldiers/Crows (3 candles)
+        if len(recent_candles) >= 3:
+            three_pattern = self._detect_three_candles(recent_candles)
+            if three_pattern:
+                patterns.append(three_pattern)
+        
+        return patterns
+    
+    def _detect_engulfing(self, candles: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Detect bullish or bearish engulfing pattern"""
+        if len(candles) < 2:
+            return None
+        
+        prev_candle = candles[0]
+        curr_candle = candles[1]
+        
+        prev_open = float(prev_candle.get("open", 0))
+        prev_close = float(prev_candle.get("close", 0))
+        curr_open = float(curr_candle.get("open", 0))
+        curr_close = float(curr_candle.get("close", 0))
+        
+        if not all([prev_open, prev_close, curr_open, curr_close]):
+            return None
+        
+        prev_body = abs(prev_close - prev_open)
+        curr_body = abs(curr_close - curr_open)
+        
+        # Require current candle to have significant body (not doji)
+        if curr_body < prev_body * 0.5:
+            return None
+        
+        # Bullish Engulfing: prev bearish, curr bullish, curr engulfs prev
+        if prev_close < prev_open and curr_close > curr_open:
+            if curr_open <= prev_close and curr_close >= prev_open:
+                confidence = min(0.9, (curr_body / prev_body) * 0.5)
+                return {
+                    "pattern": "BULLISH_ENGULFING",
+                    "type": "REVERSAL",
+                    "direction": "BULLISH",
+                    "confidence": confidence,
+                    "indices": [len(candles) - 2, len(candles) - 1],
+                    "start_candle_index": len(candles) - 2,
+                    "end_candle_index": len(candles) - 1,
+                    "pattern_high": max(curr_open, curr_close),
+                    "pattern_low": min(prev_open, prev_close),
+                }
+        
+        # Bearish Engulfing: prev bullish, curr bearish, curr engulfs prev
+        elif prev_close > prev_open and curr_close < curr_open:
+            if curr_open >= prev_close and curr_close <= prev_open:
+                confidence = min(0.9, (curr_body / prev_body) * 0.5)
+                return {
+                    "pattern": "BEARISH_ENGULFING",
+                    "type": "REVERSAL",
+                    "direction": "BEARISH",
+                    "confidence": confidence,
+                    "indices": [len(candles) - 2, len(candles) - 1],
+                    "start_candle_index": len(candles) - 2,
+                    "end_candle_index": len(candles) - 1,
+                    "pattern_high": max(prev_open, prev_close),
+                    "pattern_low": min(curr_open, curr_close),
+                }
+        
+        return None
+    
+    def _detect_single_candlestick(self, candle: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Detect single candlestick patterns (Hammer, Shooting Star, Doji)"""
+        open_price = float(candle.get("open", 0))
+        close_price = float(candle.get("close", 0))
+        high_price = float(candle.get("high", 0))
+        low_price = float(candle.get("low", 0))
+        
+        if not all([open_price, close_price, high_price, low_price]):
+            return None
+        
+        body = abs(close_price - open_price)
+        total_range = high_price - low_price
+        
+        if total_range == 0:
+            return None
+        
+        body_ratio = body / total_range
+        upper_shadow = high_price - max(open_price, close_price)
+        lower_shadow = min(open_price, close_price) - low_price
+        
+        # DOJI: Very small body (< 10% of range)
+        if body_ratio < 0.1:
+            if lower_shadow > body * 5:
+                # Dragonfly Doji: long lower shadow
+                return {
+                    "pattern": "DRAGONFLY_DOJI",
+                    "type": "REVERSAL",
+                    "direction": "BULLISH",
+                    "confidence": 0.7,
+                    "indices": [0],
+                    "start_candle_index": 0,
+                    "end_candle_index": 0,
+                    "pattern_high": high_price,
+                    "pattern_low": low_price,
+                }
+            elif upper_shadow > body * 5:
+                # Gravestone Doji: long upper shadow
+                return {
+                    "pattern": "GRAVESTONE_DOJI",
+                    "type": "REVERSAL",
+                    "direction": "BEARISH",
+                    "confidence": 0.7,
+                    "indices": [0],
+                    "start_candle_index": 0,
+                    "end_candle_index": 0,
+                    "pattern_high": high_price,
+                    "pattern_low": low_price,
+                }
+            else:
+                # Standard Doji: indecision
+                return {
+                    "pattern": "DOJI",
+                    "type": "REVERSAL",
+                    "direction": "NEUTRAL",
+                    "confidence": 0.6,
+                    "indices": [0],
+                    "start_candle_index": 0,
+                    "end_candle_index": 0,
+                    "pattern_high": high_price,
+                    "pattern_low": low_price,
+                }
+        
+        # HAMMER / INVERTED HAMMER: Small body (< 30%), long shadow (> 2x body)
+        elif body_ratio < 0.3:
+            if lower_shadow > body * 2 and upper_shadow < body:
+                # Hammer: long lower shadow, bullish reversal
+                is_bullish = close_price > open_price
+                return {
+                    "pattern": "HAMMER",
+                    "type": "REVERSAL",
+                    "direction": "BULLISH",
+                    "confidence": 0.8 if is_bullish else 0.7,
+                    "indices": [0],
+                    "start_candle_index": 0,
+                    "end_candle_index": 0,
+                    "pattern_high": high_price,
+                    "pattern_low": low_price,
+                }
+            elif upper_shadow > body * 2 and lower_shadow < body:
+                # Could be Inverted Hammer (bullish) or Shooting Star (bearish)
+                # Inverted Hammer appears at bottom, Shooting Star at top
+                # We'll use candle color as proxy
+                is_bullish = close_price > open_price
+                if is_bullish:
+                    return {
+                        "pattern": "INVERTED_HAMMER",
+                        "type": "REVERSAL",
+                        "direction": "BULLISH",
+                        "confidence": 0.75,
+                        "indices": [0],
+                        "start_candle_index": 0,
+                        "end_candle_index": 0,
+                        "pattern_high": high_price,
+                        "pattern_low": low_price,
+                    }
+                else:
+                    return {
+                        "pattern": "SHOOTING_STAR",
+                        "type": "REVERSAL",
+                        "direction": "BEARISH",
+                        "confidence": 0.8,
+                        "indices": [0],
+                        "start_candle_index": 0,
+                        "end_candle_index": 0,
+                        "pattern_high": high_price,
+                        "pattern_low": low_price,
+                    }
+        
+        return None
+    
+    def _detect_three_candles(self, candles: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Detect Three White Soldiers or Three Black Crows"""
+        if len(candles) < 3:
+            return None
+        
+        # Check if all three candles are bullish (White Soldiers)
+        all_bullish = True
+        all_bearish = True
+        
+        closes = []
+        opens = []
+        
+        for candle in candles:
+            open_price = float(candle.get("open", 0))
+            close_price = float(candle.get("close", 0))
+            
+            if not open_price or not close_price:
+                return None
+            
+            opens.append(open_price)
+            closes.append(close_price)
+            
+            if close_price <= open_price:
+                all_bullish = False
+            if close_price >= open_price:
+                all_bearish = False
+        
+        # Three White Soldiers: 3 consecutive bullish candles with higher closes
+        if all_bullish:
+            if closes[1] > closes[0] and closes[2] > closes[1]:
+                confidence = 0.85
+                return {
+                    "pattern": "THREE_WHITE_SOLDIERS",
+                    "type": "CONTINUATION",
+                    "direction": "BULLISH",
+                    "confidence": confidence,
+                    "indices": [0, 1, 2],
+                    "start_candle_index": 0,
+                    "end_candle_index": 2,
+                    "pattern_high": max(closes),
+                    "pattern_low": min(opens),
+                }
+        
+        # Three Black Crows: 3 consecutive bearish candles with lower closes
+        elif all_bearish:
+            if closes[1] < closes[0] and closes[2] < closes[1]:
+                confidence = 0.85
+                return {
+                    "pattern": "THREE_BLACK_CROWS",
+                    "type": "CONTINUATION",
+                    "direction": "BEARISH",
+                    "confidence": confidence,
+                    "indices": [0, 1, 2],
+                    "start_candle_index": 0,
+                    "end_candle_index": 2,
+                    "pattern_high": max(opens),
+                    "pattern_low": min(closes),
+                }
+        
+        return None
     
     def _detect_double_top(self, prices: Dict[str, List[float]]) -> Optional[Dict[str, Any]]:
         """Detect double top pattern"""
@@ -1016,17 +1475,15 @@ class PatternRecognitionEngine:
     
     def _determine_market_setup(self, patterns: Dict[str, List[Dict[str, Any]]], 
                                overall_confidence: float) -> Dict[str, Any]:
-        """Determine overall market setup based on patterns with conflict resolution"""
+        """Determine overall market setup based on patterns (already conflict-resolved)"""
         try:
-            # Resolve conflicting patterns first
-            resolved_patterns = self._resolve_pattern_conflicts(patterns)
-            
-            # Count patterns by direction after conflict resolution
+            # Patterns are already conflict-resolved in analyze_patterns()
+            # No need to resolve again - just count by direction
             bullish_count = 0
             bearish_count = 0
             neutral_count = 0
             
-            for pattern_list in resolved_patterns.values():
+            for pattern_list in patterns.values():
                 for pattern in pattern_list:
                     direction = pattern.get("direction", "NEUTRAL")
                     if direction == "BULLISH":

@@ -27,8 +27,20 @@ class SupportResistanceCalculator:
         """Find support/resistance levels - SIMPLE AND WORKS"""
         try:
             if not candles or len(candles) < 10:
-                logger.warning("⚠️ Insufficient candle data")
-                return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
+                logger.warning("⚠️ Insufficient candle data - using psychological levels")
+                # Even with insufficient data, return psychological levels
+                current_price = candles[-1].get("close", 0) if candles else 0
+                if current_price > 0:
+                    psychological_support = self._find_next_psychological_level(current_price, "support")
+                    psychological_resistance = self._find_next_psychological_level(current_price, "resistance")
+                    return {
+                        "key_levels": [],
+                        "strongest_support": psychological_support,
+                        "strongest_resistance": psychological_resistance,
+                        "analysis_confidence": 0.3  # Low confidence for psychological-only levels
+                    }
+                else:
+                    return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
             
             current_price = candles[-1].get("close", 0)
             
@@ -117,6 +129,26 @@ class SupportResistanceCalculator:
                 if level["type"] == "resistance" and level["level"] > current_price
             ]
             
+            # ENSURE AT LEAST ONE SUPPORT - Look deeper in history if needed
+            if not support_levels_filtered and support_levels:
+                # No support below current price - find the highest support level (closest to current price)
+                all_support_sorted = sorted(support_levels, key=lambda x: x["level"], reverse=True)
+                if all_support_sorted:
+                    # Take the highest support level even if it's above current price
+                    # This represents the last known support that was broken
+                    support_levels_filtered = [all_support_sorted[0]]
+                    logger.info(f"⚠️ No support below price - using last known support: ${all_support_sorted[0]['level']:.2f}")
+            
+            # ENSURE AT LEAST ONE RESISTANCE - Look deeper in history if needed
+            if not resistance_levels_filtered and resistance_levels:
+                # No resistance above current price - find the lowest resistance level (closest to current price)
+                all_resistance_sorted = sorted(resistance_levels, key=lambda x: x["level"])
+                if all_resistance_sorted:
+                    # Take the lowest resistance level even if it's below current price
+                    # This represents the last known resistance that was broken
+                    resistance_levels_filtered = [all_resistance_sorted[0]]
+                    logger.info(f"⚠️ No resistance above price - using last known resistance: ${all_resistance_sorted[0]['level']:.2f}")
+            
             # NO FALLBACKS - Use only real calculated levels
             
             # Ensure we have at least one support and one resistance
@@ -140,29 +172,48 @@ class SupportResistanceCalculator:
             for res in resistance_levels_filtered:
                 logger.info(f"   Resistance: ${res['level']:.2f} (score: {res.get('score', 0):.2f}, distance: {abs(res['level'] - current_price):.2f})")
             
-            # Get strongest support (prefer levels below current price with good distance)
+            # Get strongest support (ONLY levels below current price)
             strongest_support = 0.0
             if support_levels_filtered:
-                # Prefer support levels that are significantly below current price
-                support_below = [s for s in support_levels_filtered if s["level"] < current_price - 200]  # At least $200 below
+                # ONLY use support levels that are BELOW current price (not broken)
+                support_below = [s for s in support_levels_filtered if s["level"] < current_price]
                 if support_below:
-                    strongest_support = support_below[0]["level"]  # Closest significant support
+                    # Find the closest valid support below current price
+                    strongest_support = max(support_below, key=lambda x: x["level"])["level"]
                 else:
-                    # If no significant support below, use the lowest support level
+                    # No valid support below - find the lowest historical support as reference
+                    # This is a "broken" support, but we show it for context
                     lowest_support = min(support_levels_filtered, key=lambda x: x["level"])
                     strongest_support = lowest_support["level"]
+                    logger.warning(f"⚠️ All support levels broken - using lowest historical: ${strongest_support:.2f}")
+            else:
+                # No support levels found at all - use psychological level
+                strongest_support = self._find_next_psychological_level(current_price, "support")
+                logger.warning(f"⚠️ No support levels found - using psychological support: ${strongest_support:.2f}")
             
-            # Get strongest resistance (prefer levels above current price with good distance)
+            # Get strongest resistance (ONLY levels above current price)
             strongest_resistance = 0.0
             if resistance_levels_filtered:
-                # Prefer resistance levels that are significantly above current price
-                resistance_above = [r for r in resistance_levels_filtered if r["level"] > current_price + 200]  # At least $200 above
+                # ONLY use resistance levels that are ABOVE current price (not broken)
+                resistance_above = [r for r in resistance_levels_filtered if r["level"] > current_price]
                 if resistance_above:
-                    strongest_resistance = resistance_above[0]["level"]  # Closest significant resistance
+                    # Find the closest valid resistance above current price
+                    strongest_resistance = min(resistance_above, key=lambda x: x["level"])["level"]
                 else:
-                    # If no significant resistance above, use the highest resistance level
-                    highest_resistance = max(resistance_levels_filtered, key=lambda x: x["level"])
-                    strongest_resistance = highest_resistance["level"]
+                    # No valid resistance above - check if this is ATH or data issue
+                    highest_historical = max(resistance_levels_filtered, key=lambda x: x["level"])["level"]
+                    if highest_historical < current_price:
+                        # We're at ATH - use psychological level
+                        strongest_resistance = self._find_next_psychological_level(current_price, "resistance")
+                        logger.warning(f"⚠️ All-time high detected - using psychological resistance: ${strongest_resistance:.2f}")
+                    else:
+                        # Use highest historical as reference (broken resistance)
+                        strongest_resistance = highest_historical
+                        logger.warning(f"⚠️ All resistance levels broken - using highest historical: ${strongest_resistance:.2f}")
+            else:
+                # No resistance levels found at all - use psychological level
+                strongest_resistance = self._find_next_psychological_level(current_price, "resistance")
+                logger.warning(f"⚠️ No resistance levels found - using psychological resistance: ${strongest_resistance:.2f}")
             
             logger.info(f"📊 Found {len(support_levels)} support, {len(resistance_levels)} resistance levels")
             logger.info(f"📊 After filtering: {len(support_levels_filtered)} support, {len(resistance_levels_filtered)} resistance")
@@ -594,6 +645,38 @@ class SupportResistanceCalculator:
                 return candle.get("high", 0) >= level_price * 0.999  # Within 0.1% tolerance
         except:
             return False
+    
+    def _find_next_psychological_level(self, current_price: float, level_type: str) -> float:
+        """
+        Find the next psychological level (round number) for support or resistance
+        Psychological levels: $1000 intervals for BTC (e.g., $120,000, $121,000, $122,000)
+        """
+        try:
+            # For BTC, use $1000 intervals for major psychological levels
+            interval = 1000.0
+            
+            if level_type == "support":
+                # Find the nearest $1000 level below current price
+                support_level = int(current_price / interval) * interval
+                # If we're very close to it (within 0.5%), go one level lower
+                if (current_price - support_level) / current_price < 0.005:
+                    support_level -= interval
+                return support_level
+            else:  # resistance
+                # Find the nearest $1000 level above current price
+                resistance_level = (int(current_price / interval) + 1) * interval
+                # If we're very close to it (within 0.5%), go one level higher
+                if (resistance_level - current_price) / current_price < 0.005:
+                    resistance_level += interval
+                return resistance_level
+                
+        except Exception as e:
+            logger.error(f"❌ Psychological level calculation failed: {e}")
+            # Emergency fallback
+            if level_type == "support":
+                return current_price * 0.98  # 2% below
+            else:
+                return current_price * 1.02  # 2% above
     
     # REMOVED: _detect_consolidation_zones - NO FALLBACKS
     

@@ -50,51 +50,53 @@ class HyperliquidAPI:
     # ==================================================================================
 
     def get_current_price(self, symbol: str = None) -> Optional[float]:
-        """Get current mid-price from WebSocket cache (ultra-fast) or orderbook (fallback)"""
+        """Get current price from WebSocket ONLY - single source of truth"""
         symbol = symbol or self.config.SYMBOL
         
-        # Try WebSocket first (real-time latency)
+        # WebSocket is the ONLY price source - no fallbacks
         try:
-            from core.hyperliquid_websocket import get_websocket_instance
+            from core.api.hyperliquid_websocket import get_websocket_instance
             websocket = get_websocket_instance(symbol)
+            
+            # Ensure WebSocket is started if not already running
+            if not websocket.running:
+                logger.info(f"🚀 Starting WebSocket for {symbol}")
+                websocket.start()
+                
+                # Wait for WebSocket to connect and receive price data
+                import time
+                max_wait = 10  # Maximum 10 seconds
+                wait_time = 0
+                while wait_time < max_wait:
+                    if websocket.is_connected():
+                        # Check if we have price data
+                        price = websocket.get_current_price()
+                        if price and price > 0:
+                            logger.info(f"✅ WebSocket connected and price data available after {wait_time}s")
+                            break
+                    time.sleep(0.5)
+                    wait_time += 0.5
+                
+                if wait_time >= max_wait:
+                    logger.error(f"❌ WebSocket failed to connect or receive price data within {max_wait}s")
+                    return None
             
             if websocket.is_connected():
                 price = websocket.get_current_price()
                 if price and price > 0:
                     return price
                 else:
-                    # WebSocket connected but no price data yet
-                    pass
+                    logger.warning(f"⚠️ WebSocket connected but no price data available for {symbol}")
+                    return None
             else:
-                # WebSocket not connected, using HTTP fallback
-                pass
-        except ImportError:
-            # WebSocket module not available, using HTTP fallback
-            pass
-        except Exception as e:
-            logger.debug(f"⚠️ WebSocket error: {e}, using HTTP fallback")
-        
-        # HTTP API fallback (current method)
-        try:
-            market_data = self.get_market_data(symbol)
-            
-            if market_data and 'levels' in market_data and len(market_data['levels']) >= 2:
-                bids = market_data['levels'][0]
-                asks = market_data['levels'][1]
+                logger.error(f"❌ WebSocket not connected for {symbol} - price unavailable")
+                return None
                 
-                if bids and asks:
-                    best_bid = float(bids[0]['px'])
-                    best_ask = float(asks[0]['px'])
-                    mid_price = (best_bid + best_ask) / 2
-                    
-                    # logger.debug(f"Current {symbol} price: ${mid_price:,.2f} (Bid: ${best_bid:,.2f}, Ask: ${best_ask:,.2f})")
-                    return mid_price
-            
-            logger.warning(f"Could not get current price for {symbol}")
+        except ImportError:
+            logger.error("❌ WebSocket module not available - price unavailable")
             return None
-            
         except Exception as e:
-            logger.error(f"Failed to get current price for {symbol}: {e}")
+            logger.error(f"❌ WebSocket error for {symbol}: {e} - price unavailable")
             return None
 
     def get_market_data(self, symbol: str = None) -> Dict[str, Any]:
@@ -359,8 +361,7 @@ class HyperliquidAPI:
             
             endpoint = "/info"
             payload = {
-                "type": "meta",
-                "coin": symbol
+                "type": "metaAndAssetCtxs"
             }
             
             response = self.session.post(f"{self.base_url}{endpoint}", json=payload)
@@ -368,61 +369,46 @@ class HyperliquidAPI:
             
             data = response.json()
             
-            # Extract funding rate from meta data
-            if data and 'fundingRate' in data:
-                funding_rate = float(data['fundingRate'])
-                return {
-                    "funding_rate": funding_rate,
-                    "funding_rate_percentage": funding_rate * 100,
-                    "next_funding_time": data.get('nextFundingTime', 0),
-                    "symbol": symbol,
-                    "timestamp": time.time(),
-                    "data_source": "hyperliquid_api"
-                }
-            else:
-                # Fallback: calculate funding rate from mark/index price difference
-                market_data = self.get_market_data(symbol)
-                if market_data and 'markPrice' in market_data and 'indexPrice' in market_data:
-                    mark_price = float(market_data['markPrice'])
-                    index_price = float(market_data['indexPrice'])
+            # Extract funding rate from metaAndAssetCtxs data
+            if data and isinstance(data, list) and len(data) >= 2:
+                universe = data[0]
+                asset_contexts = data[1]
+                
+                if isinstance(universe, dict) and 'universe' in universe:
+                    universe_list = universe['universe']
                     
-                    # Calculate funding rate based on price difference
-                    price_diff = (mark_price - index_price) / index_price
-                    funding_rate = price_diff * 0.0001  # 0.01% per hour base rate
+                    # Find the symbol in universe
+                    symbol_index = None
+                    for i, asset in enumerate(universe_list):
+                        if isinstance(asset, dict) and asset.get('name') == symbol:
+                            symbol_index = i
+                            break
                     
-                    # Clamp to reasonable range
-                    funding_rate = max(-0.0075, min(0.0075, funding_rate))  # ±0.75% per hour max
-                    
-                    return {
-                        "funding_rate": funding_rate,
-                        "funding_rate_percentage": funding_rate * 100,
-                        "mark_price": mark_price,
-                        "index_price": index_price,
-                        "price_difference": price_diff,
-                        "symbol": symbol,
-                        "timestamp": time.time(),
-                        "data_source": "calculated_fallback"
-                    }
-                else:
-                    return {
-                        "funding_rate": 0.0,
-                        "funding_rate_percentage": 0.0,
-                        "symbol": symbol,
-                        "timestamp": time.time(),
-                        "data_source": "default_fallback",
-                        "error": "No funding rate data available"
-                    }
+                    if symbol_index is not None and symbol_index < len(asset_contexts):
+                        asset_context = asset_contexts[symbol_index]
+                        
+                        if isinstance(asset_context, dict) and 'funding' in asset_context:
+                            funding_rate_str = asset_context['funding']
+                            funding_rate = float(funding_rate_str)
+                            
+                            return {
+                                "funding_rate": funding_rate,
+                                "funding_rate_percentage": funding_rate * 100,
+                                "next_funding_time": 0,  # Not provided in this endpoint
+                                "symbol": symbol,
+                                "timestamp": time.time(),
+                                "data_source": "hyperliquid_api",
+                                "mark_price": float(asset_context.get('markPx', 0)),
+                                "oracle_price": float(asset_context.get('oraclePx', 0)),
+                                "open_interest": float(asset_context.get('openInterest', 0))
+                            }
+            
+            # NO FALLBACKS - Real funding rate data not available
+            raise ValueError("Real funding rate data not available from Hyperliquid API - NO FALLBACKS")
             
         except Exception as e:
             logger.error(f"❌ Failed to get funding rate for {symbol}: {e}")
-            return {
-                "funding_rate": 0.0,
-                "funding_rate_percentage": 0.0,
-                "symbol": symbol,
-                "timestamp": time.time(),
-                "data_source": "error_fallback",
-                "error": str(e)
-            }
+            raise ValueError(f"Funding rate fetch failed - NO FALLBACKS: {e}")
 
     # ==================================================================================
     # ALL TRADING METHODS REMOVED - HyperliquidSimulator handles all trading operations

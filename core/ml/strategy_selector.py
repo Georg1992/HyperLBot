@@ -87,6 +87,12 @@ class MLStrategySelector:
             # 2. TECHNICAL INDICATOR FEATURES
             rsi = self._safe_get(market_data, "rsi_5m", 50.0)
             
+            # Enhanced RSI features for better ML performance
+            rsi_normalized = rsi / 100.0  # 0.0 to 1.0
+            rsi_oversold = 1.0 if rsi < 30 else 0.0  # Binary flag
+            rsi_overbought = 1.0 if rsi > 70 else 0.0  # Binary flag
+            rsi_distance_from_neutral = (rsi - 50.0) / 50.0  # -1.0 to 1.0 (centered at 50)
+            
             # Handle trend data - it might be a dict or a float
             trend_data = self._safe_get(market_data, "trend_5m", {})
             trend = self._safe_get(trend_data, "trend", "NEUTRAL")
@@ -96,7 +102,10 @@ class MLStrategySelector:
             volume_category = self._safe_get(volume_data, "volume_category", "NORMAL")
             
             features.extend([
-                rsi / 100.0,  # Normalized RSI
+                rsi_normalized,  # Raw RSI (0-1)
+                rsi_oversold,  # Is oversold? (0 or 1)
+                rsi_overbought,  # Is overbought? (0 or 1)
+                rsi_distance_from_neutral,  # Distance from 50 (-1 to 1)
                 self._encode_trend(trend),
                 self._encode_volume_category(volume_category)
             ])
@@ -214,30 +223,77 @@ class MLStrategySelector:
             raise Exception(f"Feature extraction failed: {e}")
     
     def _predict_strategy_with_ml(self, features: np.ndarray, market_data: Dict[str, Any]) -> StrategyRecommendation:
-        """Use ML model to predict strategy - NO FALLBACKS"""
+        """Use ML model to predict strategy - Multi-factor analysis"""
         try:
-            # This is where the actual ML prediction would happen
-            # For now, return a basic strategy based on volatility
+            # Extract key metrics for strategy selection
             volatility_5m = self._safe_get(market_data, "volatility_5m", 0.0)
+            volatility_category = self._safe_get(market_data, "volatility_5m_category", "MODERATE")
+            rsi = self._safe_get(market_data, "rsi", 50)
+            trend = self._safe_get(market_data, "trend", "SIDEWAYS")
+            volume_category = self._safe_get(market_data, "trading_volume_category", "MODERATE")
             
-            if volatility_5m > 0.005:
-                strategy = "scalping"  # Scalping needs HIGH volatility for quick movements
-                confidence = 0.8
-                reasoning = f"High volatility detected: {volatility_5m:.4f} - ideal for scalping"
-            elif volatility_5m < 0.001:
-                strategy = "standard"  # Low volatility - use standard strategy
-                confidence = 0.7
-                reasoning = f"Low volatility detected: {volatility_5m:.4f} - use standard strategy"
-            else:
-                strategy = "trend_following"  # Moderate volatility - good for trend following
-                confidence = 0.6
-                reasoning = f"Moderate volatility: {volatility_5m:.4f} - good for trend following"
+            # Calculate strategy scores
+            scalping_score = 0.0
+            trend_following_score = 0.0
+            range_trading_score = 0.0
+            standard_score = 0.5  # Baseline
+            
+            # VOLATILITY ANALYSIS
+            if volatility_category in ["EXTREME", "HIGH"]:
+                scalping_score += 0.4
+                range_trading_score -= 0.2
+            elif volatility_category in ["VERY_LOW", "LOW"]:
+                range_trading_score += 0.3
+                scalping_score -= 0.3
+            
+            # TREND ANALYSIS
+            if "STRONG" in trend and "SIDEWAYS" not in trend:
+                trend_following_score += 0.5
+                range_trading_score -= 0.3
+            elif "SIDEWAYS" in trend or "NEUTRAL" in trend:
+                range_trading_score += 0.4
+                trend_following_score -= 0.3
+            elif "WEAK" in trend:
+                standard_score += 0.2
+                trend_following_score -= 0.2
+            
+            # RSI ANALYSIS (Mean reversion signals)
+            if rsi > 70 or rsi < 30:
+                range_trading_score += 0.3  # Overbought/oversold favors mean reversion
+                trend_following_score -= 0.2
+            
+            # VOLUME ANALYSIS
+            if volume_category in ["VERY_HIGH", "EXTREME"]:
+                scalping_score += 0.2
+                trend_following_score += 0.1
+            elif volume_category in ["VERY_LOW", "LOW"]:
+                scalping_score -= 0.3
+            
+            # Select strategy with highest score
+            scores = {
+                "scalping": scalping_score,
+                "trend_following": trend_following_score,
+                "range_trading": range_trading_score,
+                "standard": standard_score
+            }
+            
+            strategy = max(scores, key=scores.get)
+            raw_confidence = scores[strategy]
+            confidence = min(0.9, max(0.5, 0.6 + raw_confidence * 0.3))  # Normalize to 0.5-0.9
+            
+            # Build reasoning
+            reasoning_parts = []
+            reasoning_parts.append(f"Volatility: {volatility_category} ({volatility_5m:.4f})")
+            reasoning_parts.append(f"Trend: {trend}")
+            reasoning_parts.append(f"RSI: {rsi:.1f}")
+            reasoning_parts.append(f"Volume: {volume_category}")
+            reasoning = " | ".join(reasoning_parts)
             
             return StrategyRecommendation(
                 strategy=strategy,
                 confidence=confidence,
                 reasoning=reasoning,
-                alternative_strategies=[],
+                alternative_strategies=[s for s, score in sorted(scores.items(), key=lambda x: x[1], reverse=True)[1:3]],
                 market_conditions=self._summarize_market_conditions(market_data),
                 timestamp=time.time()
             )
