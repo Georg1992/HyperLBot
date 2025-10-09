@@ -284,29 +284,30 @@ class SessionOrchestrator:
             recent_trades = hyperliquid_data.get("recent_trades", {})
             weekly_trend = hyperliquid_data.get("weekly_trend", {})
             
-            # Get RSI from the RSI calculator singleton (single source)
+            # OPTIMIZED CACHING: All requests will be served from the same cached data
+            # MarketDataService now fetches maximum needed and slices automatically
+            # Each request below will use the centralized cache - no redundant API calls
+            
+            # Get candle data for all timeframes (from centralized cache)
+            candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 30)  # For RSI calculation
+            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)          # For general analysis
+            candles_5m_for_sr = market_data_service.get_historical_candles("BTC", "5m", 100)  # For S/R calculation
+            candles_1m = market_data_service.get_historical_candles("BTC", "1m", 20)
+            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 24)
+            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
+            
+            logger.debug(f"📊 Candles from cache: 5m_RSI={len(candles_5m_for_rsi)}, 5m_general={len(candles_5m)}, 5m_SR={len(candles_5m_for_sr)}, 1m={len(candles_1m)}, 1h={len(candles_1h)}, 1d={len(candles_1d)}")
+
+            # RSI calculation using centralized candle data
             from core.analysis.real_time.rsi_calculator import get_global_rsi_calculator
             rsi_calculator = get_global_rsi_calculator()
             
             try:
-                # Calculate RSI directly from 5m candles to match HyperLiquid exactly
-                # Get fresh 5m candles for RSI calculation
-                candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 30)
-                if candles_5m_for_rsi and len(candles_5m_for_rsi) >= 15:
-                    # Use standalone RSI calculation (matches HyperLiquid exactly)
-                    current_rsi = rsi_calculator.calculate_standalone_rsi(candles_5m_for_rsi, periods=14)
-                else:
-                    logger.warning(f"⚠️ Insufficient candles for RSI: {len(candles_5m_for_rsi) if candles_5m_for_rsi else 0}")
-                    current_rsi = None
+                current_rsi = rsi_calculator.calculate_standalone_rsi(candles_5m_for_rsi, periods=14)
+                logger.debug(f"📊 RSI calculated: {current_rsi:.2f}" if current_rsi else "📊 RSI calculation returned None")
             except Exception as e:
                 logger.warning(f"⚠️ RSI calculation failed: {e}")
                 current_rsi = None
-            
-            # Get candles from MarketDataService (single source of truth)
-            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)
-            candles_1m = market_data_service.get_historical_candles("BTC", "1m", 20)
-            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 24)
-            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
             
             # Get trend from the trend calculator singleton (single source)
             from core.analysis.real_time.trend_calculator import get_global_trend_calculator
@@ -345,13 +346,20 @@ class SessionOrchestrator:
             # Get support/resistance from hyperliquid_data (already recalculated by market_data_manager)
             support_resistance = hyperliquid_data.get("support_resistance", {})
             
-            # If no S/R data available, fallback to direct calculation
+            # If no S/R data available, fallback to direct calculation using centralized cache
             if not support_resistance:
                 from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
                 sr_calculator = get_global_support_resistance_calculator()
                 
                 try:
-                    support_resistance = sr_calculator.identify_key_levels(candles_5m, current_price) if len(candles_5m) >= 1 else {}
+                    # Use centralized cache (100 candles) for better S/R analysis
+                    # This will use the same cached data as all other requests
+                    if candles_5m_for_sr and len(candles_5m_for_sr) >= 20:
+                        support_resistance = sr_calculator.identify_key_levels(candles_5m_for_sr, current_price)
+                        logger.debug(f"📊 S/R calculated with {len(candles_5m_for_sr)} candles from centralized cache")
+                    else:
+                        support_resistance = {}
+                        logger.warning(f"⚠️ Insufficient candle data for S/R calculation ({len(candles_5m_for_sr) if candles_5m_for_sr else 0} candles)")
                 except Exception as e:
                     logger.warning(f"⚠️ Support/Resistance calculation failed: {e}")
                     support_resistance = {}
@@ -469,10 +477,6 @@ class SessionOrchestrator:
             
             # Prepare chart data for dashboard
             try:
-                # Get candles for chart
-                chart_candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)
-                
-                # Prepare ongoing candle (current price as ongoing candle)
                 # Get the current 5m candle start time (UTC synchronized)
                 import datetime as dt
                 current_time = time.time()
@@ -487,43 +491,39 @@ class SessionOrchestrator:
                 if market_data_service.hyperliquid_websocket:
                     real_time_volume = market_data_service.hyperliquid_websocket.get_current_5m_volume()
                 
-                # Check if we need to convert the last ongoing candle to historical
-                if hasattr(self, 'last_ongoing_candle') and self.last_ongoing_candle:
-                    last_candle_timestamp = self.last_ongoing_candle.get('timestamp', 0)
-                    if last_candle_timestamp != candle_start_timestamp:
-                        # Convert completed ongoing candle to historical
-                        completed_candle = self.last_ongoing_candle.copy()
-                        completed_candle['is_ongoing'] = False  # Mark as completed
-                        completed_candle['close'] = current_price  # Final close price
-                        completed_candle['high'] = max(completed_candle.get('open', current_price), current_price)
-                        completed_candle['low'] = min(completed_candle.get('open', current_price), current_price)
-                        
-                        # CRITICAL FIX: Keep only 19 candles before appending new ongoing candle
-                        # This prevents extra candles bug (19 historical + 1 ongoing = 20 total display)
-                        if len(chart_candles_5m) >= 19:
-                            chart_candles_5m = chart_candles_5m[-19:]  # Keep only last 19
-                        
-                        # Add completed candle to end (most recent)
-                        chart_candles_5m.append(completed_candle)
-                        
-                        logger.info(f"🕯️ Converted ongoing candle to historical: {completed_candle.get('timestamp', 0)} -> {candle_start_timestamp}")
+                # Use centralized cache for chart preparation - request 20 candles
+                # This will be served from the same cache as all other 5m requests
+                chart_candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)
                 
+                # Remove the last candle if it's the current ongoing one (same timestamp as our ongoing candle)
+                if len(chart_candles_5m) > 0:
+                    last_candle_timestamp = chart_candles_5m[-1]["timestamp"]
+                    if abs(last_candle_timestamp - candle_start_timestamp) < 300:  # Within 5 minutes
+                        chart_candles_5m = chart_candles_5m[:-1]  # Remove the ongoing candle from historical data
+                
+                # Ensure we have exactly 19 historical candles
+                if len(chart_candles_5m) > 19:
+                    chart_candles_5m = chart_candles_5m[-19:]
+                elif len(chart_candles_5m) < 19:
+                    # If we don't have enough, pad with the available candles
+                    pass  # Use what we have
+                
+                logger.debug(f"📊 Chart data prepared using cached candles: {len(chart_candles_5m)} historical")
+                
+                # Prepare ongoing candle (current price as ongoing candle)
                 ongoing_candle = {
-                    "open": chart_candles_5m[-1]["close"] if chart_candles_5m else current_price,  # Start from last candle's close
-                    "close": current_price,  # Current real-time price
-                    "high": max(chart_candles_5m[-1]["close"] if chart_candles_5m else current_price, current_price),  # Track high from start
-                    "low": min(chart_candles_5m[-1]["close"] if chart_candles_5m else current_price, current_price),   # Track low from start
+                    "open": chart_candles_5m[-1]["close"] if chart_candles_5m else current_price,
+                    "close": current_price,
+                    "high": max(chart_candles_5m[-1]["close"] if chart_candles_5m else current_price, current_price),
+                    "low": min(chart_candles_5m[-1]["close"] if chart_candles_5m else current_price, current_price),
                     "volume": real_time_volume if real_time_volume > 0 else (chart_candles_5m[-1]["volume"] if chart_candles_5m else 0),
-                    "timestamp": candle_start_timestamp,  # Use proper 5m candle start time
-                    "is_ongoing": True,  # Mark as ongoing candle (fixed field name)
-                    "trades_count": 0,  # Will be updated by WebSocket
+                    "timestamp": candle_start_timestamp,
+                    "is_ongoing": True,
+                    "trades_count": 0,
                     "last_trade_time": current_time
                 }
                 
-                # Store current ongoing candle for next iteration
-                self.last_ongoing_candle = ongoing_candle.copy()
-                
-                # Add ongoing candle to historical candles array for chart display
+                # Create exactly 20 candles: 19 historical + 1 ongoing
                 chart_candles_with_ongoing = chart_candles_5m.copy()
                 chart_candles_with_ongoing.append(ongoing_candle)
                 
@@ -606,6 +606,10 @@ class SessionOrchestrator:
     def _update_dashboard_with_unified_data(self, unified_data: Dict[str, Any], dashboard_service):
         """Update dashboard using unified market data structure"""
         try:
+            # Import volume calculator for categorization
+            from core.analysis.real_time.volume_calculator import get_global_volume_calculator
+            volume_calculator = get_global_volume_calculator()
+            
             # Extract dashboard-specific data from unified structure
             # Map unified data to dashboard-expected field names
             dashboard_market_data = {
@@ -627,7 +631,7 @@ class SessionOrchestrator:
                 
                 # Binance global volume data
                 "global_volume_btc_per_min": unified_data.get("binance_volume_data", {}).get("current_volume_btc", 0.0),
-                "global_volume_category": self._categorize_global_volume(unified_data.get("binance_volume_data", {}).get("current_volume_btc", 0.0)),
+                "global_volume_category": volume_calculator.categorize_global_volume(unified_data.get("binance_volume_data", {}).get("current_volume_btc", 0.0)),
                 "global_volume_source": "binance_websocket",
                 
                 "volatility_5m": unified_data.get("volatility_5m"),
@@ -841,19 +845,38 @@ class SessionOrchestrator:
                 if self.session_manager:
                     self.session_manager.update_session_time_if_active()
                 
-                # Check for 5-minute boundary change (for immediate candle/volume reset)
+                # Check for timeframe boundary changes (for immediate candle updates and cache invalidation)
                 current_time = time.time()
                 import datetime as dt
                 current_dt = dt.datetime.fromtimestamp(current_time, tz=dt.timezone.utc)
+                
+                # Track multiple boundaries
                 current_5m_boundary = (current_dt.minute // 5) * 5
+                current_hour = current_dt.hour
+                current_day = current_dt.day
                 
                 # Detect 5-minute boundary change
-                boundary_changed = False
+                boundary_changed_5m = False
+                boundary_changed_1h = False
+                boundary_changed_1d = False
+                
                 if last_5m_boundary is not None and current_5m_boundary != last_5m_boundary:
-                    boundary_changed = True
+                    boundary_changed_5m = True
                     logger.info(f"🕐 5-minute boundary reached: {last_5m_boundary:02d}:00 -> {current_5m_boundary:02d}:00 UTC - Volume reset and new candle!")
                 
+                # Check for hourly boundary (at :00 of each hour)
+                if hasattr(self, 'last_hour') and self.last_hour != current_hour and current_dt.minute == 0:
+                    boundary_changed_1h = True
+                    logger.info(f"🕐 Hourly boundary reached: {self.last_hour:02d}:00 -> {current_hour:02d}:00 UTC - New hourly candle!")
+                
+                # Check for daily boundary (at 00:00 UTC)
+                if hasattr(self, 'last_day') and self.last_day != current_day and current_hour == 0 and current_dt.minute == 0:
+                    boundary_changed_1d = True
+                    logger.info(f"🕐 Daily boundary reached - New daily candle!")
+                
                 last_5m_boundary = current_5m_boundary
+                self.last_hour = current_hour
+                self.last_day = current_day
                 
                 # Get current price
                 hyperliquid_price = market_data_service.get_hyperliquid_price()
@@ -879,14 +902,25 @@ class SessionOrchestrator:
                 # Update dashboard with unified data
                 self._update_dashboard_with_unified_data(unified_data, dashboard_service)
                 
-                # Force immediate dashboard update if 5-minute boundary changed
-                if boundary_changed:
+                # Handle candle boundary changes and cache invalidation
+                if boundary_changed_5m:
                     logger.info("🔄 Forcing immediate dashboard update due to 5-minute boundary change")
+                    
+                    # INVALIDATE 5m CANDLE CACHE - New candle period started
+                    market_data_service.invalidate_candle_cache("BTC", "5m")
+                    logger.info("🗑️ Invalidated 5m candle cache - Next request will fetch fresh data with completed candle")
+                    
+                    # Also invalidate S/R cache since new 5m candle might change levels
+                    from core.market_data_manager import get_global_market_data_manager
+                    market_data_manager = get_global_market_data_manager()
+                    market_data_manager.invalidate_sr_cache()
+                    logger.info("🗑️ Invalidated S/R cache - New 5m candle may change support/resistance levels")
+                    
+                    # Also invalidate 1m cache as it should update every 5 minutes
+                    market_data_service.invalidate_candle_cache("BTC", "1m")
                     
                     # Clear old trades from WebSocket cache to ensure clean volume reset
                     if market_data_service.hyperliquid_websocket:
-                        # Clear trades older than current 5m candle start
-                        import datetime as dt
                         current_dt = dt.datetime.fromtimestamp(current_time, tz=dt.timezone.utc)
                         candle_start_minute = (current_dt.minute // 5) * 5
                         candle_start_dt = current_dt.replace(minute=candle_start_minute, second=0, microsecond=0)
@@ -895,6 +929,18 @@ class SessionOrchestrator:
                     
                     # Trigger additional WebSocket emission for immediate update
                     dashboard_service._trigger_websocket_emission()
+                
+                # Handle hourly boundary
+                if boundary_changed_1h:
+                    logger.info("🔄 Hourly boundary detected - Invalidating 1h candle cache")
+                    market_data_service.invalidate_candle_cache("BTC", "1h")
+                    logger.info("🗑️ Invalidated 1h candle cache - Next request will fetch fresh hourly data")
+                
+                # Handle daily boundary
+                if boundary_changed_1d:
+                    logger.info("🔄 Daily boundary detected - Invalidating 1d candle cache")
+                    market_data_service.invalidate_candle_cache("BTC", "1d")
+                    logger.info("🗑️ Invalidated 1d candle cache - Next request will fetch fresh daily data")
                 
                 # Generate price prediction
                 self._generate_price_prediction(unified_data, current_strategy)
@@ -1088,98 +1134,6 @@ class SessionOrchestrator:
             logger.error(f"❌ Failed to get market data: {e}")
             return None
 
-    def _sync_ai_results_to_dashboard(self, ai_results: Dict[str, Any], current_price: float, strategy: str):
-        """Sync AI prediction results to dashboard as MARKET_ANALYSIS signal"""
-        try:
-            if not ai_results:
-                logger.debug("📊 No AI results to sync to dashboard")
-                return
-                
-            if not isinstance(ai_results, dict):
-                logger.debug("📊 AI results is not a dict, skipping sync")
-                return
-                
-            if "analysis" not in ai_results:
-                logger.debug("📊 No analysis in AI results to sync")
-                return
-            
-            analysis = ai_results.get("analysis")
-            if not analysis:
-                logger.debug("📊 No analysis in AI results to sync")
-                return
-                
-            if not isinstance(analysis, dict):
-                logger.debug("📊 Analysis is not a dict, skipping sync")
-                return
-                
-            prediction = analysis.get("prediction")
-            
-            if not prediction:
-                logger.debug("📊 No prediction in AI results to sync")
-                return
-            
-            # Create MARKET_ANALYSIS signal for dashboard
-            
-            # Handle both dict and TradingPrediction object
-            if hasattr(prediction, 'direction'):
-                # TradingPrediction object
-                signal_data = {
-                    "type": "MARKET_ANALYSIS",
-                    "direction": prediction.direction,
-                    "entry_price": prediction.entry_price,
-                    "size_btc": getattr(prediction, 'size_btc', 0.001),
-                    "stop_loss": prediction.stop_loss,
-                    "take_profit": prediction.target_price,
-                    "confidence": prediction.final_confidence,  # Use final_confidence attribute
-                    "reasoning": getattr(prediction, 'entry_reasoning', "No reasoning available"),
-                    "strategy": getattr(prediction, 'strategy', strategy),
-                    "timestamp": time.time(),
-                    "market_regime": analysis.get("market_regime", "UNKNOWN"),
-                    "analysis_confidence": analysis.get("analysis_confidence", 0.0),
-                    "strategy_confidence": analysis.get("strategy_confidence", 0.0)
-                }
-            else:
-                # Dict format
-                signal_data = {
-                    "type": "MARKET_ANALYSIS",
-                    "direction": prediction.get("direction", "HOLD"),
-                    "entry_price": prediction.get("entry_price", current_price),
-                    "size_btc": prediction.get("size_btc", 0.001),
-                    "stop_loss": prediction.get("stop_loss", 0.0),
-                    "take_profit": prediction.get("target_price", 0.0),
-                    "confidence": prediction.get("confidence", 0.0),
-                    "reasoning": prediction.get("reasoning", "No reasoning available"),
-                    "strategy": prediction.get("strategy", strategy),
-                    "timestamp": time.time(),
-                    "market_regime": analysis.get("market_regime", "UNKNOWN"),
-                    "analysis_confidence": analysis.get("analysis_confidence", 0.0),
-                    "strategy_confidence": analysis.get("strategy_confidence", 0.0)
-                }
-            
-            # Add to dashboard
-            dashboard_service.add_prediction(signal_data)
-            logger.debug(f"📊 Synced AI prediction to dashboard: {signal_data['direction']} "
-                        f"(confidence: {signal_data['confidence']:.3f})")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to sync AI results to dashboard: {e}")
-    
-    def _trigger_dashboard_update(self):
-        """Trigger immediate dashboard update to show new prediction data"""
-        try:
-            # Use a simple file-based trigger to notify dashboard of new data
-            # The dashboard's background monitoring will pick this up
-            import os
-            trigger_file = "data/temp/dashboard_update_trigger.txt"
-            os.makedirs(os.path.dirname(trigger_file), exist_ok=True)
-            
-            with open(trigger_file, 'w') as f:
-                f.write(str(time.time()))
-            
-            logger.debug("📊 Triggered dashboard update notification")
-        except Exception as e:
-            logger.debug(f"📊 Could not trigger dashboard update: {e}")
-    
     def _should_generate_new_prediction(self, current_market_data: Dict[str, Any]) -> bool:
         """
         Check if market conditions have changed enough to warrant a new prediction
@@ -1235,495 +1189,23 @@ class SessionOrchestrator:
             # Default to generating prediction on error
             return True
     
-    def _get_liquidation_hunting_data(self) -> Dict[str, Any]:
-        """Get current liquidation hunting data for dashboard - using market opening service"""
-        try:
-            if not self.market_opening_service:
-                return {
-                    "status": "Inactive",
-                    "next_opening": None,
-                    "active_markets": [],
-                    "opportunities": 0,
-                    "liquidation_risk": "LOW"
-                }
-            
-            # Get market opening info
-            next_opening = self.market_opening_service.get_next_major_opening()
-            session_info = self.market_opening_service.get_market_session_info()
-            
-            return {
-                "status": "Active" if self.market_opening_service.is_market_opening_time() else "Monitoring",
-                "next_opening": next_opening,
-                "active_markets": session_info.get("active_markets", []),
-                "opportunities": 0,  # Not applicable for simple display
-                "liquidation_risk": session_info.get("liquidation_risk", "LOW")
-            }
-        except Exception as e:
-            logger.error(f"❌ Failed to get liquidation hunting data: {e}")
-            return {
-                "status": "Error",
-                "next_opening": None,
-                "active_markets": [],
-                "opportunities": 0,
-                "liquidation_risk": "UNKNOWN"
-            }
-    
-    def _get_market_opening_info(self) -> Dict[str, Any]:
-        """Get market opening information for display"""
-        try:
-            if not self.market_opening_service:
-                return {
-                    "next_opening": None,
-                    "time_until": None,
-                    "market_name": None,
-                    "status": "Inactive",
-                    "importance": 0,
-                    "liquidation_risk": 0.0
-                }
-            
-            # Get next major opening
-            next_opening = self.market_opening_service.get_next_major_opening()
-            if not next_opening:
-                return {
-                    "next_opening": None,
-                    "time_until": None,
-                    "market_name": None,
-                    "status": "No openings",
-                    "importance": 0,
-                    "liquidation_risk": 0.0
-                }
-            
-            # Calculate time until opening
-            time_until_seconds = next_opening.get('time_until', 0)
-            time_until_hours = int(time_until_seconds // 3600)
-            time_until_minutes = int((time_until_seconds % 3600) // 60)
-            
-            # Format time display
-            if time_until_hours > 0:
-                time_display = f"{time_until_hours:02d}:{time_until_minutes:02d}"
-            else:
-                time_display = f"00:{time_until_minutes:02d}"
-            
-            # Get market name (shortened for display)
-            market_name = next_opening.get('exchange', 'Unknown Market')
-            
-            return {
-                "next_opening": next_opening.get('opening_time').isoformat() if next_opening.get('opening_time') else None,
-                "time_until": time_display,
-                "market_name": market_name,
-                "status": "Active" if self.market_opening_service.is_market_opening_time() else "Monitoring",
-                "importance": next_opening.get('importance', 0),
-                "liquidation_risk": 0.0  # Not applicable for simple display
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get market opening info: {e}")
-            return {
-                "next_opening": None,
-                "time_until": None,
-                "market_name": None,
-                "status": "Error",
-                "importance": 0,
-                "liquidation_risk": 0.0
-            }
-    
-    def _get_ml_performance_data(self) -> Dict[str, Any]:
-        """Retrieves current ML performance data for the dashboard."""
-        try:
-            # Get ML performance data from AI service
-            if self.ai_service:
-                # Get analysis history from AI service
-                analysis_history = self.ai_service.get_analysis_history()
-                
-                # Calculate performance metrics
-                total_analyses = len(analysis_history)
-                active_trades = 0  # AI service doesn't track trades directly
-                total_trades = 0   # AI service doesn't track trades directly
-                win_rate = 0.0     # AI service doesn't track trades directly
-                
-                # Get actual training data count from ML system
-                try:
-                    from core.ml.model_training import global_model_trainer
-                    training_stats = global_model_trainer.data_collector.get_data_statistics()
-                    actual_training_points = training_stats.get("data_points", 0)
-                except Exception as e:
-                    logger.error(f"❌ Failed to get training data count: {e}")
-                    # NO FALLBACKS - training points must be calculated properly
-                    if total_analyses == 0:
-                        raise ValueError("No training data available - NO FALLBACKS")
-                    actual_training_points = total_analyses
-                
-                # Determine analysis type based on recent activity
-                if total_analyses > 0:
-                    latest_analysis = analysis_history[-1]
-                    analysis_type = "Active" if latest_analysis.get("had_prediction") or latest_analysis.get("had_reactive_trade") else "Monitoring"
-                    analysis_type_detail = latest_analysis.get("strategy", "Unknown")
-                    
-                    # Calculate accuracy based on win rate and analysis confidence
-                    base_accuracy = win_rate / 100.0 if win_rate > 0 else 0.65
-                    avg_confidence = sum(a.get("analysis_confidence", 0.5) for a in analysis_history) / total_analyses
-                    accuracy = min(0.95, base_accuracy + (avg_confidence * 0.2))
-                    
-                    # Calculate confidence correlation based on consistency
-                    confidence_correlation = min(0.9, 0.5 + (avg_confidence * 0.4))
-                else:
-                    analysis_type = "Initializing"
-                    analysis_type_detail = "System Starting"
-                    accuracy = 0.0
-                    confidence_correlation = 0.0
-                
-                return {
-                    "analysis_type": analysis_type,
-                    "analysis_type_detail": analysis_type_detail,
-                    "training_data_points": actual_training_points,
-                    "accuracy": accuracy,
-                    "confidence_correlation": confidence_correlation,
-                    "retrain_status": "Auto",
-                    "learning_status": "Active",
-                    "active_predictions": active_trades,
-                    "total_predictions": total_trades
-                }
-            
-            # Fallback data if AI system not available - still try to get training data
-            try:
-                from core.ml.model_training import global_model_trainer
-                training_stats = global_model_trainer.data_collector.get_data_statistics()
-                training_points = training_stats.get("data_points", 0)
-            except Exception:
-                training_points = 0
-            
-            return {
-                "analysis_type": "Initializing",
-                "analysis_type_detail": "System Starting",
-                "training_data_points": training_points,
-                "accuracy": 0.0,
-                "confidence_correlation": 0.0,
-                "retrain_status": "Pending",
-                "learning_status": "Initializing",
-                "active_predictions": 0,
-                "total_predictions": 0
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get ML performance data: {e}")
-            return {
-                "analysis_type": "Error",
-                "analysis_type_detail": "Data Unavailable",
-                "training_data_points": 0,
-                "accuracy": 0.0,
-                "confidence_correlation": 0.0,
-                "retrain_status": "Error",
-                "learning_status": "Error",
-                "active_predictions": 0,
-                "total_predictions": 0
-            }
-    
     def _calculate_real_time_support_resistance(self, hyperliquid_api, current_price: float, strategy_name: str, market_data_service=None) -> Dict[str, Any]:
-        """Calculate real-time support/resistance levels with integrated historical data and guaranteed important levels"""
+        """
+        Calculate real-time support/resistance levels.
+        
+        REFACTORED: This method now delegates to SupportResistanceCalculator.calculate_multi_timeframe_levels()
+        All logic for multi-timeframe analysis, caching, and expansion is now in the calculator.
+        """
         try:
             from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
             sr_calculator = get_global_support_resistance_calculator()
             
-            logger.info(f"📊 Starting S/R calculation for price: ${current_price:.2f}")
-            
-            # Check if we have cached S/R data and if price has broken any levels
-            force_refresh = False
-            if hasattr(self, '_sr_cache') and 'data' in self._sr_cache:
-                cached_data = self._sr_cache.get('data', {})
-                last_price = self._sr_cache.get('last_price', current_price)
-                
-                # Check if price has broken through any current S/R levels
-                key_levels = cached_data.get('key_levels', [])
-                logger.debug(f"📊 Checking {len(key_levels)} cached S/R levels for breaks (last_price=${last_price:.2f}, current_price=${current_price:.2f})")
-                for level in key_levels:
-                    level_price = level.get('level', 0)
-                    level_type = level.get('type', '')
-                    
-                    logger.debug(f"📊 Checking {level_type} at ${level_price:.2f}")
-                    
-                    # Check if price has crossed a support level (broke below)
-                    # Add buffer (0.5%) to account for minor fluctuations and ensure detection
-                    buffer = level_price * 0.005
-                    if (level_type == 'support' and 
-                        last_price > (level_price + buffer) and 
-                        current_price <= (level_price + buffer)):
-                        force_refresh = True
-                        logger.info(f"📊 Price broke support at ${level_price:.2f} - refreshing S/R levels")
-                        break
-                    
-                    # Check if price has crossed a resistance level (broke above)
-                    elif (level_type == 'resistance' and 
-                          last_price < (level_price - buffer) and 
-                          current_price >= (level_price - buffer)):
-                        force_refresh = True
-                        logger.info(f"📊 Price broke resistance at ${level_price:.2f} - refreshing S/R levels")
-                        logger.info(f"📊 Break details: last_price=${last_price:.2f}, current_price=${current_price:.2f}, buffer=${buffer:.2f}")
-                        break
-                
-                # If no level break, use cached data
-                if not force_refresh:
-                    logger.info("📊 Using cached S/R data (no level breaks detected)")
-                    return cached_data
-            
-            # Get candle data for S/R analysis - start with recent data, expand if needed
-            logger.info("📊 Fetching candle data for S/R analysis...")
-            
-            # DELEGATE: Get candle data from market data service (SRP compliance)
-            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 288)
-            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)
-            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
-            
-            if not candles_5m or not candles_1h or not candles_1d:
-                raise ValueError("Candle data not available from market data service - NO FALLBACKS")
-            
-            # Combine all data for market level detection
-            all_levels = []
-            
-            # PRIORITIZE RECENT DATA - Focus on current consolidation zones
-            # Analyze 5m data FIRST (most important for current levels)
-            if candles_5m and len(candles_5m) >= 20:
-                logger.info(f"📊 Analyzing {len(candles_5m)} 5m candles for CURRENT S/R levels")
-                sr_5m = sr_calculator.identify_key_levels(candles_5m, min_touches=2)
-                for level in sr_5m.get("key_levels", []):
-                    level["timeframe"] = "5m"
-                    level["weight"] = 3.0  # HIGHEST weight for current levels
-                all_levels.extend(sr_5m.get("key_levels", []))
-                logger.info(f"📊 Found {len(sr_5m.get('key_levels', []))} 5m S/R levels")
-            else:
-                logger.warning(f"⚠️ Insufficient 5m candle data: {len(candles_5m) if candles_5m else 0} candles")
-            
-            # Analyze 1h data for recent major levels (reduced weight)
-            if candles_1h and len(candles_1h) >= 20:
-                logger.info(f"📊 Analyzing {len(candles_1h)} 1h candles for recent major levels")
-                sr_1h = sr_calculator.identify_key_levels(candles_1h, min_touches=2)
-                for level in sr_1h.get("key_levels", []):
-                    level["timeframe"] = "1h"
-                    level["weight"] = 1.5  # Reduced weight
-                all_levels.extend(sr_1h.get("key_levels", []))
-                logger.info(f"📊 Found {len(sr_1h.get('key_levels', []))} 1h S/R levels")
-            else:
-                logger.warning(f"⚠️ Insufficient 1h candle data: {len(candles_1h) if candles_1h else 0} candles")
-            
-            # Analyze 1d data for long-term levels (lowest priority)
-            if candles_1d and len(candles_1d) >= 10:
-                logger.info(f"📊 Analyzing {len(candles_1d)} 1d candles for long-term S/R levels")
-                sr_1d = sr_calculator.identify_key_levels(candles_1d, min_touches=2)
-                for level in sr_1d.get("key_levels", []):
-                    level["timeframe"] = "1d"
-                    level["weight"] = 1.0  # Reduced weight for old data
-                all_levels.extend(sr_1d.get("key_levels", []))
-                logger.info(f"📊 Found {len(sr_1d.get('key_levels', []))} 1d S/R levels")
-            else:
-                logger.warning(f"⚠️ Insufficient 1d candle data: {len(candles_1d) if candles_1d else 0} candles")
-            
-            # 5. Find persistent resistance levels (always show next resistance even after breakouts)
-            # Note: find_next_significant_resistance method was removed during cleanup
-            # The main level detection above should already find relevant resistance levels
-            
-            # 6. GUARANTEED S/R LEVELS: Always show at least 1 support and 1 resistance
-            relevant_levels = []
-            
-            # Separate all levels by type
-            all_support_levels = [lvl for lvl in all_levels if lvl["type"] == "support"]
-            all_resistance_levels = [lvl for lvl in all_levels if lvl["type"] == "resistance"]
-            
-            # CRITICAL: Ensure we ALWAYS have S/R levels (NO FALLBACKS rule)
-            if not all_levels:
-                logger.error("❌ CRITICAL: No S/R levels found from candle analysis!")
-                logger.error("❌ This violates NO FALLBACKS rule - S/R calculation must be fixed")
-                # Force creation of emergency levels
-                all_levels = []
-                all_support_levels = []
-                all_resistance_levels = []
-            
-            # Removed verbose debug logging to reduce spam
-            
-            # SUPPORT LEVEL SELECTION - ALWAYS show at least 1 support
-            if all_support_levels:
-                # Sort all support levels by score (best first)
-                all_support_levels.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
-                
-                # Prefer levels below current price, but if none exist, use the closest one
-                support_levels_below = [lvl for lvl in all_support_levels if lvl["level"] < current_price]
-                
-                if support_levels_below:
-                    # Use levels below current price (preferred)
-                    for support in support_levels_below:
-                        combined_score = support.get("score", 0) * support.get("weight", 1.0)
-                        if len([l for l in relevant_levels if l["type"] == "support"]) < 1 or combined_score > 0.2:
-                            # Add missing fields for dashboard display
-                            support["timeframe"] = support.get("timeframe", "5m")
-                            support["relevance"] = "high" if combined_score > 0.5 else "medium" if combined_score > 0.2 else "low"
-                            relevant_levels.append(support)
-                        if len([l for l in relevant_levels if l["type"] == "support"]) >= 3:
-                            break
-                else:
-                    # No support below current price - use the closest support from historical data
-                    closest_support = all_support_levels[0]  # Already sorted by score
-                    relevant_levels.append(closest_support)
-            else:
-                logger.warning("⚠️ No support levels found in historical data")
-            
-            # RESISTANCE LEVEL SELECTION - ONLY levels ABOVE current price
-            if all_resistance_levels:
-                # Filter to only include resistance levels ABOVE current price
-                resistance_levels_above = [lvl for lvl in all_resistance_levels if lvl["level"] > current_price]
-                
-                if resistance_levels_above:
-                    # Sort by score (best first)
-                    resistance_levels_above.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
-                    
-                    # Include up to 3 resistance levels above current price
-                    for resistance in resistance_levels_above[:3]:
-                        combined_score = resistance.get("score", 0) * resistance.get("weight", 1.0)
-                        if combined_score > 0.2:
-                            # Add missing fields for dashboard display
-                            resistance["timeframe"] = resistance.get("timeframe", "5m")
-                            resistance["relevance"] = "high" if combined_score > 0.5 else "medium" if combined_score > 0.2 else "low"
-                            relevant_levels.append(resistance)
-                        if len([l for l in relevant_levels if l["type"] == "resistance"]) >= 3:
-                            break
-                else:
-                    # No resistance above current price - price at all-time high or broke through all resistance
-                    logger.warning("⚠️ No resistance levels above current price - price at highs")
-            else:
-                logger.warning("⚠️ No resistance levels found in historical data")
-            
-            # If not enough levels found in recent data, expand timeframe
-            if len(relevant_levels) < 4:
-                logger.warning(f"⚠️ Only {len(relevant_levels)} levels found in recent data - expanding to 30 days")
-                
-                # DELEGATE: Get extended historical data from market data service (SRP compliance)
-                candles_1d_extended = market_data_service.get_historical_candles("BTC", "1d", 30)
-                candles_1h_extended = market_data_service.get_historical_candles("BTC", "1h", 168)
-                
-                if not candles_1d_extended or not candles_1h_extended:
-                    raise ValueError("Extended historical data not available from market data service - NO FALLBACKS")
-                
-                # Analyze extended data
-                if candles_1d_extended and len(candles_1d_extended) >= 10:
-                    sr_extended = sr_calculator.identify_key_levels(candles_1d_extended, min_touches=2)
-                    for level in sr_extended.get("key_levels", []):
-                        level["timeframe"] = "1d_extended"
-                        level["weight"] = 0.8  # Lower weight for older data
-                        # Only add if not already present
-                        if not any(abs(level["level"] - existing["level"]) < 500 for existing in relevant_levels):
-                            relevant_levels.append(level)
-                
-                if candles_1h_extended and len(candles_1h_extended) >= 10:
-                    sr_extended = sr_calculator.identify_key_levels(candles_1h_extended, min_touches=2)
-                    for level in sr_extended.get("key_levels", []):
-                        level["timeframe"] = "1h_extended"
-                        level["weight"] = 0.7
-                        if not any(abs(level["level"] - existing["level"]) < 500 for existing in relevant_levels):
-                            relevant_levels.append(level)
-                
-                logger.info(f"📊 After expansion: {len(relevant_levels)} total levels")
-            
-            # If STILL no levels (market at all-time high/low), use price-based levels
-            if not relevant_levels:
-                logger.error("❌ No S/R levels found even after expansion - market at extreme")
-                raise ValueError("No valid S/R levels available")
-            
-            # 8. Sort by combined score (score * weight)
-            relevant_levels.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
-            
-            # 9. Get strongest support and resistance
-            support_levels = [lvl for lvl in relevant_levels if lvl["type"] == "support"]
-            resistance_levels = [lvl for lvl in relevant_levels if lvl["type"] == "resistance"]
-            
-            strongest_support = support_levels[0]["level"] if support_levels else 0.0
-            strongest_resistance = resistance_levels[0]["level"] if resistance_levels else 0.0
-            
-            
-            # Prepare final result
-            result = {
-                "key_levels": relevant_levels[:10],  # Top 10 most relevant levels
-                "strongest_support": strongest_support,
-                "strongest_resistance": strongest_resistance,
-                "timeframe": "integrated_multi_timeframe",
-                "candles_analyzed": len(candles_5m) + len(candles_1h) + len(candles_1d),
-                "analysis_confidence": min(1.0, len(relevant_levels) / 8),  # More levels = higher confidence
-                "data_source": "hyperliquid_integrated",
-                "persistent_resistance": None,  # Removed during cleanup
-                "level_breakdown": {
-                    "support_count": len(support_levels),
-                    "resistance_count": len(resistance_levels),
-                    "timeframes_analyzed": len(set(lvl.get("timeframe", "unknown") for lvl in relevant_levels))
-                }
-            }
-            
-            # Cache the result until price breaks a level
-            self._sr_cache = {
-                'data': result,
-                'last_price': current_price
-            }
-            
-            return result
+            # All orchestration logic moved to calculator
+            return sr_calculator.calculate_multi_timeframe_levels(current_price, market_data_service)
             
         except Exception as e:
             logger.error(f"❌ Real-time support/resistance calculation failed: {e}")
             # NO FALLBACKS - raise the exception
             raise Exception(f"Support/resistance calculation failed: {e}")
     
-    
-    def _add_ml_metrics_to_dashboard(self, dashboard_service):
-        """Add ML performance metrics to the dashboard"""
-        try:
-            from core.ml.performance_monitor import global_performance_monitor
-            from core.ml.continuous_learning import global_continuous_learning
-            from core.ml.model_training import global_model_trainer
-            
-            # Get ML performance summary
-            performance_summary = global_performance_monitor.get_performance_summary()
-            
-            # Get training data status
-            training_status = global_model_trainer.get_training_status()
-            
-            # Get learning system status
-            learning_config = global_continuous_learning.config
-            should_retrain = global_continuous_learning._should_retrain()
-            
-            # Create ML metrics signal
-            ml_metrics_data = {
-                "type": "ML_METRICS",
-                "performance_summary": performance_summary,
-                "training_status": training_status,
-                "learning_config": {
-                    "retrain_interval_hours": learning_config.retrain_interval_hours,
-                    "min_data_points": learning_config.min_data_points,
-                    "performance_threshold": learning_config.performance_threshold,
-                    "confidence_threshold": learning_config.confidence_threshold,
-                    "auto_retraining": learning_config.enable_automatic_retraining
-                },
-                "should_retrain": should_retrain,
-                "retrain_count": global_continuous_learning.retrain_count,
-                "last_retrain_time": global_continuous_learning.last_retrain_time,
-                "is_learning": global_continuous_learning.is_learning,
-                "timestamp": time.time()
-            }
-            
-            dashboard_service.add_signal(ml_metrics_data)
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to add ML metrics to dashboard: {e}")
-    
-    def _categorize_global_volume(self, volume_btc_per_min: float) -> str:
-        """Categorize global volume based on BTC/min thresholds for global Bitcoin market"""
-        try:
-            if volume_btc_per_min < 5:
-                return "VERY_LOW"
-            elif volume_btc_per_min < 10:
-                return "LOW"
-            elif volume_btc_per_min < 20:
-                return "NORMAL"
-            elif volume_btc_per_min < 50:
-                return "HIGH"
-            elif volume_btc_per_min < 100:
-                return "VERY_HIGH"
-            else:
-                return "EXTREME"
-        except Exception as e:
-            logger.error(f"❌ Failed to categorize global volume: {e}")
-            return "UNKNOWN"
     

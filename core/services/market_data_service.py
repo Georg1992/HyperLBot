@@ -166,37 +166,46 @@ class MarketDataService(BaseDataManager):
             return {"error": str(e)}
     
     def get_historical_candles(self, symbol: str = "BTC", interval: str = "5m", limit: int = 20) -> List[Dict[str, Any]]:
-        """Get historical candles with BaseDataManager caching - CENTRAL HUB for all candle data"""
+        """Get historical candles with BaseDataManager caching - CENTRAL HUB for all candle data
+        
+        OPTIMIZED CACHING:
+        - Single cache key per interval (not per limit)
+        - Fetches maximum needed and slices for different requests
+        - Automatically updates cache when it expires based on interval duration
+        """
         try:
-            # Use BaseDataManager's caching with interval-specific duration
+            # OPTIMIZED: Use single cache key per interval, not per limit
+            # This ensures all requests for the same interval share the same cached data
+            cache_key = f"candles_{symbol}_{interval}"
             cache_duration = self._interval_cache_duration.get(interval, self.cache_duration)
             
-            # For daily candles, use a standardized cache key to avoid multiple API calls
-            if interval == "1d":
-                # Always fetch 30 days for daily candles to cover all use cases
-                cache_key = f"candles_{symbol}_{interval}_30"
-                fetch_limit = 30
-            else:
-                # For other intervals, use the requested limit
-                cache_key = f"candles_{symbol}_{interval}_{limit}"
-                fetch_limit = limit
+            # Define maximum fetch limits for each interval to cover all use cases
+            # These limits cover both regular analysis AND extended S/R analysis
+            max_fetch_limits = {
+                "1m": 60,    # 1 hour of 1m candles
+                "5m": 288,   # 24 hours of 5m candles (covers all S/R needs - was requesting 288 in S/R calc)
+                "1h": 168,   # 1 week of 1h candles (covers extended S/R analysis)
+                "1d": 45     # 45 days for context analysis
+            }
+            
+            fetch_limit = max_fetch_limits.get(interval, limit)
             
             # Check if we have cached data that's still valid
             if self._is_cache_valid(cache_key, cache_duration):
-                logger.debug(f"📊 Using cached {interval} candles for {symbol}")
+                logger.debug(f"📊 Using cached {interval} candles for {symbol} (requested: {limit}, cached: {len(self.cache[cache_key])})")
                 cached_candles = self.cache[cache_key]
-                # Return only the requested number of candles
+                # Return slice of requested candles from the cached data
                 return cached_candles[-limit:] if len(cached_candles) >= limit else cached_candles
             
             # Fetch fresh data from API
-            logger.debug(f"🕯️ Fetching fresh {interval} candles for {symbol} (limit: {fetch_limit})")
+            logger.debug(f"🕯️ Fetching fresh {interval} candles for {symbol} (max_limit: {fetch_limit})")
             candles = self._fetch_historical_candles(symbol, interval, fetch_limit)
             
             if candles:
-                # Cache the data using BaseDataManager's method
+                # Cache the FULL dataset using BaseDataManager's method
                 self._cache_data(cache_key, candles)
-                logger.debug(f"📊 Cached {len(candles)} {interval} candles for {symbol}")
-                # Return only the requested number of candles
+                logger.info(f"📊 Cached {len(candles)} {interval} candles for {symbol} - All requests will slice from this")
+                # Return slice of requested candles
                 return candles[-limit:] if len(candles) >= limit else candles
             
             return candles
@@ -227,6 +236,38 @@ class MarketDataService(BaseDataManager):
         except Exception as e:
             logger.error(f"❌ Failed to get ongoing candle: {e}")
             return None
+    
+    def invalidate_candle_cache(self, symbol: str = "BTC", interval: str = None):
+        """Invalidate historical candle cache for specific interval or all intervals
+        
+        This should be called when:
+        - A candle period completes (e.g., every 5 minutes for 5m candles)
+        - A new candle starts
+        - Market data needs to be refreshed immediately
+        
+        Args:
+            symbol: Trading symbol (default: "BTC")
+            interval: Specific interval to invalidate (e.g., "5m"), or None for all intervals
+        """
+        try:
+            if interval:
+                # Invalidate specific interval
+                cache_key = f"candles_{symbol}_{interval}"
+                if cache_key in self.cache:
+                    del self.cache[cache_key]
+                    if cache_key in self.cache_timestamps:
+                        del self.cache_timestamps[cache_key]
+                    logger.debug(f"🗑️ Invalidated {interval} cache for {symbol}")
+            else:
+                # Invalidate all intervals
+                keys_to_remove = [key for key in self.cache.keys() if key.startswith(f"candles_{symbol}_")]
+                for key in keys_to_remove:
+                    del self.cache[key]
+                    if key in self.cache_timestamps:
+                        del self.cache_timestamps[key]
+                logger.debug(f"🗑️ Invalidated all interval caches for {symbol}")
+        except Exception as e:
+            logger.error(f"❌ Failed to invalidate cache: {e}")
     
     def get_all_market_data(self, symbol: str = "BTC") -> Dict[str, Any]:
         """Get ALL market data in one call - SINGLE SOURCE OF TRUTH"""

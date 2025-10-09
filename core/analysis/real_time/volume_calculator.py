@@ -108,6 +108,35 @@ class VolumeCalculator:
     
     # Old relative volume analysis method removed - using CoinGecko volume data instead
     
+    def categorize_global_volume(self, volume_btc_per_min: float) -> str:
+        """
+        Categorize global volume based on BTC/min thresholds for global Bitcoin market.
+        
+        Categories:
+        - VERY_LOW: < 5 BTC/min
+        - LOW: 5-10 BTC/min
+        - NORMAL: 10-20 BTC/min
+        - HIGH: 20-50 BTC/min
+        - VERY_HIGH: 50-100 BTC/min
+        - EXTREME: > 100 BTC/min
+        """
+        try:
+            if volume_btc_per_min < 5:
+                return "VERY_LOW"
+            elif volume_btc_per_min < 10:
+                return "LOW"
+            elif volume_btc_per_min < 20:
+                return "NORMAL"
+            elif volume_btc_per_min < 50:
+                return "HIGH"
+            elif volume_btc_per_min < 100:
+                return "VERY_HIGH"
+            else:
+                return "EXTREME"
+        except Exception as e:
+            logger.error(f"❌ Failed to categorize global volume: {e}")
+            return "UNKNOWN"
+    
     def detect_volume_spike_from_binance(self, current_volume_btc: float, historical_volumes: List[float]) -> Dict[str, Any]:
         """
         Detect volume spikes using Binance real-time volume data

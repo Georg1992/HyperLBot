@@ -31,7 +31,77 @@ class MarketDataManager:
         self._cache_timestamps = {}
         self._cache_duration = 30  # 30 seconds cache
         
-        logger.info("📊 Market Data Manager initialized - Centralized data management with volume history tracking")
+        # S/R level tracking for smart recalculation
+        self._last_sr_levels = {
+            "strongest_support": 0.0,
+            "strongest_resistance": 0.0,
+            "last_calculated_price": 0.0,
+            "last_calculated_time": 0.0
+        }
+        
+        logger.info("📊 Market Data Manager initialized - Centralized data management with smart S/R caching")
+    
+    def _should_recalculate_sr_levels(self, current_price: float) -> tuple[bool, str]:
+        """
+        Check if S/R levels need recalculation based on price movement and level breaks.
+        
+        Returns:
+            tuple: (should_recalculate: bool, reason: str)
+        """
+        import time
+        
+        current_time = time.time()
+        last_price = self._last_sr_levels["last_calculated_price"]
+        last_support = self._last_sr_levels["strongest_support"]
+        last_resistance = self._last_sr_levels["strongest_resistance"]
+        last_time = self._last_sr_levels["last_calculated_time"]
+        
+        # Always recalculate if this is the first time
+        if last_price == 0.0:
+            return True, "first calculation"
+        
+        # Check if any level was broken
+        support_broken = last_support > 0 and current_price < last_support
+        resistance_broken = last_resistance > 0 and current_price > last_resistance
+        
+        if support_broken:
+            return True, f"support broken (${last_support:.2f} -> ${current_price:.2f})"
+        if resistance_broken:
+            return True, f"resistance broken (${last_resistance:.2f} -> ${current_price:.2f})"
+        
+        # Check if price moved significantly (5% change)
+        if last_price > 0:
+            price_change_pct = abs(current_price - last_price) / last_price
+            if price_change_pct > 0.05:  # 5% threshold
+                return True, f"significant price movement ({price_change_pct:.1%})"
+        
+        # Check if it's been too long since last calculation (5 minutes)
+        if current_time - last_time > 300:  # 5 minutes
+            return True, "time threshold exceeded"
+        
+        # No need to recalculate
+        return False, "levels still valid"
+    
+    def _update_sr_cache(self, support: float, resistance: float, current_price: float):
+        """Update the S/R level cache with new values."""
+        import time
+        
+        self._last_sr_levels = {
+            "strongest_support": support,
+            "strongest_resistance": resistance,
+            "last_calculated_price": current_price,
+            "last_calculated_time": time.time()
+        }
+    
+    def invalidate_sr_cache(self):
+        """Force S/R recalculation by invalidating the cache."""
+        self._last_sr_levels = {
+            "strongest_support": 0.0,
+            "strongest_resistance": 0.0,
+            "last_calculated_price": 0.0,
+            "last_calculated_time": 0.0
+        }
+        logger.info("🔄 S/R cache invalidated - will recalculate on next request")
     
     def get_historical_candles(self, symbol: str = "BTC", interval: str = "5m", limit: int = 20, force_refresh: bool = False, include_ongoing: bool = True) -> List[Dict[str, Any]]:
         """
@@ -146,47 +216,68 @@ class MarketDataManager:
                         else:
                             raise ValueError("Insufficient candle data for pattern analysis")
                         
-                        # Calculate support/resistance levels using SupportResistanceCalculator
-                        from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
-                        sr_calculator = get_global_support_resistance_calculator()
-                        
-                        # First try with 5m candles
-                        support_resistance_data = sr_calculator.identify_key_levels(candles_5m)
-                        
-                        # Check if support or resistance is broken and needs recalculation
+                        # SMART S/R CALCULATION - Only recalculate when needed
                         current_price = candles_5m[-1].get("close", 0) if candles_5m else 0
-                        strongest_support = support_resistance_data.get("strongest_support", 0)
-                        strongest_resistance = support_resistance_data.get("strongest_resistance", 0)
                         
-                        needs_deeper_data = False
-                        reason = []
+                        # Check if S/R levels need recalculation
+                        should_recalc, recalc_reason = self._should_recalculate_sr_levels(current_price)
                         
-                        # Check if support is broken (price below support or no support found)
-                        if current_price > 0 and (strongest_support == 0 or strongest_support >= current_price):
-                            needs_deeper_data = True
-                            reason.append("support broken/missing")
-                            logger.warning(f"🔍 SUPPORT BROKEN: Current=${current_price:.2f}, Support=${strongest_support:.2f} (Support >= Price: {strongest_support >= current_price})")
+                        if should_recalc:
+                            logger.info(f"🔄 S/R recalculation triggered: {recalc_reason}")
+                            
+                            # Calculate support/resistance levels using SupportResistanceCalculator
+                            from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
+                            sr_calculator = get_global_support_resistance_calculator()
+                            
+                            # First try with 5m candles
+                            support_resistance_data = sr_calculator.identify_key_levels(candles_5m)
+                            strongest_support = support_resistance_data.get("strongest_support", 0)
+                            strongest_resistance = support_resistance_data.get("strongest_resistance", 0)
+                            
+                            needs_deeper_data = False
+                            reason = []
+                            
+                            # Check if support is broken (price below support or no support found)
+                            if current_price > 0 and (strongest_support == 0 or strongest_support >= current_price):
+                                needs_deeper_data = True
+                                reason.append("support broken/missing")
+                                logger.warning(f"🔍 SUPPORT BROKEN: Current=${current_price:.2f}, Support=${strongest_support:.2f} (Support >= Price: {strongest_support >= current_price})")
+                            
+                            # Check if resistance is broken (price above resistance or no resistance found)
+                            if current_price > 0 and (strongest_resistance == 0 or strongest_resistance <= current_price):
+                                needs_deeper_data = True
+                                reason.append("resistance broken/missing")
+                                logger.warning(f"🔍 RESISTANCE BROKEN: Current=${current_price:.2f}, Resistance=${strongest_resistance:.2f} (Resistance <= Price: {strongest_resistance <= current_price})")
+                            
+                            # Fetch deeper historical data if needed
+                            if needs_deeper_data:
+                                logger.warning(f"⚠️ S/R recalculation needed ({', '.join(reason)}) - fetching 1h historical candles")
+                                # Fetch more historical data (1h candles for deeper history)
+                                candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)  # 48 hours
+                                if candles_1h and len(candles_1h) >= 10:
+                                    support_resistance_data = sr_calculator.identify_key_levels(candles_1h)
+                                    new_support = support_resistance_data.get('strongest_support', 0)
+                                    new_resistance = support_resistance_data.get('strongest_resistance', 0)
+                                    logger.success(f"✅ S/R RECALCULATED from 1h data: Support=${new_support:,.2f}, Resistance=${new_resistance:,.2f}")
+                                    logger.info(f"   📊 New support below current price: {new_support < current_price}")
+                                    logger.info(f"   📊 New resistance above current price: {new_resistance > current_price}")
+                                else:
+                                    logger.error(f"❌ Failed to get sufficient 1h candles for S/R recalculation: {len(candles_1h) if candles_1h else 0} candles")
+                            
+                            # Update S/R cache with new values
+                            self._update_sr_cache(strongest_support, strongest_resistance, current_price)
+                            logger.info(f"💾 S/R levels cached: Support=${strongest_support:.2f}, Resistance=${strongest_resistance:.2f}")
                         
-                        # Check if resistance is broken (price above resistance or no resistance found)
-                        if current_price > 0 and (strongest_resistance == 0 or strongest_resistance <= current_price):
-                            needs_deeper_data = True
-                            reason.append("resistance broken/missing")
-                            logger.warning(f"🔍 RESISTANCE BROKEN: Current=${current_price:.2f}, Resistance=${strongest_resistance:.2f} (Resistance <= Price: {strongest_resistance <= current_price})")
-                        
-                        # Fetch deeper historical data if needed
-                        if needs_deeper_data:
-                            logger.warning(f"⚠️ S/R recalculation needed ({', '.join(reason)}) - fetching 1h historical candles")
-                            # Fetch more historical data (1h candles for deeper history)
-                            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)  # 48 hours
-                            if candles_1h and len(candles_1h) >= 10:
-                                support_resistance_data = sr_calculator.identify_key_levels(candles_1h)
-                                new_support = support_resistance_data.get('strongest_support', 0)
-                                new_resistance = support_resistance_data.get('strongest_resistance', 0)
-                                logger.success(f"✅ S/R RECALCULATED from 1h data: Support=${new_support:,.2f}, Resistance=${new_resistance:,.2f}")
-                                logger.info(f"   📊 New support below current price: {new_support < current_price}")
-                                logger.info(f"   📊 New resistance above current price: {new_resistance > current_price}")
-                            else:
-                                logger.error(f"❌ Failed to get sufficient 1h candles for S/R recalculation: {len(candles_1h) if candles_1h else 0} candles")
+                        else:
+                            # Use cached S/R levels
+                            strongest_support = self._last_sr_levels["strongest_support"]
+                            strongest_resistance = self._last_sr_levels["strongest_resistance"]
+                            support_resistance_data = {
+                                "strongest_support": strongest_support,
+                                "strongest_resistance": strongest_resistance,
+                                "key_levels": []  # Could cache this too if needed
+                            }
+                            logger.debug(f"📋 Using cached S/R levels: Support=${strongest_support:.2f}, Resistance=${strongest_resistance:.2f}")
                     else:
                         raise ValueError("Insufficient orderbook data")
                 else:

@@ -2300,19 +2300,14 @@
                 
                 const ctx = canvas.getContext('2d');
                 
-                // Fix canvas scaling for crisp rendering
-                const devicePixelRatio = window.devicePixelRatio || 1;
+                // Get canvas dimensions from CSS
                 const rect = canvas.getBoundingClientRect();
-                
-                canvas.width = rect.width * devicePixelRatio;
-                canvas.height = rect.height * devicePixelRatio;
-                
-                ctx.scale(devicePixelRatio, devicePixelRatio);
-                canvas.style.width = rect.width + 'px';
-                canvas.style.height = rect.height + 'px';
-                
                 const width = rect.width;
                 const height = rect.height;
+                
+                // Set canvas size
+                canvas.width = width;
+                canvas.height = height;
                 
                 // Check if we have real data
                 if (!historicalCandles || historicalCandles.length === 0 || 
@@ -2365,11 +2360,12 @@
                 ctx.fillStyle = gradient;
                 ctx.fillRect(0, 0, width, height);
                 
-                // Calculate candle dimensions for simple 20-candle display
-                const totalCandles = historicalCandles.length; // Exactly 20 candles
-                const priceLabelWidth = 100; // Reserve more space for price labels on the right
+                // Calculate candle dimensions for exactly 20 candles
+                const totalCandles = 20; // Always exactly 20 candles
+                const priceLabelWidth = 100; // Space for price labels
                 const chartWidth = width - priceLabelWidth; // Available width for chart
-                const candleWidth = (chartWidth * 0.95) / totalCandles; // Use 95% of available chart width for better utilization
+                const candleWidth = (chartWidth * 0.95) / totalCandles; // Use 95% of available chart width
+                const chartStartX = (chartWidth - (totalCandles * candleWidth)) / 2; // Center the chart within available space
                 
                 // Draw professional grid with anti-aliasing
                 ctx.imageSmoothingEnabled = true;
@@ -2388,8 +2384,7 @@
                     ctx.stroke();
                 }
                 
-                // Vertical grid lines - align to candle boundaries with offset for scaling
-                const chartStartX = (chartWidth - (totalCandles * candleWidth)) / 2; // Center the chart within available space
+                // Vertical grid lines - align to candle boundaries
                 for (let i = 0; i <= totalCandles; i++) {
                     const x = chartStartX + (i * candleWidth);
                     ctx.beginPath();
@@ -2525,15 +2520,18 @@
                     });
                 }
                 
-                // Draw all candles (historical + ongoing)
+                // Draw exactly 20 candles (no more, no less)
                 const historicalStartX = chartStartX;
+                const maxCandles = 20;
+                const candlesToDraw = Math.min(historicalCandles.length, maxCandles);
                 
-                // Draw all candles including the ongoing candle (now included in historical array)
-                historicalCandles.forEach((candle, index) => {
+                // Draw candles
+                for (let index = 0; index < candlesToDraw; index++) {
+                    const candle = historicalCandles[index];
                     const x = historicalStartX + (index * candleWidth);
                     const isOngoing = candle.is_ongoing || false;
                     this.drawCandle(ctx, candle, x, candleWidth, height, adjustedMinPrice, adjustedPriceRange, false, isOngoing);
-                });
+                }
                 
                 // No separator line needed - simple 20-candle display
                 
@@ -2541,7 +2539,7 @@
                 ctx.fillStyle = '#00FFFF';
                 ctx.font = 'bold 12px Arial';
                 ctx.textAlign = 'center';
-                const nowX = chartStartX + ((historicalCandles.length - 1) * candleWidth) + (candleWidth / 2);
+                const nowX = chartStartX + ((candlesToDraw - 1) * candleWidth) + (candleWidth / 2);
                 ctx.fillText('NOW', nowX, height - 10);
                 
                 // Draw pattern overlays on the chart
@@ -2555,7 +2553,7 @@
                 if (candleData && candleData.pattern_analysis) {
                     console.log('🎨 Drawing pattern overlays:', candleData.pattern_analysis);
                     this.drawPatternOverlays(ctx, candleData.pattern_analysis, historicalCandles, chartStartX, candleWidth, height, adjustedMinPrice, adjustedPriceRange);
-                        } else {
+                } else {
                     console.log('🎨 No pattern data available for chart overlay');
                 }
                 
