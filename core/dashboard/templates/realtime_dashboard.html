@@ -1650,6 +1650,8 @@
             
             updatePrediction(prediction) {
                 console.log('🔮 Updating prediction:', prediction);
+                console.log('🔍 Prediction reasoning type:', typeof prediction?.reasoning, prediction?.reasoning);
+                console.log('🔍 Prediction confidence_boosts type:', typeof prediction?.confidence_boosts, prediction?.confidence_boosts);
                 
                 const activePrediction = document.getElementById('active-prediction');
                 const predictionStatus = document.getElementById('prediction-status');
@@ -1695,7 +1697,7 @@
                 
                 // Build reasoning list
                 let reasoningHTML = '';
-                if (prediction.reasoning && prediction.reasoning.length > 0) {
+                if (prediction.reasoning && Array.isArray(prediction.reasoning) && prediction.reasoning.length > 0) {
                     const topReasons = prediction.reasoning.slice(0, 5); // Show top 5 reasons
                     reasoningHTML = topReasons.map(reason => 
                         `<div style="font-size: 11px; color: #aaa; padding: 3px 0; border-left: 2px solid ${directionColor}; padding-left: 8px;">${reason}</div>`
@@ -1704,7 +1706,7 @@
                 
                 // Build confidence boosts
                 let boostsHTML = '';
-                if (prediction.confidence_boosts && prediction.confidence_boosts.length > 0) {
+                if (prediction.confidence_boosts && Array.isArray(prediction.confidence_boosts) && prediction.confidence_boosts.length > 0) {
                     const boosts = prediction.confidence_boosts.filter(b => b.boost > 0).slice(0, 3);
                     const penalties = prediction.confidence_boosts.filter(b => b.boost < 0).slice(0, 2);
                     
