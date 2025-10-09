@@ -224,7 +224,7 @@ class SystemInitializer:
             from core.logging.trading_logger import TradingLogger
             from core.execution.trade_quality_manager import TradeManager
             from core.simulated_account_manager import account_manager
-            from core.api.hyperliquid_simulator import HyperLiquidSimulator
+            from core.api.hyperliquid_simulator import HyperliquidSimulator
             from core.execution.trading_execution_wrapper import TradingExecutionWrapper
             
             # Initialize trading components
@@ -239,7 +239,7 @@ class SystemInitializer:
             trade_quality_manager = TradeManager(config.STRATEGY_CONFIGS.get("standard", {}))
             
             # Initialize HyperLiquid simulator with account balance
-            hyperliquid_simulator = HyperLiquidSimulator(initial_balance=initial_balance)
+            hyperliquid_simulator = HyperliquidSimulator(initial_balance=initial_balance)
             
             # Initialize trading execution wrapper (thin wrapper around simulator)
             trading_execution = TradingExecutionWrapper(
