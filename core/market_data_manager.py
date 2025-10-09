@@ -162,6 +162,10 @@ class MarketDataManager:
             funding_rate = all_data.get("funding_rate", {})
             candles_5m = all_data.get("candles", {}).get("5m", [])
             
+            # Fetch additional candle timeframes for S/R calculation
+            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)
+            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
+            
             # Use calculators for analysis (clean architecture)
             if market_data and 'levels' in market_data:
                 levels = market_data['levels']
