@@ -153,12 +153,27 @@ class MarketDataManager:
                         # First try with 5m candles
                         support_resistance_data = sr_calculator.identify_key_levels(candles_5m)
                         
-                        # If no valid support found (or support is broken), fetch more historical data
+                        # Check if support or resistance is broken and needs recalculation
                         current_price = candles_5m[-1].get("close", 0) if candles_5m else 0
                         strongest_support = support_resistance_data.get("strongest_support", 0)
+                        strongest_resistance = support_resistance_data.get("strongest_resistance", 0)
                         
+                        needs_deeper_data = False
+                        reason = []
+                        
+                        # Check if support is broken (price below support or no support found)
                         if current_price > 0 and (strongest_support == 0 or strongest_support >= current_price):
-                            logger.warning(f"⚠️ No valid support in 5m data - fetching 1h historical candles")
+                            needs_deeper_data = True
+                            reason.append("support broken/missing")
+                        
+                        # Check if resistance is broken (price above resistance or no resistance found)
+                        if current_price > 0 and (strongest_resistance == 0 or strongest_resistance <= current_price):
+                            needs_deeper_data = True
+                            reason.append("resistance broken/missing")
+                        
+                        # Fetch deeper historical data if needed
+                        if needs_deeper_data:
+                            logger.warning(f"⚠️ S/R recalculation needed ({', '.join(reason)}) - fetching 1h historical candles")
                             # Fetch more historical data (1h candles for deeper history)
                             candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)  # 48 hours
                             if candles_1h and len(candles_1h) >= 10:
