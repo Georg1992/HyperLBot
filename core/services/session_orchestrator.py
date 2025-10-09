@@ -113,6 +113,11 @@ class SessionOrchestrator:
             self.session_manager = get_global_session_manager()  # Use singleton instance
             logger.info("✅ SessionManager initialized")
             
+            # Register session manager in singleton systems for PredictionExecutor access
+            from core.services.system_initializer import get_system_initializer
+            system_init = get_system_initializer()
+            system_init.singleton_systems["session_manager"] = self.session_manager
+            
             # Create initial heartbeat
             dashboard_service.create_initial_heartbeat(self.session_manager, "standard", self.initial_balance)
             

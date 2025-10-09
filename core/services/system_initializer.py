@@ -256,6 +256,7 @@ class SystemInitializer:
             self.singleton_systems["trade_quality_manager"] = trade_quality_manager
             self.singleton_systems["hyperliquid_simulator"] = hyperliquid_simulator
             self.singleton_systems["trading_execution"] = trading_execution
+            self.singleton_systems["account_manager"] = account_manager
             
             # Initialize trading services
             from core.services.market_data_service import MarketDataService
