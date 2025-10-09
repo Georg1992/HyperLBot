@@ -1,26 +1,53 @@
 #!/usr/bin/env python3
 """
-Hyperliquid Simulator
-Mimics real Hyperliquid trading behavior for accurate paper trading simulation
+Enhanced Hyperliquid Simulator
+Simulates the complete Hyperliquid trading environment including:
+- Account state (balance, margin, positions)
+- Order execution (market, limit, post-only, reduce-only)
+- Position lifecycle (open, close, modify)
+- P&L calculation with leverage
+- Margin requirements and liquidation
+- Realistic fees and slippage
+
+This simulator mimics what the real Hyperliquid API would handle in production.
 """
 
 import time
 import copy
 import random
+import json
 from typing import Dict, List, Optional, Any
-# # from datetime import datetime, timedelta  # Removed unused import  # Removed unused import
-# from loguru import logger  # Removed unused import
+from datetime import datetime
+from loguru import logger
+
 
 class HyperliquidSimulator:
-    """Hyperliquid trading simulator with realistic behavior"""
+    """Complete Hyperliquid trading environment simulator"""
     
-    def __init__(self):
+    def __init__(self, initial_balance: float = 10000.0):
+        # Order book data
         self.order_book_snapshot = None
+        
+        # Account state
+        self.account_balance = initial_balance
+        self.initial_balance = initial_balance
+        self.open_positions: Dict[str, Dict[str, Any]] = {}  # trade_id -> position
+        self.closed_positions: List[Dict[str, Any]] = []
+        self.pending_orders: Dict[str, Dict[str, Any]] = {}  # order_id -> order
+        
+        # Trading statistics
+        self.total_trades = 0
+        self.winning_trades = 0
+        self.losing_trades = 0
+        self.total_pnl = 0.0
+        self.total_fees_paid = 0.0
+        
+        # Execution settings
         self.execution_delays = {
-            'market': 0.1,      # 100ms for market orders
-            'limit': 2.0,       # 2s for limit orders
-            'post_only': 1.5,   # 1.5s for post-only
-            'reduce_only': 1.0  # 1s for reduce-only
+            'MARKET': 0.1,      # 100ms for market orders
+            'LIMIT': 2.0,       # 2s for limit orders
+            'POST_ONLY': 1.5,   # 1.5s for post-only
+            'REDUCE_ONLY': 1.0  # 1s for reduce-only
         }
         
         # Fee structure (from Hyperliquid docs)
@@ -30,60 +57,312 @@ class HyperliquidSimulator:
             'funding_rate': 0.0001  # 0.01% per hour (varies)
         }
         
-        # Order book tick size
-        self.tick_size = 0.1  # BTC tick size
+        # Risk management
+        self.max_leverage = 50  # Hyperliquid max leverage
+        self.maintenance_margin_rate = 0.5  # 50% of initial margin
         
         # Simulation settings
-        self.slippage_model = 'realistic'  # 'none', 'fixed', 'realistic'
-        self.execution_quality = 0.95  # 95% success rate for orders
+        self.tick_size = 0.1  # BTC tick size
+        self.slippage_model = 'realistic'
+        self.execution_quality = 0.98  # 98% success rate
         
+        logger.info(f"🏦 HyperLiquid Simulator initialized with ${initial_balance:,.2f} balance")
+    
+    # ============================================================================
+    # ACCOUNT MANAGEMENT
+    # ============================================================================
+    
+    def get_account_state(self) -> Dict[str, Any]:
+        """Get complete account state"""
+        unrealized_pnl = self._calculate_total_unrealized_pnl()
+        used_margin = self._calculate_used_margin()
+        available_margin = self.account_balance - used_margin
+        
+        return {
+            "balance": self.account_balance,
+            "initial_balance": self.initial_balance,
+            "equity": self.account_balance + unrealized_pnl,
+            "unrealized_pnl": unrealized_pnl,
+            "realized_pnl": self.total_pnl,
+            "used_margin": used_margin,
+            "available_margin": available_margin,
+            "margin_ratio": (used_margin / self.account_balance * 100) if self.account_balance > 0 else 0,
+            "open_positions_count": len(self.open_positions),
+            "pending_orders_count": len(self.pending_orders),
+            "total_trades": self.total_trades,
+            "winning_trades": self.winning_trades,
+            "losing_trades": self.losing_trades,
+            "win_rate": (self.winning_trades / self.total_trades * 100) if self.total_trades > 0 else 0,
+            "total_fees_paid": self.total_fees_paid
+        }
+    
+    def get_balance(self) -> float:
+        """Get current account balance"""
+        return self.account_balance
+    
+    def get_open_positions(self) -> List[Dict[str, Any]]:
+        """Get all open positions"""
+        return list(self.open_positions.values())
+    
+    def get_position(self, trade_id: str) -> Optional[Dict[str, Any]]:
+        """Get specific position by trade_id"""
+        return self.open_positions.get(trade_id)
+    
+    def get_closed_positions(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get closed positions (most recent first)"""
+        return self.closed_positions[-limit:][::-1]
+    
+    # ============================================================================
+    # ORDER EXECUTION
+    # ============================================================================
+    
     def update_order_book(self, orderbook: Dict[str, Any]):
         """Update the order book snapshot"""
         self.order_book_snapshot = copy.deepcopy(orderbook)
-
     
-    def simulate_order_execution(self, 
-                               order_type: str, 
-                               side: str, 
-                               size: float, 
-                               price: Optional[float] = None,
-                               leverage: int = 30) -> Dict[str, Any]:
-        """Simulate realistic order execution"""
+    def place_order(self, 
+                   order_type: str,
+                   side: str,
+                   size: float,
+                   symbol: str = "BTC",
+                   price: Optional[float] = None,
+                   leverage: int = 30,
+                   stop_loss: Optional[float] = None,
+                   take_profit: Optional[float] = None,
+                   metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """
+        Place an order (market or limit)
         
-        if not self.order_book_snapshot:
-            return self._create_error_response("No order book data available")
+        Args:
+            order_type: MARKET, LIMIT, POST_ONLY, REDUCE_ONLY
+            side: BUY or SELL
+            size: Position size in BTC
+            symbol: Trading symbol (default: BTC)
+            price: Limit price (required for LIMIT orders)
+            leverage: Leverage multiplier (1-50)
+            stop_loss: Stop loss price
+            take_profit: Take profit price
+            metadata: Additional order metadata (strategy, confidence, etc.)
         
-        # Check execution success rate
-        if random.random() > self.execution_quality:
-            return self._create_error_response("Order rejected by exchange")
-        
-        # Simulate execution delay
-        delay = self.execution_delays.get(order_type.lower(), 1.0)
-        time.sleep(delay * 0.001)  # Convert to milliseconds for simulation
-        
-        if order_type.upper() == "MARKET":
-            return self._simulate_market_execution(side, size, leverage)
-        elif order_type.upper() == "LIMIT":
-            return self._simulate_limit_execution(side, size, price, leverage)
-        elif order_type.upper() == "POST_ONLY":
-            return self._simulate_post_only_execution(side, size, price, leverage)
-        elif order_type.upper() == "REDUCE_ONLY":
-            return self._simulate_reduce_only_execution(side, size, price, leverage)
-        else:
-            return self._create_error_response(f"Unsupported order type: {order_type}")
+        Returns:
+            Order execution result with position details
+        """
+        try:
+            # Validate inputs
+            if not self.order_book_snapshot:
+                return self._create_error_response("No order book data available")
+            
+            if leverage > self.max_leverage:
+                return self._create_error_response(f"Leverage {leverage}x exceeds maximum {self.max_leverage}x")
+            
+            if order_type.upper() == "LIMIT" and price is None:
+                return self._create_error_response("Limit price required for LIMIT orders")
+            
+            # Check execution success rate
+            if random.random() > self.execution_quality:
+                return self._create_error_response("Order rejected by exchange (simulated)")
+            
+            # Simulate execution delay
+            delay = self.execution_delays.get(order_type.upper(), 1.0)
+            time.sleep(delay * 0.001)  # Convert to milliseconds
+            
+            # Execute order based on type
+            if order_type.upper() == "MARKET":
+                execution_result = self._execute_market_order(side, size, leverage)
+            elif order_type.upper() == "LIMIT":
+                execution_result = self._execute_limit_order(side, size, price, leverage)
+            elif order_type.upper() == "POST_ONLY":
+                execution_result = self._execute_post_only_order(side, size, price, leverage)
+            elif order_type.upper() == "REDUCE_ONLY":
+                execution_result = self._execute_reduce_only_order(side, size, price, leverage)
+            else:
+                return self._create_error_response(f"Unsupported order type: {order_type}")
+            
+            if not execution_result.get("success"):
+                return execution_result
+            
+            # Check margin requirements
+            margin_check = self._check_margin_requirements(size, execution_result["execution_price"], leverage)
+            if not margin_check["sufficient"]:
+                return self._create_error_response(f"Insufficient margin: {margin_check['reason']}")
+            
+            # Create position if order filled
+            if execution_result["order_status"] == "FILLED":
+                position = self._create_position(
+                    side=side,
+                    size=size,
+                    entry_price=execution_result["execution_price"],
+                    leverage=leverage,
+                    fees=execution_result["fees"],
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    metadata=metadata or {}
+                )
+                
+                # Deduct fees from balance
+                self.account_balance -= execution_result["fees"]["fee_amount"]
+                self.total_fees_paid += execution_result["fees"]["fee_amount"]
+                
+                execution_result["position"] = position
+                execution_result["account_balance"] = self.account_balance
+                
+                logger.success(f"✅ Order filled: {side} {size} BTC @ ${execution_result['execution_price']:,.2f}")
+                logger.info(f"   Leverage: {leverage}x | Fees: ${execution_result['fees']['fee_amount']:.4f}")
+                logger.info(f"   Balance: ${self.account_balance:,.2f}")
+            
+            return execution_result
+            
+        except Exception as e:
+            logger.error(f"❌ Order placement failed: {e}")
+            return self._create_error_response(str(e))
     
-    def _simulate_market_execution(self, side: str, size: float, leverage: int) -> Dict[str, Any]:
-        """Simulate market order execution"""
+    def close_position(self, trade_id: str, exit_price: Optional[float] = None, exit_reason: str = "MANUAL") -> Dict[str, Any]:
+        """
+        Close an open position
         
-        levels = self.order_book_snapshot['bids'] if side == 'BUY' else self.order_book_snapshot['asks']
+        Args:
+            trade_id: Position trade ID
+            exit_price: Optional exit price (uses market price if None)
+            exit_reason: Reason for closing (MANUAL, STOP_LOSS, TAKE_PROFIT, etc.)
         
-        # Calculate execution impact
+        Returns:
+            Position close result with P&L details
+        """
+        try:
+            position = self.open_positions.get(trade_id)
+            if not position:
+                return self._create_error_response(f"Position {trade_id} not found")
+            
+            # Use market price if exit_price not provided
+            if exit_price is None:
+                if not self.order_book_snapshot:
+                    return self._create_error_response("No market data available for exit")
+                
+                # Get best bid/ask based on position side
+                if position["side"] == "BUY":
+                    # Closing long = selling at bid
+                    exit_price = self.order_book_snapshot['bids'][0]['price'] if self.order_book_snapshot['bids'] else position["entry_price"]
+                else:
+                    # Closing short = buying at ask
+                    exit_price = self.order_book_snapshot['asks'][0]['price'] if self.order_book_snapshot['asks'] else position["entry_price"]
+            
+            # Execute exit order
+            exit_side = "SELL" if position["side"] == "BUY" else "BUY"
+            execution_result = self._execute_market_order(exit_side, position["size"], position["leverage"])
+            
+            if not execution_result.get("success"):
+                return execution_result
+            
+            actual_exit_price = execution_result["execution_price"]
+            exit_fees = execution_result["fees"]["fee_amount"]
+            
+            # Calculate P&L
+            pnl_result = self._calculate_position_pnl(
+                side=position["side"],
+                entry_price=position["entry_price"],
+                exit_price=actual_exit_price,
+                size=position["size"],
+                leverage=position["leverage"],
+                entry_fees=position["fees"]["fee_amount"],
+                exit_fees=exit_fees
+            )
+            
+            # Update balance
+            self.account_balance += pnl_result["net_pnl"]
+            self.total_pnl += pnl_result["net_pnl"]
+            self.total_fees_paid += exit_fees
+            self.total_trades += 1
+            
+            if pnl_result["net_pnl"] > 0:
+                self.winning_trades += 1
+            else:
+                self.losing_trades += 1
+            
+            # Update position
+            position.update({
+                "exit_price": actual_exit_price,
+                "exit_time": time.time(),
+                "exit_datetime": datetime.now().isoformat(),
+                "exit_reason": exit_reason,
+                "exit_fees": exit_fees,
+                "pnl_pct": pnl_result["pnl_pct"],
+                "pnl_amount": pnl_result["pnl_amount"],
+                "net_pnl": pnl_result["net_pnl"],
+                "total_fees": pnl_result["total_fees"],
+                "status": "CLOSED",
+                "was_profitable": pnl_result["net_pnl"] > 0
+            })
+            
+            # Move to closed positions
+            del self.open_positions[trade_id]
+            self.closed_positions.append(position)
+            
+            logger.success(f"✅ Position closed: {trade_id}")
+            logger.info(f"   P&L: {pnl_result['pnl_pct']*100:.2f}% (${pnl_result['net_pnl']:.4f})")
+            logger.info(f"   Balance: ${self.account_balance:,.2f}")
+            
+            return {
+                "success": True,
+                "position": position,
+                "pnl": pnl_result,
+                "account_balance": self.account_balance,
+                "execution_result": execution_result
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Position close failed: {e}")
+            return self._create_error_response(str(e))
+    
+    def check_stop_loss_take_profit(self, current_price: float) -> List[Dict[str, Any]]:
+        """
+        Check all open positions for stop loss / take profit triggers
+        
+        Args:
+            current_price: Current market price
+        
+        Returns:
+            List of positions that were closed
+        """
+        closed_positions = []
+        
+        for trade_id, position in list(self.open_positions.items()):
+            should_close = False
+            exit_reason = None
+            
+            # Check take profit
+            if position.get("take_profit"):
+                if (position["side"] == "BUY" and current_price >= position["take_profit"]) or \
+                   (position["side"] == "SELL" and current_price <= position["take_profit"]):
+                    should_close = True
+                    exit_reason = "TAKE_PROFIT"
+            
+            # Check stop loss
+            if position.get("stop_loss") and not should_close:
+                if (position["side"] == "BUY" and current_price <= position["stop_loss"]) or \
+                   (position["side"] == "SELL" and current_price >= position["stop_loss"]):
+                    should_close = True
+                    exit_reason = "STOP_LOSS"
+            
+            if should_close:
+                result = self.close_position(trade_id, current_price, exit_reason)
+                if result.get("success"):
+                    closed_positions.append(result["position"])
+        
+        return closed_positions
+    
+    # ============================================================================
+    # INTERNAL EXECUTION METHODS
+    # ============================================================================
+    
+    def _execute_market_order(self, side: str, size: float, leverage: int) -> Dict[str, Any]:
+        """Execute market order with realistic order book impact"""
+        levels = self.order_book_snapshot['asks'] if side == "BUY" else self.order_book_snapshot['bids']
+        
         impact_result = self._calculate_order_book_impact(side, size, levels)
         
         if impact_result['remaining_size'] > 0:
             return self._create_error_response("Insufficient liquidity for market order")
         
-        # Calculate fees (market orders are always taker)
         fees = self._calculate_fees('taker', size, impact_result['avg_price'])
         
         return {
@@ -101,17 +380,54 @@ class HyperliquidSimulator:
             "fills": impact_result['fills']
         }
     
-    def _simulate_limit_execution(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
-        """Simulate limit order execution"""
-        
-        # Check if limit price is reachable
+    def _execute_limit_order(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
+        """Execute limit order (may fill immediately or remain pending)"""
         best_bid = self.order_book_snapshot['bids'][0]['price'] if self.order_book_snapshot['bids'] else 0
         best_ask = self.order_book_snapshot['asks'][0]['price'] if self.order_book_snapshot['asks'] else float('inf')
         
-        if side == 'BUY' and price < best_ask:
-            # Limit buy below ask - may not execute immediately
-            execution_probability = 0.3  # 30% chance of immediate execution
-            if random.random() > execution_probability:
+        # Check if order crosses spread (immediate execution)
+        crosses_spread = (side == 'BUY' and price >= best_ask) or (side == 'SELL' and price <= best_bid)
+        
+        if crosses_spread:
+            # Execute immediately as taker
+            levels = self.order_book_snapshot['asks'] if side == "BUY" else self.order_book_snapshot['bids']
+            impact_result = self._calculate_order_book_impact(side, size, levels)
+            fees = self._calculate_fees('taker', size, impact_result['avg_price'])
+            
+            return {
+                "success": True,
+                "order_type": "LIMIT",
+                "side": side,
+                "size": size,
+                "execution_price": impact_result['avg_price'],
+                "total_cost": impact_result['total_cost'],
+                "fees": fees,
+                "slippage": impact_result['slippage'],
+                "leverage": leverage,
+                "execution_time": time.time(),
+                "order_status": "FILLED",
+                "fills": impact_result['fills']
+            }
+        else:
+            # Order placed but not filled (maker fee)
+            # For simulation, we'll fill it immediately at limit price with 70% probability
+            if random.random() < 0.7:
+                fees = self._calculate_fees('maker', size, price)
+                return {
+                    "success": True,
+                    "order_type": "LIMIT",
+                    "side": side,
+                    "size": size,
+                    "execution_price": price,
+                    "total_cost": size * price,
+                    "fees": fees,
+                    "slippage": 0.0,
+                    "leverage": leverage,
+                    "execution_time": time.time(),
+                    "order_status": "FILLED",
+                    "fills": [{"price": price, "size": size, "cost": size * price}]
+                }
+            else:
                 return {
                     "success": True,
                     "order_type": "LIMIT",
@@ -126,51 +442,9 @@ class HyperliquidSimulator:
                     "order_status": "PENDING",
                     "fills": []
                 }
-        
-        elif side == 'SELL' and price > best_bid:
-            # Limit sell above bid - may not execute immediately
-            execution_probability = 0.3  # 30% chance of immediate execution
-            if random.random() > execution_probability:
-                return {
-                    "success": True,
-                    "order_type": "LIMIT",
-                    "side": side,
-                    "size": size,
-                    "execution_price": price,
-                    "total_cost": size * price,
-                    "fees": self._calculate_fees('maker', size, price),
-                    "slippage": 0.0,
-                    "leverage": leverage,
-                    "execution_time": time.time(),
-                    "order_status": "PENDING",
-                    "fills": []
-                }
-        
-        # Order executes immediately (crosses spread)
-        levels = self.order_book_snapshot['bids'] if side == 'BUY' else self.order_book_snapshot['asks']
-        impact_result = self._calculate_order_book_impact(side, size, levels)
-        
-        fees = self._calculate_fees('taker', size, impact_result['avg_price'])
-        
-        return {
-            "success": True,
-            "order_type": "LIMIT",
-            "side": side,
-            "size": size,
-            "execution_price": impact_result['avg_price'],
-            "total_cost": impact_result['total_cost'],
-            "fees": fees,
-            "slippage": impact_result['slippage'],
-            "leverage": leverage,
-            "execution_time": time.time(),
-            "order_status": "FILLED",
-            "fills": impact_result['fills']
-        }
     
-    def _simulate_post_only_execution(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
-        """Simulate post-only order execution"""
-        
-        # Check if order would cross spread
+    def _execute_post_only_order(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
+        """Execute post-only order (rejects if would cross spread)"""
         best_bid = self.order_book_snapshot['bids'][0]['price'] if self.order_book_snapshot['bids'] else 0
         best_ask = self.order_book_snapshot['asks'][0]['price'] if self.order_book_snapshot['asks'] else float('inf')
         
@@ -179,7 +453,6 @@ class HyperliquidSimulator:
         elif side == 'SELL' and price <= best_bid:
             return self._create_error_response("Post-only order would cross spread")
         
-        # Post-only order placed successfully (maker fee)
         fees = self._calculate_fees('maker', size, price)
         
         return {
@@ -197,15 +470,10 @@ class HyperliquidSimulator:
             "fills": []
         }
     
-    def _simulate_reduce_only_execution(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
-        """Simulate reduce-only order execution"""
-        
-        # Reduce-only orders can only reduce existing positions
-        # For simulation, we assume there's an existing position to reduce
-        
-        levels = self.order_book_snapshot['bids'] if side == 'BUY' else self.order_book_snapshot['asks']
+    def _execute_reduce_only_order(self, side: str, size: float, price: float, leverage: int) -> Dict[str, Any]:
+        """Execute reduce-only order (can only reduce existing positions)"""
+        levels = self.order_book_snapshot['asks'] if side == "BUY" else self.order_book_snapshot['bids']
         impact_result = self._calculate_order_book_impact(side, size, levels)
-        
         fees = self._calculate_fees('taker', size, impact_result['avg_price'])
         
         return {
@@ -223,9 +491,152 @@ class HyperliquidSimulator:
             "fills": impact_result['fills']
         }
     
+    # ============================================================================
+    # POSITION MANAGEMENT
+    # ============================================================================
+    
+    def _create_position(self, side: str, size: float, entry_price: float, leverage: int,
+                        fees: Dict[str, Any], stop_loss: Optional[float], take_profit: Optional[float],
+                        metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new position"""
+        self.total_trades += 1
+        trade_id = f"sim_trade_{self.total_trades}_{int(time.time())}"
+        
+        position = {
+            "trade_id": trade_id,
+            "side": side,
+            "size": size,
+            "entry_price": entry_price,
+            "leverage": leverage,
+            "entry_time": time.time(),
+            "entry_datetime": datetime.now().isoformat(),
+            "fees": fees,
+            "stop_loss": stop_loss,
+            "take_profit": take_profit,
+            "status": "OPEN",
+            "position_value": size * entry_price,
+            "margin_used": (size * entry_price) / leverage,
+            **metadata  # Include strategy, confidence, etc.
+        }
+        
+        self.open_positions[trade_id] = position
+        return position
+    
+    def _calculate_position_pnl(self, side: str, entry_price: float, exit_price: float,
+                                size: float, leverage: int, entry_fees: float, exit_fees: float) -> Dict[str, Any]:
+        """Calculate position P&L with leverage"""
+        if side == "BUY":
+            price_change = (exit_price - entry_price) / entry_price
+        else:  # SELL
+            price_change = (entry_price - exit_price) / entry_price
+        
+        # Apply leverage
+        pnl_pct = price_change * leverage
+        position_value = size * entry_price
+        pnl_amount = position_value * pnl_pct
+        
+        # Deduct fees
+        total_fees = entry_fees + exit_fees
+        net_pnl = pnl_amount - total_fees
+        
+        return {
+            "pnl_pct": pnl_pct,
+            "pnl_amount": pnl_amount,
+            "total_fees": total_fees,
+            "net_pnl": net_pnl,
+            "price_change": price_change,
+            "entry_fees": entry_fees,
+            "exit_fees": exit_fees
+        }
+    
+    def _calculate_total_unrealized_pnl(self, current_price: Optional[float] = None) -> float:
+        """Calculate total unrealized P&L for all open positions"""
+        if not current_price and self.order_book_snapshot:
+            # Use mid price
+            best_bid = self.order_book_snapshot['bids'][0]['price'] if self.order_book_snapshot['bids'] else 0
+            best_ask = self.order_book_snapshot['asks'][0]['price'] if self.order_book_snapshot['asks'] else 0
+            current_price = (best_bid + best_ask) / 2 if best_bid and best_ask else 0
+        
+        if not current_price:
+            return 0.0
+        
+        total_unrealized = 0.0
+        for position in self.open_positions.values():
+            if position["side"] == "BUY":
+                pnl_pct = (current_price - position["entry_price"]) / position["entry_price"]
+            else:
+                pnl_pct = (position["entry_price"] - current_price) / position["entry_price"]
+            
+            pnl_pct *= position["leverage"]
+            position_value = position["size"] * position["entry_price"]
+            total_unrealized += position_value * pnl_pct
+        
+        return total_unrealized
+    
+    # ============================================================================
+    # MARGIN & RISK MANAGEMENT
+    # ============================================================================
+    
+    def _check_margin_requirements(self, size: float, price: float, leverage: int) -> Dict[str, Any]:
+        """Check if account has sufficient margin for trade"""
+        position_value = size * price
+        required_margin = position_value / leverage
+        used_margin = self._calculate_used_margin()
+        available_margin = self.account_balance - used_margin
+        
+        if available_margin >= required_margin:
+            return {
+                "sufficient": True,
+                "required_margin": required_margin,
+                "available_margin": available_margin,
+                "used_margin": used_margin
+            }
+        else:
+            return {
+                "sufficient": False,
+                "required_margin": required_margin,
+                "available_margin": available_margin,
+                "used_margin": used_margin,
+                "reason": f"Insufficient margin: need ${required_margin:.2f}, have ${available_margin:.2f}"
+            }
+    
+    def _calculate_used_margin(self) -> float:
+        """Calculate total margin used by open positions"""
+        return sum(pos["margin_used"] for pos in self.open_positions.values())
+    
+    def check_liquidation_risk(self, current_price: float) -> List[Dict[str, Any]]:
+        """Check if any positions should be liquidated"""
+        liquidated_positions = []
+        
+        for trade_id, position in list(self.open_positions.items()):
+            # Calculate current margin
+            if position["side"] == "BUY":
+                pnl_pct = (current_price - position["entry_price"]) / position["entry_price"]
+            else:
+                pnl_pct = (position["entry_price"] - current_price) / position["entry_price"]
+            
+            pnl_pct *= position["leverage"]
+            position_value = position["size"] * position["entry_price"]
+            unrealized_pnl = position_value * pnl_pct
+            
+            current_margin = position["margin_used"] + unrealized_pnl
+            maintenance_margin = position["margin_used"] * self.maintenance_margin_rate
+            
+            # Liquidate if margin falls below maintenance margin
+            if current_margin < maintenance_margin:
+                logger.warning(f"🚨 LIQUIDATION: {trade_id} - Margin ${current_margin:.2f} < ${maintenance_margin:.2f}")
+                result = self.close_position(trade_id, current_price, "LIQUIDATION")
+                if result.get("success"):
+                    liquidated_positions.append(result["position"])
+        
+        return liquidated_positions
+    
+    # ============================================================================
+    # HELPER METHODS
+    # ============================================================================
+    
     def _calculate_order_book_impact(self, side: str, size: float, levels: List[Dict]) -> Dict[str, Any]:
         """Calculate realistic order book impact"""
-        
         remaining_size = size
         executed_size = 0
         total_cost = 0
@@ -234,7 +645,7 @@ class HyperliquidSimulator:
         for level in levels:
             if remaining_size <= 0:
                 break
-                
+            
             available_size = level['size']
             executed_at_level = min(remaining_size, available_size)
             
@@ -263,7 +674,6 @@ class HyperliquidSimulator:
     
     def _calculate_fees(self, fee_type: str, size: float, price: float) -> Dict[str, Any]:
         """Calculate realistic Hyperliquid fees"""
-        
         fee_rate = self.fee_rates.get(fee_type, self.fee_rates['taker'])
         position_value = size * price
         fee_amount = position_value * fee_rate
@@ -283,38 +693,21 @@ class HyperliquidSimulator:
             "execution_time": time.time()
         }
     
-    def calculate_margin_requirement(self, size: float, price: float, leverage: int) -> Dict[str, Any]:
-        """Calculate margin requirements"""
-        
-        position_value = size * price
-        required_margin = position_value / leverage
-        
-        # Maintenance margin (typically 50% of initial margin)
-        maintenance_margin = required_margin * 0.5
-        
-        return {
-            "position_value": position_value,
-            "leverage": leverage,
-            "required_margin": required_margin,
-            "maintenance_margin": maintenance_margin,
-            "max_position_size": required_margin * leverage / price
-        }
+    # ============================================================================
+    # LEGACY COMPATIBILITY (for gradual migration)
+    # ============================================================================
     
-    def simulate_liquidation(self, position_value: float, current_margin: float, maintenance_margin: float) -> bool:
-        """Simulate liquidation check"""
-        return current_margin < maintenance_margin
-    
-    def calculate_funding_rate(self, mark_price: float, index_price: float) -> float:
-        """Calculate funding rate based on mark/index price difference"""
-        
-        # Simplified funding rate calculation
-        price_diff = (mark_price - index_price) / index_price
-        funding_rate = price_diff * 0.0001  # 0.01% per hour base rate
-        
-        # Clamp to reasonable range
-        funding_rate = max(-0.0075, min(0.0075, funding_rate))  # ±0.75% per hour max
-        
-        return funding_rate
+    def simulate_order_execution(self, order_type: str, side: str, size: float, 
+                                 price: Optional[float] = None, leverage: int = 30) -> Dict[str, Any]:
+        """Legacy method for backward compatibility"""
+        return self.place_order(
+            order_type=order_type,
+            side=side,
+            size=size,
+            price=price,
+            leverage=leverage
+        )
+
 
 # Global simulator instance
-hyperliquid_simulator = HyperliquidSimulator()
+hyperliquid_simulator = HyperLiquidSimulator()
