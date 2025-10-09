@@ -223,8 +223,9 @@ class SystemInitializer:
             from core.execution.fee_manager import FeeManager
             from core.logging.trading_logger import TradingLogger
             from core.execution.trade_quality_manager import TradeManager
-            from core.execution.position_lifecycle_manager import TradingExecution
             from core.simulated_account_manager import account_manager
+            from core.api.hyperliquid_simulator import HyperLiquidSimulator
+            from core.execution.trading_execution_wrapper import TradingExecutionWrapper
             
             # Initialize trading components
             from config.config import TradingConfig
@@ -236,14 +237,15 @@ class SystemInitializer:
             fee_manager = FeeManager()
             trading_logger = TradingLogger()
             trade_quality_manager = TradeManager(config.STRATEGY_CONFIGS.get("standard", {}))
-            position_lifecycle_manager = TradingExecution(
-                hyperliquid_api=None,  # Will be set after API initialization
-                hyperliquid_simulator=None,  # Will be set after simulator initialization  
-                trading_logger=trading_logger,
-                trade_manager=trade_quality_manager,
+            
+            # Initialize HyperLiquid simulator with account balance
+            hyperliquid_simulator = HyperLiquidSimulator(initial_balance=initial_balance)
+            
+            # Initialize trading execution wrapper (thin wrapper around simulator)
+            trading_execution = TradingExecutionWrapper(
+                hyperliquid_simulator=hyperliquid_simulator,
                 account_manager=account_manager,
-                session_manager=None,  # Will be set after session manager initialization
-                fee_manager=fee_manager
+                session_manager=None  # Will be set after session manager initialization
             )
             
             self.singleton_systems["variability_analyzer"] = variability_analyzer
@@ -252,7 +254,8 @@ class SystemInitializer:
             self.singleton_systems["fee_manager"] = fee_manager
             self.singleton_systems["trading_logger"] = trading_logger
             self.singleton_systems["trade_quality_manager"] = trade_quality_manager
-            self.singleton_systems["position_lifecycle_manager"] = position_lifecycle_manager
+            self.singleton_systems["hyperliquid_simulator"] = hyperliquid_simulator
+            self.singleton_systems["trading_execution"] = trading_execution
             
             # Initialize trading services
             from core.services.market_data_service import MarketDataService
@@ -271,7 +274,7 @@ class SystemInitializer:
                 config,
                 config.STRATEGY_CONFIGS.get("standard", {}),
                 trade_quality_manager,
-                position_lifecycle_manager,
+                trading_execution,  # Use new trading execution wrapper
                 variability_analyzer
             )
             
