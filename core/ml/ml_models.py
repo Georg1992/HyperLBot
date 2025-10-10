@@ -469,25 +469,25 @@ class MLModelManager:
             else:
                 entry_price = current_price
             
-            # Calculate stop loss and take profit - 40x leverage optimized (tighter ranges)
-            volatility_multiplier = max(0.5, volatility * 50)  # Reduced scaling for 40x leverage
+            # Calculate stop loss and take profit - 40X LEVERAGE OPTIMIZED (much tighter ranges)
+            volatility_multiplier = max(0.2, volatility * 20)  # Reduced scaling for 40x leverage
             
             if signal == "BUY":
-                # Stop loss: 1-3% below entry (tighter for 40x leverage)
-                stop_loss_pct = 0.01 + (volatility_multiplier * 0.005)  # 1-3%
+                # Stop loss: 0.1-0.5% below entry (40x leverage optimized)
+                stop_loss_pct = 0.001 + (volatility_multiplier * 0.002)  # 0.1-0.5%
                 stop_loss = entry_price * (1 - stop_loss_pct)
                 
-                # Take profit: 2-5% above entry (tighter for 40x leverage)
-                take_profit_pct = 0.02 + (confidence * 0.03) + (volatility_multiplier * 0.005)
+                # Take profit: 0.2-1.0% above entry (40x leverage optimized)
+                take_profit_pct = 0.002 + (confidence * 0.008) + (volatility_multiplier * 0.002)
                 take_profit = entry_price * (1 + take_profit_pct)
                 
             elif signal == "SELL":
-                # Stop loss: 1-3% above entry (tighter for 40x leverage)
-                stop_loss_pct = 0.01 + (volatility_multiplier * 0.005)  # 1-3%
+                # Stop loss: 0.1-0.5% above entry (40x leverage optimized)
+                stop_loss_pct = 0.001 + (volatility_multiplier * 0.002)  # 0.1-0.5%
                 stop_loss = entry_price * (1 + stop_loss_pct)
                 
-                # Take profit: 2-5% below entry (tighter for 40x leverage)
-                take_profit_pct = 0.02 + (confidence * 0.03) + (volatility_multiplier * 0.005)
+                # Take profit: 0.2-1.0% below entry (40x leverage optimized)
+                take_profit_pct = 0.002 + (confidence * 0.008) + (volatility_multiplier * 0.002)
                 take_profit = entry_price * (1 - take_profit_pct)
                 
             else:  # HOLD

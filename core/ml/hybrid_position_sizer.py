@@ -302,19 +302,27 @@ class HybridPositionSizer:
                                    strategy: str) -> Dict[str, Any]:
         """Calculate trading parameters (leverage, stops, targets)"""
         try:
-            # Strategy-specific parameters
+            # Strategy-specific parameters - 40X LEVERAGE OPTIMIZED
             if strategy == "scalping":
                 leverage = 40.0
-                stop_percent = 0.002  # 0.2% stop
-                target_percent = 0.003  # 0.3% target (1.5:1 R/R)
+                stop_percent = 0.001  # 0.1% stop (40x leverage optimized)
+                target_percent = 0.002  # 0.2% target (2:1 R/R)
             elif strategy == "trend_following":
-                leverage = 30.0
-                stop_percent = 0.005  # 0.5% stop
-                target_percent = 0.010  # 1.0% target (2:1 R/R)
+                leverage = 40.0  # Increased to 40x
+                stop_percent = 0.002  # 0.2% stop (40x leverage optimized)
+                target_percent = 0.005  # 0.5% target (2.5:1 R/R)
+            elif strategy == "range_trading":
+                leverage = 40.0
+                stop_percent = 0.0015  # 0.15% stop (40x leverage optimized)
+                target_percent = 0.003  # 0.3% target (2:1 R/R)
+            elif strategy == "low_volatility_range":
+                leverage = 40.0
+                stop_percent = 0.001  # 0.1% stop (40x leverage optimized)
+                target_percent = 0.002  # 0.2% target (2:1 R/R)
             else:
-                leverage = 25.0
-                stop_percent = 0.003  # 0.3% stop
-                target_percent = 0.006  # 0.6% target (2:1 R/R)
+                leverage = 40.0  # All strategies use 40x leverage
+                stop_percent = 0.002  # 0.2% stop (40x leverage optimized)
+                target_percent = 0.004  # 0.4% target (2:1 R/R)
             
             # Calculate entry price
             entry_price = self._calculate_entry_price(direction, current_price, market_data)

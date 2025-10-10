@@ -1094,23 +1094,29 @@ class RealtimePredictionEngine:
     
     def _calculate_targets(self, entry_price: float, direction: str, score: float,
                           strategy: str, market_data: Dict[str, Any]) -> Tuple[float, float, float]:
-        """Calculate stop loss, take profit, and risk/reward ratio"""
+        """Calculate stop loss, take profit, and risk/reward ratio - OPTIMIZED FOR 40X LEVERAGE"""
         
-        # Strategy-specific risk parameters
+        # Strategy-specific risk parameters - 40X LEVERAGE OPTIMIZED
         if strategy == "scalping":
-            stop_loss_pct = 0.003  # 0.3%
+            stop_loss_pct = 0.001  # 0.1% (tight for 40x leverage)
             risk_reward = 2.0
         elif strategy == "spike_hunting":
-            stop_loss_pct = 0.02  # 2%
+            stop_loss_pct = 0.005  # 0.5% (reduced from 2% for 40x leverage)
             risk_reward = 3.0
         elif strategy == "trend_following":
-            stop_loss_pct = 0.01  # 1%
+            stop_loss_pct = 0.002  # 0.2% (tight for 40x leverage)
             risk_reward = 2.5
         elif strategy == "high_volatility":
-            stop_loss_pct = 0.015  # 1.5%
+            stop_loss_pct = 0.003  # 0.3% (reduced from 1.5% for 40x leverage)
+            risk_reward = 2.0
+        elif strategy == "range_trading":
+            stop_loss_pct = 0.0015  # 0.15% (tight for range trading with 40x leverage)
+            risk_reward = 2.0
+        elif strategy == "low_volatility_range":
+            stop_loss_pct = 0.001  # 0.1% (very tight for low volatility with 40x leverage)
             risk_reward = 2.0
         else:  # standard
-            stop_loss_pct = 0.01  # 1%
+            stop_loss_pct = 0.002  # 0.2% (reduced from 1% for 40x leverage)
             risk_reward = 2.0
         
         # Adjust based on score strength
