@@ -238,9 +238,11 @@ class SessionContextAnalyzer:
             if not candles_1d or len(candles_1d) < 2:
                 return {"regime": "UNKNOWN", "confidence": 0.0}
             
-            # Calculate daily volatility using the same method as VolatilityCalculator
-            avg_volatility = market_data_manager.calculate_volatility(candles_1d)
-            recent_volatility = market_data_manager.calculate_volatility(candles_1d[-7:]) if len(candles_1d) >= 7 else avg_volatility
+            # Calculate daily volatility using centralized VolatilityCalculator (SINGLE SOURCE OF TRUTH)
+            from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
+            volatility_calculator = get_global_volatility_calculator()
+            avg_volatility = volatility_calculator.calculate_candle_volatility(candles_1d, "1d")
+            recent_volatility = volatility_calculator.calculate_candle_volatility(candles_1d[-7:], "1d") if len(candles_1d) >= 7 else avg_volatility
             
             # Volatility regime classification using centralized constants (adjusted for daily timeframe)
             from core.constants import VariabilityConstants

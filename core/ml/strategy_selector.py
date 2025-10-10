@@ -85,7 +85,7 @@ class MLStrategySelector:
             ])
             
             # 2. TECHNICAL INDICATOR FEATURES
-            rsi = self._safe_get(market_data, "rsi_5m", 50.0)
+            rsi = self._safe_get(market_data, "rsi", 50.0)
             
             # Enhanced RSI features for better ML performance
             rsi_normalized = rsi / 100.0  # 0.0 to 1.0
@@ -236,11 +236,17 @@ class MLStrategySelector:
             scalping_score = 0.0
             trend_following_score = 0.0
             range_trading_score = 0.0
+            breakout_score = 0.0
             standard_score = 0.5  # Baseline
             
             # VOLATILITY ANALYSIS
-            if volatility_category in ["EXTREME", "HIGH"]:
+            if volatility_category in ["EXTREME"]:
+                breakout_score += 0.6  # EXTREME volatility favors breakout strategy
+                scalping_score += 0.3
+                range_trading_score += 0.2  # Allow range trading in extreme volatility
+            elif volatility_category in ["HIGH"]:
                 scalping_score += 0.4
+                breakout_score += 0.3
                 range_trading_score -= 0.2
             elif volatility_category in ["VERY_LOW", "LOW"]:
                 range_trading_score += 0.3
@@ -249,7 +255,11 @@ class MLStrategySelector:
             # TREND ANALYSIS
             if "STRONG" in trend and "SIDEWAYS" not in trend:
                 trend_following_score += 0.5
-                range_trading_score -= 0.3
+                # Don't penalize range_trading for strong trends if volume is insufficient
+                if volume_category not in ["HIGH", "VERY_HIGH"]:
+                    range_trading_score += 0.2  # Range trading can work in strong trends with low volume
+                else:
+                    range_trading_score -= 0.3
             elif "SIDEWAYS" in trend or "NEUTRAL" in trend:
                 range_trading_score += 0.4
                 trend_following_score -= 0.3
@@ -259,7 +269,7 @@ class MLStrategySelector:
             
             # RSI ANALYSIS (Mean reversion signals)
             if rsi > 70 or rsi < 30:
-                range_trading_score += 0.3  # Overbought/oversold favors mean reversion
+                range_trading_score += 0.4  # Overbought/oversold strongly favors mean reversion
                 trend_following_score -= 0.2
             
             # VOLUME ANALYSIS
@@ -273,7 +283,8 @@ class MLStrategySelector:
             scores = {
                 "scalping": scalping_score,
                 "trend_following": trend_following_score,
-                "range_trading": range_trading_score,  # Use range_trading strategy name
+                "range_trading": range_trading_score,
+                "breakout": breakout_score,
                 "standard": standard_score
             }
             
@@ -402,7 +413,7 @@ class MLStrategySelector:
             "volatility_category": self._safe_get(market_data, "volatility_5m_category", "UNKNOWN"),
             "trend": self._safe_get(trend_data, "trend", "UNKNOWN"),
             "volume_category": self._safe_get(volume_data, "volume_category", "UNKNOWN"),
-            "rsi": self._safe_get(market_data, "rsi_5m", 0),
+            "rsi": self._safe_get(market_data, "rsi", 0),
             "current_price": self._safe_get(market_data, "current_price", 0)
         }
 

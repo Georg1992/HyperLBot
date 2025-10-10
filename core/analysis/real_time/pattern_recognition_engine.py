@@ -1462,6 +1462,30 @@ class PatternRecognitionEngine:
                     resolved_list.extend(dt_patterns)
                     resolved_list.extend(db_patterns)
                 
+                # Handle HEAD_SHOULDERS vs DOUBLE_BOTTOM conflict (NEW!)
+                hs_patterns = conflicting_groups["HEAD_SHOULDERS"]
+                if hs_patterns and db_patterns:
+                    # Both bearish and bullish patterns detected - choose the one with higher confidence
+                    best_hs = max(hs_patterns, key=lambda p: p.get("confidence", 0))
+                    best_db = max(db_patterns, key=lambda p: p.get("confidence", 0))
+                    
+                    if best_hs.get("confidence", 0) > best_db.get("confidence", 0):
+                        resolved_list.append(best_hs)
+                        logger.info(f"📊 Pattern conflict resolved: Selected HEAD_SHOULDERS ({best_hs.get('confidence', 0):.1%}) over DOUBLE_BOTTOM ({best_db.get('confidence', 0):.1%})")
+                    else:
+                        resolved_list.append(best_db)
+                        logger.info(f"📊 Pattern conflict resolved: Selected DOUBLE_BOTTOM ({best_db.get('confidence', 0):.1%}) over HEAD_SHOULDERS ({best_hs.get('confidence', 0):.1%})")
+                    
+                    # Remove the conflicting patterns from the original groups to avoid duplicates
+                    resolved_list = [p for p in resolved_list if p not in hs_patterns and p not in db_patterns]
+                    resolved_list.extend([best_hs if best_hs.get("confidence", 0) > best_db.get("confidence", 0) else best_db])
+                elif hs_patterns:
+                    # Only HEAD_SHOULDERS patterns
+                    resolved_list.extend(hs_patterns)
+                elif db_patterns:
+                    # Only DOUBLE_BOTTOM patterns (already added above)
+                    pass
+                
                 # Add all other non-conflicting patterns
                 resolved_list.extend(conflicting_groups["OTHER"])
                 

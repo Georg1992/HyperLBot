@@ -185,6 +185,22 @@ class DashboardService:
         except Exception as e:
             logger.error(f"❌ Could not add trade: {e}")
     
+    def update_trade_history(self, trades: List[Dict[str, Any]]):
+        """Update trade history with complete order lifecycle data"""
+        try:
+            with self._lock:
+                # Replace trades with new data from order lifecycle
+                self._data["trades"] = trades.copy()
+                
+                # Keep only last 100 trades
+                if len(self._data["trades"]) > 100:
+                    self._data["trades"] = self._data["trades"][-100:]
+                
+                self._save_data()
+                logger.debug(f"📊 Trade history updated with {len(trades)} trades")
+        except Exception as e:
+            logger.error(f"❌ Could not update trade history: {e}")
+    
     def sync_from_account_manager(self, account_data: Dict[str, Any]):
         """Sync account data from AccountManager"""
         try:

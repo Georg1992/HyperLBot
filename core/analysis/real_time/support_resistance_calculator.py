@@ -138,30 +138,52 @@ class SupportResistanceCalculator:
                 strongest_support = self._find_next_psychological_level(current_price, "support")
                 logger.warning(f"⚠️ No support levels found - using psychological support: ${strongest_support:.2f}")
             
-            # Get strongest resistance (ONLY levels above current price)
+            # Get strongest resistance - ALWAYS prioritize levels above current price
             strongest_resistance = 0.0
             if resistance_levels_filtered:
-                # ONLY use resistance levels that are ABOVE current price (not broken)
+                # FIRST PRIORITY: Find resistance levels ABOVE current price (valid)
                 resistance_above = [r for r in resistance_levels_filtered if r["level"] > current_price]
                 if resistance_above:
                     # Find the closest valid resistance above current price
                     strongest_resistance = min(resistance_above, key=lambda x: x["level"])["level"]
+                    logger.info(f"✅ Found valid resistance above current price: ${strongest_resistance:.2f}")
                 else:
-                    # No valid resistance above - use closest resistance as fallback
-                    closest_resistance = min(resistance_levels_filtered, key=lambda x: abs(x["level"] - current_price))
-                    strongest_resistance = closest_resistance["level"]
-                    logger.warning(f"⚠️ All resistance levels broken - using closest resistance: ${strongest_resistance:.2f}")
+                    # No resistance above current price - this means all resistance is broken
+                    # Find the highest resistance level (closest to current price from below)
+                    highest_resistance = max(resistance_levels_filtered, key=lambda x: x["level"])
+                    strongest_resistance = highest_resistance["level"]
+                    logger.warning(f"⚠️ All resistance levels broken - using highest historical: ${strongest_resistance:.2f}")
             else:
                 # No resistance levels found - use psychological resistance as fallback
                 strongest_resistance = self._find_next_psychological_level(current_price, "resistance")
                 logger.warning(f"⚠️ No resistance levels found - using psychological resistance: ${strongest_resistance:.2f}")
+            
+            # GUARANTEE: Always return valid support and resistance levels from HISTORICAL DATA
+            if strongest_support <= 0:
+                # Find ANY support level from historical data (even if broken)
+                if support_levels_filtered:
+                    strongest_support = max(support_levels_filtered, key=lambda x: x["level"])["level"]
+                    logger.warning(f"⚠️ No valid support below price - using highest historical support: ${strongest_support:.2f}")
+                else:
+                    # Only use psychological if we have NO historical data at all
+                    strongest_support = self._find_next_psychological_level(current_price, "support")
+                    logger.warning(f"⚠️ No historical support found - using psychological support: ${strongest_support:.2f}")
+            
+            if strongest_resistance <= 0:
+                # Find ANY resistance level from historical data (even if broken)
+                if resistance_levels_filtered:
+                    strongest_resistance = min(resistance_levels_filtered, key=lambda x: x["level"])["level"]
+                    logger.warning(f"⚠️ No valid resistance above price - using lowest historical resistance: ${strongest_resistance:.2f}")
+                else:
+                    # Only use psychological if we have NO historical data at all
+                    strongest_resistance = self._find_next_psychological_level(current_price, "resistance")
+                    logger.warning(f"⚠️ No historical resistance found - using psychological resistance: ${strongest_resistance:.2f}")
             
             logger.info(f"📊 Found {len(support_levels)} support, {len(resistance_levels)} resistance levels")
             logger.info(f"📊 After filtering: {len(support_levels_filtered)} support, {len(resistance_levels_filtered)} resistance")
             logger.info(f"📊 Current price: ${current_price:.2f}")
             logger.info(f"📊 Strongest support: ${strongest_support:.2f} (below price: {strongest_support < current_price})")
             logger.info(f"📊 Strongest resistance: ${strongest_resistance:.2f} (above price: {strongest_resistance > current_price})")
-            
             
             # Return ALL filtered levels (selection/limiting done by multi-timeframe method if needed)
             return {
@@ -173,7 +195,38 @@ class SupportResistanceCalculator:
             
         except Exception as e:
             logger.error(f"❌ S/R detection failed: {e}")
-            return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
+            # Emergency fallback - try to find levels from raw historical data
+            current_price = candles[-1].get("close", 0) if candles else 0
+            if current_price > 0 and len(candles) >= 10:
+                # Try to find basic support/resistance from raw price data
+                highs = [c.get("high", 0) for c in candles if c.get("high", 0) > 0]
+                lows = [c.get("low", 0) for c in candles if c.get("low", 0) > 0]
+                
+                if highs and lows:
+                    # Use recent highs/lows as emergency levels
+                    emergency_support = min(lows[-10:])  # Lowest low in last 10 candles
+                    emergency_resistance = max(highs[-10:])  # Highest high in last 10 candles
+                    logger.warning(f"⚠️ Using emergency historical levels: Support=${emergency_support:.2f}, Resistance=${emergency_resistance:.2f}")
+                    return {
+                        "key_levels": [], 
+                        "strongest_support": emergency_support, 
+                        "strongest_resistance": emergency_resistance,
+                        "analysis_confidence": 0.1
+                    }
+            
+            # Only use psychological as last resort if no historical data available
+            if current_price > 0:
+                emergency_support = self._find_next_psychological_level(current_price, "support")
+                emergency_resistance = self._find_next_psychological_level(current_price, "resistance")
+                logger.warning(f"⚠️ No historical data - using psychological levels: Support=${emergency_support:.2f}, Resistance=${emergency_resistance:.2f}")
+                return {
+                    "key_levels": [], 
+                    "strongest_support": emergency_support, 
+                    "strongest_resistance": emergency_resistance,
+                    "analysis_confidence": 0.05
+                }
+            else:
+                return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
     
     
     def _count_touches(self, candles: List[Dict], level_price: float, level_type: str) -> int:
@@ -645,8 +698,18 @@ class SupportResistanceCalculator:
             
             # Check cache - invalidate if price broke any levels
             if self._should_use_cached_sr(current_price):
-                logger.info("📊 Using cached S/R data (no level breaks detected)")
-                return self._sr_cache.get('data', {})
+                cached_data = self._sr_cache.get('data', {})
+                # Check if cached data has sufficient levels
+                key_levels = cached_data.get('key_levels', [])
+                support_levels = [l for l in key_levels if l.get("type") == "support"]
+                resistance_levels = [l for l in key_levels if l.get("type") == "resistance"]
+                
+                # If insufficient levels, don't use cache and recalculate
+                if len(support_levels) < 2 or len(resistance_levels) < 2:
+                    logger.warning(f"⚠️ Cached S/R data insufficient: {len(support_levels)} support, {len(resistance_levels)} resistance - recalculating")
+                else:
+                    logger.info("📊 Using cached S/R data (no level breaks detected)")
+                    return cached_data
             
             # Use passed data or fetch as fallback
             if candles_5m is None:
@@ -698,11 +761,18 @@ class SupportResistanceCalculator:
             resistance_levels_found = [l for l in relevant_levels if l["type"] == "resistance"]
             support_levels_found = [l for l in relevant_levels if l["type"] == "support"]
             
-            # Expand if: insufficient total levels OR missing resistance OR missing support
+            # Check for resistance ABOVE current price specifically
+            resistance_above_price = [l for l in resistance_levels_found if l["level"] > current_price]
+            
+            logger.info(f"📊 Level analysis: {len(resistance_levels_found)} total resistance, {len(resistance_above_price)} above current price")
+            
+            # Expand if: insufficient total levels OR missing resistance OR missing support OR no resistance above price
+            # Made more aggressive - expand sooner for faster response
             needs_expansion = (
-                len(relevant_levels) < 4 or
+                len(relevant_levels) < 6 or  # Reduced from 4 to 6 for faster expansion
                 len(resistance_levels_found) == 0 or
-                len(support_levels_found) == 0
+                len(support_levels_found) == 0 or
+                len(resistance_above_price) == 0
             )
             
             if needs_expansion:
@@ -710,6 +780,8 @@ class SupportResistanceCalculator:
                 if len(relevant_levels) < 4:
                     reason.append(f"only {len(relevant_levels)} levels")
                 if len(resistance_levels_found) == 0:
+                    reason.append("no resistance found")
+                if len(resistance_above_price) == 0:
                     reason.append("no resistance above price")
                 if len(support_levels_found) == 0:
                     reason.append("no support below price")
@@ -759,7 +831,20 @@ class SupportResistanceCalculator:
         last_price = self._sr_cache.get('last_price', current_price)
         key_levels = cached_data.get('key_levels', [])
         
-        # Check if price broke through any levels
+        # Also check strongest_support and strongest_resistance for breaks
+        strongest_support = cached_data.get('strongest_support', 0)
+        strongest_resistance = cached_data.get('strongest_resistance', 0)
+        
+        # Check if price broke through strongest levels (more aggressive detection)
+        if strongest_support > 0 and current_price < strongest_support:
+            logger.warning(f"🚨 Price broke strongest support at ${strongest_support:.2f} - FORCING cache invalidation and recalculation")
+            return False
+        
+        if strongest_resistance > 0 and current_price > strongest_resistance:
+            logger.warning(f"🚨 Price broke strongest resistance at ${strongest_resistance:.2f} - FORCING cache invalidation and recalculation")
+            return False
+        
+        # Check if price broke through any individual levels
         for level in key_levels:
             level_price = level.get('level', 0)
             level_type = level.get('type', '')
@@ -851,6 +936,61 @@ class SupportResistanceCalculator:
             
             logger.info(f"📊 After expansion: {len(current_levels)} total levels")
             return current_levels
+            
+        except Exception as e:
+            logger.error(f"❌ History expansion failed: {e}")
+            return current_levels
+    
+    def _expand_with_longer_history(self, current_levels: List[Dict], current_price: float, market_data_service) -> List[Dict]:
+        """
+        Expand S/R analysis with longer historical data when insufficient levels are found
+        
+        Args:
+            current_levels: Current S/R levels found
+            current_price: Current market price
+            market_data_service: Market data service for fetching historical data
+            
+        Returns:
+            Expanded list of S/R levels
+        """
+        try:
+            if not market_data_service:
+                logger.warning("⚠️ No market data service available for expansion - using current levels")
+                return current_levels
+            
+            logger.info("📊 Expanding S/R analysis with longer historical data...")
+            
+            # Fetch more historical data for better S/R detection - optimized for speed
+            candles_1h_extended = market_data_service.get_historical_candles("BTC", "1h", 72)   # 3 days (faster)
+            candles_1d_extended = market_data_service.get_historical_candles("BTC", "1d", 14)    # 2 weeks (faster)
+            
+            # Analyze extended timeframes
+            sr_1h_result = self.identify_key_levels(candles_1h_extended, min_touches=2)
+            sr_1d_result = self.identify_key_levels(candles_1d_extended, min_touches=2)
+            
+            # Extract key levels from results
+            sr_1h_extended = sr_1h_result.get("key_levels", [])
+            sr_1d_extended = sr_1d_result.get("key_levels", [])
+            
+            # Combine with current levels
+            expanded_levels = current_levels.copy()
+            
+            # Add 1h extended levels
+            for level in sr_1h_extended:
+                level["timeframe"] = "1h_extended"
+                level["weight"] = 0.7
+                if not any(abs(level["level"] - existing["level"]) < 500 for existing in expanded_levels):
+                    expanded_levels.append(level)
+            
+            # Add 1d extended levels
+            for level in sr_1d_extended:
+                level["timeframe"] = "1d_extended"
+                level["weight"] = 0.8
+                if not any(abs(level["level"] - existing["level"]) < 500 for existing in expanded_levels):
+                    expanded_levels.append(level)
+            
+            logger.info(f"📊 After expansion: {len(expanded_levels)} total levels")
+            return expanded_levels
             
         except Exception as e:
             logger.error(f"❌ History expansion failed: {e}")

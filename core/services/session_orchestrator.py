@@ -289,7 +289,7 @@ class SessionOrchestrator:
             # Each request below will use the centralized cache - no redundant API calls
             
             # Get candle data for all timeframes (from centralized cache)
-            candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 30)  # For RSI calculation
+            candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 100)  # For RSI calculation (increased for accuracy)
             candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)          # For general analysis
             candles_5m_for_sr = market_data_service.get_historical_candles("BTC", "5m", 200)  # For S/R calculation (increased for better support detection)
             candles_1m = market_data_service.get_historical_candles("BTC", "1m", 20)
@@ -303,21 +303,14 @@ class SessionOrchestrator:
             rsi_calculator = get_global_rsi_calculator()
             
             try:
-                # COMBINED APPROACH: Calculate baseline from candles + real-time updates
-                # 1. Calculate fresh baseline from current candles (ensures accuracy)
+                # REAL-TIME RSI 14 CALCULATION - Updates with current price like Hyperliquid
+                # 1. Calculate baseline from completed candles
                 baseline_rsi = rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m_for_rsi, periods=14)
                 
-                # 2. Initialize or update baseline if changed significantly
-                if not rsi_calculator.rsi_initialized or abs(baseline_rsi - rsi_calculator.baseline_rsi) > 2.0:
-                    rsi_calculator.baseline_rsi = baseline_rsi
-                    rsi_calculator.current_rsi = baseline_rsi
-                    rsi_calculator.rsi_initialized = True
-                    logger.info(f"🔬 RSI baseline updated: {baseline_rsi:.2f}")
-                
-                # 3. Update RSI in real-time with current price (combines baseline + real-time)
+                # 2. Update RSI in real-time with current price (like Hyperliquid does)
                 rsi_data = rsi_calculator.update_realtime_rsi(current_price)
-                current_rsi = rsi_data.get("rsi", rsi_calculator.current_rsi)
-                logger.debug(f"📊 RSI combined (baseline + real-time): {current_rsi:.2f}")
+                current_rsi = rsi_data.get("rsi", baseline_rsi)
+                logger.debug(f"📊 Real-time RSI 14: {current_rsi:.2f} (baseline: {baseline_rsi:.2f})")
             except Exception as e:
                 logger.warning(f"⚠️ RSI calculation failed: {e}")
                 current_rsi = None
@@ -378,9 +371,14 @@ class SessionOrchestrator:
                     # Use centralized cache (100 candles) for better S/R analysis
                     # This will use the same cached data as all other requests
                     if candles_5m_for_sr and len(candles_5m_for_sr) >= 20:
-                        support_resistance = sr_calculator.calculate_multi_timeframe_levels(
-                            current_price, market_data_service, candles_5m_for_sr, candles_1h, candles_1d
-                        )
+                        # Use provided market data service
+                        if market_data_service is None:
+                            logger.warning("⚠️ No market data service provided for S/R calculation")
+                            support_resistance = {"error": "No market data service available"}
+                        else:
+                            support_resistance = sr_calculator.calculate_multi_timeframe_levels(
+                                current_price, market_data_service, candles_5m_for_sr, candles_1h, candles_1d
+                            )
                         logger.debug(f"📊 S/R calculated with {len(candles_5m_for_sr)} candles from centralized cache")
                     else:
                         support_resistance = {}
@@ -568,9 +566,8 @@ class SessionOrchestrator:
                 # Core price data
                 "current_price": current_price,
                 
-                # RSI data (from single RSI calculator source)
+                # RSI data (RSI 14 only)
                 "rsi": current_rsi,
-                "rsi_5m": current_rsi,
                 
                 # Trend data (from single trend calculator source)
                 "trend": current_trend,
@@ -642,7 +639,10 @@ class SessionOrchestrator:
                 "price": unified_data.get("current_price"),
                 "current_price": unified_data.get("current_price"),
                 "rsi": unified_data.get("rsi"),
-                "rsi_5m": unified_data.get("rsi_5m"),
+                
+                # Debug: Log RSI values being sent to dashboard
+                "debug_rsi_source": "unified_data",
+                "debug_rsi_value": unified_data.get("rsi"),
                 
                 # Dashboard expects trend_analysis.overall_trend for Overall Trend
                 "trend_analysis": {
@@ -755,8 +755,10 @@ class SessionOrchestrator:
                     if all([trading_execution, account_manager, session_manager_inst]):
                         executor = get_global_prediction_executor(trading_execution, account_manager, session_manager_inst)
                         
-                        # Execute prediction
-                        result = executor.execute_prediction(active_prediction.to_dict(), strategy)
+                        # Execute prediction - convert dataclass to dict
+                        from dataclasses import asdict
+                        prediction_dict = asdict(active_prediction)
+                        result = executor.execute_prediction(prediction_dict, strategy)
                         
                         if result.get("success"):
                             logger.success(f"✅ Trade executed successfully!")
@@ -838,10 +840,9 @@ class SessionOrchestrator:
             if self.session_manager and hasattr(self.session_manager, 'get_historical_context'):
                 historical_context = self.session_manager.get_historical_context()
             
-            # Detect optimal strategy using ML + historical data
+            # Detect optimal strategy using ML
             optimal_strategy = self.strategy_manager.detect_optimal_strategy(
-                market_data=unified_data,
-                historical_context=historical_context
+                market_data=unified_data
             )
             
             # Update session manager with new strategy
@@ -971,9 +972,12 @@ class SessionOrchestrator:
                 # Generate price prediction
                 self._generate_price_prediction(unified_data, current_strategy)
                 
-                # Simple monitoring log
-                rsi_value = market_data.get("hyperliquid_analysis", {}).get('rsi_5m')
-                rsi_display = f"{rsi_value:.1f}" if rsi_value else "Loading"
+                # Update order lifecycle (check fills, update positions, etc.)
+                self._update_order_lifecycle(hyperliquid_price)
+                
+                # Simple monitoring log - use real-time RSI from unified data
+                rsi_value = market_data.get('rsi')
+                rsi_display = f"{rsi_value:.1f}" if rsi_value is not None else "Loading"
                 
                 dashboard_service.add_activity(
                     f"📊 Data: ${hyperliquid_price:.2f}, RSI: {rsi_display}", 
@@ -1056,9 +1060,7 @@ class SessionOrchestrator:
                 # Price data
                 "current_price": hyperliquid_price,
                 
-                # Technical indicators
-                "rsi": hyperliquid_analysis.get("rsi_5m"),
-                "rsi_5m": hyperliquid_analysis.get("rsi_5m"),
+                # Technical indicators - RSI is already set correctly in unified_data, don't overwrite
                 
                 # Volatility data
                 "volatility_5m": hyperliquid_analysis.get("volatility_5m", 0.001),
@@ -1109,8 +1111,7 @@ class SessionOrchestrator:
             # Return minimal data structure
             return {
                 "current_price": hyperliquid_price,
-                "rsi": hyperliquid_analysis.get("rsi_5m"),
-                "rsi_5m": hyperliquid_analysis.get("rsi_5m"),
+                # RSI is already set correctly in unified_data, don't overwrite
                 "volatility_5m": hyperliquid_analysis.get("volatility_5m"),
                 "volatility_5m_category": hyperliquid_analysis.get("volatility_5m_category"),
                 "trend_5m": hyperliquid_analysis.get("trend_5m"),
@@ -1162,7 +1163,7 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Failed to get market data: {e}")
             return None
-
+    
     def _should_generate_new_prediction(self, current_market_data: Dict[str, Any]) -> bool:
         """
         Check if market conditions have changed enough to warrant a new prediction
@@ -1236,5 +1237,131 @@ class SessionOrchestrator:
             logger.error(f"❌ Real-time support/resistance calculation failed: {e}")
             # NO FALLBACKS - raise the exception
             raise Exception(f"Support/resistance calculation failed: {e}")
+    
+    def _update_order_lifecycle(self, current_price: float):
+        """
+        Update order lifecycle - check fills, update positions, handle closures
+        
+        Args:
+            current_price: Current market price for order fill checks
+        """
+        try:
+            # Get lifecycle managers
+            from core.execution.order_lifecycle_manager import get_global_order_lifecycle_manager
+            from core.execution.prediction_state_manager import get_global_prediction_state_manager
+            from core.services.dashboard_service import DashboardService
+            
+            lifecycle_manager = get_global_order_lifecycle_manager()
+            state_manager = get_global_prediction_state_manager()
+            dashboard = DashboardService.get_global_instance()
+            
+            # Check for order fills
+            filled_orders = lifecycle_manager.check_order_fills(current_price)
+            
+            # Handle filled orders
+            for order_id in filled_orders:
+                try:
+                    # Get order data
+                    order = lifecycle_manager.filled_orders.get(order_id)
+                    if not order:
+                        continue
+                    
+                    # Find corresponding prediction
+                    prediction = state_manager.get_prediction_by_order_id(order_id)
+                    if prediction:
+                        # Create position
+                        position_id = f"pos_{order_id.split('_')[-1]}"
+                        state_manager.fill_order(prediction.prediction_id, position_id)
+                        
+                        # Update dashboard with FILLED status
+                        if dashboard:
+                            trade_display = {
+                                "type": "LIMIT",
+                                "side": order.side,
+                                "status": "FILLED",
+                                "entry_price": order.filled_price,
+                                "size": order.size,
+                                "stop_loss": order.stop_loss,
+                                "take_profit": order.take_profit,
+                                "confidence": order.confidence,
+                                "expected_value": order.expected_value,
+                                "strategy": order.strategy,
+                                "prediction_id": prediction.prediction_id,
+                                "order_id": order_id,
+                                "position_id": position_id,
+                                "timestamp": order.filled_at
+                            }
+                            dashboard.add_trade(trade_display)
+                            
+                        logger.info(f"✅ ORDER FILLED: {order.side} {order.size} BTC @ ${order.filled_price:,.2f}")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Error handling filled order {order_id}: {e}")
+            
+            # Update position prices and check for exits
+            closed_positions = lifecycle_manager.update_position_prices(current_price)
+            
+            # Handle closed positions
+            for position_id in closed_positions:
+                try:
+                    # Find the position in closed positions
+                    closed_position = None
+                    for pos in lifecycle_manager.closed_positions:
+                        if pos.position_id == position_id:
+                            closed_position = pos
+                        break
+                    
+                    if not closed_position:
+                        continue
+                    
+                    # Find corresponding prediction
+                    prediction = state_manager.get_prediction_by_position_id(position_id)
+                    if prediction:
+                        # Complete the prediction
+                        state_manager.complete_prediction(
+                            prediction.prediction_id,
+                            closed_position.unrealized_pnl,
+                            closed_position.exit_reason
+                        )
+                        
+                        # Update dashboard with CLOSED status
+                        if dashboard:
+                            trade_display = {
+                                "type": "LIMIT",
+                                "side": closed_position.side,
+                                "status": "CLOSED",
+                                "entry_price": closed_position.entry_price,
+                                "exit_price": closed_position.exit_price,
+                                "size": closed_position.size,
+                                "pnl": closed_position.unrealized_pnl,
+                                "exit_reason": closed_position.exit_reason,
+                                "strategy": closed_position.strategy,
+                                "prediction_id": prediction.prediction_id,
+                                "position_id": position_id,
+                                "timestamp": closed_position.closed_at
+                            }
+                            dashboard.add_trade(trade_display)
+                            
+                        logger.info(f"🏁 POSITION CLOSED: {closed_position.side} {closed_position.size} BTC @ ${closed_position.exit_price:,.2f} (P&L: ${closed_position.unrealized_pnl:,.2f})")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Error handling closed position {position_id}: {e}")
+            
+            # Update dashboard with current order/position data
+            if dashboard:
+                lifecycle_data = lifecycle_manager.get_dashboard_data()
+                state_data = state_manager.get_dashboard_data()
+                
+                # Combine all trades for dashboard
+                all_trades = []
+                all_trades.extend(lifecycle_data.get("pending_orders", []))
+                all_trades.extend(lifecycle_data.get("active_positions", []))
+                all_trades.extend(lifecycle_data.get("closed_positions", []))
+                
+                # Update dashboard trade history
+                dashboard.update_trade_history(all_trades)
+            
+        except Exception as e:
+            logger.error(f"❌ Order lifecycle update failed: {e}")
     
     

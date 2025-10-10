@@ -49,13 +49,12 @@ class StrategyManager:
         logger.info("🎯 Strategy Manager initialized - Centralized strategy management")
         logger.info(f"   🎯 Current strategy: {self.current_strategy}")
     
-    def detect_optimal_strategy(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> str:
+    def detect_optimal_strategy(self, market_data: Dict[str, Any]) -> str:
         """
         Detect the optimal strategy using ML-powered analysis (SINGLE SOURCE OF TRUTH)
         
         Args:
             market_data: Current market data (price, volatility, trend, volume, etc.)
-            historical_context: Historical context from session manager
             
         Returns:
             str: Current active strategy name
@@ -64,11 +63,8 @@ class StrategyManager:
             # Import ML Strategy Selector
             from core.ml.strategy_selector import global_ml_strategy_selector
             
-            # Enrich market data with historical context for better ML decisions
-            enriched_data = self._enrich_market_data(market_data, historical_context)
-            
             # Get ML strategy recommendation (SINGLE SOURCE OF TRUTH)
-            recommendation = global_ml_strategy_selector.select_strategy(enriched_data)
+            recommendation = global_ml_strategy_selector.select_strategy(market_data)
             
             optimal_strategy = recommendation.strategy
             confidence = recommendation.confidence
@@ -79,6 +75,7 @@ class StrategyManager:
             logger.info(f"   📊 Reasoning: {reasoning}")
             
             # Validate strategy is not incompatible with current market conditions
+            # Use same market_data to ensure consistency with ML model
             if self._are_strategies_incompatible(optimal_strategy, market_data):
                 logger.warning(f"⚠️ Strategy {optimal_strategy} incompatible with market conditions")
                 logger.warning(f"   Falling back to 'standard' strategy")
@@ -113,36 +110,6 @@ class StrategyManager:
         """Get configuration for specific strategy"""
         return self.strategy_configs.get(strategy_name, self.strategy_configs["standard"]).copy()
     
-    def _enrich_market_data(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        Enrich market data with historical context and derived metrics for better ML decisions
-        
-        Args:
-            market_data: Current market data
-            historical_context: Historical context from session manager
-            
-        Returns:
-            Dict: Enriched market data with additional context
-        """
-        enriched = market_data.copy()
-        
-        # Add historical context if available
-        if historical_context:
-            enriched["historical_context"] = historical_context
-            
-            # Add recent strategy performance if available
-            if "strategy_performance" in historical_context:
-                enriched["strategy_performance"] = historical_context["strategy_performance"]
-        
-        # Add current strategy info for context
-        enriched["current_strategy"] = self.current_strategy
-        enriched["time_in_strategy"] = time.time() - self.last_strategy_switch
-        
-        # Add strategy usage statistics
-        enriched["strategy_usage"] = self.strategy_usage_count.copy()
-        
-        return enriched
-    
     
     def _are_strategies_incompatible(self, strategy: str, market_data: Dict[str, Any]) -> bool:
         """
@@ -161,13 +128,14 @@ class StrategyManager:
                 if trend not in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
                     logger.warning(f"❌ INCOMPATIBLE: trend_following requires STRONG trend, got {trend}")
                     return True
-                # Requires HIGH/VERY_HIGH volume
-                if volume_category not in ["HIGH", "VERY_HIGH"]:
-                    logger.warning(f"❌ INCOMPATIBLE: trend_following requires HIGH volume, got {volume_category}")
+                # Requires decent volume (not very low)
+                if volume_category in ["VERY_LOW"]:
+                    logger.warning(f"❌ INCOMPATIBLE: trend_following requires decent volume, got {volume_category}")
                     return True
-                # Requires MODERATE volatility
-                if volatility_category not in ["MODERATE"]:
-                    logger.warning(f"❌ INCOMPATIBLE: trend_following requires MODERATE volatility, got {volatility_category}")
+                # Works in various volatility conditions (LOW, MODERATE, HIGH)
+                # Only block in EXTREME volatility (too risky for trend following)
+                if volatility_category == "EXTREME":
+                    logger.warning(f"❌ INCOMPATIBLE: trend_following too risky in EXTREME volatility, got {volatility_category}")
                     return True
             
             # SPIKE HUNTING incompatibility checks
@@ -197,8 +165,19 @@ class StrategyManager:
             
             # RANGE TRADING incompatibility checks
             elif strategy == "range_trading":
-                if volatility_category in ["EXTREME"]:
-                    logger.warning(f"❌ INCOMPATIBLE: range_trading not suitable for EXTREME volatility, got {volatility_category}")
+                # Range trading works well in volatile markets - only block in very specific conditions
+                # Allow range_trading in EXTREME volatility as it's designed for volatile conditions
+                # Only block if we have EXTREME volatility AND the market is in a clear breakout (no consolidation)
+                if volatility_category == "EXTREME" and trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"] and volume_category in ["VERY_LOW", "LOW"]:
+                    logger.warning(f"❌ INCOMPATIBLE: range_trading not suitable for EXTREME volatility with strong trend and low volume, got {volatility_category} + {trend} + {volume_category}")
+                    return True
+            
+            # BREAKOUT incompatibility checks
+            elif strategy == "breakout":
+                # Breakout strategy works best in extreme volatility with strong trends
+                # Only block if volatility is too low for meaningful breakouts
+                if volatility_category in ["VERY_LOW", "LOW"]:
+                    logger.warning(f"❌ INCOMPATIBLE: breakout requires higher volatility, got {volatility_category}")
                     return True
             
             # LOW VOLATILITY RANGE incompatibility checks
@@ -231,23 +210,8 @@ class StrategyManager:
             logger.info(f"🔄 Strategy switched: {old_strategy} → {new_strategy}")
             logger.info(f"   📊 New config: {self.current_strategy_config}")
             
-            # Update trading logger with new strategy
-            try:
-                from core.logging.trading_logger import get_global_trading_logger
-                trading_logger = get_global_trading_logger()
-                if trading_logger:
-                    trading_logger.update_strategy(new_strategy)
-            except Exception as e:
-                logger.warning(f"⚠️ Could not update trading logger strategy: {e}")
-            
-            # Update prediction engine confidence threshold
-            try:
-                from core.ml.realtime_prediction_engine import get_global_prediction_engine
-                prediction_engine = get_global_prediction_engine()
-                if prediction_engine:
-                    prediction_engine.update_confidence_threshold(new_strategy)
-            except Exception as e:
-                logger.warning(f"⚠️ Could not update prediction engine threshold: {e}")
+            # Note: Trading logger and prediction engine updates are handled elsewhere
+            # Strategy switch completed successfully
             
             # Notify SessionManager of strategy change for dashboard update
             self._notify_session_strategy_change(new_strategy)

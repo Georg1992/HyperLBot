@@ -85,25 +85,19 @@ class VolatilityCalculator:
                     # Fallback to maximum approach
                     primary_volatility = max(weighted_avg_volatility, max_volatility)
                 
-                # COMBINE: Use the HIGHER of overall movement or individual candle analysis
-                primary_volatility = max(primary_volatility, overall_volatility)
-                logger.debug(f"🔍 Combined volatility: {primary_volatility:.6f} ({primary_volatility*100:.4f}%) - overall={overall_volatility:.6f}, individual={primary_volatility:.6f}")
-                
-                # PRIORITY: If overall volatility is significantly higher, use it as the primary measure
-                if overall_volatility > primary_volatility * 1.5:  # Overall is 50% higher
-                    primary_volatility = overall_volatility
-                    logger.debug(f"🔍 Using overall volatility as primary: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
-                    
-                    # If overall volatility is high enough, return it immediately (no need for momentum calculation)
-                    if overall_volatility > 0.003:  # Above HIGH threshold
-                        logger.debug(f"🔍 Overall volatility is HIGH/EXTREME, returning immediately: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
-                        return round(primary_volatility, 6)
+                # PRIORITY: Focus on recent price action, not historical extremes
+                # If current volatility is low but historical is high, use current (consolidation phase)
+                if primary_volatility < 0.015 and overall_volatility > primary_volatility * 2:
+                    # Current volatility is low, ignore historical extremes (consolidation detected)
+                    logger.debug(f"🔍 Consolidation detected: using current volatility {primary_volatility:.6f} ({primary_volatility*100:.4f}%) - ignoring historical {overall_volatility:.6f}")
+                elif overall_volatility > 0.003 and primary_volatility > 0.002:  # Both must be high
+                    primary_volatility = max(primary_volatility, overall_volatility * 0.5)  # Further reduce historical influence
+                    logger.debug(f"🔍 Both current and historical volatility high: current={primary_volatility:.6f}, overall={overall_volatility:.6f}")
                 else:
-                    # Even if not significantly higher, check if overall volatility is high enough
-                    if overall_volatility > 0.003:  # Above HIGH threshold
-                        primary_volatility = overall_volatility
-                        logger.debug(f"🔍 Overall volatility is HIGH/EXTREME, using as primary: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
-                        return round(primary_volatility, 6)
+                    # Use current volatility as primary
+                    logger.debug(f"🔍 Using current volatility as primary: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
+                
+                logger.debug(f"🔍 Final volatility: {primary_volatility:.6f} ({primary_volatility*100:.4f}%) - overall={overall_volatility:.6f}, individual={primary_volatility:.6f}")
             else:
                 # Fallback to overall volatility only
                 primary_volatility = overall_volatility

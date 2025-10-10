@@ -42,7 +42,7 @@ class HyperliquidWebSocket:
         
         # Trades cache for volume calculation
         self.trades_cache = []
-        self.max_trades_cache = 1000  # Keep last 1000 trades
+        self.max_trades_cache = 5000  # Keep last 5000 trades for better volume accuracy
         
         # Thread safety
         self._lock = threading.RLock()
@@ -234,10 +234,12 @@ class HyperliquidWebSocket:
                         # Store trades for volume calculation
                         for trade in trades_data:
                             if "px" in trade and "sz" in trade:
+                                # Use actual trade timestamp if available, otherwise use current time
+                                trade_timestamp = trade.get("time", time.time() * 1000) / 1000  # Convert from ms to seconds
                                 trade_data = {
                                     "price": float(trade["px"]),
                                     "size": float(trade["sz"]),
-                                    "timestamp": time.time(),
+                                    "timestamp": trade_timestamp,
                                     "side": trade.get("side", "unknown")
                                 }
                                 self.trades_cache.append(trade_data)
@@ -309,6 +311,10 @@ class HyperliquidWebSocket:
                 
                 # Sum up the volume for the current candle
                 total_volume = sum(trade.get('size', 0) for trade in current_candle_trades)
+                
+                # Debug logging for volume tracking
+                if len(current_candle_trades) > 0:
+                    logger.debug(f"📊 Volume calculation: {len(current_candle_trades)} trades, total volume: {total_volume:.2f} BTC")
                 
                 # Calculate time remaining in current candle
                 next_candle_start = candle_start_timestamp + (5 * 60)  # Next 5m boundary

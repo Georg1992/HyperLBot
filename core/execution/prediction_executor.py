@@ -2,11 +2,15 @@
 """
 Prediction-Based Trade Executor
 Executes limit orders based on AI predictions with strategy-specific confidence thresholds
+Now integrated with proper order lifecycle management
 """
 
+import time
 from typing import Dict, Any, Optional
 from loguru import logger
 from dataclasses import dataclass
+from core.execution.order_lifecycle_manager import get_global_order_lifecycle_manager
+from core.execution.prediction_state_manager import get_global_prediction_state_manager
 
 
 @dataclass
@@ -26,10 +30,10 @@ class PredictionExecutor:
     # Strategy-specific confidence thresholds
     STRATEGY_THRESHOLDS = {
         "scalping": StrategyThresholds(
-            min_confidence=0.70,  # 70% - High confidence needed for quick trades
-            optimal_confidence=0.80,  # 80% - Ideal
-            max_position_size=0.005,  # 0.005 BTC (~$600) - Small positions
-            min_ev_percent=0.3,  # 0.3% - Quick gains
+            min_confidence=0.50,  # 50% - USER SPECIFIED (minimum for execution)
+            optimal_confidence=0.70,  # 70% - Ideal
+            max_position_size=0.020,  # 0.020 BTC (~$2,400) - Adjusted for 20% position size
+            min_ev_percent=0.05,  # 0.05% - FIXED: Match Probability Engine threshold
             require_bayesian=True,  # Must have Bayesian confirmation
             calibration_weight=0.8  # Heavily trust calibration
         ),
@@ -37,33 +41,57 @@ class PredictionExecutor:
             min_confidence=0.65,  # 65% - Moderate confidence
             optimal_confidence=0.75,  # 75% - Ideal
             max_position_size=0.01,  # 0.01 BTC (~$1,200) - Medium positions
-            min_ev_percent=0.5,  # 0.5% - Balanced risk/reward
+            min_ev_percent=0.10,  # 0.10% - FIXED: Reasonable for standard strategy
             require_bayesian=True,  # Must have Bayesian confirmation
             calibration_weight=0.9  # Trust calibration heavily
         ),
         "range_trading": StrategyThresholds(
-            min_confidence=0.60,  # 60% - Lower confidence OK (defined ranges)
-            optimal_confidence=0.70,  # 70% - Ideal
+            min_confidence=0.52,  # 52% - USER SPECIFIED (mean reversion)
+            optimal_confidence=0.65,  # 65% - Ideal
             max_position_size=0.015,  # 0.015 BTC (~$1,800) - Larger positions
-            min_ev_percent=0.4,  # 0.4% - Quick range profits
+            min_ev_percent=0.05,  # 0.05% - FIXED: Match Probability Engine threshold
             require_bayesian=False,  # S/R levels are primary
             calibration_weight=0.7  # Moderate calibration trust
         ),
         "trend_following": StrategyThresholds(
-            min_confidence=0.65,  # 65% - Need trend confirmation
+            min_confidence=0.60,  # 60% - USER SPECIFIED (trend confirmation)
             optimal_confidence=0.75,  # 75% - Ideal
             max_position_size=0.02,  # 0.02 BTC (~$2,400) - Large positions
-            min_ev_percent=0.8,  # 0.8% - Larger trends = bigger targets
+            min_ev_percent=0.15,  # 0.15% - FIXED: Reasonable for trend following
             require_bayesian=True,  # Multi-signal confirmation
             calibration_weight=0.85  # High calibration trust
         ),
         "breakout": StrategyThresholds(
-            min_confidence=0.72,  # 72% - High confidence for breakouts
-            optimal_confidence=0.82,  # 82% - Ideal
+            min_confidence=0.58,  # 58% - USER SPECIFIED (extreme volatility)
+            optimal_confidence=0.70,  # 70% - Ideal
             max_position_size=0.008,  # 0.008 BTC (~$960) - Medium-small
-            min_ev_percent=1.0,  # 1.0% - Breakouts need bigger targets
+            min_ev_percent=0.20,  # 0.20% - FIXED: Reasonable for breakouts
             require_bayesian=True,  # Must confirm with multiple signals
             calibration_weight=0.9  # Trust calibration
+        ),
+        "low_volatility_range": StrategyThresholds(
+            min_confidence=0.50,  # 50% - USER SPECIFIED (minimum for execution)
+            optimal_confidence=0.65,  # 65% - Ideal
+            max_position_size=0.012,  # 0.012 BTC (~$1,440) - Medium positions
+            min_ev_percent=0.05,  # 0.05% - FIXED: Match Probability Engine threshold
+            require_bayesian=False,  # S/R levels are primary in low volatility
+            calibration_weight=0.6  # Lower calibration trust in low volatility
+        ),
+        "high_volatility": StrategyThresholds(
+            min_confidence=0.55,  # 55% - USER SPECIFIED (high volatility)
+            optimal_confidence=0.70,  # 70% - Ideal
+            max_position_size=0.010,  # 0.010 BTC (~$1,200) - Adjusted for 10% position size
+            min_ev_percent=0.12,  # 0.12% - FIXED: Reasonable for high volatility
+            require_bayesian=True,  # Need confirmation in high volatility
+            calibration_weight=0.8  # High calibration trust
+        ),
+        "spike_hunting": StrategyThresholds(
+            min_confidence=0.70,  # 70% - USER SPECIFIED (high risk strategy)
+            optimal_confidence=0.80,  # 80% - Ideal
+            max_position_size=0.015,  # 0.015 BTC (~$1,800) - Adjusted for 15% position size
+            min_ev_percent=0.25,  # 0.25% - FIXED: Reasonable for spike hunting
+            require_bayesian=True,  # Must confirm with multiple signals
+            calibration_weight=0.9  # Trust calibration heavily
         ),
     }
     
@@ -116,17 +144,39 @@ class PredictionExecutor:
             # Get strategy thresholds
             thresholds = self.STRATEGY_THRESHOLDS.get(strategy)
             if not thresholds:
+                logger.error(f"❌ Unknown strategy: {strategy}. Available strategies: {list(self.STRATEGY_THRESHOLDS.keys())}")
                 return {
                     "should_execute": False,
                     "reason": f"Unknown strategy: {strategy}",
-                    "checks_passed": []
+                    "checks_passed": [],
+                    "checks_failed": [f"❌ Unknown strategy: {strategy}"]
                 }
             
             checks_passed = []
             checks_failed = []
             
+            # Validate thresholds object
+            if not hasattr(thresholds, 'min_confidence') or thresholds.min_confidence is None:
+                logger.error(f"❌ Thresholds object is invalid: {thresholds}")
+                return {
+                    "should_execute": False,
+                    "reason": "Invalid thresholds object",
+                    "checks_passed": [],
+                    "checks_failed": ["❌ Invalid thresholds object"]
+                }
+            
             # 1. CHECK: Confidence threshold
             calibrated_conf = prediction.get("calibrated_confidence", prediction.get("confidence", 0))
+            if calibrated_conf is None:
+                logger.error(f"❌ Confidence is None in prediction: {prediction}")
+                calibrated_conf = 0.0
+            
+            # Debug: Log confidence values for troubleshooting
+            logger.debug(f"🔍 Confidence values: main={prediction.get('confidence', 'MISSING'):.1%}, "
+                        f"calibrated={prediction.get('calibrated_confidence', 'MISSING'):.1%}, "
+                        f"bayesian={prediction.get('bayesian_confidence', 'MISSING'):.1%}, "
+                        f"using={calibrated_conf:.1%}")
+            
             if calibrated_conf >= thresholds.min_confidence:
                 checks_passed.append(f"✅ Confidence {calibrated_conf:.1%} >= {thresholds.min_confidence:.1%}")
             else:
@@ -135,6 +185,11 @@ class PredictionExecutor:
             # 2. CHECK: Expected Value
             ev_percent = prediction.get("expected_value", 0)
             should_trade_ev = prediction.get("should_trade_ev", False)
+            
+            if ev_percent is None:
+                logger.error(f"❌ Expected value is None in prediction: {prediction}")
+                ev_percent = 0.0
+            
             if should_trade_ev and ev_percent >= thresholds.min_ev_percent:
                 checks_passed.append(f"✅ EV {ev_percent:+.2%} >= {thresholds.min_ev_percent:+.2%}")
             else:
@@ -166,7 +221,12 @@ class PredictionExecutor:
             
             # 6. CHECK: Balance available
             balance = self.account_manager.get_account_balance() if self.account_manager else 0
-            min_balance_required = thresholds.max_position_size * prediction.get("entry_price", 120000) * 0.1  # 10% margin
+            entry_price = prediction.get("entry_price", 120000)
+            if entry_price is None:
+                logger.error(f"❌ Entry price is None in prediction: {prediction}")
+                entry_price = 120000  # Default fallback
+            
+            min_balance_required = thresholds.max_position_size * entry_price * 0.1  # 10% margin
             if balance >= min_balance_required:
                 checks_passed.append(f"✅ Balance ${balance:.2f} >= ${min_balance_required:.2f}")
             else:
@@ -215,15 +275,27 @@ class PredictionExecutor:
             
             # Convert to BTC
             entry_price = prediction.get("entry_price", 120000)
+            
+            # Handle None values
+            if kelly_position_dollars is None:
+                logger.warning(f"⚠️ Kelly position dollars is None - using default")
+                kelly_position_dollars = 500
+            if entry_price is None:
+                logger.warning(f"⚠️ Entry price is None in position sizing - using default")
+                entry_price = 120000
+            
             kelly_position_btc = kelly_position_dollars / entry_price
             
             # Cap at strategy max
             position_size = min(kelly_position_btc, thresholds.max_position_size)
             
             # Scale by confidence (if above optimal, use full Kelly, otherwise scale down)
-            if confidence < thresholds.optimal_confidence:
+            if confidence is not None and confidence < thresholds.optimal_confidence:
                 confidence_ratio = confidence / thresholds.optimal_confidence
                 position_size *= confidence_ratio
+            elif confidence is None:
+                logger.warning(f"⚠️ Confidence is None in position sizing - using default scaling")
+                position_size *= 0.5  # Default 50% scaling when confidence is None
             
             # Minimum position size: 0.001 BTC (~$120)
             position_size = max(0.001, position_size)
@@ -236,7 +308,7 @@ class PredictionExecutor:
     
     def execute_prediction(self, prediction: Dict[str, Any], strategy: str) -> Dict[str, Any]:
         """
-        Execute limit order based on prediction
+        Execute limit order based on prediction using proper order lifecycle
         
         Args:
             prediction: Prediction dict from RealtimePredictionEngine
@@ -246,6 +318,10 @@ class PredictionExecutor:
             Execution result
         """
         try:
+            # Get lifecycle managers
+            lifecycle_manager = get_global_order_lifecycle_manager()
+            state_manager = get_global_prediction_state_manager()
+            
             # Check if should execute
             decision = self.should_execute(prediction, strategy)
             
@@ -264,93 +340,98 @@ class PredictionExecutor:
             for check in decision["checks_passed"]:
                 logger.info(f"   {check}")
             
-            # Execute limit order
+            # Extract prediction parameters
             direction = prediction["direction"]
             side = "BUY" if direction == "LONG" else "SELL"
             entry_price = prediction["entry_price"]
             position_size = decision["position_size"]
+            current_price = prediction.get("current_price", entry_price)
             
-            # Prepare signal data
-            signal_data = {
-                "strategy": strategy,
-                "confidence": prediction.get("calibrated_confidence", prediction.get("confidence", 0)),
-                "expected_value": prediction.get("expected_value", 0),
-                "bayesian_confidence": prediction.get("bayesian_confidence"),
-                "stop_loss": prediction.get("stop_loss"),
-                "take_profit": prediction.get("take_profit"),
-                "reasoning": prediction.get("reasoning", []),
-                "kelly_position_pct": prediction.get("kelly_position_pct"),
-            }
-            
-            logger.info(f"🎯 EXECUTING {side} LIMIT ORDER:")
-            logger.info(f"   Entry: ${entry_price:,.2f}")
-            logger.info(f"   Size: {position_size} BTC")
-            logger.info(f"   Stop Loss: ${prediction.get('stop_loss', 0):,.2f}")
-            logger.info(f"   Take Profit: ${prediction.get('take_profit', 0):,.2f}")
-            logger.info(f"   Confidence: {prediction.get('calibrated_confidence', 0):.1%}")
-            logger.info(f"   Expected Value: {prediction.get('expected_value', 0):+.2%}")
-            
-            # Place the trade
-            import time
-            success = self.trading_execution.place_paper_trade(
-                side=side,
-                size=position_size,
-                leverage=30,  # Default leverage
-                signal_data=signal_data
-            )
-            
-            if success:
-                self.last_execution_time = time.time()
-                self.executions_today += 1
-                self.consecutive_losses = 0  # Reset on successful execution
-                
-                logger.success(f"✅ Limit order executed successfully!")
-                
-                # Add trade to dashboard
-                try:
-                    from core.services.dashboard_service import DashboardService
-                    dashboard = DashboardService.get_global_instance()
-                    if dashboard:
-                        trade_display = {
-                            "type": "LIMIT",
-                            "side": side,
-                            "status": "OPEN",
-                            "entry_price": entry_price,
-                            "size": position_size,
-                            "stop_loss": prediction.get("stop_loss"),
-                            "take_profit": prediction.get("take_profit"),
-                            "confidence": prediction.get("calibrated_confidence", 0),
-                            "expected_value": prediction.get("expected_value", 0),
-                            "strategy": strategy,
-                            "bayesian_confidence": prediction.get("bayesian_confidence"),
-                            "kelly_position_pct": prediction.get("kelly_position_pct"),
-                            "timestamp": time.time()
-                        }
-                        dashboard.add_trade(trade_display)
-                        logger.debug("📊 Trade added to dashboard")
-                except Exception as e:
-                    logger.warning(f"⚠️ Could not add trade to dashboard: {e}")
-                
-                return {
-                    "success": True,
-                    "side": side,
-                    "entry_price": entry_price,
-                    "size": position_size,
-                    "confidence": prediction.get("calibrated_confidence", 0),
-                    "expected_value": prediction.get("expected_value", 0)
-                }
-            else:
-                logger.error(f"❌ Limit order execution failed")
+            # Check if we can place order in this direction
+            if not lifecycle_manager.can_place_order(side):
+                logger.warning(f"🚫 Cannot place {side} order: conflicting active orders/positions")
                 return {
                     "success": False,
-                    "reason": "Trade execution failed"
+                    "reason": f"Conflicting {side} order/position active",
+                    "checks_failed": [f"❌ Conflicting {side} order/position active"]
                 }
-                
+            
+            # Create prediction record
+            prediction_id = state_manager.create_prediction(prediction)
+            if not prediction_id:
+                logger.warning(f"🚫 Cannot create prediction: conflicting active predictions")
+                return {
+                    "success": False,
+                    "reason": "Conflicting active predictions",
+                    "checks_failed": ["❌ Conflicting active predictions"]
+                }
+            
+            # Place limit order through lifecycle manager
+            order_id = lifecycle_manager.place_limit_order(prediction, current_price)
+            if not order_id:
+                logger.error(f"❌ Failed to place limit order")
+                state_manager.cancel_prediction(prediction_id, "ORDER_PLACEMENT_FAILED")
+                return {
+                    "success": False,
+                    "reason": "Order placement failed",
+                    "checks_failed": ["❌ Order placement failed"]
+                }
+            
+            # Link prediction to order
+            state_manager.place_order(prediction_id, order_id)
+            
+            logger.info(f"🎯 LIMIT ORDER PLACED: {side} {position_size} BTC @ ${entry_price:,.2f}")
+            logger.info(f"   Prediction ID: {prediction_id}")
+            logger.info(f"   Order ID: {order_id}")
+            logger.info(f"   Current Price: ${current_price:,.2f}")
+            logger.info(f"   Strategy: {strategy}")
+            logger.info(f"   Confidence: {prediction.get('calibrated_confidence', 0):.1%}")
+            
+            # Add to dashboard (PENDING status)
+            try:
+                from core.services.dashboard_service import DashboardService
+                dashboard = DashboardService.get_global_instance()
+                if dashboard:
+                    trade_display = {
+                        "type": "LIMIT",
+                        "side": side,
+                        "status": "PENDING",
+                        "entry_price": entry_price,
+                        "size": position_size,
+                        "stop_loss": prediction.get("stop_loss"),
+                        "take_profit": prediction.get("take_profit"),
+                        "confidence": prediction.get("calibrated_confidence", 0),
+                        "expected_value": prediction.get("expected_value", 0),
+                        "strategy": strategy,
+                        "bayesian_confidence": prediction.get("bayesian_confidence"),
+                        "kelly_position_pct": prediction.get("kelly_position_pct"),
+                        "prediction_id": prediction_id,
+                        "order_id": order_id,
+                        "timestamp": time.time()
+                    }
+                    dashboard.add_trade(trade_display)
+                    logger.debug("📊 Pending order added to dashboard")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not add pending order to dashboard: {e}")
+            
+            return {
+                "success": True,
+                "side": side,
+                "entry_price": entry_price,
+                "size": position_size,
+                "confidence": prediction.get("calibrated_confidence", 0),
+                "expected_value": prediction.get("expected_value", 0),
+                "prediction_id": prediction_id,
+                "order_id": order_id,
+                "status": "PENDING"
+            }
+            
         except Exception as e:
-            logger.error(f"❌ Prediction execution error: {e}")
+            logger.error(f"❌ Prediction execution failed: {e}")
             return {
                 "success": False,
-                "reason": f"Error: {e}"
+                "reason": f"Execution error: {e}",
+                "checks_failed": [f"❌ Execution error: {e}"]
             }
 
 
