@@ -73,8 +73,10 @@ class VariabilityAnalyzer:
                 "volume": price_data.get("volume", 0)
             })
         
-        # Use centralized MarketDataManager for volatility calculation (eliminates redundancy)
-        return market_data_manager.calculate_volatility(candles, min(len(candles), 20))
+        # Use centralized VolatilityCalculator (SINGLE SOURCE OF TRUTH)
+        from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
+        volatility_calculator = get_global_volatility_calculator()
+        return volatility_calculator.calculate_candle_volatility(candles, "5m")
     
     def _calculate_variability_score(self) -> float:
         """Calculate variability score based on multiple factors"""

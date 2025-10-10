@@ -273,7 +273,7 @@ class MLStrategySelector:
             scores = {
                 "scalping": scalping_score,
                 "trend_following": trend_following_score,
-                "range_trading": range_trading_score,
+                "low_volatility_range": range_trading_score,  # Fixed: use correct strategy name
                 "standard": standard_score
             }
             

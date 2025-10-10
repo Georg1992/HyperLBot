@@ -267,23 +267,20 @@ class VolatilityCalculator:
                     category = "VERY_LOW"
                     trend = "BORING"
             elif timeframe == "5m":
-                # 5-minute thresholds (updated for realistic Bitcoin volatility)
-                if volatility >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 0.50% (extreme 5m movement)
+                # 5-minute thresholds (updated for high-leverage trading)
+                if volatility >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 5.00% (extreme 5m movement)
                     category = "EXTREME"
                     trend = "VOLATILE"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_HIGH:    # >= 0.30% (high 5m activity)
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_HIGH:    # >= 2.00% (high 5m activity)
                     category = "HIGH"
                     trend = "ACTIVE"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_MODERATE:  # >= 0.15% (moderate 5m movement)
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_MODERATE:  # >= 1.00% (moderate 5m movement)
                     category = "MODERATE" 
                     trend = "NORMAL"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_LOW:     # >= 0.06% (low 5m movement)
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_LOW:     # >= 0.50% (low 5m movement)
                     category = "LOW"
                     trend = "QUIET"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_VERY_LOW: # >= 0.03% (very low 5m movement)
-                    category = "LOW"
-                    trend = "QUIET"
-                else:                                                              # < 0.03% (extremely low 5m movement)
+                else:                                                              # < 0.50% (very low 5m movement)
                     category = "VERY_LOW"
                     trend = "BORING"
             elif timeframe == "1h":

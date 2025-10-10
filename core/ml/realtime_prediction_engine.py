@@ -131,9 +131,9 @@ class RealtimePredictionEngine:
         # SINGLETON PREDICTION - Single source of truth
         self.active_prediction: Optional[RealtimePrediction] = None
         
-        # Configuration
-        self.confidence_threshold = 0.75  # Execute when confidence >= 75%
-        self.min_tracking_confidence = 0.60  # Start tracking at 60%
+        # Configuration - will be updated based on active strategy
+        self.confidence_threshold = 0.60  # Default: Execute when confidence >= 60%
+        self.min_tracking_confidence = 0.50  # Start tracking at 50%
         self.max_prediction_age = 300  # 5 minutes max
         
         # Performance tracking
@@ -142,9 +142,21 @@ class RealtimePredictionEngine:
         self.direction_changes = 0
         
         logger.info("🧠 Real-time Prediction Engine initialized - Continuous tracking")
-        logger.info(f"   📊 Confidence threshold: {self.confidence_threshold:.1%}")
+        logger.info(f"   📊 Default confidence threshold: {self.confidence_threshold:.1%}")
         logger.info(f"   🎯 Strategy: Try both LONG/SHORT directions and pick highest confidence")
         logger.info(f"   ⚡ Reactive: Adjusts prediction fields continuously with market")
+    
+    def update_confidence_threshold(self, strategy: str) -> None:
+        """Update confidence threshold based on active strategy"""
+        from config.config import Config
+        
+        strategy_config = Config.STRATEGY_CONFIGS.get(strategy, {})
+        new_threshold = strategy_config.get("confidence_threshold", 0.60)
+        
+        if new_threshold != self.confidence_threshold:
+            logger.info(f"🎯 Confidence threshold updated: {self.confidence_threshold:.1%} → {new_threshold:.1%} (strategy: {strategy})")
+            self.confidence_threshold = new_threshold
+            self.min_tracking_confidence = max(0.50, new_threshold - 0.10)  # 10% below execution threshold
     
     def _find_optimal_direction(self, market_data: Dict[str, Any]) -> tuple:
         """
@@ -414,9 +426,9 @@ class RealtimePredictionEngine:
         """
         Recognize market direction using multiple signals
         
-        WEIGHTS (optimized for short-term limit order trading):
-        - RSI: 40% (PRIMARY - mean reversion signals)
-        - S/R: 30% (Price position relative to key levels)
+        WEIGHTS (optimized for high-leverage range trading):
+        - RSI: 35% (PRIMARY - mean reversion signals)
+        - S/R: 35% (Price position relative to key levels)
         - Patterns: 20% (Chart pattern setups)
         - Trend: 10% (15min: 3%, 2-hour: 7%)
         - Pressure: ~5% (Confirmation only)
@@ -435,28 +447,58 @@ class RealtimePredictionEngine:
         score = 0.0
         reasoning = []
         
-        # 1. RSI ANALYSIS (Weight: 40% - PRIMARY for short-term mean reversion)
+        # Check if we're in a low-volatility range trading scenario
+        volatility_category = market_data.get("volatility_category", "MODERATE")
+        volatility_5m = market_data.get("volatility_5m", 0.0)
+        is_range_trading = volatility_category in ["LOW", "VERY_LOW"] and volatility_5m < 0.01
+        
+        # 1. RSI ANALYSIS (Weight: 35% - PRIMARY for short-term mean reversion)
         rsi = market_data.get("rsi", 50)
-        if rsi < 25:
-            score += 0.40
-            reasoning.append(f"🔴 RSI extremely oversold ({rsi:.1f}) - STRONG BUY signal")
-        elif rsi < 30:
-            score += 0.30
-            reasoning.append(f"🟠 RSI oversold ({rsi:.1f}) - strong reversal signal")
-        elif rsi < 40:
-            score += 0.15
-            reasoning.append(f"🟡 RSI below neutral ({rsi:.1f}) - bullish bias")
-        elif rsi > 75:
-            score -= 0.40
-            reasoning.append(f"🔴 RSI extremely overbought ({rsi:.1f}) - STRONG SELL signal")
-        elif rsi > 70:
-            score -= 0.30
-            reasoning.append(f"🟠 RSI overbought ({rsi:.1f}) - strong reversal signal")
-        elif rsi > 60:
-            score -= 0.15
-            reasoning.append(f"🟡 RSI above neutral ({rsi:.1f}) - bearish bias")
+        
+        if is_range_trading:
+            # For range trading: More sensitive RSI thresholds
+            if rsi < 30:
+                score += 0.35
+                reasoning.append(f"🔴 RSI oversold ({rsi:.1f}) - STRONG BUY signal (range trading)")
+            elif rsi < 45:
+                score += 0.20
+                reasoning.append(f"🟠 RSI below neutral ({rsi:.1f}) - bullish bias (range trading)")
+            elif rsi < 55:
+                score += 0.10
+                reasoning.append(f"🟡 RSI slightly bullish ({rsi:.1f}) - weak long signal")
+            elif rsi > 70:
+                score -= 0.35
+                reasoning.append(f"🔴 RSI overbought ({rsi:.1f}) - STRONG SELL signal (range trading)")
+            elif rsi > 55:
+                score -= 0.20
+                reasoning.append(f"🟠 RSI above neutral ({rsi:.1f}) - bearish bias (range trading)")
+            elif rsi > 45:
+                score -= 0.10
+                reasoning.append(f"🟡 RSI slightly bearish ({rsi:.1f}) - weak short signal")
+            else:
+                reasoning.append(f"⚪ RSI neutral ({rsi:.1f}) - range trading")
         else:
-            reasoning.append(f"⚪ RSI neutral ({rsi:.1f})")
+            # Original momentum trading thresholds
+            if rsi < 25:
+                score += 0.35
+                reasoning.append(f"🔴 RSI extremely oversold ({rsi:.1f}) - STRONG BUY signal")
+            elif rsi < 30:
+                score += 0.25
+                reasoning.append(f"🟠 RSI oversold ({rsi:.1f}) - strong reversal signal")
+            elif rsi < 40:
+                score += 0.15
+                reasoning.append(f"🟡 RSI below neutral ({rsi:.1f}) - bullish bias")
+            elif rsi > 75:
+                score -= 0.35
+                reasoning.append(f"🔴 RSI extremely overbought ({rsi:.1f}) - STRONG SELL signal")
+            elif rsi > 70:
+                score -= 0.25
+                reasoning.append(f"🟠 RSI overbought ({rsi:.1f}) - strong reversal signal")
+            elif rsi > 60:
+                score -= 0.15
+                reasoning.append(f"🟡 RSI above neutral ({rsi:.1f}) - bearish bias")
+            else:
+                reasoning.append(f"⚪ RSI neutral ({rsi:.1f})")
         
         # 2. DUAL-TIMEFRAME TREND ANALYSIS
         # Short-term (15min) - Momentum confirmation (3%)
@@ -488,7 +530,7 @@ class RealtimePredictionEngine:
             score -= 0.04
             reasoning.append("📉 2-hour downtrend")
         
-        # 3. SUPPORT/RESISTANCE (Weight: 30%)
+        # 3. SUPPORT/RESISTANCE (Weight: 35% for range trading, 30% for momentum)
         current_price = market_data.get("current_price", 0)
         support_resistance = market_data.get("support_resistance", {})
         nearest_support = support_resistance.get("nearest_support", {})
@@ -504,18 +546,40 @@ class RealtimePredictionEngine:
                 if range_size > 0:
                     position_in_range = (current_price - support_price) / range_size
                     
-                    if position_in_range < 0.15:
-                        score += 0.30
-                        reasoning.append(f"🟢 Near support ${support_price:,.0f} - bounce potential")
-                    elif position_in_range < 0.30:
-                        score += 0.18
-                        reasoning.append(f"🟢 Approaching support ${support_price:,.0f}")
-                    elif position_in_range > 0.85:
-                        score -= 0.30
-                        reasoning.append(f"🔴 Near resistance ${resistance_price:,.0f} - rejection risk")
-                    elif position_in_range > 0.70:
-                        score -= 0.18
-                        reasoning.append(f"🔴 Approaching resistance ${resistance_price:,.0f}")
+                    if is_range_trading:
+                        # For range trading: More sensitive thresholds and higher weights
+                        if position_in_range < 0.20:  # Within 20% of support
+                            score += 0.35
+                            reasoning.append(f"🟢 Near support ${support_price:,.0f} - strong bounce potential (range trading)")
+                        elif position_in_range < 0.35:  # Within 35% of support
+                            score += 0.25
+                            reasoning.append(f"🟢 Approaching support ${support_price:,.0f} - bounce potential")
+                        elif position_in_range < 0.50:  # Lower half of range
+                            score += 0.15
+                            reasoning.append(f"🟡 Lower half of range - bullish bias")
+                        elif position_in_range > 0.80:  # Within 20% of resistance
+                            score -= 0.35
+                            reasoning.append(f"🔴 Near resistance ${resistance_price:,.0f} - strong rejection risk (range trading)")
+                        elif position_in_range > 0.65:  # Within 35% of resistance
+                            score -= 0.25
+                            reasoning.append(f"🔴 Approaching resistance ${resistance_price:,.0f} - rejection risk")
+                        elif position_in_range > 0.50:  # Upper half of range
+                            score -= 0.15
+                            reasoning.append(f"🟡 Upper half of range - bearish bias")
+                    else:
+                        # Original momentum trading thresholds
+                        if position_in_range < 0.15:
+                            score += 0.30
+                            reasoning.append(f"🟢 Near support ${support_price:,.0f} - bounce potential")
+                        elif position_in_range < 0.30:
+                            score += 0.18
+                            reasoning.append(f"🟢 Approaching support ${support_price:,.0f}")
+                        elif position_in_range > 0.85:
+                            score -= 0.30
+                            reasoning.append(f"🔴 Near resistance ${resistance_price:,.0f} - rejection risk")
+                        elif position_in_range > 0.70:
+                            score -= 0.18
+                            reasoning.append(f"🔴 Approaching resistance ${resistance_price:,.0f}")
         
         # 4. PATTERN ANALYSIS (Weight: up to 20% - pattern-specific)
         pattern_analysis = market_data.get("pattern_analysis", {})
@@ -740,6 +804,9 @@ class RealtimePredictionEngine:
         pattern_count = market_data.get("pattern_analysis", {}).get("pattern_count", 0)
         overall_pattern_confidence = market_data.get("pattern_analysis", {}).get("overall_confidence", 0.0)
         
+        # Check if we're in a low-volatility range trading scenario
+        is_range_trading = volatility_category in ["LOW", "VERY_LOW"] and volatility_5m < 0.01
+        
         # Cross-asset and funding data
         cross_asset = market_data.get("cross_asset_analysis", {})
         funding_analysis = market_data.get("funding_analysis", {})
@@ -950,7 +1017,13 @@ class RealtimePredictionEngine:
                 confidence_boosts.append(("Very strong pressure", boost))
                 reasoning.append(f"✅ Very strong {pressure} pressure ({pressure_strength:.1%}) (+{boost:.1%})")
         
-        # BOOST 16: Cross-Asset Correlation Alignment
+        # BOOST 16: Range Trading Scenario Boost
+        if is_range_trading:
+            boost = 0.08
+            confidence_boosts.append(("Low-volatility range trading", boost))
+            reasoning.append(f"✅ Range trading conditions - optimal for high-leverage scalping (+{boost:.1%})")
+        
+        # BOOST 17: Cross-Asset Correlation Alignment
         if cross_asset:
             dxy_corr = cross_asset.get("dxy_correlation", 0)
             gold_corr = cross_asset.get("gold_correlation", 0)

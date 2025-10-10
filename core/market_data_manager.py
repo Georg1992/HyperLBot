@@ -69,8 +69,22 @@ class MarketDataManager:
             return True, "no resistance found previously, need recalculation"
         
         if support_broken:
+            # Invalidate cache immediately when support is broken
+            self._last_sr_levels = {
+                "strongest_support": 0.0,
+                "strongest_resistance": 0.0,
+                "last_calculated_price": 0.0,
+                "last_calculated_time": 0
+            }
             return True, f"support broken (${last_support:.2f} -> ${current_price:.2f})"
         if resistance_broken:
+            # Invalidate cache immediately when resistance is broken
+            self._last_sr_levels = {
+                "strongest_support": 0.0,
+                "strongest_resistance": 0.0,
+                "last_calculated_price": 0.0,
+                "last_calculated_time": 0
+            }
             return True, f"resistance broken (${last_resistance:.2f} -> ${current_price:.2f})"
         
         # Check if price moved significantly (5% change)
@@ -389,9 +403,9 @@ class MarketDataManager:
             if not hyperliquid_candles or len(hyperliquid_candles) < 3:
                 raise ValueError("Insufficient candle data for volatility analysis")
             
-            # Calculate volatility from REAL Hyperliquid data
-            volatility_5m = self.calculate_volatility(hyperliquid_candles)
+            # Calculate volatility using centralized volatility calculator (SINGLE SOURCE OF TRUTH)
             volatility_calculator = get_global_volatility_calculator()
+            volatility_5m = volatility_calculator.calculate_candle_volatility(hyperliquid_candles, "5m")
             volatility_5m_category, volatility_5m_trend = volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
             
             return {
@@ -406,34 +420,6 @@ class MarketDataManager:
             logger.error(f"❌ Volatility analysis failed: {e}")
             raise ValueError(f"Volatility analysis failed - NO FALLBACKS: {e}")
     
-    def calculate_volatility(self, candles: List[Dict[str, Any]]) -> float:
-        """Calculate volatility from candle data"""
-        try:
-            if not candles or len(candles) < 2:
-                raise ValueError("Insufficient candles for volatility calculation")
-            
-            # Calculate price changes
-            price_changes = []
-            for i in range(1, len(candles)):
-                prev_close = candles[i-1].get('close', 0)
-                curr_close = candles[i].get('close', 0)
-                if prev_close > 0:
-                    price_change = (curr_close - prev_close) / prev_close
-                    price_changes.append(price_change)
-            
-            if not price_changes:
-                raise ValueError("No valid price changes for volatility calculation")
-            
-            # Calculate standard deviation of price changes
-            mean_change = sum(price_changes) / len(price_changes)
-            variance = sum((change - mean_change) ** 2 for change in price_changes) / len(price_changes)
-            volatility = (variance ** 0.5) * 100  # Convert to percentage
-            
-            return volatility
-            
-        except Exception as e:
-            logger.error(f"❌ Volatility calculation failed: {e}")
-            raise ValueError(f"Volatility calculation failed - NO FALLBACKS: {e}")
     
     def clear_cache(self):
         """Clear all cached data"""

@@ -65,7 +65,7 @@ class TradingLogger:
             "session_id": self.session_id,
             "start_time": datetime.now().isoformat(),
             "bot_version": "Enhanced BTC 5-Min Strategy v2.0",
-            "strategy": "Multi-timeframe with Variability Theory",
+            "strategy": "standard",  # Will be updated by strategy manager
             "max_leverage": 40,
             "initial_balance": 0.0,  # Will be updated by bot
             "analysis_frequency": {
@@ -96,6 +96,13 @@ class TradingLogger:
         self.session_metadata["initial_balance"] = balance
         self._save_session_metadata()
         logger.info(f"💰 Updated initial balance: ${balance:.2f}")
+    
+    def update_strategy(self, strategy: str):
+        """Update strategy in session metadata"""
+        if strategy:
+            self.session_metadata["strategy"] = strategy
+            self._save_session_metadata()
+            logger.info(f"🎯 Updated strategy: {strategy}")
     
     def update_current_balance(self, balance: float):
         """Update current balance in session metadata for real-time dashboard updates"""

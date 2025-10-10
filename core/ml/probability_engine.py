@@ -26,15 +26,15 @@ class ExpectedValue:
 class ProbabilityEngine:
     """Applies probability theory to trading decisions"""
     
-    def __init__(self, min_ev_threshold: float = 0.005):
+    def __init__(self, min_ev_threshold: float = 0.0005):
         """
-        Initialize Probability Engine
+        Initialize Probability Engine - Optimized for 40x leverage trading
         
         Args:
-            min_ev_threshold: Minimum EV (as %) to consider trading (default 0.5%)
+            min_ev_threshold: Minimum EV (as %) to consider trading (default 0.05% for 40x leverage)
         """
         self.min_ev_threshold = min_ev_threshold
-        logger.info(f"🎲 Probability Engine initialized - Min EV threshold: {min_ev_threshold:.2%}")
+        logger.info(f"🎲 Probability Engine initialized - Min EV threshold: {min_ev_threshold:.2%} (40x leverage optimized)")
     
     def calculate_expected_value(
         self,

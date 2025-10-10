@@ -291,7 +291,7 @@ class SessionOrchestrator:
             # Get candle data for all timeframes (from centralized cache)
             candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 30)  # For RSI calculation
             candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)          # For general analysis
-            candles_5m_for_sr = market_data_service.get_historical_candles("BTC", "5m", 100)  # For S/R calculation
+            candles_5m_for_sr = market_data_service.get_historical_candles("BTC", "5m", 200)  # For S/R calculation (increased for better support detection)
             candles_1m = market_data_service.get_historical_candles("BTC", "1m", 20)
             candles_1h = market_data_service.get_historical_candles("BTC", "1h", 24)
             candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
@@ -336,12 +336,22 @@ class SessionOrchestrator:
             volatility_calculator = get_global_volatility_calculator()
             
             try:
-                volatility_5m = volatility_calculator.calculate_candle_volatility(candles_5m, "5m") if len(candles_5m) >= 1 else 0.0
-                volatility_5m_category = volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
+                # Ensure we use fresh candle data for volatility calculation
+                if len(candles_5m) >= 1:
+                    volatility_5m = volatility_calculator.calculate_candle_volatility(candles_5m, "5m")
+                    logger.debug(f"📊 Volatility calculated from {len(candles_5m)} fresh 5m candles: {volatility_5m:.6f}")
+                else:
+                    volatility_5m = 0.0
+                    logger.warning("⚠️ No 5m candles available for volatility calculation")
+                
+                volatility_5m_result = volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
+                # Extract just the category from the tuple (category, trend)
+                volatility_5m_category = volatility_5m_result[0] if isinstance(volatility_5m_result, tuple) else volatility_5m_result
+                logger.debug(f"🔍 Volatility result: {volatility_5m_result} -> category: {volatility_5m_category}")
             except Exception as e:
                 logger.warning(f"⚠️ Volatility calculation failed: {e}")
                 volatility_5m = 0.0
-                volatility_5m_category = ("UNKNOWN", "ERROR")
+                volatility_5m_category = "UNKNOWN"
             
             # Get support/resistance from hyperliquid_data (already recalculated by market_data_manager)
             support_resistance = hyperliquid_data.get("support_resistance", {})
@@ -555,7 +565,8 @@ class SessionOrchestrator:
                 
                 # Volatility data (from single volatility calculator source)
                 "volatility_5m": volatility_5m,
-                "volatility_5m_category": volatility_5m_category,
+                "volatility_category": volatility_5m_category,  # Fixed: strategy manager expects 'volatility_category'
+                "volatility_5m_category": volatility_5m_category,  # Keep for backward compatibility
                 "volatility_1m": volatility_calculator.calculate_candle_volatility(candles_1m, "1m") if len(candles_1m) >= 1 else 0.0,
                 "volatility_1h": volatility_calculator.calculate_candle_volatility(candles_1h, "1h") if len(candles_1h) >= 1 else 0.0,
                 "volatility_1d": volatility_calculator.calculate_candle_volatility(candles_1d, "1d") if len(candles_1d) >= 1 else 0.0,

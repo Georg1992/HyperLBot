@@ -585,6 +585,21 @@
                             <span class="data-label">Active Positions:</span>
                             <span class="data-value" id="performance-active-positions">0</span>
                         </div>
+                        <div class="data-item">
+                            <span class="data-label">Open Orders:</span>
+                            <span class="data-value" id="performance-open-orders">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Orders Section -->
+                <div class="card">
+                    <h3>📋 Active Orders & Positions</h3>
+                    <div id="orders-container" style="max-height: 200px; overflow-y: auto;">
+                        <div style="text-align: center; color: #888; padding: 20px;">
+                            <div style="font-size: 24px; margin-bottom: 10px;">📋</div>
+                            <div>No active orders or positions</div>
+                        </div>
                     </div>
                 </div>
                 
@@ -1240,25 +1255,19 @@
                     let levelsText = '';
                     const currentPrice = market.current_price || 0;
                     
-                    if (strongestSupport > 0) {
-                        // Check if support is actually below price (valid) or above (broken)
-                        if (strongestSupport < currentPrice) {
-                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
-                        } else {
-                            levelsText += `<span style="color: #888;">🔴</span> Support: $${Math.round(strongestSupport).toLocaleString()} (broken)<br>`;
-                        }
+                    if (strongestSupport > 0 && strongestSupport < currentPrice) {
+                        // Only show support if it's below current price (valid)
+                        levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
                     } else {
+                        // Don't show broken support - show "None" instead
                         levelsText += `<span style="color: #888;">⚪</span> Support: None<br>`;
                     }
                     
-                    if (strongestResistance > 0) {
-                        // Check if resistance is actually above price (valid) or below (broken)
-                        if (strongestResistance > currentPrice) {
-                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
-                        } else {
-                            levelsText += `<span style="color: #888;">🟢</span> Resistance: $${Math.round(strongestResistance).toLocaleString()} (broken)<br>`;
-                        }
+                    if (strongestResistance > 0 && strongestResistance > currentPrice) {
+                        // Only show resistance if it's above current price (valid)
+                        levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
                     } else {
+                        // Don't show broken resistance - show "None" instead
                         levelsText += `<span style="color: #888;">⚪</span> Resistance: None<br>`;
                     }
                     
@@ -2134,6 +2143,54 @@
                 // Update Active Positions
                 const activePositions = session.active_positions || 0;
                 document.getElementById('performance-active-positions').textContent = activePositions.toString();
+                
+                // Update Open Orders
+                const openOrders = session.open_orders || 0;
+                document.getElementById('performance-open-orders').textContent = openOrders.toString();
+                
+                // Update Orders Container
+                this.updateOrdersDisplay(session.orders || []);
+            }
+            
+            updateOrdersDisplay(orders) {
+                const container = document.getElementById('orders-container');
+                if (!container) return;
+                
+                if (!orders || orders.length === 0) {
+                    container.innerHTML = `
+                        <div style="text-align: center; color: #888; padding: 20px;">
+                            <div style="font-size: 24px; margin-bottom: 10px;">📋</div>
+                            <div>No active orders or positions</div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let ordersHtml = '';
+                orders.forEach(order => {
+                    const side = order.side || 'UNKNOWN';
+                    const type = order.type || 'LIMIT';
+                    const size = order.size || 0;
+                    const price = order.price || 0;
+                    const status = order.status || 'PENDING';
+                    
+                    const sideColor = side === 'BUY' ? '#4CAF50' : '#FF4444';
+                    const statusColor = status === 'FILLED' ? '#4CAF50' : status === 'CANCELLED' ? '#FF4444' : '#FFC107';
+                    
+                    ordersHtml += `
+                        <div style="background: rgba(255,255,255,0.05); border-radius: 8px; padding: 12px; margin: 8px 0; border-left: 4px solid ${sideColor};">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div style="font-weight: bold; color: ${sideColor};">${side} ${type}</div>
+                                    <div style="font-size: 12px; color: #888;">${size} BTC @ $${price.toLocaleString()}</div>
+                                </div>
+                                <div style="color: ${statusColor}; font-weight: bold; font-size: 12px;">${status}</div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                container.innerHTML = ordersHtml;
             }
             
             updateActivityLogs(logs) {

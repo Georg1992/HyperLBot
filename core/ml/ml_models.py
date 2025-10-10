@@ -306,22 +306,22 @@ class MLModelManager:
             price_model = self.models['trading_predictions']['price_target']
             price_target = price_model.predict(features_scaled)[0]
             
-            # Determine final signal
-            if buy_confidence > sell_confidence and buy_confidence > 0.6:
+            # Determine final signal - optimized for 40x leverage trading
+            if buy_confidence > sell_confidence and buy_confidence > 0.15:  # 40x leverage: very aggressive threshold
                 signal = "BUY"
                 confidence = buy_confidence
-                reasoning = f"Strong buy signal (confidence: {buy_confidence:.3f})"
-            elif sell_confidence > buy_confidence and sell_confidence > 0.6:
+                reasoning = f"Buy signal (confidence: {buy_confidence:.3f})"
+            elif sell_confidence > buy_confidence and sell_confidence > 0.15:  # 40x leverage: very aggressive threshold
                 signal = "SELL"
                 confidence = sell_confidence
-                reasoning = f"Strong sell signal (confidence: {sell_confidence:.3f})"
+                reasoning = f"Sell signal (confidence: {sell_confidence:.3f})"
             else:
                 signal = "NEUTRAL"
                 confidence = max(buy_confidence, sell_confidence)
                 reasoning = f"Uncertain signals (buy: {buy_confidence:.3f}, sell: {sell_confidence:.3f})"
             
-            # Apply overall confidence threshold - let confidence system handle low confidence
-            if overall_confidence < 0.5:
+            # Apply overall confidence threshold - optimized for 40x leverage trading
+            if overall_confidence < 0.10:  # 40x leverage: extremely aggressive threshold
                 signal = "NEUTRAL"
                 reasoning += f" - Low overall confidence ({overall_confidence:.3f})"
             
@@ -437,54 +437,57 @@ class MLModelManager:
             market_data = market_data or {}
             
             # Base position size (can be adjusted based on confidence and market conditions)
-            base_size_usd = 1000.0  # $1000 base position
+            # 40x leverage optimized position sizing
+            base_size_usd = 2000.0  # $2000 base position (increased for 40x leverage)
             confidence_multiplier = confidence  # Scale position size by confidence
             
-            # Adjust position size based on market conditions
+            # Adjust position size based on market conditions - 40x leverage optimized
             volatility = market_data.get("volatility_5m", 0.02)
             volume_category = market_data.get("volume_category", "NORMAL")
             
-            # Reduce position size in high volatility
-            if volatility > 0.05:  # High volatility
-                confidence_multiplier *= 0.5
+            # 40x leverage: More aggressive position sizing in low volatility (range trading)
+            if volatility < 0.01:  # Very low volatility - optimal for 40x leverage
+                confidence_multiplier *= 1.5  # Increase size in low volatility
+            elif volatility > 0.05:  # High volatility - reduce size
+                confidence_multiplier *= 0.3  # More conservative in high volatility
             elif volatility > 0.03:  # Medium volatility
-                confidence_multiplier *= 0.75
+                confidence_multiplier *= 0.6
             
-            # Adjust for volume conditions
+            # 40x leverage: Less penalty for low volume (range trading conditions)
             if volume_category in ["LOW", "VERY_LOW"]:
-                confidence_multiplier *= 0.5  # Reduce size in low volume
+                confidence_multiplier *= 0.8  # Reduced penalty for low volume
             
             # Calculate position sizes
             size_usd = base_size_usd * confidence_multiplier
             size_btc = size_usd / current_price
             
-            # Calculate entry price (current price with small slippage)
+            # Calculate entry price (current price with small slippage) - 40x leverage optimized
             if signal == "BUY":
-                entry_price = current_price * 1.001  # 0.1% slippage for buy
+                entry_price = current_price * 1.0005  # 0.05% slippage for buy (tighter for 40x)
             elif signal == "SELL":
-                entry_price = current_price * 0.999  # 0.1% slippage for sell
+                entry_price = current_price * 0.9995  # 0.05% slippage for sell (tighter for 40x)
             else:
                 entry_price = current_price
             
-            # Calculate stop loss and take profit based on volatility and confidence
-            volatility_multiplier = max(1.0, volatility * 100)  # Scale with volatility
+            # Calculate stop loss and take profit - 40x leverage optimized (tighter ranges)
+            volatility_multiplier = max(0.5, volatility * 50)  # Reduced scaling for 40x leverage
             
             if signal == "BUY":
-                # Stop loss: 2-5% below entry based on volatility
-                stop_loss_pct = 0.02 + (volatility_multiplier * 0.01)  # 2-5%
+                # Stop loss: 1-3% below entry (tighter for 40x leverage)
+                stop_loss_pct = 0.01 + (volatility_multiplier * 0.005)  # 1-3%
                 stop_loss = entry_price * (1 - stop_loss_pct)
                 
-                # Take profit: 3-8% above entry based on confidence and volatility
-                take_profit_pct = 0.03 + (confidence * 0.05) + (volatility_multiplier * 0.01)
+                # Take profit: 2-5% above entry (tighter for 40x leverage)
+                take_profit_pct = 0.02 + (confidence * 0.03) + (volatility_multiplier * 0.005)
                 take_profit = entry_price * (1 + take_profit_pct)
                 
             elif signal == "SELL":
-                # Stop loss: 2-5% above entry based on volatility
-                stop_loss_pct = 0.02 + (volatility_multiplier * 0.01)  # 2-5%
+                # Stop loss: 1-3% above entry (tighter for 40x leverage)
+                stop_loss_pct = 0.01 + (volatility_multiplier * 0.005)  # 1-3%
                 stop_loss = entry_price * (1 + stop_loss_pct)
                 
-                # Take profit: 3-8% below entry based on confidence and volatility
-                take_profit_pct = 0.03 + (confidence * 0.05) + (volatility_multiplier * 0.01)
+                # Take profit: 2-5% below entry (tighter for 40x leverage)
+                take_profit_pct = 0.02 + (confidence * 0.03) + (volatility_multiplier * 0.005)
                 take_profit = entry_price * (1 - take_profit_pct)
                 
             else:  # HOLD

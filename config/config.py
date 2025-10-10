@@ -17,9 +17,9 @@ class TradingConfig:
     WALLET_ADDRESS = os.getenv("WALLET_ADDRESS")
     WALLET_PRIVATE_KEY = os.getenv("WALLET_PRIVATE_KEY")
     
-    # Trading Parameters
+    # Trading Parameters - Optimized for 40x leverage
     SYMBOL = os.getenv("SYMBOL", "BTC")
-    LEVERAGE = int(os.getenv("LEVERAGE", "30"))
+    LEVERAGE = int(os.getenv("LEVERAGE", "40"))  # 40x leverage default
     
     # API Configuration
     HYPERLIQUID_API_URL = os.getenv("HYPERLIQUID_API_URL", "https://api.hyperliquid.xyz")
@@ -37,91 +37,91 @@ class TradingConfig:
     DEFAULT_MAX_TRADES = int(os.getenv("DEFAULT_MAX_TRADES", "10"))
     DEFAULT_CHECK_INTERVAL = int(os.getenv("DEFAULT_CHECK_INTERVAL", "1"))
     
-    # Risk Management
-    MAX_POSITION_SIZE = float(os.getenv("MAX_POSITION_SIZE", "0.4"))  # 40% max
-    MIN_PROFIT_TARGET = float(os.getenv("MIN_PROFIT_TARGET", "0.005"))  # 0.5%
-    MAX_STOP_LOSS = float(os.getenv("MAX_STOP_LOSS", "0.015"))  # 1.5%
+    # Risk Management - Optimized for 40x leverage
+    MAX_POSITION_SIZE = float(os.getenv("MAX_POSITION_SIZE", "0.5"))  # 50% max (increased for 40x)
+    MIN_PROFIT_TARGET = float(os.getenv("MIN_PROFIT_TARGET", "0.002"))  # 0.2% (lower for 40x)
+    MAX_STOP_LOSS = float(os.getenv("MAX_STOP_LOSS", "0.008"))  # 0.8% (tighter for 40x)
     
     # Strategy Configurations
     STRATEGY_CONFIGS = {
-        "standard": {
-            "min_range_percentage": 0.002,  # 0.2% minimum range
-            "volatility_threshold": "medium",
-            "confidence_threshold": 0.3,
-            "min_interval": 30,  # seconds between trades
-            "max_leverage": 40,
-            "profit_target": 0.008,  # 0.8% profit target
-            "stop_loss": 0.004,  # 0.4% stop loss
-            "position_size": 0.1  # 10% of balance
-        },
-        "low_volatility_range": {
-            "min_range_percentage": 0.0003,  # 0.03% minimum range (very tight)
-            "volatility_threshold": ["low", "very_low"],  # Handles both LOW and VERY_LOW
-            "confidence_threshold": 0.1,  # Low confidence needed for range trading
-            "min_interval": 30,  # 30 seconds between trades (frequent)
-            "max_leverage": 25,  # Moderate leverage for safety
-            "profit_target": 0.003,  # 0.3% profit target (small moves)
-            "stop_loss": 0.0015,  # 0.15% stop loss (tight stops)
-            "position_size": 0.25,  # 25% of balance (larger size for small moves)
-            "range_detection_periods": 20,  # Look back 20 candles for range
-            "range_tolerance": 0.0005,  # 0.05% tolerance for range boundaries
-            "bounce_threshold": 0.0002,  # 0.02% minimum bounce to trade
-            "max_range_width": 0.005,  # 0.5% maximum range width
-            "require_range_confirmation": True,
-            "support_resistance_required": True,
-            "description": "Optimized for LOW and VERY_LOW volatility conditions with range detection"
-        },
-        "high_volatility": {
-            "min_range_percentage": 0.005,  # 0.5% minimum range
-            "volatility_threshold": "high",
-            "confidence_threshold": 0.5,
-            "min_interval": 60,
-            "max_leverage": 50,
-            "profit_target": 0.02,  # 2% profit target
-            "stop_loss": 0.01,  # 1% stop loss
-            "position_size": 0.08  # 8% of balance
-        },
-        "spike_hunting": {
-            "min_range_percentage": 0.008,  # 0.8% minimum range
-            "volatility_threshold": "extreme",
-            "confidence_threshold": 0.75,
-            "min_interval": 1800,  # 30 minutes between trades
-            "max_leverage": 40,
-            "profit_target": 0.035,  # 3.5% profit target
-            "stop_loss": 0.015,  # 1.5% stop loss
-            "position_size": 0.40,  # 40% of balance
-            "volume_spike_required": True,
-            "min_spike_severity": "HIGH",
-            "require_momentum_alignment": True
-        },
-        "trend_following": {
-            "min_range_percentage": 0.003,  # 0.3% minimum range
-            "volatility_threshold": "moderate",
-            "confidence_threshold": 0.4,
-            "min_interval": 120,  # 2 minutes between trades
-            "max_leverage": 35,
-            "profit_target": 0.012,  # 1.2% profit target
-            "stop_loss": 0.006,  # 0.6% stop loss
-            "position_size": 0.15,  # 15% of balance
-            "trend_confirmation_required": True,
-            "min_trend_strength": "STRONG",
-            "momentum_alignment_required": True,
-            "description": "Optimized for strong trending markets with momentum confirmation"
-        },
-        "scalping": {
-            "min_range_percentage": 0.0005,  # 0.05% minimum range (very tight)
-            "volatility_threshold": ["moderate", "high"],  # Needs some volatility for opportunities
-            "confidence_threshold": 0.2,  # Lower confidence needed for quick trades
-            "min_interval": 5,  # 5 seconds between trades (very frequent)
-            "max_leverage": 50,  # High leverage for small moves
-            "profit_target": 0.002,  # 0.2% profit target (small but frequent)
-            "stop_loss": 0.001,  # 0.1% stop loss (very tight)
-            "position_size": 0.3,  # 30% of balance (larger size for small moves)
-            "require_high_liquidity": True,  # Need tight spreads
-            "require_low_slippage": True,  # Minimize execution costs
-            "max_hold_time_seconds": 300,  # 5 minutes max hold time
-            "volume_spike_required": False,  # Don't need volume spikes for scalping
-            "rsi_range": [30, 70],  # Avoid extreme RSI zones
+    "standard": {
+        "min_range_percentage": 0.002,  # 0.2% minimum range
+        "volatility_threshold": "medium",
+        "confidence_threshold": 0.50,  # 50% confidence minimum (CORRECTED)
+        "min_interval": 30,  # seconds between trades
+        "max_leverage": 40,
+        "profit_target": 0.008,  # 0.8% profit target
+        "stop_loss": 0.004,  # 0.4% stop loss
+        "position_size": 0.1  # 10% of balance
+    },
+    "low_volatility_range": {
+        "min_range_percentage": 0.0003,  # 0.03% minimum range (very tight)
+        "volatility_threshold": ["low", "very_low"],  # Handles both LOW and VERY_LOW
+        "confidence_threshold": 0.50,  # 50% confidence minimum (CORRECTED - minimum for execution)
+        "min_interval": 30,  # 30 seconds between trades (frequent)
+        "max_leverage": 40,  # Increased leverage for high-leverage trading
+        "profit_target": 0.003,  # 0.3% profit target (small moves)
+        "stop_loss": 0.0015,  # 0.15% stop loss (tight stops)
+        "position_size": 0.25,  # 25% of balance (larger size for small moves)
+        "range_detection_periods": 20,  # Look back 20 candles for range
+        "range_tolerance": 0.0005,  # 0.05% tolerance for range boundaries
+        "bounce_threshold": 0.0002,  # 0.02% minimum bounce to trade
+        "max_range_width": 0.005,  # 0.5% maximum range width
+        "require_range_confirmation": True,
+        "support_resistance_required": True,
+        "description": "Optimized for LOW and VERY_LOW volatility conditions with range detection"
+    },
+    "high_volatility": {
+        "min_range_percentage": 0.005,  # 0.5% minimum range
+        "volatility_threshold": "high",
+        "confidence_threshold": 0.55,  # 55% confidence minimum (CORRECTED)
+        "min_interval": 60,
+        "max_leverage": 50,
+        "profit_target": 0.02,  # 2% profit target
+        "stop_loss": 0.01,  # 1% stop loss
+        "position_size": 0.08  # 8% of balance
+    },
+    "spike_hunting": {
+        "min_range_percentage": 0.008,  # 0.8% minimum range
+        "volatility_threshold": "extreme",
+        "confidence_threshold": 0.70,  # 70% confidence minimum (CORRECTED - high risk strategy)
+        "min_interval": 1800,  # 30 minutes between trades
+        "max_leverage": 40,
+        "profit_target": 0.035,  # 3.5% profit target
+        "stop_loss": 0.015,  # 1.5% stop loss
+        "position_size": 0.40,  # 40% of balance
+        "volume_spike_required": True,
+        "min_spike_severity": "HIGH",
+        "require_momentum_alignment": True
+    },
+    "trend_following": {
+        "min_range_percentage": 0.003,  # 0.3% minimum range
+        "volatility_threshold": "moderate",
+        "confidence_threshold": 0.60,  # 60% confidence minimum (CORRECTED)
+        "min_interval": 120,  # 2 minutes between trades
+        "max_leverage": 35,
+        "profit_target": 0.012,  # 1.2% profit target
+        "stop_loss": 0.006,  # 0.6% stop loss
+        "position_size": 0.15,  # 15% of balance
+        "trend_confirmation_required": True,
+        "min_trend_strength": "STRONG",
+        "momentum_alignment_required": True,
+        "description": "Optimized for strong trending markets with momentum confirmation"
+    },
+    "scalping": {
+        "min_range_percentage": 0.0005,  # 0.05% minimum range (very tight)
+        "volatility_threshold": ["moderate", "high"],  # Needs some volatility for opportunities
+        "confidence_threshold": 0.50,  # 50% confidence minimum (CORRECTED - minimum for execution)
+        "min_interval": 5,  # 5 seconds between trades (very frequent)
+        "max_leverage": 50,  # High leverage for small moves
+        "profit_target": 0.002,  # 0.2% profit target (small but frequent)
+        "stop_loss": 0.001,  # 0.1% stop loss (very tight)
+        "position_size": 0.3,  # 30% of balance (larger size for small moves)
+        "require_high_liquidity": True,  # Need tight spreads
+        "require_low_slippage": True,  # Minimize execution costs
+        "max_hold_time_seconds": 300,  # 5 minutes max hold time
+        "volume_spike_required": False,  # Don't need volume spikes for scalping
+        "rsi_range": [30, 70],  # Avoid extreme RSI zones
             "spread_threshold": 0.0001,  # Max spread of 0.01%
             "description": "High-frequency scalping for small, quick profits with tight risk management"
         },

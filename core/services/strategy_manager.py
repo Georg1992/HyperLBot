@@ -51,45 +51,38 @@ class StrategyManager:
     
     def detect_optimal_strategy(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> str:
         """
-        Detect the optimal strategy using ML-powered analysis
+        Detect the optimal strategy using ML-powered analysis (SINGLE SOURCE OF TRUTH)
         
         Args:
             market_data: Current market data (price, volatility, trend, volume, etc.)
             historical_context: Historical context from session manager
             
         Returns:
-            str: Optimal strategy name
+            str: Current active strategy name
         """
         try:
             # Import ML Strategy Selector
             from core.ml.strategy_selector import global_ml_strategy_selector
             
-            # Get ML strategy recommendation
-            recommendation = global_ml_strategy_selector.select_strategy(
-                market_data
-            )
+            # Enrich market data with historical context for better ML decisions
+            enriched_data = self._enrich_market_data(market_data, historical_context)
+            
+            # Get ML strategy recommendation (SINGLE SOURCE OF TRUTH)
+            recommendation = global_ml_strategy_selector.select_strategy(enriched_data)
             
             optimal_strategy = recommendation.strategy
             confidence = recommendation.confidence
             reasoning = recommendation.reasoning
             
             # Log ML strategy selection
-            logger.info(f"🤖 ML Strategy Analysis: {optimal_strategy} (confidence: {confidence:.3f})")
+            logger.info(f"🤖 ML Strategy Decision: {optimal_strategy} (confidence: {confidence:.3f})")
             logger.info(f"   📊 Reasoning: {reasoning}")
             
-            # CRITICAL: Validate ML strategy against rule-based logic
-            rule_based_strategy = self._rule_based_strategy(market_data, historical_context)
-            
-            # If ML and rules disagree significantly, use rule-based (more reliable)
-            if optimal_strategy != rule_based_strategy:
-                logger.warning(f"⚠️ ML/Rule mismatch: ML={optimal_strategy}, Rules={rule_based_strategy}")
-                
-                # Use rule-based if confidence is low or strategies are incompatible
-                if confidence < 0.7 or self._are_strategies_incompatible(optimal_strategy, market_data):
-                    logger.warning(f"🔄 Overriding ML with rule-based strategy: {rule_based_strategy}")
-                    optimal_strategy = rule_based_strategy
-                else:
-                    logger.info(f"✅ ML strategy validated with high confidence ({confidence:.3f})")
+            # Validate strategy is not incompatible with current market conditions
+            if self._are_strategies_incompatible(optimal_strategy, market_data):
+                logger.warning(f"⚠️ Strategy {optimal_strategy} incompatible with market conditions")
+                logger.warning(f"   Falling back to 'standard' strategy")
+                optimal_strategy = "standard"
             
             # Check if strategy switch is needed and allowed
             if optimal_strategy != self.current_strategy:
@@ -109,8 +102,8 @@ class StrategyManager:
             
         except Exception as e:
             logger.error(f"❌ ML strategy detection failed: {e}")
-            # Use rule-based selection when ML fails
-            return self._rule_based_strategy(market_data, historical_context)
+            logger.error(f"   Using current strategy: {self.current_strategy}")
+            return self.current_strategy
     
     def get_current_strategy_config(self) -> Dict[str, Any]:
         """Get current strategy configuration"""
@@ -120,52 +113,36 @@ class StrategyManager:
         """Get configuration for specific strategy"""
         return self.strategy_configs.get(strategy_name, self.strategy_configs["standard"]).copy()
     
+    def _enrich_market_data(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Enrich market data with historical context and derived metrics for better ML decisions
+        
+        Args:
+            market_data: Current market data
+            historical_context: Historical context from session manager
+            
+        Returns:
+            Dict: Enriched market data with additional context
+        """
+        enriched = market_data.copy()
+        
+        # Add historical context if available
+        if historical_context:
+            enriched["historical_context"] = historical_context
+            
+            # Add recent strategy performance if available
+            if "strategy_performance" in historical_context:
+                enriched["strategy_performance"] = historical_context["strategy_performance"]
+        
+        # Add current strategy info for context
+        enriched["current_strategy"] = self.current_strategy
+        enriched["time_in_strategy"] = time.time() - self.last_strategy_switch
+        
+        # Add strategy usage statistics
+        enriched["strategy_usage"] = self.strategy_usage_count.copy()
+        
+        return enriched
     
-    
-    def _analyze_market_conditions(self, volatility_5m: float, volatility_category: str, 
-                                 trend: str, volume_category: str, rsi: float, 
-                                 historical_context: Dict[str, Any] = None) -> str:
-        """Analyze market conditions using DISTINCT, NON-OVERLAPPING strategy conditions"""
-        
-        # DISTINCT STRATEGY CONDITIONS (rule-based logic)
-        
-        # 1. SPIKE HUNTING - EXTREME volatility only (highest priority)
-        if volatility_category == "EXTREME" and volatility_5m > 0.05:  # >5% volatility
-            logger.info(f"🎯 Strategy: EXTREME volatility ({volatility_5m:.3f}) → spike_hunting")
-            return "spike_hunting"
-        
-        # 2. SCALPING - MODERATE volatility + perfect liquidity conditions
-        elif (volatility_category == "MODERATE" and 
-              0.005 <= volatility_5m <= 0.02 and  # 0.5% - 2% volatility
-              30 <= rsi <= 70 and  # Avoid extreme RSI zones
-              volume_category in ["NORMAL", "HIGH", "VERY_HIGH"]):
-            logger.info(f"🎯 Strategy: MODERATE volatility ({volatility_5m:.3f}) + good conditions → scalping")
-            return "scalping"
-        
-        # 3. HIGH VOLATILITY - HIGH volatility but not extreme
-        elif (volatility_category == "HIGH" and 
-              0.02 < volatility_5m <= 0.05 and  # 2% - 5% volatility
-              trend not in ["STRONG_UPTREND", "STRONG_DOWNTREND"]):  # Not strong trending
-            logger.info(f"🎯 Strategy: HIGH volatility ({volatility_5m:.3f}) without strong trend → high_volatility")
-            return "high_volatility"
-        
-        # 4. TREND FOLLOWING - MODERATE volatility + STRONG trend
-        elif (volatility_category == "MODERATE" and 
-              0.01 <= volatility_5m <= 0.02 and  # 1% - 2% volatility
-              trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"] and
-              volume_category in ["HIGH", "VERY_HIGH"]):  # Need volume for trends
-            logger.info(f"🎯 Strategy: STRONG trend ({trend}) + MODERATE volatility ({volatility_5m:.3f}) → trend_following")
-            return "trend_following"
-        
-        # 5. LOW VOLATILITY RANGE - LOW/VERY_LOW volatility
-        elif volatility_category in ["LOW", "VERY_LOW"] and volatility_5m < 0.01:  # <1% volatility
-            logger.info(f"🎯 Strategy: {volatility_category} volatility ({volatility_5m:.3f}) → low_volatility_range")
-            return "low_volatility_range"
-        
-        # 6. STANDARD - Everything else (default)
-        else:
-            logger.info(f"🎯 Strategy: Standard conditions ({volatility_category} volatility {volatility_5m:.3f}, {trend} trend) → standard")
-            return "standard"
     
     def _are_strategies_incompatible(self, strategy: str, market_data: Dict[str, Any]) -> bool:
         """
@@ -248,6 +225,24 @@ class StrategyManager:
             logger.info(f"🔄 Strategy switched: {old_strategy} → {new_strategy}")
             logger.info(f"   📊 New config: {self.current_strategy_config}")
             
+            # Update trading logger with new strategy
+            try:
+                from core.logging.trading_logger import get_global_trading_logger
+                trading_logger = get_global_trading_logger()
+                if trading_logger:
+                    trading_logger.update_strategy(new_strategy)
+            except Exception as e:
+                logger.warning(f"⚠️ Could not update trading logger strategy: {e}")
+            
+            # Update prediction engine confidence threshold
+            try:
+                from core.ml.realtime_prediction_engine import get_global_prediction_engine
+                prediction_engine = get_global_prediction_engine()
+                if prediction_engine:
+                    prediction_engine.update_confidence_threshold(new_strategy)
+            except Exception as e:
+                logger.warning(f"⚠️ Could not update prediction engine threshold: {e}")
+            
             # Notify SessionManager of strategy change for dashboard update
             self._notify_session_strategy_change(new_strategy)
             
@@ -287,41 +282,6 @@ class StrategyManager:
             "scalping": "High-frequency scalping for small, quick profits with tight risk management",
         }
         return descriptions.get(strategy_name, "Unknown strategy")
-    
-    def _rule_based_strategy(self, market_data: Dict[str, Any], historical_context: Dict[str, Any] = None) -> str:
-        """Rule-based strategy selection when ML is unavailable"""
-        try:
-            current_price = market_data.get("current_price", 0)
-            volatility_5m = market_data.get("volatility_5m", 0.0)
-            volatility_category = market_data.get("volatility_5m_category", "MODERATE")
-            trend = market_data.get("trend_5m", {}).get("trend", "NEUTRAL")
-            volume_category = market_data.get("hyperliquid_volume", {}).get("volume_category", "NORMAL")
-            rsi = market_data.get("rsi_5m", 50.0)
-            
-            logger.info(f"🎯 FALLBACK Strategy Detection: Analyzing market conditions at ${current_price:.2f}")
-            logger.info(f"   📊 Volatility: {volatility_5m:.4f} ({volatility_category})")
-            logger.info(f"   📈 Trend: {trend}")
-            logger.info(f"   📊 Volume: {volume_category}")
-            logger.info(f"   📊 RSI: {rsi:.1f}")
-            
-            # Strategy detection logic based on market conditions
-            optimal_strategy = self._analyze_market_conditions(
-                volatility_5m, volatility_category, trend, volume_category, rsi, historical_context
-            )
-            
-            # Check if strategy switch is needed and allowed
-            if optimal_strategy != self.current_strategy:
-                if self._can_switch_strategy():
-                    logger.info(f"🔄 Fallback Strategy switch: {self.current_strategy} → {optimal_strategy}")
-                    self._switch_strategy(optimal_strategy)
-                else:
-                    logger.info(f"⏳ Fallback Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}")
-            
-            return self.current_strategy
-            
-        except Exception as e:
-            logger.error(f"❌ Fallback strategy detection failed: {e}")
-            return self.current_strategy
     
     def _record_strategy_selection(self, strategy: str, market_data: Dict[str, Any], recommendation) -> None:
         """Record strategy selection for ML learning"""

@@ -66,9 +66,10 @@ class SupportResistanceCalculator:
                     # This is a local minimum - count how many times price touched this level
                     touches = self._count_touches(candles, low, "support")
                     if touches >= 1:  # Any significant level (lowered from 2)
-                        # Check volume confirmation
+                        # Check volume confirmation (more lenient)
                         volume_confirmed = self._check_volume_confirmation(candles, low, "support")
-                        if volume_confirmed:
+                        # Accept level even without volume confirmation if it has good touches
+                        if volume_confirmed or touches >= 2:
                             # Calculate comprehensive score (0-100) with market position context
                             score = self._calculate_level_score(candles, low, "support", touches, i, market_position)
                             
@@ -87,9 +88,10 @@ class SupportResistanceCalculator:
                     # This is a local maximum - count how many times price touched this level
                     touches = self._count_touches(candles, high, "resistance")
                     if touches >= 1:  # Any significant level (lowered from 2)
-                        # Check volume confirmation
+                        # Check volume confirmation (more lenient)
                         volume_confirmed = self._check_volume_confirmation(candles, high, "resistance")
-                        if volume_confirmed:
+                        # Accept level even without volume confirmation if it has good touches
+                        if volume_confirmed or touches >= 2:
                             # Calculate comprehensive score (0-100) with market position context
                             score = self._calculate_level_score(candles, high, "resistance", touches, i, market_position)
                             
@@ -127,16 +129,14 @@ class SupportResistanceCalculator:
                     # Find the closest valid support below current price
                     strongest_support = max(support_below, key=lambda x: x["level"])["level"]
                 else:
-                    # No valid support below - find the lowest historical support as reference
-                    # This is a "broken" support, but we show it for context
-                    lowest_support = min(support_levels_filtered, key=lambda x: x["level"])
-                    strongest_support = lowest_support["level"]
-                    logger.warning(f"⚠️ All support levels broken - using lowest historical: ${strongest_support:.2f}")
+                    # No valid support below current price - use closest support as fallback
+                    closest_support = min(support_levels_filtered, key=lambda x: abs(x["level"] - current_price))
+                    strongest_support = closest_support["level"]
+                    logger.warning(f"⚠️ All support levels broken - using closest support: ${strongest_support:.2f}")
             else:
-                # No support levels found - NEED MORE HISTORICAL DATA
-                logger.info(f"📊 No support levels found in provided {len(candles)} candles")
-                logger.debug(f"📊 Multi-timeframe analysis will expand to longer history to find support")
-                strongest_support = 0.0  # Return 0 to signal need for expansion
+                # No support levels found - use psychological support as fallback
+                strongest_support = self._find_next_psychological_level(current_price, "support")
+                logger.warning(f"⚠️ No support levels found - using psychological support: ${strongest_support:.2f}")
             
             # Get strongest resistance (ONLY levels above current price)
             strongest_resistance = 0.0
@@ -147,29 +147,14 @@ class SupportResistanceCalculator:
                     # Find the closest valid resistance above current price
                     strongest_resistance = min(resistance_above, key=lambda x: x["level"])["level"]
                 else:
-                    # No valid resistance above - check if this is truly ATH or just insufficient data
-                    highest_historical = max(resistance_levels_filtered, key=lambda x: x["level"])["level"]
-                    
-                    # BTC all-time high is over $125k, so if current price is below that, we need more historical data
-                    btc_ath = 125000.0  # Known BTC all-time high
-                    if current_price < btc_ath:
-                        # Not at ATH - we need more historical data to find proper resistance
-                        logger.info(f"📊 No resistance found in provided {len(candles)} candles above ${current_price:.2f}")
-                        logger.debug(f"📊 Multi-timeframe analysis will expand to longer history to find resistance")
-                        strongest_resistance = 0.0  # Return 0 to signal need for expansion
-                    elif current_price >= btc_ath:
-                        # Actually at or near ATH - ONLY NOW use psychological level
-                        strongest_resistance = self._find_next_psychological_level(current_price, "resistance")
-                        logger.warning(f"⚠️ All-time high detected (${current_price:.2f} >= ${btc_ath:.2f}) - using psychological resistance: ${strongest_resistance:.2f}")
-                    else:
-                        # Use highest historical as reference (broken resistance)
-                        strongest_resistance = highest_historical
-                        logger.warning(f"⚠️ All resistance levels broken - using highest historical: ${strongest_resistance:.2f}")
+                    # No valid resistance above - use closest resistance as fallback
+                    closest_resistance = min(resistance_levels_filtered, key=lambda x: abs(x["level"] - current_price))
+                    strongest_resistance = closest_resistance["level"]
+                    logger.warning(f"⚠️ All resistance levels broken - using closest resistance: ${strongest_resistance:.2f}")
             else:
-                # No resistance levels found - NEED MORE HISTORICAL DATA (not ATH)
-                logger.info(f"📊 No resistance levels found in provided {len(candles)} candles")
-                logger.debug(f"📊 Multi-timeframe analysis will expand to longer history to find resistance")
-                strongest_resistance = 0.0  # Return 0 to signal need for expansion
+                # No resistance levels found - use psychological resistance as fallback
+                strongest_resistance = self._find_next_psychological_level(current_price, "resistance")
+                logger.warning(f"⚠️ No resistance levels found - using psychological resistance: ${strongest_resistance:.2f}")
             
             logger.info(f"📊 Found {len(support_levels)} support, {len(resistance_levels)} resistance levels")
             logger.info(f"📊 After filtering: {len(support_levels_filtered)} support, {len(resistance_levels_filtered)} resistance")
@@ -237,10 +222,10 @@ class SupportResistanceCalculator:
         all_volumes = [c.get("volume", 0) for c in candles]
         overall_avg_volume = sum(all_volumes) / len(all_volumes)
         
-        # Volume confirmation: touching candles should have above-average volume
+        # Volume confirmation: touching candles should have reasonable volume
         volume_ratio = avg_touching_volume / overall_avg_volume if overall_avg_volume > 0 else 1.0
         
-        return volume_ratio > 0.8  # More lenient volume confirmation (0.8 instead of 1.0)
+        return volume_ratio > 0.5  # More lenient volume confirmation (0.5 instead of 0.8)
     
     # REMOVED: _add_psychological_levels - NO FALLBACKS
     
