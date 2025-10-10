@@ -31,8 +31,8 @@ class VolatilityCalculator:
                 logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 1")
                 raise Exception(f"Insufficient candles for volatility calculation: {len(candles)} < 1")
             
-            # Use the most recent 8 candles for better volatility detection (captures recent big moves)
-            recent_candles = candles[-8:] if len(candles) >= 8 else candles
+            # Use the most recent 12 candles for better volatility detection (captures recent big moves)
+            recent_candles = candles[-12:] if len(candles) >= 12 else candles
             
             # Method 1: Calculate overall price movement across all candles (captures big moves)
             if len(recent_candles) >= 2:
