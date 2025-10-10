@@ -132,7 +132,7 @@ class RealtimePredictionEngine:
         self.active_prediction: Optional[RealtimePrediction] = None
         
         # Configuration - will be updated based on active strategy
-        self.confidence_threshold = 0.50  # TEMPORARY: Force 50% for execution (user requested)
+        self.confidence_threshold = 0.60  # Default: Execute when confidence >= 60%
         self.min_tracking_confidence = 0.50  # Start tracking at 50%
         self.max_prediction_age = 300  # 5 minutes max
         

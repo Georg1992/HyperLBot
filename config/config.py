@@ -47,12 +47,29 @@ class TradingConfig:
     "standard": {
         "min_range_percentage": 0.002,  # 0.2% minimum range
         "volatility_threshold": "medium",
-        "confidence_threshold": 0.50,  # 50% confidence minimum (CORRECTED)
+        "confidence_threshold": 0.65,  # 65% confidence minimum (USER SPECIFIED)
         "min_interval": 30,  # seconds between trades
         "max_leverage": 40,
         "profit_target": 0.008,  # 0.8% profit target
         "stop_loss": 0.004,  # 0.4% stop loss
         "position_size": 0.1  # 10% of balance
+    },
+    "range_trading": {
+        "min_range_percentage": 0.001,  # 0.1% minimum range
+        "volatility_threshold": ["low", "very_low", "moderate"],  # Range trading works in various conditions
+        "confidence_threshold": 0.52,  # 52% confidence minimum (USER SPECIFIED)
+        "min_interval": 60,  # 1 minute between trades
+        "max_leverage": 40,
+        "profit_target": 0.005,  # 0.5% profit target
+        "stop_loss": 0.0025,  # 0.25% stop loss
+        "position_size": 0.15,  # 15% of balance
+        "range_detection_periods": 15,  # Look back 15 candles for range
+        "range_tolerance": 0.0008,  # 0.08% tolerance for range boundaries
+        "bounce_threshold": 0.0003,  # 0.03% minimum bounce to trade
+        "max_range_width": 0.008,  # 0.8% maximum range width
+        "require_range_confirmation": True,
+        "support_resistance_required": True,
+        "description": "General range trading strategy for sideways markets"
     },
     "low_volatility_range": {
         "min_range_percentage": 0.0003,  # 0.03% minimum range (very tight)

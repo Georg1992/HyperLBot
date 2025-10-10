@@ -195,6 +195,12 @@ class StrategyManager:
                     logger.warning(f"❌ INCOMPATIBLE: high_volatility conflicts with STRONG trend {trend}")
                     return True
             
+            # RANGE TRADING incompatibility checks
+            elif strategy == "range_trading":
+                if volatility_category in ["EXTREME"]:
+                    logger.warning(f"❌ INCOMPATIBLE: range_trading not suitable for EXTREME volatility, got {volatility_category}")
+                    return True
+            
             # LOW VOLATILITY RANGE incompatibility checks
             elif strategy == "low_volatility_range":
                 if volatility_category not in ["LOW", "VERY_LOW"]:
