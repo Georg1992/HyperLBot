@@ -303,8 +303,21 @@ class SessionOrchestrator:
             rsi_calculator = get_global_rsi_calculator()
             
             try:
-                current_rsi = rsi_calculator.calculate_standalone_rsi(candles_5m_for_rsi, periods=14)
-                logger.debug(f"📊 RSI calculated: {current_rsi:.2f}" if current_rsi else "📊 RSI calculation returned None")
+                # COMBINED APPROACH: Calculate baseline from candles + real-time updates
+                # 1. Calculate fresh baseline from current candles (ensures accuracy)
+                baseline_rsi = rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m_for_rsi, periods=14)
+                
+                # 2. Initialize or update baseline if changed significantly
+                if not rsi_calculator.rsi_initialized or abs(baseline_rsi - rsi_calculator.baseline_rsi) > 2.0:
+                    rsi_calculator.baseline_rsi = baseline_rsi
+                    rsi_calculator.current_rsi = baseline_rsi
+                    rsi_calculator.rsi_initialized = True
+                    logger.info(f"🔬 RSI baseline updated: {baseline_rsi:.2f}")
+                
+                # 3. Update RSI in real-time with current price (combines baseline + real-time)
+                rsi_data = rsi_calculator.update_realtime_rsi(current_price)
+                current_rsi = rsi_data.get("rsi", rsi_calculator.current_rsi)
+                logger.debug(f"📊 RSI combined (baseline + real-time): {current_rsi:.2f}")
             except Exception as e:
                 logger.warning(f"⚠️ RSI calculation failed: {e}")
                 current_rsi = None

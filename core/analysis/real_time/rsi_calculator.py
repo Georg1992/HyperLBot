@@ -187,15 +187,15 @@ class RSICalculator:
                 # FIXED: RSI interpolation based on price movement (not broken tick-by-tick)
                 price_change_pct = (new_price - self.last_price) / self.last_price
                 
-                # RSI sensitivity: ULTRA responsive for real-time trading (user requested immediate reaction)
-                # 1% price move ≈ 9 RSI points (highly sensitive for price moves)
-                rsi_sensitivity = 9.0  # Increased sensitivity for faster reaction
+                # RSI sensitivity: ULTRA responsive for real-time trading (user requested more sensitivity)
+                # 1% price move ≈ 15 RSI points (much more sensitive for price moves)
+                rsi_sensitivity = 15.0  # Increased sensitivity for faster reaction
                 
                 # Calculate RSI adjustment based on price movement
                 rsi_adjustment = price_change_pct * 100 * rsi_sensitivity
                 
                 # Apply adjustment to Hyperliquid baseline (much more responsive)
-                dampening = 0.8  # 80% of calculated adjustment (immediate reaction to price moves)
+                dampening = 0.9  # 90% of calculated adjustment (more immediate reaction to price moves)
                 self.current_rsi = self.baseline_rsi + (rsi_adjustment * dampening)
                 
                 # Keep RSI in valid range [0, 100]
