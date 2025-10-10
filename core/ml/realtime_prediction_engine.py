@@ -132,7 +132,7 @@ class RealtimePredictionEngine:
         self.active_prediction: Optional[RealtimePrediction] = None
         
         # Configuration - will be updated based on active strategy
-        self.confidence_threshold = 0.60  # Default: Execute when confidence >= 60%
+        self.confidence_threshold = 0.50  # TEMPORARY: Force 50% for execution (user requested)
         self.min_tracking_confidence = 0.50  # Start tracking at 50%
         self.max_prediction_age = 300  # 5 minutes max
         
@@ -153,10 +153,14 @@ class RealtimePredictionEngine:
         strategy_config = Config.STRATEGY_CONFIGS.get(strategy, {})
         new_threshold = strategy_config.get("confidence_threshold", 0.60)
         
+        logger.info(f"🔧 Threshold update requested: strategy={strategy}, current={self.confidence_threshold:.1%}, new={new_threshold:.1%}")
+        
         if new_threshold != self.confidence_threshold:
             logger.info(f"🎯 Confidence threshold updated: {self.confidence_threshold:.1%} → {new_threshold:.1%} (strategy: {strategy})")
             self.confidence_threshold = new_threshold
             self.min_tracking_confidence = max(0.50, new_threshold - 0.10)  # 10% below execution threshold
+        else:
+            logger.info(f"✅ Threshold already correct: {self.confidence_threshold:.1%} for strategy {strategy}")
     
     def _find_optimal_direction(self, market_data: Dict[str, Any]) -> tuple:
         """
