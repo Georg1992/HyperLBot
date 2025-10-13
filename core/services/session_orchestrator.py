@@ -11,6 +11,9 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 # SessionManager will be imported lazily when needed
 
+# Import volatility calculator for multi-timeframe analysis
+from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
+
 class SessionOrchestrator:
     """Session orchestration service - handles trading loop and lifecycle"""
     
@@ -289,8 +292,8 @@ class SessionOrchestrator:
             # Each request below will use the centralized cache - no redundant API calls
             
             # Get candle data for all timeframes (from centralized cache)
-            candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 100)  # For RSI calculation (increased for accuracy)
-            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)          # For general analysis
+            candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 50)  # For RSI calculation (reduced to match Hyperliquid)
+            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 10)          # For general analysis (reduced for faster volatility response)
             candles_5m_for_sr = market_data_service.get_historical_candles("BTC", "5m", 200)  # For S/R calculation (increased for better support detection)
             candles_1m = market_data_service.get_historical_candles("BTC", "1m", 20)
             candles_1h = market_data_service.get_historical_candles("BTC", "1h", 24)
@@ -337,27 +340,15 @@ class SessionOrchestrator:
                 trend_5m = {}
                 current_trend = None
             
-            # Get volatility from the volatility calculator singleton (single source)
-            from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
-            volatility_calculator = get_global_volatility_calculator()
+            # FIXED: Use volatility data from hyperliquid_analysis (single source of truth)
+            # The volatility data is calculated in market_data_manager and passed through hyperliquid_analysis
+            hyperliquid_analysis = market_data.get("hyperliquid_analysis", {})
+            volatility_analysis = hyperliquid_analysis.get("volatility_analysis", {})
+            volatility_5m = volatility_analysis.get("volatility_5m", 0.0)
+            volatility_5m_category = volatility_analysis.get("volatility_5m_category", "UNKNOWN")
+            volatility_5m_trend = volatility_analysis.get("volatility_5m_trend", "UNKNOWN")
             
-            try:
-                # Ensure we use fresh candle data for volatility calculation
-                if len(candles_5m) >= 1:
-                    volatility_5m = volatility_calculator.calculate_candle_volatility(candles_5m, "5m")
-                    logger.debug(f"📊 Volatility calculated from {len(candles_5m)} fresh 5m candles: {volatility_5m:.6f}")
-                else:
-                    volatility_5m = 0.0
-                    logger.warning("⚠️ No 5m candles available for volatility calculation")
-                
-                volatility_5m_result = volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
-                # Extract just the category from the tuple (category, trend)
-                volatility_5m_category = volatility_5m_result[0] if isinstance(volatility_5m_result, tuple) else volatility_5m_result
-                logger.debug(f"🔍 Volatility result: {volatility_5m_result} -> category: {volatility_5m_category}")
-            except Exception as e:
-                logger.warning(f"⚠️ Volatility calculation failed: {e}")
-                volatility_5m = 0.0
-                volatility_5m_category = "UNKNOWN"
+            logger.debug(f"📊 Using volatility from hyperliquid_analysis: {volatility_5m:.6f} ({volatility_5m_category})")
             
             # Get support/resistance from hyperliquid_data (already recalculated by market_data_manager)
             support_resistance = hyperliquid_data.get("support_resistance", {})
@@ -569,17 +560,33 @@ class SessionOrchestrator:
                 # RSI data (RSI 14 only)
                 "rsi": current_rsi,
                 
+                # RSI analysis data (from RSI calculator)
+                "rsi_analysis": rsi_data if 'rsi_data' in locals() else {},
+                
                 # Trend data (from single trend calculator source)
                 "trend": current_trend,
                 "trend_5m": trend_5m,
+                
+                # Multi-timeframe trend data - NOT CALCULATED (removed duplicates)
+                # "trend_1m": hyperliquid_analysis.get("trend_1m", {}),  # NOT CALCULATED
+                # "trend_1h": hyperliquid_analysis.get("trend_1h", {}),  # NOT CALCULATED  
+                # "trend_1d": hyperliquid_analysis.get("trend_1d", {}),  # NOT CALCULATED
+                
+                # Volatility trend data
+                "volatility_5m_trend": volatility_5m_trend,
+                
+                # Additional trend data from market data manager
+                "trend_analysis": hyperliquid_analysis.get("trend_analysis", {}),
+                "pattern_analysis": hyperliquid_analysis.get("pattern_analysis", {}),
+                "market_conditions": hyperliquid_analysis.get("market_conditions", {}),
                 
                 # Volatility data (from single volatility calculator source)
                 "volatility_5m": volatility_5m,
                 "volatility_category": volatility_5m_category,  # Fixed: strategy manager expects 'volatility_category'
                 "volatility_5m_category": volatility_5m_category,  # Keep for backward compatibility
-                "volatility_1m": volatility_calculator.calculate_candle_volatility(candles_1m, "1m") if len(candles_1m) >= 1 else 0.0,
-                "volatility_1h": volatility_calculator.calculate_candle_volatility(candles_1h, "1h") if len(candles_1h) >= 1 else 0.0,
-                "volatility_1d": volatility_calculator.calculate_candle_volatility(candles_1d, "1d") if len(candles_1d) >= 1 else 0.0,
+                "volatility_1m": get_global_volatility_calculator().calculate_candle_volatility(candles_1m, "1m") if len(candles_1m) >= 1 else 0.0,
+                "volatility_1h": get_global_volatility_calculator().calculate_candle_volatility(candles_1h, "1h") if len(candles_1h) >= 1 else 0.0,
+                "volatility_1d": get_global_volatility_calculator().calculate_candle_volatility(candles_1d, "1d") if len(candles_1d) >= 1 else 0.0,
                 
                 # Volume data (from single MarketDataService source)
                 "volume_data": volume_data,
@@ -648,6 +655,23 @@ class SessionOrchestrator:
                 "trend_analysis": {
                     "overall_trend": unified_data.get("trend"),
                     "trend_5m": unified_data.get("trend_5m")
+                },
+                
+                # TRENDS SECTION - Trend calculator values only
+                "trends": {
+                    "trend": unified_data.get("trend_5m", {}).get("trend", "UNKNOWN"),
+                    "trend_short": unified_data.get("trend_5m", {}).get("trend_short", "UNKNOWN"),
+                    "trend_medium": unified_data.get("trend_5m", {}).get("trend_medium", "UNKNOWN")
+                },
+                
+                # Debug: Log trends data being sent to dashboard
+                "debug_trends": {
+                    "trend_5m_data": unified_data.get("trend_5m", {}),
+                    "trends_section": {
+                        "trend": unified_data.get("trend_5m", {}).get("trend", "UNKNOWN"),
+                        "trend_short": unified_data.get("trend_5m", {}).get("trend_short", "UNKNOWN"),
+                        "trend_medium": unified_data.get("trend_5m", {}).get("trend_medium", "UNKNOWN")
+                    }
                 },
                 
                 # Dashboard expects trading_volume_btc for Trading Volume (Hyperliquid 5m volume)
@@ -860,7 +884,7 @@ class SessionOrchestrator:
                        market_data_service, dashboard_service) -> Dict[str, Any]:
         """Main data collection and dashboard update loop (no trading)"""
         last_loop_time = 0
-        min_loop_interval = 1.0  # Minimum 1 second between loop iterations
+        min_loop_interval = 0.5  # Minimum 0.5 seconds between loop iterations for more responsive RSI
         last_5m_boundary = None  # Track 5-minute boundaries for immediate updates
         last_ongoing_candle = None  # Track the last ongoing candle to convert it to historical
         
@@ -1062,17 +1086,16 @@ class SessionOrchestrator:
                 
                 # Technical indicators - RSI is already set correctly in unified_data, don't overwrite
                 
-                # Volatility data
-                "volatility_5m": hyperliquid_analysis.get("volatility_5m", 0.001),
-                "volatility_5m_category": hyperliquid_analysis.get("volatility_5m_category", "LOW"),
-                "volatility_5m_trend": hyperliquid_analysis.get("volatility_5m_trend"),
+                # Volatility data - use correct nested structure
+                "volatility_5m": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m", 0.001),
+                "volatility_5m_category": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m_category", "LOW"),
+                "volatility_5m_trend": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m_trend"),
                 
-                # Trend data
-                "trend_5m": hyperliquid_analysis.get("trend_5m"),
+                # Trend data (only from actual trend calculator)
+                "trend_5m": trend_5m,  # Use actual calculated trend
                 "trend_analysis": {
-                    "overall_trend": hyperliquid_analysis.get("trend_5m", {}).get("trend"),
-                    "trend_5m": hyperliquid_analysis.get("trend_5m", {}).get("trend"),
-                    "trend_1h": hyperliquid_analysis.get("trend_1h", {}).get("trend"),
+                    "overall_trend": current_trend,
+                    "trend_5m": current_trend,
                     "alignment_score": 0.5
                 },
                 
@@ -1112,8 +1135,8 @@ class SessionOrchestrator:
             return {
                 "current_price": hyperliquid_price,
                 # RSI is already set correctly in unified_data, don't overwrite
-                "volatility_5m": hyperliquid_analysis.get("volatility_5m"),
-                "volatility_5m_category": hyperliquid_analysis.get("volatility_5m_category"),
+                "volatility_5m": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m"),
+                "volatility_5m_category": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m_category"),
                 "trend_5m": hyperliquid_analysis.get("trend_5m"),
                 "hyperliquid_volume": {},
                 "sentiment_data": {},
@@ -1163,61 +1186,8 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Failed to get market data: {e}")
             return None
-    
-    def _should_generate_new_prediction(self, current_market_data: Dict[str, Any]) -> bool:
-        """
-        Check if market conditions have changed enough to warrant a new prediction
-        (excluding current price changes)
-        
-        Args:
-            current_market_data: Current market data
-            
-        Returns:
-            True if conditions changed enough to generate new prediction
-        """
-        try:
-            # Extract key market conditions (excluding current_price)
-            current_conditions = {
-                "rsi": current_market_data.get("rsi", 50.0),
-                "volatility_5m": current_market_data.get("volatility_5m", 0.0),
-                "volatility_category": current_market_data.get("volatility_5m_category", "UNKNOWN"),
-                "trend": current_market_data.get("trend_5m", {}).get("trend", "SIDEWAYS"),
-                "volume_category": current_market_data.get("volume_category"),
-                "pressure": current_market_data.get("pressure", "SIDEWAYS"),
-                "market_condition": current_market_data.get("market_conditions", {}).get("condition", "FAIR")
-            }
-            
-            # Create hash of current conditions
-            import hashlib
-            conditions_str = str(sorted(current_conditions.items()))
-            current_hash = hashlib.md5(conditions_str.encode()).hexdigest()
-            
-            # Check if this is the first run or conditions changed
-            if self.market_conditions_hash is None:
-                self.market_conditions_hash = current_hash
-                self.last_market_conditions = current_conditions
-                logger.debug("🔄 First market conditions check - will generate prediction")
-                return True
-            
-            # Check if conditions changed significantly
-            if current_hash != self.market_conditions_hash:
-                logger.info("🔄 Market conditions changed - generating new prediction")
-                logger.debug(f"   Previous: {self.last_market_conditions}")
-                logger.debug(f"   Current:  {current_conditions}")
-                
-                # Update stored conditions
-                self.market_conditions_hash = current_hash
-                self.last_market_conditions = current_conditions
-                return True
-            
-            # Conditions haven't changed significantly
-            logger.debug("📊 Market conditions unchanged - no new prediction needed")
-            return False
-            
-        except Exception as e:
-            logger.error(f"❌ Market conditions check failed: {e}")
-            # Default to generating prediction on error
-            return True
+
+    # REMOVED: _should_generate_new_prediction - not needed in single prediction system
     
     def _calculate_real_time_support_resistance(self, hyperliquid_api, current_price: float, strategy_name: str, market_data_service=None) -> Dict[str, Any]:
         """
@@ -1347,19 +1317,140 @@ class SessionOrchestrator:
                 except Exception as e:
                     logger.error(f"❌ Error handling closed position {position_id}: {e}")
             
-            # Update dashboard with current order/position data
+            # Update dashboard with current order/position data from simulator
             if dashboard:
-                lifecycle_data = lifecycle_manager.get_dashboard_data()
-                state_data = state_manager.get_dashboard_data()
+                # Get data from HyperliquidSimulator (single source of truth for positions)
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                simulator = system_initializer.singleton_systems.get("hyperliquid_simulator")
                 
-                # Combine all trades for dashboard
-                all_trades = []
-                all_trades.extend(lifecycle_data.get("pending_orders", []))
-                all_trades.extend(lifecycle_data.get("active_positions", []))
-                all_trades.extend(lifecycle_data.get("closed_positions", []))
-                
-                # Update dashboard trade history
-                dashboard.update_trade_history(all_trades)
+                if simulator:
+                    # Get all positions from simulator
+                    open_positions = simulator.get_open_positions()
+                    closed_positions = simulator.get_closed_positions(limit=100)
+                    account_state = simulator.get_account_state()
+                    
+                    # Convert simulator positions to dashboard format
+                    all_trades = []
+                    
+                    # Add open positions
+                    for position in open_positions:
+                        trade_data = {
+                            "type": "LIMIT",
+                            "side": position.get("side", "BUY"),
+                            "status": "OPEN",
+                            "entry_price": position.get("entry_price", 0),
+                            "size": position.get("size", 0),
+                            "leverage": position.get("leverage", 40),
+                            "stop_loss": position.get("stop_loss"),
+                            "take_profit": position.get("take_profit"),
+                            "trade_id": position.get("trade_id", ""),
+                            "position_id": position.get("trade_id", ""),  # Use trade_id as position_id
+                            "timestamp": position.get("entry_time", time.time()),
+                            "strategy": position.get("strategy", "standard"),
+                            "confidence": position.get("confidence", 0.0),
+                            "pnl": "N/A",  # Will be calculated by dashboard
+                            "entry_time": position.get("entry_time", time.time())
+                        }
+                        all_trades.append(trade_data)
+                    
+                    # Add closed positions
+                    for position in closed_positions:
+                        trade_data = {
+                            "type": "LIMIT",
+                            "side": position.get("side", "BUY"),
+                            "status": "CLOSED",
+                            "entry_price": position.get("entry_price", 0),
+                            "exit_price": position.get("exit_price", 0),
+                            "size": position.get("size", 0),
+                            "leverage": position.get("leverage", 40),
+                            "stop_loss": position.get("stop_loss"),
+                            "take_profit": position.get("take_profit"),
+                            "trade_id": position.get("trade_id", ""),
+                            "position_id": position.get("trade_id", ""),  # Use trade_id as position_id
+                            "timestamp": position.get("exit_time", time.time()),
+                            "strategy": position.get("strategy", "standard"),
+                            "confidence": position.get("confidence", 0.0),
+                            "pnl": position.get("net_pnl", 0.0),
+                            "exit_reason": position.get("exit_reason", "MANUAL"),
+                            "entry_time": position.get("entry_time", time.time()),
+                            "exit_time": position.get("exit_time", time.time())
+                        }
+                        all_trades.append(trade_data)
+                    
+                    # Update dashboard trade history with simulator data
+                    dashboard.update_trade_history(all_trades)
+                    
+                    # Sync account manager with simulator data
+                    from core.simulated_account_manager import account_manager
+                    if account_manager.account_data:
+                        # Update account balance and stats from simulator
+                        account_manager.account_data["current_balance"] = account_state.get("balance", 0)
+                        account_manager.account_data["total_trades"] = account_state.get("total_trades", 0)
+                        account_manager.account_data["winning_trades"] = account_state.get("winning_trades", 0)
+                        account_manager.account_data["losing_trades"] = account_state.get("losing_trades", 0)
+                        account_manager.account_data["realized_pnl"] = account_state.get("realized_pnl", 0)
+                        account_manager.account_data["unrealized_pnl"] = account_state.get("unrealized_pnl", 0)
+                        account_manager.account_data["total_pnl"] = account_state.get("realized_pnl", 0)
+                        
+                        # Update open positions from simulator
+                        account_manager.account_data["open_positions"] = open_positions
+                        
+                        # Update trade history from simulator closed positions
+                        simulator_trades = []
+                        for position in closed_positions:
+                            trade_record = {
+                                "trade_id": position.get("trade_id", ""),
+                                "side": position.get("side", "BUY"),
+                                "entry_price": position.get("entry_price", 0),
+                                "exit_price": position.get("exit_price", 0),
+                                "size": position.get("size", 0),
+                                "leverage": position.get("leverage", 40),
+                                "pnl": position.get("net_pnl", 0.0),
+                                "pnl_pct": position.get("pnl_pct", 0.0) * 100,  # Convert to percentage
+                                "exit_reason": position.get("exit_reason", "MANUAL"),
+                                "entry_time": position.get("entry_time", time.time()),
+                                "exit_time": position.get("exit_time", time.time()),
+                                "strategy": position.get("strategy", "standard"),
+                                "fees": position.get("fees", {}).get("fee_amount", 0.0) if isinstance(position.get("fees"), dict) else 0.0,
+                                "was_profitable": position.get("was_profitable", False)
+                            }
+                            simulator_trades.append(trade_record)
+                        
+                        # Update trade history with simulator trades (keep last 100)
+                        account_manager.account_data["trade_history"] = simulator_trades[-100:]
+                        
+                        # Save account data
+                        account_manager.save_account()
+                        
+                        logger.debug(f"📊 Account manager synced with simulator: {len(simulator_trades)} trades, Balance: ${account_state.get('balance', 0):,.2f}")
+                    
+                    # Also sync account data to dashboard
+                    dashboard.sync_from_account_manager({
+                        "balance": account_state.get("balance", 0),
+                        "equity": account_state.get("equity", 0),
+                        "unrealized_pnl": account_state.get("unrealized_pnl", 0),
+                        "realized_pnl": account_state.get("realized_pnl", 0),
+                        "open_positions_count": account_state.get("open_positions_count", 0),
+                        "total_trades": account_state.get("total_trades", 0),
+                        "win_rate": account_state.get("win_rate", 0),
+                        "winning_trades": account_state.get("winning_trades", 0),
+                        "losing_trades": account_state.get("losing_trades", 0)
+                    })
+                    
+            else:
+                    # Fallback to lifecycle manager if simulator not available
+                    lifecycle_data = lifecycle_manager.get_dashboard_data()
+                    state_data = state_manager.get_dashboard_data()
+                    
+                    # Combine all trades for dashboard
+                    all_trades = []
+                    all_trades.extend(lifecycle_data.get("pending_orders", []))
+                    all_trades.extend(lifecycle_data.get("active_positions", []))
+                    all_trades.extend(lifecycle_data.get("closed_positions", []))
+                    
+                    # Update dashboard trade history
+                    dashboard.update_trade_history(all_trades)
             
         except Exception as e:
             logger.error(f"❌ Order lifecycle update failed: {e}")

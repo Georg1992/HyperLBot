@@ -31,8 +31,8 @@ class VolatilityCalculator:
                 logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 1")
                 raise Exception(f"Insufficient candles for volatility calculation: {len(candles)} < 1")
             
-            # Use the most recent 12 candles for better volatility detection (captures recent big moves)
-            recent_candles = candles[-12:] if len(candles) >= 12 else candles
+            # Use the most recent 6 candles for maximum responsiveness to recent changes
+            recent_candles = candles[-6:] if len(candles) >= 6 else candles
             
             # Method 1: Calculate overall price movement across all candles (captures big moves)
             if len(recent_candles) >= 2:
@@ -75,27 +75,25 @@ class VolatilityCalculator:
                 # CRITICAL: Use MAXIMUM volatility from recent candles to capture big moves immediately
                 max_volatility = max(weighted_volatilities) / max(weight for weight in [(i + 1) ** 2.5 for i in range(len(recent_candles))])
                 
-                # CURRENT CANDLE PRIORITY: Give 80% weight to the most recent candle (current ongoing candle)
+                # CURRENT CANDLE PRIORITY: Give 95% weight to the most recent candle (current ongoing candle)
                 if len(recent_candles) >= 1:
                     current_candle_range = (recent_candles[-1]["high"] - recent_candles[-1]["low"]) / recent_candles[-1]["close"]
-                    # Use 80% current candle + 20% historical average for maximum sensitivity
-                    primary_volatility = (current_candle_range * 0.8) + (weighted_avg_volatility * 0.2)
+                    # Use 95% current candle + 5% historical average for maximum sensitivity to recent moves
+                    primary_volatility = (current_candle_range * 0.95) + (weighted_avg_volatility * 0.05)
                     logger.debug(f"🔍 Current candle priority: current_range={current_candle_range:.6f} ({current_candle_range*100:.4f}%), weighted_avg={weighted_avg_volatility:.6f}, final={primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
                 else:
                     # Fallback to maximum approach
                     primary_volatility = max(weighted_avg_volatility, max_volatility)
                 
-                # PRIORITY: Focus on recent price action, not historical extremes
-                # If current volatility is low but historical is high, use current (consolidation phase)
-                if primary_volatility < 0.015 and overall_volatility > primary_volatility * 2:
-                    # Current volatility is low, ignore historical extremes (consolidation detected)
-                    logger.debug(f"🔍 Consolidation detected: using current volatility {primary_volatility:.6f} ({primary_volatility*100:.4f}%) - ignoring historical {overall_volatility:.6f}")
-                elif overall_volatility > 0.003 and primary_volatility > 0.002:  # Both must be high
-                    primary_volatility = max(primary_volatility, overall_volatility * 0.5)  # Further reduce historical influence
-                    logger.debug(f"🔍 Both current and historical volatility high: current={primary_volatility:.6f}, overall={overall_volatility:.6f}")
+                # PRIORITY: Use the higher of current or overall volatility to capture market conditions
+                # Don't ignore historical extremes - they represent actual market volatility
+                if overall_volatility > primary_volatility:
+                    # Use overall volatility if it's higher (captures the full range of recent price action)
+                    primary_volatility = overall_volatility
+                    logger.debug(f"🔍 Using overall volatility (higher): {primary_volatility:.6f} ({primary_volatility*100:.4f}%) - captures full price range")
                 else:
-                    # Use current volatility as primary
-                    logger.debug(f"🔍 Using current volatility as primary: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
+                    # Use current volatility if it's higher (recent large moves)
+                    logger.debug(f"🔍 Using current volatility (higher): {primary_volatility:.6f} ({primary_volatility*100:.4f}%) - captures recent moves")
                 
                 logger.debug(f"🔍 Final volatility: {primary_volatility:.6f} ({primary_volatility*100:.4f}%) - overall={overall_volatility:.6f}, individual={primary_volatility:.6f}")
             else:
@@ -133,25 +131,21 @@ class VolatilityCalculator:
                 
                 return round(primary_volatility, 6)
             
-            # Fallback: Calculate returns from close prices (original method)
-            returns = []
-            for i in range(1, len(candles)):
-                if candles[i-1]["close"] > 0:
-                    ret = (candles[i]["close"] - candles[i-1]["close"]) / candles[i-1]["close"]
-                    returns.append(abs(ret))
-            
-            if not returns:
-                raise Exception("No returns calculated for volatility analysis")
-            
-            # Use median for returns too (robust against outliers)
-            returns.sort()
-            n = len(returns)
-            if n % 2 == 0:
-                median_returns = (returns[n//2 - 1] + returns[n//2]) / 2
+            # FIXED: Don't fall through to fallback if we already calculated volatility
+            # The fallback calculation was overriding the correct volatility calculation
+            if overall_volatility > 0:
+                logger.debug(f"🔍 No weighted volatilities calculated, using overall volatility: {overall_volatility:.6f}")
+                return round(overall_volatility, 6)
             else:
-                median_returns = returns[n//2]
-            
-            return round(median_returns, 6)
+                # For single candle or when overall volatility is 0, use the current candle range
+                if len(candles) >= 1:
+                    current_candle = candles[-1]
+                    current_range = (current_candle["high"] - current_candle["low"]) / current_candle["close"]
+                    logger.debug(f"🔍 Single candle or zero overall volatility, using current range: {current_range:.6f}")
+                    return round(current_range, 6)
+                else:
+                    logger.debug(f"🔍 No candles available, returning 0")
+                    return 0.0
             
         except Exception as e:
             logger.error(f"❌ Candle volatility calculation failed: {e}")
@@ -261,20 +255,20 @@ class VolatilityCalculator:
                     category = "VERY_LOW"
                     trend = "BORING"
             elif timeframe == "5m":
-                # 5-minute thresholds (updated for high-leverage trading)
-                if volatility >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 5.00% (extreme 5m movement)
+                # 5-minute thresholds (using centralized constants)
+                if volatility >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 0.80% (extreme 5m movement)
                     category = "EXTREME"
                     trend = "VOLATILE"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_HIGH:    # >= 2.00% (high 5m activity)
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_HIGH:    # >= 0.40% (high 5m activity)
                     category = "HIGH"
                     trend = "ACTIVE"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_MODERATE:  # >= 1.00% (moderate 5m movement)
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_MODERATE:  # >= 0.30% (moderate 5m movement)
                     category = "MODERATE" 
                     trend = "NORMAL"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_LOW:     # >= 0.50% (low 5m movement)
+                elif volatility >= VariabilityConstants.VOLATILITY_5M_LOW:     # >= 0.15% (low 5m movement)
                     category = "LOW"
                     trend = "QUIET"
-                else:                                                              # < 0.50% (very low 5m movement)
+                else:                                                              # < 0.15% (very low 5m movement)
                     category = "VERY_LOW"
                     trend = "BORING"
             elif timeframe == "1h":

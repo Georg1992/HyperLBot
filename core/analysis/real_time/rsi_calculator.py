@@ -91,8 +91,8 @@ class RSICalculator:
     
     def calculate_hyperliquid_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
         """
-        Calculate baseline RSI 14 from completed candles - EXACT match to trading platforms
-        This provides the foundation for real-time updates
+        Calculate baseline RSI 14 from completed candles using WILDER'S SMOOTHING
+        This is the STANDARD RSI calculation method used by TradingView and Hyperliquid
         """
         try:
             if len(candles) < periods + 1:
@@ -110,29 +110,28 @@ class RSICalculator:
             if len(price_changes) < periods:
                 return technical_constants.RSI_NEUTRAL
             
-            # BASELINE RSI 14 CALCULATION - Use last 14 periods only
-            # This is exactly how TradingView, Binance, and other platforms calculate RSI
-            recent_changes = price_changes[-periods:]
+            # WILDER'S SMOOTHING RSI CALCULATION
+            # Step 1: Calculate initial average gain and loss (simple average for first period)
+            initial_changes = price_changes[:periods]
+            initial_gains = [max(0, change) for change in initial_changes]
+            initial_losses = [max(0, -change) for change in initial_changes]
             
-            # Calculate gains and losses
-            gains = [max(0, change) for change in recent_changes]
-            losses = [max(0, -change) for change in recent_changes]
+            # Initial averages (simple average for first calculation)
+            avg_gain = sum(initial_gains) / periods
+            avg_loss = sum(initial_losses) / periods
             
-            # Calculate average gain and loss using Wilder's smoothing method
-            # This is the standard method used by most trading platforms including Hyperliquid
-            if len(gains) == 0 or len(losses) == 0:
-                return technical_constants.RSI_NEUTRAL
+            # Step 2: Apply Wilder's smoothing to remaining price changes
+            # Formula: New_Avg = [(Previous_Avg × (n-1)) + Current_Value] / n
+            for i in range(periods, len(price_changes)):
+                current_change = price_changes[i]
+                current_gain = max(0, current_change)
+                current_loss = max(0, -current_change)
+                
+                # Wilder's smoothing formula
+                avg_gain = ((avg_gain * (periods - 1)) + current_gain) / periods
+                avg_loss = ((avg_loss * (periods - 1)) + current_loss) / periods
             
-            # Wilder's smoothing: Initial average
-            avg_gain = sum(gains) / len(gains)
-            avg_loss = sum(losses) / len(losses)
-            
-            # Apply Wilder's smoothing formula for more accurate RSI
-            for i in range(len(gains)):
-                avg_gain = (avg_gain * (periods - 1) + gains[i]) / periods
-                avg_loss = (avg_loss * (periods - 1) + losses[i]) / periods
-            
-            # Calculate RSI
+            # Calculate RSI using Wilder's smoothed averages
             if avg_loss == 0:
                 rsi = 100.0
             else:
@@ -142,14 +141,14 @@ class RSICalculator:
             # Store baseline for real-time updates
             self.baseline_rsi = round(rsi, 2)
             self.current_rsi = self.baseline_rsi
-            self.wilder_avg_gain = avg_gain  # Store for compatibility
-            self.wilder_avg_loss = avg_loss  # Store for compatibility
+            self.wilder_avg_gain = avg_gain  # Store Wilder's smoothed values
+            self.wilder_avg_loss = avg_loss  # Store Wilder's smoothed values
             self.rsi_initialized = True
             
             # Store price history for real-time updates
             self.price_history.extend(closes)
             
-            logger.debug(f"🔬 Baseline RSI 14: {self.baseline_rsi:.2f} (ready for real-time updates)")
+            logger.debug(f"🔬 Baseline RSI 14: {self.baseline_rsi:.2f} (Wilder's smoothing method)")
             return self.baseline_rsi
             
         except Exception as e:
@@ -182,15 +181,15 @@ class RSICalculator:
                 # FIXED: RSI interpolation based on price movement (not broken tick-by-tick)
                 price_change_pct = (new_price - self.last_price) / self.last_price
                 
-                # RSI sensitivity: Reduced reactivity to price changes (user requested further reduction)
-                # 1% price move ≈ 10 RSI points (further reduced sensitivity)
-                rsi_sensitivity = 10.0  # Further reduced sensitivity for less reactive RSI
+                # RSI sensitivity: Maximum reactivity to price changes for real-time updates
+                # 1% price move ≈ 25 RSI points (very responsive)
+                rsi_sensitivity = 25.0  # High sensitivity for real-time responsiveness
                 
                 # Calculate RSI adjustment based on price movement
                 rsi_adjustment = price_change_pct * 100 * rsi_sensitivity
                 
-                # Apply adjustment to baseline (less responsive)
-                dampening = 0.6  # 60% of calculated adjustment (less immediate reaction)
+                # Apply adjustment to baseline (maximum responsiveness for real-time updates)
+                dampening = 0.85  # 85% of calculated adjustment (very immediate reaction)
                 self.current_rsi = self.baseline_rsi + (rsi_adjustment * dampening)
                 
                 # Keep RSI in valid range [0, 100]

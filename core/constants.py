@@ -284,7 +284,7 @@ class TradingExecutionConstants:
     BASE_POSITION_SIZE = 0.10        # 10% base position (moved from MagicNumbers for consistency)
     BASE_PROFIT_TARGET = 0.003       # 0.3% base profit target (moved from MagicNumbers for consistency)
     BASE_STOP_LOSS = 0.0015          # 0.15% base stop loss (moved from MagicNumbers for consistency)
-    DEFAULT_LEVERAGE = 30            # 30x default leverage
+    DEFAULT_LEVERAGE = 40            # 40x leverage (consistent with strategy configs)
     DEFAULT_STOP_DISTANCE = 0.002    # 0.2% stop distance
     DEFAULT_TARGET_DISTANCE = 0.005  # 0.5% target distance
     
@@ -341,12 +341,12 @@ class VariabilityConstants:
     EXTREME_VOLATILITY = 0.08        # 8.0% - very volatile Bitcoin market
     
     # 5-Minute Volatility Thresholds (for real-time trading) - REALISTIC Bitcoin 5m thresholds
-    # UPDATED: Adjusted thresholds for high-leverage trading - 0.35% should be LOW for strategy selection
-    VOLATILITY_5M_VERY_LOW = 0.0002    # 0.02% - almost no movement
-    VOLATILITY_5M_LOW = 0.0020         # 0.20% - low movement (adjusted for realistic 5m ranges)
-    VOLATILITY_5M_MODERATE = 0.0050    # 0.50% - moderate movement (realistic for 5m)
-    VOLATILITY_5M_HIGH = 0.0100        # 1.00% - high movement (realistic for 5m)
-    VOLATILITY_5M_EXTREME = 0.0200     # 2.00% - extreme movement (realistic for 5m)
+    # UPDATED: Adjusted thresholds based on actual market observations
+    VOLATILITY_5M_VERY_LOW = 0.0005    # 0.05% - almost no movement
+    VOLATILITY_5M_LOW = 0.0015         # 0.15% - low movement
+    VOLATILITY_5M_MODERATE = 0.0030    # 0.30% - moderate movement
+    VOLATILITY_5M_HIGH = 0.0040        # 0.40% - high movement (lowered from 0.60%)
+    VOLATILITY_5M_EXTREME = 0.0080     # 0.80% - extreme movement (lowered from 1.20%)
     
     # Trading Condition Scores
     OPTIMAL_TRADING_SCORE = 0.7      # 70% score for optimal conditions

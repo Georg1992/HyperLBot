@@ -23,17 +23,17 @@ class YahooFinanceAPI:
         self._last_request_time = 0
         self._min_request_interval = 1.0  # Minimum 1 second between requests
         
-        # Data symbols
+        # Data symbols (updated 2025-10-12: DX-Y.NYB and GC=F delisted, using UUP and GLD instead)
         self.symbols = {
-            'dxy': 'DX-Y.NYB',  # DXY (US Dollar Index)
-            'gold': 'GC=F',     # Gold futures
+            'dxy': 'UUP',       # DXY (US Dollar Index) - Invesco DB USD Index Bullish Fund ETF
+            'gold': 'GLD',      # Gold - SPDR Gold Shares ETF (GC=F delisted)
             'spy': 'SPY',       # S&P 500 ETF
             'qqq': 'QQQ',       # NASDAQ ETF
             'dow': 'DIA',       # Dow Jones ETF
             'vix': '^VIX',      # VIX (Fear & Greed proxy)
             'btc': 'BTC-USD',   # Bitcoin
             'eth': 'ETH-USD',   # Ethereum
-            'gld': 'GLD',       # Gold ETF
+            'gld': 'GLD',       # Gold ETF (same as gold)
             'slv': 'SLV'        # Silver ETF
         }
         

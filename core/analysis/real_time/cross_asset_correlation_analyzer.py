@@ -42,10 +42,10 @@ class CrossAssetCorrelationAnalyzer:
             btc_price: Current Bitcoin price for correlation calculations
             
         Returns:
-            Dictionary with cross-asset correlation analysis
+            Dictionary with cross-asset correlation analysis (returns neutral values if data unavailable)
         """
         try:
-            # Get external market data
+            # Get external market data (with graceful degradation)
             dxy_data = self._get_dxy_data()
             gold_data = self._get_gold_data()
             stock_data = self._get_stock_indices_data()
@@ -68,8 +68,18 @@ class CrossAssetCorrelationAnalyzer:
             return analysis
             
         except Exception as e:
-            logger.error(f"❌ Cross-asset correlation analysis failed: {e}")
-            raise Exception(f"Cross-asset correlation analysis failed: {e}")
+            logger.warning(f"⚠️ Cross-asset correlation analysis failed: {e} - using neutral values")
+            # Return neutral values instead of failing (minor factor, 2% weight)
+            return {
+                "dxy_correlation": 0.0,
+                "gold_correlation": 0.0,
+                "stock_correlation": 0.0,
+                "market_regime": "UNKNOWN",
+                "risk_sentiment": "NEUTRAL",
+                "correlation_trends": "STABLE",
+                "timestamp": time.time(),
+                "data_source": "unavailable_fallback"
+            }
     
     def _get_dxy_data(self) -> Dict[str, Any]:
         """Get DXY (Dollar Index) data"""
@@ -92,8 +102,8 @@ class CrossAssetCorrelationAnalyzer:
             return dxy_data
             
         except Exception as e:
-            logger.error(f"❌ Failed to get DXY data: {e}")
-            raise ValueError(f"DXY data fetch failed - NO FALLBACKS: {e}")
+            logger.debug(f"⚪ DXY data unavailable: {e} - will use neutral correlation")
+            raise  # Re-raise to trigger graceful fallback in main method
     
     def _get_gold_data(self) -> Dict[str, Any]:
         """Get Gold price data"""

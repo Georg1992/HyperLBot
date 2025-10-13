@@ -57,7 +57,7 @@ class PredictionStateManager:
         self.prediction_count = 0
         
         # Configuration
-        self.min_prediction_interval = 30.0  # Minimum seconds between predictions
+        self.min_prediction_interval = 5.0  # Minimum seconds between predictions (reduced for faster trading)
         self.max_concurrent_predictions = 1  # Max predictions with active orders/positions
         
         logger.info("🧠 Prediction State Manager initialized")
@@ -127,13 +127,18 @@ class PredictionStateManager:
                 logger.debug(f"⏰ Too soon since last prediction ({self.min_prediction_interval}s interval)")
                 return False
             
-            # Check for conflicting active predictions
+            # Check for conflicting active predictions (allow override if stale)
             for pred_id in self.active_predictions:
                 if pred_id in self.predictions:
                     pred = self.predictions[pred_id]
                     if pred.side != side:
-                        logger.debug(f"🚫 Conflicting {pred.side} prediction active (ID: {pred_id})")
-                        return False
+                        # Check if the conflicting prediction is stale (older than 60 seconds)
+                        if time.time() - pred.timestamp > 60.0:
+                            logger.debug(f"🔄 Clearing stale {pred.side} prediction (ID: {pred_id})")
+                            self._clear_prediction(pred_id)
+                        else:
+                            logger.debug(f"🚫 Conflicting {pred.side} prediction active (ID: {pred_id})")
+                            return False
             
             # Check max concurrent predictions
             if len(self.active_predictions) >= self.max_concurrent_predictions:

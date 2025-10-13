@@ -632,14 +632,6 @@
                         <div class="data-item">
                             <span class="data-label">📊 Patterns:</span>
                             <span class="data-value" id="pattern-analysis">Loading...</span>
-                    </div>
-                </div>
-
-                    <!-- Candle Chart moved here from Candle Analysis -->
-                    <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-                        <h3 style="margin: 0 0 15px 0; font-size: 16px; color: #FFD700;">📊 Price Chart (20 × 5m)</h3>
-                        <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 20px; border: 1px solid rgba(255,255,255,0.1);">
-                            <canvas id="candle-chart" width="1600" height="800" style="width: 100%; max-width: 100%; height: 500px; background: rgba(0,0,0,0.2); border-radius: 8px; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"></canvas>
                         </div>
                     </div>
                 </div>
@@ -738,6 +730,14 @@
                             </div>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- Price Chart Card -->
+            <div class="card">
+                <h2>📊 Price Chart (20 × 5m)</h2>
+                <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 20px; border: 1px solid rgba(255,255,255,0.1);">
+                    <canvas id="candle-chart" width="1600" height="800" style="width: 100%; max-width: 100%; height: 500px; background: rgba(0,0,0,0.2); border-radius: 8px; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"></canvas>
                 </div>
             </div>
 
@@ -1079,11 +1079,24 @@
                     }
                 }
                 
-                // Update Overall Trend from trend_analysis
+                // Update Overall Trend from trend_analysis + add trends data
                 const overallTrendElement = document.getElementById('market-overall-trend');
                 if (market.trend_analysis && market.trend_analysis.overall_trend) {
                     const overallTrend = market.trend_analysis.overall_trend;
-                    overallTrendElement.textContent = overallTrend;
+                    
+                    // Add trends data to the same line
+                    let trendDisplay = overallTrend;
+                    if (market.trends) {
+                        const trends = market.trends;
+                        if (trends.trend_short && trends.trend_short !== 'UNKNOWN') {
+                            trendDisplay += ` | 1m: ${trends.trend_short}`;
+                        }
+                        if (trends.trend_medium && trends.trend_medium !== 'UNKNOWN') {
+                            trendDisplay += ` | 1h: ${trends.trend_medium}`;
+                        }
+                    }
+                    
+                    overallTrendElement.textContent = trendDisplay;
                     overallTrendElement.className = 'data-value ' + this.getTrendClass(overallTrend);
                 } else {
                     overallTrendElement.textContent = 'N/A';

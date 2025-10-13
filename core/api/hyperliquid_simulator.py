@@ -10,6 +10,7 @@ Simulates the complete Hyperliquid trading environment including:
 - Realistic fees and slippage
 
 This simulator mimics what the real Hyperliquid API would handle in production.
+ALIGNED with real Hyperliquid API structure for seamless transition.
 """
 
 import time
@@ -19,12 +20,19 @@ import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from loguru import logger
+from .hyperliquid_api_aligned import (
+    OrderRequest, OrderResponse, Position, OrderType, OrderSide, OrderStatus,
+    HyperliquidAPIInterface
+)
 
 
-class HyperliquidSimulator:
-    """Complete Hyperliquid trading environment simulator"""
+class HyperliquidSimulator(HyperliquidAPIInterface):
+    """Complete Hyperliquid trading environment simulator - aligned with real API"""
     
     def __init__(self, initial_balance: float = 10000.0):
+        # Initialize parent class (API interface)
+        super().__init__(is_simulated=True)
+        
         # Order book data
         self.order_book_snapshot = None
         
@@ -119,6 +127,98 @@ class HyperliquidSimulator:
     def update_order_book(self, orderbook: Dict[str, Any]):
         """Update the order book snapshot"""
         self.order_book_snapshot = copy.deepcopy(orderbook)
+    
+    def _simulate_order_execution(self, order_request: OrderRequest) -> OrderResponse:
+        """Simulate order execution using the aligned API structure"""
+        return self._execute_order_aligned(order_request)
+    
+    def _execute_order_aligned(self, order_request: OrderRequest) -> OrderResponse:
+        """Execute order using the new aligned structure"""
+        try:
+            # Validate inputs
+            if not self.order_book_snapshot:
+                raise ValueError("No order book data available")
+            
+            if order_request.leverage > self.max_leverage:
+                raise ValueError(f"Leverage {order_request.leverage}x exceeds maximum {self.max_leverage}x")
+            
+            if order_request.order_type == OrderType.LIMIT and order_request.price is None:
+                raise ValueError("Limit price required for LIMIT orders")
+            
+            # Check execution success rate
+            if random.random() > self.execution_quality:
+                raise ValueError("Order rejected by exchange (simulated)")
+            
+            # Simulate execution delay
+            delay = self.execution_delays.get(order_request.order_type.value.upper(), 1.0)
+            time.sleep(delay * 0.001)  # Convert to milliseconds
+            
+            # Execute order based on type
+            if order_request.order_type == OrderType.MARKET:
+                execution_result = self._execute_market_order_aligned(order_request)
+            elif order_request.order_type == OrderType.LIMIT:
+                execution_result = self._execute_limit_order_aligned(order_request)
+            else:
+                raise ValueError(f"Unsupported order type: {order_request.order_type}")
+            
+            if not execution_result.get("success"):
+                raise ValueError(execution_result.get("error", "Order execution failed"))
+            
+            # Check margin requirements
+            margin_check = self._check_margin_requirements(
+                order_request.size, 
+                execution_result["execution_price"], 
+                order_request.leverage
+            )
+            if not margin_check["sufficient"]:
+                raise ValueError(f"Insufficient margin: {margin_check['reason']}")
+            
+            # Create order response
+            order_id = f"order_{int(time.time() * 1000)}_{random.randint(1000, 9999)}"
+            
+            response = OrderResponse(
+                order_id=order_id,
+                client_id=order_request.client_id,
+                symbol=order_request.symbol,
+                side=order_request.side,
+                size=order_request.size,
+                order_type=order_request.order_type,
+                price=order_request.price,
+                status=OrderStatus.FILLED,
+                filled_size=order_request.size,
+                remaining_size=0.0,
+                average_price=execution_result["execution_price"],
+                fees=execution_result["fees"],
+                timestamp=time.time(),
+                stop_loss=order_request.stop_loss,
+                take_profit=order_request.take_profit
+            )
+            
+            # Create position if order filled
+            if response.status == OrderStatus.FILLED:
+                self._create_position_aligned(order_request, execution_result)
+            
+            return response
+            
+        except Exception as e:
+            # Return error response
+            return OrderResponse(
+                order_id="",
+                client_id=order_request.client_id,
+                symbol=order_request.symbol,
+                side=order_request.side,
+                size=order_request.size,
+                order_type=order_request.order_type,
+                price=order_request.price,
+                status=OrderStatus.REJECTED,
+                filled_size=0.0,
+                remaining_size=order_request.size,
+                average_price=None,
+                fees={"total_cost": 0.0, "fee_type": "none"},
+                timestamp=time.time(),
+                stop_loss=order_request.stop_loss,
+                take_profit=order_request.take_profit
+            )
     
     def place_order(self, 
                    order_type: str,
@@ -694,18 +794,149 @@ class HyperliquidSimulator:
         }
     
     # ============================================================================
+    # ALIGNED API METHODS
+    # ============================================================================
+    
+    def _execute_market_order_aligned(self, order_request: OrderRequest) -> Dict[str, Any]:
+        """Execute market order using aligned API structure"""
+        levels = self.order_book_snapshot['asks'] if order_request.side == OrderSide.BUY else self.order_book_snapshot['bids']
+        
+        impact_result = self._calculate_order_book_impact(order_request.side.value, order_request.size, levels)
+        
+        if impact_result['remaining_size'] > 0:
+            return {"success": False, "error": "Insufficient liquidity for market order"}
+        
+        fees = self._calculate_fees('taker', order_request.size, impact_result['avg_price'])
+        
+        return {
+            "success": True,
+            "order_type": "MARKET",
+            "side": order_request.side.value,
+            "size": order_request.size,
+            "execution_price": impact_result['avg_price'],
+            "total_cost": impact_result['total_cost'],
+            "fees": fees,
+            "slippage": impact_result['slippage'],
+            "leverage": order_request.leverage,
+            "execution_time": time.time(),
+            "order_status": "FILLED",
+            "fills": impact_result['fills']
+        }
+    
+    def _execute_limit_order_aligned(self, order_request: OrderRequest) -> Dict[str, Any]:
+        """Execute limit order using aligned API structure"""
+        best_bid = self.order_book_snapshot['bids'][0]['price'] if self.order_book_snapshot['bids'] else 0
+        best_ask = self.order_book_snapshot['asks'][0]['price'] if self.order_book_snapshot['asks'] else float('inf')
+        
+        # Check if order crosses spread (immediate execution)
+        crosses_spread = (order_request.side == OrderSide.BUY and order_request.price >= best_ask) or \
+                        (order_request.side == OrderSide.SELL and order_request.price <= best_bid)
+        
+        if crosses_spread:
+            # Execute immediately as taker
+            levels = self.order_book_snapshot['asks'] if order_request.side == OrderSide.BUY else self.order_book_snapshot['bids']
+            impact_result = self._calculate_order_book_impact(order_request.side.value, order_request.size, levels)
+            fees = self._calculate_fees('taker', order_request.size, impact_result['avg_price'])
+            
+            return {
+                "success": True,
+                "order_type": "LIMIT",
+                "side": order_request.side.value,
+                "size": order_request.size,
+                "execution_price": impact_result['avg_price'],
+                "total_cost": impact_result['total_cost'],
+                "fees": fees,
+                "slippage": impact_result['slippage'],
+                "leverage": order_request.leverage,
+                "execution_time": time.time(),
+                "order_status": "FILLED",
+                "fills": impact_result['fills']
+            }
+        else:
+            # Order placed but not filled (maker fee)
+            # For simulation, we'll fill it immediately at limit price with 70% probability
+            if random.random() < 0.7:
+                fees = self._calculate_fees('maker', order_request.size, order_request.price)
+                return {
+                    "success": True,
+                    "order_type": "LIMIT",
+                    "side": order_request.side.value,
+                    "size": order_request.size,
+                    "execution_price": order_request.price,
+                    "total_cost": order_request.size * order_request.price,
+                    "fees": fees,
+                    "slippage": 0.0,
+                    "leverage": order_request.leverage,
+                    "execution_time": time.time(),
+                    "order_status": "FILLED",
+                    "fills": [{"price": order_request.price, "size": order_request.size, "cost": order_request.size * order_request.price}]
+                }
+            else:
+                return {
+                    "success": True,
+                    "order_type": "LIMIT",
+                    "side": order_request.side.value,
+                    "size": order_request.size,
+                    "execution_price": order_request.price,
+                    "total_cost": order_request.size * order_request.price,
+                    "fees": self._calculate_fees('maker', order_request.size, order_request.price),
+                    "slippage": 0.0,
+                    "leverage": order_request.leverage,
+                    "execution_time": time.time(),
+                    "order_status": "PENDING",
+                    "fills": []
+                }
+    
+    def _create_position_aligned(self, order_request: OrderRequest, execution_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a new position using aligned API structure"""
+        self.total_trades += 1
+        trade_id = f"sim_trade_{self.total_trades}_{int(time.time())}"
+        
+        position = {
+            "trade_id": trade_id,
+            "side": order_request.side.value,
+            "size": order_request.size,
+            "entry_price": execution_result["execution_price"],
+            "leverage": order_request.leverage,
+            "entry_time": time.time(),
+            "entry_datetime": datetime.now().isoformat(),
+            "fees": execution_result["fees"],
+            "stop_loss": order_request.stop_loss,
+            "take_profit": order_request.take_profit,
+            "status": "OPEN",
+            "position_value": order_request.size * execution_result["execution_price"],
+            "margin_used": (order_request.size * execution_result["execution_price"]) / order_request.leverage,
+            "symbol": order_request.symbol,
+            "client_id": order_request.client_id
+        }
+        
+        self.open_positions[trade_id] = position
+        
+        # Deduct fees from balance
+        self.account_balance -= execution_result["fees"]["fee_amount"]
+        self.total_fees_paid += execution_result["fees"]["fee_amount"]
+        
+        logger.success(f"✅ Position created: {trade_id} - {order_request.side.value} {order_request.size} BTC @ ${execution_result['execution_price']:,.2f}")
+        logger.info(f"   Leverage: {order_request.leverage}x | Stop Loss: ${order_request.stop_loss:,.2f} | Take Profit: ${order_request.take_profit:,.2f}")
+        
+        return position
+    
+    # ============================================================================
     # LEGACY COMPATIBILITY (for gradual migration)
     # ============================================================================
     
     def simulate_order_execution(self, order_type: str, side: str, size: float, 
-                                 price: Optional[float] = None, leverage: int = 30) -> Dict[str, Any]:
-        """Legacy method for backward compatibility"""
+                                 price: Optional[float] = None, leverage: int = 30,
+                                 stop_loss: Optional[float] = None, take_profit: Optional[float] = None) -> Dict[str, Any]:
+        """Legacy method for backward compatibility with enhanced parameters"""
         return self.place_order(
             order_type=order_type,
             side=side,
             size=size,
             price=price,
-            leverage=leverage
+            leverage=leverage,
+            stop_loss=stop_loss,
+            take_profit=take_profit
         )
 
 

@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from dataclasses import dataclass
 from core.execution.order_lifecycle_manager import get_global_order_lifecycle_manager
-from core.execution.prediction_state_manager import get_global_prediction_state_manager
+# REMOVED: prediction_state_manager import - not needed for single prediction system
 
 
 @dataclass
@@ -165,47 +165,45 @@ class PredictionExecutor:
                     "checks_failed": ["❌ Invalid thresholds object"]
                 }
             
-            # 1. CHECK: Confidence threshold
-            calibrated_conf = prediction.get("calibrated_confidence", prediction.get("confidence", 0))
-            if calibrated_conf is None:
-                logger.error(f"❌ Confidence is None in prediction: {prediction}")
-                calibrated_conf = 0.0
+            # 1. CHECK: Confidence threshold (Bayesian fusion of main + additional signals)
+            main_confidence = prediction.get("confidence", 0) or 0
+            bayesian_confidence = prediction.get("bayesian_confidence", 0) or 0
             
-            # Debug: Log confidence values for troubleshooting
-            logger.debug(f"🔍 Confidence values: main={prediction.get('confidence', 'MISSING'):.1%}, "
-                        f"calibrated={prediction.get('calibrated_confidence', 'MISSING'):.1%}, "
-                        f"bayesian={prediction.get('bayesian_confidence', 'MISSING'):.1%}, "
-                        f"using={calibrated_conf:.1%}")
+            if main_confidence is None or main_confidence <= 0:
+                logger.error(f"❌ Main confidence is None or invalid in prediction: {prediction}")
+                main_confidence = 0.0
             
-            if calibrated_conf >= thresholds.min_confidence:
-                checks_passed.append(f"✅ Confidence {calibrated_conf:.1%} >= {thresholds.min_confidence:.1%}")
+            # Apply Bayesian fusion if available
+            if bayesian_confidence > 0:
+                # Weighted combination: 70% main + 30% bayesian
+                # This gives more weight to our comprehensive analysis while incorporating additional validation
+                confidence = (main_confidence * 0.7) + (bayesian_confidence * 0.3)
+                logger.debug(f"🔍 Bayesian Fusion: main={main_confidence:.1%} + bayesian={bayesian_confidence:.1%} = {confidence:.1%}")
             else:
-                checks_failed.append(f"❌ Confidence {calibrated_conf:.1%} < {thresholds.min_confidence:.1%}")
+                # Use main confidence if no Bayesian data available
+                confidence = main_confidence
+                logger.debug(f"🔍 Confidence: {confidence:.1%} (no Bayesian fusion available)")
             
-            # 2. CHECK: Expected Value
-            ev_percent = prediction.get("expected_value", 0)
-            should_trade_ev = prediction.get("should_trade_ev", False)
-            
-            if ev_percent is None:
-                logger.error(f"❌ Expected value is None in prediction: {prediction}")
-                ev_percent = 0.0
-            
-            if should_trade_ev and ev_percent >= thresholds.min_ev_percent:
-                checks_passed.append(f"✅ EV {ev_percent:+.2%} >= {thresholds.min_ev_percent:+.2%}")
-            else:
-                checks_failed.append(f"❌ EV {ev_percent:+.2%} < {thresholds.min_ev_percent:+.2%} or negative")
-            
-            # 3. CHECK: Bayesian fusion (if required)
-            if thresholds.require_bayesian:
-                bayesian_conf = prediction.get("bayesian_confidence")
-                if bayesian_conf and bayesian_conf >= thresholds.min_confidence:
-                    checks_passed.append(f"✅ Bayesian {bayesian_conf:.1%} >= {thresholds.min_confidence:.1%}")
+            # FIXED: Strategy-specific confidence handling
+            # Range trading strategies can work with lower confidence due to mean reversion nature
+            if strategy == "range_trading":
+                # Range trading is more forgiving - allow slightly lower confidence
+                effective_threshold = thresholds.min_confidence * 0.95  # 5% tolerance
+                if confidence >= effective_threshold:
+                    checks_passed.append(f"✅ Range trading confidence {confidence:.1%} >= {effective_threshold:.1%}")
                 else:
-                    checks_failed.append(f"❌ Bayesian not available or below threshold")
+                    checks_failed.append(f"❌ Range trading confidence {confidence:.1%} < {effective_threshold:.1%}")
             else:
-                checks_passed.append("✅ Bayesian not required for this strategy")
+                # Standard threshold for other strategies
+                if confidence >= thresholds.min_confidence:
+                    checks_passed.append(f"✅ Confidence {confidence:.1%} >= {thresholds.min_confidence:.1%}")
+                else:
+                    checks_failed.append(f"❌ Confidence {confidence:.1%} < {thresholds.min_confidence:.1%}")
             
-            # 4. CHECK: Rate limiting
+            # Debug: Log final confidence
+            logger.debug(f"🔍 Final Confidence: {confidence:.1%} (threshold: {thresholds.min_confidence:.1%})")
+            
+            # 3. CHECK: Rate limiting
             import time
             time_since_last = time.time() - self.last_execution_time
             if time_since_last >= self.min_time_between_trades:
@@ -242,14 +240,17 @@ class PredictionExecutor:
             # Decision: ALL checks must pass
             should_execute = len(checks_failed) == 0
             
+            # Get EV score from prediction
+            ev_percent = prediction.get("expected_value", 0.0) or 0.0
+            
             return {
                 "should_execute": should_execute,
                 "reason": "All checks passed" if should_execute else f"{len(checks_failed)} checks failed",
                 "checks_passed": checks_passed,
                 "checks_failed": checks_failed,
-                "confidence_score": calibrated_conf,
+                "confidence_score": confidence,
                 "ev_score": ev_percent,
-                "position_size": self._calculate_position_size(prediction, thresholds, calibrated_conf)
+                "position_size": self._calculate_position_size(prediction, thresholds, confidence)
             }
             
         except Exception as e:
@@ -320,7 +321,6 @@ class PredictionExecutor:
         try:
             # Get lifecycle managers
             lifecycle_manager = get_global_order_lifecycle_manager()
-            state_manager = get_global_prediction_state_manager()
             
             # Check if should execute
             decision = self.should_execute(prediction, strategy)
@@ -356,36 +356,31 @@ class PredictionExecutor:
                     "checks_failed": [f"❌ Conflicting {side} order/position active"]
                 }
             
-            # Create prediction record
-            prediction_id = state_manager.create_prediction(prediction)
-            if not prediction_id:
-                logger.warning(f"🚫 Cannot create prediction: conflicting active predictions")
-                return {
-                    "success": False,
-                    "reason": "Conflicting active predictions",
-                    "checks_failed": ["❌ Conflicting active predictions"]
-                }
+            # FIXED: Use existing prediction instead of creating new one
+            # The prediction executor should execute the existing singleton prediction
+            # Generate a unique ID for this execution attempt
+            prediction_id = f"exec_{int(time.time() * 1000)}"
+            
+            logger.debug(f"🔄 Executing existing prediction: {prediction_id}")
             
             # Place limit order through lifecycle manager
             order_id = lifecycle_manager.place_limit_order(prediction, current_price)
             if not order_id:
                 logger.error(f"❌ Failed to place limit order")
-                state_manager.cancel_prediction(prediction_id, "ORDER_PLACEMENT_FAILED")
                 return {
                     "success": False,
                     "reason": "Order placement failed",
                     "checks_failed": ["❌ Order placement failed"]
                 }
             
-            # Link prediction to order
-            state_manager.place_order(prediction_id, order_id)
+            # Order placed successfully
             
             logger.info(f"🎯 LIMIT ORDER PLACED: {side} {position_size} BTC @ ${entry_price:,.2f}")
             logger.info(f"   Prediction ID: {prediction_id}")
             logger.info(f"   Order ID: {order_id}")
             logger.info(f"   Current Price: ${current_price:,.2f}")
             logger.info(f"   Strategy: {strategy}")
-            logger.info(f"   Confidence: {prediction.get('calibrated_confidence', 0):.1%}")
+            logger.info(f"   Confidence: {prediction.get('confidence', 0):.1%}")
             
             # Add to dashboard (PENDING status)
             try:

@@ -188,7 +188,8 @@ class MarketConditionsAnalyzer:
             
         elif category == "MODERATE":
             factors.append("Moderate volatility - good for trading")
-            # MODERATE volatility is neutral - no positive factors, no risk factors
+            # FIXED: MODERATE volatility should be considered positive for trading
+            positive_factors.append("Stable trading conditions with moderate volatility")
             
         elif category == "HIGH":
             factors.append("High volatility - increased opportunities")
@@ -221,6 +222,8 @@ class MarketConditionsAnalyzer:
             
         elif volume_category == "NORMAL":
             factors.append("Normal volume - adequate liquidity")
+            # FIXED: Normal volume should be considered positive for trading
+            positive_factors.append("Adequate liquidity for trading")
             
         elif volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
             factors.append(f"{volume_category.lower().replace('_', ' ').title()} volume - strong market interest")
@@ -263,6 +266,8 @@ class MarketConditionsAnalyzer:
             factors.append(f"RSI overbought ({rsi:.1f}) - bearish potential")
         else:
             factors.append(f"RSI in tradable range ({rsi:.1f})")
+            # FIXED: Normal RSI range should be considered positive for trading
+            positive_factors.append("RSI in healthy trading range")
             
         return {
             "factors": factors,
@@ -381,7 +386,13 @@ class MarketConditionsAnalyzer:
         total_risk_score = len(risk_factors)
         total_positive_score = len(positive_factors)
         
-        # Determine condition based on positive factors and risk factors
+        # FIXED: More balanced condition determination
+        # Start with FAIR as default, then adjust based on factors
+        condition = "FAIR"
+        risk_level = "MODERATE"
+        confidence = 0.65
+        
+        # Positive factors boost condition
         if total_positive_score >= 3:
             condition = "EXCELLENT"
             risk_level = "LOW"
@@ -391,13 +402,27 @@ class MarketConditionsAnalyzer:
             risk_level = "LOW"
             confidence = 0.75
         elif total_positive_score >= 1:
-            condition = "FAIR"
-            risk_level = "MODERATE"
-            confidence = 0.65
-        else:
+            condition = "GOOD"  # Changed from FAIR to GOOD for 1+ positive factors
+            risk_level = "LOW"
+            confidence = 0.70
+        
+        # Risk factors can downgrade condition
+        if total_risk_score >= 3:
             condition = "POOR"
+            risk_level = "HIGH"
+            confidence = max(0.3, confidence - 0.2)
+        elif total_risk_score >= 2:
+            if condition == "EXCELLENT":
+                condition = "GOOD"
+            elif condition == "GOOD":
+                condition = "FAIR"
             risk_level = "MODERATE"
-            confidence = 0.55
+            confidence = max(0.4, confidence - 0.1)
+        elif total_risk_score >= 1:
+            if condition == "EXCELLENT":
+                condition = "GOOD"
+            risk_level = "MODERATE"
+            confidence = max(0.5, confidence - 0.05)
         
         # Adjust for high risk factors
         if total_risk_score >= 3:

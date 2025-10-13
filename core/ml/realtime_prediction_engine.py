@@ -245,18 +245,7 @@ class RealtimePredictionEngine:
                 market_data=market_data
             )
             
-            # MODULE 3: CONFIDENCE CALCULATION (get detailed breakdown for final confidence)
-            final_confidence, base_confidence, boosts, confidence_reasoning = self.calculate_confidence(
-                direction=direction,
-                score=score,
-                market_data=market_data
-            )
-            confidence = final_confidence  # Use the detailed calculation
-            
-            # Always maintain a prediction, even with low confidence
-            # No longer cancel based on confidence threshold
-            
-            # Calculate targets
+            # Calculate targets first (needed for EV calculation)
             stop_loss, take_profit, risk_reward = self._calculate_targets(
                 entry_price=entry_price,
                 direction=direction,
@@ -265,14 +254,26 @@ class RealtimePredictionEngine:
                 market_data=market_data
             )
             
-            # MODULE 4: EXPECTED VALUE CALCULATION
+            # MODULE 3: EXPECTED VALUE CALCULATION (calculate before confidence)
             ev_result = self._calculate_expected_value(
-                confidence=confidence,
+                confidence=0.5,  # Use base confidence for initial EV calculation
                 entry_price=entry_price,
                 take_profit=take_profit,
                 stop_loss=stop_loss,
                 position_size=1000.0  # Default position size for EV calculation
             )
+            
+            # Add EV to market data for confidence calculation
+            market_data_with_ev = market_data.copy()
+            market_data_with_ev["expected_value"] = ev_result.ev_percent
+            
+            # MODULE 4: CONFIDENCE CALCULATION (now includes EV)
+            final_confidence, base_confidence, boosts, confidence_reasoning = self.calculate_confidence(
+                direction=direction,
+                score=score,
+                market_data=market_data_with_ev  # Include EV in confidence calculation
+            )
+            confidence = final_confidence  # Use the detailed calculation
             
             # MODULE 5: BAYESIAN FUSION (combine all signals probabilistically)
             bayesian_result = self._apply_bayesian_fusion(
@@ -280,6 +281,16 @@ class RealtimePredictionEngine:
                 market_data=market_data,
                 base_confidence=confidence
             )
+            
+            # FIXED: Range trading should have reduced Bayesian fusion weight
+            # Range trading is more conservative and should rely more on main analysis
+            if strategy == "range_trading" and bayesian_result:
+                # Range trading: 90% main + 10% bayesian (very conservative)
+                main_weight = 0.90
+                bayesian_weight = 0.10
+                adjusted_confidence = (confidence * main_weight) + (bayesian_result['confidence'] * bayesian_weight)
+                logger.debug(f"🔍 Range Trading Bayesian: main={confidence:.1%} + bayesian={bayesian_result['confidence']:.1%} = {adjusted_confidence:.1%}")
+                confidence = adjusted_confidence
             
             # MODULE 6: MULTI-TIMEFRAME ADJUSTMENT
             timeframe_result = self._apply_timeframe_adjustment(
@@ -637,6 +648,28 @@ class RealtimePredictionEngine:
                         pattern_score -= pattern_contribution
                         reasoning.append(f"🔴 {pattern_name} (bearish, -{pattern_contribution*100:.1f}%)")
                         pattern_count += 1
+                    elif pattern_name == "TREND_CHANGE":
+                        # FIXED: TREND_CHANGE patterns should be handled differently for range trading
+                        if is_range_trading:
+                            # For range trading, trend changes can be mean reversion opportunities
+                            pattern_contribution = pattern_weight * pattern_confidence * 0.5  # Reduce impact
+                            if pattern_direction == "BULLISH" and direction == "LONG":
+                                pattern_score += pattern_contribution
+                                reasoning.append(f"🔄 {pattern_name} (trend change, +{pattern_contribution*100:.1f}%)")
+                            elif pattern_direction == "BEARISH" and direction == "SHORT":
+                                pattern_score += pattern_contribution
+                                reasoning.append(f"🔄 {pattern_name} (trend change, +{pattern_contribution*100:.1f}%)")
+                            else:
+                                # Trend change against direction - still opportunity for range trading
+                                pattern_contribution = pattern_weight * pattern_confidence * 0.3  # Smaller boost
+                                pattern_score += pattern_contribution
+                                reasoning.append(f"🔄 {pattern_name} (mean reversion opportunity, +{pattern_contribution*100:.1f}%)")
+                        else:
+                            # For momentum strategies, trend changes are penalties
+                            pattern_contribution = pattern_weight * pattern_confidence
+                            pattern_score -= pattern_contribution
+                            reasoning.append(f"🔄 {pattern_name} (trend change, -{pattern_contribution*100:.1f}%)")
+                        pattern_count += 1
                     elif pattern_direction == "NEUTRAL" and pattern_name == "DOJI":
                         # Doji reduces confidence but doesn't affect direction much
                         reasoning.append(f"⚪ {pattern_name} (indecision)")
@@ -787,8 +820,12 @@ class RealtimePredictionEngine:
         Returns:
             (final_confidence, base_confidence, boosts, reasoning)
         """
-        # Base confidence from score strength
-        base_confidence = min(abs(score), 1.0)
+        # SCIENTIFIC BASE CONFIDENCE CALCULATION
+        # Use sigmoid function to map score to confidence: C_base = tanh(|score|)
+        # This provides smooth, bounded mapping from [-∞, +∞] to [0, 1]
+        # Sigmoid ensures: score=0 → confidence=0, score=1 → confidence≈0.76, score=2 → confidence≈0.96
+        import math
+        base_confidence = math.tanh(abs(score))  # Sigmoid mapping for scientific accuracy
         
         confidence_boosts = []
         reasoning = []
@@ -823,98 +860,124 @@ class RealtimePredictionEngine:
         # Global volume (Binance)
         global_volume_category = market_data.get("global_volume_category", "NORMAL")
         
-        # BOOST 1: RSI Extreme Values (Progressive Boost)
-        # Each point outside 40-60 range gives incremental boost
-        # RSI 30 = 10 points below 40 → +10% boost
-        # RSI 70 = 10 points above 60 → +10% boost
-        # RSI 20 = 20 points below 40 → +20% boost (capped at 15%)
+        # ============================================================================
+        # CONFIDENCE CALCULATION: Weighted aggregation of market factors
+        # ============================================================================
+        # WEIGHTS EXPLANATION:
+        #   20% - Expected Value (profitability - most important)
+        #   15% - RSI Signal (technical strength)
+        #   10% - Volume Confirmation (market participation)
+        #   8%  - Orderbook Pressure (momentum with volume)
+        #   6%  - Pattern Confirmation (technical setup)
+        #   5%  - Macro Trend (7-day alignment)
+        #   10% - S/R Proximity (entry/exit quality)
+        #   8%  - Market Quality (tradability)
+        #   8%  - Range Trading (optimal for 40x leverage)
+        #   -12% - Volatility Penalty (risk management)
+        #   10% - Minor factors (sentiment, funding, correlations)
+        # 
+        # Total possible boost: ~80% | Total possible penalty: ~25%
+        # ============================================================================
+        
+        # CORE FACTOR 1: Expected Value (20% weight - profitability)
+        # Simple logic: Positive EV = good trade, Negative EV = bad trade
+        ev_percent = market_data.get("expected_value", 0.0) or 0.0
+        
+        if ev_percent > 0.1:      # > 0.1% EV = Very good trade
+            ev_boost = 0.20
+            confidence_boosts.append(("Excellent EV", ev_boost))
+            reasoning.append(f"✅ Strong positive EV +{ev_percent:.2%} (+{ev_boost:.0%})")
+        elif ev_percent > 0.05:   # > 0.05% EV = Good trade
+            ev_boost = 0.10
+            confidence_boosts.append(("Good EV", ev_boost))
+            reasoning.append(f"✅ Positive EV +{ev_percent:.2%} (+{ev_boost:.0%})")
+        elif ev_percent < -0.05:  # < -0.05% EV = Bad trade
+            ev_boost = -0.25
+            confidence_boosts.append(("Negative EV", ev_boost))
+            reasoning.append(f"❌ Negative EV {ev_percent:.2%} ({ev_boost:.0%})")
+        # EV between -0.05% and +0.05% = neutral, no adjustment
+        
+        # CORE FACTOR 2: RSI Signal Strength
+        # Simple logic: RSI extremes favor mean reversion trades
         rsi_boost = 0.0
-        if direction == "LONG" and rsi < 40:
-            # Oversold - bullish signal
-            points_below_40 = 40 - rsi
-            rsi_boost = min(0.15, points_below_40 * 0.01)  # 1% per point, capped at 15%
-            confidence_boosts.append((f"RSI oversold ({rsi:.0f})", rsi_boost))
-            reasoning.append(f"✅ RSI oversold {rsi:.0f} → {points_below_40:.0f} points below 40 (+{rsi_boost:.1%})")
-        elif direction == "SHORT" and rsi > 60:
-            # Overbought - bearish signal
-            points_above_60 = rsi - 60
-            rsi_boost = min(0.15, points_above_60 * 0.01)  # 1% per point, capped at 15%
-            confidence_boosts.append((f"RSI overbought ({rsi:.0f})", rsi_boost))
-            reasoning.append(f"✅ RSI overbought {rsi:.0f} → {points_above_60:.0f} points above 60 (+{rsi_boost:.1%})")
-        elif direction == "LONG" and 40 <= rsi <= 60:
-            reasoning.append(f"⚪ RSI neutral {rsi:.0f} (no boost)")
-        elif direction == "SHORT" and 40 <= rsi <= 60:
-            reasoning.append(f"⚪ RSI neutral {rsi:.0f} (no boost)")
-        elif direction == "LONG" and rsi > 60:
-            # RSI above 60 for LONG - not ideal but not penalized
-            reasoning.append(f"⚠️ RSI {rsi:.0f} above neutral (overbought territory)")
-        elif direction == "SHORT" and rsi < 40:
-            # RSI below 40 for SHORT - not ideal but not penalized
-            reasoning.append(f"⚠️ RSI {rsi:.0f} below neutral (oversold territory)")
+        if direction == "LONG" and rsi < 30:     # Very oversold
+            rsi_boost = 0.15
+            confidence_boosts.append(("RSI very oversold", rsi_boost))
+            reasoning.append(f"✅ RSI {rsi:.0f} very oversold (+{rsi_boost:.0%})")
+        elif direction == "SHORT" and rsi > 70:  # Very overbought
+            rsi_boost = 0.15
+            confidence_boosts.append(("RSI very overbought", rsi_boost))
+            reasoning.append(f"✅ RSI {rsi:.0f} very overbought (+{rsi_boost:.0%})")
+        elif direction == "LONG" and rsi < 40:   # Oversold
+            rsi_boost = 0.08
+            confidence_boosts.append(("RSI oversold", rsi_boost))
+            reasoning.append(f"✅ RSI {rsi:.0f} oversold (+{rsi_boost:.0%})")
+        elif direction == "SHORT" and rsi > 60:  # Overbought
+            rsi_boost = 0.08
+            confidence_boosts.append(("RSI overbought", rsi_boost))
+            reasoning.append(f"✅ RSI {rsi:.0f} overbought (+{rsi_boost:.0%})")
         
-        # BOOST 2: Trend-RSI Alignment (additional boost if trend confirms)
-        if direction == "LONG":
-            if "UPTREND" in trend and rsi < 60:
-                boost = 0.03
-                confidence_boosts.append(("Trend-RSI bullish alignment", boost))
-                reasoning.append(f"✅ Uptrend + RSI aligned for LONG (+{boost:.1%})")
-        else:  # SHORT
-            if "DOWNTREND" in trend and rsi > 40:
-                boost = 0.03
-                confidence_boosts.append(("Trend-RSI bearish alignment", boost))
-                reasoning.append(f"✅ Downtrend + RSI aligned for SHORT (+{boost:.1%})")
-        
-        # BOOST 3: Volume Confirmation
+        # CORE FACTOR 3: Volume Confirmation
+        # Simple logic: High volume = strong signal, Low volume = weak signal
+        # EXCEPTION: Range trading strategies work well in low volume
         if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-            boost = 0.05
-            confidence_boosts.append(("High volume confirmation", boost))
-            reasoning.append(f"✅ High volume confirms move (+{boost:.1%})")
+            boost = 0.10
+            confidence_boosts.append(("High volume", boost))
+            reasoning.append(f"✅ High volume confirms move (+{boost:.0%})")
+        elif volume_category in ["LOW", "VERY_LOW"]:
+            # Don't penalize low volume if we're in range trading scenario
+            if not is_range_trading:
+                boost = -0.05
+                confidence_boosts.append(("Low volume", boost))
+                reasoning.append(f"⚠️ Low volume weakens signal ({boost:.0%})")
+            else:
+                # Low volume is actually ideal for range trading
+                reasoning.append(f"ℹ️ Low volume - normal for range trading")
         
-        # BOOST 4: Orderbook Pressure + Volume Momentum Confirmation
-        # Pressure is only meaningful when combined with HIGH volume (filters noise)
+        # CORE FACTOR 4: Orderbook Pressure (only with high volume)
+        # High volume + aligned pressure = strong momentum
         if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
             if (direction == "LONG" and pressure in ["BUY", "STRONG_BUY"]) or \
                (direction == "SHORT" and pressure in ["SELL", "STRONG_SELL"]):
-                # Strong momentum: High volume + aligned pressure
-                boost = 0.05
-                confidence_boosts.append(("Strong momentum (volume + pressure)", boost))
-                reasoning.append(f"✅ Strong momentum: High volume + {pressure} pressure (+{boost:.1%})")
-        else:
-            # Low volume - pressure is too noisy, ignore it
-            if (direction == "LONG" and pressure in ["BUY", "STRONG_BUY"]) or \
-               (direction == "SHORT" and pressure in ["SELL", "STRONG_SELL"]):
-                reasoning.append(f"⚪ Pressure aligned but volume too low (ignored)")
+                boost = 0.08
+                confidence_boosts.append(("Strong momentum", boost))
+                reasoning.append(f"✅ High volume + {pressure} pressure (+{boost:.0%})")
+            elif (direction == "LONG" and pressure in ["SELL", "STRONG_SELL"]) or \
+                 (direction == "SHORT" and pressure in ["BUY", "STRONG_BUY"]):
+                penalty = -0.08
+                confidence_boosts.append(("Conflicting pressure", penalty))
+                reasoning.append(f"❌ High volume + opposite pressure ({penalty:.0%})")
         
-        # PENALTY: Pressure contradicts direction with high volume (danger signal)
-        if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-            if (direction == "LONG" and pressure in ["SELL", "STRONG_SELL"]) or \
-               (direction == "SHORT" and pressure in ["BUY", "STRONG_BUY"]):
-                penalty = -0.05
-                confidence_boosts.append(("Contradicting pressure with high volume", penalty))
-                reasoning.append(f"⚠️ High volume + opposite pressure - momentum conflict ({penalty:.1%})")
-        
-        # BOOST 5: Pattern Confirmation
+        # CORE FACTOR 5: Pattern Confirmation
         if (direction == "LONG" and "BULLISH" in pattern_setup) or \
            (direction == "SHORT" and "BEARISH" in pattern_setup):
-            boost = 0.05
+            boost = 0.06
             confidence_boosts.append(("Pattern confirmation", boost))
-            reasoning.append(f"✅ Pattern confirms {direction} setup (+{boost:.1%})")
+            reasoning.append(f"✅ Pattern confirms {direction} (+{boost:.0%})")
         
-        # BOOST 6: 7-Day Market Status Alignment (Macro Trend)
-        # This is the ONLY place 7-day trend affects predictions
-        # It adjusts confidence, not direction
+        # CORE FACTOR 6: Macro Trend Alignment (7-day trend)
+        # Range trading is less affected by macro trends (trades mean reversion)
         if (direction == "LONG" and market_status == "BULLISH") or \
            (direction == "SHORT" and market_status == "BEARISH"):
             boost = 0.05
-            confidence_boosts.append(("7-day trend aligned", boost))
-            reasoning.append(f"✅ 7-day trend supports {direction} (+{boost:.1%})")
+            confidence_boosts.append(("Trend aligned", boost))
+            reasoning.append(f"✅ 7-day trend supports {direction} (+{boost:.0%})")
         elif (direction == "LONG" and market_status == "BEARISH") or \
              (direction == "SHORT" and market_status == "BULLISH"):
-            penalty = -0.05
-            confidence_boosts.append(("7-day trend opposed", penalty))
-            reasoning.append(f"⚠️ Fighting 7-day trend ({penalty:.1%})")
+            # FIXED: Range trading should NOT be penalized for counter-trend trades
+            # Range trading strategies are designed for mean reversion
+            if is_range_trading:
+                # For range trading, counter-trend trades are opportunities but not huge boosts
+                boost = 0.01  # Small boost for mean reversion opportunity
+                confidence_boosts.append(("Mean reversion opportunity", boost))
+                reasoning.append(f"✅ Range trading - mean reversion opportunity (+{boost:.0%})")
+            else:
+                # Only apply penalty to momentum strategies
+                penalty = -0.05
+                confidence_boosts.append(("Trend opposed", penalty))
+                reasoning.append(f"⚠️ Fighting trend ({penalty:.0%})")
         
-        # BOOST 7: Support/Resistance Proximity
+        # CORE FACTOR 7: Support/Resistance Proximity (10% weight - entry/exit quality)
         current_price = market_data.get("current_price", 0)
         support_resistance = market_data.get("support_resistance", {})
         
@@ -923,161 +986,137 @@ class RealtimePredictionEngine:
             if nearest_support and current_price:
                 distance_pct = abs(current_price - nearest_support) / current_price
                 if distance_pct < 0.01:  # Within 1%
-                    boost = 0.05
-                    confidence_boosts.append(("Near support level", boost))
-                    reasoning.append(f"✅ Price near support ${nearest_support:,.0f} (+{boost:.1%})")
-        else:  # SHORT
+                    boost = 0.10
+                    confidence_boosts.append(("Near support", boost))
+                    reasoning.append(f"✅ Price near support ${nearest_support:,.0f} (+{boost:.0%})")
+        elif direction == "SHORT":
             nearest_resistance = support_resistance.get("nearest_resistance", {}).get("price", 0)
             if nearest_resistance and current_price:
                 distance_pct = abs(current_price - nearest_resistance) / current_price
                 if distance_pct < 0.01:
-                    boost = 0.05
-                    confidence_boosts.append(("Near resistance level", boost))
-                    reasoning.append(f"✅ Price near resistance ${nearest_resistance:,.0f} (+{boost:.1%})")
+                    boost = 0.10
+                    confidence_boosts.append(("Near resistance", boost))
+                    reasoning.append(f"✅ Price near resistance ${nearest_resistance:,.0f} (+{boost:.0%})")
         
-        # BOOST 8: Market Quality
+        # CORE FACTOR 8: Market Quality (8% weight - tradability)
         if market_quality == "EXCELLENT":
-            boost = 0.05
-            confidence_boosts.append(("Excellent market quality", boost))
-            reasoning.append(f"✅ Excellent market quality (+{boost:.1%})")
+            boost = 0.08
+            confidence_boosts.append(("Excellent market", boost))
+            reasoning.append(f"✅ Excellent market quality (+{boost:.0%})")
         elif market_quality == "GOOD":
-            boost = 0.03
-            confidence_boosts.append(("Good market quality", boost))
-            reasoning.append(f"✅ Good market quality (+{boost:.1%})")
+            boost = 0.04
+            confidence_boosts.append(("Good market", boost))
+            reasoning.append(f"✅ Good market quality (+{boost:.0%})")
         elif market_quality == "POOR":
-            penalty = -0.03
-            confidence_boosts.append(("Poor market quality", penalty))
-            reasoning.append(f"⚠️ Poor market quality ({penalty:.1%})")
+            penalty = -0.10
+            confidence_boosts.append(("Poor market", penalty))
+            reasoning.append(f"❌ Poor market quality ({penalty:.0%})")
         
-        # BOOST 9: Sentiment Alignment
+        # SECONDARY FACTOR 1: Range Trading Moderation (range trading should be more conservative)
+        if is_range_trading:
+            # Range trading is inherently more conservative - smaller boosts
+            boost = 0.03  # Reduced from 8% to 3%
+            confidence_boosts.append(("Range trading", boost))
+            reasoning.append(f"✅ Range trading - conservative mean reversion (+{boost:.0%})")
+            
+            # RSI extremes are good for range trading but not as strong as momentum strategies
+            if direction == "LONG" and rsi < 30:
+                boost = 0.02  # Reduced from 5% to 2%
+                confidence_boosts.append(("RSI extreme for range trading", boost))
+                reasoning.append(f"✅ RSI {rsi:.0f} - good for range trading mean reversion (+{boost:.0%})")
+            elif direction == "SHORT" and rsi > 70:
+                boost = 0.02  # Reduced from 5% to 2%
+                confidence_boosts.append(("RSI extreme for range trading", boost))
+                reasoning.append(f"✅ RSI {rsi:.0f} - good for range trading mean reversion (+{boost:.0%})")
+            
+            # High volume in range trading is less significant than in momentum strategies
+            if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
+                boost = 0.01  # Reduced from 3% to 1%
+                confidence_boosts.append(("High volume for range trading", boost))
+                reasoning.append(f"✅ High volume - moderate mean reversion signal (+{boost:.0%})")
+        
+        # SECONDARY FACTOR 2: Volatility Penalty (reduces risk in chaotic markets)
+        if volatility_category == "EXTREME":
+            penalty = -0.12
+            confidence_boosts.append(("Extreme volatility", penalty))
+            reasoning.append(f"❌ Extreme volatility - high risk ({penalty:.0%})")
+        elif volatility_category == "HIGH":
+            penalty = -0.06
+            confidence_boosts.append(("High volatility", penalty))
+            reasoning.append(f"⚠️ High volatility ({penalty:.0%})")
+        
+        # MINOR FACTORS (3-4% each - fine-tuning)
+        
+        # Market sentiment alignment
         if (direction == "LONG" and sentiment in ["GREED", "EXTREME_GREED"]) or \
            (direction == "SHORT" and sentiment in ["FEAR", "EXTREME_FEAR"]):
             boost = 0.03
             confidence_boosts.append(("Sentiment aligned", boost))
-            reasoning.append(f"✅ Sentiment {sentiment} supports {direction} (+{boost:.1%})")
+            reasoning.append(f"✅ Sentiment {sentiment} (+{boost:.0%})")
         
-        # BOOST 10: Funding Rate Alignment
+        # Funding rate alignment
         if funding_sentiment != "NEUTRAL":
             if (direction == "LONG" and funding_sentiment == "BULLISH") or \
                (direction == "SHORT" and funding_sentiment == "BEARISH"):
                 boost = 0.03
-                confidence_boosts.append(("Funding rate aligned", boost))
-                reasoning.append(f"✅ Funding rate {funding_sentiment} supports {direction} (+{boost:.1%})")
+                confidence_boosts.append(("Funding aligned", boost))
+                reasoning.append(f"✅ Funding {funding_sentiment} (+{boost:.0%})")
         
-        # BOOST 11: Global Volume Confirmation
+        # Global volume confirmation
         if global_volume_category in ["HIGH", "VERY_HIGH"]:
             boost = 0.03
             confidence_boosts.append(("High global volume", boost))
-            reasoning.append(f"✅ High global volume confirms market activity (+{boost:.1%})")
+            reasoning.append(f"✅ High global volume (+{boost:.0%})")
         
-        # BOOST 12: Volume Profile - Price near POC (Point of Control)
-        if isinstance(poc_distance, (int, float)) and poc_distance and abs(poc_distance) < 0.01:  # Within 1% of POC
+        # Volume profile - Price near POC
+        if isinstance(poc_distance, (int, float)) and poc_distance and abs(poc_distance) < 0.01:
             boost = 0.03
-            confidence_boosts.append(("Price near POC", boost))
-            reasoning.append(f"✅ Price near volume POC (+{boost:.1%})")
+            confidence_boosts.append(("Near POC", boost))
+            reasoning.append(f"✅ Price near POC (+{boost:.0%})")
         
-        # BOOST 13 & 14: Pattern-Specific Confidence
-        # Check for high-weight patterns confirming the direction
-        patterns_dict = market_data.get("pattern_analysis", {}).get("patterns", {})
-        high_weight_patterns = ["HEAD_SHOULDERS", "INVERSE_HEAD_SHOULDERS", "DOUBLE_TOP", "DOUBLE_BOTTOM",
-                                "BULLISH_ENGULFING", "BEARISH_ENGULFING", "THREE_WHITE_SOLDIERS", "THREE_BLACK_CROWS"]
-        
-        confirming_patterns = 0
-        high_weight_confirming = False
-        
-        for pattern_type, pattern_list in patterns_dict.items():
-            if isinstance(pattern_list, list):
-                for pattern in pattern_list:
-                    pattern_name = pattern.get("pattern", "")
-                    pattern_direction = pattern.get("direction", "NEUTRAL")
-                    pattern_conf = pattern.get("confidence", 0.5)
-                    
-                    # Check if pattern confirms the prediction direction
-                    if (direction == "LONG" and pattern_direction == "BULLISH") or \
-                       (direction == "SHORT" and pattern_direction == "BEARISH"):
-                        confirming_patterns += 1
-                        
-                        # Check if it's a high-weight pattern with good confidence
-                        if pattern_name in high_weight_patterns and pattern_conf > 0.7:
-                            high_weight_confirming = True
-        
-        # BOOST 13: High-weight pattern confirming
-        if high_weight_confirming:
-            boost = 0.04
-            confidence_boosts.append(("Strong pattern confirms direction", boost))
-            reasoning.append(f"✅ High-weight pattern confirms {direction} (+{boost:.1%})")
-        
-        # BOOST 14: Multiple patterns confirming
-        elif confirming_patterns >= 2:
-            boost = 0.03
-            confidence_boosts.append(("Multiple patterns confirming", boost))
-            reasoning.append(f"✅ {confirming_patterns} patterns confirm {direction} (+{boost:.1%})")
-        
-        # BOOST 15: Strong Pressure (not just aligned, but STRONG)
-        if isinstance(pressure_strength, (int, float)) and pressure_strength > 0.7:  # Strong pressure
-            if (direction == "LONG" and pressure in ["BUY", "STRONG_BUY"]) or \
-               (direction == "SHORT" and pressure in ["SELL", "STRONG_SELL"]):
-                boost = 0.03
-                confidence_boosts.append(("Very strong pressure", boost))
-                reasoning.append(f"✅ Very strong {pressure} pressure ({pressure_strength:.1%}) (+{boost:.1%})")
-        
-        # BOOST 16: Range Trading Scenario Boost
-        if is_range_trading:
-            boost = 0.08
-            confidence_boosts.append(("Low-volatility range trading", boost))
-            reasoning.append(f"✅ Range trading conditions - optimal for high-leverage scalping (+{boost:.1%})")
-        
-        # BOOST 17: Cross-Asset Correlation Alignment
+        # Cross-asset correlation (minor, 2% weight)
         if cross_asset:
             dxy_corr = cross_asset.get("dxy_correlation", 0)
-            gold_corr = cross_asset.get("gold_correlation", 0)
-            
-            # Ensure correlations are numeric
-            if isinstance(dxy_corr, (int, float)) and isinstance(gold_corr, (int, float)):
-                # BTC typically inversely correlated with DXY
+            if isinstance(dxy_corr, (int, float)):
                 if direction == "LONG" and dxy_corr < -0.5:
                     boost = 0.02
-                    confidence_boosts.append(("DXY inverse correlation", boost))
-                    reasoning.append(f"✅ DXY negative correlation supports LONG (+{boost:.1%})")
+                    confidence_boosts.append(("DXY correlation", boost))
+                    reasoning.append(f"✅ DXY correlation (+{boost:.0%})")
                 elif direction == "SHORT" and dxy_corr > 0.5:
                     boost = 0.02
-                    confidence_boosts.append(("DXY positive correlation", boost))
-                    reasoning.append(f"✅ DXY positive correlation supports SHORT (+{boost:.1%})")
-                
-                # BTC often correlates with Gold (risk-off)
-                if direction == "LONG" and gold_corr > 0.5:
-                    boost = 0.02
-                    confidence_boosts.append(("Gold positive correlation", boost))
-                    reasoning.append(f"✅ Gold correlation supports LONG (+{boost:.1%})")
+                    confidence_boosts.append(("DXY correlation", boost))
+                    reasoning.append(f"✅ DXY correlation (+{boost:.0%})")
         
-        # PENALTY 1: High volatility reduces confidence
-        if volatility_category in ["EXTREME"]:
-            penalty = -0.07
-            confidence_boosts.append(("Extreme volatility penalty", penalty))
-            reasoning.append(f"⚠️ Extreme volatility reduces confidence ({penalty:.1%})")
-        elif volatility_category == "HIGH":
-            penalty = -0.05
-            confidence_boosts.append(("High volatility penalty", penalty))
-            reasoning.append(f"⚠️ High volatility reduces confidence ({penalty:.1%})")
-        
-        # NOTE: No penalty for low 5m trading volume
-        # 5m candle volume is too short-term to penalize
-        # Global volume (Binance) is used for confirmation instead
-        
-        # PENALTY 3: Conflicting patterns
+        # FIXED: Pattern conflict handling for range trading
         if pattern_count >= 2:
             if (direction == "LONG" and "BEARISH" in pattern_setup) or \
                (direction == "SHORT" and "BULLISH" in pattern_setup):
-                penalty = -0.05
-                confidence_boosts.append(("Conflicting patterns", penalty))
-                reasoning.append(f"⚠️ Conflicting patterns detected ({penalty:.1%})")
+                # For range trading, conflicting patterns can be mean reversion opportunities
+                if is_range_trading:
+                    # Range trading can benefit from conflicting patterns (mean reversion)
+                    boost = 0.01  # Very small boost for mean reversion setup
+                    confidence_boosts.append(("Mean reversion setup", boost))
+                    reasoning.append(f"✅ Range trading - mean reversion setup (+{boost:.0%})")
+                else:
+                    # Only apply penalty to momentum strategies
+                    penalty = -0.05
+                    confidence_boosts.append(("Conflicting patterns", penalty))
+                    reasoning.append(f"⚠️ Pattern conflict ({penalty:.0%})")
         
-        # Calculate final confidence
+        # ============================================================================
+        # FINAL CONFIDENCE CALCULATION
+        # ============================================================================
+        # Formula: C_final = C_base + Σ(all_boosts_and_penalties)
+        # C_base = tanh(|score|) - base confidence from ML model
+        # All factors are additive and independent
+        # Final confidence is bounded [0, 1] for probability interpretation
+        # ============================================================================
+        
         final_confidence = base_confidence
         for reason, boost in confidence_boosts:
             final_confidence += boost
         
-        # Cap at 1.0
+        # Apply bounds [0, 1]
         final_confidence = max(0.0, min(1.0, final_confidence))
         
         # Log confidence calculation
@@ -1189,6 +1228,9 @@ class RealtimePredictionEngine:
                 rsi_signal = bayesian.calculate_signal_from_metric("RSI", rsi, "RSI", direction)
                 if rsi_signal:
                     signals.append(rsi_signal)
+                    logger.debug(f"🔍 Bayesian RSI signal: {rsi_signal.probability:.1%} confidence")
+                else:
+                    logger.debug(f"🔍 Bayesian RSI signal: None (RSI={rsi})")
             
             # Volume signal
             volume_category = market_data.get("volume_category", "MODERATE")
@@ -1196,19 +1238,55 @@ class RealtimePredictionEngine:
                 volume_signal = bayesian.calculate_signal_from_metric("Volume", volume_category, "VOLUME", direction)
                 if volume_signal:
                     signals.append(volume_signal)
+                    logger.debug(f"🔍 Bayesian Volume signal: {volume_signal.probability:.1%} confidence")
+                else:
+                    logger.debug(f"🔍 Bayesian Volume signal: None (Volume={volume_category})")
             
-            # Trend signal
-            trend = market_data.get("trend", "SIDEWAYS")
-            if trend:
-                trend_signal = bayesian.calculate_signal_from_metric("Trend", trend, "TREND", direction)
-                if trend_signal:
-                    signals.append(trend_signal)
+            # Trend signals - use multiple timeframes and pick the highest confidence
+            trend_5m = market_data.get("trend", "SIDEWAYS")
+            trend_5m_data = market_data.get("trend_5m", {})
+            trend_short = trend_5m_data.get("trend_short", "SIDEWAYS")
+            trend_medium = trend_5m_data.get("trend_medium", "SIDEWAYS")
+            
+            # Calculate confidence for each timeframe
+            trend_signals = []
+            
+            # 5m trend
+            if trend_5m:
+                trend_5m_signal = bayesian.calculate_signal_from_metric("Trend_5m", trend_5m, "TREND", direction)
+                if trend_5m_signal:
+                    trend_signals.append(trend_5m_signal)
+                    logger.debug(f"🔍 Bayesian Trend_5m signal: {trend_5m_signal.probability:.1%} confidence")
+            
+            # Short-term trend (1m equivalent)
+            if trend_short:
+                trend_short_signal = bayesian.calculate_signal_from_metric("Trend_Short", trend_short, "TREND", direction)
+                if trend_short_signal:
+                    trend_signals.append(trend_short_signal)
+                    logger.debug(f"🔍 Bayesian Trend_Short signal: {trend_short_signal.probability:.1%} confidence")
+            
+            # Medium-term trend (1h equivalent)
+            if trend_medium:
+                trend_medium_signal = bayesian.calculate_signal_from_metric("Trend_Medium", trend_medium, "TREND", direction)
+                if trend_medium_signal:
+                    trend_signals.append(trend_medium_signal)
+                    logger.debug(f"🔍 Bayesian Trend_Medium signal: {trend_medium_signal.probability:.1%} confidence")
+            
+            # Use the trend signal with the highest confidence
+            if trend_signals:
+                best_trend_signal = max(trend_signals, key=lambda x: x.probability)
+                signals.append(best_trend_signal)
+                logger.debug(f"🔍 Best trend signal: {best_trend_signal.metric} with {best_trend_signal.probability:.1%} confidence")
+            else:
+                logger.debug(f"🔍 No valid trend signals found")
             
             if not signals:
+                logger.warning(f"⚠️ No Bayesian signals created for {direction}")
                 return None
             
             # Fuse signals
             fused = bayesian.fuse_signals(signals, direction)
+            logger.debug(f"🔍 Bayesian Fusion: {len(signals)} signals → {fused.posterior_probability:.1%}")
             
             return {
                 'confidence': fused.posterior_probability,

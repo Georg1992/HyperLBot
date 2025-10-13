@@ -28,7 +28,7 @@ class TradingExecution:
         
         # State that should be managed by dedicated managers
         self.paper_balance = 0.0
-        self.leverage_settings = {"max_leverage": 30}
+        self.leverage_settings = {"max_leverage": 40}
         self.trade_history = []
         self.open_positions = []
         self.closed_positions = []
@@ -105,13 +105,27 @@ class TradingExecution:
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
             
-            # Use Hyperliquid simulator for realistic order execution
-            execution_result = self.hyperliquid_simulator.simulate_order_execution(
+            # Calculate stop loss and take profit before passing to simulator
+            if side == "BUY":
+                stop_loss = hyperliquid_price * self.magic_numbers.STOP_LOSS_MULTIPLIER  # Below entry
+                take_profit = hyperliquid_price * self.magic_numbers.PROFIT_TARGET_MULTIPLIER  # Above entry
+            else:  # SELL
+                stop_loss = hyperliquid_price * self.magic_numbers.PROFIT_TARGET_MULTIPLIER  # Above entry
+                take_profit = hyperliquid_price * self.magic_numbers.STOP_LOSS_MULTIPLIER  # Below entry
+            
+            # Use Hyperliquid transition layer for realistic order execution
+            from core.api.hyperliquid_transition_layer import get_global_transition_layer
+            transition_layer = get_global_transition_layer(use_simulator=True)
+            
+            execution_result = transition_layer.place_order(
                 order_type="LIMIT",
                 side=side,
                 size=size,
+                symbol="BTC",
                 price=limit_price,
-                leverage=leverage
+                leverage=leverage,
+                stop_loss=stop_loss,
+                take_profit=take_profit
             )
             
             if not execution_result.get("success", False):
@@ -144,9 +158,9 @@ class TradingExecution:
                 "entry_datetime": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "fees": execution_result.get("fees", {"fee_amount": 0, "fee_type": "maker"}),
                 "signal_data": signal_data,
-                "target_price": hyperliquid_price * self.magic_numbers.PROFIT_TARGET_MULTIPLIER if side == "BUY" else hyperliquid_price * self.magic_numbers.STOP_LOSS_MULTIPLIER,  # 2% target
-                "stop_price": hyperliquid_price * self.magic_numbers.STOP_LOSS_MULTIPLIER if side == "BUY" else hyperliquid_price * self.magic_numbers.PROFIT_TARGET_MULTIPLIER,  # 2% stop
-                "current_stop_loss": hyperliquid_price * self.magic_numbers.STOP_LOSS_MULTIPLIER if side == "BUY" else hyperliquid_price * self.magic_numbers.PROFIT_TARGET_MULTIPLIER,
+                "target_price": take_profit,  # Use calculated take profit
+                "stop_price": stop_loss,  # Use calculated stop loss
+                "current_stop_loss": stop_loss,  # Use calculated stop loss
                 "status": "OPEN",
                 "order_type": "PREDICTIVE_LIMIT",
                 "prediction_type": prediction_type,
@@ -321,12 +335,16 @@ class TradingExecution:
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
             
-            # Use Hyperliquid simulator for realistic exit execution
+            # Use Hyperliquid transition layer for realistic exit execution
+            from core.api.hyperliquid_transition_layer import get_global_transition_layer
+            transition_layer = get_global_transition_layer(use_simulator=True)
+            
             exit_side = "SELL" if side == "BUY" else "BUY"  # Opposite of entry
-            execution_result = self.hyperliquid_simulator.simulate_order_execution(
+            execution_result = transition_layer.place_order(
                 order_type="MARKET",  # Market order for exit
                 side=exit_side,
                 size=size,
+                symbol="BTC",
                 leverage=leverage
             )
             
