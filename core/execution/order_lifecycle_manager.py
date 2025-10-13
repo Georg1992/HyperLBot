@@ -90,19 +90,38 @@ class OrderLifecycleManager:
             order_id: Unique identifier for the order
         """
         try:
+            # DEBUG: Log prediction data structure
+            logger.debug(f"🔍 Prediction data received: {prediction}")
+            
             # Generate unique order ID
             order_id = f"order_{uuid.uuid4().hex[:8]}"
             prediction_id = prediction.get("id", f"pred_{uuid.uuid4().hex[:8]}")
             
-            # Extract order parameters
+            # Extract order parameters with null checks
             side = prediction.get("side", "BUY")
             size = prediction.get("size", 0.001)  # Default 0.001 BTC
             limit_price = prediction.get("entry_price", current_price)
+            
+            # CRITICAL: Check for None values that cause formatting errors
+            if limit_price is None:
+                logger.error(f"❌ entry_price is None in prediction data: {prediction}")
+                limit_price = current_price
+                logger.warning(f"⚠️ Using current_price as fallback: ${limit_price:,.2f}")
+            
             strategy = prediction.get("strategy", "standard")
             confidence = prediction.get("calibrated_confidence", 0.0)
             expected_value = prediction.get("expected_value", 0.0)
             stop_loss = prediction.get("stop_loss")
             take_profit = prediction.get("take_profit")
+            
+            # Additional null checks
+            if stop_loss is None:
+                logger.warning(f"⚠️ stop_loss is None, using current_price")
+                stop_loss = current_price
+                
+            if take_profit is None:
+                logger.warning(f"⚠️ take_profit is None, using current_price")
+                take_profit = current_price
             
             # Calculate timeout
             timeout = time.time() + self.order_timeout_seconds
