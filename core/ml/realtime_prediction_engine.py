@@ -1276,7 +1276,7 @@ class RealtimePredictionEngine:
             if trend_signals:
                 best_trend_signal = max(trend_signals, key=lambda x: x.probability)
                 signals.append(best_trend_signal)
-                logger.debug(f"🔍 Best trend signal: {best_trend_signal.metric} with {best_trend_signal.probability:.1%} confidence")
+                logger.debug(f"🔍 Best trend signal: {best_trend_signal.name} with {best_trend_signal.probability:.1%} confidence")
             else:
                 logger.debug(f"🔍 No valid trend signals found")
             
