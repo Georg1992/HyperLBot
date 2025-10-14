@@ -1084,19 +1084,21 @@
                 if (market.trend_analysis && market.trend_analysis.overall_trend) {
                     const overallTrend = market.trend_analysis.overall_trend;
                     
-                    // Add trends data to the same line
-                    let trendDisplay = overallTrend;
+                    // Add trends data to the same line with color coding
+                    let trendDisplay = `<span class="trend-main">${overallTrend}</span>`;
                     if (market.trends) {
                         const trends = market.trends;
                         if (trends.trend_short && trends.trend_short !== 'UNKNOWN') {
-                            trendDisplay += ` | 1m: ${trends.trend_short}`;
+                            const shortColor = this.getTrendColor(trends.trend_short);
+                            trendDisplay += ` | <span style="color: ${shortColor}">1m: ${trends.trend_short}</span>`;
                         }
                         if (trends.trend_medium && trends.trend_medium !== 'UNKNOWN') {
-                            trendDisplay += ` | 1h: ${trends.trend_medium}`;
+                            const mediumColor = this.getTrendColor(trends.trend_medium);
+                            trendDisplay += ` | <span style="color: ${mediumColor}">1h: ${trends.trend_medium}</span>`;
                         }
                     }
                     
-                    overallTrendElement.textContent = trendDisplay;
+                    overallTrendElement.innerHTML = trendDisplay;
                     overallTrendElement.className = 'data-value ' + this.getTrendClass(overallTrend);
                 } else {
                     overallTrendElement.textContent = 'N/A';
@@ -3417,6 +3419,19 @@
                     return 'trend-down';
                 }
                 return 'trend-neutral';
+            }
+            
+            getTrendColor(trend) {
+                if (!trend) return '#888';
+                const trendUpper = trend.toUpperCase();
+                if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY')) {
+                    return '#00ff88';  // Green for bullish
+                } else if (trendUpper.includes('DOWN') || trendUpper.includes('BEAR') || trendUpper.includes('SELL')) {
+                    return '#ff4444';  // Red for bearish
+                } else if (trendUpper.includes('SIDEWAYS') || trendUpper.includes('NEUTRAL')) {
+                    return '#ffaa00';  // Orange for sideways
+                }
+                return '#888';  // Gray for unknown
             }
             
             requestManualRefresh() {
