@@ -1325,10 +1325,12 @@ class SessionOrchestrator:
                 simulator = system_initializer.singleton_systems.get("hyperliquid_simulator")
                 
                 if simulator:
+                    logger.debug(f"🔍 Using simulator for trade data")
                     # Get all positions from simulator
                     open_positions = simulator.get_open_positions()
                     closed_positions = simulator.get_closed_positions(limit=100)
                     account_state = simulator.get_account_state()
+                    logger.debug(f"🔍 Simulator data: {len(open_positions)} open, {len(closed_positions)} closed")
                     
                     # Convert simulator positions to dashboard format
                     all_trades = []

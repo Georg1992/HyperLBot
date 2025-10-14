@@ -98,9 +98,14 @@ class OrderLifecycleManager:
             prediction_id = prediction.get("id", f"pred_{uuid.uuid4().hex[:8]}")
             
             # Extract order parameters with null checks
-            side = prediction.get("side", "BUY")
+            # FIXED: Use 'direction' from prediction data, not 'side'
+            direction = prediction.get("direction", "LONG")
+            side = "SELL" if direction == "SHORT" else "BUY"  # Convert direction to order side
             size = prediction.get("size", 0.001)  # Default 0.001 BTC
             limit_price = prediction.get("entry_price", current_price)
+            
+            # DEBUG: Log the conversion
+            logger.debug(f"🔍 Direction conversion: {direction} → {side}")
             
             # CRITICAL: Check for None values that cause formatting errors
             if limit_price is None:
@@ -431,9 +436,12 @@ class OrderLifecycleManager:
     def get_dashboard_data(self) -> Dict[str, Any]:
         """Get current state for dashboard display"""
         try:
+            filled_orders = [asdict(order) for order in self.filled_orders.values()]
+            logger.debug(f"🔍 Dashboard data: {len(filled_orders)} filled orders, {len(self.active_positions)} active positions")
+            
             return {
                 "pending_orders": [asdict(order) for order in self.pending_orders.values()],
-                "filled_orders": [asdict(order) for order in self.filled_orders.values()],  # ADDED: Include filled orders
+                "filled_orders": filled_orders,  # ADDED: Include filled orders
                 "active_positions": [asdict(position) for position in self.active_positions.values()],
                 "closed_positions": [asdict(position) for position in self.closed_positions[-20:]],  # Last 20
                 "statistics": {
