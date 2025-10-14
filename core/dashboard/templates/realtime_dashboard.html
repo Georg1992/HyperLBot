@@ -1090,11 +1090,11 @@
                         const trends = market.trends;
                         if (trends.trend_short && trends.trend_short !== 'UNKNOWN') {
                             const shortColor = this.getTrendColor(trends.trend_short);
-                            trendDisplay += ` | <span style="color: ${shortColor}">1m: ${trends.trend_short}</span>`;
+                            trendDisplay += ` | <span style="color: ${shortColor}">15m: ${trends.trend_short}</span>`;
                         }
                         if (trends.trend_medium && trends.trend_medium !== 'UNKNOWN') {
                             const mediumColor = this.getTrendColor(trends.trend_medium);
-                            trendDisplay += ` | <span style="color: ${mediumColor}">1h: ${trends.trend_medium}</span>`;
+                            trendDisplay += ` | <span style="color: ${mediumColor}">2h: ${trends.trend_medium}</span>`;
                         }
                     }
                     
