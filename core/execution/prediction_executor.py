@@ -175,10 +175,15 @@ class PredictionExecutor:
             
             # Apply Bayesian fusion if available
             if bayesian_confidence > 0:
-                # Weighted combination: 70% main + 30% bayesian
-                # This gives more weight to our comprehensive analysis while incorporating additional validation
-                confidence = (main_confidence * 0.7) + (bayesian_confidence * 0.3)
-                logger.debug(f"🔍 Bayesian Fusion: main={main_confidence:.1%} + bayesian={bayesian_confidence:.1%} = {confidence:.1%}")
+                # FIXED: If Bayesian confidence is significantly higher, use it directly
+                # This prevents low main confidence from blocking high-quality Bayesian predictions
+                if bayesian_confidence > (main_confidence * 1.3):  # Bayesian is 30%+ higher
+                    confidence = bayesian_confidence
+                    logger.debug(f"🔍 Using Bayesian confidence directly: {confidence:.1%} (main={main_confidence:.1%} too low)")
+                else:
+                    # Weighted combination: 50% main + 50% bayesian (more balanced)
+                    confidence = (main_confidence * 0.5) + (bayesian_confidence * 0.5)
+                    logger.debug(f"🔍 Balanced Fusion: main={main_confidence:.1%} + bayesian={bayesian_confidence:.1%} = {confidence:.1%}")
             else:
                 # Use main confidence if no Bayesian data available
                 confidence = main_confidence
