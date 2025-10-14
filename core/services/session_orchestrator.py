@@ -1446,6 +1446,7 @@ class SessionOrchestrator:
                     # Combine all trades for dashboard
                     all_trades = []
                     all_trades.extend(lifecycle_data.get("pending_orders", []))
+                    all_trades.extend(lifecycle_data.get("filled_orders", []))  # ADDED: Include filled orders
                     all_trades.extend(lifecycle_data.get("active_positions", []))
                     all_trades.extend(lifecycle_data.get("closed_positions", []))
                     

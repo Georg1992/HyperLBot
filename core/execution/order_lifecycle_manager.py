@@ -433,6 +433,7 @@ class OrderLifecycleManager:
         try:
             return {
                 "pending_orders": [asdict(order) for order in self.pending_orders.values()],
+                "filled_orders": [asdict(order) for order in self.filled_orders.values()],  # ADDED: Include filled orders
                 "active_positions": [asdict(position) for position in self.active_positions.values()],
                 "closed_positions": [asdict(position) for position in self.closed_positions[-20:]],  # Last 20
                 "statistics": {
