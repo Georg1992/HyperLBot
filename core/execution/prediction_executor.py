@@ -165,29 +165,21 @@ class PredictionExecutor:
                     "checks_failed": ["❌ Invalid thresholds object"]
                 }
             
-            # 1. CHECK: Confidence threshold (Bayesian fusion of main + additional signals)
-            main_confidence = prediction.get("confidence", 0) or 0
-            bayesian_confidence = prediction.get("bayesian_confidence", 0) or 0
+            # 1. CHECK: Use the FINAL confidence (already incorporates all factors)
+            # The prediction should have ONE final confidence that includes Bayesian and all other factors
+            confidence = prediction.get("calibrated_confidence", 0) or prediction.get("bayesian_confidence", 0) or prediction.get("confidence", 0) or 0
             
-            if main_confidence is None or main_confidence <= 0:
-                logger.error(f"❌ Main confidence is None or invalid in prediction: {prediction}")
-                main_confidence = 0.0
+            if confidence is None or confidence <= 0:
+                logger.error(f"❌ Final confidence is None or invalid in prediction: {prediction}")
+                confidence = 0.0
             
-            # Apply Bayesian fusion if available
-            if bayesian_confidence > 0:
-                # FIXED: If Bayesian confidence is significantly higher, use it directly
-                # This prevents low main confidence from blocking high-quality Bayesian predictions
-                if bayesian_confidence > (main_confidence * 1.3):  # Bayesian is 30%+ higher
-                    confidence = bayesian_confidence
-                    logger.debug(f"🔍 Using Bayesian confidence directly: {confidence:.1%} (main={main_confidence:.1%} too low)")
-                else:
-                    # Weighted combination: 50% main + 50% bayesian (more balanced)
-                    confidence = (main_confidence * 0.5) + (bayesian_confidence * 0.5)
-                    logger.debug(f"🔍 Balanced Fusion: main={main_confidence:.1%} + bayesian={bayesian_confidence:.1%} = {confidence:.1%}")
+            # Log the confidence source for transparency
+            if prediction.get("calibrated_confidence"):
+                logger.debug(f"🔍 Using calibrated confidence: {confidence:.1%}")
+            elif prediction.get("bayesian_confidence"):
+                logger.debug(f"🔍 Using Bayesian confidence: {confidence:.1%}")
             else:
-                # Use main confidence if no Bayesian data available
-                confidence = main_confidence
-                logger.debug(f"🔍 Confidence: {confidence:.1%} (no Bayesian fusion available)")
+                logger.debug(f"🔍 Using base confidence: {confidence:.1%}")
             
             # FIXED: Strategy-specific confidence handling
             # Range trading strategies can work with lower confidence due to mean reversion nature
