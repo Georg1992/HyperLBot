@@ -320,140 +320,170 @@ class RealtimePredictionEngine:
             # Use the final calibrated confidence
             final_confidence = calibrated_result['confidence'] if calibrated_result else confidence
             
-            # NO ACTIVE PREDICTION - Create new one
+            # REFACTORED: Use dedicated methods for SRP compliance
             if not self.active_prediction:
-                self.active_prediction = RealtimePrediction(
-                    direction=direction,
-                    confidence=final_confidence,  # Use calibrated confidence
-                    entry_price=entry_price,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
-                    risk_reward_ratio=risk_reward,
-                    base_confidence=base_confidence,
-                    confidence_boosts=boosts,
-                    confidence_history=[final_confidence],
-                    current_price=current_price,
-                    score=score,
-                    reasoning=direction_reasoning + "; " + "; ".join(confidence_reasoning),
-                    # EV data
-                    expected_value=ev_result.ev_percent,
-                    expected_value_dollars=ev_result.ev_dollars,
-                    win_probability=ev_result.win_probability,
-                    ev_reasoning=ev_result.reasoning,
-                    should_trade_ev=ev_result.should_trade,
-                    # Bayesian data
-                    bayesian_confidence=bayesian_result.get('confidence') if bayesian_result else None,
-                    bayesian_reasoning=bayesian_result.get('reasoning') if bayesian_result else None,
-                    # Timeframe data
-                    timeframe_adjusted_confidence=timeframe_result.get('confidence') if timeframe_result else None,
-                    timeframe_reasoning=timeframe_result.get('reasoning') if timeframe_result else None,
-                    expected_hold_time_seconds=timeframe_result.get('expected_hold_time') if timeframe_result else None,
-                    # Calibration data
-                    calibrated_confidence=calibrated_result.get('confidence') if calibrated_result else None,
-                    calibration_adjustment=calibrated_result.get('adjustment') if calibrated_result else None,
-                    # Kelly position sizing
-                    kelly_position_pct=kelly_result.get('position_pct') if kelly_result else None,
-                    kelly_position_dollars=kelly_result.get('position_dollars') if kelly_result else None,
-                    # FINAL CONFIDENCE - incorporates all factors
-                    final_confidence=final_confidence
+                return self._create_new_prediction(
+                    direction, score, confidence, final_confidence, entry_price, stop_loss, take_profit,
+                    risk_reward, base_confidence, boosts, current_price, direction_reasoning, confidence_reasoning,
+                    ev_result, bayesian_result, timeframe_result, calibrated_result, kelly_result
                 )
-                bayesian_conf_str = f"{bayesian_result.get('confidence', 0):.1%}" if bayesian_result else "N/A"
-                logger.info(f"🎯 NEW prediction: {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
-                return "CREATED"
             
-            # ACTIVE PREDICTION EXISTS - Update fields
-            old_direction = self.active_prediction.direction
-            old_confidence = self.active_prediction.confidence
-            
-            # Check if direction changed
-            if direction != old_direction:
-                logger.warning(f"🔄 Direction changed: {old_direction} → {direction}")
+            # Check for direction change
+            if direction != self.active_prediction.direction:
+                logger.warning(f"🔄 Direction changed: {self.active_prediction.direction} → {direction}")
                 self.direction_changes += 1
-                
-                # Reset prediction with new direction
-                self.active_prediction = RealtimePrediction(
-                    direction=direction,
-                    confidence=confidence,
-                    entry_price=entry_price,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
-                    risk_reward_ratio=risk_reward,
-                    base_confidence=base_confidence,
-                    confidence_boosts=boosts,
-                    confidence_history=[confidence],
-                    current_price=current_price,
-                    score=score,
-                    reasoning=direction_reasoning + "; " + "; ".join(confidence_reasoning),
-                    # EV data
-                    expected_value=ev_result.ev_percent,
-                    expected_value_dollars=ev_result.ev_dollars,
-                    win_probability=ev_result.win_probability,
-                    ev_reasoning=ev_result.reasoning,
-                    should_trade_ev=ev_result.should_trade
+                return self._create_new_prediction(
+                    direction, score, confidence, final_confidence, entry_price, stop_loss, take_profit,
+                    risk_reward, base_confidence, boosts, current_price, direction_reasoning, confidence_reasoning,
+                    ev_result, bayesian_result, timeframe_result, calibrated_result, kelly_result
                 )
-                return "CREATED"
             
-            # UPDATE EXISTING PREDICTION FIELDS
-            self.active_prediction.confidence = confidence
-            self.active_prediction.entry_price = entry_price
-            self.active_prediction.stop_loss = stop_loss
-            self.active_prediction.take_profit = take_profit
-            self.active_prediction.risk_reward_ratio = risk_reward
-            self.active_prediction.base_confidence = base_confidence
-            self.active_prediction.confidence_boosts = boosts
-            self.active_prediction.confidence_history.append(confidence)
-            self.active_prediction.current_price = current_price
-            self.active_prediction.score = score
-            self.active_prediction.reasoning = direction_reasoning + "; " + "; ".join(confidence_reasoning)
-            self.active_prediction.last_updated = time.time()
-            # Update EV data
-            self.active_prediction.expected_value = ev_result.ev_percent
-            self.active_prediction.expected_value_dollars = ev_result.ev_dollars
-            self.active_prediction.win_probability = ev_result.win_probability
-            self.active_prediction.ev_reasoning = ev_result.reasoning
-            self.active_prediction.should_trade_ev = ev_result.should_trade
-            # Update Bayesian data
-            self.active_prediction.bayesian_confidence = bayesian_result.get('confidence') if bayesian_result else None
-            self.active_prediction.bayesian_reasoning = bayesian_result.get('reasoning') if bayesian_result else None
-            # Update timeframe data
-            self.active_prediction.timeframe_adjusted_confidence = timeframe_result.get('confidence') if timeframe_result else None
-            self.active_prediction.timeframe_reasoning = timeframe_result.get('reasoning') if timeframe_result else None
-            self.active_prediction.expected_hold_time_seconds = timeframe_result.get('expected_hold_time') if timeframe_result else None
-            # Update calibration data
-            self.active_prediction.calibrated_confidence = calibrated_result.get('confidence') if calibrated_result else None
-            self.active_prediction.calibration_adjustment = calibrated_result.get('adjustment') if calibrated_result else None
-            # Update Kelly position sizing
-            self.active_prediction.kelly_position_pct = kelly_result.get('position_pct') if kelly_result else None
-            self.active_prediction.kelly_position_dollars = kelly_result.get('position_dollars') if kelly_result else None
-            # Update FINAL CONFIDENCE - incorporates all factors
-            self.active_prediction.final_confidence = final_confidence
-            
-            self.updates_count += 1
-            
-            # Check if ready to execute
-            if confidence >= self.confidence_threshold:
-                self.active_prediction.ready_to_execute = True
-                self.active_prediction.execution_reason = f"Confidence {confidence:.1%} >= {self.confidence_threshold:.1%}"
-                logger.success(f"✅ EXECUTE: {direction} @ ${entry_price:,.2f} ({confidence:.1%})")
-                return "EXECUTE"
-            
-            # Log confidence change
-            if confidence > old_confidence:
-                logger.info(f"📈 Confidence: {old_confidence:.1%} → {confidence:.1%} (+{confidence - old_confidence:.1%})")
-            elif confidence < old_confidence:
-                logger.info(f"📉 Confidence: {old_confidence:.1%} → {confidence:.1%} ({confidence - old_confidence:.1%})")
-            
-            # Check if prediction is too old
-            if self.active_prediction.age_seconds > self.max_prediction_age:
-                logger.warning(f"⏰ Prediction expired: {self.active_prediction.age_seconds:.0f}s old")
-                self.active_prediction = None
-                return "CANCELLED"
-            
-            return "UPDATED"
+            # Update existing prediction
+            return self._update_existing_prediction(
+                confidence, final_confidence, entry_price, stop_loss, take_profit, risk_reward,
+                base_confidence, boosts, current_price, score, direction_reasoning, confidence_reasoning,
+                ev_result, bayesian_result, timeframe_result, calibrated_result, kelly_result
+            )
             
         except Exception as e:
             logger.error(f"❌ Prediction update failed: {e}")
             return "NO_SIGNAL"
+    
+    def _create_new_prediction(self, direction: str, score: float, confidence: float, final_confidence: float,
+                              entry_price: float, stop_loss: float, take_profit: float, risk_reward: float,
+                              base_confidence: float, boosts: List[Tuple[str, float]], current_price: float,
+                              direction_reasoning: str, confidence_reasoning: List[str], ev_result: Any,
+                              bayesian_result: Optional[Dict], timeframe_result: Optional[Dict],
+                              calibrated_result: Optional[Dict], kelly_result: Optional[Dict]) -> str:
+        """Create a new prediction (SRP: single responsibility)"""
+        self.active_prediction = RealtimePrediction(
+            direction=direction,
+            confidence=final_confidence,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            risk_reward_ratio=risk_reward,
+            base_confidence=base_confidence,
+            confidence_boosts=boosts,
+            confidence_history=[final_confidence],
+            current_price=current_price,
+            score=score,
+            reasoning=direction_reasoning + "; " + "; ".join(confidence_reasoning),
+            # EV data
+            expected_value=ev_result.ev_percent,
+            expected_value_dollars=ev_result.ev_dollars,
+            win_probability=ev_result.win_probability,
+            ev_reasoning=ev_result.reasoning,
+            should_trade_ev=ev_result.should_trade,
+            # Bayesian data
+            bayesian_confidence=bayesian_result.get('confidence') if bayesian_result else None,
+            bayesian_reasoning=bayesian_result.get('reasoning') if bayesian_result else None,
+            # Timeframe data
+            timeframe_adjusted_confidence=timeframe_result.get('confidence') if timeframe_result else None,
+            timeframe_reasoning=timeframe_result.get('reasoning') if timeframe_result else None,
+            expected_hold_time_seconds=timeframe_result.get('expected_hold_time') if timeframe_result else None,
+            # Calibration data
+            calibrated_confidence=calibrated_result.get('confidence') if calibrated_result else None,
+            calibration_adjustment=calibrated_result.get('adjustment') if calibrated_result else None,
+            # Kelly position sizing
+            kelly_position_pct=kelly_result.get('position_pct') if kelly_result else None,
+            kelly_position_dollars=kelly_result.get('position_dollars') if kelly_result else None,
+            # FINAL CONFIDENCE - incorporates all factors
+            final_confidence=final_confidence
+        )
+        
+        bayesian_conf_str = f"{bayesian_result.get('confidence', 0):.1%}" if bayesian_result else "N/A"
+        logger.info(f"🎯 NEW prediction: {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
+        return "CREATED"
+    
+    def _update_existing_prediction(self, confidence: float, final_confidence: float, entry_price: float,
+                                   stop_loss: float, take_profit: float, risk_reward: float,
+                                   base_confidence: float, boosts: List[Tuple[str, float]], current_price: float,
+                                   score: float, direction_reasoning: str, confidence_reasoning: List[str],
+                                   ev_result: Any, bayesian_result: Optional[Dict], timeframe_result: Optional[Dict],
+                                   calibrated_result: Optional[Dict], kelly_result: Optional[Dict]) -> str:
+        """Update existing prediction (SRP: single responsibility)"""
+        old_confidence = self.active_prediction.confidence
+        
+        # Update core fields
+        self.active_prediction.confidence = confidence
+        self.active_prediction.entry_price = entry_price
+        self.active_prediction.stop_loss = stop_loss
+        self.active_prediction.take_profit = take_profit
+        self.active_prediction.risk_reward_ratio = risk_reward
+        self.active_prediction.base_confidence = base_confidence
+        self.active_prediction.confidence_boosts = boosts
+        self.active_prediction.confidence_history.append(confidence)
+        self.active_prediction.current_price = current_price
+        self.active_prediction.score = score
+        self.active_prediction.reasoning = direction_reasoning + "; " + "; ".join(confidence_reasoning)
+        self.active_prediction.last_updated = time.time()
+        
+        # Update EV data
+        self.active_prediction.expected_value = ev_result.ev_percent
+        self.active_prediction.expected_value_dollars = ev_result.ev_dollars
+        self.active_prediction.win_probability = ev_result.win_probability
+        self.active_prediction.ev_reasoning = ev_result.reasoning
+        self.active_prediction.should_trade_ev = ev_result.should_trade
+        
+        # Update Bayesian data
+        self.active_prediction.bayesian_confidence = bayesian_result.get('confidence') if bayesian_result else None
+        self.active_prediction.bayesian_reasoning = bayesian_result.get('reasoning') if bayesian_result else None
+        
+        # Update timeframe data
+        self.active_prediction.timeframe_adjusted_confidence = timeframe_result.get('confidence') if timeframe_result else None
+        self.active_prediction.timeframe_reasoning = timeframe_result.get('reasoning') if timeframe_result else None
+        self.active_prediction.expected_hold_time_seconds = timeframe_result.get('expected_hold_time') if timeframe_result else None
+        
+        # Update calibration data
+        self.active_prediction.calibrated_confidence = calibrated_result.get('confidence') if calibrated_result else None
+        self.active_prediction.calibration_adjustment = calibrated_result.get('adjustment') if calibrated_result else None
+        
+        # Update Kelly position sizing
+        self.active_prediction.kelly_position_pct = kelly_result.get('position_pct') if kelly_result else None
+        self.active_prediction.kelly_position_dollars = kelly_result.get('position_dollars') if kelly_result else None
+        
+        # Update FINAL CONFIDENCE - incorporates all factors
+        self.active_prediction.final_confidence = final_confidence
+        
+        self.updates_count += 1
+        
+        # Check execution readiness
+        if self._check_execution_readiness(confidence):
+            return "EXECUTE"
+        
+        # Log confidence changes
+        self._log_confidence_change(old_confidence, confidence)
+        
+        # Check prediction age
+        if self._check_prediction_age():
+            return "CANCELLED"
+        
+        return "UPDATED"
+    
+    def _check_execution_readiness(self, confidence: float) -> bool:
+        """Check if prediction is ready for execution (SRP: single responsibility)"""
+        if confidence >= self.confidence_threshold:
+            self.active_prediction.ready_to_execute = True
+            self.active_prediction.execution_reason = f"Confidence {confidence:.1%} >= {self.confidence_threshold:.1%}"
+            logger.success(f"✅ EXECUTE: {self.active_prediction.direction} @ ${self.active_prediction.entry_price:,.2f} ({confidence:.1%})")
+            return True
+        return False
+    
+    def _log_confidence_change(self, old_confidence: float, new_confidence: float) -> None:
+        """Log confidence changes (SRP: single responsibility)"""
+        if new_confidence > old_confidence:
+            logger.info(f"📈 Confidence: {old_confidence:.1%} → {new_confidence:.1%} (+{new_confidence - old_confidence:.1%})")
+        elif new_confidence < old_confidence:
+            logger.info(f"📉 Confidence: {old_confidence:.1%} → {new_confidence:.1%} ({new_confidence - old_confidence:.1%})")
+    
+    def _check_prediction_age(self) -> bool:
+        """Check if prediction is too old (SRP: single responsibility)"""
+        if self.active_prediction.age_seconds > self.max_prediction_age:
+            logger.warning(f"⏰ Prediction expired: {self.active_prediction.age_seconds:.0f}s old")
+            self.active_prediction = None
+            return True
+        return False
     
     # ==========================================
     # MODULE 1: DIRECTION RECOGNITION
