@@ -166,20 +166,28 @@ class PredictionExecutor:
                 }
             
             # 1. CHECK: Use the FINAL confidence (already incorporates all factors)
-            # The prediction should have ONE final confidence that includes Bayesian and all other factors
-            confidence = prediction.get("calibrated_confidence", 0) or prediction.get("bayesian_confidence", 0) or prediction.get("confidence", 0) or 0
+            # The prediction MUST have calibrated_confidence - no fallbacks
+            confidence = prediction.get("calibrated_confidence")
             
-            if confidence is None or confidence <= 0:
-                logger.error(f"❌ Final confidence is None or invalid in prediction: {prediction}")
-                confidence = 0.0
+            if confidence is None:
+                logger.error(f"❌ calibrated_confidence is missing from prediction: {prediction}")
+                return {
+                    "should_execute": False,
+                    "reason": "Missing calibrated_confidence in prediction",
+                    "checks_passed": [],
+                    "checks_failed": ["❌ Missing calibrated_confidence"]
+                }
             
-            # Log the confidence source for transparency
-            if prediction.get("calibrated_confidence"):
-                logger.debug(f"🔍 Using calibrated confidence: {confidence:.1%}")
-            elif prediction.get("bayesian_confidence"):
-                logger.debug(f"🔍 Using Bayesian confidence: {confidence:.1%}")
-            else:
-                logger.debug(f"🔍 Using base confidence: {confidence:.1%}")
+            if confidence <= 0:
+                logger.error(f"❌ calibrated_confidence is invalid: {confidence}")
+                return {
+                    "should_execute": False,
+                    "reason": "Invalid calibrated_confidence value",
+                    "checks_passed": [],
+                    "checks_failed": [f"❌ Invalid calibrated_confidence: {confidence}"]
+                }
+            
+            logger.debug(f"🔍 Using calibrated confidence: {confidence:.1%}")
             
             # FIXED: Strategy-specific confidence handling
             # Range trading strategies can work with lower confidence due to mean reversion nature
