@@ -71,6 +71,9 @@ class RealtimePrediction:
     kelly_position_pct: Optional[float] = None  # Kelly-optimal position size %
     kelly_position_dollars: Optional[float] = None  # Kelly position in dollars
     
+    # FINAL CONFIDENCE - incorporates all factors
+    final_confidence: Optional[float] = None  # Final confidence after all processing
+    
     # EXECUTION
     ready_to_execute: bool = False
     execution_reason: str = ""
@@ -113,7 +116,9 @@ class RealtimePrediction:
             "calibration_adjustment": self.calibration_adjustment,
             # Kelly position sizing
             "kelly_position_pct": self.kelly_position_pct,
-            "kelly_position_dollars": self.kelly_position_dollars
+            "kelly_position_dollars": self.kelly_position_dollars,
+            # Final confidence - incorporates all factors
+            "final_confidence": self.final_confidence
         }
 
 
@@ -348,7 +353,9 @@ class RealtimePredictionEngine:
                     calibration_adjustment=calibrated_result.get('adjustment') if calibrated_result else None,
                     # Kelly position sizing
                     kelly_position_pct=kelly_result.get('position_pct') if kelly_result else None,
-                    kelly_position_dollars=kelly_result.get('position_dollars') if kelly_result else None
+                    kelly_position_dollars=kelly_result.get('position_dollars') if kelly_result else None,
+                    # FINAL CONFIDENCE - incorporates all factors
+                    final_confidence=final_confidence
                 )
                 bayesian_conf_str = f"{bayesian_result.get('confidence', 0):.1%}" if bayesian_result else "N/A"
                 logger.info(f"🎯 NEW prediction: {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
@@ -405,6 +412,21 @@ class RealtimePredictionEngine:
             self.active_prediction.win_probability = ev_result.win_probability
             self.active_prediction.ev_reasoning = ev_result.reasoning
             self.active_prediction.should_trade_ev = ev_result.should_trade
+            # Update Bayesian data
+            self.active_prediction.bayesian_confidence = bayesian_result.get('confidence') if bayesian_result else None
+            self.active_prediction.bayesian_reasoning = bayesian_result.get('reasoning') if bayesian_result else None
+            # Update timeframe data
+            self.active_prediction.timeframe_adjusted_confidence = timeframe_result.get('confidence') if timeframe_result else None
+            self.active_prediction.timeframe_reasoning = timeframe_result.get('reasoning') if timeframe_result else None
+            self.active_prediction.expected_hold_time_seconds = timeframe_result.get('expected_hold_time') if timeframe_result else None
+            # Update calibration data
+            self.active_prediction.calibrated_confidence = calibrated_result.get('confidence') if calibrated_result else None
+            self.active_prediction.calibration_adjustment = calibrated_result.get('adjustment') if calibrated_result else None
+            # Update Kelly position sizing
+            self.active_prediction.kelly_position_pct = kelly_result.get('position_pct') if kelly_result else None
+            self.active_prediction.kelly_position_dollars = kelly_result.get('position_dollars') if kelly_result else None
+            # Update FINAL CONFIDENCE - incorporates all factors
+            self.active_prediction.final_confidence = final_confidence
             
             self.updates_count += 1
             

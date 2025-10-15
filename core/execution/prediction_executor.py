@@ -165,29 +165,29 @@ class PredictionExecutor:
                     "checks_failed": ["❌ Invalid thresholds object"]
                 }
             
-            # 1. CHECK: Use the FINAL confidence (already incorporates all factors)
-            # The prediction MUST have calibrated_confidence - no fallbacks
-            confidence = prediction.get("calibrated_confidence")
+            # 1. CHECK: Use the FINAL confidence (incorporates all factors)
+            # The prediction MUST have final_confidence - no fallbacks
+            confidence = prediction.get("final_confidence")
             
             if confidence is None:
-                logger.error(f"❌ calibrated_confidence is missing from prediction: {prediction}")
+                logger.error(f"❌ final_confidence is missing from prediction: {prediction}")
                 return {
                     "should_execute": False,
-                    "reason": "Missing calibrated_confidence in prediction",
+                    "reason": "Missing final_confidence in prediction",
                     "checks_passed": [],
-                    "checks_failed": ["❌ Missing calibrated_confidence"]
+                    "checks_failed": ["❌ Missing final_confidence"]
                 }
             
             if confidence <= 0:
-                logger.error(f"❌ calibrated_confidence is invalid: {confidence}")
+                logger.error(f"❌ final_confidence is invalid: {confidence}")
                 return {
                     "should_execute": False,
-                    "reason": "Invalid calibrated_confidence value",
+                    "reason": "Invalid final_confidence value",
                     "checks_passed": [],
-                    "checks_failed": [f"❌ Invalid calibrated_confidence: {confidence}"]
+                    "checks_failed": [f"❌ Invalid final_confidence: {confidence}"]
                 }
             
-            logger.debug(f"🔍 Using calibrated confidence: {confidence:.1%}")
+            logger.debug(f"🔍 Using final confidence: {confidence:.1%}")
             
             # FIXED: Strategy-specific confidence handling
             # Range trading strategies can work with lower confidence due to mean reversion nature
