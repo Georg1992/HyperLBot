@@ -410,7 +410,7 @@ class MarketDataManager:
             from core.services.system_initializer import get_system_initializer
             system_initializer = get_system_initializer()
             strategy_manager = system_initializer.singleton_systems.get("strategy_manager")
-            current_strategy = strategy_manager.get_current_strategy() if strategy_manager else "standard"
+            current_strategy = strategy_manager.current_strategy if strategy_manager else "standard"
             
             volatility_result = volatility_calculator.calculate_candle_volatility(hyperliquid_candles, "5m", current_strategy)
             volatility_5m = volatility_result.get("volatility", 0.0)
