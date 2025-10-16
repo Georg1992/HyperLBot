@@ -306,25 +306,25 @@ class RealtimePredictionEngine:
         # Use the final calibrated confidence as the single confidence value
         single_confidence = final_confidence
         
-                self.active_prediction = RealtimePrediction(
-                    direction=direction,
+        self.active_prediction = RealtimePrediction(
+            direction=direction,
             confidence=single_confidence,  # Single confidence field
-                    entry_price=entry_price,
-                    stop_loss=stop_loss,
-                    take_profit=take_profit,
-                    risk_reward_ratio=risk_reward,
-                    base_confidence=base_confidence,
-                    confidence_boosts=boosts,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            risk_reward_ratio=risk_reward,
+            base_confidence=base_confidence,
+            confidence_boosts=boosts,
             confidence_history=[single_confidence],
-                    current_price=current_price,
-                    score=score,
+            current_price=current_price,
+            score=score,
             reasoning=direction_reasoning + "; " + confidence_reasoning,
-                    # EV data
-                    expected_value=ev_result.ev_percent,
-                    expected_value_dollars=ev_result.ev_dollars,
-                    win_probability=ev_result.win_probability,
-                    ev_reasoning=ev_result.reasoning,
-                    should_trade_ev=ev_result.should_trade,
+            # EV data
+            expected_value=ev_result.ev_percent,
+            expected_value_dollars=ev_result.ev_dollars,
+            win_probability=ev_result.win_probability,
+            ev_reasoning=ev_result.reasoning,
+            should_trade_ev=ev_result.should_trade,
             # Bayesian data (ONLY confidence system now)
             bayesian_confidence=bayesian_result['confidence'] if bayesian_result else None,
             bayesian_reasoning=bayesian_result['reasoning'] if bayesian_result else None
