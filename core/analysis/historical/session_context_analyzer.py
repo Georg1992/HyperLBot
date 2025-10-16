@@ -241,8 +241,10 @@ class SessionContextAnalyzer:
             # Calculate daily volatility using centralized VolatilityCalculator (SINGLE SOURCE OF TRUTH)
             from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
             volatility_calculator = get_global_volatility_calculator()
-            avg_volatility = volatility_calculator.calculate_candle_volatility(candles_1d, "1d")
-            recent_volatility = volatility_calculator.calculate_candle_volatility(candles_1d[-7:], "1d") if len(candles_1d) >= 7 else avg_volatility
+            avg_volatility_result = volatility_calculator.calculate_candle_volatility(candles_1d, "1d", "standard")
+            avg_volatility = avg_volatility_result.get("volatility", 0.0) if isinstance(avg_volatility_result, dict) else avg_volatility_result
+            recent_volatility_result = volatility_calculator.calculate_candle_volatility(candles_1d[-7:], "1d", "standard") if len(candles_1d) >= 7 else avg_volatility_result
+            recent_volatility = recent_volatility_result.get("volatility", 0.0) if isinstance(recent_volatility_result, dict) else recent_volatility_result
             
             # Volatility regime classification using centralized constants (adjusted for daily timeframe)
             from core.constants import VariabilityConstants

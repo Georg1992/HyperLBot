@@ -98,15 +98,29 @@ class TradeManager:
             volatility_5m = signal_data.get("prediction_analysis", {}).get("volatility_5m", 0.003)
             strategy_name = signal_data.get("strategy_name", "standard")
             
-            # Use centralized volatility constants for consistency
-            from core.constants import VariabilityConstants
+            # Use strategy-specific volatility thresholds
+            from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
             
+            # Get strategy-specific thresholds
+            volatility_calculator = get_global_volatility_calculator()
+            strategy_thresholds = {
+                "scalping": {"LOW": 0.0008, "MODERATE": 0.0015, "HIGH": 0.0025, "EXTREME": 0.0040},
+                "standard": {"LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0040, "EXTREME": 0.0080},
+                "range_trading": {"LOW": 0.0020, "MODERATE": 0.0040, "HIGH": 0.0060, "EXTREME": 0.0120},
+                "breakout": {"LOW": 0.0010, "MODERATE": 0.0020, "HIGH": 0.0030, "EXTREME": 0.0050},
+                "trend_following": {"LOW": 0.0030, "MODERATE": 0.0060, "HIGH": 0.0100, "EXTREME": 0.0200},
+                "low_volatility_range": {"LOW": 0.0025, "MODERATE": 0.0050, "HIGH": 0.0080, "EXTREME": 0.0150},
+                "high_volatility": {"LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0040, "EXTREME": 0.0080}
+            }
+            
+            thresholds = strategy_thresholds.get(strategy_name, strategy_thresholds["standard"])
             volatility_score = 0.5  # Default
-            if strategy_name == "high_volatility" and volatility_5m > VariabilityConstants.VOLATILITY_5M_HIGH:
+            
+            if strategy_name == "high_volatility" and volatility_5m > thresholds["HIGH"]:
                 volatility_score = 1.0  # High vol strategy with high vol
-            elif strategy_name == "low_volatility_range" and volatility_5m < VariabilityConstants.VOLATILITY_5M_LOW:
+            elif strategy_name == "low_volatility_range" and volatility_5m < thresholds["LOW"]:
                 volatility_score = 1.0  # Low vol strategy with low vol
-            elif strategy_name == "standard" and VariabilityConstants.VOLATILITY_5M_LOW <= volatility_5m <= VariabilityConstants.VOLATILITY_5M_HIGH:
+            elif strategy_name == "standard" and thresholds["LOW"] <= volatility_5m <= thresholds["HIGH"]:
                 volatility_score = 0.9  # Standard strategy with normal vol
             
             quality_score += volatility_score * 0.10

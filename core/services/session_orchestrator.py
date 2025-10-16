@@ -586,9 +586,9 @@ class SessionOrchestrator:
                 "volatility_5m": volatility_5m,
                 "volatility_category": volatility_5m_category,  # Fixed: strategy manager expects 'volatility_category'
                 "volatility_5m_category": volatility_5m_category,  # Keep for backward compatibility
-                "volatility_1m": get_global_volatility_calculator().calculate_candle_volatility(candles_1m, "1m") if len(candles_1m) >= 1 else 0.0,
-                "volatility_1h": get_global_volatility_calculator().calculate_candle_volatility(candles_1h, "1h") if len(candles_1h) >= 1 else 0.0,
-                "volatility_1d": get_global_volatility_calculator().calculate_candle_volatility(candles_1d, "1d") if len(candles_1d) >= 1 else 0.0,
+                "volatility_1m": get_global_volatility_calculator().calculate_candle_volatility(candles_1m, "1m", "standard") if len(candles_1m) >= 1 else {"volatility": 0.0, "period_minutes": 1, "period_candles": 1, "strategy": "standard", "timeframe": "1m"},
+                "volatility_1h": get_global_volatility_calculator().calculate_candle_volatility(candles_1h, "1h", "standard") if len(candles_1h) >= 1 else {"volatility": 0.0, "period_minutes": 60, "period_candles": 1, "strategy": "standard", "timeframe": "1h"},
+                "volatility_1d": get_global_volatility_calculator().calculate_candle_volatility(candles_1d, "1d", "standard") if len(candles_1d) >= 1 else {"volatility": 0.0, "period_minutes": 1440, "period_candles": 1, "strategy": "standard", "timeframe": "1d"},
                 
                 # Volume data (from single MarketDataService source)
                 "volume_data": volume_data,
