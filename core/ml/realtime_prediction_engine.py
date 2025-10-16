@@ -331,8 +331,8 @@ class RealtimePredictionEngine:
         )
         
         bayesian_conf_str = f"{bayesian_result['confidence']:.1%}" if bayesian_result else "N/A"
-                logger.info(f"🎯 NEW prediction: {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
-                return "CREATED"
+        logger.info(f"🎯 NEW prediction: {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
+        return "CREATED"
             
     def _update_existing_prediction(self, confidence: float, final_confidence: float, entry_price: float,
                                    stop_loss: float, take_profit: float, risk_reward: float,
