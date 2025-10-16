@@ -67,7 +67,7 @@ class TradingLogger:
             "bot_version": "Enhanced BTC 5-Min Strategy v2.0",
             "strategy": "standard",  # Will be updated by strategy manager
             "max_leverage": 40,
-            "initial_balance": 0.0,  # Will be updated by bot
+            "initial_balance": None,  # Will be set by session manager - don't save until then
             "analysis_frequency": {
                 "price_updates": "5 seconds",
                 "market_analysis": "10 seconds", 
@@ -77,8 +77,8 @@ class TradingLogger:
             }
         }
         
-        # Save session metadata
-        self._save_session_metadata()
+        # Don't save session metadata yet - wait for initial_balance to be set
+        # This prevents saving with 0.0 balance
         
         logger.info(f"📊 Trading Logger initialized: {self.session_id}")
         logger.info(f"   Log directory: {self.log_directory}")
@@ -96,6 +96,10 @@ class TradingLogger:
         self.session_metadata["initial_balance"] = balance
         self._save_session_metadata()
         logger.info(f"💰 Updated initial balance: ${balance:.2f}")
+        
+        # Also update current balance to match initial balance
+        self.session_metadata["current_balance"] = balance
+        self.session_metadata["last_balance_update"] = datetime.now().isoformat()
     
     def update_strategy(self, strategy: str):
         """Update strategy in session metadata"""

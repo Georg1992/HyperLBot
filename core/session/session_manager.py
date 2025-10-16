@@ -108,9 +108,17 @@ class SessionManager:
                 # Calculate and update session time before syncing
                 self._update_session_time()
                 
-                # Sync to dashboard immediately
+                # Update trading logger with correct initial balance
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
+                trading_logger = system_initializer.singleton_systems.get("trading_logger")
+                if trading_logger:
+                    trading_logger.update_initial_balance(initial_balance)
+                    logger.info(f"💰 Trading logger updated with initial balance: ${initial_balance:.2f}")
+                else:
+                    logger.warning("⚠️ Trading logger not found - session metadata may have incorrect balance")
+                
+                # Sync to dashboard immediately
                 dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
                 if dashboard_service:
                     dashboard_service.sync_from_session_manager(self.current_session_data)
