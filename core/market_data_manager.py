@@ -407,8 +407,9 @@ class MarketDataManager:
             volatility_calculator = get_global_volatility_calculator()
             
             # Get current strategy for strategy-dependent volatility calculation
-            from core.services.strategy_manager import get_global_strategy_manager
-            strategy_manager = get_global_strategy_manager()
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            strategy_manager = system_initializer.singleton_systems.get("strategy_manager")
             current_strategy = strategy_manager.get_current_strategy() if strategy_manager else "standard"
             
             volatility_result = volatility_calculator.calculate_candle_volatility(hyperliquid_candles, "5m", current_strategy)
