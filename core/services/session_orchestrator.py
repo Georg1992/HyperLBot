@@ -348,6 +348,9 @@ class SessionOrchestrator:
             volatility_5m = volatility_analysis.get("volatility_5m", 0.0)
             volatility_5m_category = volatility_analysis.get("volatility_5m_category", "UNKNOWN")
             volatility_5m_trend = volatility_analysis.get("volatility_5m_trend", "UNKNOWN")
+            volatility_5m_period_minutes = volatility_analysis.get("volatility_5m_period_minutes", 15)
+            volatility_5m_period_candles = volatility_analysis.get("volatility_5m_period_candles", 3)
+            volatility_5m_strategy = volatility_analysis.get("volatility_5m_strategy", "standard")
             
             logger.debug(f"📊 Using volatility from hyperliquid_analysis: {volatility_5m:.6f} ({volatility_5m_category})")
             
@@ -586,6 +589,10 @@ class SessionOrchestrator:
                 "volatility_5m": volatility_5m,
                 "volatility_category": volatility_5m_category,  # Fixed: strategy manager expects 'volatility_category'
                 "volatility_5m_category": volatility_5m_category,  # Keep for backward compatibility
+                "volatility_5m_trend": volatility_5m_trend,
+                "volatility_5m_period_minutes": volatility_5m_period_minutes,
+                "volatility_5m_period_candles": volatility_5m_period_candles,
+                "volatility_5m_strategy": volatility_5m_strategy,
                 "volatility_1m": get_global_volatility_calculator().calculate_candle_volatility(candles_1m, "1m", "standard") if len(candles_1m) >= 1 else {"volatility": 0.0, "period_minutes": 1, "period_candles": 1, "strategy": "standard", "timeframe": "1m"},
                 "volatility_1h": get_global_volatility_calculator().calculate_candle_volatility(candles_1h, "1h", "standard") if len(candles_1h) >= 1 else {"volatility": 0.0, "period_minutes": 60, "period_candles": 1, "strategy": "standard", "timeframe": "1h"},
                 "volatility_1d": get_global_volatility_calculator().calculate_candle_volatility(candles_1d, "1d", "standard") if len(candles_1d) >= 1 else {"volatility": 0.0, "period_minutes": 1440, "period_candles": 1, "strategy": "standard", "timeframe": "1d"},
