@@ -259,6 +259,13 @@ class RealtimePredictionEngine:
             confidence_reasoning = bayesian_result['reasoning']
             logger.info(f"🧮 Bayesian-only confidence: {confidence:.1%}")
             
+            # DEBUG: Log confidence vs threshold for troubleshooting
+            threshold = self.confidence_threshold
+            if confidence >= threshold:
+                logger.info(f"✅ CONFIDENCE SUFFICIENT: {confidence:.1%} >= {threshold:.1%} (READY TO TRADE)")
+            else:
+                logger.warning(f"⚠️ CONFIDENCE INSUFFICIENT: {confidence:.1%} < {threshold:.1%} (NO TRADE)")
+            
             final_confidence = confidence
             
             # REFACTORED: Use dedicated methods for SRP compliance
@@ -299,33 +306,33 @@ class RealtimePredictionEngine:
         # Use the final calibrated confidence as the single confidence value
         single_confidence = final_confidence
         
-        self.active_prediction = RealtimePrediction(
-            direction=direction,
+                self.active_prediction = RealtimePrediction(
+                    direction=direction,
             confidence=single_confidence,  # Single confidence field
-            entry_price=entry_price,
-            stop_loss=stop_loss,
-            take_profit=take_profit,
-            risk_reward_ratio=risk_reward,
-            base_confidence=base_confidence,
-            confidence_boosts=boosts,
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    risk_reward_ratio=risk_reward,
+                    base_confidence=base_confidence,
+                    confidence_boosts=boosts,
             confidence_history=[single_confidence],
-            current_price=current_price,
-            score=score,
+                    current_price=current_price,
+                    score=score,
             reasoning=direction_reasoning + "; " + confidence_reasoning,
-            # EV data
-            expected_value=ev_result.ev_percent,
-            expected_value_dollars=ev_result.ev_dollars,
-            win_probability=ev_result.win_probability,
-            ev_reasoning=ev_result.reasoning,
-            should_trade_ev=ev_result.should_trade,
+                    # EV data
+                    expected_value=ev_result.ev_percent,
+                    expected_value_dollars=ev_result.ev_dollars,
+                    win_probability=ev_result.win_probability,
+                    ev_reasoning=ev_result.reasoning,
+                    should_trade_ev=ev_result.should_trade,
             # Bayesian data (ONLY confidence system now)
             bayesian_confidence=bayesian_result['confidence'] if bayesian_result else None,
             bayesian_reasoning=bayesian_result['reasoning'] if bayesian_result else None
         )
         
         bayesian_conf_str = f"{bayesian_result['confidence']:.1%}" if bayesian_result else "N/A"
-        logger.info(f"🎯 NEW prediction: {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
-        return "CREATED"
+                logger.info(f"🎯 NEW prediction: {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
+                return "CREATED"
             
     def _update_existing_prediction(self, confidence: float, final_confidence: float, entry_price: float,
                                    stop_loss: float, take_profit: float, risk_reward: float,
@@ -333,31 +340,31 @@ class RealtimePredictionEngine:
                                    score: float, direction_reasoning: str, confidence_reasoning: str,
                                    ev_result: Any, bayesian_result: Optional[Dict], strategy: str) -> str:
         """Update existing prediction (SRP: single responsibility)"""
-        old_confidence = self.active_prediction.confidence
-        
+            old_confidence = self.active_prediction.confidence
+            
         # Use the final calibrated confidence as the single confidence value
         single_confidence = final_confidence
         
         # Update core fields
         self.active_prediction.confidence = single_confidence  # Single confidence field
-        self.active_prediction.entry_price = entry_price
-        self.active_prediction.stop_loss = stop_loss
-        self.active_prediction.take_profit = take_profit
-        self.active_prediction.risk_reward_ratio = risk_reward
-        self.active_prediction.base_confidence = base_confidence
-        self.active_prediction.confidence_boosts = boosts
+            self.active_prediction.entry_price = entry_price
+            self.active_prediction.stop_loss = stop_loss
+            self.active_prediction.take_profit = take_profit
+            self.active_prediction.risk_reward_ratio = risk_reward
+            self.active_prediction.base_confidence = base_confidence
+            self.active_prediction.confidence_boosts = boosts
         self.active_prediction.confidence_history.append(single_confidence)  # Single confidence
-        self.active_prediction.current_price = current_price
-        self.active_prediction.score = score
+            self.active_prediction.current_price = current_price
+            self.active_prediction.score = score
         self.active_prediction.reasoning = direction_reasoning + "; " + confidence_reasoning
-        self.active_prediction.last_updated = time.time()
+            self.active_prediction.last_updated = time.time()
         
-        # Update EV data
-        self.active_prediction.expected_value = ev_result.ev_percent
-        self.active_prediction.expected_value_dollars = ev_result.ev_dollars
-        self.active_prediction.win_probability = ev_result.win_probability
-        self.active_prediction.ev_reasoning = ev_result.reasoning
-        self.active_prediction.should_trade_ev = ev_result.should_trade
+            # Update EV data
+            self.active_prediction.expected_value = ev_result.ev_percent
+            self.active_prediction.expected_value_dollars = ev_result.ev_dollars
+            self.active_prediction.win_probability = ev_result.win_probability
+            self.active_prediction.ev_reasoning = ev_result.reasoning
+            self.active_prediction.should_trade_ev = ev_result.should_trade
         
         # Update Bayesian data (ONLY confidence system now)
         self.active_prediction.bayesian_confidence = bayesian_result['confidence'] if bayesian_result else None
@@ -366,22 +373,22 @@ class RealtimePredictionEngine:
         # Note: All old confidence systems removed - only Bayesian fusion remains
         
         # Note: Single confidence field already contains the final calibrated confidence
-        
-        self.updates_count += 1
-        
+            
+            self.updates_count += 1
+            
         # Check execution readiness
         if self._check_execution_readiness(single_confidence):  # Use single confidence field
-            return "EXECUTE"
-        
+                return "EXECUTE"
+            
         # Log confidence changes
         self._log_confidence_change(old_confidence, single_confidence)  # Use single confidence field
         
         # Check prediction age
         if self._check_prediction_age():
-            return "CANCELLED"
-        
-        return "UPDATED"
-    
+                return "CANCELLED"
+            
+            return "UPDATED"
+            
     def _check_execution_readiness(self, confidence: float) -> bool:
         """Check if prediction is ready for execution (SRP: single responsibility)"""
         if confidence >= self.confidence_threshold:
@@ -623,7 +630,7 @@ class RealtimePredictionEngine:
             if not signals:
                 logger.warning(f"⚠️ No Bayesian signals created for {direction} - using base rate")
                 # Return base rate when no signals are available
-                return {
+            return {
                     'confidence': 0.5,  # Base rate
                     'reasoning': f"No signals available for {direction} - using base rate (50%)"
                 }
