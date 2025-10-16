@@ -516,18 +516,24 @@ class OrderLifecycleManager:
     def can_place_order(self, side: str) -> bool:
         """Check if we can place a new order in the given direction"""
         try:
+            # DEBUG: Log current state
+            logger.debug(f"🔍 Checking if can place {side} order:")
+            logger.debug(f"   Active positions: {len(self.active_positions)}")
+            logger.debug(f"   Pending orders: {len(self.pending_orders)}")
+            
             # Check for conflicting active positions
             for position in self.active_positions.values():
                 if position.side != side:
-                    logger.debug(f"🚫 Cannot place {side} order: conflicting {position.side} position active")
+                    logger.warning(f"🚫 Cannot place {side} order: conflicting {position.side} position active (ID: {position.position_id})")
                     return False
             
             # Check for conflicting pending orders
             for order in self.pending_orders.values():
                 if order.side != side:
-                    logger.debug(f"🚫 Cannot place {side} order: conflicting {order.side} order pending")
+                    logger.warning(f"🚫 Cannot place {side} order: conflicting {order.side} order pending (ID: {order.order_id})")
                     return False
             
+            logger.debug(f"✅ Can place {side} order - no conflicts")
             return True
             
         except Exception as e:

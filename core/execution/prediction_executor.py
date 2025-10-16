@@ -187,7 +187,8 @@ class PredictionExecutor:
                     "checks_failed": [f"❌ Invalid confidence: {confidence}"]
                 }
             
-            logger.debug(f"🔍 Using confidence: {confidence:.1%}")
+            # DIAGNOSTIC: Log confidence vs threshold for troubleshooting
+            logger.info(f"🔍 EXECUTION CHECK: Confidence {confidence:.1%} vs threshold {thresholds.min_confidence:.1%}")
             
             # FIXED: Strategy-specific confidence handling
             # Range trading strategies can work with lower confidence due to mean reversion nature
@@ -330,9 +331,11 @@ class PredictionExecutor:
             decision = self.should_execute(prediction, strategy)
             
             if not decision["should_execute"]:
-                logger.info(f"🚫 Prediction NOT executed: {decision['reason']}")
+                logger.warning(f"🚫 Prediction NOT executed: {decision['reason']}")
+                logger.warning(f"   Strategy: {strategy}")
+                logger.warning(f"   Confidence: {prediction.get('confidence', 0):.1%}")
                 for check in decision["checks_failed"]:
-                    logger.info(f"   {check}")
+                    logger.warning(f"   {check}")
                 return {
                     "success": False,
                     "reason": decision["reason"],

@@ -47,7 +47,7 @@ class TradingConfig:
     "standard": {
         "min_range_percentage": 0.002,  # 0.2% minimum range
         "volatility_threshold": "medium",
-        "confidence_threshold": 0.55,  # 55% confidence minimum (LOWERED for Bayesian fusion)
+        "confidence_threshold": 0.65,  # 65% confidence minimum (USER SPECIFIED)
         "min_interval": 30,  # seconds between trades
         "max_leverage": 40,
         "profit_target": 0.008,  # 0.8% profit target
