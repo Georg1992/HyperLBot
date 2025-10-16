@@ -405,13 +405,23 @@ class MarketDataManager:
             
             # Calculate volatility using centralized volatility calculator (SINGLE SOURCE OF TRUTH)
             volatility_calculator = get_global_volatility_calculator()
-            volatility_5m = volatility_calculator.calculate_candle_volatility(hyperliquid_candles, "5m")
+            
+            # Get current strategy for strategy-dependent volatility calculation
+            from core.services.strategy_manager import get_global_strategy_manager
+            strategy_manager = get_global_strategy_manager()
+            current_strategy = strategy_manager.get_current_strategy() if strategy_manager else "standard"
+            
+            volatility_result = volatility_calculator.calculate_candle_volatility(hyperliquid_candles, "5m", current_strategy)
+            volatility_5m = volatility_result.get("volatility", 0.0)
             volatility_5m_category, volatility_5m_trend = volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
             
             return {
                 "volatility_5m": volatility_5m,
                 "volatility_5m_category": volatility_5m_category,
                 "volatility_5m_trend": volatility_5m_trend,
+                "volatility_5m_period_minutes": volatility_result.get("period_minutes", 30),
+                "volatility_5m_period_candles": volatility_result.get("period_candles", 6),
+                "volatility_5m_strategy": volatility_result.get("strategy", current_strategy),
                 "data_source": "hyperliquid_candles",
                 "timestamp": time.time()
             }

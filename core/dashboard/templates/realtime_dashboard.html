@@ -1155,12 +1155,15 @@
                 // Build multi-timeframe volatility display
                 let volatilityDisplay = '';
                 
-                // Primary 5m volatility (most important for trading)
+                // Primary volatility (strategy-dependent period)
                 if (market.volatility_5m_category) {
                     const category5m = market.volatility_5m_category;
                     const trend5m = market.volatility_5m_trend;
                     const value5m = market.volatility_5m ? (market.volatility_5m * 100).toFixed(3) : '0.000';
-                    volatilityDisplay += `<strong>5m: ${category5m}</strong><br><span style="font-size: 11px; color: #888;">${value5m}% (${trend5m})</span>`;
+                    const period5m = market.volatility_5m_period_minutes || 15; // Default to 15 minutes
+                    const strategy5m = market.volatility_5m_strategy || 'standard';
+                    const candles5m = market.volatility_5m_period_candles || 3; // Default to 3 candles
+                    volatilityDisplay += `<strong>Volatility: ${category5m}</strong><br><span style="font-size: 11px; color: #888;">${value5m}% (${trend5m})</span><br><span style="font-size: 10px; color: #666;">${period5m}min (${candles5m}×5m, ${strategy5m})</span>`;
                 }
                 
                 // Add other timeframes if available

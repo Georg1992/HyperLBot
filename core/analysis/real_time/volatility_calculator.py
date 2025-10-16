@@ -24,15 +24,34 @@ class VolatilityCalculator:
     def __init__(self):
         logger.info("📊 Volatility Calculator initialized")
     
-    def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m") -> float:
-        """Calculate volatility from candle data using HIGHLY REACTIVE method for real-time trading"""
+    def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m", strategy: str = "standard") -> Dict[str, Any]:
+        """Calculate strategy-dependent volatility from candle data"""
         try:
             if len(candles) < 1:  # Allow single candle for current candle priority
                 logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 1")
                 raise Exception(f"Insufficient candles for volatility calculation: {len(candles)} < 1")
             
-            # Use the most recent 6 candles for maximum responsiveness to recent changes
-            recent_candles = candles[-6:] if len(candles) >= 6 else candles
+            # Strategy-specific time periods (in minutes)
+            strategy_periods_minutes = {
+                "scalping": 5,        # 5 minutes (1 × 5m candle)
+                "standard": 15,       # 15 minutes (3 × 5m candles) 
+                "range_trading": 60,  # 1 hour (12 × 5m candles)
+                "breakout": 10,      # 10 minutes (2 × 5m candles)
+                "trend_following": 120, # 2 hours (24 × 5m candles)
+                "low_volatility_range": 75, # 1.25 hours (15 × 5m candles)
+                "high_volatility": 15   # 15 minutes (3 × 5m candles)
+            }
+            
+            # Get strategy-specific period in minutes
+            period_minutes = strategy_periods_minutes.get(strategy, 15)  # Default to 15 minutes for standard
+            period_candles = max(1, period_minutes // 5)  # Convert minutes to 5m candles
+            
+            # Use the most recent candles for the calculated period
+            recent_candles = candles[-period_candles:] if len(candles) >= period_candles else candles
+            actual_period_candles = len(recent_candles)
+            actual_period_minutes = actual_period_candles * 5
+            
+            logger.debug(f"📊 Volatility calculation: {strategy} strategy using {actual_period_candles} candles ({actual_period_minutes} minutes)")
             
             # Method 1: Calculate overall price movement across all candles (captures big moves)
             if len(recent_candles) >= 2:
@@ -103,7 +122,13 @@ class VolatilityCalculator:
                 # If overall volatility is high enough, return it immediately
                 if overall_volatility > 0.003:  # Above HIGH threshold
                     logger.debug(f"🔍 Overall volatility is HIGH/EXTREME, returning immediately: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
-                    return round(primary_volatility, 6)
+                    return {
+                        "volatility": round(primary_volatility, 6),
+                        "period_minutes": actual_period_minutes,
+                        "period_candles": actual_period_candles,
+                        "strategy": strategy,
+                        "timeframe": timeframe
+                    }
                 
                 logger.debug(f"🔍 Volatility calculation: {len(recent_candles)} candles, weighted_avg={weighted_avg_volatility:.6f} ({weighted_avg_volatility*100:.4f}%), max={max_volatility:.6f} ({max_volatility*100:.4f}%), using={primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
                 
@@ -127,25 +152,55 @@ class VolatilityCalculator:
                         final_volatility = max(primary_volatility, combined_volatility)
                         logger.debug(f"🔍 Combined volatility: {combined_volatility:.6f} ({combined_volatility*100:.4f}%) - momentum={recent_momentum:.6f}")
                         logger.debug(f"🔍 Final volatility: {final_volatility:.6f} ({final_volatility*100:.4f}%) - using max of primary and combined")
-                        return round(final_volatility, 6)
+                        return {
+                            "volatility": round(final_volatility, 6),
+                            "period_minutes": actual_period_minutes,
+                            "period_candles": actual_period_candles,
+                            "strategy": strategy,
+                            "timeframe": timeframe
+                        }
                 
-                return round(primary_volatility, 6)
+                return {
+                    "volatility": round(primary_volatility, 6),
+                    "period_minutes": actual_period_minutes,
+                    "period_candles": actual_period_candles,
+                    "strategy": strategy,
+                    "timeframe": timeframe
+                }
             
             # FIXED: Don't fall through to fallback if we already calculated volatility
             # The fallback calculation was overriding the correct volatility calculation
             if overall_volatility > 0:
                 logger.debug(f"🔍 No weighted volatilities calculated, using overall volatility: {overall_volatility:.6f}")
-                return round(overall_volatility, 6)
+                return {
+                    "volatility": round(overall_volatility, 6),
+                    "period_minutes": actual_period_minutes,
+                    "period_candles": actual_period_candles,
+                    "strategy": strategy,
+                    "timeframe": timeframe
+                }
             else:
                 # For single candle or when overall volatility is 0, use the current candle range
                 if len(candles) >= 1:
                     current_candle = candles[-1]
                     current_range = (current_candle["high"] - current_candle["low"]) / current_candle["close"]
                     logger.debug(f"🔍 Single candle or zero overall volatility, using current range: {current_range:.6f}")
-                    return round(current_range, 6)
+                    return {
+                        "volatility": round(current_range, 6),
+                        "period_minutes": actual_period_minutes,
+                        "period_candles": actual_period_candles,
+                        "strategy": strategy,
+                        "timeframe": timeframe
+                    }
                 else:
                     logger.debug(f"🔍 No candles available, returning 0")
-                    return 0.0
+                    return {
+                        "volatility": 0.0,
+                        "period_minutes": actual_period_minutes,
+                        "period_candles": actual_period_candles,
+                        "strategy": strategy,
+                        "timeframe": timeframe
+                    }
             
         except Exception as e:
             logger.error(f"❌ Candle volatility calculation failed: {e}")
