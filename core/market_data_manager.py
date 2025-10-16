@@ -413,7 +413,7 @@ class MarketDataManager:
             
             volatility_result = volatility_calculator.calculate_candle_volatility(hyperliquid_candles, "5m", current_strategy)
             volatility_5m = volatility_result.get("volatility", 0.0)
-            volatility_5m_category, volatility_5m_trend = volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m")
+            volatility_5m_category, volatility_5m_trend = volatility_calculator.categorize_volatility_for_trading(volatility_5m, "5m", current_strategy)
             
             return {
                 "volatility_5m": volatility_5m,

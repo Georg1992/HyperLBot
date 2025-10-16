@@ -51,7 +51,57 @@ class VolatilityCalculator:
             actual_period_candles = len(recent_candles)
             actual_period_minutes = actual_period_candles * 5
             
+            # Strategy-specific volatility thresholds (adjusted for timeframe)
+            strategy_thresholds = {
+                "scalping": {      # 5min - very sensitive
+                    "LOW": 0.0008,      # 0.08%
+                    "MODERATE": 0.0015,  # 0.15%
+                    "HIGH": 0.0025,     # 0.25%
+                    "EXTREME": 0.0040   # 0.40%
+                },
+                "standard": {      # 15min - balanced
+                    "LOW": 0.0015,      # 0.15%
+                    "MODERATE": 0.0030,  # 0.30%
+                    "HIGH": 0.0040,     # 0.40%
+                    "EXTREME": 0.0080   # 0.80%
+                },
+                "range_trading": { # 60min - less sensitive
+                    "LOW": 0.0020,      # 0.20%
+                    "MODERATE": 0.0040,  # 0.40%
+                    "HIGH": 0.0060,     # 0.60%
+                    "EXTREME": 0.0120   # 1.20%
+                },
+                "breakout": {      # 10min - sensitive
+                    "LOW": 0.0010,      # 0.10%
+                    "MODERATE": 0.0020,  # 0.20%
+                    "HIGH": 0.0030,     # 0.30%
+                    "EXTREME": 0.0050   # 0.50%
+                },
+                "trend_following": { # 120min - least sensitive
+                    "LOW": 0.0030,      # 0.30%
+                    "MODERATE": 0.0060,  # 0.60%
+                    "HIGH": 0.0100,     # 1.00%
+                    "EXTREME": 0.0200   # 2.00%
+                },
+                "low_volatility_range": { # 75min - moderate sensitivity
+                    "LOW": 0.0025,      # 0.25%
+                    "MODERATE": 0.0050,  # 0.50%
+                    "HIGH": 0.0080,     # 0.80%
+                    "EXTREME": 0.0150   # 1.50%
+                },
+                "high_volatility": { # 15min - balanced
+                    "LOW": 0.0015,      # 0.15%
+                    "MODERATE": 0.0030,  # 0.30%
+                    "HIGH": 0.0040,     # 0.40%
+                    "EXTREME": 0.0080   # 0.80%
+                }
+            }
+            
+            # Get strategy-specific thresholds
+            thresholds = strategy_thresholds.get(strategy, strategy_thresholds["standard"])
+            
             logger.debug(f"📊 Volatility calculation: {strategy} strategy using {actual_period_candles} candles ({actual_period_minutes} minutes)")
+            logger.debug(f"📊 Strategy thresholds: LOW={thresholds['LOW']:.4f}, MODERATE={thresholds['MODERATE']:.4f}, HIGH={thresholds['HIGH']:.4f}, EXTREME={thresholds['EXTREME']:.4f}")
             
             # Method 1: Calculate overall price movement across all candles (captures big moves)
             if len(recent_candles) >= 2:
@@ -283,11 +333,60 @@ class VolatilityCalculator:
                 "urgency": "NONE"
             }
 
-    def categorize_volatility_for_trading(self, volatility: float, timeframe: str = "5m") -> tuple:
-        """Categorize volatility for trading decisions using timeframe-specific thresholds"""
+    def categorize_volatility_for_trading(self, volatility: float, timeframe: str = "5m", strategy: str = "standard") -> tuple:
+        """Categorize volatility for trading decisions using strategy-specific thresholds"""
         try:
-            # Import centralized constants for consistency
-            # VariabilityConstants already imported at top
+            # Strategy-specific volatility thresholds (same as in calculate_candle_volatility)
+            strategy_thresholds = {
+                "scalping": {      # 5min - very sensitive
+                    "LOW": 0.0008,      # 0.08%
+                    "MODERATE": 0.0015,  # 0.15%
+                    "HIGH": 0.0025,     # 0.25%
+                    "EXTREME": 0.0040   # 0.40%
+                },
+                "standard": {      # 15min - balanced
+                    "LOW": 0.0015,      # 0.15%
+                    "MODERATE": 0.0030,  # 0.30%
+                    "HIGH": 0.0040,     # 0.40%
+                    "EXTREME": 0.0080   # 0.80%
+                },
+                "range_trading": { # 60min - less sensitive
+                    "LOW": 0.0020,      # 0.20%
+                    "MODERATE": 0.0040,  # 0.40%
+                    "HIGH": 0.0060,     # 0.60%
+                    "EXTREME": 0.0120   # 1.20%
+                },
+                "breakout": {      # 10min - sensitive
+                    "LOW": 0.0010,      # 0.10%
+                    "MODERATE": 0.0020,  # 0.20%
+                    "HIGH": 0.0030,     # 0.30%
+                    "EXTREME": 0.0050   # 0.50%
+                },
+                "trend_following": { # 120min - least sensitive
+                    "LOW": 0.0030,      # 0.30%
+                    "MODERATE": 0.0060,  # 0.60%
+                    "HIGH": 0.0100,     # 1.00%
+                    "EXTREME": 0.0200   # 2.00%
+                },
+                "low_volatility_range": { # 75min - moderate sensitivity
+                    "LOW": 0.0025,      # 0.25%
+                    "MODERATE": 0.0050,  # 0.50%
+                    "HIGH": 0.0080,     # 0.80%
+                    "EXTREME": 0.0150   # 1.50%
+                },
+                "high_volatility": { # 15min - balanced
+                    "LOW": 0.0015,      # 0.15%
+                    "MODERATE": 0.0030,  # 0.30%
+                    "HIGH": 0.0040,     # 0.40%
+                    "EXTREME": 0.0080   # 0.80%
+                }
+            }
+            
+            # Get strategy-specific thresholds
+            thresholds = strategy_thresholds.get(strategy, strategy_thresholds["standard"])
+            
+            logger.debug(f"🔍 Categorizing volatility {volatility:.6f} ({volatility*100:.4f}%) for {strategy} strategy")
+            logger.debug(f"🔍 Strategy thresholds: LOW={thresholds['LOW']:.4f}, MODERATE={thresholds['MODERATE']:.4f}, HIGH={thresholds['HIGH']:.4f}, EXTREME={thresholds['EXTREME']:.4f}")
             
             logger.debug(f"🔍 Categorizing {timeframe} volatility: {volatility:.6f} ({volatility*100:.4f}%)")
             
@@ -310,20 +409,20 @@ class VolatilityCalculator:
                     category = "VERY_LOW"
                     trend = "BORING"
             elif timeframe == "5m":
-                # 5-minute thresholds (using centralized constants)
-                if volatility >= VariabilityConstants.VOLATILITY_5M_EXTREME:  # >= 0.80% (extreme 5m movement)
+                # 5-minute thresholds (using strategy-specific thresholds)
+                if volatility >= thresholds["EXTREME"]:
                     category = "EXTREME"
                     trend = "VOLATILE"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_HIGH:    # >= 0.40% (high 5m activity)
+                elif volatility >= thresholds["HIGH"]:
                     category = "HIGH"
                     trend = "ACTIVE"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_MODERATE:  # >= 0.30% (moderate 5m movement)
+                elif volatility >= thresholds["MODERATE"]:
                     category = "MODERATE" 
                     trend = "NORMAL"
-                elif volatility >= VariabilityConstants.VOLATILITY_5M_LOW:     # >= 0.15% (low 5m movement)
+                elif volatility >= thresholds["LOW"]:
                     category = "LOW"
                     trend = "QUIET"
-                else:                                                              # < 0.15% (very low 5m movement)
+                else:  # < LOW threshold
                     category = "VERY_LOW"
                     trend = "BORING"
             elif timeframe == "1h":
@@ -361,8 +460,8 @@ class VolatilityCalculator:
                     category = "VERY_LOW"
                     trend = "BORING"
             else:
-                # Default to 5m thresholds
-                return self.categorize_volatility_for_trading(volatility, "5m")
+                # Default to 5m thresholds with strategy
+                return self.categorize_volatility_for_trading(volatility, "5m", strategy)
             
             logger.debug(f"🔍 {timeframe} volatility categorized as: {category} ({trend})")
             
