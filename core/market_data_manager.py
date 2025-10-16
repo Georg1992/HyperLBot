@@ -253,7 +253,7 @@ class MarketDataManager:
                             
                             # First try with 5m candles
                             support_resistance_data = sr_calculator.calculate_multi_timeframe_levels(
-                                current_price, None, candles_5m, candles_1h, candles_1d
+                                current_price, market_data_service, candles_5m, candles_1h, candles_1d
                             )
                             strongest_support = support_resistance_data.get("strongest_support", 0)
                             strongest_resistance = support_resistance_data.get("strongest_resistance", 0)

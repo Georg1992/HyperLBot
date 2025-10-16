@@ -4,7 +4,6 @@ Trend Calculator Module
 Simple, working trend calculation
 """
 
-# import numpy as np  # Removed unused import
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 

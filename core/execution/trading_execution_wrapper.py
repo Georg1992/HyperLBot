@@ -53,7 +53,6 @@ class TradingExecutionWrapper:
                 "confidence": signal_data.get("confidence", 0),
                 "expected_value": signal_data.get("expected_value", 0),
                 "bayesian_confidence": signal_data.get("bayesian_confidence"),
-                "kelly_position_pct": signal_data.get("kelly_position_pct"),
                 "reasoning": signal_data.get("reasoning", [])
             }
             

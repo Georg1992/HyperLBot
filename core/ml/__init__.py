@@ -8,32 +8,27 @@ Comprehensive ML system for trading predictions and signal enhancement
 # Import directly where needed instead
 
 __all__ = [
-    'MLModelManager',
-    'MLPrediction',
-    'global_ml_manager',
-    'FeatureEngineer',
-    'global_feature_engineer',
-    'ModelTrainer',
-    'TrainingDataCollector',
-    'ModelValidator',
-    'global_model_trainer',
-    'ModelPerformanceMonitor',
-    'PredictionRecord',
-    'ActualOutcome',
-    'PerformanceMetrics',
-    'global_performance_monitor',
-    'ContinuousLearningSystem',
-    'LearningTrigger',
-    'LearningConfig',
-    'global_continuous_learning',
-    'PredictionEnsemble',
-    'ModelEnsemble',
-    'EnsemblePrediction',
-    'global_prediction_ensemble',
-    'MLStrategySelector',
-    'StrategyRecommendation',
-    'global_ml_strategy_selector',
-    'PredictionManager',
-    'TradingPrediction',
-    'global_prediction_manager'
+    # Core prediction system
+    'RealtimePredictionEngine',
+    'global_realtime_prediction_engine',
+    'RealtimePrediction',
+    
+    # Confidence optimization system
+    'ConfidenceOptimizer',
+    'global_confidence_optimizer',
+    'AdaptiveConfidenceCalculator', 
+    'global_adaptive_calculator',
+    'TradeOutcomeRecorder',
+    'global_trade_outcome_recorder',
+    
+    # Specialized components
+    'DirectionRecognizer',
+    'global_direction_recognizer',
+    'EntryPriceCalculator',
+    'global_entry_price_calculator',
+    
+    # Bayesian fusion
+    'BayesianFusion',
+    'global_bayesian_fusion',
+    'Signal'
 ]

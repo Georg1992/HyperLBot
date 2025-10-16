@@ -114,7 +114,10 @@ class OrderLifecycleManager:
                 logger.warning(f"⚠️ Using current_price as fallback: ${limit_price:,.2f}")
             
             strategy = prediction.get("strategy", "standard")
-            confidence = prediction.get("calibrated_confidence", 0.0)
+            confidence = prediction.get("confidence", 0.0)
+            # Ensure confidence is never None for formatting
+            if confidence is None:
+                confidence = 0.0
             expected_value = prediction.get("expected_value", 0.0)
             stop_loss = prediction.get("stop_loss")
             take_profit = prediction.get("take_profit")
@@ -179,7 +182,19 @@ class OrderLifecycleManager:
         filled_orders = []
         
         try:
-            for order_id, order in list(self.pending_orders.items()):
+            # CRITICAL FIX: Create a copy of pending orders to avoid modification during iteration
+            pending_orders_copy = dict(self.pending_orders)
+            
+            for order_id, order in pending_orders_copy.items():
+                # CRITICAL FIX: Double-check order still exists and is pending
+                if order_id not in self.pending_orders:
+                    logger.debug(f"🚫 Order {order_id} no longer pending - skipping")
+                    continue
+                
+                if self.pending_orders[order_id].status != "PENDING":
+                    logger.debug(f"🚫 Order {order_id} status changed to {self.pending_orders[order_id].status} - skipping")
+                    continue
+                
                 # Check if order should be filled
                 should_fill = self._should_fill_order(order, current_price)
                 
@@ -200,12 +215,29 @@ class OrderLifecycleManager:
     def _should_fill_order(self, order: OrderData, current_price: float) -> bool:
         """Determine if an order should be filled based on current price"""
         try:
+            # CRITICAL FIX: Check if order is already filled to prevent infinite loops
+            if order.status != "PENDING":
+                logger.debug(f"🚫 Order {order.order_id} not pending (status: {order.status})")
+                return False
+            
+            # CRITICAL FIX: Check if position already exists for this order
+            for existing_position in self.active_positions.values():
+                if existing_position.order_id == order.order_id:
+                    logger.warning(f"⚠️ Position already exists for order {order.order_id} - skipping fill")
+                    return False
+            
             if order.side == "BUY":
                 # Buy order: fill when price drops to or below limit price
-                return current_price <= order.limit_price
+                should_fill = current_price <= order.limit_price
+                if should_fill:
+                    logger.debug(f"🟢 BUY order {order.order_id} should fill: ${current_price:,.2f} <= ${order.limit_price:,.2f}")
+                return should_fill
             else:  # SELL
                 # Sell order: fill when price rises to or above limit price
-                return current_price >= order.limit_price
+                should_fill = current_price >= order.limit_price
+                if should_fill:
+                    logger.debug(f"🟢 SELL order {order.order_id} should fill: ${current_price:,.2f} >= ${order.limit_price:,.2f}")
+                return should_fill
                 
         except Exception as e:
             logger.error(f"❌ Error checking order fill condition: {e}")
@@ -220,17 +252,28 @@ class OrderLifecycleManager:
             
             order = self.pending_orders[order_id]
             
-            # Update order status
+            # CRITICAL FIX: Prevent duplicate fills
+            if order.status != "PENDING":
+                logger.warning(f"⚠️ Order {order_id} already processed (status: {order.status})")
+                return None
+            
+            # CRITICAL FIX: Check if position already exists for this order
+            for existing_position in self.active_positions.values():
+                if existing_position.order_id == order.order_id:
+                    logger.warning(f"⚠️ Position already exists for order {order.order_id} - preventing duplicate fill")
+                    return None
+            
+            # CRITICAL FIX: Update order status IMMEDIATELY to prevent duplicate processing
             order.status = "FILLED"
             order.filled_at = time.time()
             order.filled_price = fill_price
             order.current_price = fill_price
             
-            # Move to filled orders
+            # CRITICAL FIX: Move to filled orders IMMEDIATELY to prevent re-processing
             self.filled_orders[order_id] = order
             del self.pending_orders[order_id]
             
-            # Create position
+            # Create position (after order is safely moved)
             position_id = self._create_position(order, fill_price)
             
             self.total_orders_filled += 1
@@ -249,6 +292,17 @@ class OrderLifecycleManager:
     def _create_position(self, order: OrderData, fill_price: float) -> str:
         """Create a new position from filled order"""
         try:
+            # CRITICAL FIX: Check if position already exists for this order
+            for existing_position in self.active_positions.values():
+                if existing_position.order_id == order.order_id:
+                    logger.warning(f"⚠️ Position already exists for order {order.order_id}")
+                    return existing_position.position_id
+            
+            # CRITICAL FIX: Double-check that order is actually filled
+            if order.status != "FILLED":
+                logger.error(f"❌ Cannot create position for unfilled order {order.order_id} (status: {order.status})")
+                return ""
+            
             position_id = f"pos_{uuid.uuid4().hex[:8]}"
             
             position = PositionData(

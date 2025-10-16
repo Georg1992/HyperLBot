@@ -127,11 +127,24 @@ class BayesianFusion:
         """
         Apply confidence weighting to a probability
         
-        Low confidence → pull probability toward 0.5 (neutral)
+        Low confidence → reduce the signal strength but don't pull to 0.5
         High confidence → keep probability as is
         """
-        # Interpolate between 0.5 (no confidence) and probability (full confidence)
-        weighted = 0.5 + (probability - 0.5) * confidence
+        # FIXED: Don't pull toward 0.5, instead scale the deviation from 0.5
+        # This preserves the signal direction while reducing its strength based on confidence
+        if probability == 0.5:
+            return 0.5  # Neutral stays neutral
+        
+        # Calculate how far from neutral (0.5) the signal is
+        deviation = probability - 0.5
+        
+        # Scale the deviation by confidence, but don't pull toward 0.5
+        # Low confidence reduces signal strength, high confidence preserves it
+        scaled_deviation = deviation * confidence
+        
+        # Apply the scaled deviation
+        weighted = 0.5 + scaled_deviation
+        
         return max(0.01, min(0.99, weighted))  # Clamp to avoid extreme values
     
     def _probability_to_log_odds(self, probability: float) -> float:
@@ -177,6 +190,18 @@ class BayesianFusion:
                 return self._pattern_to_signal(metric_name, metric_value, direction)
             elif metric_type == "SUPPORT_RESISTANCE":
                 return self._sr_to_signal(metric_name, metric_value, direction)
+            elif metric_type == "VOLATILITY":
+                return self._volatility_to_signal(metric_name, metric_value, direction)
+            elif metric_type == "PRESSURE":
+                return self._pressure_to_signal(metric_name, metric_value, direction)
+            elif metric_type == "VOLUME_PROFILE":
+                return self._volume_profile_to_signal(metric_name, metric_value, direction)
+            elif metric_type == "FUNDING_RATE":
+                return self._funding_rate_to_signal(metric_name, metric_value, direction)
+            elif metric_type == "CROSS_ASSET":
+                return self._cross_asset_to_signal(metric_name, metric_value, direction)
+            elif metric_type == "MARKET_CONDITIONS":
+                return self._market_conditions_to_signal(metric_name, metric_value, direction)
             else:
                 return None
         except Exception as e:
@@ -202,10 +227,9 @@ class BayesianFusion:
                 confidence = 0.70
                 evidence = f"RSI {rsi:.0f} overbought"
             else:
-                # Neutral
-                probability = 0.50
-                confidence = 0.40
-                evidence = f"RSI {rsi:.0f} neutral"
+                # Neutral - return None to exclude from Bayesian fusion
+                # Neutral signals don't provide useful information for trading decisions
+                return None
         else:  # SHORT
             if rsi > 70:
                 # Overbought - strong bearish signal
@@ -223,10 +247,9 @@ class BayesianFusion:
                 confidence = 0.70
                 evidence = f"RSI {rsi:.0f} oversold"
             else:
-                # Neutral
-                probability = 0.50
-                confidence = 0.40
-                evidence = f"RSI {rsi:.0f} neutral"
+                # Neutral - return None to exclude from Bayesian fusion
+                # Neutral signals don't provide useful information for trading decisions
+                return None
         
         return Signal(
             name=name,
@@ -258,126 +281,474 @@ class BayesianFusion:
         return None
     
     def _trend_to_signal(self, name: str, trend: str, direction: str) -> Optional[Signal]:
-        """Convert trend to a Bayesian signal"""
+        """Convert trend to a Bayesian signal - conservative for limit orders"""
+        
+        # Determine timeframe from signal name
+        is_5m_trend = "5m" in name
+        is_short_term = "Short" in name
+        is_medium_term = "Medium" in name
+        
+        # EXCLUDE 5-minute trends - too noisy for limit orders
+        if is_5m_trend:
+            return None
+        
+        # For limit orders, we want to be much more conservative with trend signals
+        # Short-term trends should have minimal impact, medium-term trends moderate impact
+        
         if direction == "LONG":
-            trend_map = {
-                "STRONG_UPTREND": (0.80, 0.90),
-                "UPTREND": (0.70, 0.80),
-                "WEAK_UPTREND": (0.60, 0.65),
-                "SIDEWAYS": (0.50, 0.50),
-                "WEAK_DOWNTREND": (0.40, 0.65),
-                "DOWNTREND": (0.30, 0.80),
-                "STRONG_DOWNTREND": (0.20, 0.90),
-            }
+            if is_short_term:
+                # Short-term trends: very conservative for limit orders
+                trend_map = {
+                    "STRONG_UPTREND": (0.55, 0.60),  # Reduced from 0.80
+                    "UPTREND": (0.52, 0.55),         # Reduced from 0.70
+                    "WEAK_UPTREND": (0.51, 0.50),    # Reduced from 0.60
+                    "SIDEWAYS": None,                # Exclude
+                    "WEAK_DOWNTREND": (0.49, 0.50),  # Much less bearish
+                    "DOWNTREND": (0.47, 0.55),        # Much less bearish
+                    "STRONG_DOWNTREND": (0.45, 0.60), # Much less bearish
+                }
+            elif is_medium_term:
+                # Medium-term trends: moderate impact
+                trend_map = {
+                    "STRONG_UPTREND": (0.65, 0.70),  # Reduced from 0.80
+                    "UPTREND": (0.60, 0.65),         # Reduced from 0.70
+                    "WEAK_UPTREND": (0.55, 0.55),    # Reduced from 0.60
+                    "SIDEWAYS": None,                # Exclude
+                    "WEAK_DOWNTREND": (0.45, 0.60),  # Less bearish
+                    "DOWNTREND": (0.40, 0.65),       # Less bearish
+                    "STRONG_DOWNTREND": (0.35, 0.70), # Less bearish
+                }
+            else:
+                # Default (shouldn't happen with proper naming)
+                trend_map = {
+                    "STRONG_UPTREND": (0.60, 0.65),
+                    "UPTREND": (0.55, 0.60),
+                    "WEAK_UPTREND": (0.52, 0.55),
+                    "SIDEWAYS": None,
+                    "WEAK_DOWNTREND": (0.48, 0.55),
+                    "DOWNTREND": (0.45, 0.60),
+                    "STRONG_DOWNTREND": (0.40, 0.65),
+                }
         else:  # SHORT
-            trend_map = {
-                "STRONG_DOWNTREND": (0.80, 0.90),
-                "DOWNTREND": (0.70, 0.80),
-                "WEAK_DOWNTREND": (0.60, 0.65),
-                "SIDEWAYS": (0.50, 0.50),
-                "WEAK_UPTREND": (0.40, 0.65),
-                "UPTREND": (0.30, 0.80),
-                "STRONG_UPTREND": (0.20, 0.90),
-            }
+            if is_short_term:
+                # Short-term trends: very conservative for limit orders
+                trend_map = {
+                    "STRONG_DOWNTREND": (0.55, 0.60),  # Reduced from 0.80
+                    "DOWNTREND": (0.52, 0.55),         # Reduced from 0.70
+                    "WEAK_DOWNTREND": (0.51, 0.50),    # Reduced from 0.60
+                    "SIDEWAYS": None,                 # Exclude
+                    "WEAK_UPTREND": (0.49, 0.50),     # Much less bearish
+                    "UPTREND": (0.47, 0.55),          # Much less bearish
+                    "STRONG_UPTREND": (0.45, 0.60),   # Much less bearish
+                }
+            elif is_medium_term:
+                # Medium-term trends: moderate impact
+                trend_map = {
+                    "STRONG_DOWNTREND": (0.65, 0.70),  # Reduced from 0.80
+                    "DOWNTREND": (0.60, 0.65),         # Reduced from 0.70
+                    "WEAK_DOWNTREND": (0.55, 0.55),    # Reduced from 0.60
+                    "SIDEWAYS": None,                 # Exclude
+                    "WEAK_UPTREND": (0.45, 0.60),     # Less bearish
+                    "UPTREND": (0.40, 0.65),           # Less bearish
+                    "STRONG_UPTREND": (0.35, 0.70),   # Less bearish
+                }
+            else:
+                # Default (shouldn't happen with proper naming)
+                trend_map = {
+                    "STRONG_DOWNTREND": (0.60, 0.65),
+                    "DOWNTREND": (0.55, 0.60),
+                    "WEAK_DOWNTREND": (0.52, 0.55),
+                    "SIDEWAYS": None,
+                    "WEAK_UPTREND": (0.48, 0.55),
+                    "UPTREND": (0.45, 0.60),
+                    "STRONG_UPTREND": (0.40, 0.65),
+                }
         
         if trend in trend_map:
-            prob, conf = trend_map[trend]
+            prob_conf = trend_map[trend]
+            
+            # Exclude SIDEWAYS trends
+            if prob_conf is None:
+                return None
+                
+            prob, conf = prob_conf
             return Signal(
                 name=name,
                 probability=prob,
                 confidence=conf,
-                evidence=f"Trend: {trend}"
+                evidence=f"Trend: {trend} ({'15m' if is_short_term else '2h' if is_medium_term else 'unknown'})"
             )
         
         return None
     
     def _pattern_to_signal(self, name: str, pattern_data: Dict[str, Any], direction: str) -> Optional[Signal]:
         """Convert pattern to a Bayesian signal"""
-        pattern_direction = pattern_data.get("direction", "NEUTRAL")
-        pattern_confidence = pattern_data.get("confidence", 0.5)
-        pattern_name = pattern_data.get("pattern", "UNKNOWN")
-        
-        # Check if pattern direction aligns with trade direction
-        if (direction == "LONG" and pattern_direction == "BULLISH") or \
-           (direction == "SHORT" and pattern_direction == "BEARISH"):
-            # Aligned
-            probability = 0.5 + (pattern_confidence * 0.3)  # 0.5 to 0.8
-            confidence = pattern_confidence
-            evidence = f"{pattern_name} {pattern_direction}"
-        elif pattern_direction == "NEUTRAL":
-            # Neutral pattern
-            probability = 0.50
-            confidence = 0.40
-            evidence = f"{pattern_name} neutral"
-        else:
-            # Opposing
-            probability = 0.5 - (pattern_confidence * 0.2)  # 0.3 to 0.5
-            confidence = pattern_confidence * 0.7
-            evidence = f"{pattern_name} {pattern_direction} (opposing)"
-        
-        return Signal(
-            name=name,
-            probability=probability,
-            confidence=confidence,
-            evidence=evidence
-        )
+        try:
+            # Handle actual pattern data structure
+            patterns = pattern_data.get("patterns", {})
+            market_setup = pattern_data.get("market_setup", {})
+            overall_confidence = pattern_data.get("overall_confidence", 0.5)
+            
+            # Check market setup first
+            setup = market_setup.get("setup", "NEUTRAL")
+            setup_strength = market_setup.get("strength", "MODERATE")
+            
+            if setup == "NEUTRAL":
+                # Provide neutral signal with low confidence
+                return Signal(
+                    name=name,
+                    probability=0.50,
+                    confidence=0.25,
+                    evidence="Pattern: Neutral setup"
+                )
+            
+            # Determine pattern direction from setup
+            if setup in ["BULLISH_SETUP", "BULLISH"]:
+                pattern_direction = "BULLISH"
+            elif setup in ["BEARISH_SETUP", "BEARISH"]:
+                pattern_direction = "BEARISH"
+            else:
+                return None
+            
+            # Check if pattern direction aligns with trade direction
+            if (direction == "LONG" and pattern_direction == "BULLISH") or \
+               (direction == "SHORT" and pattern_direction == "BEARISH"):
+                # Aligned
+                probability = 0.5 + (overall_confidence * 0.3)  # 0.5 to 0.8
+                confidence = overall_confidence
+                evidence = f"Pattern {setup} ({setup_strength})"
+            else:
+                # Opposing
+                probability = 0.5 - (overall_confidence * 0.2)  # 0.3 to 0.5
+                confidence = overall_confidence * 0.7
+                evidence = f"Pattern {setup} (opposing)"
+            
+            return Signal(
+                name=name,
+                probability=probability,
+                confidence=confidence,
+                evidence=evidence
+            )
+        except Exception as e:
+            logger.debug(f"⚠️ Pattern signal conversion failed: {e}")
+            return None
     
     def _sr_to_signal(self, name: str, sr_data: Dict[str, Any], direction: str) -> Optional[Signal]:
         """Convert support/resistance proximity to a Bayesian signal"""
-        position_in_range = sr_data.get("position_in_range", 0.5)
+        try:
+            # Handle actual S/R data structure
+            strongest_support = sr_data.get("strongest_support")
+            strongest_resistance = sr_data.get("strongest_resistance")
+            current_price = sr_data.get("current_price")
+            
+            if not all([strongest_support, strongest_resistance, current_price]):
+                return None
+            
+            # Calculate position in range
+            range_size = strongest_resistance - strongest_support
+            if range_size <= 0:
+                return None
+            
+            position_in_range = (current_price - strongest_support) / range_size
+            
+            if direction == "LONG":
+                # Near support (0-0.3) = bullish
+                # Near resistance (0.7-1.0) = bearish
+                if position_in_range < 0.15:
+                    probability = 0.75
+                    confidence = 0.85
+                    evidence = "Very near support"
+                elif position_in_range < 0.30:
+                    probability = 0.65
+                    confidence = 0.75
+                    evidence = "Approaching support"
+                elif position_in_range > 0.85:
+                    probability = 0.30
+                    confidence = 0.80
+                    evidence = "Very near resistance"
+                elif position_in_range > 0.70:
+                    probability = 0.40
+                    confidence = 0.70
+                    evidence = "Approaching resistance"
+                else:
+                    # Mid-range - provide neutral signal with low confidence
+                    probability = 0.50
+                    confidence = 0.30
+                    evidence = "Mid-range between S/R levels"
+            else:  # SHORT
+                # Near resistance = bearish (good for SHORT)
+                if position_in_range > 0.85:
+                    probability = 0.75
+                    confidence = 0.85
+                    evidence = "Very near resistance"
+                elif position_in_range > 0.70:
+                    probability = 0.65
+                    confidence = 0.75
+                    evidence = "Approaching resistance"
+                elif position_in_range < 0.15:
+                    probability = 0.30
+                    confidence = 0.80
+                    evidence = "Very near support"
+                elif position_in_range < 0.30:
+                    probability = 0.40
+                    confidence = 0.70
+                    evidence = "Approaching support"
+                else:
+                    # Mid-range - provide neutral signal with low confidence
+                    probability = 0.50
+                    confidence = 0.30
+                    evidence = "Mid-range between S/R levels"
+            
+            return Signal(
+                name=name,
+                probability=probability,
+                confidence=confidence,
+                evidence=evidence
+            )
+        except Exception as e:
+            logger.debug(f"⚠️ S/R signal conversion failed: {e}")
+            return None
+    
+    def _volatility_to_signal(self, name: str, volatility_category: str, direction: str) -> Optional[Signal]:
+        """Convert volatility category to a Bayesian signal"""
+        volatility_map = {
+            "LOW": (0.60, 0.70, "low volatility"),
+            "MODERATE": (0.50, 0.50, "moderate volatility"),
+            "HIGH": (0.40, 0.60, "high volatility"),
+            "EXTREME": (0.30, 0.50, "extreme volatility")
+        }
+        
+        if volatility_category in volatility_map:
+            prob, conf, evidence = volatility_map[volatility_category]
+            return Signal(
+                name=name,
+                probability=prob,
+                confidence=conf,
+                evidence=evidence
+            )
+        return None
+    
+    def _pressure_to_signal(self, name: str, pressure_data: dict, direction: str) -> Optional[Signal]:
+        """Convert pressure data to a Bayesian signal"""
+        if not pressure_data or "direction" not in pressure_data:
+            return None
+        
+        pressure_direction = pressure_data.get("direction", "NEUTRAL")
+        confidence = pressure_data.get("confidence", 0.0)
+        
+        if pressure_direction == "NEUTRAL":
+            return None
         
         if direction == "LONG":
-            # Near support (0-0.3) = bullish
-            # Near resistance (0.7-1.0) = bearish
-            if position_in_range < 0.15:
-                probability = 0.75
-                confidence = 0.85
-                evidence = "Very near support"
-            elif position_in_range < 0.30:
-                probability = 0.65
-                confidence = 0.75
-                evidence = "Approaching support"
-            elif position_in_range > 0.85:
-                probability = 0.30
-                confidence = 0.80
-                evidence = "Very near resistance"
-            elif position_in_range > 0.70:
-                probability = 0.40
-                confidence = 0.70
-                evidence = "Approaching resistance"
-            else:
-                probability = 0.50
-                confidence = 0.50
-                evidence = "Mid-range"
+            if pressure_direction == "BULLISH":
+                probability = 0.65 + (confidence * 0.2)  # 0.65 to 0.85
+            else:  # BEARISH
+                probability = 0.35 - (confidence * 0.2)  # 0.15 to 0.35
         else:  # SHORT
-            # Near resistance = bearish (good for SHORT)
-            if position_in_range > 0.85:
-                probability = 0.75
-                confidence = 0.85
-                evidence = "Very near resistance"
-            elif position_in_range > 0.70:
-                probability = 0.65
-                confidence = 0.75
-                evidence = "Approaching resistance"
-            elif position_in_range < 0.15:
-                probability = 0.30
-                confidence = 0.80
-                evidence = "Very near support"
-            elif position_in_range < 0.30:
-                probability = 0.40
-                confidence = 0.70
-                evidence = "Approaching support"
-            else:
-                probability = 0.50
-                confidence = 0.50
-                evidence = "Mid-range"
+            if pressure_direction == "BEARISH":
+                probability = 0.65 + (confidence * 0.2)  # 0.65 to 0.85
+            else:  # BULLISH
+                probability = 0.35 - (confidence * 0.2)  # 0.15 to 0.35
         
         return Signal(
             name=name,
             probability=probability,
             confidence=confidence,
-            evidence=evidence
+            evidence=f"Pressure: {pressure_direction}"
         )
+    
+    def _volume_profile_to_signal(self, name: str, volume_profile_data: dict, direction: str) -> Optional[Signal]:
+        """Convert volume profile data to a Bayesian signal"""
+        try:
+            if not volume_profile_data:
+                return None
+            
+            # Handle actual volume profile data structure
+            trade_flow = volume_profile_data.get("trade_flow_analysis", {})
+            flow_direction = trade_flow.get("direction", "NEUTRAL")
+            flow_strength = trade_flow.get("strength", 0.0)
+            
+            # Include neutral signals with very low confidence
+            if flow_direction == "NEUTRAL":
+                # Provide neutral signal with low confidence
+                return Signal(
+                    name=name,
+                    probability=0.50,
+                    confidence=0.20,
+                    evidence="Volume Profile: Neutral flow"
+                )
+            
+            if flow_strength < 0.3:
+                # Provide weak signal with low confidence
+                confidence = flow_strength * 0.5  # Scale down confidence
+                return Signal(
+                    name=name,
+                    probability=0.50,
+                    confidence=confidence,
+                    evidence=f"Weak volume flow: {flow_direction}"
+                )
+            
+            # Determine signal direction
+            if flow_direction in ["BULLISH", "BUY"]:
+                signal = "BULLISH"
+            elif flow_direction in ["BEARISH", "SELL"]:
+                signal = "BEARISH"
+            else:
+                return None
+            
+            confidence = min(0.8, flow_strength)  # Cap confidence at 0.8
+            
+            if direction == "LONG":
+                if signal == "BULLISH":
+                    probability = 0.60 + (confidence * 0.3)  # 0.60 to 0.90
+                else:  # BEARISH
+                    probability = 0.40 - (confidence * 0.3)  # 0.10 to 0.40
+            else:  # SHORT
+                if signal == "BEARISH":
+                    probability = 0.60 + (confidence * 0.3)  # 0.60 to 0.90
+                else:  # BULLISH
+                    probability = 0.40 - (confidence * 0.3)  # 0.10 to 0.40
+            
+            return Signal(
+                name=name,
+                probability=probability,
+                confidence=confidence,
+                evidence=f"Volume Profile: {signal}"
+            )
+        except Exception as e:
+            logger.debug(f"⚠️ Volume Profile signal conversion failed: {e}")
+            return None
+    
+    def _funding_rate_to_signal(self, name: str, funding_data: dict, direction: str) -> Optional[Signal]:
+        """Convert funding rate data to a Bayesian signal"""
+        try:
+            if not funding_data:
+                return None
+            
+            # Handle actual funding rate data structure
+            rate = funding_data.get("current_funding_rate", 0.0)
+            confidence = 0.60  # Moderate confidence for funding rate
+            
+            if direction == "LONG":
+                if rate < -0.01:  # Negative funding (bullish for longs)
+                    probability = 0.65
+                    evidence = f"Negative funding rate: {rate:.4f}"
+                elif rate > 0.01:  # Positive funding (bearish for longs)
+                    probability = 0.35
+                    evidence = f"Positive funding rate: {rate:.4f}"
+                else:
+                    return None  # Neutral funding
+            else:  # SHORT
+                if rate > 0.01:  # Positive funding (bullish for shorts)
+                    probability = 0.65
+                    evidence = f"Positive funding rate: {rate:.4f}"
+                elif rate < -0.01:  # Negative funding (bearish for shorts)
+                    probability = 0.35
+                    evidence = f"Negative funding rate: {rate:.4f}"
+                else:
+                    return None  # Neutral funding
+            
+            return Signal(
+                name=name,
+                probability=probability,
+                confidence=confidence,
+                evidence=evidence
+            )
+        except Exception as e:
+            logger.debug(f"⚠️ Funding rate signal conversion failed: {e}")
+            return None
+    
+    def _cross_asset_to_signal(self, name: str, cross_asset_data: dict, direction: str) -> Optional[Signal]:
+        """Convert cross-asset correlation data to a Bayesian signal"""
+        try:
+            if not cross_asset_data:
+                return None
+            
+            # Handle actual cross-asset data structure
+            market_regime = cross_asset_data.get("market_regime", {})
+            regime = market_regime.get("regime", "NEUTRAL")
+            regime_confidence = market_regime.get("confidence", 0.5)
+            
+            if regime == "NEUTRAL":
+                return None
+            
+            # Determine signal direction from regime
+            if regime in ["BULLISH", "RISK_ON"]:
+                signal_direction = "BULLISH"
+            elif regime in ["BEARISH", "RISK_OFF"]:
+                signal_direction = "BEARISH"
+            else:
+                return None
+            
+            confidence = regime_confidence
+            
+            if direction == "LONG":
+                if signal_direction == "BULLISH":
+                    probability = 0.60 + (confidence * 0.2)  # 0.60 to 0.80
+                    evidence = f"Cross-asset regime: {regime}"
+                else:  # BEARISH
+                    probability = 0.40 - (confidence * 0.2)  # 0.20 to 0.40
+                    evidence = f"Cross-asset regime: {regime} (opposing)"
+            else:  # SHORT
+                if signal_direction == "BEARISH":
+                    probability = 0.60 + (confidence * 0.2)  # 0.60 to 0.80
+                    evidence = f"Cross-asset regime: {regime}"
+                else:  # BULLISH
+                    probability = 0.40 - (confidence * 0.2)  # 0.20 to 0.40
+                    evidence = f"Cross-asset regime: {regime} (opposing)"
+            
+            return Signal(
+                name=name,
+                probability=probability,
+                confidence=confidence,
+                evidence=evidence
+            )
+        except Exception as e:
+            logger.debug(f"⚠️ Cross-asset signal conversion failed: {e}")
+            return None
+    
+    def _market_conditions_to_signal(self, name: str, market_conditions_data: dict, direction: str) -> Optional[Signal]:
+        """Convert market conditions data to a Bayesian signal - VERY CONSERVATIVE"""
+        try:
+            if not market_conditions_data:
+                return None
+            
+            # Handle actual market conditions data structure
+            condition = market_conditions_data.get("condition", "NEUTRAL")
+            confidence = market_conditions_data.get("confidence", 0.7)
+            
+            if condition == "NEUTRAL":
+                return None
+            
+            # Use VERY conservative probabilities for market conditions (supporting signal only)
+            if direction == "LONG":
+                if condition == "GOOD":
+                    probability = 0.52 + (confidence * 0.03)  # 0.52 to 0.55 (very conservative)
+                    evidence = f"Good market conditions (supporting)"
+                elif condition == "POOR":
+                    probability = 0.48 - (confidence * 0.03)  # 0.45 to 0.48 (very conservative)
+                    evidence = f"Poor market conditions (supporting)"
+                else:
+                    return None
+            else:  # SHORT
+                if condition == "POOR":
+                    probability = 0.52 + (confidence * 0.03)  # 0.52 to 0.55 (very conservative)
+                    evidence = f"Poor market conditions (supporting)"
+                elif condition == "GOOD":
+                    probability = 0.48 - (confidence * 0.03)  # 0.45 to 0.48 (very conservative)
+                    evidence = f"Good market conditions (supporting)"
+                else:
+                    return None
+            
+            return Signal(
+                name=name,
+                probability=probability,
+                confidence=min(0.4, confidence * 0.5),  # Cap confidence at 40% and reduce by 50%
+                evidence=evidence
+            )
+        except Exception as e:
+            logger.debug(f"⚠️ Market conditions signal conversion failed: {e}")
+            return None
 
 
 # Global singleton instance

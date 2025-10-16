@@ -327,14 +327,14 @@ class SystemInitializer:
             
             # ML Systems (strategy selection only - predictions removed)
             from core.ml.probability_engine import get_global_probability_engine
-            from core.ml.calibration_tracker import get_global_calibration_tracker
+            # Note: calibration_tracker removed - using only Bayesian fusion
             from core.ml.monte_carlo_simulator import get_global_monte_carlo_simulator
             from core.ml.bayesian_fusion import get_global_bayesian_fusion
             from core.ml.multitimeframe_probability import get_global_multitimeframe_probability
             from core.ml.strategy_selector import global_ml_strategy_selector
             
             self.singleton_systems["probability_engine"] = get_global_probability_engine()
-            self.singleton_systems["calibration_tracker"] = get_global_calibration_tracker()
+            # Note: calibration_tracker removed - using only Bayesian fusion
             self.singleton_systems["monte_carlo_simulator"] = get_global_monte_carlo_simulator()
             self.singleton_systems["bayesian_fusion"] = get_global_bayesian_fusion()
             self.singleton_systems["multitimeframe_probability"] = get_global_multitimeframe_probability()
@@ -358,7 +358,7 @@ class SystemInitializer:
             required_systems = [
                 "strategy_selector", 
                 "probability_engine", 
-                "calibration_tracker", 
+                # Note: calibration_tracker removed 
                 "monte_carlo_simulator",
                 "bayesian_fusion",
                 "multitimeframe_probability"

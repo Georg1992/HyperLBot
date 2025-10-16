@@ -197,9 +197,9 @@ class MagicNumbers:
     VARIABILITY_OPTIMAL = 0.7
     VARIABILITY_GOOD = 0.5
     
-    # Confidence thresholds
-    MIN_CONFIDENCE_THRESHOLD = 0.1
-    CONFIDENCE_THRESHOLD_LOW = 0.3
+    # Confidence thresholds (using TradingConstants values)
+    # MIN_CONFIDENCE_THRESHOLD = 0.1  # Duplicate - use TradingConstants.MIN_CONFIDENCE_THRESHOLD
+    # CONFIDENCE_THRESHOLD_LOW = 0.3  # Duplicate - use TradingConstants.MIN_CONFIDENCE_THRESHOLD
 
 class DataFetchingConstants:
     """Data fetching and update interval constants"""
@@ -364,8 +364,8 @@ class VariabilityConstants:
     VOLUME_CV_GOOD = 0.8             # Good volume variability
     VOLUME_CV_OPTIMAL = 1.5          # Optimal volume variability
     
-    # Confidence Thresholds
-    MIN_CONFIDENCE_THRESHOLD = 0.1   # 10% minimum confidence
+    # Confidence Thresholds (using TradingConstants values)
+    # MIN_CONFIDENCE_THRESHOLD = 0.1   # Duplicate - use TradingConstants.MIN_CONFIDENCE_THRESHOLD
     CONFIDENCE_REDUCTION_FACTOR = 0.1 # 10% confidence reduction
 
 

@@ -79,7 +79,7 @@ class PredictionStateManager:
             # Extract prediction parameters
             side = prediction_data.get("side", "BUY")
             entry_price = prediction_data.get("entry_price", 0.0)
-            confidence = prediction_data.get("calibrated_confidence", 0.0)
+            confidence = prediction_data.get("confidence", 0.0)
             expected_value = prediction_data.get("expected_value", 0.0)
             strategy = prediction_data.get("strategy", "standard")
             

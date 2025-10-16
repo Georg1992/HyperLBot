@@ -273,6 +273,7 @@ class SessionOrchestrator:
     def _prepare_unified_market_data(self, market_data: Dict[str, Any], current_price: float, market_data_service=None) -> Dict[str, Any]:
         """Prepare unified market data structure for both Signal Aggregator and Dashboard - SINGLE DATA SOURCE"""
         try:
+            logger.debug(f"🔍 _prepare_unified_market_data called with market_data_service: {type(market_data_service)}")
             # SINGLE DATA SOURCE: Use only MarketDataService data
             # No more MarketDataManager calls - MarketDataService is the single source of truth
             
@@ -364,9 +365,10 @@ class SessionOrchestrator:
                     if candles_5m_for_sr and len(candles_5m_for_sr) >= 20:
                         # Use provided market data service
                         if market_data_service is None:
-                            logger.warning("⚠️ No market data service provided for S/R calculation")
-                            support_resistance = {"error": "No market data service available"}
+                            logger.error("❌ CRITICAL: No market data service provided for S/R calculation - NO FALLBACKS")
+                            raise ValueError("Market data service is None - NO FALLBACKS")
                         else:
+                            logger.debug(f"🔍 Market data service available: {type(market_data_service)}")
                             support_resistance = sr_calculator.calculate_multi_timeframe_levels(
                                 current_price, market_data_service, candles_5m_for_sr, candles_1h, candles_1d
                             )
@@ -883,6 +885,7 @@ class SessionOrchestrator:
     def _main_data_loop(self, check_interval: int, hyperliquid_api,
                        market_data_service, dashboard_service) -> Dict[str, Any]:
         """Main data collection and dashboard update loop (no trading)"""
+        logger.debug(f"🔍 _main_data_loop called with market_data_service: {type(market_data_service)}")
         last_loop_time = 0
         min_loop_interval = 0.5  # Minimum 0.5 seconds between loop iterations for more responsive RSI
         last_5m_boundary = None  # Track 5-minute boundaries for immediate updates
@@ -1153,6 +1156,7 @@ class SessionOrchestrator:
     def _get_market_data(self, current_price: float, market_data_service) -> Dict[str, Any]:
         """Get all market data once - single source of truth (delegates to proper services)"""
         try:
+            logger.debug(f"🔍 _get_market_data called with market_data_service: {type(market_data_service)}")
             
             # DELEGATE: Get market analysis from MarketDataService
             hyperliquid_analysis = market_data_service.get_hyperliquid_analysis(current_price)

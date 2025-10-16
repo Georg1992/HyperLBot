@@ -5,13 +5,8 @@ Manages trade execution and position tracking
 """
 
 import time
-# import json  # Removed unused import
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
-# from collections import deque  # Removed unused import
-
-# Import core module to setup paths
-# import core  # Removed unused import
 
 from config.config import TradingConfig
 

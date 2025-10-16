@@ -1005,11 +1005,7 @@
                         }
                     }
                     
-                    // Update ML predictions and metrics
-                    if (data.signals) {
-                        this.updateMLPredictions(data.signals);
-                        this.updateMLMetrics(data.signals);
-                    }
+                    // ML predictions are now handled by RealtimePredictionEngine
                     
                     // Update candle chart
                     console.log('🕯️ Checking for candleData in data:', {
@@ -1377,8 +1373,7 @@
                     patternElement.className = 'data-value trend-neutral';
                 }
                 
-                // Update ML Trading Prediction
-                this.updateMLPrediction(market.ml_prediction);
+                // ML predictions are now handled by RealtimePredictionEngine
                 
                 // Update ML Analysis Type
                 const mlAnalysisElement = document.getElementById('ml-analysis-type');
@@ -1889,141 +1884,9 @@
                 }
             }
             
-            updateMLPredictions(signals) {
-                // Debug: Log all signals
-                console.log('🔍 All signals:', signals);
-                
-                // Find ML trading predictions - the data is flattened directly in the signal
-                let mlSignal = signals.find(s => s.type === 'MARKET_ANALYSIS');
-                console.log('🔍 MARKET_ANALYSIS signal found:', mlSignal);
-                
-                if (mlSignal) {
-                    // The trading prediction data is directly in the signal
-                    const signal = mlSignal.direction || 'HOLD';
-                    const entryPrice = mlSignal.entry_price || 0;
-                    const sizeBtc = mlSignal.size_btc || 0;
-                    const stopLoss = mlSignal.stop_loss || 0;
-                    const takeProfit = mlSignal.take_profit || 0;
-                    const confidence = mlSignal.confidence || 0;
-                    const reasoning = mlSignal.reasoning || 'No reasoning available';
-                    
-                    console.log('🔍 Extracted prediction data:', {
-                        signal, entryPrice, sizeBtc, stopLoss, takeProfit, confidence, reasoning
-                    });
-                    
-                    // Update trading prediction display
-                    document.getElementById('ml-signal').textContent = signal;
-                    document.getElementById('ml-entry-price').textContent = `$${entryPrice.toFixed(2)}`;
-                    document.getElementById('ml-size-btc').textContent = sizeBtc.toFixed(6);
-                    document.getElementById('ml-stop-loss').textContent = `$${stopLoss.toFixed(2)}`;
-                    document.getElementById('ml-take-profit').textContent = `$${takeProfit.toFixed(2)}`;
-                    document.getElementById('ml-confidence').textContent = `${Math.round(confidence * 100)}%`;
-                    document.getElementById('ml-reasoning').textContent = reasoning;
-                    
-                    // Color code the signal
-                    const signalElement = document.getElementById('ml-signal');
-                    if (signal === 'BUY') {
-                        signalElement.style.color = '#00FF88';
-                    } else if (signal === 'SELL') {
-                        signalElement.style.color = '#FF4444';
-                    } else {
-                        signalElement.style.color = '#FFC107';
-                    }
-                    
-                    console.log('✅ ML predictions updated successfully');
-                } else {
-                    console.log('❌ No MARKET_ANALYSIS signal found');
-                }
-            }
+            // updateMLPredictions method removed - ML predictions now handled by RealtimePredictionEngine
             
-            updateMLMetrics(signals) {
-                // Debug: Log ML metrics signals
-                console.log('🔍 All signals for ML metrics:', signals);
-                
-                // Find ML metrics signal
-                let mlMetricsSignal = signals.find(s => s.type === 'ML_METRICS');
-                console.log('🔍 ML_METRICS signal found:', mlMetricsSignal);
-                
-                if (mlMetricsSignal) {
-                    console.log('🔍 Using ML_METRICS signal data:', mlMetricsSignal);
-                    
-                    // For now, set default values since the ML_METRICS signal structure is different
-                    // Update ML performance overview
-                    const analysisTypeElement = document.getElementById('ml-analysis-type-detail');
-                    if (analysisTypeElement) {
-                        analysisTypeElement.textContent = 'ML Active';
-                    }
-                    
-                    // Update training data
-                    const trainingDataElement = document.getElementById('ml-training-data');
-                    if (trainingDataElement) {
-                        trainingDataElement.textContent = '150 data points'; // Default value
-                    }
-                    
-                    // Update accuracy
-                    const accuracyElement = document.getElementById('ml-accuracy');
-                    if (accuracyElement) {
-                        accuracyElement.textContent = '75%'; // Default value
-                    }
-                    
-                    // Update confidence correlation
-                    const confCorrelationElement = document.getElementById('ml-confidence-correlation');
-                    if (confCorrelationElement) {
-                        confCorrelationElement.textContent = '80%'; // Default value
-                    }
-                    
-                    // Update retrain status
-                    const retrainElement = document.getElementById('ml-retrain-status');
-                    if (retrainElement) {
-                        retrainElement.textContent = 'Performing well';
-                        retrainElement.style.color = '#00FF88';
-                    }
-                    
-                    // Update learning status
-                    const learningElement = document.getElementById('ml-learning-status');
-                    if (learningElement) {
-                        learningElement.textContent = 'Ready';
-                        learningElement.style.color = '#00FF88';
-                    }
-                    
-                    console.log('✅ ML metrics updated successfully (with default values)');
-                } else {
-                    console.log('❌ No ML_METRICS signal found');
-                    
-                    // Set default values when no ML metrics signal is found
-                    const analysisTypeElement = document.getElementById('ml-analysis-type-detail');
-                    if (analysisTypeElement) {
-                        analysisTypeElement.textContent = 'No data';
-                    }
-                    
-                    const trainingDataElement = document.getElementById('ml-training-data');
-                    if (trainingDataElement) {
-                        trainingDataElement.textContent = '0 data points';
-                    }
-                    
-                    const accuracyElement = document.getElementById('ml-accuracy');
-                    if (accuracyElement) {
-                        accuracyElement.textContent = '0%';
-                    }
-                    
-                    const confCorrelationElement = document.getElementById('ml-confidence-correlation');
-                    if (confCorrelationElement) {
-                        confCorrelationElement.textContent = '0%';
-                    }
-                    
-                    const retrainElement = document.getElementById('ml-retrain-status');
-                    if (retrainElement) {
-                        retrainElement.textContent = 'No data';
-                        retrainElement.style.color = '#FF4444';
-                    }
-                    
-                    const learningElement = document.getElementById('ml-learning-status');
-                    if (learningElement) {
-                        learningElement.textContent = 'No data';
-                        learningElement.style.color = '#FF4444';
-                    }
-                }
-            }
+            // updateMLMetrics method removed - ML metrics now handled by RealtimePredictionEngine
             
             updateLiquidationHunting(liquidationData) {
                 console.log('🎯 Updating liquidation hunting data:', liquidationData);
@@ -2191,95 +2054,7 @@
                 container.scrollTop = container.scrollHeight;
             }
             
-            updateMLPrediction(prediction) {
-                try {
-                    if (!prediction) {
-                        // No active prediction
-                        document.getElementById('ml-signal').textContent = 'HOLD';
-                        document.getElementById('ml-signal').style.color = '#888';
-                        document.getElementById('ml-entry-price').textContent = '$0.00';
-                        document.getElementById('ml-size-btc').textContent = '0.000000';
-                        document.getElementById('ml-stop-loss').textContent = '$0.00';
-                        document.getElementById('ml-take-profit').textContent = '$0.00';
-                        document.getElementById('ml-confidence').textContent = '0%';
-                        document.getElementById('ml-reasoning').textContent = 'No active prediction';
-                        return;
-                    }
-                    
-                    // Check if this is a reactive trade
-                    const isReactive = prediction.is_reactive || false;
-                    const urgency = prediction.urgency || 'NORMAL';
-                    
-                    // Update prediction data
-                    const direction = prediction.direction || 'HOLD';
-                    const entryPrice = prediction.entry_price || 0;
-                    const sizeBtc = prediction.size_btc || 0;
-                    const stopLoss = prediction.stop_loss || 0;
-                    const targetPrice = prediction.target_price || 0;
-                    const confidence = prediction.confidence || 0;
-                    const reasoning = prediction.reasoning || 'No reasoning available';
-                    
-                    // Update direction with color coding and reactive indicators
-                    const signalElement = document.getElementById('ml-signal');
-                    let displayText = direction;
-                    
-                    if (isReactive) {
-                        if (urgency === 'CRITICAL') {
-                            displayText = `🚨 ${direction} 🚨`;
-                            signalElement.style.color = '#FF0000'; // Bright red for critical
-                            signalElement.style.fontWeight = 'bold';
-                            signalElement.style.animation = 'blink 1s infinite';
-                        } else {
-                            displayText = `⚡ ${direction} ⚡`;
-                            signalElement.style.color = '#FF8800'; // Orange for high urgency
-                            signalElement.style.fontWeight = 'bold';
-                        }
-                    } else {
-                        if (direction === 'BUY') {
-                            signalElement.style.color = '#00FF88';
-                        } else if (direction === 'SELL') {
-                            signalElement.style.color = '#FF6464';
-                        } else {
-                            signalElement.style.color = '#888';
-                        }
-                        signalElement.style.fontWeight = 'normal';
-                        signalElement.style.animation = 'none';
-                    }
-                    
-                    signalElement.textContent = displayText;
-                    
-                    // Update other fields
-                    document.getElementById('ml-entry-price').textContent = `$${entryPrice.toLocaleString()}`;
-                    document.getElementById('ml-size-btc').textContent = sizeBtc.toFixed(8);
-                    document.getElementById('ml-stop-loss').textContent = `$${stopLoss.toLocaleString()}`;
-                    document.getElementById('ml-take-profit').textContent = `$${targetPrice.toLocaleString()}`;
-                    document.getElementById('ml-confidence').textContent = `${Math.round(confidence * 100)}%`;
-                    document.getElementById('ml-reasoning').textContent = reasoning;
-                    
-                    // Color code confidence
-                    const confidenceElement = document.getElementById('ml-confidence');
-                    if (isReactive && urgency === 'CRITICAL') {
-                        confidenceElement.style.color = '#FF0000'; // Bright red for critical reactive
-                        confidenceElement.style.fontWeight = 'bold';
-                    } else if (confidence > 0.7) {
-                        confidenceElement.style.color = '#4CAF50'; // Green for high confidence
-                    } else if (confidence > 0.5) {
-                        confidenceElement.style.color = '#FFC107'; // Yellow for medium confidence
-                    } else {
-                        confidenceElement.style.color = '#FF4444'; // Red for low confidence
-                    }
-                    
-                    // Update reasoning with reactive trade indicators
-                    let reasoningText = reasoning;
-                    if (isReactive) {
-                        reasoningText = `🚨 REACTIVE TRADE: ${reasoning}`;
-                    }
-                    document.getElementById('ml-reasoning').textContent = reasoningText;
-                    
-                } catch (error) {
-                    console.error('❌ Failed to update ML prediction:', error);
-                }
-            }
+            // updateMLPrediction method removed - ML predictions now handled by RealtimePredictionEngine
             
             updateCandleChart(candleData) {
                 console.log('🕯️ updateCandleChart called with:', candleData);

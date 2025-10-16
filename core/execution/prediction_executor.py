@@ -165,29 +165,29 @@ class PredictionExecutor:
                     "checks_failed": ["❌ Invalid thresholds object"]
                 }
             
-            # 1. CHECK: Use the FINAL confidence (incorporates all factors)
-            # The prediction MUST have final_confidence - no fallbacks
-            confidence = prediction.get("final_confidence")
+            # 1. CHECK: Use the confidence field (incorporates all factors)
+            # The prediction MUST have confidence - no fallbacks
+            confidence = prediction.get("confidence")
             
             if confidence is None:
-                logger.error(f"❌ final_confidence is missing from prediction: {prediction}")
+                logger.error(f"❌ confidence is missing from prediction: {prediction}")
                 return {
                     "should_execute": False,
-                    "reason": "Missing final_confidence in prediction",
+                    "reason": "Missing confidence in prediction",
                     "checks_passed": [],
-                    "checks_failed": ["❌ Missing final_confidence"]
+                    "checks_failed": ["❌ Missing confidence"]
                 }
             
             if confidence <= 0:
-                logger.error(f"❌ final_confidence is invalid: {confidence}")
+                logger.error(f"❌ confidence is invalid: {confidence}")
                 return {
                     "should_execute": False,
-                    "reason": "Invalid final_confidence value",
+                    "reason": "Invalid confidence value",
                     "checks_passed": [],
-                    "checks_failed": [f"❌ Invalid final_confidence: {confidence}"]
+                    "checks_failed": [f"❌ Invalid confidence: {confidence}"]
                 }
             
-            logger.debug(f"🔍 Using final confidence: {confidence:.1%}")
+            logger.debug(f"🔍 Using confidence: {confidence:.1%}")
             
             # FIXED: Strategy-specific confidence handling
             # Range trading strategies can work with lower confidence due to mean reversion nature
@@ -275,9 +275,8 @@ class PredictionExecutor:
             Position size in BTC
         """
         try:
-            # Get Kelly position size (already calculated)
-            kelly_position_pct = prediction.get("kelly_position_pct", 0.05)  # Default 5%
-            kelly_position_dollars = prediction.get("kelly_position_dollars", 500)
+            # Note: Kelly position sizing removed - using fixed position sizes
+            position_size = prediction.get("size", 0.001)  # Default 0.001 BTC
             
             # Convert to BTC
             entry_price = prediction.get("entry_price", 120000)
@@ -400,11 +399,10 @@ class PredictionExecutor:
                         "size": position_size,
                         "stop_loss": prediction.get("stop_loss"),
                         "take_profit": prediction.get("take_profit"),
-                        "confidence": prediction.get("calibrated_confidence", 0),
+                        "confidence": prediction.get("confidence", 0),
                         "expected_value": prediction.get("expected_value", 0),
                         "strategy": strategy,
                         "bayesian_confidence": prediction.get("bayesian_confidence"),
-                        "kelly_position_pct": prediction.get("kelly_position_pct"),
                         "prediction_id": prediction_id,
                         "order_id": order_id,
                         "timestamp": time.time()
@@ -419,7 +417,7 @@ class PredictionExecutor:
                 "side": side,
                 "entry_price": entry_price,
                 "size": position_size,
-                "confidence": prediction.get("calibrated_confidence", 0),
+                "confidence": prediction.get("confidence", 0),
                 "expected_value": prediction.get("expected_value", 0),
                 "prediction_id": prediction_id,
                 "order_id": order_id,

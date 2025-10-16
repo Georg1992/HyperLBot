@@ -694,6 +694,7 @@ class SupportResistanceCalculator:
             Dict with key_levels, strongest_support, strongest_resistance, metadata
         """
         try:
+            logger.debug(f"🔍 calculate_multi_timeframe_levels called with market_data_service: {type(market_data_service)}")
             logger.info(f"📊 Starting multi-timeframe S/R calculation for price: ${current_price:.2f}")
             
             # Check cache - invalidate if price broke any levels
@@ -787,6 +788,7 @@ class SupportResistanceCalculator:
                     reason.append("no support below price")
                 
                 logger.warning(f"⚠️ Expanding to longer history: {', '.join(reason)}")
+                logger.debug(f"🔍 Market data service type before expansion: {type(market_data_service)}")
                 relevant_levels = self._expand_with_longer_history(
                     relevant_levels, current_price, market_data_service
                 )
@@ -904,42 +906,6 @@ class SupportResistanceCalculator:
         else:
             return "low"
     
-    def _expand_with_longer_history(self, current_levels: List[Dict], 
-                                     current_price: float, market_data_service) -> List[Dict]:
-        """Expand analysis with longer historical data"""
-        try:
-            # Fetch extended data
-            candles_1d_extended = market_data_service.get_historical_candles("BTC", "1d", 30)
-            candles_1h_extended = market_data_service.get_historical_candles("BTC", "1h", 168)
-            
-            if not candles_1d_extended or not candles_1h_extended:
-                logger.warning("⚠️ Extended historical data not available")
-                return current_levels
-            
-            # Analyze extended data
-            if len(candles_1d_extended) >= 10:
-                sr_extended = self.identify_key_levels(candles_1d_extended, min_touches=2)
-                for level in sr_extended.get("key_levels", []):
-                    level["timeframe"] = "1d_extended"
-                    level["weight"] = 0.8
-                    # Only add if not too close to existing levels
-                    if not any(abs(level["level"] - existing["level"]) < 500 for existing in current_levels):
-                        current_levels.append(level)
-            
-            if len(candles_1h_extended) >= 10:
-                sr_extended = self.identify_key_levels(candles_1h_extended, min_touches=2)
-                for level in sr_extended.get("key_levels", []):
-                    level["timeframe"] = "1h_extended"
-                    level["weight"] = 0.7
-                    if not any(abs(level["level"] - existing["level"]) < 500 for existing in current_levels):
-                        current_levels.append(level)
-            
-            logger.info(f"📊 After expansion: {len(current_levels)} total levels")
-            return current_levels
-            
-        except Exception as e:
-            logger.error(f"❌ History expansion failed: {e}")
-            return current_levels
     
     def _expand_with_longer_history(self, current_levels: List[Dict], current_price: float, market_data_service) -> List[Dict]:
         """
@@ -955,8 +921,8 @@ class SupportResistanceCalculator:
         """
         try:
             if not market_data_service:
-                logger.warning("⚠️ No market data service available for expansion - using current levels")
-                return current_levels
+                logger.error("❌ CRITICAL: No market data service available for expansion - NO FALLBACKS")
+                raise ValueError("Market data service is None in _expand_with_longer_history - NO FALLBACKS")
             
             logger.info("📊 Expanding S/R analysis with longer historical data...")
             
