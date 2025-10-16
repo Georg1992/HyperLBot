@@ -340,7 +340,7 @@ class RealtimePredictionEngine:
                                    score: float, direction_reasoning: str, confidence_reasoning: str,
                                    ev_result: Any, bayesian_result: Optional[Dict], strategy: str) -> str:
         """Update existing prediction (SRP: single responsibility)"""
-            old_confidence = self.active_prediction.confidence
+        old_confidence = self.active_prediction.confidence
             
         # Use the final calibrated confidence as the single confidence value
         single_confidence = final_confidence
