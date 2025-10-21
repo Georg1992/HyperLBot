@@ -24,6 +24,10 @@ import signal
 import atexit
 from loguru import logger
 
+# Initialize session logging
+from core.logging.session_logger import get_session_logger
+session_logger = get_session_logger()
+
 # Import core module to setup paths
 from config.config import config
 from core.constants import constants
@@ -48,6 +52,9 @@ def shutdown_handler(signum, frame):
                 dashboard_service.add_activity("🏁 Trading session closed gracefully", "SUCCESS")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
+    
+    # Log session end
+    session_logger.log_session_end()
     
     sys.exit(0)
 
