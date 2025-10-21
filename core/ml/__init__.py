@@ -18,8 +18,6 @@ __all__ = [
     'global_confidence_optimizer',
     'ConfidenceCalculator', 
     'global_confidence_calculator',
-    'TradeOutcomeRecorder',
-    'global_trade_outcome_recorder',
     
     # Specialized components
     'DirectionRecognizer',

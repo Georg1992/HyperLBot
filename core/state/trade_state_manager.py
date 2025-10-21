@@ -8,7 +8,7 @@ import os
 import json
 import time
 import threading
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from datetime import datetime
 from loguru import logger
 
