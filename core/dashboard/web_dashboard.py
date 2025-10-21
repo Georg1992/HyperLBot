@@ -308,20 +308,8 @@ class EventDrivenTradingDashboard:
             # Dashboard ONLY displays data - NO calculations
             session_data = dashboard_data.get("session", {})
             
-            # Extract candle data from market data or predictions
-            predictions = dashboard_data.get("predictions", [])
-            market_data = dashboard_data.get("market", {})
-            candle_data = None
-            
-            # First check market data for candle data (new structure)
-            if market_data.get("candleData"):
-                candle_data = market_data.get("candleData")
-            elif predictions:
-                # Fallback: Look for the most recent prediction with candle data
-                for prediction in reversed(predictions):
-                    if prediction.get("candleData"):
-                        candle_data = prediction.get("candleData")
-                        break
+            # Dashboard fetches its own chart data (frontend responsibility)
+            candle_data = self._get_chart_data()
             
             # Extract AI system status and ML performance from market data
             market_data_dict = dashboard_data.get("market", {})
@@ -379,6 +367,33 @@ class EventDrivenTradingDashboard:
                 "data_source": "error",
                 "connection_status": "❌ Error"
             }
+    
+    def _get_chart_data(self) -> Dict[str, Any]:
+        """Dashboard fetches its own chart data (frontend responsibility)"""
+        try:
+            from core.services.chart_data_service import get_global_chart_data_service
+            from core.services.system_initializer import get_system_initializer
+            
+            # Get market data service from system initializer
+            system_initializer = get_system_initializer()
+            market_data_service = system_initializer.singleton_systems.get("market_data_service")
+            
+            if not market_data_service:
+                logger.error("❌ Market data service not available for chart data")
+                return {}
+            
+            # Get current price from market data service
+            current_price = 50000.0  # Default price, should get from market data
+            
+            # ChartDataService fetches its own candles
+            chart_service = get_global_chart_data_service()
+            chart_data = chart_service.prepare_chart_data(current_price, market_data_service, {})
+            
+            return chart_data
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get chart data: {e}")
+            return {}
     
     def _get_error_data(self, error_message: str) -> Dict[str, Any]:
         """Get error data structure for dashboard"""

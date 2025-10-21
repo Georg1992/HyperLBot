@@ -484,11 +484,8 @@ class SessionOrchestrator:
                 logger.warning(f"⚠️ Market conditions analysis failed: {e}")
                 market_conditions_analysis = {}
             
-            # Prepare chart data using ChartDataService (SRP compliant)
-            from core.services.chart_data_service import get_global_chart_data_service
-            chart_service = get_global_chart_data_service()
-            # ChartDataService fetches its own candles (single responsibility)
-            candle_data = chart_service.prepare_chart_data(current_price, market_data_service, pattern_analysis)
+            # Chart data is handled by dashboard/frontend - not part of trading logic
+            # Dashboard will fetch its own chart data when needed
             
             # Get multi-timeframe volatility data for dashboard compatibility
             multi_volatility_data = get_global_volatility_calculator().calculate_multi_timeframe_volatility_for_strategy(candles_5m, strategy)
@@ -572,9 +569,7 @@ class SessionOrchestrator:
             "market_conditions_analysis": market_conditions_analysis,  # Calculated by market conditions analyzer
             "support_resistance": support_resistance,
             
-                # Chart data for dashboard
-                "chart_data": candle_data,  # Unified chart data key
-                "candleData": candle_data,  # Dashboard expects this field name
+                # Chart data removed - dashboard handles its own chart data
                 
                 # Time snapshot (using TimeUtils - SRP compliant)
                 "timestamp": time.time(),
