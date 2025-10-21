@@ -27,10 +27,6 @@ class MarketDataAnalyzer:
         """Test connection - always return True since we use Hyperliquid"""
         return True
     
-    # get_weekly_trend_analysis removed - duplicates TradingBot.get_weekly_trend_analysis()
-    # Use TradingBot.get_weekly_trend_analysis() for consistency
-    
-    # Note: Old prediction methods removed - AI system handles all prediction logic
     
     def get_update_status(self) -> Dict[str, Any]:
         """Get update status for dashboard using simplified approach"""
