@@ -260,49 +260,7 @@ class FeeManager:
             "fee_history": self.fee_history[-10:]  # Last 10 trades
         }
     
-    def optimize_position_size(self, available_capital: float, target_profit: float, 
-                             entry_price: float, target_price: float, leverage: int = 30) -> Dict[str, Any]:
-        """
-        DEPRECATED: Use hybrid_position_sizer instead
-        This method is kept for backward compatibility but delegates to hybrid system
-        """
-        try:
-            from core.ml.hybrid_position_sizer import hybrid_position_sizer
-            
-            # Create mock market data and signal analysis
-            market_data = {
-                "volatility_5m": 0.002,  # Default volatility
-                "current_price": entry_price
-            }
-            signal_analysis = {
-                "overall_confidence": 0.7  # Default confidence
-            }
-            
-            # Use hybrid position sizing system
-            position_result = hybrid_position_sizer.calculate_optimal_position_size(
-                direction="BUY",  # Default direction
-                current_price=entry_price,
-                market_data=market_data,
-                signal_analysis=signal_analysis,
-                account_balance=available_capital,
-                strategy="default"
-            )
-            
-            return {
-                "optimal_position_size": position_result.position_size_btc,
-                "expected_profit": position_result.expected_return,
-                "required_capital": position_result.position_size_usd,
-                "capital_efficiency": (position_result.expected_return / position_result.position_size_usd) * 100 if position_result.position_size_usd > 0 else 0
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to optimize position size: {e}")
-            return {
-                "optimal_position_size": 0.001,
-                "expected_profit": 0.0,
-                "required_capital": available_capital * 0.01,
-                "capital_efficiency": 0.0
-            }
+    # REMOVED: optimize_position_size method - use hybrid_position_sizer instead
     
     def get_fee_breakdown_for_strategy(self, strategy_params: Dict[str, Any]) -> Dict[str, Any]:
         """

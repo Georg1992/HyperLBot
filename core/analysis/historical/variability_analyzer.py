@@ -251,8 +251,8 @@ class VariabilityAnalyzer:
         # Determine market condition
         market_condition = self._classify_market_condition(current_volatility, current_variability_score)
         
-        # Calculate optimal trading parameters
-        optimal_params = self._calculate_optimal_trading_params(current_volatility, current_variability_score, balance=simulation_constants.BASE_SIMULATION_PRICE)
+        # REMOVED: optimal trading parameters calculation - use hybrid_position_sizer instead
+        optimal_params = {"removed": "use hybrid_position_sizer instead"}
         
         return {
             "insufficient_data": False,
@@ -285,56 +285,7 @@ class VariabilityAnalyzer:
         else:
             return "EXTREME_VOLATILITY_AVOID"
     
-    def _calculate_optimal_trading_params(self, volatility: float, variability_score: float, balance: float = 1000.0) -> Dict[str, Any]:
-        """
-        DEPRECATED: Use hybrid_position_sizer instead
-        This method is kept for backward compatibility but delegates to hybrid system
-        """
-        try:
-            from core.ml.hybrid_position_sizer import hybrid_position_sizer
-            
-            # Create mock market data and signal analysis
-            market_data = {
-                "volatility_5m": volatility,
-                "current_price": 50000.0  # Default price
-            }
-            signal_analysis = {
-                "overall_confidence": min(0.9, max(0.3, variability_score))  # Map variability to confidence
-            }
-            
-            # Use hybrid position sizing system
-            position_result = hybrid_position_sizer.calculate_optimal_position_size(
-                direction="BUY",  # Default direction
-                current_price=50000.0,
-                market_data=market_data,
-                signal_analysis=signal_analysis,
-                account_balance=balance,
-                strategy="default"
-            )
-            
-            return {
-                "position_size": position_result.position_size_btc,
-                "leverage": int(position_result.leverage),
-                "profit_target": (position_result.target_price - 50000.0) / 50000.0,
-                "stop_loss": (50000.0 - position_result.stop_loss) / 50000.0,
-                "position_multiplier": 1.0,  # Hybrid system handles this internally
-                "profit_target_multiplier": 1.0,
-                "stop_loss_multiplier": 1.0,
-                "leverage_multiplier": 1.0
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to calculate optimal trading params: {e}")
-            return {
-                "position_size": 0.001,
-                "leverage": 25,
-                "profit_target": 0.003,
-                "stop_loss": 0.0015,
-                "position_multiplier": 1.0,
-                "profit_target_multiplier": 1.0,
-                "stop_loss_multiplier": 1.0,
-                "leverage_multiplier": 1.0
-            }
+    # REMOVED: _calculate_optimal_trading_params method - use hybrid_position_sizer instead
     
     def _analyze_volatility_trend(self) -> Dict[str, Any]:
         """Analyze volatility trend over time"""

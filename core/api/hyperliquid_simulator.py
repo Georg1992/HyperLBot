@@ -992,23 +992,7 @@ class HyperliquidSimulator:
         
         return position
     
-    # ============================================================================
-    # LEGACY COMPATIBILITY (for gradual migration)
-    # ============================================================================
-    
-    def simulate_order_execution(self, order_type: str, side: str, size: float, 
-                                 price: Optional[float] = None, leverage: int = 30,
-                                 stop_loss: Optional[float] = None, take_profit: Optional[float] = None) -> Dict[str, Any]:
-        """Legacy method for backward compatibility with enhanced parameters"""
-        return self.place_order(
-            order_type=order_type,
-            side=side,
-            size=size,
-            price=price,
-            leverage=leverage,
-            stop_loss=stop_loss,
-            take_profit=take_profit
-        )
+    # REMOVED: Legacy compatibility methods - use place_order() directly
 
 
 # Global simulator instance (will be initialized with proper balance by SystemInitializer)
