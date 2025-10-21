@@ -170,23 +170,35 @@ class SessionOrchestrator:
             raise
     
     def _verify_data_flow(self, hyperliquid_api, market_data_service):
-        """Verify that all data sources are working properly"""
+        """Verify that all data sources are working properly with new architecture"""
         try:
-            # Test MarketDataService - single source of truth
-            logger.info("🔍 Testing MarketDataService data flow...")
-            market_data = market_data_service.get_market_data("BTC")
+            # Test new processed data coordination
+            logger.info("🔍 Testing new processed data coordination...")
             
+            # Test unified analysis data
+            unified_data = market_data_service.get_unified_analysis_data("standard")
+            if not unified_data:
+                raise ValueError("MarketDataService unable to provide unified analysis data")
+            
+            # Test raw data access
+            raw_data_access = unified_data.get("raw_data_access", {})
+            hyperliquid_api_ref = raw_data_access.get("hyperliquid_api")
+            if not hyperliquid_api_ref:
+                raise ValueError("MarketDataService unable to provide raw data access")
+            
+            # Test basic market data
+            market_data = hyperliquid_api_ref.get_market_data("BTC")
             if "error" in market_data:
-                raise ValueError(f"MarketDataService error: {market_data['error']}")
+                raise ValueError(f"Raw data source error: {market_data['error']}")
             
-            # Check for orderbook data (l2Book endpoint returns levels, not markPrice)
+            # Check for orderbook data
             if 'levels' not in market_data:
-                raise ValueError(f"MarketDataService missing levels in response: {list(market_data.keys())}")
+                raise ValueError(f"Raw data missing levels: {list(market_data.keys())}")
             
-            # Verify we can get current price from the data
-            current_price = market_data_service.get_hyperliquid_price()
+            # Verify we can get current price
+            current_price = hyperliquid_api_ref.get_current_price("BTC")
             if not current_price or current_price <= 0:
-                raise ValueError("MarketDataService unable to provide current price")
+                raise ValueError("Raw data source unable to provide current price")
             
             logger.success(f"✅ MarketDataService data flow verified - Price: ${current_price:.2f}")
             logger.success("✅ MarketDataService ready")
@@ -213,11 +225,11 @@ class SessionOrchestrator:
             # Get Hyperliquid API instance
             hyperliquid_api = get_hyperliquid_api()
             
-            # Get historical data for context analysis from MarketDataService (single source of truth)
-            logger.info("📊 Getting historical candle data from MarketDataService...")
-            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 45)
-            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 84)  
-            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 30)
+            # Get historical data for context analysis from raw data sources
+            logger.info("📊 Getting historical candle data from raw data sources...")
+            candles_1d = hyperliquid_api.get_historical_candles("BTC", "1d", 45)
+            candles_1h = hyperliquid_api.get_historical_candles("BTC", "1h", 84)  
+            candles_5m = hyperliquid_api.get_historical_candles("BTC", "5m", 30)
             
             logger.info(f"📊 Daily candles: {len(candles_1d) if candles_1d else 0} candles")
             logger.info(f"📊 Hourly candles: {len(candles_1h) if candles_1h else 0} candles")
@@ -249,30 +261,33 @@ class SessionOrchestrator:
             # Continue session without historical context (degraded but functional)
     
     def _prepare_unified_market_data(self, market_data: Dict[str, Any], current_price: float, market_data_service=None, strategy: str = "standard") -> Dict[str, Any]:
-        """Prepare unified market data structure for both Signal Aggregator and Dashboard - SINGLE DATA SOURCE"""
+        """Prepare unified market data structure using processed data coordination"""
         try:
-            logger.debug(f"🔍 _prepare_unified_market_data called with market_data_service: {type(market_data_service)}")
-            # SINGLE DATA SOURCE: Use only MarketDataService data
-            # No more MarketDataManager calls - MarketDataService is the single source of truth
+            logger.debug(f"🔍 _prepare_unified_market_data called with new architecture")
             
-            # Extract all data from the single market_data source
-            # Get data from hyperliquid_data (which contains all the market data)
-            hyperliquid_data = market_data.get("hyperliquid_data", {})
-            volume_data = hyperliquid_data.get("volume_data", {})
-            binance_volume_data = hyperliquid_data.get("binance_volume_data", {})
-            orderbook = hyperliquid_data.get("orderbook", {})
+            # NEW ARCHITECTURE: Use processed data coordination from MarketDataService
+            # Get unified analysis data from all analysis modules
+            unified_analysis_data = market_data_service.get_unified_analysis_data(strategy)
             
-            # OPTIMIZED CACHING: All requests will be served from the same cached data
-            # MarketDataService now fetches maximum needed and slices automatically
-            # Each request below will use the centralized cache - no redundant API calls
+            # Extract processed analysis data
+            volatility_data = unified_analysis_data.get("volatility", {})
+            trend_data = unified_analysis_data.get("trend", {})
+            support_resistance_data = unified_analysis_data.get("support_resistance", {})
             
-            # Get candle data for all timeframes (from centralized cache)
-            candles_5m_for_rsi = market_data_service.get_historical_candles("BTC", "5m", 50)  # For RSI calculation (reduced to match Hyperliquid)
-            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 10)          # For general analysis (reduced for faster volatility response)
-            candles_5m_for_sr = market_data_service.get_historical_candles("BTC", "5m", 200)  # For S/R calculation (increased for better support detection)
-            candles_1m = market_data_service.get_historical_candles("BTC", "1m", 20)
-            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 24)
-            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
+            # Get raw data access for any additional processing needed
+            raw_data_access = unified_analysis_data.get("raw_data_access", {})
+            hyperliquid_api = raw_data_access.get("hyperliquid_api")
+            hyperliquid_websocket = raw_data_access.get("hyperliquid_websocket")
+            
+            # Get additional raw data if needed (for backward compatibility)
+            if hyperliquid_api:
+                candles_5m = hyperliquid_api.get_historical_candles("BTC", "5m", 10)
+                candles_1h = hyperliquid_api.get_historical_candles("BTC", "1h", 24)
+                candles_1d = hyperliquid_api.get_historical_candles("BTC", "1d", 7)
+            else:
+                candles_5m = []
+                candles_1h = []
+                candles_1d = []
             
             logger.debug(f"📊 Candles from cache: 5m_RSI={len(candles_5m_for_rsi)}, 5m_general={len(candles_5m)}, 5m_SR={len(candles_5m_for_sr)}, 1m={len(candles_1m)}, 1h={len(candles_1h)}, 1d={len(candles_1d)}")
 
@@ -293,37 +308,52 @@ class SessionOrchestrator:
                 logger.warning(f"⚠️ RSI calculation failed: {e}")
                 current_rsi = None
             
-            # Get trend from the trend calculator singleton (single source)
-            from core.analysis.real_time.trend_calculator import get_global_trend_calculator
-            trend_calculator = get_global_trend_calculator()
-            
+            # NEW ARCHITECTURE: Use processed trend data from MarketDataService
             try:
-                if len(candles_5m) >= 3:
-                    # Use strategy-specific multi-timeframe trend calculation
-                    trend_5m = trend_calculator.calculate_multi_timeframe_trend(candles_5m, strategy)
-                    current_trend = trend_5m.get("trend_consensus", "SIDEWAYS")
-                    logger.debug(f"📊 Multi-timeframe trend for {strategy}: {current_trend}")
+                if trend_data:
+                    current_trend = trend_data.get("trend_consensus", "SIDEWAYS")
+                    trend_5m = trend_data
+                    logger.debug(f"📊 Processed trend data for {strategy}: {current_trend}")
                 else:
-                    trend_5m = {"trend_consensus": "SIDEWAYS", "error": "Insufficient data"}
+                    trend_5m = {"trend_consensus": "SIDEWAYS", "error": "No processed trend data"}
                     current_trend = "SIDEWAYS"
-                    logger.warning(f"⚠️ Not enough candles for trend calculation: {len(candles_5m)} < 3")
+                    logger.warning("⚠️ No processed trend data available")
             except Exception as e:
-                logger.warning(f"⚠️ Multi-timeframe trend calculation failed: {e}")
+                logger.warning(f"⚠️ Processed trend data failed: {e}")
                 trend_5m = {"trend_consensus": "SIDEWAYS", "error": str(e)}
                 current_trend = "SIDEWAYS"
             
-            # FIXED: Use volatility data from hyperliquid_analysis (single source of truth)
-            # The volatility data is calculated in market_data_manager and passed through hyperliquid_analysis
-            hyperliquid_analysis = market_data.get("hyperliquid_analysis", {})
-            volatility_analysis = hyperliquid_analysis.get("volatility_analysis", {})
-            volatility_5m = volatility_analysis.get("volatility_5m", 0.0)
-            volatility_5m_category = volatility_analysis.get("volatility_5m_category", "UNKNOWN")
-            volatility_5m_trend = volatility_analysis.get("volatility_5m_trend", "UNKNOWN")
+            # NEW ARCHITECTURE: Use processed volatility data from MarketDataService
+            try:
+                if volatility_data:
+                    volatility_5m = volatility_data.get("volatility_5m", 0.0)
+                    volatility_5m_category = volatility_data.get("volatility_5m_category", "UNKNOWN")
+                    volatility_5m_trend = volatility_data.get("volatility_5m_trend", "UNKNOWN")
+                    logger.debug(f"📊 Processed volatility data: {volatility_5m_category} ({volatility_5m:.4f})")
+                else:
+                    volatility_5m = 0.0
+                    volatility_5m_category = "UNKNOWN"
+                    volatility_5m_trend = "UNKNOWN"
+                    logger.warning("⚠️ No processed volatility data available")
+            except Exception as e:
+                logger.warning(f"⚠️ Processed volatility data failed: {e}")
+                volatility_5m = 0.0
+                volatility_5m_category = "UNKNOWN"
+                volatility_5m_trend = "UNKNOWN"
             
             logger.debug(f"📊 Using volatility from hyperliquid_analysis: {volatility_5m:.6f} ({volatility_5m_category})")
             
-            # Get support/resistance from hyperliquid_data (already recalculated by market_data_manager)
-            support_resistance = hyperliquid_data.get("support_resistance", {})
+            # NEW ARCHITECTURE: Use processed S/R data from MarketDataService
+            try:
+                if support_resistance_data:
+                    support_resistance = support_resistance_data
+                    logger.debug(f"📊 Processed S/R data: {len(support_resistance.get('levels', []))} levels")
+                else:
+                    support_resistance = {}
+                    logger.warning("⚠️ No processed S/R data available")
+            except Exception as e:
+                logger.warning(f"⚠️ Processed S/R data failed: {e}")
+                support_resistance = {}
             
             # If no S/R data available, fallback to direct calculation using centralized cache
             if not support_resistance:
@@ -899,8 +929,10 @@ class SessionOrchestrator:
                 self.last_hour = current_hour
                 self.last_day = current_day
                 
-                # Get current price
-                hyperliquid_price = market_data_service.get_hyperliquid_price()
+                # Get current price from raw data source
+                from core.api.hyperliquid_api import get_hyperliquid_api
+                hyperliquid_api = get_hyperliquid_api()
+                hyperliquid_price = hyperliquid_api.get_current_price("BTC")
                 if not hyperliquid_price:
                     logger.warning("⚠️ Could not get Hyperliquid price, retrying...")
                     time.sleep(check_interval)
@@ -1038,18 +1070,28 @@ class SessionOrchestrator:
             logger.error(f"❌ Error ending session: {e}")
     
     def _get_market_data(self, current_price: float, market_data_service) -> Dict[str, Any]:
-        """Get all market data once - single source of truth (delegates to proper services)"""
+        """Get all market data using new processed data coordination"""
         try:
-            logger.debug(f"🔍 _get_market_data called with market_data_service: {type(market_data_service)}")
+            logger.debug(f"🔍 _get_market_data called with new architecture")
             
-            # DELEGATE: Get market data from MarketDataService (robust approach)
-            hyperliquid_data = market_data_service.get_market_data()
-            if not hyperliquid_data or "error" in hyperliquid_data:
-                return None
+            # NEW ARCHITECTURE: Use processed data coordination
+            # Get unified analysis data from MarketDataService
+            unified_analysis_data = market_data_service.get_unified_analysis_data("standard")
             
-            # Fetch candles for market conditions analyzer
-            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
-            if not candles_1d:
+            # Get raw data access for any additional processing
+            raw_data_access = unified_analysis_data.get("raw_data_access", {})
+            hyperliquid_api = raw_data_access.get("hyperliquid_api")
+            
+            # Get basic market data from raw sources
+            if hyperliquid_api:
+                hyperliquid_data = hyperliquid_api.get_market_data("BTC")
+                candles_1d = hyperliquid_api.get_historical_candles("BTC", "1d", 7)
+            else:
+                hyperliquid_data = {}
+                candles_1d = []
+            
+            if not hyperliquid_data or not candles_1d:
+                logger.warning("⚠️ Insufficient raw data for market analysis")
                 return None
             
             # DELEGATE: Get market conditions from MarketConditionsAnalyzer

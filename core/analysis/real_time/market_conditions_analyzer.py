@@ -821,7 +821,8 @@ class MarketConditionsAnalyzer:
             
             # Use passed data or fetch as fallback (1d candles change only once per day)
             if candles_1d is None:
-                candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
+                # Direct raw data access
+                candles_1d = hyperliquid_api.get_historical_candles("BTC", "1d", 7)
             
             if not candles_1d or len(candles_1d) < 7:
                 logger.warning("⚠️ Insufficient 7-day data for market status analysis")

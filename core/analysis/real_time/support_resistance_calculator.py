@@ -34,7 +34,44 @@ class SupportResistanceCalculator:
         self._5m_cache_duration = 300   # 5 minutes
         self._1h_cache_duration = 3600  # 1 hour
         
-        logger.info("📊 Smart S/R Calculator initialized - 5m + 1h confirmation with historical context")
+        # Raw data source references (will be set by SystemInitializer)
+        self._hyperliquid_api = None
+        self._hyperliquid_websocket = None
+        
+        logger.info("📊 Smart S/R Calculator initialized - Direct raw data access")
+    
+    def set_raw_data_sources(self, hyperliquid_api, hyperliquid_websocket):
+        """Set raw data source references for direct access"""
+        self._hyperliquid_api = hyperliquid_api
+        self._hyperliquid_websocket = hyperliquid_websocket
+        logger.debug("📊 S/R Calculator raw data sources set")
+    
+    def get_latest_analysis(self) -> Dict[str, Any]:
+        """Get latest S/R analysis for MarketDataService coordination"""
+        try:
+            # Get current price from WebSocket
+            current_price = None
+            if self._hyperliquid_websocket and self._hyperliquid_websocket.is_connected():
+                current_price = self._hyperliquid_websocket.get_current_price()
+            elif self._hyperliquid_api:
+                current_price = self._hyperliquid_api.get_current_price("BTC")
+            
+            if not current_price:
+                logger.warning("⚠️ No current price available for S/R analysis")
+                return {}
+            
+            # Calculate S/R levels
+            sr_data = self.calculate_multi_timeframe_levels(current_price)
+            
+            # Add metadata for coordination
+            sr_data["timestamp"] = time.time()
+            sr_data["data_type"] = "support_resistance"
+            
+            return sr_data
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get latest S/R analysis: {e}")
+            return {}
     
     def identify_key_levels(self, candles: List[Dict]) -> Dict[str, Any]:
         """Find support/resistance levels - SIMPLE AND WORKS"""
@@ -652,8 +689,8 @@ class SupportResistanceCalculator:
             logger.info("📊 Smart S/R detection: 5m (24h) + 1h (1 month) with confirmation")
             
             # Update caches if needed
-            self._update_5m_cache_if_needed(market_data_service)
-            self._update_1h_cache_if_needed(market_data_service)
+            self._update_5m_cache_if_needed()
+            self._update_1h_cache_if_needed()
             
             # Get levels from both timeframes
             levels_5m = self._find_levels_from_5m_cache(current_price)
@@ -961,33 +998,39 @@ class SupportResistanceCalculator:
             # Fallback to price position
             return "support" if level < current_price else "resistance"
 
-    def _update_5m_cache_if_needed(self, market_data_service):
-        """Update 5m cache if needed (every 5 minutes)"""
+    def _update_5m_cache_if_needed(self):
+        """Update 5m cache if needed (every 5 minutes) - direct raw data access"""
         current_time = time.time()
         if current_time - self._last_5m_update > self._5m_cache_duration:
             logger.debug("📊 Updating 5m cache (24h data)")
-            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 288)  # 24h
-            if candles_5m and len(candles_5m) >= 100:
-                self._5m_cache = {
-                    "candles": candles_5m,
-                    "timestamp": current_time
-                }
-                self._last_5m_update = current_time
-                logger.debug(f"📊 5m cache updated: {len(candles_5m)} candles")
+            if self._hyperliquid_api:
+                candles_5m = self._hyperliquid_api.get_historical_candles("BTC", "5m", 288)  # 24h
+                if candles_5m and len(candles_5m) >= 100:
+                    self._5m_cache = {
+                        "candles": candles_5m,
+                        "timestamp": current_time
+                    }
+                    self._last_5m_update = current_time
+                    logger.debug(f"📊 5m cache updated: {len(candles_5m)} candles")
+            else:
+                logger.warning("⚠️ Hyperliquid API not available for 5m cache update")
     
-    def _update_1h_cache_if_needed(self, market_data_service):
-        """Update 1h cache if needed (every 1 hour)"""
+    def _update_1h_cache_if_needed(self):
+        """Update 1h cache if needed (every 1 hour) - direct raw data access"""
         current_time = time.time()
         if current_time - self._last_1h_update > self._1h_cache_duration:
             logger.debug("📊 Updating 1h cache (1 month data)")
-            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 720)  # 1 month
-            if candles_1h and len(candles_1h) >= 100:
-                self._1h_cache = {
-                    "candles": candles_1h,
-                    "timestamp": current_time
-                }
-                self._last_1h_update = current_time
-                logger.debug(f"📊 1h cache updated: {len(candles_1h)} candles")
+            if self._hyperliquid_api:
+                candles_1h = self._hyperliquid_api.get_historical_candles("BTC", "1h", 720)  # 1 month
+                if candles_1h and len(candles_1h) >= 100:
+                    self._1h_cache = {
+                        "candles": candles_1h,
+                        "timestamp": current_time
+                    }
+                    self._last_1h_update = current_time
+                    logger.debug(f"📊 1h cache updated: {len(candles_1h)} candles")
+            else:
+                logger.warning("⚠️ Hyperliquid API not available for 1h cache update")
     
     def _find_levels_from_5m_cache(self, current_price: float) -> List[Dict]:
         """Find S/R levels from 5m cache using new smart detection"""
@@ -1071,8 +1114,12 @@ class SupportResistanceCalculator:
             for period in expansion_periods:
                 logger.info(f"📊 Checking {period['name']} of historical data...")
                 
-                # Fetch historical data for this period
-                historical_candles = market_data_service.get_historical_candles("BTC", "1h", period["candles"])
+                # Fetch historical data for this period - direct raw data access
+                if self._hyperliquid_api:
+                    historical_candles = self._hyperliquid_api.get_historical_candles("BTC", "1h", period["candles"])
+                else:
+                    logger.warning("⚠️ Hyperliquid API not available for historical data")
+                    historical_candles = []
                 
                 if not historical_candles or len(historical_candles) < 100:
                     logger.warning(f"⚠️ Insufficient {period['name']} data")
@@ -1092,7 +1139,12 @@ class SupportResistanceCalculator:
             # If still insufficient after all periods, try daily data for maximum depth
             if len(all_historical_levels) < 2:
                 logger.warning("⚠️ Insufficient 1h levels - trying daily data for maximum depth")
-                daily_candles = market_data_service.get_historical_candles("BTC", "1d", 1095)  # 3 years
+                # Fetch daily data for maximum depth - direct raw data access
+                if self._hyperliquid_api:
+                    daily_candles = self._hyperliquid_api.get_historical_candles("BTC", "1d", 1095)  # 3 years
+                else:
+                    logger.warning("⚠️ Hyperliquid API not available for daily data")
+                    daily_candles = []
                 
                 if daily_candles and len(daily_candles) >= 30:
                     daily_levels = self._check_historical_levels(daily_candles, current_price, "3 years daily")
