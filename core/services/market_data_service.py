@@ -60,8 +60,9 @@ class MarketDataService:
             if self.hyperliquid_websocket and self.hyperliquid_websocket.is_connected():
                 return self.hyperliquid_websocket.get_current_price()
             else:
-                # Fallback to API
-                return self.hyperliquid_api.get_current_price("BTC")
+                # Fallback to API using configured symbol
+                from config.config import TradingConfig
+                return self.hyperliquid_api.get_current_price(TradingConfig.SYMBOL)
         except Exception as e:
             logger.error(f"❌ Failed to get current price: {e}")
             return None
@@ -74,8 +75,15 @@ class MarketDataService:
             logger.error(f"❌ Failed to get ongoing candle: {e}")
             return None
     
-    def get_hyperliquid_price(self, symbol: str = "BTC") -> Optional[float]:
+    def get_hyperliquid_price(self, symbol: str = None) -> Optional[float]:
         """Get current price from Hyperliquid - direct API call"""
+        if symbol is None:
+            # Use configured symbol from config
+            from config.config import TradingConfig
+            symbol = TradingConfig.SYMBOL
+        
+        # For now, just use the existing method (hardcoded to BTC)
+        # When we add multi-symbol support, we'll use the symbol parameter
         return self.get_current_price()
     
     def get_current_5m_volume(self) -> float:
