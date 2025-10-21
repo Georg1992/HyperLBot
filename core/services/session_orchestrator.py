@@ -571,49 +571,43 @@ class SessionOrchestrator:
         return create_time_snapshot(session_start_time)
     
     def _handle_volatility_changes(self, unified_data: Dict[str, Any], dashboard_service):
-        """Handle real-time volatility changes with immediate alerts and strategy switching"""
+        """Handle real-time volatility changes - PROPER SRP: Orchestration only"""
         try:
             volatility_change = unified_data.get("volatility_change_detection", {})
             
             if volatility_change.get("change_detected", False):
+                # Log volatility change (orchestration responsibility)
                 change_direction = volatility_change.get("change_direction", "NONE")
                 change_magnitude = volatility_change.get("change_magnitude", 0.0)
                 urgency = volatility_change.get("urgency", "LOW")
-                current_volatility = volatility_change.get("current_volatility", 0.0)
                 
-                # Log volatility change
                 logger.warning(f"🚨 VOLATILITY CHANGE DETECTED: {change_direction} ({change_magnitude:+.1%}) - Urgency: {urgency}")
                 
-                # Add dashboard alert for significant changes
-                if urgency in ["HIGH", "CRITICAL"]:
-                    alert_message = f"🚨 Volatility {change_direction}: {change_magnitude:+.1%} ({urgency})"
-                    dashboard_service.add_activity(alert_message, "WARNING")
+                # DELEGATE to VolatilityCalculator for alerts (SRP compliant)
+                volatility_calculator = get_global_volatility_calculator()
+                alerts = volatility_calculator.get_volatility_alerts(volatility_change)
+                
+                # Process alerts (orchestration responsibility)
+                for alert in alerts:
+                    dashboard_service.add_activity(alert["message"], "WARNING" if alert["urgency"] in ["HIGH", "CRITICAL"] else "INFO")
                     
-                    # Trigger immediate dashboard update for critical changes
-                    dashboard_service._trigger_websocket_emission()
-                    logger.info("⚡ Triggered immediate dashboard update for volatility spike")
+                    # Trigger immediate update for critical alerts
+                    if alert["urgency"] == "CRITICAL":
+                        dashboard_service._trigger_websocket_emission()
+                        logger.info("⚡ Triggered immediate dashboard update for critical volatility change")
                 
-                # Check if volatility change should trigger strategy switch
-                if urgency == "CRITICAL" and change_direction in ["EXTREME_SPIKE", "SPIKE_UP"]:
-                    current_strategy = unified_data.get("current_strategy", "standard")
-                    
-                    # Suggest spike hunting strategy for extreme volatility
-                    if current_strategy != "spike_hunting":
-                        logger.warning(f"💡 VOLATILITY SPIKE: Consider switching to spike_hunting strategy")
-                        dashboard_service.add_activity(
-                            f"💡 Extreme volatility detected - spike_hunting strategy recommended", 
-                            "INFO"
-                        )
+                # DELEGATE to VolatilityCalculator for strategy suggestions (SRP compliant)
+                current_strategy = unified_data.get("current_strategy", "standard")
+                strategy_suggestion = volatility_calculator.should_suggest_strategy_change(volatility_change, current_strategy)
                 
-                # Log detailed volatility change info
-                logger.info(f"📊 Volatility Details: Current={current_volatility*100:.4f}%, Previous={volatility_change.get('previous_volatility', 0)*100:.4f}%")
-                
-            else:
-                # No significant volatility change detected
-                logger.debug("📊 No significant volatility changes detected")
+                # Process strategy suggestion (orchestration responsibility)
+                if strategy_suggestion:
+                    suggestion_message = f"💡 {strategy_suggestion['reason']} - {strategy_suggestion['suggested_strategy']} recommended"
+                    dashboard_service.add_activity(suggestion_message, "INFO")
+                    logger.warning(f"💡 STRATEGY SUGGESTION: {strategy_suggestion['suggested_strategy']} ({strategy_suggestion['confidence']:.1%} confidence)")
                 
         except Exception as e:
-            logger.error(f"❌ Volatility change handling failed: {e}")
+            logger.error(f"❌ Volatility change orchestration failed: {e}")
     
     def _update_dashboard_with_unified_data(self, unified_data: Dict[str, Any], dashboard_service):
         """Update dashboard using unified market data structure"""

@@ -657,5 +657,100 @@ class VolatilityCalculator:
             logger.error(f"❌ Volatility consensus calculation failed: {e}")
             return "ERROR"
     
+    def get_volatility_alerts(self, volatility_change_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Generate volatility alerts based on change detection
+        
+        Args:
+            volatility_change_data: Result from detect_volatility_change()
+            
+        Returns:
+            List of alert dictionaries for dashboard/logging
+        """
+        try:
+            alerts = []
+            
+            if not volatility_change_data.get("change_detected", False):
+                return alerts
+            
+            change_direction = volatility_change_data.get("change_direction", "NONE")
+            change_magnitude = volatility_change_data.get("change_magnitude", 0.0)
+            urgency = volatility_change_data.get("urgency", "LOW")
+            current_volatility = volatility_change_data.get("current_volatility", 0.0)
+            
+            # Create alerts based on urgency
+            if urgency in ["HIGH", "CRITICAL"]:
+                alerts.append({
+                    "type": "VOLATILITY_CHANGE",
+                    "message": f"🚨 Volatility {change_direction}: {change_magnitude:+.1%}",
+                    "urgency": urgency,
+                    "details": {
+                        "direction": change_direction,
+                        "magnitude": change_magnitude,
+                        "current_volatility": current_volatility,
+                        "previous_volatility": volatility_change_data.get("previous_volatility", 0.0)
+                    }
+                })
+            
+            # Add specific alerts for extreme cases
+            if change_direction == "EXTREME_SPIKE":
+                alerts.append({
+                    "type": "EXTREME_VOLATILITY",
+                    "message": f"⚡ EXTREME volatility spike detected: {current_volatility*100:.2f}%",
+                    "urgency": "CRITICAL",
+                    "action_suggested": "Consider spike_hunting strategy"
+                })
+            
+            return alerts
+            
+        except Exception as e:
+            logger.error(f"❌ Volatility alert generation failed: {e}")
+            return []
+    
+    def should_suggest_strategy_change(self, volatility_change_data: Dict[str, Any], 
+                                     current_strategy: str) -> Optional[Dict[str, Any]]:
+        """
+        Determine if volatility change should suggest strategy switch
+        
+        Args:
+            volatility_change_data: Result from detect_volatility_change()
+            current_strategy: Current active strategy
+            
+        Returns:
+            Dict with strategy suggestion or None
+        """
+        try:
+            if not volatility_change_data.get("change_detected", False):
+                return None
+            
+            change_direction = volatility_change_data.get("change_direction", "NONE")
+            urgency = volatility_change_data.get("urgency", "LOW")
+            
+            # Suggest spike hunting for extreme volatility
+            if urgency == "CRITICAL" and change_direction in ["EXTREME_SPIKE", "SPIKE_UP"]:
+                if current_strategy != "spike_hunting":
+                    return {
+                        "suggested_strategy": "spike_hunting",
+                        "reason": f"Extreme volatility detected ({change_direction})",
+                        "confidence": 0.8,
+                        "urgency": urgency
+                    }
+            
+            # Suggest high volatility strategy for significant spikes
+            elif urgency == "HIGH" and change_direction in ["SPIKE_UP", "SPIKE_DOWN"]:
+                if current_strategy not in ["spike_hunting", "high_volatility"]:
+                    return {
+                        "suggested_strategy": "high_volatility",
+                        "reason": f"High volatility detected ({change_direction})",
+                        "confidence": 0.6,
+                        "urgency": urgency
+                    }
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Strategy suggestion evaluation failed: {e}")
+            return None
+    
     
     
