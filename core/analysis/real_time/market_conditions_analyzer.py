@@ -811,16 +811,17 @@ class MarketConditionsAnalyzer:
         """
         try:
             # Get 7-day historical candles (1d timeframe)
-            from core.market_data_manager import get_global_market_data_manager
+            from core.services.system_initializer import get_system_initializer
             from core.api.hyperliquid_api import get_hyperliquid_api
             
             # Get instances
-            market_data_manager = get_global_market_data_manager()
+            system_initializer = get_system_initializer()
+            market_data_service = system_initializer.singleton_systems.get("market_data_service")
             hyperliquid_api = get_hyperliquid_api()
             
             # Use passed data or fetch as fallback (1d candles change only once per day)
             if candles_1d is None:
-                candles_1d = market_data_manager.get_historical_candles("BTC", "1d", 7)
+                candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
             
             if not candles_1d or len(candles_1d) < 7:
                 logger.warning("⚠️ Insufficient 7-day data for market status analysis")
