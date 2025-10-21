@@ -17,14 +17,14 @@ class ChartDataService:
     def __init__(self):
         logger.info("📊 Chart Data Service initialized")
     
-    def prepare_chart_data(self, current_price: float, existing_candles: List[Dict], 
+    def prepare_chart_data(self, current_price: float, market_data_service, 
                           pattern_analysis: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Prepare complete chart data structure for dashboard
         
         Args:
             current_price: Current market price
-            existing_candles: Already-fetched 5m candles (NO REDUNDANT API CALLS)
+            market_data_service: Service to fetch historical candles
             pattern_analysis: Pattern analysis data to include
             
         Returns:
@@ -34,8 +34,13 @@ class ChartDataService:
             # Get the current 5m candle start time (UTC synchronized)
             candle_start_timestamp = self._get_5m_candle_start_time()
             
-            # NO FALLBACKS - Use provided candles directly
-            chart_candles_5m = existing_candles.copy()
+            # ChartDataService fetches its own candles (single responsibility)
+            chart_candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)
+            
+            # NO FALLBACKS - Must have candles
+            if not chart_candles_5m or len(chart_candles_5m) == 0:
+                logger.error("❌ NO CANDLES AVAILABLE - NO FALLBACKS")
+                return {}
             
             # Get real-time volume from the last candle if available
             real_time_volume = 0.0
@@ -49,12 +54,7 @@ class ChartDataService:
                 if abs(last_candle_timestamp - candle_start_timestamp) < 300:  # Within 5 minutes
                     chart_candles_5m = chart_candles_5m[:-1]  # Remove the ongoing candle from historical data
             
-            # NO FALLBACKS - Use exactly what we have
-            if len(chart_candles_5m) == 0:
-                logger.error("❌ NO CANDLES PROVIDED - NO FALLBACKS")
-                return {}
-            
-            logger.debug(f"📊 Chart data prepared using provided candles: {len(chart_candles_5m)} historical")
+            logger.debug(f"📊 Chart data prepared using fetched candles: {len(chart_candles_5m)} historical")
             
             # Create ongoing candle using utility method
             ongoing_candle = self._create_ongoing_candle(

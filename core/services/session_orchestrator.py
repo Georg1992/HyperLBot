@@ -487,8 +487,8 @@ class SessionOrchestrator:
             # Prepare chart data using ChartDataService (SRP compliant)
             from core.services.chart_data_service import get_global_chart_data_service
             chart_service = get_global_chart_data_service()
-            # Pass existing candles to avoid redundant API calls
-            candle_data = chart_service.prepare_chart_data(current_price, candles_5m, pattern_analysis)
+            # ChartDataService fetches its own candles (single responsibility)
+            candle_data = chart_service.prepare_chart_data(current_price, market_data_service, pattern_analysis)
             
             # Get multi-timeframe volatility data for dashboard compatibility
             multi_volatility_data = get_global_volatility_calculator().calculate_multi_timeframe_volatility_for_strategy(candles_5m, strategy)
