@@ -46,27 +46,27 @@ class SystemInitializer:
             if not singleton_results["success"]:
                 return {"success": False, "error": "Singleton system initialization failed"}
             
-            # Step 3: Initialize RSI with Historical Data
-            rsi_results = self._initialize_rsi_with_data(api_results["hyperliquid_api"])
-            if not rsi_results["success"]:
-                return {"success": False, "error": "RSI initialization failed"}
-            
-            # Step 4: Initialize Data Systems
+            # Step 3: Initialize Data Systems
             data_results = self._initialize_data_systems()
             if not data_results["success"]:
                 return {"success": False, "error": "Data system initialization failed"}
+            
+            # Step 4: Initialize RSI with Historical Data (MOVED: now MarketDataService exists)
+            rsi_results = self._initialize_rsi_with_data(api_results["hyperliquid_api"])
+            if not rsi_results["success"]:
+                return {"success": False, "error": "RSI initialization failed"}
             
             # Step 5: Initialize ML Systems (AI prediction logic removed)
             ml_results = self._initialize_ml_systems()
             if not ml_results["success"]:
                 return {"success": False, "error": "ML system initialization failed"}
             
-            # Step 5: Initialize Trading Systems
+            # Step 6: Initialize Trading Systems
             trading_results = self._initialize_trading_systems()
             if not trading_results["success"]:
                 return {"success": False, "error": "Trading system initialization failed"}
             
-            # Step 6: System Health Check
+            # Step 7: System Health Check
             health_results = self._perform_system_health_check()
             if not health_results["success"]:
                 return {"success": False, "error": "System health check failed"}
@@ -289,6 +289,13 @@ class SystemInitializer:
             self.singleton_systems["trading_engine"] = trading_engine
             self.singleton_systems["dashboard_service"] = dashboard_service
             self.singleton_systems["session_orchestrator"] = session_orchestrator
+            
+            # FIXED: Set session manager in trading execution wrapper
+            # SessionOrchestrator initializes session manager lazily, so we need to trigger it
+            from core.session.session_manager import get_global_session_manager
+            session_manager = get_global_session_manager()
+            trading_execution.set_session_manager(session_manager)
+            logger.info("🔗 Session manager linked to TradingExecutionWrapper")
             
             # Trading components and services initialized
             

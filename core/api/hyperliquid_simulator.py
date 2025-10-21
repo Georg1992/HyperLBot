@@ -20,18 +20,89 @@ import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from loguru import logger
-from .hyperliquid_api_aligned import (
-    OrderRequest, OrderResponse, Position, OrderType, OrderSide, OrderStatus,
-    HyperliquidAPIInterface
-)
+from dataclasses import dataclass
+from enum import Enum
+
+# Moved from hyperliquid_api_aligned.py - only used here
+class OrderType(Enum):
+    """Order types supported by Hyperliquid"""
+    MARKET = "market"
+    LIMIT = "limit"
+    POST_ONLY = "post_only"
+    REDUCE_ONLY = "reduce_only"
+
+class OrderSide(Enum):
+    """Order sides"""
+    BUY = "buy"
+    SELL = "sell"
+
+class OrderStatus(Enum):
+    """Order status"""
+    PENDING = "pending"
+    FILLED = "filled"
+    CANCELLED = "cancelled"
+    REJECTED = "rejected"
+    PARTIAL = "partial"
+
+@dataclass
+class OrderRequest:
+    """Order request structure"""
+    symbol: str
+    side: OrderSide
+    size: float
+    order_type: OrderType
+    price: Optional[float] = None
+    leverage: int = 1
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    reduce_only: bool = False
+    post_only: bool = False
+    client_id: Optional[str] = None
+    time_in_force: str = "Gtc"
+
+@dataclass
+class OrderResponse:
+    """Order response structure"""
+    order_id: str
+    client_id: Optional[str]
+    symbol: str
+    side: OrderSide
+    size: float
+    order_type: OrderType
+    price: Optional[float]
+    status: OrderStatus
+    filled_size: float
+    remaining_size: float
+    average_price: Optional[float]
+    fees: Dict[str, float]
+    timestamp: float
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+
+@dataclass
+class Position:
+    """Position structure"""
+    symbol: str
+    side: OrderSide
+    size: float
+    entry_price: float
+    mark_price: float
+    pnl: float
+    pnl_percentage: float
+    leverage: int
+    margin: float
+    stop_loss: Optional[float]
+    take_profit: Optional[float]
+    timestamp: float
 
 
-class HyperliquidSimulator(HyperliquidAPIInterface):
+class HyperliquidSimulator:
     """Complete Hyperliquid trading environment simulator - aligned with real API"""
     
     def __init__(self, initial_balance: float = 10000.0):
-        # Initialize parent class (API interface)
-        super().__init__(is_simulated=True)
+        # Initialize simulator
+        self.is_simulated = True
+        self.base_url = "simulator"
         
         # Order book data
         self.order_book_snapshot = None

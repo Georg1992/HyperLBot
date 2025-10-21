@@ -27,6 +27,11 @@ class TradingExecutionWrapper:
         
         logger.info("🎯 Trading Execution Wrapper initialized")
     
+    def set_session_manager(self, session_manager):
+        """Set the session manager after initialization"""
+        self.session_manager = session_manager
+        logger.debug("📊 Session manager set in TradingExecutionWrapper")
+    
     def place_paper_trade(self, side: str, size: float, leverage: int = 30, 
                          signal_data: Optional[Dict[str, Any]] = None) -> bool:
         """

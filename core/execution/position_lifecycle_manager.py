@@ -113,11 +113,11 @@ class TradingExecution:
                 stop_loss = hyperliquid_price * self.magic_numbers.PROFIT_TARGET_MULTIPLIER  # Above entry
                 take_profit = hyperliquid_price * self.magic_numbers.STOP_LOSS_MULTIPLIER  # Below entry
             
-            # Use Hyperliquid transition layer for realistic order execution
-            from core.api.hyperliquid_transition_layer import get_global_transition_layer
-            transition_layer = get_global_transition_layer(use_simulator=True)
+            # Use Hyperliquid simulator directly for order execution
+            from core.api.hyperliquid_simulator import get_global_simulator
+            simulator = get_global_simulator()
             
-            execution_result = transition_layer.place_order(
+            execution_result = simulator.place_order(
                 order_type="LIMIT",
                 side=side,
                 size=size,
@@ -335,12 +335,12 @@ class TradingExecution:
             except Exception as e:
                 logger.warning(f"⚠️ Could not update simulator order book: {e}")
             
-            # Use Hyperliquid transition layer for realistic exit execution
-            from core.api.hyperliquid_transition_layer import get_global_transition_layer
-            transition_layer = get_global_transition_layer(use_simulator=True)
+            # Use Hyperliquid simulator directly for exit execution
+            from core.api.hyperliquid_simulator import get_global_simulator
+            simulator = get_global_simulator()
             
             exit_side = "SELL" if side == "BUY" else "BUY"  # Opposite of entry
-            execution_result = transition_layer.place_order(
+            execution_result = simulator.place_order(
                 order_type="MARKET",  # Market order for exit
                 side=exit_side,
                 size=size,
