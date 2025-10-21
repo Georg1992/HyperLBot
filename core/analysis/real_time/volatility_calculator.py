@@ -93,9 +93,16 @@ class VolatilityCalculator:
                 # CURRENT CANDLE PRIORITY: Give 95% weight to the most recent candle (current ongoing candle)
                 if len(recent_candles) >= 1:
                     current_candle_range = (recent_candles[-1]["high"] - recent_candles[-1]["low"]) / recent_candles[-1]["close"]
-                    # Use 95% current candle + 5% historical average for maximum sensitivity to recent moves
-                    primary_volatility = (current_candle_range * 0.95) + (weighted_avg_volatility * 0.05)
-                    logger.debug(f"🔍 Current candle priority: current_range={current_candle_range:.6f} ({current_candle_range*100:.4f}%), weighted_avg={weighted_avg_volatility:.6f}, final={primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
+                    
+                    # REAL-TIME SPIKE DETECTION: If current candle shows significant volatility, prioritize it
+                    if current_candle_range > 0.01:  # 1% range in single candle = significant spike
+                        # Use 98% current candle + 2% historical for maximum spike sensitivity
+                        primary_volatility = (current_candle_range * 0.98) + (weighted_avg_volatility * 0.02)
+                        logger.debug(f"🚨 SPIKE DETECTED: current_range={current_candle_range:.6f} ({current_candle_range*100:.4f}%) - prioritizing spike over average")
+                    else:
+                        # Use 95% current candle + 5% historical average for normal sensitivity
+                        primary_volatility = (current_candle_range * 0.95) + (weighted_avg_volatility * 0.05)
+                        logger.debug(f"🔍 Current candle priority: current_range={current_candle_range:.6f} ({current_candle_range*100:.4f}%), weighted_avg={weighted_avg_volatility:.6f}, final={primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
                 else:
                     # Fallback to maximum approach
                     primary_volatility = max(weighted_avg_volatility, max_volatility)
@@ -168,12 +175,16 @@ class VolatilityCalculator:
             # The fallback calculation was overriding the correct volatility calculation
             if overall_volatility > 0:
                 logger.debug(f"🔍 No weighted volatilities calculated, using overall volatility: {overall_volatility:.6f}")
+                # Add categorization
+                category, trend = self.categorize_volatility_for_trading(overall_volatility, timeframe, strategy)
                 return {
                     "volatility": round(overall_volatility, 6),
                     "period_minutes": actual_period_minutes,
                     "period_candles": actual_period_candles,
                     "strategy": strategy,
-                    "timeframe": timeframe
+                    "timeframe": timeframe,
+                    "category": category,
+                    "trend": trend
                 }
             else:
                 # For single candle or when overall volatility is 0, use the current candle range
@@ -181,12 +192,16 @@ class VolatilityCalculator:
                     current_candle = candles[-1]
                     current_range = (current_candle["high"] - current_candle["low"]) / current_candle["close"]
                     logger.debug(f"🔍 Single candle or zero overall volatility, using current range: {current_range:.6f}")
+                    # Add categorization
+                    category, trend = self.categorize_volatility_for_trading(current_range, timeframe, strategy)
                     return {
                         "volatility": round(current_range, 6),
                         "period_minutes": actual_period_minutes,
                         "period_candles": actual_period_candles,
                         "strategy": strategy,
-                        "timeframe": timeframe
+                        "timeframe": timeframe,
+                        "category": category,
+                        "trend": trend
                     }
                 else:
                     logger.debug(f"🔍 No candles available, returning 0")
@@ -278,9 +293,9 @@ class VolatilityCalculator:
     
     
     def detect_volatility_change(self, candles: List[Dict], timeframe: str = "5m") -> Dict[str, Any]:
-        """Detect immediate volatility changes using only the most recent candles"""
+        """Detect volatility changes using a more robust multi-candle approach"""
         try:
-            if len(candles) < 4:
+            if len(candles) < 6:  # Need at least 6 candles for proper analysis
                 return {
                     "change_detected": False,
                     "change_magnitude": 0.0,
@@ -290,31 +305,31 @@ class VolatilityCalculator:
                     "urgency": "NONE"
                 }
             
-            # Use only the last 2 candles for immediate change detection
-            current_candle = candles[-1]
-            previous_candle = candles[-2]
+            # Use last 3 candles for current period and previous 3 for comparison
+            current_period = candles[-3:]  # Last 3 candles (15 minutes)
+            previous_period = candles[-6:-3]  # Previous 3 candles (15 minutes)
             
-            # Calculate volatility for current candle (range-based)
-            current_range = (current_candle["high"] - current_candle["low"]) / current_candle["close"]
-            previous_range = (previous_candle["high"] - previous_candle["low"]) / previous_candle["close"]
+            # Calculate volatility for both periods using weighted candle ranges
+            current_volatility = self._calculate_period_volatility(current_period)
+            previous_volatility = self._calculate_period_volatility(previous_period)
             
             # Calculate change magnitude
-            if previous_range > 0:
-                change_magnitude = (current_range - previous_range) / previous_range
+            if previous_volatility > 0:
+                change_magnitude = (current_volatility - previous_volatility) / previous_volatility
             else:
                 change_magnitude = 0.0
             
-            # Determine change direction
-            if change_magnitude > 0.5:  # 50% increase
+            # Determine change direction with more realistic thresholds
+            if change_magnitude > 1.0:  # 100% increase (doubled volatility)
                 change_direction = "SPIKE_UP"
                 urgency = "HIGH"
-            elif change_magnitude > 0.2:  # 20% increase
+            elif change_magnitude > 0.5:  # 50% increase
                 change_direction = "INCREASING"
                 urgency = "MEDIUM"
-            elif change_magnitude < -0.5:  # 50% decrease
+            elif change_magnitude < -0.7:  # 70% decrease (significant drop)
                 change_direction = "SPIKE_DOWN"
                 urgency = "HIGH"
-            elif change_magnitude < -0.2:  # 20% decrease
+            elif change_magnitude < -0.3:  # 30% decrease
                 change_direction = "DECREASING"
                 urgency = "MEDIUM"
             else:
@@ -322,10 +337,10 @@ class VolatilityCalculator:
                 urgency = "LOW"
             
             # Check for extreme volatility - ULTRA SENSITIVE for current candle
-            if current_range > 0.003:  # >0.3% range in single candle (ultra sensitive for current candle)
+            if current_volatility > 0.003:  # >0.3% volatility in current period (ultra sensitive)
                 change_direction = "EXTREME_SPIKE"
                 urgency = "CRITICAL"
-            elif current_range > 0.001:  # >0.1% range in single candle (moderate sensitivity)
+            elif current_volatility > 0.001:  # >0.1% volatility in current period (moderate sensitivity)
                 change_direction = "SIGNIFICANT_MOVE"
                 urgency = "HIGH"
             
@@ -335,8 +350,8 @@ class VolatilityCalculator:
                 "change_detected": abs(change_magnitude) > 0.1,  # 10% change threshold
                 "change_magnitude": change_magnitude,
                 "change_direction": change_direction,
-                "current_volatility": current_range,
-                "previous_volatility": previous_range,
+                "current_volatility": current_volatility,
+                "previous_volatility": previous_volatility,
                 "urgency": urgency
             }
             
@@ -460,7 +475,7 @@ class VolatilityCalculator:
                 "primary_minutes": 15,     # 15 min - balanced approach
                 "confirmation_minutes": 30, # 30 min - volatility confirmation
                 "reaction_minutes": 8,     # 8 min - entry timing
-                "thresholds": {"LOW": 0.010, "MODERATE": 0.025, "HIGH": 0.050, "EXTREME": 0.100}  # Realistic BTC thresholds
+                "thresholds": {"LOW": 0.003, "MODERATE": 0.010, "HIGH": 0.020, "EXTREME": 0.050}  # Very sensitive BTC thresholds
             },
             "range_trading": {
                 "primary_minutes": 60,     # 60 min - stable range volatility
@@ -751,6 +766,33 @@ class VolatilityCalculator:
         except Exception as e:
             logger.error(f"❌ Strategy suggestion evaluation failed: {e}")
             return None
+    
+    def _calculate_period_volatility(self, candles: List[Dict]) -> float:
+        """Calculate volatility for a period of candles using weighted ranges"""
+        try:
+            if not candles or len(candles) == 0:
+                return 0.0
+            
+            # Calculate weighted volatility with emphasis on recent candles
+            weighted_ranges = []
+            total_weight = 0
+            
+            for i, candle in enumerate(candles):
+                if candle["close"] > 0 and candle["high"] > 0 and candle["low"] > 0:
+                    range_vol = (candle["high"] - candle["low"]) / candle["close"]
+                    # Give more weight to recent candles
+                    weight = (i + 1) ** 1.5
+                    weighted_ranges.append(range_vol * weight)
+                    total_weight += weight
+            
+            if weighted_ranges and total_weight > 0:
+                return sum(weighted_ranges) / total_weight
+            else:
+                return 0.0
+                
+        except Exception as e:
+            logger.error(f"❌ Period volatility calculation failed: {e}")
+            return 0.0
     
     
     

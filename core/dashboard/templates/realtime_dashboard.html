@@ -1087,21 +1087,21 @@
                         const periods = trends.periods || {};
                         const strategy = market.current_strategy || 'standard';
                         
-                        // Show multi-timeframe trends with actual periods used
+                        // Show multi-timeframe trends with readable periods
                         if (trends.trend_short && trends.trend_short !== 'UNKNOWN') {
                             const shortColor = this.getTrendColor(trends.trend_short);
-                            const shortPeriod = periods.reaction || '15min';
-                            trendDisplay += ` | <span style="color: ${shortColor}">${shortPeriod}: ${trends.trend_short}</span>`;
+                            const shortPeriod = periods.reaction || '15m';
+                            trendDisplay += `<br><span style="color: ${shortColor}; font-size: 11px;">${trends.trend_short} (${shortPeriod})</span>`;
                         }
                         if (trends.trend_medium && trends.trend_medium !== 'UNKNOWN') {
                             const mediumColor = this.getTrendColor(trends.trend_medium);
-                            const mediumPeriod = periods.primary || '30min';
-                            trendDisplay += ` | <span style="color: ${mediumColor}">${mediumPeriod}: ${trends.trend_medium}</span>`;
+                            const mediumPeriod = periods.primary || '30m';
+                            trendDisplay += `<br><span style="color: ${mediumColor}; font-size: 11px;">${trends.trend_medium} (${mediumPeriod})</span>`;
                         }
                         if (trends.trend_long && trends.trend_long !== 'UNKNOWN') {
                             const longColor = this.getTrendColor(trends.trend_long);
-                            const longPeriod = periods.confirmation || '60min';
-                            trendDisplay += ` | <span style="color: ${longColor}">${longPeriod}: ${trends.trend_long}</span>`;
+                            const longPeriod = periods.confirmation || '60m';
+                            trendDisplay += `<br><span style="color: ${longColor}; font-size: 11px;">${trends.trend_long} (${longPeriod})</span>`;
                         }
                         
                         // Add strategy info
@@ -1185,7 +1185,7 @@
                         periodDisplay = `${strategy5m}: ${periods.primary || '15min'} | ${periods.confirmation || '30min'} | ${periods.reaction || '8min'}`;
                     }
                     
-                    volatilityDisplay += `<strong>Volatility: ${category5m}</strong><br><span style="font-size: 11px; color: #888;">${value5m}% (${trend5m})</span><br><span style="font-size: 10px; color: #666;">${periodDisplay}</span>`;
+                    volatilityDisplay += `<strong>${category5m} (${period5m}m)</strong><br><span style="font-size: 11px; color: #888;">${value5m}% (${trend5m})</span>`;
                 }
                 
                 // Add other timeframes if available
