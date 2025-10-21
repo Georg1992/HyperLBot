@@ -286,7 +286,6 @@ class SessionOrchestrator:
             funding_rate = hyperliquid_data.get("funding_rate", {})
             candles = hyperliquid_data.get("candles", {})
             recent_trades = hyperliquid_data.get("recent_trades", {})
-            weekly_trend = hyperliquid_data.get("weekly_trend", {})
             
             # OPTIMIZED CACHING: All requests will be served from the same cached data
             # MarketDataService now fetches maximum needed and slices automatically
