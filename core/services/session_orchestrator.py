@@ -522,6 +522,9 @@ class SessionOrchestrator:
                 # Multi-timeframe volatility (calculated in VolatilityCalculator - SRP compliant)
                 **get_global_volatility_calculator().calculate_multi_timeframe_volatility_for_strategy(candles_5m, strategy),
                 
+                # Real-time volatility change detection (for immediate alerts and strategy switching)
+                "volatility_change_detection": get_global_volatility_calculator().detect_volatility_change(candles_5m, "5m") if len(candles_5m) >= 4 else {"change_detected": False, "change_direction": "NONE"},
+                
                 # Volume data (from single MarketDataService source)
                 "volume_data": volume_data,
                 "volume_category": volume_data.get("volume_category"),
@@ -566,6 +569,51 @@ class SessionOrchestrator:
         from core.utils.time_utils import create_time_snapshot
         session_start_time = getattr(self, 'session_start_time', None)
         return create_time_snapshot(session_start_time)
+    
+    def _handle_volatility_changes(self, unified_data: Dict[str, Any], dashboard_service):
+        """Handle real-time volatility changes with immediate alerts and strategy switching"""
+        try:
+            volatility_change = unified_data.get("volatility_change_detection", {})
+            
+            if volatility_change.get("change_detected", False):
+                change_direction = volatility_change.get("change_direction", "NONE")
+                change_magnitude = volatility_change.get("change_magnitude", 0.0)
+                urgency = volatility_change.get("urgency", "LOW")
+                current_volatility = volatility_change.get("current_volatility", 0.0)
+                
+                # Log volatility change
+                logger.warning(f"🚨 VOLATILITY CHANGE DETECTED: {change_direction} ({change_magnitude:+.1%}) - Urgency: {urgency}")
+                
+                # Add dashboard alert for significant changes
+                if urgency in ["HIGH", "CRITICAL"]:
+                    alert_message = f"🚨 Volatility {change_direction}: {change_magnitude:+.1%} ({urgency})"
+                    dashboard_service.add_activity(alert_message, "WARNING")
+                    
+                    # Trigger immediate dashboard update for critical changes
+                    dashboard_service._trigger_websocket_emission()
+                    logger.info("⚡ Triggered immediate dashboard update for volatility spike")
+                
+                # Check if volatility change should trigger strategy switch
+                if urgency == "CRITICAL" and change_direction in ["EXTREME_SPIKE", "SPIKE_UP"]:
+                    current_strategy = unified_data.get("current_strategy", "standard")
+                    
+                    # Suggest spike hunting strategy for extreme volatility
+                    if current_strategy != "spike_hunting":
+                        logger.warning(f"💡 VOLATILITY SPIKE: Consider switching to spike_hunting strategy")
+                        dashboard_service.add_activity(
+                            f"💡 Extreme volatility detected - spike_hunting strategy recommended", 
+                            "INFO"
+                        )
+                
+                # Log detailed volatility change info
+                logger.info(f"📊 Volatility Details: Current={current_volatility*100:.4f}%, Previous={volatility_change.get('previous_volatility', 0)*100:.4f}%")
+                
+            else:
+                # No significant volatility change detected
+                logger.debug("📊 No significant volatility changes detected")
+                
+        except Exception as e:
+            logger.error(f"❌ Volatility change handling failed: {e}")
     
     def _update_dashboard_with_unified_data(self, unified_data: Dict[str, Any], dashboard_service):
         """Update dashboard using unified market data structure"""
@@ -891,6 +939,9 @@ class SessionOrchestrator:
                 # Prepare unified market data using current strategy for calculations
                 unified_data = self._prepare_unified_market_data(market_data, hyperliquid_price, market_data_service, current_strategy)
                 unified_data["current_strategy"] = current_strategy
+                
+                # Check for real-time volatility changes (immediate alerts and strategy switching)
+                self._handle_volatility_changes(unified_data, dashboard_service)
                 
                 # Update dashboard with unified data
                 self._update_dashboard_with_unified_data(unified_data, dashboard_service)
