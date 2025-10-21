@@ -256,6 +256,78 @@ class VolatilityCalculator:
             logger.error(f"❌ Candle volatility calculation failed: {e}")
             raise Exception(f"Volatility calculation failed: {e}")
     
+    def get_multi_timeframe_volatility(self, candles_1m: List[Dict], candles_5m: List[Dict], 
+                                     candles_1h: List[Dict], candles_1d: List[Dict], 
+                                     strategy: str = "standard") -> Dict[str, Any]:
+        """
+        Calculate volatility for multiple timeframes in one call
+        
+        Args:
+            candles_1m: 1-minute candles
+            candles_5m: 5-minute candles  
+            candles_1h: 1-hour candles
+            candles_1d: 1-day candles
+            strategy: Strategy name for calculations
+            
+        Returns:
+            Dict with volatility data for all timeframes
+        """
+        try:
+            # Default fallback structure
+            default_volatility = {
+                "volatility": 0.0, 
+                "period_minutes": 0, 
+                "period_candles": 0, 
+                "strategy": strategy, 
+                "timeframe": "unknown"
+            }
+            
+            # Calculate 1m volatility
+            volatility_1m = default_volatility.copy()
+            volatility_1m.update({"period_minutes": 1, "timeframe": "1m"})
+            if candles_1m and len(candles_1m) >= 1:
+                try:
+                    volatility_1m = self.calculate_candle_volatility(candles_1m, "1m", strategy)
+                except Exception as e:
+                    logger.warning(f"⚠️ 1m volatility calculation failed: {e}")
+            
+            # Calculate 1h volatility  
+            volatility_1h = default_volatility.copy()
+            volatility_1h.update({"period_minutes": 60, "timeframe": "1h"})
+            if candles_1h and len(candles_1h) >= 1:
+                try:
+                    volatility_1h = self.calculate_candle_volatility(candles_1h, "1h", strategy)
+                except Exception as e:
+                    logger.warning(f"⚠️ 1h volatility calculation failed: {e}")
+            
+            # Calculate 1d volatility
+            volatility_1d = default_volatility.copy() 
+            volatility_1d.update({"period_minutes": 1440, "timeframe": "1d"})
+            if candles_1d and len(candles_1d) >= 1:
+                try:
+                    volatility_1d = self.calculate_candle_volatility(candles_1d, "1d", strategy)
+                except Exception as e:
+                    logger.warning(f"⚠️ 1d volatility calculation failed: {e}")
+            
+            return {
+                "volatility_1m": volatility_1m,
+                "volatility_1h": volatility_1h, 
+                "volatility_1d": volatility_1d,
+                "strategy": strategy,
+                "calculated_timeframes": ["1m", "1h", "1d"]
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Multi-timeframe volatility calculation failed: {e}")
+            # Return safe defaults
+            return {
+                "volatility_1m": default_volatility,
+                "volatility_1h": default_volatility,
+                "volatility_1d": default_volatility,
+                "strategy": strategy,
+                "error": str(e)
+            }
+    
     # Eliminated: calculate_volatility_5m, calculate_volatility_1h, calculate_volatility_1d
     
     

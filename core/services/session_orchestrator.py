@@ -440,15 +440,8 @@ class SessionOrchestrator:
                 volume_profile_analysis = {}
             
             # Get bounce validation from the bounce validator singleton (single source)
-            from core.analysis.real_time.bounce_validator import get_global_bounce_validator
-            bounce_validator = get_global_bounce_validator()
-            
-            try:
-                # BounceValidator doesn't have a simple validate_bounce method, skip for now
-                bounce_analysis = {}
-            except Exception as e:
-                logger.warning(f"⚠️ Bounce validation failed: {e}")
-                bounce_analysis = {}
+            # REMOVED: BounceValidator doesn't have a simple validate_bounce method
+            # bounce_analysis = {}  # REMOVED: Always empty
             
             # Get cross-asset correlation from the cross-asset correlation analyzer singleton (single source)
             # OPTIONAL: Skip cross-asset analysis if not available (don't block main data flow)
@@ -479,8 +472,8 @@ class SessionOrchestrator:
                 funding_analysis = {"error": "Real funding rate data not available", "data_source": "skipped"}
             
             # On-Chain Data & Psychological Levels features removed - not implemented
-            onchain_analysis = {}
-            psychological_analysis = {}
+            # onchain_analysis = {}  # REMOVED: Always empty
+            # psychological_analysis = {}  # REMOVED: Always empty
             
             # Get market conditions from the market conditions analyzer singleton (single source)
             from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
@@ -491,68 +484,10 @@ class SessionOrchestrator:
                 logger.warning(f"⚠️ Market conditions analysis failed: {e}")
                 market_conditions_analysis = {}
             
-            # Prepare chart data for dashboard
-            try:
-                # Get the current 5m candle start time (UTC synchronized)
-                import datetime as dt
-                current_time = time.time()
-                utc_dt = dt.datetime.fromtimestamp(current_time, tz=dt.timezone.utc)
-                utc_minute = utc_dt.minute
-                candle_start_minute = (utc_minute // 5) * 5
-                candle_start_dt = utc_dt.replace(minute=candle_start_minute, second=0, microsecond=0)
-                candle_start_timestamp = candle_start_dt.timestamp()
-                
-                # Get real-time volume for current 5m candle
-                real_time_volume = 0.0
-                if market_data_service.hyperliquid_websocket:
-                    real_time_volume = market_data_service.hyperliquid_websocket.get_current_5m_volume()
-                
-                # Use centralized cache for chart preparation - request 20 candles
-                # This will be served from the same cache as all other 5m requests
-                chart_candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)
-                
-                # Remove the last candle if it's the current ongoing one (same timestamp as our ongoing candle)
-                if len(chart_candles_5m) > 0:
-                    last_candle_timestamp = chart_candles_5m[-1]["timestamp"]
-                    if abs(last_candle_timestamp - candle_start_timestamp) < 300:  # Within 5 minutes
-                        chart_candles_5m = chart_candles_5m[:-1]  # Remove the ongoing candle from historical data
-                
-                # Ensure we have exactly 19 historical candles
-                if len(chart_candles_5m) > 19:
-                    chart_candles_5m = chart_candles_5m[-19:]
-                elif len(chart_candles_5m) < 19:
-                    # If we don't have enough, pad with the available candles
-                    pass  # Use what we have
-                
-                logger.debug(f"📊 Chart data prepared using cached candles: {len(chart_candles_5m)} historical")
-                
-                # Prepare ongoing candle (current price as ongoing candle)
-                ongoing_candle = {
-                    "open": chart_candles_5m[-1]["close"] if chart_candles_5m else current_price,
-                    "close": current_price,
-                    "high": max(chart_candles_5m[-1]["close"] if chart_candles_5m else current_price, current_price),
-                    "low": min(chart_candles_5m[-1]["close"] if chart_candles_5m else current_price, current_price),
-                    "volume": real_time_volume if real_time_volume > 0 else (chart_candles_5m[-1]["volume"] if chart_candles_5m else 0),
-                    "timestamp": candle_start_timestamp,
-                    "is_ongoing": True,
-                    "trades_count": 0,
-                    "last_trade_time": current_time
-                }
-                
-                # Create exactly 20 candles: 19 historical + 1 ongoing
-                chart_candles_with_ongoing = chart_candles_5m.copy()
-                chart_candles_with_ongoing.append(ongoing_candle)
-                
-                # Prepare chart data
-                candle_data = {
-                    "historical": chart_candles_with_ongoing,  # Include ongoing candle in historical array
-                    "ongoing": ongoing_candle,  # Keep separate for reference
-                    "predicted": [],
-                    "pattern_analysis": pattern_analysis
-                }
-            except Exception as e:
-                logger.warning(f"⚠️ Chart data preparation failed: {e}")
-                candle_data = {}
+            # Prepare chart data using dedicated ChartDataService (SRP compliant)
+            from core.services.chart_data_service import get_global_chart_data_service
+            chart_service = get_global_chart_data_service()
+            candle_data = chart_service.prepare_chart_data(current_price, market_data_service, pattern_analysis)
             
             # Create unified data structure that both Signal Aggregator and Dashboard can use
             unified_data = {
@@ -586,9 +521,9 @@ class SessionOrchestrator:
                 "volatility_5m": volatility_5m,
                 "volatility_category": volatility_5m_category,  # Fixed: strategy manager expects 'volatility_category'
                 "volatility_5m_category": volatility_5m_category,  # Keep for backward compatibility
-                "volatility_1m": get_global_volatility_calculator().calculate_candle_volatility(candles_1m, "1m", "standard") if len(candles_1m) >= 1 else {"volatility": 0.0, "period_minutes": 1, "period_candles": 1, "strategy": "standard", "timeframe": "1m"},
-                "volatility_1h": get_global_volatility_calculator().calculate_candle_volatility(candles_1h, "1h", "standard") if len(candles_1h) >= 1 else {"volatility": 0.0, "period_minutes": 60, "period_candles": 1, "strategy": "standard", "timeframe": "1h"},
-                "volatility_1d": get_global_volatility_calculator().calculate_candle_volatility(candles_1d, "1d", "standard") if len(candles_1d) >= 1 else {"volatility": 0.0, "period_minutes": 1440, "period_candles": 1, "strategy": "standard", "timeframe": "1d"},
+                
+                # Multi-timeframe volatility (calculated in VolatilityCalculator - SRP compliant)
+                **get_global_volatility_calculator().get_multi_timeframe_volatility(candles_1m, candles_5m, candles_1h, candles_1d, "standard"),
                 
                 # Volume data (from single MarketDataService source)
                 "volume_data": volume_data,
@@ -604,24 +539,18 @@ class SessionOrchestrator:
             "pattern_analysis": pattern_analysis,  # Calculated by pattern recognition engine
             "volume_profile_analysis": volume_profile_analysis,  # Calculated by volume profile analyzer
             "cross_asset_analysis": cross_asset_analysis,  # Calculated by cross-asset analyzer
-            "onchain_analysis": onchain_analysis,  # Calculated by onchain analyzer
-            "bounce_analysis": bounce_analysis,  # Calculated by bounce validator
-            "psychological_analysis": psychological_analysis,  # Calculated by psychological levels analyzer
+            # REMOVED: "onchain_analysis": onchain_analysis,  # Always empty - not implemented
+            # REMOVED: "bounce_analysis": bounce_analysis,  # Always empty - not implemented  
+            # REMOVED: "psychological_analysis": psychological_analysis,  # Always empty - not implemented
             "market_conditions_analysis": market_conditions_analysis,  # Calculated by market conditions analyzer
             "support_resistance": support_resistance,
             
                 # Chart data for dashboard
-                "candleData": candle_data,
-                "chart_data": candle_data,  # Alternative key for chart
+                "chart_data": candle_data,  # Unified chart data key
                 
-                # Time snapshot
+                # Time snapshot (using TimeUtils - SRP compliant)
                 "timestamp": time.time(),
-                "time_snapshot": {
-                    "unix_timestamp": time.time(),
-                    "iso_timestamp": datetime.fromtimestamp(time.time()).isoformat(),
-                    "human_readable": datetime.fromtimestamp(time.time()).strftime("%Y-%m-%d %H:%M:%S UTC"),
-                    "trading_session_time": time.time() - (getattr(self, 'session_start_time', time.time()))
-                }
+                "time_snapshot": self._create_time_snapshot()
             }
             
             # Store for both Signal Aggregator and Dashboard access
@@ -634,6 +563,12 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Failed to prepare unified market data: {e}")
             return {}
+    
+    def _create_time_snapshot(self) -> Dict[str, Any]:
+        """Create time snapshot using TimeUtils"""
+        from core.utils.time_utils import create_time_snapshot
+        session_start_time = getattr(self, 'session_start_time', None)
+        return create_time_snapshot(session_start_time)
     
     def _update_dashboard_with_unified_data(self, unified_data: Dict[str, Any], dashboard_service):
         """Update dashboard using unified market data structure"""
@@ -709,7 +644,6 @@ class SessionOrchestrator:
                 "market_conditions": unified_data.get("market_conditions_analysis", {}),
                 
                 # Chart data
-                "candleData": unified_data.get("candleData", {}),
                 "chart_data": unified_data.get("chart_data", {}),
                 "candles": unified_data.get("candles", {}),
                 
@@ -975,10 +909,8 @@ class SessionOrchestrator:
                     
                     # Clear old trades from WebSocket cache to ensure clean volume reset
                     if market_data_service.hyperliquid_websocket:
-                        current_dt = dt.datetime.fromtimestamp(current_time, tz=dt.timezone.utc)
-                        candle_start_minute = (current_dt.minute // 5) * 5
-                        candle_start_dt = current_dt.replace(minute=candle_start_minute, second=0, microsecond=0)
-                        cutoff_timestamp = candle_start_dt.timestamp()
+                        from core.utils.time_utils import get_5m_candle_start_time
+                        cutoff_timestamp = get_5m_candle_start_time(current_time)
                         market_data_service.hyperliquid_websocket.clear_old_trades(cutoff_timestamp)
                     
                     # Trigger additional WebSocket emission for immediate update
