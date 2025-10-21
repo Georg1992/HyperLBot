@@ -382,7 +382,6 @@ class SessionOrchestrator:
             
             try:
                 # Get orderbook data from hyperliquid_data for pressure calculation
-                hyperliquid_data = market_data.get("hyperliquid_data", {})
                 orderbook = hyperliquid_data.get("orderbook", {})
                 
                 # Handle different orderbook formats
