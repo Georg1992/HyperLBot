@@ -533,7 +533,7 @@ class SessionOrchestrator:
                 "volatility_5m": volatility_5m,
                 "volatility_category": volatility_5m_category,  # Fixed: strategy manager expects 'volatility_category'
                 "volatility_5m_category": volatility_5m_category,  # Keep for backward compatibility
-<<<<<<< HEAD
+                "volatility_5m_trend": volatility_5m_trend,
                 
                 # Multi-timeframe volatility (calculated in VolatilityCalculator - SRP compliant)
                 **multi_volatility_data,
@@ -545,15 +545,11 @@ class SessionOrchestrator:
                 
                 # Real-time volatility change detection (for immediate alerts and strategy switching)
                 "volatility_change_detection": get_global_volatility_calculator().detect_volatility_change(candles_5m, "5m") if len(candles_5m) >= 4 else {"change_detected": False, "change_direction": "NONE"},
-=======
-                "volatility_5m_trend": volatility_5m_trend,
-                "volatility_5m_period_minutes": volatility_5m_period_minutes,
-                "volatility_5m_period_candles": volatility_5m_period_candles,
-                "volatility_5m_strategy": volatility_5m_strategy,
+                
+                # Multi-timeframe volatility data
                 "volatility_1m": get_global_volatility_calculator().calculate_candle_volatility(candles_1m, "1m", "standard") if len(candles_1m) >= 1 else {"volatility": 0.0, "period_minutes": 1, "period_candles": 1, "strategy": "standard", "timeframe": "1m"},
                 "volatility_1h": get_global_volatility_calculator().calculate_candle_volatility(candles_1h, "1h", "standard") if len(candles_1h) >= 1 else {"volatility": 0.0, "period_minutes": 60, "period_candles": 1, "strategy": "standard", "timeframe": "1h"},
                 "volatility_1d": get_global_volatility_calculator().calculate_candle_volatility(candles_1d, "1d", "standard") if len(candles_1d) >= 1 else {"volatility": 0.0, "period_minutes": 1440, "period_candles": 1, "strategy": "standard", "timeframe": "1d"},
->>>>>>> 55bc4b992c6b0f4d5cb44503db121dbd5b5cae5b
                 
                 # Volume data (from single MarketDataService source)
                 "volume_data": volume_data,
