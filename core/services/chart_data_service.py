@@ -17,14 +17,14 @@ class ChartDataService:
     def __init__(self):
         logger.info("📊 Chart Data Service initialized")
     
-    def prepare_chart_data(self, current_price: float, market_data_service, 
+    def prepare_chart_data(self, current_price: float, existing_candles: List[Dict], 
                           pattern_analysis: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Prepare complete chart data structure for dashboard
         
         Args:
             current_price: Current market price
-            market_data_service: Service to fetch historical candles
+            existing_candles: Already-fetched 5m candles (NO REDUNDANT API CALLS)
             pattern_analysis: Pattern analysis data to include
             
         Returns:
@@ -34,36 +34,27 @@ class ChartDataService:
             # Get the current 5m candle start time (UTC synchronized)
             candle_start_timestamp = self._get_5m_candle_start_time()
             
-            # Get real-time volume for current 5m candle
+            # NO FALLBACKS - Use provided candles directly
+            chart_candles_5m = existing_candles.copy()
+            
+            # Get real-time volume from the last candle if available
             real_time_volume = 0.0
-            # Check if market_data_service has hyperliquid_websocket (MarketDataService) or if it's MarketDataManager
-            if hasattr(market_data_service, 'hyperliquid_websocket') and market_data_service.hyperliquid_websocket:
-                real_time_volume = market_data_service.hyperliquid_websocket.get_current_5m_volume()
-            elif hasattr(market_data_service, 'get_current_5m_volume'):
-                # If it's MarketDataManager, use its method directly
-                real_time_volume = market_data_service.get_current_5m_volume()
-            else:
-                # Fallback: use 0.0 if no real-time volume available
-                logger.debug("📊 No real-time volume available, using 0.0")
+            if chart_candles_5m and len(chart_candles_5m) > 0:
+                real_time_volume = chart_candles_5m[-1].get("volume", 0.0)
             
-            # Use centralized cache for chart preparation - request 20 candles
-            # This will be served from the same cache as all other 5m requests
-            chart_candles_5m = market_data_service.get_historical_candles("BTC", "5m", 20)
-            
+            # NO FALLBACKS - Use exactly the candles provided
             # Remove the last candle if it's the current ongoing one (same timestamp as our ongoing candle)
             if len(chart_candles_5m) > 0:
                 last_candle_timestamp = chart_candles_5m[-1]["timestamp"]
                 if abs(last_candle_timestamp - candle_start_timestamp) < 300:  # Within 5 minutes
                     chart_candles_5m = chart_candles_5m[:-1]  # Remove the ongoing candle from historical data
             
-            # Ensure we have exactly 19 historical candles
-            if len(chart_candles_5m) > 19:
-                chart_candles_5m = chart_candles_5m[-19:]
-            elif len(chart_candles_5m) < 19:
-                # If we don't have enough, pad with the available candles
-                pass  # Use what we have
+            # NO FALLBACKS - Use exactly what we have
+            if len(chart_candles_5m) == 0:
+                logger.error("❌ NO CANDLES PROVIDED - NO FALLBACKS")
+                return {}
             
-            logger.debug(f"📊 Chart data prepared using cached candles: {len(chart_candles_5m)} historical")
+            logger.debug(f"📊 Chart data prepared using provided candles: {len(chart_candles_5m)} historical")
             
             # Create ongoing candle using utility method
             ongoing_candle = self._create_ongoing_candle(
