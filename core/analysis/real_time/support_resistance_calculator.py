@@ -253,9 +253,6 @@ class SupportResistanceCalculator:
         
         return volume_ratio > 0.5  # More lenient volume confirmation (0.5 instead of 0.8)
     
-    # REMOVED: _add_psychological_levels - NO FALLBACKS
-    
-    # REMOVED: _add_projected_resistance_levels - NO FALLBACKS
     
     def _detect_market_position(self, candles: List[Dict], current_price: float) -> Dict[str, Any]:
         """Detect if we're at a local maximum, minimum, or in consolidation"""
@@ -611,58 +608,7 @@ class SupportResistanceCalculator:
         except:
             return False
     
-    def _create_psychological_resistance_for_ath(self, current_price: float) -> List[Dict]:
-        """
-        Create psychological resistance levels for ALL-TIME HIGH breakouts
-        ONLY justified fallback - when no historical resistance exists above price
-        
-        Args:
-            current_price: Current market price (at or near ATH)
-            
-        Returns:
-            List of psychological resistance levels above current price
-        """
-        try:
-            logger.warning(f"🎯 Creating psychological resistance for ATH breakout at ${current_price:.2f}")
-            
-            psychological_levels = []
-            
-            # For BTC, use $1000 intervals for major psychological levels
-            interval = 1000.0
-            
-            # Create 3 psychological resistance levels above current price
-            for i in range(1, 4):  # $1k, $2k, $3k above current rounded level
-                # Round current price up to next $1000 level
-                base_level = (int(current_price / interval) + 1) * interval
-                resistance_level = base_level + (interval * (i - 1))
-                
-                psychological_levels.append({
-                    "level": resistance_level,
-                    "type": "resistance",
-                    "score": 30 - (i * 5),  # Decreasing score for higher levels
-                    "touches": 0,  # No historical touches (it's new ATH territory)
-                    "timeframe": "psychological_ath",
-                    "weight": 0.8,  # High weight - psychological levels are strong at ATH
-                    "volume_confirmed": False,
-                    "relevance": "high" if i == 1 else "medium",
-                    "reason": f"Psychological resistance ${resistance_level:,.0f} (ATH+{i}k)"
-                })
-            
-            logger.warning(f"📊 Created {len(psychological_levels)} psychological resistance levels for ATH breakout")
-            for level in psychological_levels:
-                logger.warning(f"   🎯 Psychological resistance: ${level['level']:,.0f}")
-            
-            return psychological_levels
-                
-        except Exception as e:
-            logger.error(f"❌ Psychological resistance creation failed: {e}")
-            return []
     
-    # REMOVED: _find_next_psychological_level - NO FALLBACKS POLICY (except ATH case above)
-    
-    # REMOVED: _detect_consolidation_zones - NO FALLBACKS
-    
-    # REMOVED: _add_projected_support_levels - NO FALLBACKS
     
     def calculate_multi_timeframe_levels(self, current_price: float, market_data_service, candles_5m=None, candles_1h=None, candles_1d=None) -> Dict[str, Any]:
         """
@@ -857,19 +803,20 @@ class SupportResistanceCalculator:
         else:
             return "low"
     
-    def _detect_sr_levels_simple(self, candles: List[Dict], current_price: float) -> List[Dict]:
+    
+    def _detect_sr_levels_smart(self, candles: List[Dict], current_price: float) -> List[Dict]:
         """
-        Simple S/R detection with touch counting, volume confirmation, and time decay
+        Smart S/R detection with touch counting, volume confirmation, and time decay
         
         Args:
             candles: List of candle data (5m or 1h)
             current_price: Current market price
             
         Returns:
-            List of S/R levels with touch count, volume confirmation, and time decay
+            List of S/R levels with comprehensive scoring
         """
         try:
-            logger.debug(f"📊 Analyzing {len(candles)} candles for S/R levels")
+            logger.debug(f"📊 Smart analysis of {len(candles)} candles for S/R levels")
             
             # Define price ranges to check (every $500 around current price)
             price_ranges = []
@@ -905,7 +852,7 @@ class SupportResistanceCalculator:
                             recent_touches += 1
                 
                 # Only consider levels with multiple touches
-                if touches >= 2:  # Reduced threshold for better detection
+                if touches >= 2:  # Minimum threshold for significance
                     # Calculate time decay (more recent = higher score)
                     time_decay_score = recent_touches / max(1, touches)  # 0-1, higher for recent touches
                     
@@ -913,23 +860,26 @@ class SupportResistanceCalculator:
                     avg_volume = total_volume / max(1, touches)
                     volume_score = min(1.0, avg_volume / 1000000)  # Normalize volume score
                     
-                    # Calculate overall strength
-                    strength = (touches * 0.4) + (time_decay_score * 0.3) + (volume_score * 0.3)
+                    # Calculate base weight from touches
+                    base_weight = min(touches * 0.5, 2.0)  # Cap at 2.0
+                    
+                    # Calculate final score with all factors
+                    final_score = (base_weight * 0.4) + (time_decay_score * 0.3) + (volume_score * 0.3)
                     
                     sr_levels.append({
                         "level": level,
                         "touches": touches,
-                        "recent_touches": recent_touches,
-                        "total_volume": total_volume,
-                        "avg_volume": avg_volume,
-                        "time_decay_score": time_decay_score,
-                        "volume_score": volume_score,
-                        "strength": strength,
+                        "volume": total_volume,
+                        "timestamp": time.time(),
+                        "timeframe": "5m" if len(candles) <= 288 else "1h",
+                        "base_weight": base_weight,
+                        "final_score": final_score,
+                        "confirmation_score": 0,  # Will be set by scoring system
                         "type": "support" if level < current_price else "resistance"
                     })
             
-            # Sort by strength (highest first)
-            sr_levels.sort(key=lambda x: x["strength"], reverse=True)
+            # Sort by final score (highest first)
+            sr_levels.sort(key=lambda x: x["final_score"], reverse=True)
             
             # Take top 10 levels
             top_levels = sr_levels[:10]
@@ -938,9 +888,9 @@ class SupportResistanceCalculator:
             return top_levels
             
         except Exception as e:
-            logger.error(f"❌ S/R detection failed: {e}")
+            logger.error(f"❌ Smart S/R detection failed: {e}")
             return []
-    
+
     def _update_5m_cache_if_needed(self, market_data_service):
         """Update 5m cache if needed (every 5 minutes)"""
         current_time = time.time()
@@ -970,20 +920,20 @@ class SupportResistanceCalculator:
                 logger.debug(f"📊 1h cache updated: {len(candles_1h)} candles")
     
     def _find_levels_from_5m_cache(self, current_price: float) -> List[Dict]:
-        """Find S/R levels from 5m cache"""
+        """Find S/R levels from 5m cache using new smart detection"""
         if not self._5m_cache or "candles" not in self._5m_cache:
             return []
         
         candles_5m = self._5m_cache["candles"]
-        return self._detect_sr_levels_simple(candles_5m, current_price)
+        return self._detect_sr_levels_smart(candles_5m, current_price)
     
     def _find_levels_from_1h_cache(self, current_price: float) -> List[Dict]:
-        """Find S/R levels from 1h cache"""
+        """Find S/R levels from 1h cache using new smart detection"""
         if not self._1h_cache or "candles" not in self._1h_cache:
             return []
         
         candles_1h = self._1h_cache["candles"]
-        return self._detect_sr_levels_simple(candles_1h, current_price)
+        return self._detect_sr_levels_smart(candles_1h, current_price)
     
     def _score_levels_with_confirmation(self, levels_5m: List[Dict], levels_1h: List[Dict], current_price: float) -> List[Dict]:
         """Score levels with 1h confirmation"""
@@ -1033,41 +983,107 @@ class SupportResistanceCalculator:
         return scored_levels
     
     def _find_historical_levels_at_price(self, current_price: float, market_data_service) -> List[Dict]:
-        """Find historical levels where price was at current level"""
+        """Find historical levels with progressive expansion"""
         try:
             logger.info(f"📊 Checking historical context for price ${current_price:.2f}")
             
-            # Get 1 month of 1h data for historical context
-            historical_candles = market_data_service.get_historical_candles("BTC", "1h", 720)  # 1 month
+            # PROGRESSIVE HISTORICAL EXPANSION
+            expansion_periods = [
+                {"months": 1, "candles": 720, "name": "1 month"},
+                {"months": 3, "candles": 2160, "name": "3 months"},
+                {"months": 6, "candles": 4320, "name": "6 months"},
+                {"months": 12, "candles": 8760, "name": "1 year"},
+                {"months": 24, "candles": 17520, "name": "2 years"}
+            ]
             
-            if not historical_candles or len(historical_candles) < 100:
-                logger.warning("⚠️ Insufficient historical data for price context")
-                return []
+            all_historical_levels = []
             
-            historical_levels = []
-            price_range = current_price * 0.02  # ±2% range
+            for period in expansion_periods:
+                logger.info(f"📊 Checking {period['name']} of historical data...")
+                
+                # Fetch historical data for this period
+                historical_candles = market_data_service.get_historical_candles("BTC", "1h", period["candles"])
+                
+                if not historical_candles or len(historical_candles) < 100:
+                    logger.warning(f"⚠️ Insufficient {period['name']} data")
+                    continue
+                
+                # Find levels in this period
+                period_levels = self._check_historical_levels(historical_candles, current_price, period["name"])
+                all_historical_levels.extend(period_levels)
+                
+                # If we found sufficient levels, stop expanding
+                if len(period_levels) >= 2:
+                    logger.info(f"📊 Found sufficient levels in {period['name']}: {len(period_levels)} levels")
+                    break
+                else:
+                    logger.warning(f"⚠️ Insufficient levels in {period['name']}: {len(period_levels)} levels")
             
-            for candle in historical_candles:
-                # Check if price was near current level
-                if (current_price - price_range <= candle["high"] <= current_price + price_range or
-                    current_price - price_range <= candle["low"] <= current_price + price_range):
-                    
-                    historical_levels.append({
-                        "level": current_price,
-                        "touches": 1,
-                        "volume": candle.get("volume", 0),
-                        "timestamp": candle.get("timestamp", 0),
-                        "timeframe": "historical",
-                        "base_weight": 0.8,
-                        "final_score": 0.8,
-                        "confirmation_score": 0,
-                        "type": "support" if current_price < candle["close"] else "resistance"
-                    })
+            # If still insufficient after all periods, try daily data for maximum depth
+            if len(all_historical_levels) < 2:
+                logger.warning("⚠️ Insufficient 1h levels - trying daily data for maximum depth")
+                daily_candles = market_data_service.get_historical_candles("BTC", "1d", 1095)  # 3 years
+                
+                if daily_candles and len(daily_candles) >= 30:
+                    daily_levels = self._check_historical_levels(daily_candles, current_price, "3 years daily")
+                    all_historical_levels.extend(daily_levels)
+                    logger.info(f"📊 Daily data added: {len(daily_levels)} levels")
             
-            logger.info(f"📊 Found {len(historical_levels)} historical levels at current price")
-            return historical_levels
+            # If still insufficient, this is likely ATH breakout
+            if len(all_historical_levels) < 2:
+                logger.warning("🚨 ATH BREAKOUT: No historical levels found even with maximum depth")
+                return self._create_psychological_levels_for_ath(current_price)
+            
+            logger.info(f"📊 Found {len(all_historical_levels)} historical levels with progressive expansion")
+            return all_historical_levels
             
         except Exception as e:
             logger.error(f"❌ Historical level detection failed: {e}")
             return []
+    
+    def _check_historical_levels(self, historical_candles: List[Dict], current_price: float, period_name: str) -> List[Dict]:
+        """Check historical candles for levels at current price"""
+        historical_levels = []
+        price_range = current_price * 0.02  # ±2% range
+        
+        for candle in historical_candles:
+            # Check if price was near current level
+            if (current_price - price_range <= candle["high"] <= current_price + price_range or
+                current_price - price_range <= candle["low"] <= current_price + price_range):
+                
+                historical_levels.append({
+                    "level": current_price,
+                    "touches": 1,
+                    "volume": candle.get("volume", 0),
+                    "timestamp": candle.get("timestamp", 0),
+                    "timeframe": f"historical_{period_name}",
+                    "base_weight": 0.8,
+                    "final_score": 0.8,
+                    "confirmation_score": 0,
+                    "type": "support" if current_price < candle["close"] else "resistance"
+                })
+        
+        return historical_levels
+    
+    def _create_psychological_levels_for_ath(self, current_price: float) -> List[Dict]:
+        """Create psychological levels for ATH breakout"""
+        psychological_levels = []
+        
+        # Create psychological resistance levels above current price
+        for i in range(1, 6):  # +$1k, +$2k, +$3k, +$4k, +$5k
+            level = current_price + (i * 1000)
+            psychological_levels.append({
+                "level": level,
+                "touches": 0,
+                "volume": 0,
+                "timestamp": time.time(),
+                "timeframe": "psychological_ath",
+                "base_weight": 0.5,
+                "final_score": 0.5,
+                "confirmation_score": 0,
+                "type": "resistance"
+            })
+        
+        logger.warning(f"📊 Created {len(psychological_levels)} psychological resistance levels for ATH breakout")
+        return psychological_levels
     
