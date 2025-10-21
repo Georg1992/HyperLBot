@@ -31,19 +31,9 @@ class VolatilityCalculator:
                 logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 1")
                 raise Exception(f"Insufficient candles for volatility calculation: {len(candles)} < 1")
             
-            # Strategy-specific time periods (in minutes)
-            strategy_periods_minutes = {
-                "scalping": 5,        # 5 minutes (1 × 5m candle)
-                "standard": 15,       # 15 minutes (3 × 5m candles) 
-                "range_trading": 60,  # 1 hour (12 × 5m candles)
-                "breakout": 10,      # 10 minutes (2 × 5m candles)
-                "trend_following": 120, # 2 hours (24 × 5m candles)
-                "low_volatility_range": 75, # 1.25 hours (15 × 5m candles)
-                "high_volatility": 15   # 15 minutes (3 × 5m candles)
-            }
-            
-            # Get strategy-specific period in minutes
-            period_minutes = strategy_periods_minutes.get(strategy, 15)  # Default to 15 minutes for standard
+            # Get strategy-specific volatility parameters
+            strategy_params = self._get_strategy_volatility_params(strategy)
+            period_minutes = strategy_params.get("primary_minutes", 15)
             period_candles = max(1, period_minutes // 5)  # Convert minutes to 5m candles
             
             # Use the most recent candles for the calculated period
@@ -543,6 +533,215 @@ class VolatilityCalculator:
             logger.error(f"❌ {timeframe} volatility categorization failed: {e}")
             return "ERROR", "ERROR"
     
+    def _get_strategy_volatility_params(self, strategy_name: str) -> Dict[str, Any]:
+        """Get strategy-specific volatility calculation parameters with multi-timeframe support"""
+        strategy_params = {
+            "scalping": {
+                "primary_minutes": 5,      # 5 min - ultra-fast reaction
+                "confirmation_minutes": 10, # 10 min - volatility confirmation
+                "reaction_minutes": 3,     # 3 min - immediate entry
+                "thresholds": {"LOW": 0.0008, "MODERATE": 0.0015, "HIGH": 0.0025, "EXTREME": 0.0040}
+            },
+            "standard": {
+                "primary_minutes": 15,     # 15 min - balanced approach
+                "confirmation_minutes": 30, # 30 min - volatility confirmation
+                "reaction_minutes": 8,     # 8 min - entry timing
+                "thresholds": {"LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0040, "EXTREME": 0.0080}
+            },
+            "range_trading": {
+                "primary_minutes": 60,     # 60 min - stable range volatility
+                "confirmation_minutes": 120, # 120 min - range confirmation
+                "reaction_minutes": 20,    # 20 min - range entry timing
+                "thresholds": {"LOW": 0.0020, "MODERATE": 0.0040, "HIGH": 0.0060, "EXTREME": 0.0120}
+            },
+            "breakout": {
+                "primary_minutes": 10,     # 10 min - breakout volatility
+                "confirmation_minutes": 20, # 20 min - breakout confirmation
+                "reaction_minutes": 5,     # 5 min - immediate entry
+                "thresholds": {"LOW": 0.0010, "MODERATE": 0.0020, "HIGH": 0.0030, "EXTREME": 0.0050}
+            },
+            "trend_following": {
+                "primary_minutes": 90,     # 90 min - trend volatility
+                "confirmation_minutes": 180, # 180 min - long-term confirmation
+                "reaction_minutes": 30,    # 30 min - trend entry timing
+                "thresholds": {"LOW": 0.0030, "MODERATE": 0.0060, "HIGH": 0.0100, "EXTREME": 0.0200}
+            },
+            "spike_hunting": {
+                "primary_minutes": 3,      # 3 min - ultra-fast spikes
+                "confirmation_minutes": 8, # 8 min - spike confirmation
+                "reaction_minutes": 2,     # 2 min - immediate entry
+                "thresholds": {"LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0050, "EXTREME": 0.0100}
+            },
+            "low_volatility_range": {
+                "primary_minutes": 75,     # 75 min - stable range detection
+                "confirmation_minutes": 150, # 150 min - range confirmation
+                "reaction_minutes": 25,    # 25 min - range entry timing
+                "thresholds": {"LOW": 0.0005, "MODERATE": 0.0012, "HIGH": 0.0020, "EXTREME": 0.0035}
+            },
+            "high_volatility": {
+                "primary_minutes": 15,     # 15 min - volatility smoothing
+                "confirmation_minutes": 40, # 40 min - volatility confirmation
+                "reaction_minutes": 8,     # 8 min - volatility entry timing
+                "thresholds": {"LOW": 0.0025, "MODERATE": 0.0050, "HIGH": 0.0080, "EXTREME": 0.0150}
+            }
+        }
+        
+        return strategy_params.get(strategy_name, strategy_params["standard"])
+    
+    def calculate_multi_timeframe_volatility_for_strategy(self, candles_5m: List[Dict], 
+                                                        strategy: str = "standard") -> Dict[str, Any]:
+        """
+        Calculate volatility using strategy-specific multi-timeframe approach
+        
+        Args:
+            candles_5m: 5-minute candles for analysis
+            strategy: Strategy name for period selection
+            
+        Returns:
+            Dict with primary, confirmation, and reaction volatility plus metadata
+        """
+        try:
+            if len(candles_5m) < 2:
+                return {
+                    "primary_volatility": 0.0,
+                    "primary_category": "ERROR",
+                    "volatility_consensus": "ERROR",
+                    "strategy": strategy,
+                    "error": "Insufficient data"
+                }
+            
+            # Get strategy-specific parameters
+            params = self._get_strategy_volatility_params(strategy)
+            
+            # Calculate volatility for each timeframe using different periods of 5m candles
+            primary_period = max(1, params["primary_minutes"] // 5)
+            confirmation_period = max(1, params["confirmation_minutes"] // 5)
+            reaction_period = max(1, params["reaction_minutes"] // 5)
+            
+            primary_volatility = self._calculate_volatility_for_period(
+                candles_5m, primary_period, params["thresholds"], "primary"
+            )
+            confirmation_volatility = self._calculate_volatility_for_period(
+                candles_5m, confirmation_period, params["thresholds"], "confirmation"
+            )
+            reaction_volatility = self._calculate_volatility_for_period(
+                candles_5m, reaction_period, params["thresholds"], "reaction"
+            )
+            
+            # Determine volatility consensus
+            volatility_consensus = self._determine_volatility_consensus(
+                primary_volatility, confirmation_volatility, reaction_volatility
+            )
+            
+            return {
+                "primary_volatility": primary_volatility["volatility"],
+                "primary_category": primary_volatility["category"],
+                "primary_period": f"{params['primary_minutes']}min",
+                
+                "confirmation_volatility": confirmation_volatility["volatility"],
+                "confirmation_category": confirmation_volatility["category"],
+                "confirmation_period": f"{params['confirmation_minutes']}min",
+                
+                "reaction_volatility": reaction_volatility["volatility"],
+                "reaction_category": reaction_volatility["category"],
+                "reaction_period": f"{params['reaction_minutes']}min",
+                
+                "volatility_consensus": volatility_consensus,
+                "strategy": strategy,
+                "periods_used": {
+                    "primary": f"{params['primary_minutes']} minutes",
+                    "confirmation": f"{params['confirmation_minutes']} minutes",
+                    "reaction": f"{params['reaction_minutes']} minutes"
+                },
+                "data_source": f"multi_timeframe_volatility_{strategy}"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Multi-timeframe volatility calculation failed: {e}")
+            return {
+                "primary_volatility": 0.0,
+                "primary_category": "ERROR",
+                "volatility_consensus": "ERROR",
+                "strategy": strategy,
+                "error": str(e)
+            }
+    
+    def _calculate_volatility_for_period(self, candles: List[Dict], period: int, 
+                                       thresholds: Dict[str, float], timeframe_name: str) -> Dict[str, Any]:
+        """Calculate volatility for a specific period"""
+        try:
+            # Use the most recent candles for the period
+            period_candles = candles[-period:] if len(candles) >= period else candles
+            
+            if len(period_candles) < 1:
+                return {"volatility": 0.0, "category": "ERROR"}
+            
+            # Calculate volatility using the same method as main function
+            if len(period_candles) >= 2:
+                all_highs = [c["high"] for c in period_candles if c["high"] > 0]
+                all_lows = [c["low"] for c in period_candles if c["low"] > 0]
+                
+                if all_highs and all_lows:
+                    max_high = max(all_highs)
+                    min_low = min(all_lows)
+                    total_range = max_high - min_low
+                    avg_price = sum(c["close"] for c in period_candles if c["close"] > 0) / len([c for c in period_candles if c["close"] > 0])
+                    
+                    if avg_price > 0:
+                        volatility = total_range / avg_price
+                    else:
+                        volatility = 0.0
+                else:
+                    volatility = 0.0
+            else:
+                volatility = 0.0
+            
+            # Categorize volatility
+            if volatility >= thresholds["EXTREME"]:
+                category = "EXTREME"
+            elif volatility >= thresholds["HIGH"]:
+                category = "HIGH"
+            elif volatility >= thresholds["MODERATE"]:
+                category = "MODERATE"
+            elif volatility >= thresholds["LOW"]:
+                category = "LOW"
+            else:
+                category = "VERY_LOW"
+            
+            return {
+                "volatility": round(volatility, 6),
+                "category": category,
+                "period_candles": len(period_candles),
+                "timeframe_name": timeframe_name
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Volatility calculation for {timeframe_name} failed: {e}")
+            return {"volatility": 0.0, "category": "ERROR"}
+    
+    def _determine_volatility_consensus(self, primary: Dict, confirmation: Dict, reaction: Dict) -> str:
+        """Determine overall volatility consensus from multiple timeframes"""
+        try:
+            categories = [primary["category"], confirmation["category"], reaction["category"]]
+            
+            # Count volatility levels
+            high_count = categories.count("HIGH") + categories.count("EXTREME")
+            low_count = categories.count("LOW") + categories.count("VERY_LOW")
+            moderate_count = categories.count("MODERATE")
+            
+            # Determine consensus
+            if high_count >= 2:
+                return "HIGH_VOLATILITY_CONSENSUS"
+            elif low_count >= 2:
+                return "LOW_VOLATILITY_CONSENSUS"
+            elif moderate_count >= 2:
+                return "MODERATE_VOLATILITY_CONSENSUS"
+            else:
+                return "MIXED_VOLATILITY"
+                
+        except Exception as e:
+            logger.error(f"❌ Volatility consensus calculation failed: {e}")
+            return "ERROR"
     
     
     

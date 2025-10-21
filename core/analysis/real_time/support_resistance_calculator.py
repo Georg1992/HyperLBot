@@ -599,7 +599,54 @@ class SupportResistanceCalculator:
         except:
             return False
     
-    # REMOVED: _find_next_psychological_level - NO FALLBACKS POLICY
+    def _create_psychological_resistance_for_ath(self, current_price: float) -> List[Dict]:
+        """
+        Create psychological resistance levels for ALL-TIME HIGH breakouts
+        ONLY justified fallback - when no historical resistance exists above price
+        
+        Args:
+            current_price: Current market price (at or near ATH)
+            
+        Returns:
+            List of psychological resistance levels above current price
+        """
+        try:
+            logger.warning(f"🎯 Creating psychological resistance for ATH breakout at ${current_price:.2f}")
+            
+            psychological_levels = []
+            
+            # For BTC, use $1000 intervals for major psychological levels
+            interval = 1000.0
+            
+            # Create 3 psychological resistance levels above current price
+            for i in range(1, 4):  # $1k, $2k, $3k above current rounded level
+                # Round current price up to next $1000 level
+                base_level = (int(current_price / interval) + 1) * interval
+                resistance_level = base_level + (interval * (i - 1))
+                
+                psychological_levels.append({
+                    "level": resistance_level,
+                    "type": "resistance",
+                    "score": 30 - (i * 5),  # Decreasing score for higher levels
+                    "touches": 0,  # No historical touches (it's new ATH territory)
+                    "timeframe": "psychological_ath",
+                    "weight": 0.8,  # High weight - psychological levels are strong at ATH
+                    "volume_confirmed": False,
+                    "relevance": "high" if i == 1 else "medium",
+                    "reason": f"Psychological resistance ${resistance_level:,.0f} (ATH+{i}k)"
+                })
+            
+            logger.warning(f"📊 Created {len(psychological_levels)} psychological resistance levels for ATH breakout")
+            for level in psychological_levels:
+                logger.warning(f"   🎯 Psychological resistance: ${level['level']:,.0f}")
+            
+            return psychological_levels
+            
+        except Exception as e:
+            logger.error(f"❌ Psychological resistance creation failed: {e}")
+            return []
+    
+    # REMOVED: _find_next_psychological_level - NO FALLBACKS POLICY (except ATH case above)
     
     # REMOVED: _detect_consolidation_zones - NO FALLBACKS
     
@@ -997,8 +1044,16 @@ class SupportResistanceCalculator:
             
             logger.info(f"📊 After very long expansion: {len(support_found)} support below price, {len(resistance_found)} resistance above price")
             
+            # SPECIAL CASE: If no resistance above current price even in 3-month history,
+            # this means we broke ALL-TIME HIGH - psychological resistance is justified
             if target_type == "resistance" and len(resistance_found) == 0:
-                raise ValueError(f"CRITICAL: No resistance above ${current_price:.2f} found even in 3-month history - NO FALLBACKS")
+                logger.warning(f"🚨 ALL-TIME HIGH BROKEN: No historical resistance above ${current_price:.2f} in 3-month history")
+                logger.warning(f"📊 Using psychological resistance levels - ONLY justified fallback")
+                
+                # Add psychological resistance levels for ATH breakout
+                psychological_resistance = self._create_psychological_resistance_for_ath(current_price)
+                unique_levels.extend(psychological_resistance)
+                
             if target_type == "support" and len(support_found) == 0:
                 raise ValueError(f"CRITICAL: No support below ${current_price:.2f} found even in 3-month history - NO FALLBACKS")
             
