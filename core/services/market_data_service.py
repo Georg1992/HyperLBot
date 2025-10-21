@@ -86,6 +86,32 @@ class MarketDataService:
         # When we add multi-symbol support, we'll use the symbol parameter
         return self.get_current_price()
     
+    def get_hyperliquid_analysis(self, current_price: float) -> Dict[str, Any]:
+        """Get comprehensive Hyperliquid market analysis"""
+        try:
+            # Get market data from API
+            market_data = self.get_market_data()
+            
+            # Get current price if not provided
+            if not current_price:
+                current_price = self.get_current_price()
+            
+            # Get historical candles for analysis
+            candles_5m = self.get_historical_candles("BTC", "5m", 20)
+            candles_1h = self.get_historical_candles("BTC", "1h", 24)
+            
+            return {
+                "current_price": current_price,
+                "market_data": market_data,
+                "candles_5m": candles_5m,
+                "candles_1h": candles_1h,
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get Hyperliquid analysis: {e}")
+            return {"error": str(e)}
+    
     def get_current_5m_volume(self) -> float:
         """Get current 5m volume - direct API call"""
         try:
