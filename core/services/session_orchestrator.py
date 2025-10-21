@@ -283,9 +283,6 @@ class SessionOrchestrator:
             volume_data = hyperliquid_data.get("volume_data", {})
             binance_volume_data = hyperliquid_data.get("binance_volume_data", {})
             orderbook = hyperliquid_data.get("orderbook", {})
-            funding_rate = hyperliquid_data.get("funding_rate", {})
-            candles = hyperliquid_data.get("candles", {})
-            recent_trades = hyperliquid_data.get("recent_trades", {})
             
             # OPTIMIZED CACHING: All requests will be served from the same cached data
             # MarketDataService now fetches maximum needed and slices automatically
