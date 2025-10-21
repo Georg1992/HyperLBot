@@ -11,8 +11,6 @@ This file contains only non-configurable system constants and magic numbers.
 class TradingConstants:
     """All trading-related constants in one place"""
     
-    # Default Values (non-configurable constants only)
-    DEFAULT_BTC_PRICE = 97500.0
     
     # Dashboard defaults - these are used throughout the codebase for consistency
     DEFAULT_DASHBOARD_HOST = "0.0.0.0"

@@ -4,7 +4,7 @@ Trend Calculator Module
 Simple, working trend calculation
 """
 
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List
 from loguru import logger
 
 
