@@ -1080,18 +1080,32 @@
                 if (market.trend_analysis && market.trend_analysis.overall_trend) {
                     const overallTrend = market.trend_analysis.overall_trend;
                     
-                    // Add trends data to the same line with color coding
+                    // Add trends data with strategy-specific periods
                     let trendDisplay = `<span class="trend-main">${overallTrend}</span>`;
                     if (market.trends) {
                         const trends = market.trends;
+                        const periods = trends.periods || {};
+                        const strategy = market.current_strategy || 'standard';
+                        
+                        // Show multi-timeframe trends with actual periods used
                         if (trends.trend_short && trends.trend_short !== 'UNKNOWN') {
                             const shortColor = this.getTrendColor(trends.trend_short);
-                            trendDisplay += ` | <span style="color: ${shortColor}">15m: ${trends.trend_short}</span>`;
+                            const shortPeriod = periods.reaction || '15min';
+                            trendDisplay += ` | <span style="color: ${shortColor}">${shortPeriod}: ${trends.trend_short}</span>`;
                         }
                         if (trends.trend_medium && trends.trend_medium !== 'UNKNOWN') {
                             const mediumColor = this.getTrendColor(trends.trend_medium);
-                            trendDisplay += ` | <span style="color: ${mediumColor}">2h: ${trends.trend_medium}</span>`;
+                            const mediumPeriod = periods.primary || '30min';
+                            trendDisplay += ` | <span style="color: ${mediumColor}">${mediumPeriod}: ${trends.trend_medium}</span>`;
                         }
+                        if (trends.trend_long && trends.trend_long !== 'UNKNOWN') {
+                            const longColor = this.getTrendColor(trends.trend_long);
+                            const longPeriod = periods.confirmation || '60min';
+                            trendDisplay += ` | <span style="color: ${longColor}">${longPeriod}: ${trends.trend_long}</span>`;
+                        }
+                        
+                        // Add strategy info
+                        trendDisplay += `<br><span style="font-size: 9px; color: #888;">${strategy} strategy periods</span>`;
                     }
                     
                     overallTrendElement.innerHTML = trendDisplay;
@@ -1161,9 +1175,17 @@
                     const trend5m = market.volatility_5m_trend;
                     const value5m = market.volatility_5m ? (market.volatility_5m * 100).toFixed(3) : '0.000';
                     const period5m = market.volatility_5m_period_minutes || 15; // Default to 15 minutes
-                    const strategy5m = market.volatility_5m_strategy || 'standard';
+                    const strategy5m = market.volatility_strategy || 'standard';
                     const candles5m = market.volatility_5m_period_candles || 3; // Default to 3 candles
-                    volatilityDisplay += `<strong>Volatility: ${category5m}</strong><br><span style="font-size: 11px; color: #888;">${value5m}% (${trend5m})</span><br><span style="font-size: 10px; color: #666;">${period5m}min (${candles5m}×5m, ${strategy5m})</span>`;
+                    
+                    // Show multi-timeframe periods if available
+                    let periodDisplay = `${period5m}min (${candles5m}×5m, ${strategy5m})`;
+                    if (market.periods_used) {
+                        const periods = market.periods_used;
+                        periodDisplay = `${strategy5m}: ${periods.primary || '15min'} | ${periods.confirmation || '30min'} | ${periods.reaction || '8min'}`;
+                    }
+                    
+                    volatilityDisplay += `<strong>Volatility: ${category5m}</strong><br><span style="font-size: 11px; color: #888;">${value5m}% (${trend5m})</span><br><span style="font-size: 10px; color: #666;">${periodDisplay}</span>`;
                 }
                 
                 // Add other timeframes if available

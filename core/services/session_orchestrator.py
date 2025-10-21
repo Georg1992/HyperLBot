@@ -486,6 +486,9 @@ class SessionOrchestrator:
             chart_service = get_global_chart_data_service()
             candle_data = chart_service.prepare_chart_data(current_price, market_data_service, pattern_analysis)
             
+            # Get multi-timeframe volatility data for dashboard compatibility
+            multi_volatility_data = get_global_volatility_calculator().calculate_multi_timeframe_volatility_for_strategy(candles_5m, strategy)
+            
             # Create unified data structure that both Signal Aggregator and Dashboard can use
             unified_data = {
                 # Core price data
@@ -501,6 +504,14 @@ class SessionOrchestrator:
                 "trend": current_trend,
                 "trend_5m": trend_5m,
                 "trend_periods_display": trend_5m.get("periods_used", {}) if isinstance(trend_5m, dict) else {},
+                
+                # Dashboard-compatible trend fields with strategy periods
+                "trends": {
+                    "trend_short": trend_5m.get("reaction_trend", "SIDEWAYS") if isinstance(trend_5m, dict) else "SIDEWAYS",
+                    "trend_medium": trend_5m.get("primary_trend", "SIDEWAYS") if isinstance(trend_5m, dict) else "SIDEWAYS", 
+                    "trend_long": trend_5m.get("confirmation_trend", "SIDEWAYS") if isinstance(trend_5m, dict) else "SIDEWAYS",
+                    "periods": trend_5m.get("periods_used", {}) if isinstance(trend_5m, dict) else {}
+                },
                 
                 # Multi-timeframe trend data - NOT CALCULATED (removed duplicates)
                 # "trend_1m": hyperliquid_analysis.get("trend_1m", {}),  # NOT CALCULATED
@@ -521,7 +532,12 @@ class SessionOrchestrator:
                 "volatility_5m_category": volatility_5m_category,  # Keep for backward compatibility
                 
                 # Multi-timeframe volatility (calculated in VolatilityCalculator - SRP compliant)
-                **get_global_volatility_calculator().calculate_multi_timeframe_volatility_for_strategy(candles_5m, strategy),
+                **multi_volatility_data,
+                
+                # Dashboard-compatible volatility period fields
+                "volatility_5m_period_minutes": multi_volatility_data.get("primary_period", "15min").replace("min", ""),
+                "volatility_5m_period_candles": int(multi_volatility_data.get("primary_period", "15min").replace("min", "")) // 5,
+                "volatility_strategy": strategy,
                 
                 # Real-time volatility change detection (for immediate alerts and strategy switching)
                 "volatility_change_detection": get_global_volatility_calculator().detect_volatility_change(candles_5m, "5m") if len(candles_5m) >= 4 else {"change_detected": False, "change_direction": "NONE"},
