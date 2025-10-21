@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Market Data Service - Smart Data Flow Architecture
-Single Responsibility: Efficient market data coordination with smart caching
-Optimized for single bot with multiple consumers (prediction, UI)
+Market Data Service - Processed Data Coordinator Architecture
+Single Responsibility: Coordinate processed analysis data from analysis modules
+New Flow: Raw Data → Analysis Modules → MarketDataService → SessionOrchestrator
 """
 
 import time
@@ -10,417 +10,278 @@ from typing import Dict, Any, Optional, List
 from loguru import logger
 
 class MarketDataService:
-    """Smart market data service - intelligent caching, batch fetching, optimized data flow"""
+    """Processed data coordinator - receives analysis from modules, coordinates for consumers"""
     
     def __init__(self, hyperliquid_api, hyperliquid_websocket, binance_api=None):
         self.hyperliquid_api = hyperliquid_api
         self.hyperliquid_websocket = hyperliquid_websocket
         self.binance_api = binance_api
         
-        # Smart caching with metric-specific schedules
-        self._cache = {}
-        self._cache_timestamps = {}
+        # Processed data storage (from analysis modules)
+        self._processed_data = {}
+        self._data_timestamps = {}
         self._update_schedules = {
-            "price": 1,           # 1 second - real-time
-            "candles_1m": 60,     # 1 minute
-            "candles_5m": 300,    # 5 minutes
-            "candles_1h": 3600,   # 1 hour
-            "candles_1d": 86400,  # 1 day
-            "volume": 60,          # 1 minute
-            "market_data": 300,    # 5 minutes
-            "trades": 30           # 30 seconds
+            "volatility": 60,      # 1 minute
+            "trend": 60,           # 1 minute  
+            "support_resistance": 300,  # 5 minutes
+            "rsi": 60,             # 1 minute
+            "volume": 30,          # 30 seconds
+            "market_conditions": 300,  # 5 minutes
         }
         
-        # Data flow optimization
-        self._last_batch_fetch = 0
-        self._batch_interval = 5  # Batch fetch every 5 seconds
+        # Analysis module references (will be set by SystemInitializer)
+        self._analysis_modules = {}
         
-        logger.info("📊 Smart Market Data Service initialized - Optimized data flow")
+        logger.info("📊 Processed Data Coordinator initialized - New architecture")
     
     # ==================================================================================
-    # SMART CACHING METHODS - Intelligent data management
+    # ANALYSIS MODULE COORDINATION - Register and manage analysis modules
     # ==================================================================================
     
-    def _get_cache_key(self, metric: str, symbol: str = "BTC", **kwargs) -> str:
-        """Generate cache key for metric with parameters"""
-        params = "_".join(f"{k}_{v}" for k, v in sorted(kwargs.items()))
-        return f"{metric}_{symbol}_{params}" if params else f"{metric}_{symbol}"
+    def register_analysis_module(self, module_name: str, module_instance: Any) -> None:
+        """Register an analysis module for data coordination"""
+        self._analysis_modules[module_name] = module_instance
+        logger.debug(f"📊 Registered analysis module: {module_name}")
     
-    def _is_cache_valid(self, cache_key: str, custom_duration: int = None) -> bool:
-        """Check if cache is valid based on metric-specific schedule"""
-        if cache_key not in self._cache or cache_key not in self._cache_timestamps:
+    def _is_data_valid(self, data_type: str) -> bool:
+        """Check if processed data is still valid based on schedule"""
+        if data_type not in self._data_timestamps:
             return False
         
-        # Use custom duration or metric-specific schedule
-        if custom_duration:
-            duration = custom_duration
-        else:
-            # Extract metric from cache key
-            metric = cache_key.split("_")[0]
-            duration = self._update_schedules.get(metric, 300)  # Default 5 minutes
-        
-        return time.time() - self._cache_timestamps[cache_key] < duration
+        duration = self._update_schedules.get(data_type, 300)  # Default 5 minutes
+        return time.time() - self._data_timestamps[data_type] < duration
     
-    def _cache_data(self, cache_key: str, data: Any) -> None:
-        """Cache data with timestamp"""
-        self._cache[cache_key] = data
-        self._cache_timestamps[cache_key] = time.time()
-        logger.debug(f"📊 Cached {cache_key}")
+    def _store_processed_data(self, data_type: str, data: Any) -> None:
+        """Store processed data from analysis modules"""
+        self._processed_data[data_type] = data
+        self._data_timestamps[data_type] = time.time()
+        logger.debug(f"📊 Stored processed data: {data_type}")
     
-    def _get_cached_data(self, cache_key: str) -> Any:
-        """Get cached data if valid"""
-        if self._is_cache_valid(cache_key):
-            logger.debug(f"📊 Using cached data: {cache_key}")
-            return self._cache[cache_key]
+    def _get_processed_data(self, data_type: str) -> Any:
+        """Get processed data if valid"""
+        if self._is_data_valid(data_type):
+            logger.debug(f"📊 Using processed data: {data_type}")
+            return self._processed_data.get(data_type)
         return None
     
     # ==================================================================================
-    # BATCH DATA FETCHING - Reduce API calls, improve efficiency
+    # PROCESSED DATA COORDINATION - Coordinate analysis from modules
     # ==================================================================================
     
-    def get_batch_market_data(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """Fetch all market data in one optimized batch - reduces API calls"""
+    def update_analysis_data(self, data_type: str, analysis_data: Any) -> None:
+        """Receive processed analysis data from analysis modules"""
+        self._store_processed_data(data_type, analysis_data)
+        logger.debug(f"📊 Updated {data_type} analysis data")
+    
+    def get_volatility_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
+        """Get volatility analysis from VolatilityCalculator"""
         try:
-            current_time = time.time()
+            # Check if we have valid processed data
+            volatility_data = self._get_processed_data("volatility")
+            if volatility_data:
+                return volatility_data
             
-            # Check if we should batch fetch (every 5 seconds)
-            if current_time - self._last_batch_fetch < self._batch_interval:
-                logger.debug("📊 Using recent batch data")
-                return self._get_cached_batch_data()
+            # If no valid data, trigger analysis module to process
+            if "volatility" in self._analysis_modules:
+                logger.info("📊 Triggering volatility analysis...")
+                # Analysis module will process raw data and call update_analysis_data
+                return self._analysis_modules["volatility"].get_latest_analysis()
             
-            logger.info("📊 Fetching batch market data...")
+            logger.warning("⚠️ No volatility analysis module registered")
+            return {}
             
-            # Batch fetch all data
-            batch_data = {
-                "price": self._fetch_current_price(),
-                "candles_1m": self._fetch_candles(symbol, "1m", 20),
-                "candles_5m": self._fetch_candles(symbol, "5m", 30),
-                "candles_1h": self._fetch_candles(symbol, "1h", 24),
-                "candles_1d": self._fetch_candles(symbol, "1d", 7),
-                "volume": self._fetch_volume_data(),
-                "market_data": self._fetch_market_data(symbol),
-                "trades": self._fetch_recent_trades(symbol, 50),
-                "timestamp": current_time
+        except Exception as e:
+            logger.error(f"❌ Failed to get volatility analysis: {e}")
+            return {}
+    
+    def get_trend_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
+        """Get trend analysis from TrendCalculator"""
+        try:
+            trend_data = self._get_processed_data("trend")
+            if trend_data:
+                return trend_data
+            
+            if "trend" in self._analysis_modules:
+                logger.info("📊 Triggering trend analysis...")
+                return self._analysis_modules["trend"].get_latest_analysis()
+            
+            logger.warning("⚠️ No trend analysis module registered")
+            return {}
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get trend analysis: {e}")
+            return {}
+    
+    def get_support_resistance_analysis(self) -> Dict[str, Any]:
+        """Get S/R analysis from SupportResistanceCalculator"""
+        try:
+            sr_data = self._get_processed_data("support_resistance")
+            if sr_data:
+                return sr_data
+            
+            if "support_resistance" in self._analysis_modules:
+                logger.info("📊 Triggering S/R analysis...")
+                return self._analysis_modules["support_resistance"].get_latest_analysis()
+            
+            logger.warning("⚠️ No S/R analysis module registered")
+            return {}
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get S/R analysis: {e}")
+            return {}
+    
+    # ==================================================================================
+    # UNIFIED PROCESSED DATA PACKAGES - Pre-processed data for consumers
+    # ==================================================================================
+    
+    def get_unified_analysis_data(self, strategy: str = "standard") -> Dict[str, Any]:
+        """Get all processed analysis data in one package for SessionOrchestrator"""
+        try:
+            logger.info("📊 Coordinating unified analysis data...")
+            
+            # Get all processed analysis data
+            unified_data = {
+                "volatility": self.get_volatility_analysis(strategy),
+                "trend": self.get_trend_analysis(strategy),
+                "support_resistance": self.get_support_resistance_analysis(),
+                "timestamp": time.time(),
+                "strategy": strategy
             }
             
-            # Cache batch data
-            batch_key = f"batch_{symbol}"
-            self._cache_data(batch_key, batch_data)
-            self._last_batch_fetch = current_time
+            # Add any additional analysis modules
+            for module_name, module_instance in self._analysis_modules.items():
+                if module_name not in ["volatility", "trend", "support_resistance"]:
+                    try:
+                        analysis_data = self._get_processed_data(module_name)
+                        if analysis_data:
+                            unified_data[module_name] = analysis_data
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to get {module_name} analysis: {e}")
             
-            logger.info("📊 Batch market data fetched and cached")
-            return batch_data
+            logger.info("📊 Unified analysis data coordinated")
+            return unified_data
             
         except Exception as e:
-            logger.error(f"❌ Failed to fetch batch market data: {e}")
-            return self._get_cached_batch_data() or {}
-    
-    def _get_cached_batch_data(self) -> Optional[Dict[str, Any]]:
-        """Get cached batch data if available"""
-        batch_key = "batch_BTC"  # Default symbol
-        return self._get_cached_data(batch_key)
-    
-    # ==================================================================================
-    # OPTIMIZED INDIVIDUAL METHODS - Smart caching with metric-specific schedules
-    # ==================================================================================
-    
-    def get_historical_candles(self, symbol: str = "BTC", interval: str = "5m", limit: int = 20) -> List[Dict[str, Any]]:
-        """Get historical candles - smart caching with interval-specific schedules"""
-        try:
-            cache_key = self._get_cache_key("candles", symbol, interval=interval, limit=limit)
-            
-            # Check smart cache
-            cached_data = self._get_cached_data(cache_key)
-            if cached_data is not None:
-                return cached_data
-            
-            # Fetch new data
-            candles = self.hyperliquid_api.get_historical_candles(symbol, interval, limit)
-            
-            if candles:
-                self._cache_data(cache_key, candles)
-                logger.debug(f"📊 Fetched {len(candles)} {interval} candles for {symbol}")
-                return candles
-            else:
-                logger.warning(f"⚠️ No candles returned for {symbol} {interval}")
-                return []
-                
-        except Exception as e:
-            logger.error(f"❌ Failed to get historical candles: {e}")
-            return []
-    
-    # ==================================================================================
-    # HELPER METHODS FOR BATCH FETCHING - Internal data fetching
-    # ==================================================================================
-    
-    def _fetch_current_price(self) -> Optional[float]:
-        """Fetch current price - internal method"""
-        try:
-            if self.hyperliquid_websocket and self.hyperliquid_websocket.is_connected():
-                return self.hyperliquid_websocket.get_current_price()
-            else:
-                from config.config import TradingConfig
-                return self.hyperliquid_api.get_current_price(TradingConfig.SYMBOL)
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch current price: {e}")
-            return None
-    
-    def _fetch_candles(self, symbol: str, interval: str, limit: int) -> List[Dict[str, Any]]:
-        """Fetch candles - internal method"""
-        try:
-            return self.hyperliquid_api.get_historical_candles(symbol, interval, limit)
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch {interval} candles: {e}")
-            return []
-    
-    def _fetch_volume_data(self) -> float:
-        """Fetch volume data - internal method"""
-        try:
-            recent_trades = self.hyperliquid_api.get_recent_trades("BTC", 100)
-            if recent_trades:
-                return sum(float(trade.get('sz', 0)) for trade in recent_trades)
-            return 0.0
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch volume data: {e}")
-            return 0.0
-    
-    def _fetch_market_data(self, symbol: str) -> Dict[str, Any]:
-        """Fetch market data - internal method"""
-        try:
-            return self.hyperliquid_api.get_market_data(symbol)
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch market data: {e}")
+            logger.error(f"❌ Failed to coordinate unified analysis data: {e}")
             return {}
     
-    def _fetch_recent_trades(self, symbol: str, limit: int) -> List[Dict[str, Any]]:
-        """Fetch recent trades - internal method"""
-        try:
-            return self.hyperliquid_api.get_recent_trades(symbol, limit)
-        except Exception as e:
-            logger.error(f"❌ Failed to fetch recent trades: {e}")
-            return []
-    
-    # ==================================================================================
-    # OPTIMIZED PUBLIC METHODS - Smart caching with metric-specific schedules
-    # ==================================================================================
-    
-    def get_current_price(self) -> Optional[float]:
-        """Get current price - smart caching (1 second)"""
-        try:
-            cache_key = self._get_cache_key("price")
-            cached_price = self._get_cached_data(cache_key)
-            if cached_price is not None:
-                return cached_price
-            
-            # Fetch new price
-            price = self._fetch_current_price()
-            if price is not None:
-                self._cache_data(cache_key, price)
-            return price
-        except Exception as e:
-            logger.error(f"❌ Failed to get current price: {e}")
-            return None
-    
-    def get_ongoing_candle(self, symbol: str = "BTC", interval: str = "5m") -> Optional[Dict[str, Any]]:
-        """Get ongoing candle - smart caching (1 minute)"""
-        try:
-            cache_key = self._get_cache_key("ongoing_candle", symbol, interval=interval)
-            cached_candle = self._get_cached_data(cache_key)
-            if cached_candle is not None:
-                return cached_candle
-            
-            # Fetch new candle
-            candle = self.hyperliquid_api.get_ongoing_candle(symbol, interval)
-            if candle:
-                self._cache_data(cache_key, candle)
-            return candle
-        except Exception as e:
-            logger.error(f"❌ Failed to get ongoing candle: {e}")
-            return None
-    
-    def get_hyperliquid_price(self, symbol: str = None) -> Optional[float]:
-        """Get current price from Hyperliquid - uses smart caching"""
-        if symbol is None:
-            from config.config import TradingConfig
-            symbol = TradingConfig.SYMBOL
-        
-        # Use the smart cached get_current_price method
-        return self.get_current_price()
-    
-    def get_current_5m_volume(self) -> float:
-        """Get current 5m volume - smart caching (1 minute)"""
-        try:
-            cache_key = self._get_cache_key("volume")
-            cached_volume = self._get_cached_data(cache_key)
-            if cached_volume is not None:
-                return cached_volume
-            
-            # Fetch new volume
-            volume = self._fetch_volume_data()
-            self._cache_data(cache_key, volume)
-            return volume
-        except Exception as e:
-            logger.error(f"❌ Failed to get current 5m volume: {e}")
-            return 0.0
-    
-    def get_market_data(self, symbol: str = "BTC") -> Dict[str, Any]:
-        """Get market data - smart caching (5 minutes)"""
-        try:
-            cache_key = self._get_cache_key("market_data", symbol)
-            cached_data = self._get_cached_data(cache_key)
-            if cached_data is not None:
-                return cached_data
-            
-            # Fetch new market data
-            market_data = self._fetch_market_data(symbol)
-            if market_data:
-                self._cache_data(cache_key, market_data)
-            return market_data
-        except Exception as e:
-            logger.error(f"❌ Failed to get market data: {e}")
-            return {}
-    
-    def get_recent_trades(self, symbol: str = "BTC", limit: int = 50) -> List[Dict[str, Any]]:
-        """Get recent trades - smart caching (30 seconds)"""
-        try:
-            cache_key = self._get_cache_key("trades", symbol, limit=limit)
-            cached_trades = self._get_cached_data(cache_key)
-            if cached_trades is not None:
-                return cached_trades
-            
-            # Fetch new trades
-            trades = self._fetch_recent_trades(symbol, limit)
-            if trades:
-                self._cache_data(cache_key, trades)
-            return trades
-        except Exception as e:
-            logger.error(f"❌ Failed to get recent trades: {e}")
-            return []
-    
-    # ==================================================================================
-    # DATA FLOW OPTIMIZATION - Pre-processed data packages for consumers
-    # ==================================================================================
-    
-    def get_prediction_data(self, symbol: str = "BTC") -> Dict[str, Any]:
+    def get_prediction_data(self, strategy: str = "standard") -> Dict[str, Any]:
         """Get optimized data package for prediction engine"""
         try:
-            # Use batch data if available, otherwise fetch individually
-            batch_data = self._get_cached_batch_data()
-            if batch_data:
-                return {
-                    "price": batch_data.get("price"),
-                    "candles_5m": batch_data.get("candles_5m", []),
-                    "candles_1h": batch_data.get("candles_1h", []),
-                    "candles_1d": batch_data.get("candles_1d", []),
-                    "volume": batch_data.get("volume", 0.0),
-                    "market_data": batch_data.get("market_data", {}),
-                    "timestamp": batch_data.get("timestamp", time.time())
+            # Get unified analysis data
+            analysis_data = self.get_unified_analysis_data(strategy)
+            
+            # Add raw data access for prediction engine
+            prediction_data = {
+                **analysis_data,
+                "raw_data_access": {
+                    "hyperliquid_api": self.hyperliquid_api,
+                    "hyperliquid_websocket": self.hyperliquid_websocket,
+                    "binance_api": self.binance_api
                 }
-            else:
-                # Fallback to individual fetches
-                return {
-                    "price": self.get_current_price(),
-                    "candles_5m": self.get_historical_candles(symbol, "5m", 30),
-                    "candles_1h": self.get_historical_candles(symbol, "1h", 24),
-                    "candles_1d": self.get_historical_candles(symbol, "1d", 7),
-                    "volume": self.get_current_5m_volume(),
-                    "market_data": self.get_market_data(symbol),
-                    "timestamp": time.time()
-                }
+            }
+            
+            return prediction_data
+            
         except Exception as e:
             logger.error(f"❌ Failed to get prediction data: {e}")
             return {}
     
-    def get_dashboard_data(self, symbol: str = "BTC") -> Dict[str, Any]:
+    def get_dashboard_data(self, strategy: str = "standard") -> Dict[str, Any]:
         """Get optimized data package for dashboard UI"""
         try:
-            # Use batch data if available, otherwise fetch individually
-            batch_data = self._get_cached_batch_data()
-            if batch_data:
-                return {
-                    "price": batch_data.get("price"),
-                    "candles_1m": batch_data.get("candles_1m", []),
-                    "candles_5m": batch_data.get("candles_5m", []),
-                    "volume": batch_data.get("volume", 0.0),
-                    "trades": batch_data.get("trades", []),
-                    "market_data": batch_data.get("market_data", {}),
-                    "timestamp": batch_data.get("timestamp", time.time())
-                }
-            else:
-                # Fallback to individual fetches
-                return {
-                    "price": self.get_current_price(),
-                    "candles_1m": self.get_historical_candles(symbol, "1m", 20),
-                    "candles_5m": self.get_historical_candles(symbol, "5m", 30),
-                    "volume": self.get_current_5m_volume(),
-                    "trades": self.get_recent_trades(symbol, 50),
-                    "market_data": self.get_market_data(symbol),
-                    "timestamp": time.time()
-                }
+            # Get unified analysis data
+            analysis_data = self.get_unified_analysis_data(strategy)
+            
+            # Add dashboard-specific data
+            dashboard_data = {
+                **analysis_data,
+                "dashboard_ready": True,
+                "last_update": time.time()
+            }
+            
+            return dashboard_data
+            
         except Exception as e:
             logger.error(f"❌ Failed to get dashboard data: {e}")
             return {}
     
-    def get_data_update_status(self) -> Dict[str, Any]:
-        """Get current data update status with cache info"""
-        return {
-            "hyperliquid_connected": True,
-            "websocket_connected": self.hyperliquid_websocket.is_connected() if self.hyperliquid_websocket else False,
-            "last_batch_fetch": self._last_batch_fetch,
-            "cache_size": len(self._cache),
-            "cached_metrics": list(self._cache.keys()),
-            "last_update": time.time()
-        }
+    # ==================================================================================
+    # DATA STATUS AND MONITORING - Track processed data status
+    # ==================================================================================
     
-    def invalidate_cache(self, symbol: str = "BTC", interval: str = None, metric: str = None):
-        """Smart cache invalidation - specific or all"""
-        try:
-            if metric:
-                # Invalidate specific metric
-                keys_to_remove = [key for key in self._cache.keys() if key.startswith(f"{metric}_")]
-                for key in keys_to_remove:
-                    self._cache.pop(key, None)
-                    self._cache_timestamps.pop(key, None)
-                logger.info(f"🗑️ Invalidated {metric} cache")
-            elif interval:
-                # Invalidate specific interval
-                keys_to_remove = [key for key in self._cache.keys() if f"{symbol}_{interval}" in key]
-                for key in keys_to_remove:
-                    self._cache.pop(key, None)
-                    self._cache_timestamps.pop(key, None)
-                logger.info(f"🗑️ Invalidated {interval} cache for {symbol}")
-            else:
-                # Invalidate all cache
-                self._cache.clear()
-                self._cache_timestamps.clear()
-                self._last_batch_fetch = 0
-                logger.info("🗑️ Invalidated all cache")
-        except Exception as e:
-            logger.error(f"❌ Failed to invalidate cache: {e}")
-    
-    def get_cache_stats(self) -> Dict[str, Any]:
-        """Get cache statistics for monitoring"""
+    def get_data_status(self) -> Dict[str, Any]:
+        """Get current processed data status"""
         try:
             current_time = time.time()
-            cache_ages = {}
+            data_status = {}
             
-            for key, timestamp in self._cache_timestamps.items():
+            for data_type, timestamp in self._data_timestamps.items():
                 age = current_time - timestamp
-                cache_ages[key] = {
+                data_status[data_type] = {
                     "age_seconds": round(age, 2),
-                    "is_valid": self._is_cache_valid(key)
+                    "is_valid": self._is_data_valid(data_type),
+                    "last_update": timestamp
                 }
             
             return {
-                "total_cached_items": len(self._cache),
-                "cache_ages": cache_ages,
+                "processed_data_count": len(self._processed_data),
+                "registered_modules": list(self._analysis_modules.keys()),
+                "data_status": data_status,
                 "update_schedules": self._update_schedules,
-                "last_batch_fetch": self._last_batch_fetch,
-                "batch_interval": self._batch_interval
+                "last_coordination": current_time
             }
         except Exception as e:
-            logger.error(f"❌ Failed to get cache stats: {e}")
+            logger.error(f"❌ Failed to get data status: {e}")
             return {}
+    
+    def invalidate_processed_data(self, data_type: str = None):
+        """Invalidate processed data - specific type or all"""
+        try:
+            if data_type:
+                # Invalidate specific data type
+                self._processed_data.pop(data_type, None)
+                self._data_timestamps.pop(data_type, None)
+                logger.info(f"🗑️ Invalidated {data_type} processed data")
+            else:
+                # Invalidate all processed data
+                self._processed_data.clear()
+                self._data_timestamps.clear()
+                logger.info("🗑️ Invalidated all processed data")
+        except Exception as e:
+            logger.error(f"❌ Failed to invalidate processed data: {e}")
+    
+    def get_analysis_module_status(self) -> Dict[str, Any]:
+        """Get status of registered analysis modules"""
+        try:
+            module_status = {}
+            for module_name, module_instance in self._analysis_modules.items():
+                try:
+                    # Try to get status from module if it has a status method
+                    if hasattr(module_instance, 'get_status'):
+                        module_status[module_name] = module_instance.get_status()
+                    else:
+                        module_status[module_name] = {"status": "registered", "type": type(module_instance).__name__}
+                except Exception as e:
+                    module_status[module_name] = {"status": "error", "error": str(e)}
+            
+            return {
+                "total_modules": len(self._analysis_modules),
+                "module_status": module_status
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to get analysis module status: {e}")
+            return {}
+    
+    def get_data_update_status(self) -> Dict[str, Any]:
+        """Get current data update status for processed data coordination"""
+        return {
+            "hyperliquid_connected": True,
+            "websocket_connected": self.hyperliquid_websocket.is_connected() if self.hyperliquid_websocket else False,
+            "processed_data_count": len(self._processed_data),
+            "registered_modules": list(self._analysis_modules.keys()),
+            "last_update": time.time()
+        }
 
 # Global instance
 _global_market_data_service = None
