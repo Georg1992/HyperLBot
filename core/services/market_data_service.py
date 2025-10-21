@@ -77,7 +77,7 @@ class MarketDataService:
     def get_hyperliquid_price(self, symbol: str = "BTC") -> Optional[float]:
         """Get current price from Hyperliquid - direct API call"""
         try:
-            return self.get_current_price(symbol)
+            return self.get_current_price()
         except Exception as e:
             logger.error(f"❌ Failed to get Hyperliquid price: {e}")
             return None
