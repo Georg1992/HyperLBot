@@ -1044,29 +1044,25 @@ class SessionOrchestrator:
         try:
             logger.debug(f"🔍 _get_market_data called with market_data_service: {type(market_data_service)}")
             
-            # DELEGATE: Get market analysis from MarketDataService
-            hyperliquid_analysis = market_data_service.get_hyperliquid_analysis(current_price)
-            if not hyperliquid_analysis or "error" in hyperliquid_analysis:
-                return None
-            
-            # DELEGATE: Get ALL market data from MarketDataService (includes orderbook)
-            hyperliquid_data = market_data_service.get_all_market_data("BTC")
+            # DELEGATE: Get market data from MarketDataService (robust approach)
+            hyperliquid_data = market_data_service.get_market_data()
             if not hyperliquid_data or "error" in hyperliquid_data:
                 return None
             
-            # Fetch 1d candles for market conditions analyzer
+            # Fetch candles for market conditions analyzer
             candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
+            if not candles_1d:
+                return None
             
             # DELEGATE: Get market conditions from MarketConditionsAnalyzer
             from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
             market_conditions = global_conditions_analyzer.analyze_trading_conditions(
-                hyperliquid_analysis, hyperliquid_data, candles_1d
+                hyperliquid_data, hyperliquid_data, candles_1d
             )
             # Market conditions calculated successfully
             
             # Combine all data into single source of truth
             return {
-                "hyperliquid_analysis": hyperliquid_analysis,
                 "hyperliquid_data": hyperliquid_data,
                 "market_conditions": market_conditions,
                 "current_price": current_price,
