@@ -28,20 +28,7 @@ class SupportResistanceCalculator:
         """Find support/resistance levels - SIMPLE AND WORKS"""
         try:
             if not candles or len(candles) < 10:
-                logger.warning("⚠️ Insufficient candle data - using psychological levels")
-                # Even with insufficient data, return psychological levels
-                current_price = candles[-1].get("close", 0) if candles else 0
-                if current_price > 0:
-                    psychological_support = self._find_next_psychological_level(current_price, "support")
-                    psychological_resistance = self._find_next_psychological_level(current_price, "resistance")
-                    return {
-                        "key_levels": [],
-                        "strongest_support": psychological_support,
-                        "strongest_resistance": psychological_resistance,
-                        "analysis_confidence": 0.3  # Low confidence for psychological-only levels
-                    }
-                else:
-                    return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
+                raise ValueError(f"Insufficient candle data for S/R analysis: {len(candles) if candles else 0} candles - NO FALLBACKS")
             
             current_price = candles[-1].get("close", 0)
             
@@ -134,9 +121,8 @@ class SupportResistanceCalculator:
                     strongest_support = closest_support["level"]
                     logger.warning(f"⚠️ All support levels broken - using closest support: ${strongest_support:.2f}")
             else:
-                # No support levels found - use psychological support as fallback
-                strongest_support = self._find_next_psychological_level(current_price, "support")
-                logger.warning(f"⚠️ No support levels found - using psychological support: ${strongest_support:.2f}")
+                # No support levels found - this should not happen with sufficient data
+                raise ValueError(f"No historical support levels found in {len(candles)} candles - NO FALLBACKS")
             
             # Get strongest resistance - ALWAYS prioritize levels above current price
             strongest_resistance = 0.0
@@ -154,30 +140,16 @@ class SupportResistanceCalculator:
                     strongest_resistance = highest_resistance["level"]
                     logger.warning(f"⚠️ All resistance levels broken - using highest historical: ${strongest_resistance:.2f}")
             else:
-                # No resistance levels found - use psychological resistance as fallback
-                strongest_resistance = self._find_next_psychological_level(current_price, "resistance")
-                logger.warning(f"⚠️ No resistance levels found - using psychological resistance: ${strongest_resistance:.2f}")
+                # No resistance levels found - this should not happen with sufficient data
+                raise ValueError(f"No historical resistance levels found in {len(candles)} candles - NO FALLBACKS")
             
-            # GUARANTEE: Always return valid support and resistance levels from HISTORICAL DATA
+            # GUARANTEE: Always return valid support and resistance levels from HISTORICAL DATA ONLY
+            # NO FALLBACKS - if we reach this point with 0 values, something is wrong with the data
             if strongest_support <= 0:
-                # Find ANY support level from historical data (even if broken)
-                if support_levels_filtered:
-                    strongest_support = max(support_levels_filtered, key=lambda x: x["level"])["level"]
-                    logger.warning(f"⚠️ No valid support below price - using highest historical support: ${strongest_support:.2f}")
-                else:
-                    # Only use psychological if we have NO historical data at all
-                    strongest_support = self._find_next_psychological_level(current_price, "support")
-                    logger.warning(f"⚠️ No historical support found - using psychological support: ${strongest_support:.2f}")
+                raise ValueError(f"CRITICAL: No valid support found in historical data - NO FALLBACKS")
             
             if strongest_resistance <= 0:
-                # Find ANY resistance level from historical data (even if broken)
-                if resistance_levels_filtered:
-                    strongest_resistance = min(resistance_levels_filtered, key=lambda x: x["level"])["level"]
-                    logger.warning(f"⚠️ No valid resistance above price - using lowest historical resistance: ${strongest_resistance:.2f}")
-                else:
-                    # Only use psychological if we have NO historical data at all
-                    strongest_resistance = self._find_next_psychological_level(current_price, "resistance")
-                    logger.warning(f"⚠️ No historical resistance found - using psychological resistance: ${strongest_resistance:.2f}")
+                raise ValueError(f"CRITICAL: No valid resistance found in historical data - NO FALLBACKS")
             
             logger.info(f"📊 Found {len(support_levels)} support, {len(resistance_levels)} resistance levels")
             logger.info(f"📊 After filtering: {len(support_levels_filtered)} support, {len(resistance_levels_filtered)} resistance")
@@ -214,19 +186,8 @@ class SupportResistanceCalculator:
                         "analysis_confidence": 0.1
                     }
             
-            # Only use psychological as last resort if no historical data available
-            if current_price > 0:
-                emergency_support = self._find_next_psychological_level(current_price, "support")
-                emergency_resistance = self._find_next_psychological_level(current_price, "resistance")
-                logger.warning(f"⚠️ No historical data - using psychological levels: Support=${emergency_support:.2f}, Resistance=${emergency_resistance:.2f}")
-                return {
-                    "key_levels": [], 
-                    "strongest_support": emergency_support, 
-                    "strongest_resistance": emergency_resistance,
-                    "analysis_confidence": 0.05
-                }
-            else:
-                return {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
+            # NO FALLBACKS - raise error if no historical data available
+            raise ValueError(f"S/R level identification failed - insufficient historical data - NO FALLBACKS")
     
     
     def _count_touches(self, candles: List[Dict], level_price: float, level_type: str) -> int:
@@ -638,37 +599,7 @@ class SupportResistanceCalculator:
         except:
             return False
     
-    def _find_next_psychological_level(self, current_price: float, level_type: str) -> float:
-        """
-        Find the next psychological level (round number) for support or resistance
-        Psychological levels: $1000 intervals for BTC (e.g., $120,000, $121,000, $122,000)
-        """
-        try:
-            # For BTC, use $1000 intervals for major psychological levels
-            interval = 1000.0
-            
-            if level_type == "support":
-                # Find the nearest $1000 level below current price
-                support_level = int(current_price / interval) * interval
-                # If we're very close to it (within 0.5%), go one level lower
-                if (current_price - support_level) / current_price < 0.005:
-                    support_level -= interval
-                return support_level
-            else:  # resistance
-                # Find the nearest $1000 level above current price
-                resistance_level = (int(current_price / interval) + 1) * interval
-                # If we're very close to it (within 0.5%), go one level higher
-                if (resistance_level - current_price) / current_price < 0.005:
-                    resistance_level += interval
-                return resistance_level
-                
-        except Exception as e:
-            logger.error(f"❌ Psychological level calculation failed: {e}")
-            # Emergency fallback
-            if level_type == "support":
-                return current_price * 0.98  # 2% below
-            else:
-                return current_price * 1.02  # 2% above
+    # REMOVED: _find_next_psychological_level - NO FALLBACKS POLICY
     
     # REMOVED: _detect_consolidation_zones - NO FALLBACKS
     
