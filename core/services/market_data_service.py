@@ -74,6 +74,14 @@ class MarketDataService:
             logger.error(f"❌ Failed to get ongoing candle: {e}")
             return None
     
+    def get_hyperliquid_price(self, symbol: str = "BTC") -> Optional[float]:
+        """Get current price from Hyperliquid - direct API call"""
+        try:
+            return self.get_current_price(symbol)
+        except Exception as e:
+            logger.error(f"❌ Failed to get Hyperliquid price: {e}")
+            return None
+    
     def get_current_5m_volume(self) -> float:
         """Get current 5m volume - direct API call"""
         try:

@@ -92,10 +92,10 @@ class SessionContextAnalyzer:
             sr_calculator = SupportResistanceCalculator()
             
             # 1. DAILY LEVELS (Major long-term support/resistance)
-            daily_levels = sr_calculator.identify_key_levels(candles_1d, min_touches=2) if candles_1d else {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
+            daily_levels = sr_calculator.identify_key_levels(candles_1d) if candles_1d else {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
             
             # 2. HOURLY LEVELS (Medium-term levels like $116,650-116,750)
-            hourly_levels = sr_calculator.identify_key_levels(candles_1h, min_touches=3) if candles_1h and len(candles_1h) >= 20 else {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
+            hourly_levels = sr_calculator.identify_key_levels(candles_1h) if candles_1h and len(candles_1h) >= 20 else {"key_levels": [], "strongest_support": 0.0, "strongest_resistance": 0.0}
             
             # 3. 5-MINUTE RANGE LEVELS (Short-term for range trading)
             range_levels = self._identify_5m_range_levels(candles_5m) if candles_5m else {"support": [], "resistance": []}
@@ -196,7 +196,7 @@ class SessionContextAnalyzer:
             level_tolerance = price_range * 0.001  # 0.1% tolerance for precision
             
             # Use the simple identify_key_levels method
-            sr_result = sr_calculator.identify_key_levels(recent_candles, min_touches=2)
+            sr_result = sr_calculator.identify_key_levels(recent_candles)
             support_levels_data = [level for level in sr_result.get("key_levels", []) if level["type"] == "support"]
             resistance_levels_data = [level for level in sr_result.get("key_levels", []) if level["type"] == "resistance"]
             
@@ -231,9 +231,10 @@ class SessionContextAnalyzer:
     def _analyze_volatility_regime(self, candles_1d: List[Dict], candles_1h: List[Dict]) -> Dict[str, Any]:
         """Analyze historical volatility patterns to understand current regime"""
         try:
-            # Use centralized MarketDataManager for consistent volatility calculation
-            from core.market_data_manager import get_global_market_data_manager
-            market_data_manager = get_global_market_data_manager()
+            # Use centralized MarketDataService for consistent volatility calculation
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            market_data_service = system_initializer.singleton_systems.get("market_data_service")
             
             if not candles_1d or len(candles_1d) < 2:
                 return {"regime": "UNKNOWN", "confidence": 0.0}
