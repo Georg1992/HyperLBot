@@ -812,6 +812,37 @@
                 this.initializeWebSocket();
             }
             
+            // Safe DOM element access with error handling
+            safeGetElementById(elementId) {
+                try {
+                    const element = document.getElementById(elementId);
+                    if (!element) {
+                        console.warn(`⚠️ Element with id '${elementId}' not found`);
+                        return null;
+                    }
+                    return element;
+                } catch (error) {
+                    console.error(`❌ Error accessing element '${elementId}':`, error);
+                    return null;
+                }
+            }
+            
+            // Safe text content update
+            safeUpdateTextContent(elementId, text) {
+                const element = this.safeGetElementById(elementId);
+                if (element) {
+                    element.textContent = text;
+                }
+            }
+            
+            // Safe innerHTML update
+            safeUpdateInnerHTML(elementId, html) {
+                const element = this.safeGetElementById(elementId);
+                if (element) {
+                    element.innerHTML = html;
+                }
+            }
+            
             initializeWebSocket() {
                 
                 // Initialize Socket.IO with explicit configuration
@@ -866,9 +897,9 @@
                 // Data event handlers
                 this.socket.on('initial_data', (data) => {
                     
-                    // Clear any cached/stale data first
-                    document.getElementById('session-time').textContent = 'Loading...';
-                    document.getElementById('activity-logs').innerHTML = '<div class="log-entry">🔄 Loading fresh data...</div>';
+                    // Clear any cached/stale data first with error handling
+                    this.safeUpdateTextContent('session-time', 'Loading...');
+                    this.safeUpdateInnerHTML('activity-logs', '<div class="log-entry">🔄 Loading fresh data...</div>');
                     
                     // Debug initial data
                     if (data.session) {
@@ -1031,15 +1062,15 @@
             updateSessionData(session) {
                 console.log('📊 Updating session data:', session);
                 
-                document.getElementById('session-status').textContent = session.status || 'N/A';
-                document.getElementById('session-strategy').textContent = session.strategy || 'N/A';
-                document.getElementById('session-balance').textContent = 
-                    session.current_balance ? `$${parseFloat(session.current_balance).toFixed(2)}` : 'Loading...';
+                this.safeUpdateTextContent('session-status', session.status || 'N/A');
+                this.safeUpdateTextContent('session-strategy', session.strategy || 'N/A');
+                this.safeUpdateTextContent('session-balance', 
+                    session.current_balance ? `$${parseFloat(session.current_balance).toFixed(2)}` : 'Loading...');
                 
                 // Use pre-calculated session_time if available, otherwise calculate from start_time
                 if (session.session_time) {
                     console.log('📊 Using pre-calculated session time:', session.session_time);
-                    document.getElementById('session-time').textContent = session.session_time;
+                    this.safeUpdateTextContent('session-time', session.session_time);
                 } else if (session.start_time || session.started_at) {
                     console.log('📊 Calculating session time from start_time:', session.start_time || session.started_at);
                     const startTime = new Date(session.start_time || session.started_at);
@@ -1049,13 +1080,13 @@
                     const remainingMinutes = minutes % 60;
                     
                     if (hours > 0) {
-                        document.getElementById('session-time').textContent = `${hours}h ${remainingMinutes}m`;
+                        this.safeUpdateTextContent('session-time', `${hours}h ${remainingMinutes}m`);
                     } else {
-                        document.getElementById('session-time').textContent = `${minutes} minutes`;
+                        this.safeUpdateTextContent('session-time', `${minutes} minutes`);
                     }
                 } else {
                     console.log('📊 No start time available, showing "N/A"');
-                    document.getElementById('session-time').textContent = 'N/A';
+                    this.safeUpdateTextContent('session-time', 'N/A');
                 }
             }
             

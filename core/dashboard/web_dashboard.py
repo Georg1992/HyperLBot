@@ -316,6 +316,9 @@ class EventDrivenTradingDashboard:
             ai_system_status = market_data_dict.get("ai_system_status", {})
             ml_performance = market_data_dict.get("ml_performance", {})
             
+            # Get predictions from market data
+            predictions = market_data_dict.get("predictions", [])
+            
             # Format data for dashboard - DashboardService ONLY
             dashboard_data = {
                 "session": {
