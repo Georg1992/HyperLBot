@@ -690,20 +690,20 @@ class SupportResistanceCalculator:
                     logger.info("📊 Using cached S/R data (no level breaks detected)")
                     return cached_data
             
-            # Use passed data or fetch as fallback
-            if candles_5m is None:
-                candles_5m = market_data_service.get_historical_candles("BTC", "5m", 100)
-            if candles_1h is None:
-                candles_1h = market_data_service.get_historical_candles("BTC", "1h", 48)
-            if candles_1d is None:
-                candles_1d = market_data_service.get_historical_candles("BTC", "1d", 7)
+            # OPTIMIZED: Fetch comprehensive data ONCE with extended historical depth
+            logger.info("📊 Fetching comprehensive historical data for S/R analysis...")
+            
+            # Fetch comprehensive data with extended depth
+            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 200)  # 16 hours
+            candles_1h = market_data_service.get_historical_candles("BTC", "1h", 720)   # 30 days
+            candles_1d = market_data_service.get_historical_candles("BTC", "1d", 90)    # 3 months
             
             if not candles_5m or not candles_1h or not candles_1d:
                 raise ValueError("Candle data not available - NO FALLBACKS")
             
-            logger.info(f"📊 Analyzing: 5m={len(candles_5m)}, 1h={len(candles_1h)}, 1d={len(candles_1d)} candles")
+            logger.info(f"📊 Comprehensive data: 5m={len(candles_5m)}, 1h={len(candles_1h)}, 1d={len(candles_1d)} candles")
             
-            # Analyze each timeframe and combine with weights
+            # OPTIMIZED: Analyze comprehensive data with hierarchical weighting
             all_levels = []
             
             # 5m candles - highest weight (most recent, most relevant)
@@ -715,16 +715,16 @@ class SupportResistanceCalculator:
                     all_levels.append(level)
                 logger.info(f"📊 Found {len(sr_5m.get('key_levels', []))} 5m S/R levels")
             
-            # 1h candles - medium weight
+            # 1h candles - medium weight (30 days of data)
             if len(candles_1h) >= 20:
                 sr_1h = self.identify_key_levels(candles_1h, min_touches=2)
                 for level in sr_1h.get("key_levels", []):
                     level["timeframe"] = "1h"
-                    level["weight"] = 1.5
+                    level["weight"] = 2.0
                     all_levels.append(level)
                 logger.info(f"📊 Found {len(sr_1h.get('key_levels', []))} 1h S/R levels")
             
-            # 1d candles - lower weight
+            # 1d candles - lower weight (3 months of data)
             if len(candles_1d) >= 10:
                 sr_1d = self.identify_key_levels(candles_1d, min_touches=2)
                 for level in sr_1d.get("key_levels", []):
@@ -736,68 +736,73 @@ class SupportResistanceCalculator:
             # Select most relevant levels
             relevant_levels = self._select_relevant_levels(all_levels, current_price)
             
-            # Check if we have valid resistance levels (not just quantity)
+            # Check if we have sufficient levels
             resistance_levels_found = [l for l in relevant_levels if l["type"] == "resistance"]
             support_levels_found = [l for l in relevant_levels if l["type"] == "support"]
-            
-            # Check for resistance ABOVE current price specifically
             resistance_above_price = [l for l in resistance_levels_found if l["level"] > current_price]
+            support_below_price = [l for l in support_levels_found if l["level"] < current_price]
             
-            logger.info(f"📊 Level analysis: {len(resistance_levels_found)} total resistance, {len(resistance_above_price)} above current price")
+            logger.info(f"📊 Level analysis: {len(resistance_levels_found)} resistance, {len(resistance_above_price)} above price, {len(support_levels_found)} support, {len(support_below_price)} below price")
             
-            # Expand if: insufficient total levels OR missing resistance OR missing support OR no resistance above price
-            # Made more aggressive - expand sooner for faster response
-            needs_expansion = (
-                len(relevant_levels) < 6 or  # Reduced from 4 to 6 for faster expansion
-                len(resistance_levels_found) == 0 or
-                len(support_levels_found) == 0 or
-                len(resistance_above_price) == 0
-            )
-            
-            if needs_expansion:
-                reason = []
-                if len(relevant_levels) < 4:
-                    reason.append(f"only {len(relevant_levels)} levels")
-                if len(resistance_levels_found) == 0:
-                    reason.append("no resistance found")
-                if len(resistance_above_price) == 0:
-                    reason.append("no resistance above price")
-                if len(support_levels_found) == 0:
-                    reason.append("no support below price")
+            # EXTENDED HISTORICAL DEPTH: If no resistance above price, extend to 1 year
+            if len(resistance_above_price) == 0:
+                logger.warning(f"⚠️ No resistance above ${current_price:.2f} in 3 months - extending to 1 year")
+                candles_1d_extended = market_data_service.get_historical_candles("BTC", "1d", 365)  # 1 year
                 
-                logger.warning(f"⚠️ Expanding to longer history: {', '.join(reason)}")
-                logger.debug(f"🔍 Market data service type before expansion: {type(market_data_service)}")
-                relevant_levels = self._expand_with_longer_history(
-                    relevant_levels, current_price, market_data_service
-                )
+                if candles_1d_extended and len(candles_1d_extended) >= 30:
+                    sr_1d_extended = self.identify_key_levels(candles_1d_extended, min_touches=2)
+                    for level in sr_1d_extended.get("key_levels", []):
+                        level["timeframe"] = "1d_extended"
+                        level["weight"] = 0.8  # Lower weight for older data
+                        all_levels.append(level)
+                    
+                    # Re-analyze with extended data
+                    relevant_levels = self._select_relevant_levels(all_levels, current_price)
+                    resistance_levels_found = [l for l in relevant_levels if l["type"] == "resistance"]
+                    resistance_above_price = [l for l in resistance_levels_found if l["level"] > current_price]
+                    
+                    logger.info(f"📊 After 1-year extension: {len(resistance_above_price)} resistance above price")
             
-            # Extract strongest levels
+            # If still no resistance above price, extend to 2 years
+            if len(resistance_above_price) == 0:
+                logger.warning(f"⚠️ Still no resistance above ${current_price:.2f} in 1 year - extending to 2 years")
+                candles_1d_very_long = market_data_service.get_historical_candles("BTC", "1d", 730)  # 2 years
+                
+                if candles_1d_very_long and len(candles_1d_very_long) >= 60:
+                    sr_1d_very_long = self.identify_key_levels(candles_1d_very_long, min_touches=2)
+                    for level in sr_1d_very_long.get("key_levels", []):
+                        level["timeframe"] = "1d_very_long"
+                        level["weight"] = 0.6  # Lower weight for very old data
+                        all_levels.append(level)
+                    
+                    # Re-analyze with very long data
+                    relevant_levels = self._select_relevant_levels(all_levels, current_price)
+                    resistance_levels_found = [l for l in relevant_levels if l["type"] == "resistance"]
+                    resistance_above_price = [l for l in resistance_levels_found if l["level"] > current_price]
+                    
+                    logger.info(f"📊 After 2-year extension: {len(resistance_above_price)} resistance above price")
+            
+            # If still no resistance above price, this is likely ATH breakout
+            if len(resistance_above_price) == 0:
+                logger.warning(f"🚨 ATH BREAKOUT: No historical resistance above ${current_price:.2f} in 2 years")
+                logger.warning(f"📊 Using psychological resistance levels - ONLY justified fallback")
+                
+                # Add psychological resistance levels for ATH breakout
+                psychological_resistance = self._create_psychological_resistance_for_ath(current_price)
+                for level in psychological_resistance:
+                    level["timeframe"] = "psychological_ath"
+                    level["weight"] = 0.5  # Lowest weight for psychological levels
+                    all_levels.append(level)
+                
+                # Re-analyze with psychological levels
+                relevant_levels = self._select_relevant_levels(all_levels, current_price)
+                resistance_levels_found = [l for l in relevant_levels if l["type"] == "resistance"]
+                resistance_above_price = [l for l in resistance_levels_found if l["level"] > current_price]
+            
+            # Final level extraction
             support_levels = [l for l in relevant_levels if l["type"] == "support"]
             resistance_levels = [l for l in relevant_levels if l["type"] == "resistance"]
-            
-            # GUARANTEE: Always provide valid support and resistance levels from HISTORICAL DATA
-            # NO FALLBACKS - expand historical data until we find levels
-            
-            # If we still don't have resistance above current price, expand further
-            resistance_above_price = [l for l in resistance_levels if l["level"] > current_price]
-            if len(resistance_above_price) == 0:
-                logger.warning(f"⚠️ No resistance above ${current_price:.2f} - expanding to MUCH longer history")
-                relevant_levels = self._expand_with_very_long_history(
-                    relevant_levels, current_price, market_data_service, target_type="resistance"
-                )
-                resistance_levels = [l for l in relevant_levels if l["type"] == "resistance"]
-                resistance_above_price = [l for l in resistance_levels if l["level"] > current_price]
-            
-            # If we still don't have support below current price, expand further  
-            support_levels = [l for l in relevant_levels if l["type"] == "support"]
             support_below_price = [l for l in support_levels if l["level"] < current_price]
-            if len(support_below_price) == 0:
-                logger.warning(f"⚠️ No support below ${current_price:.2f} - expanding to MUCH longer history")
-                relevant_levels = self._expand_with_very_long_history(
-                    relevant_levels, current_price, market_data_service, target_type="support"
-                )
-                support_levels = [l for l in relevant_levels if l["type"] == "support"]
-                support_below_price = [l for l in support_levels if l["level"] < current_price]
             
             # Extract strongest levels (should now exist from historical data)
             if support_below_price:
@@ -922,143 +927,3 @@ class SupportResistanceCalculator:
         else:
             return "low"
     
-    
-    def _expand_with_longer_history(self, current_levels: List[Dict], current_price: float, market_data_service) -> List[Dict]:
-        """
-        Expand S/R analysis with longer historical data when insufficient levels are found
-        
-        Args:
-            current_levels: Current S/R levels found
-            current_price: Current market price
-            market_data_service: Market data service for fetching historical data
-            
-        Returns:
-            Expanded list of S/R levels
-        """
-        try:
-            if not market_data_service:
-                logger.error("❌ CRITICAL: No market data service available for expansion - NO FALLBACKS")
-                raise ValueError("Market data service is None in _expand_with_longer_history - NO FALLBACKS")
-            
-            logger.info("📊 Expanding S/R analysis with longer historical data...")
-            
-            # Fetch more historical data for better S/R detection - optimized for speed
-            candles_1h_extended = market_data_service.get_historical_candles("BTC", "1h", 72)   # 3 days (faster)
-            candles_1d_extended = market_data_service.get_historical_candles("BTC", "1d", 14)    # 2 weeks (faster)
-            
-            # Analyze extended timeframes
-            sr_1h_result = self.identify_key_levels(candles_1h_extended, min_touches=2)
-            sr_1d_result = self.identify_key_levels(candles_1d_extended, min_touches=2)
-            
-            # Extract key levels from results
-            sr_1h_extended = sr_1h_result.get("key_levels", [])
-            sr_1d_extended = sr_1d_result.get("key_levels", [])
-            
-            # Combine with current levels
-            expanded_levels = current_levels.copy()
-            
-            # Add 1h extended levels
-            for level in sr_1h_extended:
-                level["timeframe"] = "1h_extended"
-                level["weight"] = 0.7
-                if not any(abs(level["level"] - existing["level"]) < 500 for existing in expanded_levels):
-                    expanded_levels.append(level)
-            
-            # Add 1d extended levels
-            for level in sr_1d_extended:
-                level["timeframe"] = "1d_extended"
-                level["weight"] = 0.8
-                if not any(abs(level["level"] - existing["level"]) < 500 for existing in expanded_levels):
-                    expanded_levels.append(level)
-            
-            logger.info(f"📊 After expansion: {len(expanded_levels)} total levels")
-            return expanded_levels
-            
-        except Exception as e:
-            logger.error(f"❌ History expansion failed: {e}")
-            return current_levels
-    
-    def _expand_with_very_long_history(self, current_levels: List[Dict], current_price: float, 
-                                     market_data_service, target_type: str = "both") -> List[Dict]:
-        """
-        Expand S/R analysis with VERY LONG historical data when no levels found
-        NO FALLBACKS - will search historical data as far back as needed
-        
-        Args:
-            current_levels: Current S/R levels found
-            current_price: Current market price
-            market_data_service: Market data service for fetching historical data
-            target_type: "support", "resistance", or "both"
-            
-        Returns:
-            Expanded list of S/R levels with guaranteed support/resistance
-        """
-        try:
-            if not market_data_service:
-                raise ValueError("Market data service is None in _expand_with_very_long_history - NO FALLBACKS")
-            
-            logger.warning(f"🔍 AGGRESSIVE EXPANSION: Searching very long history for {target_type}")
-            
-            # Fetch MUCH longer historical data - go back months if needed
-            candles_1h_very_long = market_data_service.get_historical_candles("BTC", "1h", 720)  # 30 days
-            candles_1d_very_long = market_data_service.get_historical_candles("BTC", "1d", 90)   # 3 months
-            
-            if not candles_1h_very_long and not candles_1d_very_long:
-                raise ValueError("No very long historical data available - NO FALLBACKS")
-            
-            # Analyze very long timeframes for S/R levels
-            very_long_levels = []
-            
-            # 1h analysis (30 days)
-            if candles_1h_very_long and len(candles_1h_very_long) >= 20:
-                logger.info(f"📊 Analyzing {len(candles_1h_very_long)} hourly candles (30 days)")
-                hourly_levels = self.identify_key_levels(candles_1h_very_long, min_touches=3)  # Higher threshold for long-term
-                for level in hourly_levels.get("key_levels", []):
-                    level["timeframe"] = "1h_very_long"
-                    level["weight"] = 0.7  # Lower weight for very old data
-                    very_long_levels.append(level)
-            
-            # 1d analysis (3 months)  
-            if candles_1d_very_long and len(candles_1d_very_long) >= 10:
-                logger.info(f"📊 Analyzing {len(candles_1d_very_long)} daily candles (3 months)")
-                daily_levels = self.identify_key_levels(candles_1d_very_long, min_touches=2)
-                for level in daily_levels.get("key_levels", []):
-                    level["timeframe"] = "1d_very_long"
-                    level["weight"] = 0.5  # Lower weight for very old data
-                    very_long_levels.append(level)
-            
-            # Combine with existing levels
-            combined_levels = current_levels + very_long_levels
-            
-            # Remove duplicates (levels within 0.5% of each other)
-            unique_levels = self._remove_duplicate_levels(combined_levels, tolerance=0.005)
-            
-            # Sort by relevance and price
-            unique_levels.sort(key=lambda x: (x.get("score", 0) * x.get("weight", 1.0)), reverse=True)
-            
-            logger.warning(f"📊 VERY LONG expansion complete: {len(unique_levels)} total levels from extended history")
-            
-            # Verify we now have the required levels
-            support_found = [l for l in unique_levels if l["type"] == "support" and l["level"] < current_price]
-            resistance_found = [l for l in unique_levels if l["type"] == "resistance" and l["level"] > current_price]
-            
-            logger.info(f"📊 After very long expansion: {len(support_found)} support below price, {len(resistance_found)} resistance above price")
-            
-            # SPECIAL CASE: If no resistance above current price even in 3-month history,
-            # this means we broke ALL-TIME HIGH - psychological resistance is justified
-            if target_type == "resistance" and len(resistance_found) == 0:
-                logger.warning(f"🚨 ALL-TIME HIGH BROKEN: No historical resistance above ${current_price:.2f} in 3-month history")
-                logger.warning(f"📊 Using psychological resistance levels - ONLY justified fallback")
-                
-                # Add psychological resistance levels for ATH breakout
-                psychological_resistance = self._create_psychological_resistance_for_ath(current_price)
-                unique_levels.extend(psychological_resistance)
-                
-            if target_type == "support" and len(support_found) == 0:
-                raise ValueError(f"CRITICAL: No support below ${current_price:.2f} found even in 3-month history - NO FALLBACKS")
-            
-            return unique_levels
-            
-        except Exception as e:
-            logger.error(f"❌ Very long S/R expansion failed: {e}")
-            raise ValueError(f"Historical S/R expansion failed - NO FALLBACKS: {e}")
