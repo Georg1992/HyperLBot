@@ -36,8 +36,15 @@ class ChartDataService:
             
             # Get real-time volume for current 5m candle
             real_time_volume = 0.0
-            if market_data_service.hyperliquid_websocket:
+            # Check if market_data_service has hyperliquid_websocket (MarketDataService) or if it's MarketDataManager
+            if hasattr(market_data_service, 'hyperliquid_websocket') and market_data_service.hyperliquid_websocket:
                 real_time_volume = market_data_service.hyperliquid_websocket.get_current_5m_volume()
+            elif hasattr(market_data_service, 'get_current_5m_volume'):
+                # If it's MarketDataManager, use its method directly
+                real_time_volume = market_data_service.get_current_5m_volume()
+            else:
+                # Fallback: use 0.0 if no real-time volume available
+                logger.debug("📊 No real-time volume available, using 0.0")
             
             # Use centralized cache for chart preparation - request 20 candles
             # This will be served from the same cache as all other 5m requests
