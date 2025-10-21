@@ -662,9 +662,9 @@ class SupportResistanceCalculator:
             # Score levels with confirmation
             all_levels = self._score_levels_with_confirmation(levels_5m, levels_1h, current_price)
             
-            # Separate support and resistance
-            support_levels = [level for level in all_levels if level["level"] < current_price]
-            resistance_levels = [level for level in all_levels if level["level"] > current_price]
+            # Separate support and resistance based on level type, not price position
+            support_levels = [level for level in all_levels if level.get("type") == "support"]
+            resistance_levels = [level for level in all_levels if level.get("type") == "resistance"]
             
             logger.info(f"📊 Found {len(support_levels)} support levels, {len(resistance_levels)} resistance levels")
             
@@ -674,9 +674,9 @@ class SupportResistanceCalculator:
                 historical_levels = self._find_historical_levels_at_price(current_price, market_data_service)
                 all_levels.extend(historical_levels)
                 
-                # Re-separate after adding historical levels
-                support_levels = [level for level in all_levels if level["level"] < current_price]
-                resistance_levels = [level for level in all_levels if level["level"] > current_price]
+                # Re-separate after adding historical levels based on level type
+                support_levels = [level for level in all_levels if level.get("type") == "support"]
+                resistance_levels = [level for level in all_levels if level.get("type") == "resistance"]
                 logger.info(f"📊 After historical context: {len(resistance_levels)} resistance, {len(support_levels)} support")
             
             # If still no resistance, this is likely ATH breakout
@@ -866,6 +866,9 @@ class SupportResistanceCalculator:
                     # Calculate final score with all factors
                     final_score = (base_weight * 0.4) + (time_decay_score * 0.3) + (volume_score * 0.3)
                     
+                    # Determine S/R type based on actual market behavior, not price position
+                    level_type = self._determine_sr_type(candles, level, current_price)
+                    
                     sr_levels.append({
                         "level": level,
                         "touches": touches,
@@ -875,7 +878,7 @@ class SupportResistanceCalculator:
                         "base_weight": base_weight,
                         "final_score": final_score,
                         "confirmation_score": 0,  # Will be set by scoring system
-                        "type": "support" if level < current_price else "resistance"
+                        "type": level_type
                     })
             
             # Sort by final score (highest first)
@@ -890,6 +893,37 @@ class SupportResistanceCalculator:
         except Exception as e:
             logger.error(f"❌ Smart S/R detection failed: {e}")
             return []
+    
+    def _determine_sr_type(self, candles: List[Dict], level: float, current_price: float) -> str:
+        """Determine if a level is support or resistance based on actual market behavior"""
+        try:
+            support_touches = 0
+            resistance_touches = 0
+            
+            for candle in candles:
+                # Check if price touched this level from below (resistance behavior)
+                if candle["low"] <= level <= candle["high"]:
+                    # Price was at this level - determine direction
+                    if candle["close"] > level:
+                        # Price closed above level - this level acted as support
+                        support_touches += 1
+                    elif candle["close"] < level:
+                        # Price closed below level - this level acted as resistance
+                        resistance_touches += 1
+            
+            # Determine type based on which behavior was more common
+            if support_touches > resistance_touches:
+                return "support"
+            elif resistance_touches > support_touches:
+                return "resistance"
+            else:
+                # Equal touches - determine by current price position as fallback
+                return "support" if level < current_price else "resistance"
+                
+        except Exception as e:
+            logger.error(f"❌ S/R type determination failed: {e}")
+            # Fallback to price position
+            return "support" if level < current_price else "resistance"
 
     def _update_5m_cache_if_needed(self, market_data_service):
         """Update 5m cache if needed (every 5 minutes)"""
