@@ -16,8 +16,8 @@ __all__ = [
     # Confidence optimization system
     'ConfidenceOptimizer',
     'global_confidence_optimizer',
-    'AdaptiveConfidenceCalculator', 
-    'global_adaptive_calculator',
+    'ConfidenceCalculator', 
+    'global_confidence_calculator',
     'TradeOutcomeRecorder',
     'global_trade_outcome_recorder',
     

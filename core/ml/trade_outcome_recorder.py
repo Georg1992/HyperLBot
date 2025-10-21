@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from loguru import logger
 from core.ml.confidence_optimizer import get_global_confidence_optimizer, TradeRecord
-from core.ml.adaptive_confidence_calculator import get_global_adaptive_calculator
+from core.ml.confidence_calculator import get_global_confidence_calculator
 
 
 @dataclass
@@ -42,7 +42,7 @@ class TradeOutcomeRecorder:
     
     def __init__(self):
         self.optimizer = get_global_confidence_optimizer()
-        self.adaptive_calculator = get_global_adaptive_calculator()
+        self.confidence_calculator = get_global_confidence_calculator()
         
         # Track pending trades
         self.pending_trades: Dict[str, Dict[str, Any]] = {}
@@ -148,8 +148,8 @@ class TradeOutcomeRecorder:
             # Add to optimizer
             self.optimizer.add_trade_record(trade_record)
             
-            # Also add to adaptive calculator
-            self.adaptive_calculator.record_trade_outcome(trade_record)
+            # Also add to confidence calculator
+            self.confidence_calculator.record_trade_outcome(trade_record)
             
             logger.debug(f"🔄 Fed trade outcome to optimizer: {trade_outcome.direction} {trade_outcome.profit_loss_pct:+.2%}")
             
@@ -159,7 +159,7 @@ class TradeOutcomeRecorder:
     def get_optimization_status(self) -> Dict[str, Any]:
         """Get current optimization status"""
         try:
-            performance_summary = self.adaptive_calculator.get_performance_summary()
+            performance_summary = self.confidence_calculator.get_performance_summary()
             
             return {
                 "total_trades": performance_summary.get("total_trades", 0),
@@ -195,7 +195,7 @@ class TradeOutcomeRecorder:
     
     def get_optimal_threshold(self) -> float:
         """Get current optimal confidence threshold"""
-        return self.adaptive_calculator.get_optimal_threshold()
+        return self.confidence_calculator.get_optimal_threshold()
 
 
 # Global recorder instance

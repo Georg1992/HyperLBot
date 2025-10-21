@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Adaptive Confidence Calculator - Data-Driven Confidence Calculation
+Confidence Calculator - Data-Driven Confidence Calculation
 Uses optimized factors and thresholds from historical performance analysis
 """
 
@@ -21,7 +21,7 @@ class ConfidenceCalculation:
     optimization_used: bool = False
 
 
-class AdaptiveConfidenceCalculator:
+class ConfidenceCalculator:
     """
     Data-driven confidence calculator that uses optimized factors
     
@@ -37,7 +37,7 @@ class AdaptiveConfidenceCalculator:
         self.last_optimization = 0
         self.optimization_interval = 3600  # 1 hour
         
-        logger.info("🎯 Adaptive Confidence Calculator initialized")
+        logger.info("🎯 Confidence Calculator initialized")
     
     def calculate_confidence(self, direction: str, score: float, 
                            market_data: Dict[str, Any]) -> ConfidenceCalculation:
@@ -102,7 +102,7 @@ class AdaptiveConfidenceCalculator:
             )
             
         except Exception as e:
-            logger.error(f"❌ Adaptive confidence calculation failed: {e}")
+            logger.error(f"❌ Confidence calculation failed: {e}")
             # Fallback to simple calculation
             return self._fallback_calculation(direction, score, market_data)
     
@@ -386,11 +386,11 @@ class AdaptiveConfidenceCalculator:
 
 
 # Global calculator instance
-_global_adaptive_calculator = None
+_global_confidence_calculator = None
 
-def get_global_adaptive_calculator() -> AdaptiveConfidenceCalculator:
-    """Get global adaptive confidence calculator singleton"""
-    global _global_adaptive_calculator
-    if _global_adaptive_calculator is None:
-        _global_adaptive_calculator = AdaptiveConfidenceCalculator()
-    return _global_adaptive_calculator
+def get_global_confidence_calculator() -> ConfidenceCalculator:
+    """Get global confidence calculator singleton"""
+    global _global_confidence_calculator
+    if _global_confidence_calculator is None:
+        _global_confidence_calculator = ConfidenceCalculator()
+    return _global_confidence_calculator
