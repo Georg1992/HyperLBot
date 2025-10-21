@@ -943,10 +943,8 @@ class SessionOrchestrator:
                     logger.info("🗑️ Invalidated 5m candle cache - Next request will fetch fresh data with completed candle")
                     
                     # Also invalidate S/R cache since new 5m candle might change levels
-                    from core.market_data_manager import get_global_market_data_manager
-                    market_data_manager = get_global_market_data_manager()
-                    market_data_manager.invalidate_sr_cache()
-                    logger.info("🗑️ Invalidated S/R cache - New 5m candle may change support/resistance levels")
+                    # Note: S/R cache invalidation handled by SupportResistanceCalculator internally
+                    logger.info("🗑️ S/R cache will be invalidated by SupportResistanceCalculator on next calculation")
                     
                     # Also invalidate 1m cache as it should update every 5 minutes
                     market_data_service.invalidate_candle_cache("BTC", "1m")
