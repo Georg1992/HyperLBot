@@ -16,7 +16,9 @@ class TrendCalculator:
     
     def calculate_trend(self, candles: List[Dict], timeframe: str = "5m", strategy_name: str = "standard") -> Dict[str, Any]:
         """
-        Calculate real-time trend using strategy-specific parameters with explicit trend types
+        DEPRECATED: Use calculate_multi_timeframe_trend() instead
+        
+        Legacy trend calculation method - kept for backward compatibility
         Returns BOTH short-term (3 candles/15min) and medium-term (6 candles/30min) trends
         """
         try:
@@ -327,17 +329,18 @@ class TrendCalculator:
             
             # Determine consensus
             if up_count >= 2:
-                return "BULLISH_CONSENSUS"
+                return "UP"  # Clear bullish consensus
             elif down_count >= 2:
-                return "BEARISH_CONSENSUS"
+                return "DOWN"  # Clear bearish consensus
             elif sideways_count >= 2:
-                return "SIDEWAYS_CONSENSUS"
+                return "SIDEWAYS"  # Clear sideways consensus
             else:
-                return "MIXED_SIGNALS"
+                # Mixed signals = no clear direction = SIDEWAYS
+                return "SIDEWAYS"  # FIXED: Mixed signals should be treated as sideways
                 
         except Exception as e:
             logger.error(f"❌ Trend consensus calculation failed: {e}")
-            return "ERROR"
+            return "SIDEWAYS"  # Default to sideways on error
 
 
 # Singleton pattern implementation

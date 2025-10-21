@@ -497,9 +497,10 @@ class SessionOrchestrator:
                 # RSI analysis data (from RSI calculator)
                 "rsi_analysis": rsi_data if 'rsi_data' in locals() else {},
                 
-                # Trend data (from single trend calculator source)
+                # Trend data (from single trend calculator source with strategy-specific periods)
                 "trend": current_trend,
                 "trend_5m": trend_5m,
+                "trend_periods_display": trend_5m.get("periods_used", {}) if isinstance(trend_5m, dict) else {},
                 
                 # Multi-timeframe trend data - NOT CALCULATED (removed duplicates)
                 # "trend_1m": hyperliquid_analysis.get("trend_1m", {}),  # NOT CALCULATED
@@ -681,6 +682,13 @@ class SessionOrchestrator:
                 
                 # CRITICAL FIX: JavaScript looks for "market_conditions" NOT "market_conditions_analysis"
                 "market_conditions": unified_data.get("market_conditions_analysis", {}),
+                
+                # Strategy-specific period information for dashboard display
+                "strategy_periods": {
+                    "trend": unified_data.get("trend_periods_display", {}),
+                    "volatility": unified_data.get("periods_used", {}),
+                    "strategy": unified_data.get("current_strategy", "standard")
+                },
                 
                 # Chart data
                 "chart_data": unified_data.get("chart_data", {}),

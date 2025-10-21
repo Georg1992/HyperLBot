@@ -454,49 +454,49 @@ class VolatilityCalculator:
                 "primary_minutes": 5,      # 5 min - ultra-fast reaction
                 "confirmation_minutes": 10, # 10 min - volatility confirmation
                 "reaction_minutes": 3,     # 3 min - immediate entry
-                "thresholds": {"LOW": 0.0008, "MODERATE": 0.0015, "HIGH": 0.0025, "EXTREME": 0.0040}
+                "thresholds": {"LOW": 0.005, "MODERATE": 0.015, "HIGH": 0.030, "EXTREME": 0.060}  # Scalping needs sensitivity
             },
             "standard": {
                 "primary_minutes": 15,     # 15 min - balanced approach
                 "confirmation_minutes": 30, # 30 min - volatility confirmation
                 "reaction_minutes": 8,     # 8 min - entry timing
-                "thresholds": {"LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0040, "EXTREME": 0.0080}
+                "thresholds": {"LOW": 0.010, "MODERATE": 0.025, "HIGH": 0.050, "EXTREME": 0.100}  # Realistic BTC thresholds
             },
             "range_trading": {
                 "primary_minutes": 60,     # 60 min - stable range volatility
                 "confirmation_minutes": 120, # 120 min - range confirmation
                 "reaction_minutes": 20,    # 20 min - range entry timing
-                "thresholds": {"LOW": 0.0020, "MODERATE": 0.0040, "HIGH": 0.0060, "EXTREME": 0.0120}
+                "thresholds": {"LOW": 0.008, "MODERATE": 0.020, "HIGH": 0.040, "EXTREME": 0.080}  # Range trading needs lower thresholds
             },
             "breakout": {
                 "primary_minutes": 10,     # 10 min - breakout volatility
                 "confirmation_minutes": 20, # 20 min - breakout confirmation
                 "reaction_minutes": 5,     # 5 min - immediate entry
-                "thresholds": {"LOW": 0.0010, "MODERATE": 0.0020, "HIGH": 0.0030, "EXTREME": 0.0050}
+                "thresholds": {"LOW": 0.015, "MODERATE": 0.030, "HIGH": 0.060, "EXTREME": 0.120}  # Breakout expects higher volatility
             },
             "trend_following": {
                 "primary_minutes": 90,     # 90 min - trend volatility
                 "confirmation_minutes": 180, # 180 min - long-term confirmation
                 "reaction_minutes": 30,    # 30 min - trend entry timing
-                "thresholds": {"LOW": 0.0030, "MODERATE": 0.0060, "HIGH": 0.0100, "EXTREME": 0.0200}
+                "thresholds": {"LOW": 0.012, "MODERATE": 0.030, "HIGH": 0.060, "EXTREME": 0.120}  # Trend following tolerates higher volatility
             },
             "spike_hunting": {
                 "primary_minutes": 3,      # 3 min - ultra-fast spikes
                 "confirmation_minutes": 8, # 8 min - spike confirmation
                 "reaction_minutes": 2,     # 2 min - immediate entry
-                "thresholds": {"LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0050, "EXTREME": 0.0100}
+                "thresholds": {"LOW": 0.020, "MODERATE": 0.050, "HIGH": 0.100, "EXTREME": 0.200}  # Spike hunting expects extreme volatility
             },
             "low_volatility_range": {
                 "primary_minutes": 75,     # 75 min - stable range detection
                 "confirmation_minutes": 150, # 150 min - range confirmation
                 "reaction_minutes": 25,    # 25 min - range entry timing
-                "thresholds": {"LOW": 0.0005, "MODERATE": 0.0012, "HIGH": 0.0020, "EXTREME": 0.0035}
+                "thresholds": {"LOW": 0.003, "MODERATE": 0.008, "HIGH": 0.015, "EXTREME": 0.030}  # Low volatility strategy needs tight thresholds
             },
             "high_volatility": {
                 "primary_minutes": 15,     # 15 min - volatility smoothing
                 "confirmation_minutes": 40, # 40 min - volatility confirmation
                 "reaction_minutes": 8,     # 8 min - volatility entry timing
-                "thresholds": {"LOW": 0.0025, "MODERATE": 0.0050, "HIGH": 0.0080, "EXTREME": 0.0150}
+                "thresholds": {"LOW": 0.025, "MODERATE": 0.050, "HIGH": 0.100, "EXTREME": 0.200}  # High volatility strategy expects big moves
             }
         }
         
