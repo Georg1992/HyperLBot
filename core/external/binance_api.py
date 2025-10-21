@@ -5,7 +5,7 @@ Provides real-time volume data via WebSocket for scalping strategies
 """
 
 import time
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 from .binance_websocket import get_binance_websocket, start_binance_websocket
 

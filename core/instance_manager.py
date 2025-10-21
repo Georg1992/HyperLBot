@@ -173,7 +173,7 @@ class SingleInstanceManager:
         else:
             sys.exit(1)  # Exit if cannot acquire lock
     
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, _exc_type, _exc_val, _exc_tb):
         """Context manager exit"""
         self.release_lock()
 

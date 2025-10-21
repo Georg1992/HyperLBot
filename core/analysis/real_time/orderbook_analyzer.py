@@ -5,7 +5,7 @@ Analyzes order book data for market microstructure insights
 """
 
 import time
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
 # Singleton pattern implementation

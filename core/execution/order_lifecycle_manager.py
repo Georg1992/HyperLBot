@@ -10,7 +10,6 @@ import uuid
 from typing import Dict, Any, List, Optional, Tuple
 from dataclasses import dataclass, asdict
 from loguru import logger
-from collections import defaultdict
 
 @dataclass
 class OrderData:

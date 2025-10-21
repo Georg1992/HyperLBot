@@ -6,7 +6,7 @@ Contains trade execution and position management methods extracted from hybrid_p
 
 import time
 import json
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
 from core.constants import constants, MagicNumbers, trading_constants, time_constants

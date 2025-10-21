@@ -5,7 +5,7 @@ Analyzes correlations with DXY, Gold, and Stock indices for market context
 """
 
 import time
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
 # Singleton pattern implementation

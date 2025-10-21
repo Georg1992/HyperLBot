@@ -6,7 +6,7 @@ Identifies important trading patterns for BTC market setups
 
 import time
 import numpy as np
-from typing import Dict, List, Any, Optional, Tuple, Callable, Union
+from typing import Dict, List, Any, Optional, Tuple, Callable
 from loguru import logger
 
 # Singleton pattern implementation

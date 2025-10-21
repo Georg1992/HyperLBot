@@ -117,7 +117,7 @@ class AdaptiveConfidenceCalculator:
         return base_confidence
     
     def _apply_factor(self, factor: ConfidenceFactor, direction: str, 
-                     market_data: Dict[str, Any], existing_contributions: Dict[str, float]) -> float:
+                     market_data: Dict[str, Any]) -> float:
         """Apply a single factor with optimized parameters"""
         
         # Get factor-specific logic

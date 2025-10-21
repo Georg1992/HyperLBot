@@ -17,7 +17,7 @@ from flask_socketio import SocketIO, emit
 from loguru import logger
 
 # Import constants only
-from core.constants import constants, magic_numbers, ui_constants
+from core.constants import constants, magic_numbers
 
 # Suppress SSL warnings
 urllib3.disable_warnings()

@@ -630,7 +630,7 @@ class RealtimePredictionEngine:
             if not signals:
                 logger.warning(f"⚠️ No Bayesian signals created for {direction} - using base rate")
                 # Return base rate when no signals are available
-            return {
+                return {
                     'confidence': 0.5,  # Base rate
                     'reasoning': f"No signals available for {direction} - using base rate (50%)"
                 }

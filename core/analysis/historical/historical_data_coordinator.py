@@ -5,7 +5,7 @@ Handles market data analysis and RSI calculations
 """
 
 import time
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 # Complex session tracking imports removed - over-engineered for minimal benefit
 

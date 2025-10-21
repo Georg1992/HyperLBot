@@ -11,7 +11,7 @@ USED BY: TradingEngine, strategies for better decision making
 
 import time
 import statistics
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 from datetime import datetime, timedelta
 

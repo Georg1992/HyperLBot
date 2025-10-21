@@ -5,7 +5,7 @@ Manages trade execution and position tracking
 """
 
 import time
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
 from config.config import TradingConfig

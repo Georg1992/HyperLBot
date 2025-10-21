@@ -10,7 +10,7 @@ import feedparser
 import requests
 import time
 import re
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from datetime import datetime, timedelta
 from loguru import logger
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer

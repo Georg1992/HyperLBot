@@ -7,7 +7,7 @@ Comprehensive logging system for all bot activities, trades, and market data
 import json
 import time
 from datetime import datetime, timedelta
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 import csv
 from pathlib import Path

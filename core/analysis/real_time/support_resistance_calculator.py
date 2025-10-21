@@ -36,7 +36,7 @@ class SupportResistanceCalculator:
         
         logger.info("📊 Smart S/R Calculator initialized - 5m + 1h confirmation with historical context")
     
-    def identify_key_levels(self, candles: List[Dict], min_touches: int = 2) -> Dict[str, Any]:
+    def identify_key_levels(self, candles: List[Dict]) -> Dict[str, Any]:
         """Find support/resistance levels - SIMPLE AND WORKS"""
         try:
             if not candles or len(candles) < 10:

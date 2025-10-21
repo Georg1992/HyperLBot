@@ -11,7 +11,7 @@ Free, unlimited calls, no API key required
 
 import time
 import requests
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 from datetime import datetime, timedelta
 

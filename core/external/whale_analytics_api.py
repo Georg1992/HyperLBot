@@ -8,7 +8,7 @@ Tracks large BTC transactions and exchange flows
 
 import requests
 import time
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
 

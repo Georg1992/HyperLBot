@@ -6,10 +6,10 @@ Analyzes market volatility patterns to optimize trading conditions
 
 import numpy as np
 import time
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 from collections import deque
-from core.constants import variability_constants, trading_constants, simulation_constants
+from core.constants import variability_constants, trading_constants
 
 class VariabilityAnalyzer:
     def __init__(self, lookback_periods: int = 100):

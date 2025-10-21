@@ -5,7 +5,7 @@ Handles core trading decisions and logic
 Single Responsibility: Trading decision making
 """
 
-from typing import Dict, Any, List, Optional, Tuple, Callable, Union
+from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
 class TradingEngine:
