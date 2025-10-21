@@ -270,7 +270,7 @@ class SessionOrchestrator:
             logger.error(f"❌ Traceback: {traceback.format_exc()}")
             # Continue session without historical context (degraded but functional)
     
-    def _prepare_unified_market_data(self, market_data: Dict[str, Any], current_price: float, market_data_service=None) -> Dict[str, Any]:
+    def _prepare_unified_market_data(self, market_data: Dict[str, Any], current_price: float, market_data_service=None, strategy: str = "standard") -> Dict[str, Any]:
         """Prepare unified market data structure for both Signal Aggregator and Dashboard - SINGLE DATA SOURCE"""
         try:
             logger.debug(f"🔍 _prepare_unified_market_data called with market_data_service: {type(market_data_service)}")
@@ -324,22 +324,19 @@ class SessionOrchestrator:
             trend_calculator = get_global_trend_calculator()
             
             try:
-                if len(candles_5m) >= 1:
-                    trend_5m = trend_calculator.calculate_trend(candles_5m, "5m", "standard")
+                if len(candles_5m) >= 3:
+                    # Use strategy-specific multi-timeframe trend calculation
+                    trend_5m = trend_calculator.calculate_multi_timeframe_trend(candles_5m, strategy)
+                    current_trend = trend_5m.get("trend_consensus", "SIDEWAYS")
+                    logger.debug(f"📊 Multi-timeframe trend for {strategy}: {current_trend}")
                 else:
-                    trend_5m = {}
-                    logger.warning(f"⚠️ Not enough candles for trend calculation: {len(candles_5m)} < 1")
-                
-                # Extract the actual trend value from the trend calculation result
-                if isinstance(trend_5m, dict) and trend_5m:
-                    current_trend = trend_5m.get("trend")
-                else:
-                    current_trend = None
-                    logger.warning(f"⚠️ Trend calculation returned empty or invalid result: {trend_5m}")
+                    trend_5m = {"trend_consensus": "SIDEWAYS", "error": "Insufficient data"}
+                    current_trend = "SIDEWAYS"
+                    logger.warning(f"⚠️ Not enough candles for trend calculation: {len(candles_5m)} < 3")
             except Exception as e:
-                logger.warning(f"⚠️ Trend calculation failed: {e}")
-                trend_5m = {}
-                current_trend = None
+                logger.warning(f"⚠️ Multi-timeframe trend calculation failed: {e}")
+                trend_5m = {"trend_consensus": "SIDEWAYS", "error": str(e)}
+                current_trend = "SIDEWAYS"
             
             # FIXED: Use volatility data from hyperliquid_analysis (single source of truth)
             # The volatility data is calculated in market_data_manager and passed through hyperliquid_analysis
@@ -523,7 +520,7 @@ class SessionOrchestrator:
                 "volatility_5m_category": volatility_5m_category,  # Keep for backward compatibility
                 
                 # Multi-timeframe volatility (calculated in VolatilityCalculator - SRP compliant)
-                **get_global_volatility_calculator().get_multi_timeframe_volatility(candles_1m, candles_5m, candles_1h, candles_1d, "standard"),
+                **get_global_volatility_calculator().calculate_multi_timeframe_volatility_for_strategy(candles_5m, strategy),
                 
                 # Volume data (from single MarketDataService source)
                 "volume_data": volume_data,
@@ -880,11 +877,19 @@ class SessionOrchestrator:
                     time.sleep(check_interval)
                     continue
                 
-                # Prepare unified market data for both Signal Aggregator and Dashboard
-                unified_data = self._prepare_unified_market_data(market_data, hyperliquid_price, market_data_service)
+                # STRATEGY SELECTION: Detect optimal strategy FIRST (needed for data preparation)
+                # Use basic market data for strategy detection
+                basic_strategy_data = {
+                    "current_price": hyperliquid_price,
+                    "rsi": market_data.get("rsi", 50),
+                    "volatility_5m": market_data.get("hyperliquid_analysis", {}).get("volatility_analysis", {}).get("volatility_5m", 0.01),
+                    "volatility_category": market_data.get("hyperliquid_analysis", {}).get("volatility_analysis", {}).get("volatility_5m_category", "MODERATE"),
+                    "volume_category": market_data.get("hyperliquid_data", {}).get("volume_data", {}).get("volume_category", "MODERATE")
+                }
+                current_strategy = self._detect_and_update_strategy(basic_strategy_data, dashboard_service)
                 
-                # STRATEGY SELECTION: Detect optimal strategy based on market conditions
-                current_strategy = self._detect_and_update_strategy(unified_data, dashboard_service)
+                # Prepare unified market data using current strategy for calculations
+                unified_data = self._prepare_unified_market_data(market_data, hyperliquid_price, market_data_service, current_strategy)
                 unified_data["current_strategy"] = current_strategy
                 
                 # Update dashboard with unified data
