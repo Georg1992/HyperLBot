@@ -4,6 +4,7 @@ Volatility Calculator Module
 Centralized volatility calculations from different data sources
 """
 
+import time
 from typing import Dict, Any, List, Optional
 from loguru import logger
 from core.constants import VariabilityConstants
@@ -23,6 +24,23 @@ class VolatilityCalculator:
     
     def __init__(self):
         logger.info("📊 Volatility Calculator initialized")
+    
+    def get_latest_analysis(self) -> Dict[str, Any]:
+        """Get latest volatility analysis for MarketDataService coordination"""
+        try:
+            # For now, return a basic analysis structure
+            # In a full implementation, this would process raw data
+            analysis = {
+                "volatility_5m": 0.0,
+                "volatility_5m_category": "UNKNOWN",
+                "volatility_5m_trend": "UNKNOWN",
+                "timestamp": time.time(),
+                "data_type": "volatility"
+            }
+            return analysis
+        except Exception as e:
+            logger.error(f"❌ Failed to get latest volatility analysis: {e}")
+            return {}
     
     def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m", strategy: str = "standard") -> Dict[str, Any]:
         """Calculate strategy-dependent volatility from candle data"""

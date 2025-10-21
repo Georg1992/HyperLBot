@@ -647,7 +647,7 @@ class SupportResistanceCalculator:
     
     
     
-    def calculate_multi_timeframe_levels(self, current_price: float, market_data_service, candles_5m=None, candles_1h=None, candles_1d=None) -> Dict[str, Any]:
+    def calculate_multi_timeframe_levels(self, current_price: float, candles_5m=None, candles_1h=None, candles_1d=None) -> Dict[str, Any]:
         """
         Calculate S/R levels using multiple timeframes with intelligent caching and expansion.
         

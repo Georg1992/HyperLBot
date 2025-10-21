@@ -4,6 +4,7 @@ Trend Calculator Module
 Simple, working trend calculation
 """
 
+import time
 from typing import Dict, Any, List
 from loguru import logger
 
@@ -13,6 +14,23 @@ class TrendCalculator:
     
     def __init__(self):
         logger.info("📈 Trend Calculator initialized - Simple working logic")
+    
+    def get_latest_analysis(self) -> Dict[str, Any]:
+        """Get latest trend analysis for MarketDataService coordination"""
+        try:
+            # For now, return a basic analysis structure
+            # In a full implementation, this would process raw data
+            analysis = {
+                "trend_consensus": "SIDEWAYS",
+                "trend_strength": "WEAK",
+                "period": "15m",
+                "timestamp": time.time(),
+                "data_type": "trend"
+            }
+            return analysis
+        except Exception as e:
+            logger.error(f"❌ Failed to get latest trend analysis: {e}")
+            return {}
     
     # REMOVED: Old calculate_trend method - use calculate_multi_timeframe_trend() instead
     
