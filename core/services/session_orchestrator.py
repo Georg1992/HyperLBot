@@ -151,16 +151,8 @@ class SessionOrchestrator:
     def _load_and_verify_historical_data(self, hyperliquid_api, market_data_service):
         """Load and verify all historical data (PHASE 3: Historical data loading and verification)"""
         try:
-            # 3.1: Get weekly trend analysis
-            logger.info("📅 Loading weekly trend analysis...")
-            weekly_analysis = market_data_service.get_weekly_trend_analysis()
-            
-            if "error" not in weekly_analysis:
-                self.weekly_trend_analysis = weekly_analysis
-                logger.success("✅ Weekly trend analysis loaded successfully!")
-            else:
-                logger.error("❌ Could not get weekly trend analysis - NO FALLBACKS")
-                raise ValueError("Weekly trend analysis failed - NO FALLBACKS")
+            # 3.1: Historical data verification (using centralized trend calculation)
+            logger.info("📅 Verifying historical data availability...")
             
             # 3.2: Compute and store historical context
             logger.info("📊 Computing session historical context (6.5 weeks analysis)...")
