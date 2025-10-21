@@ -42,7 +42,7 @@ class SessionLogger:
             format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
             level="DEBUG",
             rotation="100 MB",
-            retention="3 sessions"  # Keep only last 3 sessions
+            retention="3 days"  # Keep logs for 3 days (valid loguru format)
         )
         
         # Log startup message
