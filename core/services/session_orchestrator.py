@@ -21,23 +21,9 @@ class SessionOrchestrator:
         self.config = config
         self.initial_balance = initial_balance
         self.session_manager = None
-        self.weekly_trend_analysis = {}
-        
         # Strategy Manager for dynamic strategy selection
         self.strategy_manager = None
         self._strategy_manager_initialized = False
-        
-        # Price prediction
-        self.current_prediction = None
-        
-        # Market opening service for dashboard display
-        try:
-            from core.services.market_opening_service import global_market_opening_service
-            self.market_opening_service = global_market_opening_service
-            logger.info("🌍 Market opening service initialized")
-        except Exception as e:
-            logger.warning(f"⚠️ Market opening service initialization failed: {e}")
-            self.market_opening_service = None
         
         logger.info("🔄 Session Orchestrator initialized - Strategy-driven trading loop")
     
@@ -333,9 +319,6 @@ class SessionOrchestrator:
             volatility_5m = volatility_analysis.get("volatility_5m", 0.0)
             volatility_5m_category = volatility_analysis.get("volatility_5m_category", "UNKNOWN")
             volatility_5m_trend = volatility_analysis.get("volatility_5m_trend", "UNKNOWN")
-            volatility_5m_period_minutes = volatility_analysis.get("volatility_5m_period_minutes", 15)
-            volatility_5m_period_candles = volatility_analysis.get("volatility_5m_period_candles", 3)
-            volatility_5m_strategy = volatility_analysis.get("volatility_5m_strategy", "standard")
             
             logger.debug(f"📊 Using volatility from hyperliquid_analysis: {volatility_5m:.6f} ({volatility_5m_category})")
             
@@ -1055,96 +1038,6 @@ class SessionOrchestrator:
             
         except Exception as e:
             logger.error(f"❌ Error ending session: {e}")
-    
-    def _check_for_ongoing_session(self) -> Optional[Dict]:
-        """Check for ongoing sessions"""
-        try:
-            if self.session_manager:
-                return self.session_manager.get_current_session_info()
-            return None
-        except Exception as e:
-            logger.error(f"❌ Failed to check for ongoing session: {e}")
-            return None
-    
-    def _build_complete_market_data(self, hyperliquid_data: Dict[str, Any], 
-                                   hyperliquid_price: float, hyperliquid_analysis: Dict[str, Any], 
-                                   hyperliquid_api=None, strategy_name: str = "standard", 
-                                   conditions_analysis: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Build complete market data structure for AI system with all required fields"""
-        try:
-            # Start with hyperliquid data
-            complete_data = hyperliquid_data.copy()
-            
-            # Add missing fields that strategy selector expects
-            complete_data.update({
-                # Price data
-                "current_price": hyperliquid_price,
-                
-                # Technical indicators - RSI is already set correctly in unified_data, don't overwrite
-                
-                # Volatility data - use correct nested structure
-                "volatility_5m": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m", 0.001),
-                "volatility_5m_category": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m_category", "LOW"),
-                "volatility_5m_trend": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m_trend"),
-                
-                # Trend data (only from actual trend calculator)
-                "trend_5m": trend_5m,  # Use actual calculated trend
-                "trend_analysis": {
-                    "overall_trend": current_trend,
-                    "trend_5m": current_trend,
-                    "alignment_score": 0.5
-                },
-                
-                # Volume data
-                "hyperliquid_volume": hyperliquid_data.get("volume_data", {}),
-                
-                # Sentiment data - Using Yahoo Finance
-                "sentiment_data": hyperliquid_analysis.get("sentiment_data", {}),
-                
-                # External data - Using Yahoo Finance
-                "whale_analytics": hyperliquid_analysis.get("whale_analytics", {}),
-                "news_sentiment": hyperliquid_analysis.get("news_sentiment", {}),
-                
-                # Support/Resistance data - use cached data from main loop
-                "support_resistance": {"key_levels": []},  # Will be populated by main loop
-                
-                # Volatility change detection
-                "volatility_change": {
-                    "change_detected": False,
-                    "change_direction": "STABLE",
-                    "urgency": "LOW"
-                },
-                
-                # Market conditions (required by analysis layer)
-                "market_conditions": {
-                    "condition": "FAIR",
-                    "risk_level": "MODERATE", 
-                    "market_status": hyperliquid_analysis.get("trend_5m", {}).get("trend")
-                }
-            })
-            
-            return complete_data
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to build complete market data: {e}")
-            # Return minimal data structure
-            return {
-                "current_price": hyperliquid_price,
-                # RSI is already set correctly in unified_data, don't overwrite
-                "volatility_5m": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m"),
-                "volatility_5m_category": hyperliquid_analysis.get("volatility_analysis", {}).get("volatility_5m_category"),
-                "trend_5m": hyperliquid_analysis.get("trend_5m"),
-                "hyperliquid_volume": {},
-                "sentiment_data": {},
-                "whale_analytics": {},
-                "news_sentiment": {},
-                "support_resistance": {"key_levels": []},
-                "volatility_change": {"error": "Real volatility change not implemented - NO FALLBACKS", "data_source": "failed"},
-                "market_conditions": {
-                    "error": "Real market conditions not implemented - NO FALLBACKS",
-                    "data_source": "failed"
-                }
-            }
     
     def _get_market_data(self, current_price: float, market_data_service) -> Dict[str, Any]:
         """Get all market data once - single source of truth (delegates to proper services)"""
