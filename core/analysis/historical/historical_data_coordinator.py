@@ -7,7 +7,6 @@ Handles market data analysis and RSI calculations
 import time
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
-from core.market_data_manager import get_global_market_data_manager
 # Complex session tracking imports removed - over-engineered for minimal benefit
 
 class MarketDataAnalyzer:
@@ -34,10 +33,14 @@ class MarketDataAnalyzer:
     # Note: Old prediction methods removed - AI system handles all prediction logic
     
     def get_update_status(self) -> Dict[str, Any]:
-        """Get update status for dashboard using centralized MarketDataManager"""
+        """Get update status for dashboard using simplified approach"""
         try:
-            # Use centralized cache status from MarketDataManager (BEST implementation)
-            return market_data_manager.get_cache_status()
+            # Simple status without complex cache management
+            return {
+                "last_update": time.time(),
+                "status": "READY",
+                "data_source": "simplified"
+            }
         except Exception as e:
             logger.error(f"❌ Failed to get update status: {e}")
             return {

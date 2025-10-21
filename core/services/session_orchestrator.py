@@ -441,7 +441,6 @@ class SessionOrchestrator:
             
             # Get bounce validation from the bounce validator singleton (single source)
             # REMOVED: BounceValidator doesn't have a simple validate_bounce method
-            # bounce_analysis = {}  # REMOVED: Always empty
             
             # Get cross-asset correlation from the cross-asset correlation analyzer singleton (single source)
             # OPTIONAL: Skip cross-asset analysis if not available (don't block main data flow)
@@ -472,8 +471,6 @@ class SessionOrchestrator:
                 funding_analysis = {"error": "Real funding rate data not available", "data_source": "skipped"}
             
             # On-Chain Data & Psychological Levels features removed - not implemented
-            # onchain_analysis = {}  # REMOVED: Always empty
-            # psychological_analysis = {}  # REMOVED: Always empty
             
             # Get market conditions from the market conditions analyzer singleton (single source)
             from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
@@ -563,9 +560,6 @@ class SessionOrchestrator:
             "pattern_analysis": pattern_analysis,  # Calculated by pattern recognition engine
             "volume_profile_analysis": volume_profile_analysis,  # Calculated by volume profile analyzer
             "cross_asset_analysis": cross_asset_analysis,  # Calculated by cross-asset analyzer
-            # REMOVED: "onchain_analysis": onchain_analysis,  # Always empty - not implemented
-            # REMOVED: "bounce_analysis": bounce_analysis,  # Always empty - not implemented  
-            # REMOVED: "psychological_analysis": psychological_analysis,  # Always empty - not implemented
             "market_conditions_analysis": market_conditions_analysis,  # Calculated by market conditions analyzer
             "support_resistance": support_resistance,
             

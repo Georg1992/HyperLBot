@@ -4,7 +4,6 @@ Fee Manager for Trading Bot
 Handles fee calculations and profitability analysis
 """
 
-# import math  # Removed unused import
 import time
 from typing import Dict, Any
 from loguru import logger

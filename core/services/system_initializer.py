@@ -265,7 +265,6 @@ class SystemInitializer:
             from core.services.session_orchestrator import SessionOrchestrator
             
             market_data_service = MarketDataService(
-                historical_data_coordinator,
                 self.singleton_systems.get("hyperliquid_api"),
                 self.singleton_systems.get("hyperliquid_websocket"),
                 self.singleton_systems.get("binance_api")
@@ -315,10 +314,11 @@ class SystemInitializer:
         try:
             logger.info("📊 Initializing data systems...")
             
-            # Clear caches for fresh data
-            from core.market_data_manager import get_global_market_data_manager
-            market_data_manager = get_global_market_data_manager()
-            market_data_manager.clear_cache()
+            # Clear caches for fresh data using simplified MarketDataService
+            market_data_service = self.singleton_systems.get("market_data_service")
+            if market_data_service:
+                market_data_service.invalidate_cache()
+                logger.info("🗑️ MarketDataService cache cleared")
             
             # Data systems initialized
             return {"success": True}

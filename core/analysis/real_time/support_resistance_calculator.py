@@ -818,15 +818,49 @@ class SupportResistanceCalculator:
         try:
             logger.debug(f"📊 Smart analysis of {len(candles)} candles for S/R levels")
             
-            # Define price ranges to check (every $500 around current price)
+            # Find actual S/R levels from candle data, not artificial intervals
+            # Extract all significant highs and lows from candles
+            significant_levels = []
+            
+            # Find local highs and lows (peaks and valleys)
+            for i in range(2, len(candles) - 2):
+                candle = candles[i]
+                high = candle["high"]
+                low = candle["low"]
+                
+                # Check if this is a local high (resistance candidate)
+                if (high > candles[i-1]["high"] and high > candles[i+1]["high"] and
+                    high > candles[i-2]["high"] and high > candles[i+2]["high"]):
+                    significant_levels.append({
+                        "level": high,
+                        "type": "resistance",
+                        "index": i,
+                        "candle": candle
+                    })
+                
+                # Check if this is a local low (support candidate)
+                if (low < candles[i-1]["low"] and low < candles[i+1]["low"] and
+                    low < candles[i-2]["low"] and low < candles[i+2]["low"]):
+                    significant_levels.append({
+                        "level": low,
+                        "type": "support", 
+                        "index": i,
+                        "candle": candle
+                    })
+            
+            # Group nearby levels and find clusters
             price_ranges = []
-            for offset in range(-20000, 30000, 500):  # $20k below to $30k above
-                level = current_price + offset
-                price_ranges.append({
-                    "level": level,
-                    "min": level - 250,  # $250 range
-                    "max": level + 250
-                })
+            for level_data in significant_levels:
+                level = level_data["level"]
+                # Only consider levels within reasonable range of current price
+                if abs(level - current_price) < 20000:  # Within $20k
+                    price_ranges.append({
+                        "level": level,
+                        "min": level - 100,  # $100 range for precision
+                        "max": level + 100,
+                        "type": level_data["type"],
+                        "index": level_data["index"]
+                    })
             
             # Analyze each price level
             sr_levels = []
@@ -835,6 +869,8 @@ class SupportResistanceCalculator:
                 level = price_range["level"]
                 min_price = price_range["min"]
                 max_price = price_range["max"]
+                level_type = price_range["type"]
+                original_index = price_range["index"]
                 
                 # Count touches and volume at this level
                 touches = 0
@@ -851,8 +887,8 @@ class SupportResistanceCalculator:
                         if i >= len(candles) - 288:  # 288 candles = 24 hours
                             recent_touches += 1
                 
-                # Only consider levels with multiple touches
-                if touches >= 2:  # Minimum threshold for significance
+                # Only consider levels with at least 1 touch (since these are real market levels)
+                if touches >= 1:  # Real market levels are significant even with 1 touch
                     # Calculate time decay (more recent = higher score)
                     time_decay_score = recent_touches / max(1, touches)  # 0-1, higher for recent touches
                     
@@ -860,14 +896,14 @@ class SupportResistanceCalculator:
                     avg_volume = total_volume / max(1, touches)
                     volume_score = min(1.0, avg_volume / 1000000)  # Normalize volume score
                     
-                    # Calculate base weight from touches
+                    # Calculate base weight from touches and proximity to current price
                     base_weight = min(touches * 0.5, 2.0)  # Cap at 2.0
                     
-                    # Calculate final score with all factors
-                    final_score = (base_weight * 0.4) + (time_decay_score * 0.3) + (volume_score * 0.3)
+                    # Add proximity bonus (closer to current price = more relevant)
+                    proximity_bonus = max(0, 1.0 - (abs(level - current_price) / 10000))  # Bonus for levels within $10k
                     
-                    # Determine S/R type based on actual market behavior, not price position
-                    level_type = self._determine_sr_type(candles, level, current_price)
+                    # Calculate final score with all factors
+                    final_score = (base_weight * 0.4) + (time_decay_score * 0.3) + (volume_score * 0.2) + (proximity_bonus * 0.1)
                     
                     sr_levels.append({
                         "level": level,
@@ -878,7 +914,7 @@ class SupportResistanceCalculator:
                         "base_weight": base_weight,
                         "final_score": final_score,
                         "confirmation_score": 0,  # Will be set by scoring system
-                        "type": level_type
+                        "type": level_type  # Use the type from actual market analysis
                     })
             
             # Sort by final score (highest first)

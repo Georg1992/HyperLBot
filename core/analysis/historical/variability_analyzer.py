@@ -10,7 +10,6 @@ from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 from loguru import logger
 from collections import deque
 from core.constants import variability_constants, trading_constants, simulation_constants
-from core.market_data_manager import get_global_market_data_manager
 
 class VariabilityAnalyzer:
     def __init__(self, lookback_periods: int = 100):
@@ -251,15 +250,11 @@ class VariabilityAnalyzer:
         # Determine market condition
         market_condition = self._classify_market_condition(current_volatility, current_variability_score)
         
-        # REMOVED: optimal trading parameters calculation - use hybrid_position_sizer instead
-        optimal_params = {"removed": "use hybrid_position_sizer instead"}
-        
         return {
             "insufficient_data": False,
             "current_volatility": current_volatility,
             "current_variability_score": current_variability_score,
             "market_condition": market_condition,
-            "optimal_trading_params": optimal_params,
             "volatility_trend": self._analyze_volatility_trend(),
             "trading_recommendation": self._get_trading_recommendation(current_variability_score),
             "risk_level": self._calculate_risk_level(current_volatility),
