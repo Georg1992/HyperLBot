@@ -142,11 +142,11 @@ class APIManager:
             import time
             time.sleep(3)  # Give WebSocket time to connect
             
-            # Test Hyperliquid API
+            # Test Hyperliquid API (validation only - not for trading)
             current_price = self.hyperliquid_api.get_current_price("BTC")
             if not current_price:
                 return {"success": False, "error": "Hyperliquid API connection failed"}
-            logger.success(f"✅ Hyperliquid API: BTC ${current_price:,.2f}")
+            logger.success(f"✅ Hyperliquid API: BTC ${current_price:,.2f} (validation only)")
             
             # Test Hyperliquid WebSocket (wait for connection)
             import time

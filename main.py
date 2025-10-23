@@ -49,7 +49,7 @@ def shutdown_handler(signum, frame):
             dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
             if dashboard_service:
                 dashboard_service.cleanup_heartbeat()
-                dashboard_service.add_activity("🏁 Trading session closed gracefully", "SUCCESS")
+                logger.info("🏁 Trading session closed gracefully")
         except Exception as e:
             logger.error(f"Error during shutdown: {e}")
     
@@ -327,8 +327,7 @@ def run_paper_trading():
             # Run paper trading session directly (no facade needed)
             session_orchestrator.run_paper_trading_session(
                 config.DEFAULT_CHECK_INTERVAL,
-                system_initializer, market_data_service, trading_engine, 
-                dashboard_service, strategy_manager
+                market_data_service, dashboard_service, "standard"
             )
             
         except Exception as e:

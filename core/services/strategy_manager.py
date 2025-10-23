@@ -60,18 +60,14 @@ class StrategyManager:
             str: Current active strategy name
         """
         try:
-            # Import ML Strategy Selector
-            from core.ml.strategy_selector import global_ml_strategy_selector
-            
-            # Get ML strategy recommendation (SINGLE SOURCE OF TRUTH)
-            recommendation = global_ml_strategy_selector.select_strategy(market_data)
-            
+            # Pure business logic strategy selection (no ML for now)
+            recommendation = self._select_strategy_business_logic(market_data)
             optimal_strategy = recommendation.strategy
             confidence = recommendation.confidence
             reasoning = recommendation.reasoning
             
-            # Log ML strategy selection
-            logger.info(f"🤖 ML Strategy Decision: {optimal_strategy} (confidence: {confidence:.3f})")
+            # Log business logic strategy selection
+            logger.info(f"📊 Business Logic Strategy Decision: {optimal_strategy}")
             logger.info(f"   📊 Reasoning: {reasoning}")
             
             # Validate strategy is not incompatible with current market conditions
@@ -98,9 +94,57 @@ class StrategyManager:
             return self.current_strategy
             
         except Exception as e:
-            logger.error(f"❌ ML strategy detection failed: {e}")
+            logger.error(f"❌ Strategy detection failed: {e}")
             logger.error(f"   Using current strategy: {self.current_strategy}")
             return self.current_strategy
+    
+    def _select_strategy_business_logic(self, market_data: Dict[str, Any]) -> str:
+        """Select strategy using pure business logic (no ML)"""
+        try:
+            # Extract market conditions
+            volatility_category = market_data.get("volatility", {}).get("volatility_5m_category", "UNKNOWN")
+            # Use 1h trend as primary trend for strategy selection
+            trend = market_data.get("trend_1h", "SIDEWAYS")
+            volume_category = market_data.get("volume", {}).get("volume_category", "UNKNOWN")
+            
+            # Business logic strategy selection
+            if volatility_category == "LOW" or volatility_category == "VERY_LOW":
+                if trend == "SIDEWAYS":
+                    strategy = "low_volatility_range"
+                    reasoning = f"Low volatility ({volatility_category}) + sideways trend"
+                else:
+                    strategy = "standard"
+                    reasoning = f"Low volatility ({volatility_category}) + trending market"
+            elif volatility_category == "HIGH" or volatility_category == "EXTREME":
+                if trend == "SIDEWAYS":
+                    strategy = "range_trading"
+                    reasoning = f"High volatility ({volatility_category}) + sideways trend"
+                else:
+                    strategy = "standard"
+                    reasoning = f"High volatility ({volatility_category}) + trending market"
+            else:  # MODERATE volatility
+                strategy = "standard"
+                reasoning = f"Moderate volatility + {trend} trend"
+            
+            # Create simple recommendation object
+            class SimpleRecommendation:
+                def __init__(self, strategy, reasoning):
+                    self.strategy = strategy
+                    self.reasoning = reasoning
+                    self.confidence = 0.8  # Fixed confidence for business logic
+            
+            return SimpleRecommendation(strategy, reasoning)
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Business logic strategy selection failed: {e}")
+            # Create fallback recommendation
+            class SimpleRecommendation:
+                def __init__(self, strategy, reasoning):
+                    self.strategy = strategy
+                    self.reasoning = reasoning
+                    self.confidence = 0.5  # Lower confidence for fallback
+            
+            return SimpleRecommendation("standard", "Fallback due to error")
     
     def get_current_strategy_config(self) -> Dict[str, Any]:
         """Get current strategy configuration"""
@@ -256,7 +300,7 @@ class StrategyManager:
     def _record_strategy_selection(self, strategy: str, market_data: Dict[str, Any], recommendation) -> None:
         """Record strategy selection for ML learning"""
         try:
-            from core.ml.strategy_selector import global_ml_strategy_selector
+            # TODO: ML learning will be implemented later
             
             # Record the strategy selection (without outcome yet)
             # The outcome will be recorded later when trades are executed
@@ -286,16 +330,14 @@ class StrategyManager:
     def record_strategy_outcome(self, strategy: str, outcome: Dict[str, Any]) -> None:
         """Record the outcome of a strategy for ML learning"""
         try:
-            from core.ml.strategy_selector import global_ml_strategy_selector
+            # TODO: ML learning will be implemented later
             
             # Find the most recent selection for this strategy
             if hasattr(self, 'pending_strategy_outcomes'):
                 for record in reversed(self.pending_strategy_outcomes):
                     if record["strategy"] == strategy:
-                        # Record outcome with ML strategy selector
-                        global_ml_strategy_selector.record_strategy_outcome(
-                            strategy, record["market_conditions"], outcome
-                        )
+                        # TODO: Record outcome with ML when implemented
+                        logger.debug(f"Strategy outcome recorded: {strategy}")
                         
                         # Remove from pending
                         self.pending_strategy_outcomes.remove(record)
@@ -331,8 +373,8 @@ class StrategyManager:
     def get_ml_strategy_performance(self) -> Dict[str, Any]:
         """Get ML strategy performance statistics"""
         try:
-            from core.ml.strategy_selector import global_ml_strategy_selector
-            return global_ml_strategy_selector.get_strategy_performance()
+            # TODO: ML learning will be implemented later
+            return {"message": "ML performance tracking not implemented yet"}
         except Exception as e:
             logger.error(f"❌ Failed to get ML strategy performance: {e}")
             return {"error": str(e)}
@@ -353,8 +395,8 @@ class StrategyManager:
                 system_initializer = get_system_initializer()
                 dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
                 if dashboard_service:
-                    dashboard_service.sync_from_session_manager(session_manager.current_session_data)
-                    dashboard_service.add_activity(f"🔄 Strategy switched to: {new_strategy}", "INFO", "strategy")
+                    dashboard_service.update_session_data(session_manager.current_session_data)
+                    logger.info(f"🔄 Strategy switched to: {new_strategy}")
                 
                 logger.info(f"📊 Dashboard notified of strategy change: {new_strategy}")
             

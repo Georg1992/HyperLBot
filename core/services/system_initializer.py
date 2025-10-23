@@ -89,6 +89,7 @@ class SystemInitializer:
             logger.error(f"❌ System initialization failed: {e}")
             return {"success": False, "error": str(e)}
     
+    
     def _initialize_core_apis(self) -> Dict[str, Any]:
         """Initialize all APIs and WebSockets using APIManager"""
         try:
@@ -103,9 +104,7 @@ class SystemInitializer:
             if not api_results["success"]:
                 return {"success": False, "error": api_results["error"]}
             
-            # Get current price for logging
-            current_price = api_manager.get_api("hyperliquid_api").get_current_price("BTC")
-            logger.success(f"✅ All APIs initialized - BTC: ${current_price:,.2f}")
+            # Price logging will be done after MarketDataService is initialized
             
             return {
                 "success": True,
@@ -117,7 +116,6 @@ class SystemInitializer:
                 "fear_greed_api": api_manager.get_api("fear_greed_api"),
                 "whale_analytics_api": api_manager.get_api("whale_analytics_api"),
                 "rss_news_api": api_manager.get_api("rss_news_api"),
-                "current_price": current_price
             }
             
         except Exception as e:
@@ -129,11 +127,13 @@ class SystemInitializer:
         try:
             logger.info("🔬 Initializing RSI with historical data...")
             
-            from core.analysis.real_time.rsi_calculator import get_global_rsi_calculator
+            from core.calculations.rsi_calculator import get_global_rsi_calculator
             rsi_calculator = get_global_rsi_calculator()
             # Get 5-minute data for RSI baseline calculation from MarketDataService (single source of truth)
             market_data_service = self.singleton_systems.get("market_data_service")
-            candles_5m = market_data_service.get_historical_candles("BTC", "5m", 30)
+            from core.services.historical_data_service import get_global_historical_data_service
+            historical_service = get_global_historical_data_service()
+            candles_5m = historical_service.get_5m_candles("BTC", 30)
             if candles_5m and len(candles_5m) >= 15:
                 rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
                 # RSI Calculator initialized with historical data
@@ -152,20 +152,21 @@ class SystemInitializer:
             logger.info("🔧 Initializing singleton systems...")
             
             # 1. RSI Calculator
-            from core.analysis.real_time.rsi_calculator import get_global_rsi_calculator
+            from core.calculations.rsi_calculator import get_global_rsi_calculator
             rsi_calculator = get_global_rsi_calculator()
             self.singleton_systems["rsi_calculator"] = rsi_calculator
             
             # 2. Trend Calculator
-            from core.analysis.real_time.trend_calculator import global_trend_calculator
-            self.singleton_systems["trend_calculator"] = global_trend_calculator
+            from core.calculations.trend_calculator import get_global_trend_calculator
+            trend_calculator = get_global_trend_calculator()
+            self.singleton_systems["trend_calculator"] = trend_calculator
             
             # 3. Market Conditions Analyzer
             from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
             self.singleton_systems["conditions_analyzer"] = global_conditions_analyzer
             
             # 4. Volume Calculator
-            from core.analysis.real_time.volume_calculator import get_global_volume_calculator
+            from core.calculations.volume_calculator import get_global_volume_calculator
             volume_calculator = get_global_volume_calculator()
             self.singleton_systems["volume_calculator"] = volume_calculator
             
@@ -175,17 +176,17 @@ class SystemInitializer:
             self.singleton_systems["volume_profile_analyzer"] = volume_profile_analyzer
             
             # 6. Support/Resistance Calculator
-            from core.analysis.real_time.support_resistance_calculator import get_global_support_resistance_calculator
+            from core.calculations.support_resistance_calculator import get_global_support_resistance_calculator
             support_resistance_calculator = get_global_support_resistance_calculator()
             self.singleton_systems["support_resistance_calculator"] = support_resistance_calculator
             
             # 7. Volatility Calculator
-            from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
+            from core.calculations.volatility_calculator import get_global_volatility_calculator
             volatility_calculator = get_global_volatility_calculator()
             self.singleton_systems["volatility_calculator"] = volatility_calculator
             
             # 8. Pressure Calculator
-            from core.analysis.real_time.pressure_calculator import get_global_pressure_calculator
+            from core.calculations.pressure_calculator import get_global_pressure_calculator
             pressure_calculator = get_global_pressure_calculator()
             self.singleton_systems["pressure_calculator"] = pressure_calculator
             
@@ -267,7 +268,8 @@ class SystemInitializer:
             market_data_service = MarketDataService(
                 self.singleton_systems.get("hyperliquid_api"),
                 self.singleton_systems.get("hyperliquid_websocket"),
-                self.singleton_systems.get("binance_api")
+                self.singleton_systems.get("binance_api"),
+                self.singleton_systems.get("binance_websocket")
             )
             
             trading_engine = TradingEngine(
@@ -288,6 +290,9 @@ class SystemInitializer:
             self.singleton_systems["trading_engine"] = trading_engine
             self.singleton_systems["dashboard_service"] = dashboard_service
             self.singleton_systems["session_orchestrator"] = session_orchestrator
+            
+            # Register analysis modules with MarketDataService
+            self._register_analysis_modules(market_data_service)
             
             # FIXED: Set session manager in trading execution wrapper
             # SessionOrchestrator initializes session manager lazily, so we need to trigger it
@@ -317,8 +322,18 @@ class SystemInitializer:
             # Clear caches for fresh data using simplified MarketDataService
             market_data_service = self.singleton_systems.get("market_data_service")
             if market_data_service:
-                market_data_service.invalidate_cache()
+                market_data_service.invalidate_processed_data()
                 logger.info("🗑️ MarketDataService cache cleared")
+                
+                # Get current price for logging (MarketDataService is now available)
+                try:
+                    current_price = market_data_service.get_current_price()
+                    if current_price:
+                        logger.success(f"✅ All APIs initialized - BTC: ${current_price:,.2f}")
+                    else:
+                        logger.success("✅ All APIs initialized - Price will be available after WebSocket connection")
+                except Exception as e:
+                    logger.success(f"✅ All APIs initialized - Price logging failed: {e}")
             
             # Data systems initialized
             return {"success": True}
@@ -338,14 +353,14 @@ class SystemInitializer:
             from core.ml.monte_carlo_simulator import get_global_monte_carlo_simulator
             from core.ml.bayesian_fusion import get_global_bayesian_fusion
             from core.ml.multitimeframe_probability import get_global_multitimeframe_probability
-            from core.ml.strategy_selector import global_ml_strategy_selector
+            # StrategySelector removed - using StrategyManager only
             
             self.singleton_systems["probability_engine"] = get_global_probability_engine()
             # Note: calibration_tracker removed - using only Bayesian fusion
             self.singleton_systems["monte_carlo_simulator"] = get_global_monte_carlo_simulator()
             self.singleton_systems["bayesian_fusion"] = get_global_bayesian_fusion()
             self.singleton_systems["multitimeframe_probability"] = get_global_multitimeframe_probability()
-            self.singleton_systems["strategy_selector"] = global_ml_strategy_selector
+            # StrategySelector removed - using StrategyManager only
             
             # ML Systems initialized
             # AI/ML systems ready
@@ -363,7 +378,7 @@ class SystemInitializer:
             # Trading systems are initialized through singletons
             # Verify key systems are ready
             required_systems = [
-                "strategy_selector", 
+                # "strategy_selector",  # Removed - using StrategyManager only 
                 "probability_engine", 
                 # Note: calibration_tracker removed 
                 "monte_carlo_simulator",
@@ -390,7 +405,7 @@ class SystemInitializer:
                 "apis_connected": True,
                 "singletons_ready": len(self.singleton_systems) > 0,
                 "data_systems_ready": True,
-                "ml_systems_ready": "strategy_selector" in self.singleton_systems,
+                "ml_systems_ready": True,  # StrategySelector removed
                 "trading_systems_ready": "probability_engine" in self.singleton_systems
             }
             
@@ -443,6 +458,49 @@ class SystemInitializer:
                 logger.debug("✅ .env file exists")
         except Exception as e:
             logger.error(f"❌ Failed to ensure .env file: {e}")
+    
+    def _register_analysis_modules(self, market_data_service) -> None:
+        """Register analysis modules with MarketDataService"""
+        try:
+            logger.info("📊 Registering analysis modules with MarketDataService...")
+            
+            # Register calculation modules with names that MarketDataService expects
+            if "rsi_calculator" in self.singleton_systems:
+                market_data_service.register_analysis_module("rsi_calculator", self.singleton_systems["rsi_calculator"])
+            
+            if "volatility_calculator" in self.singleton_systems:
+                market_data_service.register_analysis_module("volatility", self.singleton_systems["volatility_calculator"])
+            
+            if "trend_calculator" in self.singleton_systems:
+                market_data_service.register_analysis_module("trend", self.singleton_systems["trend_calculator"])
+            
+            if "support_resistance_calculator" in self.singleton_systems:
+                market_data_service.register_analysis_module("support_resistance", self.singleton_systems["support_resistance_calculator"])
+            
+            if "volume_calculator" in self.singleton_systems:
+                market_data_service.register_analysis_module("volume", self.singleton_systems["volume_calculator"])
+            
+            # Register analysis modules
+            if "conditions_analyzer" in self.singleton_systems:
+                market_data_service.register_analysis_module("market_conditions", self.singleton_systems["conditions_analyzer"])
+            
+            # Register additional analysis modules
+            if "pressure_calculator" in self.singleton_systems:
+                market_data_service.register_analysis_module("pressure", self.singleton_systems["pressure_calculator"])
+            
+            if "pattern_recognition_engine" in self.singleton_systems:
+                market_data_service.register_analysis_module("pattern_recognition", self.singleton_systems["pattern_recognition_engine"])
+            
+            if "funding_rate_analyzer" in self.singleton_systems:
+                market_data_service.register_analysis_module("funding_rate", self.singleton_systems["funding_rate_analyzer"])
+            
+            if "orderbook_analyzer" in self.singleton_systems:
+                market_data_service.register_analysis_module("orderbook", self.singleton_systems["orderbook_analyzer"])
+            
+            logger.info("📊 Analysis modules registered with MarketDataService")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to register analysis modules: {e}")
 
 # Global system initializer instance
 _global_system_initializer = None

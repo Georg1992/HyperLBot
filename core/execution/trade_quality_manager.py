@@ -99,7 +99,7 @@ class TradeManager:
             strategy_name = signal_data.get("strategy_name", "standard")
             
             # Use strategy-specific volatility thresholds
-            from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
+            from core.calculations.volatility_calculator import get_global_volatility_calculator
             
             # Get strategy-specific thresholds
             volatility_calculator = get_global_volatility_calculator()
@@ -131,15 +131,19 @@ class TradeManager:
                 "weight": 0.10
             }
             
-            # 6. TREND STRENGTH (10% weight)
-            trend_5m = market_analysis.get("trend_5m", {})
-            trend_1h = market_analysis.get("trend_1h", {})
+            # 6. TREND STRENGTH (10% weight) - Use new universal trend format
+            trend_15m = market_analysis.get("trend_15m", "SIDEWAYS")
+            trend_1h = market_analysis.get("trend_1h", "SIDEWAYS")
+            trend_4h = market_analysis.get("trend_4h", "SIDEWAYS")
+            trend_24h = market_analysis.get("trend_24h", "SIDEWAYS")
             
-            trend_alignment = (trend_5m.get("trend") == trend_1h.get("trend"))
-            trend_strength_5m = trend_5m.get("strength", 0.5)
-            trend_strength_1h = trend_1h.get("strength", 0.5)
+            # Check trend alignment across timeframes
+            bullish_count = sum(1 for t in [trend_15m, trend_1h, trend_4h, trend_24h] if "UP" in t or "BULL" in t)
+            bearish_count = sum(1 for t in [trend_15m, trend_1h, trend_4h, trend_24h] if "DOWN" in t or "BEAR" in t)
             
-            trend_score = (trend_strength_5m + trend_strength_1h) / 2
+            trend_alignment = bullish_count >= 3 or bearish_count >= 3  # Strong consensus
+            trend_score = (bullish_count + bearish_count) / 4  # Normalize to 0-1
+            
             if trend_alignment:
                 trend_score *= 1.2  # Bonus for alignment
             trend_score = min(1.0, trend_score)
@@ -147,8 +151,10 @@ class TradeManager:
             quality_score += trend_score * 0.10
             quality_factors["trend_strength"] = {
                 "score": trend_score,
-                "trend_5m": trend_5m.get("trend"),
-                "trend_1h": trend_1h.get("trend"),
+                "trend_15m": trend_15m,
+                "trend_1h": trend_1h,
+                "trend_4h": trend_4h,
+                "trend_24h": trend_24h,
                 "alignment": trend_alignment,
                 "weight": 0.10
             }

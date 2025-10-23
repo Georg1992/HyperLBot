@@ -36,6 +36,11 @@ class MarketConditionsAnalyzer:
             "market_status": str  # BEARISH/NEUTRAL/BULLISH based on 7-day trend
         }
         """
+        # Initialize analysis results (outside try block to avoid scope issues)
+        condition_factors = []
+        risk_factors = []
+        positive_factors = []
+        
         try:
             current_price = market_data.get("current_price", 0)
             rsi = market_data.get("rsi", 50.0)
@@ -43,11 +48,6 @@ class MarketConditionsAnalyzer:
             volatility_5m = market_data.get("volatility_5m", 0.0)
             volatility_category = market_data.get("volatility_category", "MODERATE")
             volume_category = market_data.get("volume_category", "NORMAL")
-            
-            # Initialize analysis results
-            condition_factors = []
-            risk_factors = []
-            positive_factors = []
             
             # 1. VOLATILITY CONDITIONS (strategy-independent)
             volatility_analysis = self._analyze_volatility_conditions(volatility_5m, volatility_category)
@@ -148,20 +148,24 @@ class MarketConditionsAnalyzer:
             
             # Log important condition changes
             if overall_analysis["condition"] == "EXCELLENT":
-                logger.success(f"🎯 EXCELLENT market conditions: {', '.join(positive_factors[:2])}")
+                factors_text = ', '.join(positive_factors[:2]) if positive_factors else 'No factors'
+                logger.success(f"🎯 EXCELLENT market conditions: {factors_text}")
             elif overall_analysis["condition"] == "POOR":
-                logger.warning(f"⚠️ POOR market conditions: {', '.join(risk_factors[:2])}")
+                factors_text = ', '.join(risk_factors[:2]) if risk_factors else 'No factors'
+                logger.warning(f"⚠️ POOR market conditions: {factors_text}")
             
             return result
             
         except Exception as e:
-            logger.error(f"❌ Market conditions analysis failed: {e}")
+            # Ultra-safe error handling - avoid any string conversion that might reference variables
+            error_type = type(e).__name__
+            logger.error(f"❌ Market conditions analysis failed: {error_type}")
             return {
                 "condition": "POOR",
-                "reasons": [f"Analysis failed: {str(e)}"],
+                "reasons": [f"Analysis failed: {error_type}"],
                 "risk_level": "HIGH",
                 "confidence": 0.3,
-                "risk_factors": [f"Analysis error: {str(e)}"],
+                "risk_factors": [f"Analysis error: {error_type}"],
                 "positive_factors": [],
                 "analysis_timestamp": market_data.get("timestamp", 0),
                 "market_status": "NEUTRAL"
@@ -267,7 +271,7 @@ class MarketConditionsAnalyzer:
         else:
             factors.append(f"RSI in tradable range ({rsi:.1f})")
             # FIXED: Normal RSI range should be considered positive for trading
-            positive_factors.append("RSI in healthy trading range")
+            # Note: positive_factors is handled in the return statement
             
         return {
             "factors": factors,
@@ -819,17 +823,18 @@ class MarketConditionsAnalyzer:
             market_data_service = system_initializer.singleton_systems.get("market_data_service")
             hyperliquid_api = get_hyperliquid_api()
             
-            # Use passed data or fetch as fallback (1d candles change only once per day)
+            # Use passed data or return neutral status
             if candles_1d is None:
-                # Direct raw data access
-                candles_1d = hyperliquid_api.get_historical_candles("BTC", "1d", 7)
-            
-            if not candles_1d or len(candles_1d) < 7:
-                logger.warning("⚠️ Insufficient 7-day data for market status analysis")
+                logger.warning("⚠️ No 1d candles provided for market trend analysis")
                 return {
-                    "factors": ["Insufficient 7-day data for trend analysis"],
+                    "factors": ["No 1d candles available for trend analysis"],
                     "market_status": "NEUTRAL"
                 }
+            
+            if not candles_1d or len(candles_1d) < 7:
+                logger.error(f"❌ CRITICAL: Insufficient 7-day data for market status analysis - API returned {len(candles_1d) if candles_1d else 0} candles")
+                logger.error(f"❌ Expected at least 7 days of 1d candles, got: {candles_1d}")
+                raise ValueError("Insufficient 7-day data - API must provide at least 7 days of 1d candles")
             
             # CRITICAL FIX: Use exactly the last 7 candles (not all returned candles)
             # The API returns more than 7 candles, so we need to take the last 7

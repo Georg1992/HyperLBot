@@ -178,6 +178,13 @@
             border: 1px solid #FF4444;
         }
 
+        .trend-multi-timeframe {
+            color: #00ff88;
+            font-weight: bold;
+            font-size: 12px;
+            line-height: 1.2;
+        }
+
         /* Prediction Card Styles */
         .prediction-main-card {
             transition: all 0.3s ease;
@@ -451,28 +458,6 @@
                     </div>
                 </div>
                 
-            <!-- Liquidation Hunting Section (only visible when liquidation hunting strategy is active) -->
-            <div class="card" id="liquidation-hunting-card" style="display: none;">
-                <h3>🎯 Liquidation Hunting</h3>
-                <div id="liquidation-hunting-data">
-                    <div class="data-item">
-                        <span class="data-label">Status:</span>
-                        <span class="data-value" id="liquidation-status">Monitoring...</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Next Opening:</span>
-                        <span class="data-value" id="next-opening">Calculating...</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Active Markets:</span>
-                        <span class="data-value" id="active-markets">Loading...</span>
-                    </div>
-                    <div class="data-item">
-                        <span class="data-label">Opportunities:</span>
-                        <span class="data-value" id="liquidation-opportunities">0</span>
-                    </div>
-                </div>
-            </div>
                 
                 <!-- Market Conditions Section -->
                 <div style="margin-bottom: 30px;">
@@ -612,10 +597,6 @@
                         <div class="data-item">
                             <span class="data-label">Trading Volume:</span>
                             <span class="data-value" id="market-volume">Loading...</span>
-                        </div>
-                        <div class="data-item">
-                            <span class="data-label">Global Volume:</span>
-                            <span class="data-value" id="market-global-volume">Loading...</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Volatility:</span>
@@ -919,13 +900,6 @@
                 this.socket.on('data_update', (data) => {
                     console.log('🔄 Received data update:', data);
                     
-                    // Debug liquidation hunting data
-                    if (data.market && data.market.liquidation_hunting) {
-                        console.log('🎯 Liquidation hunting data received:', data.market.liquidation_hunting);
-                    } else {
-                        console.log('⚠️ No liquidation hunting data in update');
-                    }
-                    
                     // Debug session and activity data
                     if (data.session) {
                         console.log('📊 Session data:', {
@@ -1011,30 +985,6 @@
                         this.updatePerformanceData(data.session);
                     }
                     
-                    // Update liquidation hunting data (only show when liquidation hunting strategy is active)
-                    if (data.session && data.session.strategy === 'liquidation_hunting') {
-                        // Show liquidation hunting section
-                        const liquidationCard = document.getElementById('liquidation-hunting-card');
-                        if (liquidationCard) {
-                            liquidationCard.style.display = 'block';
-                            console.log('🎯 Liquidation hunting strategy active - showing liquidation hunting section');
-                        }
-                        
-                        // Update liquidation hunting data
-                        if (data.market && data.market.liquidation_hunting) {
-                            console.log('🎯 Processing liquidation hunting data:', data.market.liquidation_hunting);
-                            this.updateLiquidationHunting(data.market.liquidation_hunting);
-                        } else {
-                            console.log('⚠️ No liquidation hunting data to process');
-                        }
-                    } else {
-                        // Hide liquidation hunting section for other strategies
-                        const liquidationCard = document.getElementById('liquidation-hunting-card');
-                        if (liquidationCard) {
-                            liquidationCard.style.display = 'none';
-                            console.log('🎯 Liquidation hunting strategy not active - hiding liquidation hunting section');
-                        }
-                    }
                     
                     // ML predictions are now handled by RealtimePredictionEngine
                     
@@ -1090,7 +1040,84 @@
                 }
             }
             
+            updateIndividualMarketFields(market) {
+                console.log('📊 Updating individual market fields:', market);
+                
+                // Update RSI
+                if (market.rsi !== undefined) {
+                    const rsiElement = document.getElementById('market-rsi');
+                    if (rsiElement) {
+                        const rsiValue = parseFloat(market.rsi).toFixed(1);
+                        rsiElement.textContent = rsiValue;
+                        rsiElement.className = `data-value ${getRSIClass(parseFloat(market.rsi))}`;
+                        console.log('📊 RSI updated:', rsiValue);
+                    }
+                }
+                
+                
+                // Update Volatility
+                if (market.volatility_5m !== undefined && market.volatility_5m_category) {
+                    const volatilityElement = document.getElementById('market-volatility');
+                    if (volatilityElement) {
+                        const volatilityValue = (market.volatility_5m * 100).toFixed(2);
+                        volatilityElement.textContent = `${volatilityValue}% (${market.volatility_5m_category})`;
+                        volatilityElement.className = `data-value ${getVolatilityClass(market.volatility_5m_category)}`;
+                        console.log('📊 Volatility updated:', volatilityValue);
+                    }
+                }
+                
+                
+                
+                
+                // Update Support/Resistance
+                if (market.support_resistance && market.support_resistance.key_levels) {
+                    const srElement = document.getElementById('market-key-levels');
+                    if (srElement) {
+                        const supportLevels = market.support_resistance.key_levels.filter(level => level.type === 'support').slice(0, 2);
+                        const resistanceLevels = market.support_resistance.key_levels.filter(level => level.type === 'resistance').slice(0, 2);
+                        
+                        let srText = '';
+                        if (supportLevels.length > 0) {
+                            srText += `Support: $${supportLevels.map(s => s.level.toFixed(0)).join(', ')}`;
+                        }
+                        if (resistanceLevels.length > 0) {
+                            if (srText) srText += ' | ';
+                            srText += `Resistance: $${resistanceLevels.map(r => r.level.toFixed(0)).join(', ')}`;
+                        }
+                        
+                        srElement.textContent = srText || 'No levels detected';
+                        srElement.className = 'data-value';
+                        console.log('📊 S/R updated:', srText);
+                    }
+                }
+                
+                // Update Pressure
+                if (market.pressure && typeof market.pressure === 'object') {
+                    const pressureElement = document.getElementById('market-pressure');
+                    if (pressureElement) {
+                        const direction = market.pressure.direction;
+                        const confidence = market.pressure.confidence || 0.0;
+                        const timestamp = new Date().toLocaleTimeString();
+                        
+                        pressureElement.innerHTML = `${direction} (${(confidence * 100).toFixed(0)}%)<br><span style="font-size: 11px; color: #888;">Confidence: ${(confidence * 100).toFixed(1)}%</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
+                        pressureElement.className = 'data-value ' + this.getTrendClass(direction);
+                        console.log('📊 Pressure updated:', direction, confidence);
+                    }
+                } else {
+                    const pressureElement = document.getElementById('market-pressure');
+                    if (pressureElement) {
+                        pressureElement.textContent = 'N/A';
+                        pressureElement.className = 'data-value trend-neutral';
+                    }
+                }
+                
+                // Patterns are handled by the main updateMarketData function below
+            }
+            
+            
             updateMarketData(market) {
+                console.log('📊 Dashboard received market data:', market);
+                
                 // Update price
                 if (market.current_price) {
                     document.getElementById('current-price').textContent = 
@@ -1106,56 +1133,93 @@
                     }
                 }
                 
-                // Update Overall Trend from trend_analysis + add trends data
+                    // Update individual market fields directly
+                    this.updateIndividualMarketFields(market);
+                
+                
+                
+                // Update Multi-Timeframe Trends
                 const overallTrendElement = document.getElementById('market-overall-trend');
-                if (market.trend_analysis && market.trend_analysis.overall_trend) {
-                    const overallTrend = market.trend_analysis.overall_trend;
-                    
-                    // Add trends data with strategy-specific periods
-                    let trendDisplay = `<span class="trend-main">${overallTrend}</span>`;
-                    if (market.trends) {
-                        const trends = market.trends;
-                        const periods = trends.periods || {};
-                        const strategy = market.current_strategy || 'standard';
+                console.log('📊 Trend data check:', {
+                    trend_analysis: market.trend_analysis,
+                    trend: market.trend,
+                    trend_display: market.trend_display
+                });
+                
+                // Handle trend data from different possible structures
+                let trendDisplay = null;
+                
+                if (market.trend && typeof market.trend === 'object' && (market.trend.trend_display || market.trend.trend_15m)) {
+                    // Trend object - check for trend_15m, trend_1h, etc.
+                    if (market.trend.trend_display) {
+                        trendDisplay = market.trend.trend_display;
+                    } else if (market.trend.trend_15m) {
+                        // Create multi-timeframe trend display with periods and colors
+                        const trend15m = market.trend.trend_15m;
+                        const trend1h = market.trend.trend_1h;
+                        const trend4h = market.trend.trend_4h;
+                        const trend24h = market.trend.trend_24h;
                         
-                        // Show multi-timeframe trends with readable periods
-                        if (trends.trend_short && trends.trend_short !== 'UNKNOWN') {
-                            const shortColor = this.getTrendColor(trends.trend_short);
-                            const shortPeriod = periods.reaction || '15m';
-                            trendDisplay += `<br><span style="color: ${shortColor}; font-size: 11px;">${trends.trend_short} (${shortPeriod})</span>`;
-                        }
-                        if (trends.trend_medium && trends.trend_medium !== 'UNKNOWN') {
-                            const mediumColor = this.getTrendColor(trends.trend_medium);
-                            const mediumPeriod = periods.primary || '30m';
-                            trendDisplay += `<br><span style="color: ${mediumColor}; font-size: 11px;">${trends.trend_medium} (${mediumPeriod})</span>`;
-                        }
-                        if (trends.trend_long && trends.trend_long !== 'UNKNOWN') {
-                            const longColor = this.getTrendColor(trends.trend_long);
-                            const longPeriod = periods.confirmation || '60m';
-                            trendDisplay += `<br><span style="color: ${longColor}; font-size: 11px;">${trends.trend_long} (${longPeriod})</span>`;
-                        }
-                        
-                        // Add strategy info
-                        trendDisplay += `<br><span style="font-size: 9px; color: #888;">${strategy} strategy periods</span>`;
+                        trendDisplay = `15m ${trend15m} | 1h ${trend1h} | 4h ${trend4h} | 24h ${trend24h}`;
                     }
-                    
-                    overallTrendElement.innerHTML = trendDisplay;
-                    overallTrendElement.className = 'data-value ' + this.getTrendClass(overallTrend);
+                } else if (market.trend_analysis && (market.trend_analysis.trend_display || market.trend_analysis.trend_15m)) {
+                    // Trend analysis object
+                    trendDisplay = market.trend_analysis.trend_display || 
+                        `15m ${market.trend_analysis.trend_15m} | 1h ${market.trend_analysis.trend_1h} | 4h ${market.trend_analysis.trend_4h} | 24h ${market.trend_analysis.trend_24h}`;
+                } else if (market.trend && typeof market.trend === 'object') {
+                    // Trend object
+                    if (market.trend.trend_display) {
+                        trendDisplay = market.trend.trend_display;
+                    } else if (market.trend.direction) {
+                        trendDisplay = `${market.trend.direction} (${market.trend.strength})`;
+                    }
+                } else if (market.trend_display) {
+                    // Direct trend display
+                    trendDisplay = market.trend_display;
+                } else if (market.direction) {
+                    // Simple direction field
+                    trendDisplay = market.direction;
+                } else if (market.consensus) {
+                    // Consensus field
+                    trendDisplay = market.consensus;
+                }
+                
+                if (trendDisplay) {
+                    // Apply color coding to the trend display
+                    const coloredTrendDisplay = this.applyTrendColors(trendDisplay);
+                    overallTrendElement.innerHTML = coloredTrendDisplay;
+                    overallTrendElement.className = 'data-value trend-multi-timeframe';
+                    console.log('📊 Trend updated:', trendDisplay);
                 } else {
                     overallTrendElement.textContent = 'N/A';
                     overallTrendElement.className = 'data-value trend-neutral';
+                    console.log('📊 Trend set to N/A');
                 }
                 
 
                 // Update RSI
                 const rsiElement = document.getElementById('market-rsi');
                 console.log('📊 Dashboard received RSI:', market.rsi, 'Type:', typeof market.rsi);
-                if (market.rsi && market.rsi !== 'N/A' && !isNaN(parseFloat(market.rsi))) {
-                    const rsiValue = parseFloat(market.rsi).toFixed(1);
-                    rsiElement.textContent = rsiValue;
-                    console.log('📊 RSI displayed:', rsiValue);
+                
+                // Handle RSI as object or direct value
+                let rsiValue = null;
+                if (market.rsi) {
+                    if (typeof market.rsi === 'object' && market.rsi.rsi !== undefined) {
+                        rsiValue = market.rsi.rsi;
+                    } else if (typeof market.rsi === 'number') {
+                        rsiValue = market.rsi;
+                    } else if (typeof market.rsi === 'string' && !isNaN(parseFloat(market.rsi))) {
+                        rsiValue = parseFloat(market.rsi);
+                    }
+                }
+                
+                if (rsiValue !== null && !isNaN(rsiValue)) {
+                    rsiElement.textContent = rsiValue.toFixed(1);
+                    rsiElement.className = `data-value ${getRSIClass(rsiValue)}`;
+                    console.log('📊 RSI displayed:', rsiValue.toFixed(1));
                 } else {
                     rsiElement.textContent = 'N/A';
+                    rsiElement.className = 'data-value trend-neutral';
                     console.log('📊 RSI set to N/A');
                 }
                 
@@ -1164,19 +1228,49 @@
                 console.log('📊 Volume data check:', {
                     trading_volume_btc: market.trading_volume_btc,
                     trading_volume_category: market.trading_volume_category,
-                    volume_data: market.volume_data
+                    volume_data: market.volume_data,
+                    volume: market.volume
                 });
-                if (market.trading_volume_btc !== undefined && market.trading_volume_btc !== null && !isNaN(parseFloat(market.trading_volume_btc))) {
-                    const tradingVol = parseFloat(market.trading_volume_btc);
-                    const tradingCategory = market.trading_volume_category;
+                
+                // Handle volume data from different possible structures
+                let volumeValue = null;
+                let volumeCategory = null;
+                
+                if (market.volume && typeof market.volume === 'object') {
+                    // Volume data as object - check hyperliquid_5m structure
+                    if (market.volume.hyperliquid_5m && typeof market.volume.hyperliquid_5m === 'object') {
+                        volumeValue = market.volume.hyperliquid_5m.current_5m_volume;
+                        volumeCategory = market.volume.hyperliquid_5m.volume_category;
+                    } else {
+                        // Fallback to direct volume fields
+                        volumeValue = market.volume.total_volume_btc || market.volume.current_volume_btc;
+                        volumeCategory = market.volume.volume_category;
+                    }
+                } else if (market.trading_volume_btc !== undefined && market.trading_volume_btc !== null) {
+                    // Direct volume values
+                    volumeValue = market.trading_volume_btc;
+                    volumeCategory = market.trading_volume_category;
+                } else if (market.volume_btc !== undefined) {
+                    // Alternative volume field
+                    volumeValue = market.volume_btc;
+                    volumeCategory = market.volume_category;
+                } else if (market.current_volume_btc !== undefined) {
+                    // Current volume field
+                    volumeValue = market.current_volume_btc;
+                    volumeCategory = market.volume_category;
+                }
+                
+                if (volumeValue !== null && !isNaN(parseFloat(volumeValue))) {
+                    const tradingVol = parseFloat(volumeValue);
+                    const tradingCategory = volumeCategory;
                     const tradeCount = market.trade_count || 0;
                     const dataSource = market.data_source;
                     const timestamp = new Date().toLocaleTimeString();
                     
                     // Display trading volume
-                    let volumeDisplay = `${tradingVol.toFixed(1)} BTC (${tradingCategory || 'UNKNOWN'})`;
+                    let volumeDisplay = `${tradingVol.toFixed(1)} BTC (${tradingCategory})`;
                     
-                    volumeElement.innerHTML = `${volumeDisplay}<br><span style="font-size: 11px; color: #888;">Source: ${dataSource || 'N/A'}</span><br><span style="font-size: 9px; color: #ffa500;">📊 TRADING VOLUME</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
+                    volumeElement.innerHTML = `${volumeDisplay}<br><span style="font-size: 11px; color: #888;">Source: ${dataSource}</span><br><span style="font-size: 9px; color: #ffa500;">📊 TRADING VOLUME</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
                     
                     // Color coding based on volume category
                     if (tradingCategory && tradingCategory.includes('EXTREMELY_HIGH')) {
@@ -1195,16 +1289,36 @@
                 
                 // Update Multi-Timeframe Volatility
                 const volatilityElement = document.getElementById('market-volatility');
-                    const timestamp = new Date().toLocaleTimeString();
-                    
+                console.log('📊 Volatility data check:', {
+                    volatility_5m: market.volatility_5m,
+                    volatility_5m_category: market.volatility_5m_category,
+                    volatility: market.volatility
+                });
+                
+                // Handle volatility data from different possible structures
+                let volatilityValue = null;
+                let volatilityCategory = null;
+                
+                if (market.volatility && typeof market.volatility === 'object') {
+                    // Volatility data as object
+                    volatilityValue = market.volatility.current || market.volatility.volatility_5m;
+                    volatilityCategory = market.volatility.category || market.volatility.volatility_5m_category;
+                } else if (market.volatility_5m !== undefined && market.volatility_5m_category) {
+                    // Direct volatility values
+                    volatilityValue = market.volatility_5m;
+                    volatilityCategory = market.volatility_5m_category;
+                }
+                
                 // Build multi-timeframe volatility display
                 let volatilityDisplay = '';
+                const timestamp = new Date().toLocaleTimeString();
                 
-                // Primary volatility (strategy-dependent period)
-                if (market.volatility_5m_category) {
-                    const category5m = market.volatility_5m_category;
+                if (volatilityValue !== null && volatilityCategory) {
+                    
+                    // Primary volatility (strategy-dependent period)
+                    const category5m = volatilityCategory;
                     const trend5m = market.volatility_5m_trend;
-                    const value5m = market.volatility_5m ? (market.volatility_5m * 100).toFixed(3) : '0.000';
+                    const value5m = volatilityValue ? (volatilityValue * 100).toFixed(3) : '0.000';
                     const period5m = market.volatility_5m_period_minutes || 15; // Default to 15 minutes
                     const strategy5m = market.volatility_strategy || 'standard';
                     const candles5m = market.volatility_5m_period_candles || 3; // Default to 3 candles
@@ -1245,58 +1359,13 @@
                 if (volatilityDisplay.trim()) {
                     volatilityElement.innerHTML = volatilityDisplay;
                     volatilityElement.className = 'data-value';
+                    console.log('📊 Volatility updated:', volatilityDisplay);
                 } else {
                     volatilityElement.textContent = 'N/A';
+                    volatilityElement.className = 'data-value trend-neutral';
+                    console.log('📊 Volatility set to N/A - no data available');
                 }
                 
-                // Update Global Volume (Binance real-time volume)
-                const globalVolumeElement = document.getElementById('market-global-volume');
-                console.log('📊 Global volume data check:', {
-                    global_volume_btc_per_min: market.global_volume_btc_per_min,
-                    global_volume_category: market.global_volume_category,
-                    global_volume_source: market.global_volume_source
-                });
-                if (market.global_volume_btc_per_min !== undefined && market.global_volume_btc_per_min !== null && !isNaN(parseFloat(market.global_volume_btc_per_min))) {
-                    const globalVol = parseFloat(market.global_volume_btc_per_min);
-                    const globalCategory = market.global_volume_category || 'UNKNOWN';
-                    const globalSource = market.global_volume_source || 'N/A';
-                    const timestamp = new Date().toLocaleTimeString();
-                    
-                    let globalVolumeDisplay = `${globalVol.toFixed(2)} BTC/min (${globalCategory})`;
-                    globalVolumeElement.innerHTML = `${globalVolumeDisplay}<br><span style="font-size: 11px; color: #888;">Source: ${globalSource}</span><br><span style="font-size: 9px; color: #00ff88;">🌍 GLOBAL VOLUME</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
-                    
-                    // Color coding based on global volume category
-                    if (globalCategory && globalCategory.includes('VERY_HIGH')) {
-                        globalVolumeElement.className = 'data-value extremely-high';
-                    } else if (globalCategory && (globalCategory.includes('HIGH') || globalCategory.includes('ABOVE_AVERAGE'))) {
-                        globalVolumeElement.className = 'data-value positive';
-                    } else if (globalCategory && (globalCategory.includes('LOW') || globalCategory === 'VERY_LOW')) {
-                        globalVolumeElement.className = 'data-value negative';
-                    } else {
-                        globalVolumeElement.className = 'data-value';
-                    }
-                } else {
-                    globalVolumeElement.textContent = 'N/A';
-                }
-                
-                // Update Pressure with enhanced display
-                const pressureElement = document.getElementById('market-pressure');
-                console.log('📊 Pressure data check:', {
-                    pressure: market.pressure,
-                    pressure_confidence: market.pressure_confidence,
-                    pressure_data: market.pressure_data
-                });
-                if (market.pressure && market.pressure !== 'N/A') {
-                    const direction = market.pressure || 'NEUTRAL';
-                    const confidence = market.pressure_confidence || 0.0;
-                    const timestamp = new Date().toLocaleTimeString();
-                    
-                    pressureElement.innerHTML = `${direction} (${(confidence * 100).toFixed(0)}%)<br><span style="font-size: 11px; color: #888;">Confidence: ${(confidence * 100).toFixed(1)}%</span><br><span style="font-size: 10px; color: #666;">[${timestamp}]</span>`;
-                    pressureElement.className = 'data-value ' + this.getTrendClass(direction);
-                } else {
-                    pressureElement.textContent = 'N/A';
-                    pressureElement.className = 'data-value trend-neutral';
-                }
                 
                 // Update Support/Resistance Levels
                 const srElement = document.getElementById('support-resistance-levels');
@@ -1314,8 +1383,8 @@
                             // Valid support below current price
                             levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
                         } else {
-                            // Historical support above current price (broken) - show it anyway
-                            levelsText += `<span style="color: #ffa500;">🟠</span> Support: $${Math.round(strongestSupport).toLocaleString()} (broken)<br>`;
+                            // Support above current price - still valid, not broken
+                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
                         }
                     } else {
                         // This should never happen - S/R calculator should always find historical levels
@@ -1327,8 +1396,8 @@
                             // Valid resistance above current price
                             levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
                         } else {
-                            // Historical resistance below current price (broken) - show it anyway
-                            levelsText += `<span style="color: #ffa500;">🟠</span> Resistance: $${Math.round(strongestResistance).toLocaleString()} (broken)<br>`;
+                            // Resistance below current price - still valid, not broken
+                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
                         }
                     } else {
                         // This should never happen - S/R calculator should always find historical levels
@@ -1371,10 +1440,10 @@
                 
                 // Update Pattern Analysis
                 const patternElement = document.getElementById('pattern-analysis');
-                if (market.pattern_analysis && market.pattern_analysis.patterns) {
-                    const patterns = market.pattern_analysis.patterns;
-                    const marketSetup = market.pattern_analysis.market_setup || {};
-                    const overallConfidence = market.pattern_analysis.overall_confidence || 0;
+                if (market.patterns && market.patterns.patterns) {
+                    const patterns = market.patterns.patterns;
+                    const marketSetup = market.patterns.market_setup || {};
+                    const overallConfidence = market.patterns.overall_confidence || 0;
                     
                     let patternText = '';
                     
@@ -1460,7 +1529,7 @@
                     
                     // Overview Status (7-day market trend)
                     const overviewStatusElement = document.getElementById('overview-conditions-status');
-                    const marketStatus = conditions.market_status || 'NEUTRAL';
+                    const marketStatus = conditions.market_status;
                     let statusText, statusColor;
                     
                     if (marketStatus === 'BULLISH') {
@@ -1518,8 +1587,8 @@
                         
                         // Fear & Greed Index
                         const fearGreedElement = document.getElementById('overview-fear-greed-index');
-                        const indexValue = sentimentData.index_value || 50;
-                        const classification = sentimentData.classification || 'Neutral';
+                        const indexValue = sentimentData.index_value;
+                        const classification = sentimentData.classification;
                         
                         // Color code based on sentiment
                         let fearGreedColor = 'trend-neutral';
@@ -1540,8 +1609,8 @@
                         
                         // Sentiment Zone
                         const sentimentZoneElement = document.getElementById('overview-sentiment-zone');
-                        const sentimentZone = sentimentSignals.sentiment_zone || 'NEUTRAL';
-                        const tradingBias = sentimentSignals.trading_bias || 'NEUTRAL';
+                        const sentimentZone = sentimentSignals.sentiment_zone;
+                        const tradingBias = sentimentSignals.trading_bias;
                         
                         let sentimentColor = 'trend-neutral';
                         if (sentimentZone === 'EXTREME_FEAR') {
@@ -1708,9 +1777,9 @@
             if (market.funding_analysis && market.funding_analysis.funding_sentiment && !market.funding_analysis.error) {
                 const funding = market.funding_analysis;
                 const sentimentObj = funding.funding_sentiment || {};
-                const sentiment = sentimentObj.sentiment || 'NEUTRAL';
+                const sentiment = sentimentObj.sentiment;
                 const extreme = funding.extreme_funding_detection || {};
-                const isExtreme = extreme.is_extreme || false;
+                const isExtreme = extreme.is_extreme;
                 const displayText = isExtreme ? `${sentiment} (EXTREME)` : sentiment;
                 fundingSentimentElement.textContent = displayText;
                 fundingSentimentElement.className = 'data-value ' + this.getTrendClass(sentiment);
@@ -1944,34 +2013,6 @@
             
             // updateMLMetrics method removed - ML metrics now handled by RealtimePredictionEngine
             
-            updateLiquidationHunting(liquidationData) {
-                console.log('🎯 Updating liquidation hunting data:', liquidationData);
-                
-                // Update status
-                if (liquidationData.status) {
-                    document.getElementById('liquidation-status').textContent = liquidationData.status;
-                }
-                
-                // Update next opening
-                if (liquidationData.next_opening) {
-                    const opening = liquidationData.next_opening;
-                    const timeStr = `${Math.floor(opening.time_until / 60)}m ${opening.time_until % 60}s`;
-                    document.getElementById('next-opening').textContent = 
-                        `${opening.exchange} in ${timeStr}`;
-                }
-                
-                // Update active markets
-                if (liquidationData.active_markets) {
-                    document.getElementById('active-markets').textContent = 
-                        liquidationData.active_markets.join(', ') || 'None';
-                }
-                
-                // Update opportunities count
-                if (liquidationData.opportunities !== undefined) {
-                    document.getElementById('liquidation-opportunities').textContent = 
-                        liquidationData.opportunities.toString();
-                }
-            }
 
             
 
@@ -2398,18 +2439,8 @@
                 ctx.fillText('NOW', nowX, height - 10);
                 
                 // Draw pattern overlays on the chart
-                console.log('🎨 Pattern overlay check:', {
-                    hasCandleData: !!candleData,
-                    hasPatternAnalysis: candleData ? !!candleData.pattern_analysis : false,
-                    candleDataKeys: candleData ? Object.keys(candleData) : 'null',
-                    patternAnalysis: candleData ? candleData.pattern_analysis : 'null'
-                });
-                
                 if (candleData && candleData.pattern_analysis) {
-                    console.log('🎨 Drawing pattern overlays:', candleData.pattern_analysis);
                     this.drawPatternOverlays(ctx, candleData.pattern_analysis, historicalCandles, chartStartX, candleWidth, height, adjustedMinPrice, adjustedPriceRange);
-                } else {
-                    console.log('🎨 No pattern data available for chart overlay');
                 }
                 
                 // Add current price indicator (use real-time price if available)
@@ -2643,75 +2674,53 @@
             
             // Pattern Drawing Functions for Chart Overlay
             drawPatternOverlays(ctx, patternAnalysis, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                console.log('🎨 drawPatternOverlays called with:', {
-                    hasPatternAnalysis: !!patternAnalysis,
-                    hasPatterns: patternAnalysis ? !!patternAnalysis.patterns : false,
-                    patternAnalysisKeys: patternAnalysis ? Object.keys(patternAnalysis) : 'null',
-                    patternAnalysis: patternAnalysis
-                });
-                
                 if (!patternAnalysis || !patternAnalysis.patterns) {
-                    console.log('🎨 No pattern analysis or patterns found');
                     return;
                 }
                 
                 const patterns = patternAnalysis.patterns;
-                console.log('🎨 Patterns found:', patterns);
-                console.log('🎨 Pattern types:', Object.keys(patterns));
                 
                 // Draw reversal patterns
                 if (patterns.reversal_patterns && patterns.reversal_patterns.length > 0) {
-                    console.log('🎨 Drawing reversal patterns:', patterns.reversal_patterns.length);
                     patterns.reversal_patterns.forEach(pattern => {
-                        console.log('🎨 Drawing reversal pattern:', pattern);
                         this.drawReversalPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
                 
                 // Draw continuation patterns
                 if (patterns.continuation_patterns && patterns.continuation_patterns.length > 0) {
-                    console.log('🎨 Drawing continuation patterns:', patterns.continuation_patterns.length);
                     patterns.continuation_patterns.forEach(pattern => {
-                        console.log('🎨 Drawing continuation pattern:', pattern);
                         this.drawContinuationPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
                 
                 // Draw triangle patterns
                 if (patterns.triangle_patterns && patterns.triangle_patterns.length > 0) {
-                    console.log('🎨 Drawing triangle patterns:', patterns.triangle_patterns.length);
                     patterns.triangle_patterns.forEach(pattern => {
-                        console.log('🎨 Drawing triangle pattern:', pattern);
                         this.drawTrianglePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
                 
                 // Draw channel patterns
                 if (patterns.channel_patterns && patterns.channel_patterns.length > 0) {
-                    console.log('🎨 Drawing channel patterns:', patterns.channel_patterns.length);
                     patterns.channel_patterns.forEach(pattern => {
-                        console.log('🎨 Drawing channel pattern:', pattern);
                         this.drawChannelPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
                 
                 // Draw wedge patterns
                 if (patterns.wedge_patterns && patterns.wedge_patterns.length > 0) {
-                    console.log('🎨 Drawing wedge patterns:', patterns.wedge_patterns.length);
                     patterns.wedge_patterns.forEach(pattern => {
-                        console.log('🎨 Drawing wedge pattern:', pattern);
                         this.drawWedgePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
             }
             
             drawReversalPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                console.log('🎨 drawReversalPattern called with:', pattern);
                 const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
-                console.log('🎨 Pattern bounds:', { startIndex, endIndex, patternType, confidence });
                 
                 // Calculate pattern bounds
                 const startX = chartStartX + (startIndex * candleWidth);
@@ -3211,7 +3220,7 @@
                         </div>
                         ${trade.strategy ? `<div class="trade-detail">
                             <span>Strategy:</span>
-                            <span style="color: #17a2b8;">${trade.strategy.toUpperCase()}</span>
+                            <span style="color: #17a2b8;">${trade.strategy ? trade.strategy.toString().toUpperCase() : 'UNKNOWN'}</span>
                         </div>` : ''}
                         <div class="trade-detail">
                             <span>P&L:</span>
@@ -3242,7 +3251,7 @@
 
             
             getTrendClass(trend) {
-                if (!trend) return 'trend-neutral';
+                if (!trend || typeof trend !== 'string') return 'trend-neutral';
                 const trendUpper = trend.toUpperCase();
                 if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY')) {
                     return 'trend-up';
@@ -3253,16 +3262,34 @@
             }
             
             getTrendColor(trend) {
-                if (!trend) return '#888';
+                if (!trend || typeof trend !== 'string') return '#888';
                 const trendUpper = trend.toUpperCase();
                 if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY')) {
                     return '#00ff88';  // Green for bullish
                 } else if (trendUpper.includes('DOWN') || trendUpper.includes('BEAR') || trendUpper.includes('SELL')) {
                     return '#ff4444';  // Red for bearish
                 } else if (trendUpper.includes('SIDEWAYS') || trendUpper.includes('NEUTRAL')) {
-                    return '#ffaa00';  // Orange for sideways
+                    return '#ffaa00';  // Yellow for sideways
                 }
                 return '#888';  // Gray for unknown
+            }
+            
+            applyTrendColors(trendDisplay) {
+                // Apply color coding to trend display: green for uptrends, red for downtrends, yellow for sideways
+                return trendDisplay.replace(/(\w+)\s+([^|]+)/g, (match, timeframe, trend) => {
+                    const trendUpper = trend.trim().toUpperCase();
+                    let color = '#888'; // Default gray
+                    
+                    if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY')) {
+                        color = '#00ff88'; // Green for uptrends
+                    } else if (trendUpper.includes('DOWN') || trendUpper.includes('BEAR') || trendUpper.includes('SELL')) {
+                        color = '#ff4444'; // Red for downtrends
+                    } else if (trendUpper.includes('SIDEWAYS') || trendUpper.includes('NEUTRAL')) {
+                        color = '#ffaa00'; // Yellow for sideways
+                    }
+                    
+                    return `<span style="color: ${color}">${timeframe} ${trend.trim()}</span>`;
+                });
             }
             
             requestManualRefresh() {
@@ -3319,6 +3346,23 @@
                 dashboard.filterAndDisplayTrades(tabType);
             }
         }
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        // Helper functions for enhanced data display
+        function getRSIClass(rsiValue) {
+            if (rsiValue >= 70) return 'trend-strong-down';
+            if (rsiValue <= 30) return 'trend-strong-up';
+            return 'trend-sideways';
+        }
+        
     </script>
 </body>
 </html>

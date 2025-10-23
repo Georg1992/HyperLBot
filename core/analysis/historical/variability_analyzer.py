@@ -73,7 +73,7 @@ class VariabilityAnalyzer:
             })
         
         # Use centralized VolatilityCalculator (SINGLE SOURCE OF TRUTH)
-        from core.analysis.real_time.volatility_calculator import get_global_volatility_calculator
+        from core.calculations.volatility_calculator import get_global_volatility_calculator
         volatility_calculator = get_global_volatility_calculator()
         result = volatility_calculator.calculate_candle_volatility(candles, "5m", "standard")
         return result.get("volatility", 0.0) if isinstance(result, dict) else result

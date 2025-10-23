@@ -4,6 +4,7 @@ Pressure Calculator Module
 Centralized market pressure calculations from orderbook data
 """
 
+import time
 from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 from core.constants import MagicNumbers
@@ -148,4 +149,76 @@ class PressureCalculator:
         except Exception as e:
             logger.warning(f"Pressure trend determination failed: {e}")
             return "NEUTRAL"
+    
+    def get_latest_analysis(self) -> Dict[str, Any]:
+        """
+        Get latest pressure analysis for MarketDataService coordination
+        
+        Returns:
+            Dict with pressure analysis using real orderbook data
+        """
+        try:
+            # Get real orderbook data from MarketDataService
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            market_data_service = system_initializer.singleton_systems.get('market_data_service')
+            
+            if not market_data_service:
+                logger.error("❌ MarketDataService not available for pressure analysis")
+                return {
+                    "direction": "N/A",
+                    "confidence": 0.0,
+                    "strength": "N/A", 
+                    "trend": "N/A",
+                    "timestamp": time.time(),
+                    "data_type": "pressure",
+                    "status": "NO_SERVICE"
+                }
+            
+            # Get orderbook data
+            orderbook_data = market_data_service.get_orderbook_analysis()
+            if not orderbook_data or orderbook_data.get('error'):
+                logger.warning("⚠️ No orderbook data available for pressure analysis")
+                return {
+                    "direction": "N/A",
+                    "confidence": 0.0,
+                    "strength": "N/A", 
+                    "trend": "N/A",
+                    "timestamp": time.time(),
+                    "data_type": "pressure",
+                    "status": "NO_ORDERBOOK_DATA"
+                }
+            
+            # Calculate pressure from real orderbook data
+            bids = orderbook_data.get('bids', [])
+            asks = orderbook_data.get('asks', [])
+            
+            if not bids or not asks:
+                logger.warning("⚠️ Empty orderbook data for pressure analysis")
+                return {
+                    "direction": "N/A",
+                    "confidence": 0.0,
+                    "strength": "N/A", 
+                    "trend": "N/A",
+                    "timestamp": time.time(),
+                    "data_type": "pressure",
+                    "status": "EMPTY_ORDERBOOK"
+                }
+            
+            # Calculate real pressure analysis
+            pressure_result = self.calculate_orderbook_pressure(bids, asks)
+            return pressure_result
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get latest pressure analysis: {e}")
+            return {
+                "direction": "N/A",
+                "confidence": 0.0,
+                "strength": "N/A",
+                "trend": "N/A", 
+                "timestamp": time.time(),
+                "data_type": "pressure",
+                "status": "ERROR",
+                "error": str(e)
+            }
     

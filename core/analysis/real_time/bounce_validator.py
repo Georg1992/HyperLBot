@@ -117,10 +117,6 @@ class BounceValidator:
                         rejection_count += 1
                         
                         # Log detailed rejection data
-                        logger.debug(f"📊 Resistance rejection at ${level_price:.2f}: "
-                                   f"volume={rejection_data['rejection_volume']:.0f}, "
-                                   f"magnitude=${rejection_data['rejection_magnitude']:.2f}, "
-                                   f"strength={rejection_data['strength']:.1f}")
                 
                 elif is_support_touch:
                     # For support: analyze rejection candle data
@@ -132,20 +128,12 @@ class BounceValidator:
                         rejection_count += 1
                         
                         # Log detailed rejection data
-                        logger.debug(f"📊 Support rejection at ${level_price:.2f}: "
-                                   f"volume={rejection_data['rejection_volume']:.0f}, "
-                                   f"magnitude=${rejection_data['rejection_magnitude']:.2f}, "
-                                   f"strength={rejection_data['strength']:.1f}")
             
             # Calculate average rejection metrics
             if rejection_count > 0:
                 avg_rejection_volume = total_rejection_volume / rejection_count
                 avg_rejection_magnitude = total_rejection_magnitude / rejection_count
                 
-                logger.debug(f"📊 Level ${level_price:.2f} summary: "
-                           f"{rejection_count} rejections, "
-                           f"avg_volume={avg_rejection_volume:.0f}, "
-                           f"avg_magnitude=${avg_rejection_magnitude:.2f}")
             
             # Average bounce strength
             avg_bounce_strength = bounce_strength / len(touching_candles) if touching_candles else 0
@@ -291,11 +279,5 @@ class BounceValidator:
         """Check if a level passes bounce validation threshold"""
         bounce_score = self.validate_bounce_behavior(cluster, level_price, candles)
         is_valid = bounce_score >= min_bounce_ratio
-        
-        # Debug logging to understand what's happening
-        if not is_valid:
-            logger.debug(f"📊 Level rejected: ${level_price:.2f} (bounce_score: {bounce_score:.2f}, min_required: {min_bounce_ratio:.2f}, touches: {len(cluster)})")
-        else:
-            logger.debug(f"📊 Level accepted: ${level_price:.2f} (bounce_score: {bounce_score:.2f}, touches: {len(cluster)})")
         
         return is_valid

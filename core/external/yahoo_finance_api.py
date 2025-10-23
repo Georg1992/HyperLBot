@@ -30,7 +30,7 @@ class YahooFinanceAPI:
             'spy': 'SPY',       # S&P 500 ETF
             'qqq': 'QQQ',       # NASDAQ ETF
             'dow': 'DIA',       # Dow Jones ETF
-            'vix': '^VIX',      # VIX (Fear & Greed proxy)
+            'vix': '^VIX',       # VIX (Fear & Greed proxy) - original symbol
             'btc': 'BTC-USD',   # Bitcoin
             'eth': 'ETH-USD',   # Ethereum
             'gld': 'GLD',       # Gold ETF (same as gold)

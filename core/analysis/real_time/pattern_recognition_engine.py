@@ -211,7 +211,6 @@ class PatternRecognitionEngine:
                         "pattern_name": pattern_name,
                         "pattern_type": pattern_type
                     }
-                    logger.debug(f"📊 New pattern detected: {pattern_name}")
                 
                 # Add timestamp fields to pattern
                 pattern["first_detected"] = self.pattern_history[pattern_key]["first_detected"]

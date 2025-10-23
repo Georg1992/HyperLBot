@@ -36,31 +36,11 @@ class SessionManager:
         self._initialized = True
         self.session_lock = threading.RLock()
         self.current_session_id = None
-        self.historical_context = None  # Initialize historical context
         
         logger.success("📅 Session Manager initialized")
     
-    def set_historical_context(self, historical_context: Dict[str, Any]):
-        """Store historical context for session (business logic data for strategies)"""
-        try:
-            self.historical_context = historical_context
-            logger.info(f"📊 Historical context stored: {historical_context.get('market_regime', {}).get('regime', 'UNKNOWN')} regime")
-        except Exception as e:
-            logger.error(f"❌ Failed to store historical context: {e}")
-    
-    def get_historical_context(self) -> Dict[str, Any]:
-        """Get historical context for strategy decisions (business logic access)"""
-        if self.historical_context is None:
-            logger.warning("⚠️ Historical context not computed yet")
-            return {}
-        return self.historical_context
-    
-    def has_historical_context(self) -> bool:
-        """Check if historical context is available"""
-        return self.historical_context is not None
-    
     def start_session(self, session_id: str = None, strategy: str = "standard", initial_balance: float = None) -> str:
-        """Start a new trading session"""
+        """Start a new trading session - integrated with account data"""
         if initial_balance is None:
             raise ValueError("Initial balance is required - NO FALLBACKS")
         with self.session_lock:
@@ -74,19 +54,39 @@ class SessionManager:
                 
                 self.current_session_id = session_id
                 
-                # Store session data
+                # Get account data for session initialization
+                from core.simulated_account_manager import account_manager
+                account_data = account_manager.get_account_summary()
+                
+                # Use account data if available, otherwise use provided initial_balance
+                if account_data:
+                    current_balance = account_data.get("current_balance", initial_balance)
+                    total_trades = account_data.get("total_trades", 0)
+                    winning_trades = account_data.get("winning_trades", 0)
+                    losing_trades = account_data.get("losing_trades", 0)
+                    total_pnl = account_data.get("total_pnl", 0.0)
+                    win_rate = account_data.get("win_rate", 0.0)
+                else:
+                    current_balance = initial_balance
+                    total_trades = 0
+                    winning_trades = 0
+                    losing_trades = 0
+                    total_pnl = 0.0
+                    win_rate = 0.0
+                
+                # Store session data with account integration
                 self.current_session_data = {
                     "session_id": session_id,
                     "start_time": datetime.now().isoformat(),
                     "status": "ACTIVE",
                     "strategy": strategy,
                     "initial_balance": initial_balance,
-                    "current_balance": initial_balance,
-                    "total_trades": 0,
-                    "winning_trades": 0,
-                    "losing_trades": 0,
-                    "total_pnl": 0.0,
-                    "win_rate": 0.0,
+                    "current_balance": current_balance,
+                    "total_trades": total_trades,
+                    "winning_trades": winning_trades,
+                    "losing_trades": losing_trades,
+                    "total_pnl": total_pnl,
+                    "win_rate": win_rate,
                     "balance_change": 0.0,
                     "balance_change_pct": 0.0,
                     "session_time": "0m",  # Pre-calculated session time
@@ -101,9 +101,6 @@ class SessionManager:
                     "avg_trade_time_minutes": 0.0
                 }
                 
-                # Initialize historical context storage (business logic data for strategies)
-                # NOTE: Don't reset historical_context here - it's already computed and stored!
-                # self.historical_context = None  # REMOVED - this was clearing the computed context!
                 
                 # Calculate and update session time before syncing
                 self._update_session_time()
@@ -121,8 +118,8 @@ class SessionManager:
                 # Sync to dashboard immediately
                 dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
                 if dashboard_service:
-                    dashboard_service.sync_from_session_manager(self.current_session_data)
-                    dashboard_service.add_activity(f"🚀 Trading session started - {strategy} strategy initialized", "SUCCESS", "session")
+                    dashboard_service.update_session_data(self.current_session_data)
+                    logger.info(f"🚀 Trading session started - {strategy} strategy initialized")
                 
                 logger.success(f"🚀 Trading session started: {session_id} ({strategy})")
                 return session_id
@@ -213,8 +210,8 @@ class SessionManager:
                 system_initializer = get_system_initializer()
                 dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
                 if dashboard_service:
-                    dashboard_service.sync_from_session_manager(self.current_session_data)
-                    dashboard_service.add_activity(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes", "SUCCESS", "session")
+                    dashboard_service.update_session_data(self.current_session_data)
+                    logger.info(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes")
                 
                 logger.success(f"✅ Session ended: {self.current_session_id}")
                 logger.info(f"   Duration: {session_data.get('duration_minutes', 0):.1f} minutes")
@@ -252,7 +249,7 @@ class SessionManager:
                 return None
     
     def get_current_session_data(self) -> Dict[str, Any]:
-        """Get current session data for dashboard"""
+        """Get current session data for dashboard - integrated with account data"""
         with self.session_lock:
             try:
                 if not self.current_session_id or not hasattr(self, 'current_session_data'):
@@ -269,6 +266,9 @@ class SessionManager:
                         "winning_trades": 0,
                         "losing_trades": 0
                     }
+                
+                # Coordinate with account data to ensure consistency
+                self.coordinate_with_account_data()
                 
                 return self.current_session_data
                 
@@ -332,8 +332,8 @@ class SessionManager:
                 
                 # Sync to dashboard
                 if dashboard_service:
-                    dashboard_service.sync_from_session_manager(self.current_session_data)
-                    dashboard_service.add_activity(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}", "INFO", "account")
+                    dashboard_service.update_session_data(self.current_session_data)
+                    logger.info(f"💰 Balance updated: ${new_balance:.2f} ({balance_change:+.2f}) - {reason}")
                 
             except Exception as e:
                 logger.error(f"Error updating session balance: {e}")
@@ -408,14 +408,14 @@ class SessionManager:
                 
                 # Sync to dashboard
                 if dashboard_service:
-                    dashboard_service.sync_from_session_manager(self.current_session_data)
+                    dashboard_service.update_session_data(self.current_session_data)
                     
                     # Add trade activity
                     side = trade_data.get("side", "UNKNOWN")
                     pnl = trade_data.get("pnl", 0)
                     pnl_pct = trade_data.get("pnl_pct", 0)
                     
-                    dashboard_service.add_activity(f"📊 Trade completed: {side} {pnl:+.2f} ({pnl_pct*100:+.1f}%)", "SUCCESS" if trade_data.get("was_profitable", False) else "WARNING", "trade")
+                    logger.info(f"📊 Trade completed: {side} {pnl:+.2f} ({pnl_pct*100:+.1f}%)")
                 
                 logger.info(f"📊 Trade added to session: {trade_data.get('trade_id')}")
                 
@@ -474,7 +474,7 @@ class SessionManager:
                 system_initializer = get_system_initializer()
                 dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
                 if dashboard_service:
-                    dashboard_service.sync_from_session_manager(self.current_session_data)
+                    dashboard_service.update_session_data(self.current_session_data)
                 
                 return True
                 

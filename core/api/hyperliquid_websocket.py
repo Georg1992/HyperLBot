@@ -204,6 +204,9 @@ class HyperliquidWebSocket:
                     if "levels" in data["data"]:
                         logger.info(f"🔍 Found orderbook data in message: {data}")
                         await self._process_orderbook_update(data["data"])
+                else:
+                    # Log unknown message format for debugging
+                    logger.debug(f"🔍 Unknown WebSocket message format: {data}")
                 
         except json.JSONDecodeError:
             logger.warning(f"⚠️ Invalid JSON message: {message}")
@@ -266,7 +269,8 @@ class HyperliquidWebSocket:
             with self._lock:
                 if hasattr(self, 'orderbook_cache') and self.orderbook_cache:
                     return self.orderbook_cache
-                return {}
+                else:
+                    return {}
         except Exception as e:
             logger.error(f"❌ Failed to get orderbook data: {e}")
             return {}
@@ -343,6 +347,7 @@ class HyperliquidWebSocket:
     async def _process_orderbook_update(self, orderbook_data: Dict[str, Any]):
         """Process orderbook update and extract price"""
         try:
+            # Process orderbook update silently
             if "levels" in orderbook_data and len(orderbook_data["levels"]) >= 2:
                 bids = orderbook_data["levels"][0]
                 asks = orderbook_data["levels"][1]
@@ -355,9 +360,8 @@ class HyperliquidWebSocket:
                     # Update orderbook cache
                     with self._lock:
                         self.orderbook_cache = orderbook_data
-                    
-                    # Update price cache
-                    with self._lock:
+                        
+                        # Update price cache
                         self.price_cache.update({
                             "current_price": mid_price,
                             "bid": best_bid,
@@ -369,8 +373,10 @@ class HyperliquidWebSocket:
                     
                     # Call price update callbacks
                     self._notify_price_callbacks()
-                    
-            
+                else:
+                    logger.warning(f"⚠️ No bids or asks available in orderbook data")
+            else:
+                logger.warning(f"⚠️ Orderbook data missing levels")
                     
         except Exception as e:
             logger.error(f"❌ Error processing orderbook update: {e}")

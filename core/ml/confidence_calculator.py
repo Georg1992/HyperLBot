@@ -141,8 +141,6 @@ class ConfidenceCalculator:
             return self._apply_sentiment_factor(factor, direction, market_data)
         elif factor.name == "funding_alignment":
             return self._apply_funding_factor(factor, direction, market_data)
-        elif factor.name == "global_volume":
-            return self._apply_global_volume_factor(factor, market_data)
         elif factor.name == "poc_proximity":
             return self._apply_poc_factor(factor, market_data)
         elif factor.name == "cross_asset_correlation":
@@ -175,15 +173,26 @@ class ConfidenceCalculator:
             return 0.0
     
     def _apply_volume_factor(self, factor: ConfidenceFactor, market_data: Dict[str, Any]) -> float:
-        """Apply volume confirmation factor"""
+        """Apply enhanced volume confirmation factor with momentum analysis"""
         volume_category = market_data.get("volume_category", "NORMAL")
+        volume_momentum = market_data.get("volume_momentum", 0.0)
+        volume_trend_strength = market_data.get("volume_trend_strength", 0.0)
         
+        # Base volume impact
+        base_impact = 0.0
         if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-            return factor.boost_value
+            base_impact = factor.boost_value
         elif volume_category in ["LOW", "VERY_LOW"]:
-            return factor.penalty_value
-        else:
-            return 0.0
+            base_impact = factor.penalty_value
+        
+        # Momentum bonus/penalty
+        momentum_bonus = 0.0
+        if volume_momentum > 0.2 and volume_trend_strength > 0.5:  # Strong upward momentum
+            momentum_bonus = factor.boost_value * 0.5  # 50% bonus
+        elif volume_momentum < -0.2 and volume_trend_strength > 0.5:  # Strong downward momentum
+            momentum_bonus = factor.penalty_value * 0.5  # 50% penalty
+        
+        return base_impact + momentum_bonus
     
     def _apply_pressure_factor(self, factor: ConfidenceFactor, direction: str, market_data: Dict[str, Any]) -> float:
         """Apply orderbook pressure factor"""
@@ -288,14 +297,6 @@ class ConfidenceCalculator:
         
         return 0.0
     
-    def _apply_global_volume_factor(self, factor: ConfidenceFactor, market_data: Dict[str, Any]) -> float:
-        """Apply global volume confirmation factor"""
-        global_volume_category = market_data.get("global_volume_category", "NORMAL")
-        
-        if global_volume_category in ["HIGH", "VERY_HIGH"]:
-            return factor.boost_value
-        else:
-            return 0.0
     
     def _apply_poc_factor(self, factor: ConfidenceFactor, market_data: Dict[str, Any]) -> float:
         """Apply price of control proximity factor"""

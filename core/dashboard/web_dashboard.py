@@ -217,7 +217,7 @@ class EventDrivenTradingDashboard:
             
             hash_data = {
                 'price': market_data.get('current_price', 0),
-                'rsi': market_data.get('rsi', 0),
+                'rsi': market_data.get('rsi', {}).get('rsi', 0) if isinstance(market_data.get('rsi'), dict) else market_data.get('rsi', 0),
                 'overall_trend': trend_analysis.get('overall_trend'),
                 'trading_volume_btc': market_data.get('trading_volume_btc', 0),
                 'trading_volume_category': market_data.get('trading_volume_category'),
@@ -299,7 +299,8 @@ class EventDrivenTradingDashboard:
             
             current_time = time.time()
             if current_time - self._last_cleanup_time > 30:  # 30 second interval
-                dashboard_service.auto_cleanup_stale_sessions()
+                # Auto-cleanup is now handled by heartbeat check
+                pass
                 self._last_cleanup_time = current_time
             
             # Get ALL data from DashboardService - SINGLE SOURCE OF TRUTH
@@ -341,7 +342,6 @@ class EventDrivenTradingDashboard:
                 "prediction": predictions[-1] if predictions else None,  # Current active prediction
                 "trades": dashboard_data.get("trades", []),
                 "orderbook": {"bids": [], "asks": []},
-                "global_volume": {"volume": 0.0},
                 "candleData": candle_data,  # Add candle data to dashboard data
                 "timestamp": dashboard_data.get("timestamp", ""),
                 "data_source": "DashboardService - Single Source of Truth",
@@ -365,7 +365,6 @@ class EventDrivenTradingDashboard:
                 "predictions": [],
                 "trades": [],
                 "orderbook": {"error": str(e)},
-                "global_volume": {"error": str(e)},
                 "timestamp": datetime.now().isoformat(),
                 "data_source": "error",
                 "connection_status": "❌ Error"
@@ -374,7 +373,7 @@ class EventDrivenTradingDashboard:
     def _get_chart_data(self) -> Dict[str, Any]:
         """Dashboard fetches its own chart data (frontend responsibility)"""
         try:
-            from core.services.chart_data_service import get_global_chart_data_service
+            from core.services.historical_data_service import get_global_historical_data_service
             from core.services.system_initializer import get_system_initializer
             
             # Get market data service from system initializer
@@ -386,11 +385,18 @@ class EventDrivenTradingDashboard:
                 return {}
             
             # Get current price from market data service
-            current_price = 50000.0  # Default price, should get from market data
+            current_price = market_data_service.get_current_price()
+            if not current_price or current_price <= 0:
+                logger.warning("⚠️ No current price available, using default")
+                current_price = 50000.0
             
-            # ChartDataService fetches its own candles
-            chart_service = get_global_chart_data_service()
-            chart_data = chart_service.prepare_chart_data(current_price, market_data_service, {})
+            # HistoricalDataService fetches its own candles
+            historical_service = get_global_historical_data_service()
+            
+            # Get pattern data from MarketDataService to include in chart
+            pattern_data = market_data_service.get_pattern_analysis() if market_data_service else {}
+            
+            chart_data = historical_service.prepare_chart_data(current_price, pattern_data)
             
             return chart_data
             

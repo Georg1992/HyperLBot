@@ -28,16 +28,26 @@ class VolatilityCalculator:
     def get_latest_analysis(self) -> Dict[str, Any]:
         """Get latest volatility analysis for MarketDataService coordination"""
         try:
-            # For now, return a basic analysis structure
-            # In a full implementation, this would process raw data
-            analysis = {
-                "volatility_5m": 0.0,
-                "volatility_5m_category": "UNKNOWN",
-                "volatility_5m_trend": "UNKNOWN",
-                "timestamp": time.time(),
-                "data_type": "volatility"
-            }
+            # Fetch candles and calculate actual volatility
+            from core.services.historical_data_service import get_global_historical_data_service
+            historical_service = get_global_historical_data_service()
+            
+            # Get 5m candles for volatility calculation
+            candles_5m = historical_service.get_5m_candles("BTC", 30)
+            
+            if not candles_5m or len(candles_5m) < 1:
+                logger.warning("⚠️ No 5m candles available for volatility calculation")
+                return {}
+            
+            # Calculate actual volatility using the real calculation method
+            analysis = self.calculate_candle_volatility(candles_5m, "5m", "standard")
+            
+            if not analysis:
+                logger.warning("⚠️ Volatility calculation returned empty result")
+                return {}
+                
             return analysis
+            
         except Exception as e:
             logger.error(f"❌ Failed to get latest volatility analysis: {e}")
             return {}
@@ -49,9 +59,8 @@ class VolatilityCalculator:
                 logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 1")
                 raise Exception(f"Insufficient candles for volatility calculation: {len(candles)} < 1")
             
-            # Get strategy-specific volatility parameters
-            strategy_params = self._get_strategy_volatility_params(strategy)
-            period_minutes = strategy_params.get("primary_minutes", 15)
+            # Universal volatility calculation (not strategy-specific)
+            period_minutes = 15  # Standard 15-minute analysis period
             period_candles = max(1, period_minutes // 5)  # Convert minutes to 5m candles
             
             # Use the most recent candles for the calculated period
@@ -59,13 +68,13 @@ class VolatilityCalculator:
             actual_period_candles = len(recent_candles)
             actual_period_minutes = actual_period_candles * 5
             
-            # Get strategy-specific thresholds from centralized method
-            thresholds = strategy_params.get("thresholds", {
-                "LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0040, "EXTREME": 0.0080
-            })
+            # Universal volatility thresholds (not strategy-specific)
+            thresholds = {
+                "LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0060, "EXTREME": 0.0060
+            }
             
-            logger.debug(f"📊 Volatility calculation: {strategy} strategy using {actual_period_candles} candles ({actual_period_minutes} minutes)")
-            logger.debug(f"📊 Strategy thresholds: LOW={thresholds['LOW']:.4f}, MODERATE={thresholds['MODERATE']:.4f}, HIGH={thresholds['HIGH']:.4f}, EXTREME={thresholds['EXTREME']:.4f}")
+            logger.debug(f"📊 Volatility calculation: Universal using {actual_period_candles} candles ({actual_period_minutes} minutes)")
+            logger.debug(f"📊 Universal thresholds: LOW={thresholds['LOW']:.4f}, MODERATE={thresholds['MODERATE']:.4f}, HIGH={thresholds['HIGH']:.4f}, EXTREME={thresholds['EXTREME']:.4f}")
             
             # Method 1: Calculate overall price movement across all candles (captures big moves)
             if len(recent_candles) >= 2:
@@ -194,7 +203,7 @@ class VolatilityCalculator:
             if overall_volatility > 0:
                 logger.debug(f"🔍 No weighted volatilities calculated, using overall volatility: {overall_volatility:.6f}")
                 # Add categorization
-                category, trend = self.categorize_volatility_for_trading(overall_volatility, timeframe, strategy)
+                category, trend = self.categorize_volatility_for_trading(overall_volatility, timeframe)
                 return {
                     "volatility": round(overall_volatility, 6),
                     "period_minutes": actual_period_minutes,
@@ -211,7 +220,7 @@ class VolatilityCalculator:
                     current_range = (current_candle["high"] - current_candle["low"]) / current_candle["close"]
                     logger.debug(f"🔍 Single candle or zero overall volatility, using current range: {current_range:.6f}")
                     # Add categorization
-                    category, trend = self.categorize_volatility_for_trading(current_range, timeframe, strategy)
+                    category, trend = self.categorize_volatility_for_trading(current_range, timeframe)
                     return {
                         "volatility": round(current_range, 6),
                         "period_minutes": actual_period_minutes,
@@ -384,18 +393,16 @@ class VolatilityCalculator:
                 "urgency": "NONE"
             }
 
-    def categorize_volatility_for_trading(self, volatility: float, timeframe: str = "5m", strategy: str = "standard") -> tuple:
-        """Categorize volatility for trading decisions using strategy-specific thresholds"""
+    def categorize_volatility_for_trading(self, volatility: float, timeframe: str = "5m") -> tuple:
+        """Categorize volatility for trading decisions using universal thresholds"""
         try:
-            # Strategy-specific volatility thresholds (same as in calculate_candle_volatility)
-            # Get strategy-specific thresholds from centralized method (removes duplicate code)
-            strategy_volatility_params = self._get_strategy_volatility_params(strategy)
-            thresholds = strategy_volatility_params.get("thresholds", {
-                "LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0040, "EXTREME": 0.0080
-            })
+            # Universal volatility thresholds (not strategy-specific)
+            thresholds = {
+                "LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0060, "EXTREME": 0.0060
+            }
             
-            logger.debug(f"🔍 Categorizing volatility {volatility:.6f} ({volatility*100:.4f}%) for {strategy} strategy")
-            logger.debug(f"🔍 Strategy thresholds: LOW={thresholds['LOW']:.4f}, MODERATE={thresholds['MODERATE']:.4f}, HIGH={thresholds['HIGH']:.4f}, EXTREME={thresholds['EXTREME']:.4f}")
+            logger.debug(f"🔍 Categorizing volatility {volatility:.6f} ({volatility*100:.4f}%) - Universal")
+            logger.debug(f"🔍 Universal thresholds: LOW={thresholds['LOW']:.4f}, MODERATE={thresholds['MODERATE']:.4f}, HIGH={thresholds['HIGH']:.4f}, EXTREME={thresholds['EXTREME']:.4f}")
             
             logger.debug(f"🔍 Categorizing {timeframe} volatility: {volatility:.6f} ({volatility*100:.4f}%)")
             
@@ -418,20 +425,20 @@ class VolatilityCalculator:
                     category = "VERY_LOW"
                     trend = "BORING"
             elif timeframe == "5m":
-                # 5-minute thresholds (using strategy-specific thresholds)
-                if volatility >= thresholds["EXTREME"]:
+                # 5-minute thresholds (adjusted for more realistic categorization)
+                if volatility >= 0.0120:  # > 1.20% (EXTREME)
                     category = "EXTREME"
                     trend = "VOLATILE"
-                elif volatility >= thresholds["HIGH"]:
+                elif volatility >= 0.0060:  # 0.60% - 1.20% (HIGH)
                     category = "HIGH"
                     trend = "ACTIVE"
-                elif volatility >= thresholds["MODERATE"]:
+                elif volatility >= 0.0030:  # 0.30% - 0.60% (MODERATE)
                     category = "MODERATE" 
                     trend = "NORMAL"
-                elif volatility >= thresholds["LOW"]:
+                elif volatility >= 0.0015:  # 0.15% - 0.30% (LOW)
                     category = "LOW"
                     trend = "QUIET"
-                else:  # < LOW threshold
+                else:  # < 0.15% (VERY_LOW)
                     category = "VERY_LOW"
                     trend = "BORING"
             elif timeframe == "1h":
@@ -469,8 +476,8 @@ class VolatilityCalculator:
                     category = "VERY_LOW"
                     trend = "BORING"
             else:
-                # Default to 5m thresholds with strategy
-                return self.categorize_volatility_for_trading(volatility, "5m", strategy)
+                # Default to 5m thresholds
+                return self.categorize_volatility_for_trading(volatility, "5m")
             
             logger.debug(f"🔍 {timeframe} volatility categorized as: {category} ({trend})")
             

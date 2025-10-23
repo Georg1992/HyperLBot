@@ -288,8 +288,8 @@ class HyperliquidAPI:
                 # For daily candles, use calendar-based dates, not rolling windows
                 from datetime import datetime, timedelta
                 now = datetime.now()
-                # Use start of today as end time to get completed daily candles
-                end_time = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                # Include today's candle by using current time as end time
+                end_time = now
                 start_time = end_time - timedelta(days=limit-1)  # Go back (limit-1) days
                 
                 start_timestamp = int(start_time.timestamp() * 1000)

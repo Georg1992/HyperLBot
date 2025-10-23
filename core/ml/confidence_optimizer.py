@@ -162,7 +162,7 @@ class ConfidenceOptimizer:
         factor_names = [
             "expected_value", "rsi_signal", "volume_confirmation", "pressure_momentum",
             "pattern_confirmation", "trend_alignment", "sr_proximity", "market_quality",
-            "sentiment_alignment", "funding_alignment", "global_volume", "poc_proximity",
+            "sentiment_alignment", "funding_alignment", "poc_proximity",
             "cross_asset_correlation", "volatility_penalty"
         ]
         
@@ -186,7 +186,7 @@ class ConfidenceOptimizer:
                 "rsi", "volatility", "high_volume", "buy_pressure", "excellent_market",
                 "expected_value", "rsi_signal", "volume_confirmation", "pressure_momentum",
                 "pattern_confirmation", "trend_alignment", "sr_proximity", "market_quality",
-                "sentiment_alignment", "funding_alignment", "global_volume", "poc_proximity",
+                "sentiment_alignment", "funding_alignment", "poc_proximity",
                 "cross_asset_correlation", "volatility_penalty"
             ]
             
@@ -293,7 +293,7 @@ class ConfidenceOptimizer:
         factor_configs = {
             "expected_value": {"weight": 0.20, "threshold": 0.05, "boost": 0.20, "penalty": -0.15},
             "rsi_signal": {"weight": 0.15, "threshold": 30.0, "boost": 0.15, "penalty": 0.0},
-            "volume_confirmation": {"weight": 0.10, "threshold": 0.0, "boost": 0.10, "penalty": -0.05},
+            "volume_confirmation": {"weight": 0.15, "threshold": 0.0, "boost": 0.15, "penalty": -0.08},
             "pressure_momentum": {"weight": 0.08, "threshold": 0.0, "boost": 0.08, "penalty": -0.08},
             "pattern_confirmation": {"weight": 0.06, "threshold": 0.0, "boost": 0.06, "penalty": 0.0},
             "trend_alignment": {"weight": 0.05, "threshold": 0.0, "boost": 0.05, "penalty": -0.05},
@@ -301,7 +301,6 @@ class ConfidenceOptimizer:
             "market_quality": {"weight": 0.08, "threshold": 0.0, "boost": 0.08, "penalty": -0.10},
             "sentiment_alignment": {"weight": 0.03, "threshold": 0.0, "boost": 0.03, "penalty": 0.0},
             "funding_alignment": {"weight": 0.03, "threshold": 0.0, "boost": 0.03, "penalty": 0.0},
-            "global_volume": {"weight": 0.03, "threshold": 0.0, "boost": 0.03, "penalty": 0.0},
             "poc_proximity": {"weight": 0.03, "threshold": 0.01, "boost": 0.03, "penalty": 0.0},
             "cross_asset_correlation": {"weight": 0.02, "threshold": 0.5, "boost": 0.02, "penalty": 0.0},
             "volatility_penalty": {"weight": 0.0, "threshold": 0.0, "boost": 0.0, "penalty": -0.08}
@@ -343,7 +342,7 @@ class ConfidenceOptimizer:
         return {
             "expected_value": ConfidenceFactor("expected_value", 0.20, 0.05, 0.20, -0.15),
             "rsi_signal": ConfidenceFactor("rsi_signal", 0.15, 30.0, 0.15, 0.0),
-            "volume_confirmation": ConfidenceFactor("volume_confirmation", 0.10, 0.0, 0.10, -0.05),
+            "volume_confirmation": ConfidenceFactor("volume_confirmation", 0.15, 0.0, 0.15, -0.08),
             "pressure_momentum": ConfidenceFactor("pressure_momentum", 0.08, 0.0, 0.08, -0.08),
             "pattern_confirmation": ConfidenceFactor("pattern_confirmation", 0.06, 0.0, 0.06, 0.0),
             "trend_alignment": ConfidenceFactor("trend_alignment", 0.05, 0.0, 0.05, -0.05),
@@ -351,7 +350,6 @@ class ConfidenceOptimizer:
             "market_quality": ConfidenceFactor("market_quality", 0.08, 0.0, 0.08, -0.10),
             "sentiment_alignment": ConfidenceFactor("sentiment_alignment", 0.03, 0.0, 0.03, 0.0),
             "funding_alignment": ConfidenceFactor("funding_alignment", 0.03, 0.0, 0.03, 0.0),
-            "global_volume": ConfidenceFactor("global_volume", 0.03, 0.0, 0.03, 0.0),
             "poc_proximity": ConfidenceFactor("poc_proximity", 0.03, 0.01, 0.03, 0.0),
             "cross_asset_correlation": ConfidenceFactor("cross_asset_correlation", 0.02, 0.5, 0.02, 0.0),
             "volatility_penalty": ConfidenceFactor("volatility_penalty", 0.0, 0.0, 0.0, -0.08)

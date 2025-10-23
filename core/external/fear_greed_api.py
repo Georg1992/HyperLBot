@@ -43,22 +43,45 @@ class FearGreedAPI:
                 logger.debug("📊 Using cached Fear & Greed data")
                 return self.cached_data
             
-            # Use Yahoo Finance API for Fear & Greed data
-            from core.external.yahoo_finance_api import get_global_yahoo_finance_api
-            yahoo_api = get_global_yahoo_finance_api()
+            # Use actual Fear & Greed Index API from alternative.me
+            logger.info("📊 Fetching Fear & Greed data from alternative.me API")
             
-            fear_greed_data = yahoo_api.get_fear_greed_data()
-            
-            if fear_greed_data and "error" not in fear_greed_data:
-                # Cache the result
-                self.cached_data = fear_greed_data
-                self.last_fetch_time = time.time()
+            try:
+                response = requests.get("https://api.alternative.me/fng/", timeout=10)
+                response.raise_for_status()
                 
-                logger.success(f"✅ Fear & Greed Index: {fear_greed_data.get('index_value', 'unknown')} ({fear_greed_data.get('sentiment', 'unknown')})")
-                return fear_greed_data
-            else:
-                logger.warning("⚠️ Failed to fetch Fear & Greed data from Yahoo Finance")
-                raise ValueError("Real Fear & Greed data not available - NO FALLBACKS")
+                data = response.json()
+                
+                if data.get("data") and len(data["data"]) > 0:
+                    fng_data = data["data"][0]
+                    
+                    # Parse the Fear & Greed data
+                    index_value = int(fng_data["value"])
+                    classification = fng_data["value_classification"]
+                    
+                    # Convert to our format
+                    fear_greed_data = {
+                        'index_value': index_value,
+                        'sentiment': classification.upper().replace(" ", "_"),
+                        'timestamp': int(fng_data["timestamp"]),
+                        'data_source': 'alternative.me_fng',
+                        'confidence': 0.9,  # High confidence from official API
+                        'sentiment_signals': self._generate_sentiment_signals(index_value, classification)
+                    }
+                    
+                    # Cache the result
+                    self.cached_data = fear_greed_data
+                    self.last_fetch_time = time.time()
+                    
+                    logger.success(f"✅ Fear & Greed Index: {index_value} ({classification})")
+                    return fear_greed_data
+                else:
+                    logger.warning("⚠️ No Fear & Greed data returned from API")
+                    raise ValueError("Real Fear & Greed data not available - NO FALLBACKS")
+                    
+            except requests.RequestException as e:
+                logger.error(f"❌ Failed to fetch Fear & Greed data from API: {e}")
+                raise ValueError(f"Real Fear & Greed data not available - NO FALLBACKS: {e}")
                 
         except Exception as e:
             logger.error(f"❌ Fear & Greed Index fetch failed: {e}")

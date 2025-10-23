@@ -33,61 +33,6 @@ class RSICalculator:
         
         logger.info("🔬 RSI Calculator initialized - RSI(14) with real-time updates")
     
-    def calculate_standalone_rsi(self, candles: List[Dict], periods: int = 14) -> float:
-        """
-        Calculate standalone RSI from candles (doesn't affect instance state)
-        Perfect for Hyperliquid analysis - just calculates and returns RSI value
-        """
-        try:
-            if len(candles) < periods + 1:
-                return technical_constants.RSI_NEUTRAL
-            
-            # Extract candle closes
-            closes = [float(candle['close']) for candle in candles]
-            
-            # Calculate price changes
-            price_changes = []
-            for i in range(1, len(closes)):
-                change = closes[i] - closes[i-1]
-                price_changes.append(change)
-            
-            if len(price_changes) < periods:
-                return technical_constants.RSI_NEUTRAL
-            
-            # Initial period: Simple Moving Average for first calculation
-            initial_gains = [max(0, change) for change in price_changes[:periods]]
-            initial_losses = [max(0, -change) for change in price_changes[:periods]]
-            
-            initial_avg_gain = sum(initial_gains) / periods
-            initial_avg_loss = sum(initial_losses) / periods
-            
-            # Apply Wilder's smoothing for remaining periods
-            wilder_avg_gain = initial_avg_gain
-            wilder_avg_loss = initial_avg_loss
-            
-            # Process each subsequent price change with Wilder's EMA
-            for i in range(periods, len(price_changes)):
-                change = price_changes[i]
-                current_gain = max(0, change)
-                current_loss = max(0, -change)
-                
-                # Wilder's EMA formula
-                alpha = 1.0 / periods
-                wilder_avg_gain = (alpha * current_gain) + ((1 - alpha) * wilder_avg_gain)
-                wilder_avg_loss = (alpha * current_loss) + ((1 - alpha) * wilder_avg_loss)
-            
-            # Calculate final RSI
-            if wilder_avg_loss == 0:
-                rsi = 100.0
-            else:
-                rs = wilder_avg_gain / wilder_avg_loss
-                rsi = 100 - (100 / (1 + rs))
-            
-            return round(rsi, 2)
-            
-        except Exception as e:
-            logger.error(f"❌ Standalone RSI calculation failed: {e}")
-            return technical_constants.RSI_NEUTRAL
     
     def calculate_hyperliquid_baseline_rsi(self, candles: List[Dict], periods: int = 14) -> float:
         """
@@ -258,21 +203,46 @@ class RSICalculator:
             logger.warning(f"RSI momentum calculation failed: {e}")
             return 0.0
     
-    def get_current_rsi_data(self) -> Dict[str, Any]:
-        """Get current RSI data for trading decisions"""
-        if not self.rsi_initialized:
-            raise Exception("RSI not initialized")
+    def get_latest_analysis(self) -> Dict[str, Any]:
+        """
+        Get latest RSI analysis for MarketDataService coordination
         
-        return {
-            "rsi": self.current_rsi,
-            "rsi_baseline": self.baseline_rsi,
-            "rsi_trend": self._get_rsi_trend(self.current_rsi),
-            "rsi_signal": self._get_rsi_signal(self.current_rsi),
-            "rsi_momentum": self._calculate_rsi_momentum(),
-            "periods": self.periods,
-            "initialized": self.rsi_initialized,
-            "data_source": "rsi_calculator"
-        }
+        Returns:
+            Dict with current RSI analysis
+        """
+        try:
+            if not self.rsi_initialized:
+                return {
+                    "rsi": None,
+                    "rsi_trend": "UNKNOWN",
+                    "rsi_signal": "NEUTRAL",
+                    "rsi_momentum": 0.0,
+                    "baseline_rsi": self.baseline_rsi,
+                    "initialized": False,
+                    "error": "RSI not initialized"
+                }
+            
+            return {
+                "rsi": self.current_rsi,
+                "rsi_trend": self._get_rsi_trend(self.current_rsi),
+                "rsi_signal": self._get_rsi_signal(self.current_rsi),
+                "rsi_momentum": self._calculate_rsi_momentum(),
+                "baseline_rsi": self.baseline_rsi,
+                "initialized": True,
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get latest RSI analysis: {e}")
+            return {
+                "rsi": None,
+                "rsi_trend": "ERROR",
+                "rsi_signal": "ERROR",
+                "rsi_momentum": 0.0,
+                "baseline_rsi": self.baseline_rsi,
+                "initialized": False,
+                "error": str(e)
+            }
 
 
 # Singleton pattern implementation

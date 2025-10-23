@@ -42,7 +42,7 @@ class TradingExecution:
             from core.services.system_initializer import get_system_initializer
             system_initializer = get_system_initializer()
             market_data_service = system_initializer.singleton_systems.get("market_data_service")
-            hyperliquid_price = market_data_service.get_hyperliquid_price() if market_data_service else None
+            hyperliquid_price = market_data_service.get_current_price() if market_data_service else None
             if not hyperliquid_price:
                 return False
             
@@ -608,7 +608,7 @@ class TradingExecution:
             })
             
             # Log partial close
-            self.dashboard_service.add_activity(f"💰 Partial close: {close_percentage*100:.1f}% of {position['trade_id']}", "INFO")
+            logger.info(f"💰 Partial close: {close_percentage*100:.1f}% of {position['trade_id']}")
             
         except Exception as e:
             logger.error(f"❌ Failed to execute partial close: {e}")
@@ -633,7 +633,7 @@ class TradingExecution:
             position["entry_price"] = new_entry_price
             
             # Log scale-in
-            self.dashboard_service.add_activity(f"📈 Scale-in: {scale_size} BTC to {position['trade_id']}", "INFO")
+            logger.info(f"📈 Scale-in: {scale_size} BTC to {position['trade_id']}")
             
         except Exception as e:
             logger.error(f"❌ Failed to execute scale-in: {e}")

@@ -279,21 +279,16 @@ class PredictionExecutor:
             # Note: Kelly position sizing removed - using fixed position sizes
             position_size = prediction.get("size", 0.001)  # Default 0.001 BTC
             
-            # Convert to BTC
+            # Get entry price for validation
             entry_price = prediction.get("entry_price", 120000)
             
             # Handle None values
-            if kelly_position_dollars is None:
-                logger.warning(f"⚠️ Kelly position dollars is None - using default")
-                kelly_position_dollars = 500
             if entry_price is None:
                 logger.warning(f"⚠️ Entry price is None in position sizing - using default")
                 entry_price = 120000
             
-            kelly_position_btc = kelly_position_dollars / entry_price
-            
             # Cap at strategy max
-            position_size = min(kelly_position_btc, thresholds.max_position_size)
+            position_size = min(position_size, thresholds.max_position_size)
             
             # Scale by confidence (if above optimal, use full Kelly, otherwise scale down)
             if confidence is not None and confidence < thresholds.optimal_confidence:
@@ -410,8 +405,7 @@ class PredictionExecutor:
                         "order_id": order_id,
                         "timestamp": time.time()
                     }
-                    dashboard.add_trade(trade_display)
-                    logger.debug("📊 Pending order added to dashboard")
+                    logger.info(f"📊 Pending order: {trade_display['side']} {trade_display['size']} BTC @ ${trade_display['price']:.2f}")
             except Exception as e:
                 logger.warning(f"⚠️ Could not add pending order to dashboard: {e}")
             

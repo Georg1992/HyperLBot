@@ -30,25 +30,11 @@ class DashboardService:
         self.last_heartbeat = 0
         self.heartbeat_interval = 30  # 30 seconds
         
-        # Initialize dashboard data structure
+        # Initialize dashboard data structure - ESSENTIAL DATA ONLY
         self._data = {
             "session": {},
-            "account": {},
             "market": {},
-            "predictions": [],
-            "trades": [],
-            "logs": [],
-            "data_sources": {
-                "account_manager_synced": False,
-                "session_manager_synced": False,
-                "last_sync_time": datetime.now().isoformat()
-            },
-            "pressure": {
-                "direction": "NEUTRAL",
-                "confidence": "50%",
-                "strength": 0.5,
-                "trend": "NEUTRAL"
-            },
+            "chart": {},
             "last_update": datetime.now().isoformat()
         }
         
@@ -66,12 +52,36 @@ class DashboardService:
         return cls._global_instance
     
     def _load_data(self):
-        """Load dashboard data from file"""
+        """Load dashboard data from file - only if fresh"""
         try:
             if os.path.exists(self._data_file):
                 with open(self._data_file, 'r') as f:
-                    self._data = json.load(f)
-                logger.debug("📊 Dashboard data loaded from file")
+                    file_data = json.load(f)
+                
+                # Check if data is fresh (less than 5 minutes old)
+                last_update = file_data.get("last_update")
+                if last_update:
+                    try:
+                        from datetime import datetime
+                        file_time = datetime.fromisoformat(last_update)
+                        current_time = datetime.now()
+                        time_diff = (current_time - file_time).total_seconds()
+                        
+                        # Only load data if it's less than 30 seconds old (very fresh)
+                        if time_diff < 30:  # 30 seconds
+                            self._data = file_data
+                            logger.debug("📊 Dashboard data loaded from file (fresh data)")
+                        else:
+                            logger.info("🧹 Dashboard data file is stale - starting with fresh data")
+                            # Keep the initialized structure, don't load stale data
+                    except Exception as e:
+                        logger.warning(f"⚠️ Could not parse file timestamp: {e}")
+                        # Keep the initialized structure, don't load stale data
+                else:
+                    logger.info("🧹 Dashboard data file has no timestamp - starting with fresh data")
+                    # Keep the initialized structure, don't load stale data
+            else:
+                logger.debug("📊 No dashboard data file found - starting fresh")
         except Exception as e:
             logger.warning(f"⚠️ Could not load dashboard data: {e}")
     
@@ -93,6 +103,11 @@ class DashboardService:
                 self._save_data()
                 # Trigger WebSocket emission
                 self._trigger_websocket_emission()
+                
+                # Debug: Log what data is being stored
+                logger.debug(f"📊 DashboardService updated with market data keys: {list(market_data.keys())}")
+                logger.debug(f"📊 DashboardService current_price: {market_data.get('current_price', 'N/A')}")
+                # RSI removed - not working properly
         except Exception as e:
             logger.error(f"❌ Could not update market data: {e}")
     
@@ -105,123 +120,25 @@ class DashboardService:
         except Exception as e:
             logger.error(f"❌ Could not trigger WebSocket emission: {e}")
     
-    def update_data_status(self, data_status: Dict[str, Any]):
-        """Update dashboard data status"""
-        try:
-            with self._lock:
-                if "data_sources" not in self._data:
-                    self._data["data_sources"] = {}
-                self._data["data_sources"].update(data_status)
-                self._save_data()
-        except Exception as e:
-            logger.error(f"❌ Could not update data status: {e}")
-    
-    def add_activity(self, message: str, level: str = "INFO", source: str = "bot"):
-        """Add activity to dashboard"""
-        try:
-            with self._lock:
-                activity = {
-                    "timestamp": datetime.now().isoformat(),
-                    "message": message,
-                    "level": level,
-                    "source": source
-                }
-                self._data["logs"].append(activity)
-                
-                # Keep only last 100 activities
-                if len(self._data["logs"]) > 100:
-                    self._data["logs"] = self._data["logs"][-100:]
-                
-                self._save_data()
-        except Exception as e:
-            logger.error(f"❌ Could not add activity: {e}")
-    
-    def add_signal(self, signal_data: Dict[str, Any]):
-        """Add signal to dashboard"""
-        try:
-            with self._lock:
-                signal_data["timestamp"] = datetime.now().isoformat()
-                if "signals" not in self._data:
-                    self._data["signals"] = []
-                self._data["signals"].append(signal_data)
-                
-                # Keep only last 50 signals
-                if len(self._data["signals"]) > 50:
-                    self._data["signals"] = self._data["signals"][-50:]
-                
-                self._save_data()
-        except Exception as e:
-            logger.error(f"❌ Could not add signal: {e}")
-    
-    def add_prediction(self, prediction_data: Dict[str, Any]):
-        """Add prediction to dashboard"""
-        try:
-            with self._lock:
-                prediction_data["timestamp"] = datetime.now().isoformat()
-                self._data["predictions"].append(prediction_data)
-                
-                # Keep only last 20 predictions
-                if len(self._data["predictions"]) > 20:
-                    self._data["predictions"] = self._data["predictions"][-20:]
-                
-                self._save_data()
-                # Trigger WebSocket emission to update dashboard
-                self._trigger_websocket_emission()
-        except Exception as e:
-            logger.error(f"❌ Could not add prediction: {e}")
-    
-    def add_trade(self, trade_data: Dict[str, Any]):
-        """Add trade to dashboard"""
-        try:
-            with self._lock:
-                trade_data["timestamp"] = datetime.now().isoformat()
-                self._data["trades"].append(trade_data)
-                
-                # Keep only last 100 trades
-                if len(self._data["trades"]) > 100:
-                    self._data["trades"] = self._data["trades"][-100:]
-                
-                self._save_data()
-        except Exception as e:
-            logger.error(f"❌ Could not add trade: {e}")
-    
-    def update_trade_history(self, trades: List[Dict[str, Any]]):
-        """Update trade history with complete order lifecycle data"""
-        try:
-            with self._lock:
-                # Replace trades with new data from order lifecycle
-                self._data["trades"] = trades.copy()
-                
-                # Keep only last 100 trades
-                if len(self._data["trades"]) > 100:
-                    self._data["trades"] = self._data["trades"][-100:]
-                
-                self._save_data()
-                logger.debug(f"📊 Trade history updated with {len(trades)} trades")
-        except Exception as e:
-            logger.error(f"❌ Could not update trade history: {e}")
-    
-    def sync_from_account_manager(self, account_data: Dict[str, Any]):
-        """Sync account data from AccountManager"""
-        try:
-            with self._lock:
-                self._data["account"] = account_data.copy()
-                self._data["data_sources"]["account_manager_synced"] = True
-                self._data["data_sources"]["last_sync_time"] = datetime.now().isoformat()
-                self._save_data()
-        except Exception as e:
-            logger.error(f"❌ Could not sync account data: {e}")
-    
-    def sync_from_session_manager(self, session_data: Dict[str, Any]):
-        """Sync session data from SessionManager"""
+    def update_session_data(self, session_data: Dict[str, Any]):
+        """Update session data"""
         try:
             with self._lock:
                 self._data["session"] = session_data.copy()
-                self._data["data_sources"]["session_manager_synced"] = True
-                self._data["data_sources"]["last_sync_time"] = datetime.now().isoformat()
                 self._save_data()
+                logger.debug(f"📊 Session data updated: {session_data.get('session_id', 'N/A')}")
         except Exception as e:
-            logger.error(f"❌ Could not sync session data: {e}")
+            logger.error(f"❌ Could not update session data: {e}")
+    
+    def update_chart_data(self, chart_data: Dict[str, Any]):
+        """Update chart data"""
+        try:
+            with self._lock:
+                self._data["chart"] = chart_data.copy()
+                self._save_data()
+                logger.debug(f"📊 Chart data updated: {len(chart_data.get('historical', []))} candles")
+        except Exception as e:
+            logger.error(f"❌ Could not update chart data: {e}")
     
     def get_data(self) -> Dict[str, Any]:
         """Get all dashboard data"""
@@ -233,43 +150,47 @@ class DashboardService:
         with self._lock:
             return self._data.get("session", {}).copy()
     
-    def get_account_data(self) -> Dict[str, Any]:
-        """Get account data"""
-        with self._lock:
-            return self._data.get("account", {}).copy()
-    
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data"""
         with self._lock:
-            return self._data.get("market_data", {}).copy()
+            return self._data.get("market", {}).copy()
     
-    def get_trades(self) -> List[Dict[str, Any]]:
-        """Get trades data"""
+    def get_chart_data(self) -> Dict[str, Any]:
+        """Get chart data"""
         with self._lock:
-            return self._data.get("trades", []).copy()
-    
-    def clear_presentation_data(self):
-        """Clear presentation data (logs, predictions, trades only - market data preserved)"""
-        try:
-            with self._lock:
-                self._data["logs"] = []
-                self._data["predictions"] = []
-                self._data["trades"] = []
-                self._save_data()
-                logger.info("🧹 Dashboard presentation data cleared (logs, predictions, trades only - market data preserved)")
-        except Exception as e:
-            logger.error(f"❌ Could not clear presentation data: {e}")
+            return self._data.get("chart", {}).copy()
     
     def clear_session_data(self):
         """Clear session data"""
         try:
             with self._lock:
                 self._data["session"] = {}
-                self._data["data_sources"]["session_manager_synced"] = False
                 self._save_data()
                 logger.info("🧹 Session data cleared - session ended")
         except Exception as e:
             logger.error(f"❌ Could not clear session data: {e}")
+    
+    def clear_stale_data(self):
+        """Clear all stale data when starting a new session"""
+        try:
+            with self._lock:
+                # Reset to fresh data structure
+                self._data = {
+                    "session": {},
+                    "market": {},
+                    "chart": {},
+                    "last_update": datetime.now().isoformat()
+                }
+                self._save_data()
+                
+                # Also delete the old data file to prevent loading stale data
+                if os.path.exists(self._data_file):
+                    os.remove(self._data_file)
+                    logger.debug("🗑️ Removed stale dashboard data file")
+                
+                logger.info("🧹 Stale dashboard data cleared - fresh session started")
+        except Exception as e:
+            logger.error(f"❌ Could not clear stale data: {e}")
     
     def check_bot_heartbeat(self) -> bool:
         """Check if bot heartbeat is fresh"""
@@ -293,28 +214,6 @@ class DashboardService:
         except Exception as e:
             logger.error(f"❌ Could not check bot heartbeat: {e}")
             return False
-    
-    def auto_cleanup_stale_sessions(self):
-        """Auto-cleanup stale sessions"""
-        try:
-            # Check if session is stale (older than 1 hour)
-            session_data = self.get_session_data()
-            if session_data.get("session_id") and session_data.get("session_id") != "no_session":
-                session_start = session_data.get("start_time")
-                if session_start:
-                    try:
-                        from datetime import datetime
-                        start_time = datetime.fromisoformat(session_start.replace('Z', '+00:00'))
-                        current_time = datetime.now()
-                        time_diff = (current_time - start_time).total_seconds()
-                        
-                        if time_diff > 3600:  # 1 hour
-                            logger.info("🧹 Auto-cleaning stale session")
-                            self.clear_session_data()
-                    except Exception:
-                        pass  # Ignore parsing errors
-        except Exception as e:
-            logger.error(f"❌ Could not auto-cleanup stale sessions: {e}")
     
     def create_initial_heartbeat(self, session_manager=None, strategy_name: str = "standard", paper_balance: float = 0.0):
         """Create initial heartbeat file immediately when bot starts"""
