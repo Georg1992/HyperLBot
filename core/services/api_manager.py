@@ -176,7 +176,7 @@ class APIManager:
                 logger.warning(f"⚠️ Fear & Greed API test failed: {e}")
             
             try:
-                whale_data = self.whale_analytics_api.get_whale_analytics()
+                whale_data = self.whale_analytics_api.get_raw_whale_transactions()
                 logger.success("✅ Whale Analytics API working")
             except Exception as e:
                 logger.warning(f"⚠️ Whale Analytics API test failed: {e}")

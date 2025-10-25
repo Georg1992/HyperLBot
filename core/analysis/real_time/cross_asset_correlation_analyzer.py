@@ -22,10 +22,9 @@ class CrossAssetCorrelationAnalyzer:
     """Analyzes cross-asset correlations for broader market context"""
     
     def __init__(self):
-        # Cache for external data to avoid excessive API calls
-        self._data_cache = {}
-        self._cache_timestamps = {}
-        self._cache_duration = 300  # 5 minutes cache for external data
+        # Use centralized cache system
+        from core.services.centralized_cache import get_global_centralized_cache
+        self._cache = get_global_centralized_cache()
         
         # Correlation history for trend analysis
         self._correlation_history = []
@@ -454,13 +453,9 @@ class CrossAssetCorrelationAnalyzer:
     
     def _get_cached_data(self, key: str) -> Optional[Dict[str, Any]]:
         """Get cached data if still valid"""
-        if key in self._data_cache and key in self._cache_timestamps:
-            if time.time() - self._cache_timestamps[key] < self._cache_duration:
-                return self._data_cache[key]
-        return None
+        return self._cache.get(key)
     
     def _cache_data(self, key: str, data: Dict[str, Any]):
         """Cache data with timestamp"""
-        self._data_cache[key] = data
-        self._cache_timestamps[key] = time.time()
+        self._cache.set(key, data, ttl=300)  # 5 minutes cache
     

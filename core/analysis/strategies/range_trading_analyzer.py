@@ -117,23 +117,15 @@ class RangeTradingAnalyzer:
         return (max_high - min_low) / min_low if min_low > 0 else 0.0
     
     def _calculate_period_volatility(self, candles: List[Dict]) -> float:
-        """Calculate volatility for a period"""
+        """Calculate volatility for a period using centralized VolatilityCalculator"""
         if len(candles) < 2:
             return 0.0
         
-        # Calculate price changes
-        price_changes = []
-        for i in range(1, len(candles)):
-            prev_close = candles[i-1].get("close", 0)
-            curr_close = candles[i].get("close", 0)
-            if prev_close > 0:
-                change = abs(curr_close - prev_close) / prev_close
-                price_changes.append(change)
-        
-        if not price_changes:
-            return 0.0
-        
-        return statistics.stdev(price_changes) if len(price_changes) > 1 else 0.0
+        # Use centralized VolatilityCalculator (SINGLE SOURCE OF TRUTH)
+        from core.calculations.volatility_calculator import get_global_volatility_calculator
+        volatility_calculator = get_global_volatility_calculator()
+        result = volatility_calculator.calculate_candle_volatility(candles, "5m", "standard")
+        return result.get("volatility", 0.0) if isinstance(result, dict) else result
     
     def _analyze_range_characteristics(self, range_periods: List[Dict]) -> Dict[str, Any]:
         """Analyze characteristics of detected ranges"""

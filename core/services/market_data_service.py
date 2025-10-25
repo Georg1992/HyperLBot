@@ -18,9 +18,11 @@ class MarketDataService:
         self.binance_api = binance_api
         self.binance_websocket = binance_websocket
         
-        # Processed data storage (from analysis modules)
-        self._processed_data = {}
-        self._data_timestamps = {}
+        # Use centralized cache system
+        from core.services.centralized_cache import get_global_centralized_cache
+        self._cache = get_global_centralized_cache()
+        
+        # Legacy update schedules (for backward compatibility)
         self._update_schedules = {
             "volatility": 60,      # 1 minute
             "trend": 60,           # 1 minute  
@@ -28,6 +30,7 @@ class MarketDataService:
             "rsi": 60,             # 1 minute
             "volume": 30,          # 30 seconds
             "market_conditions": 300,  # 5 minutes
+            "cross_asset_correlation_analyzer": 300,  # 5 minutes
         }
         
         # Analysis module references (will be set by SystemInitializer)
@@ -57,24 +60,17 @@ class MarketDataService:
     
     def _is_data_valid(self, data_type: str) -> bool:
         """Check if processed data is still valid based on schedule"""
-        if data_type not in self._data_timestamps:
-            return False
-        
-        duration = self._update_schedules.get(data_type, 300)  # Default 5 minutes
-        return time.time() - self._data_timestamps[data_type] < duration
+        # Data validity is now handled by centralized cache TTL
+        return True
     
     def _store_processed_data(self, data_type: str, data: Any) -> None:
         """Store processed data from analysis modules"""
-        self._processed_data[data_type] = data
-        self._data_timestamps[data_type] = time.time()
+        self._cache.set(data_type, data)
         logger.debug(f"📊 Stored processed data: {data_type}")
     
     def _get_processed_data(self, data_type: str) -> Any:
         """Get processed data if valid"""
-        if self._is_data_valid(data_type):
-            logger.debug(f"📊 Using processed data: {data_type}")
-            return self._processed_data.get(data_type)
-        return None
+        return self._cache.get(data_type)
     
     # ==================================================================================
     # PROCESSED DATA COORDINATION - Coordinate analysis from modules
@@ -194,6 +190,27 @@ class MarketDataService:
             logger.error(f"❌ Failed to get volume analysis: {e}")
             return {}
     
+    def get_cross_asset_analysis(self) -> Dict[str, Any]:
+        """Get cross asset correlation analysis"""
+        try:
+            # Check if we have valid processed data
+            cross_asset_data = self._get_processed_data("cross_asset_correlation_analyzer")
+            if cross_asset_data:
+                return cross_asset_data
+            
+            # If no valid data, trigger cross asset analysis
+            if "cross_asset_correlation_analyzer" in self._analysis_modules:
+                logger.info("📊 Triggering cross asset correlation analysis...")
+                cross_asset_analyzer = self._analysis_modules["cross_asset_correlation_analyzer"]
+                return cross_asset_analyzer.analyze_cross_asset_correlations(self._current_price or 110000.0)
+            
+            logger.warning("⚠️ No cross asset correlation analyzer registered")
+            return {}
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get cross asset analysis: {e}")
+            return {}
+    
     # ==================================================================================
     # UNIFIED PROCESSED DATA PACKAGES - Pre-processed data for consumers
     # ==================================================================================
@@ -229,6 +246,7 @@ class MarketDataService:
                 
                 # Market conditions and sentiment
                 "market_conditions": self.get_market_conditions_analysis(),
+                "cross_asset_analysis": self.get_cross_asset_analysis(),
                 "funding_analysis": self.get_funding_analysis(),
                 "orderbook_analysis": self.get_orderbook_analysis(),
                 
@@ -537,14 +555,63 @@ class MarketDataService:
             }
     
     def get_prediction_data(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get optimized data package for prediction engine"""
+        """Get optimized data package for prediction engine with clean metric mapping"""
         try:
             # Get unified analysis data
             analysis_data = self.get_unified_analysis_data(strategy)
             
-            # Add raw data access for prediction engine
+            # Clean metric mapping for prediction engine
             prediction_data = {
-                **analysis_data,
+                # Core data
+                "current_price": analysis_data.get("current_price", 0),
+                "timestamp": analysis_data.get("timestamp", time.time()),
+                "strategy": strategy,
+                
+                # RSI - extract number and category
+                "rsi": analysis_data.get("rsi", {}).get("rsi", 50),
+                "rsi_category": analysis_data.get("rsi", {}).get("category", "NEUTRAL"),
+                
+                # Volume - extract category
+                "volume_category": analysis_data.get("volume", {}).get("category", "MODERATE"),
+                "volume_5m": analysis_data.get("volume", {}).get("volume_5m", 0),
+                
+                # Trend - extract direction and create trend_5m structure
+                "trend": analysis_data.get("trend", {}).get("direction", "SIDEWAYS"),
+                "trend_5m": {
+                    "trend_short": analysis_data.get("trend", {}).get("timeframes", {}).get("short", "SIDEWAYS"),
+                    "trend_medium": analysis_data.get("trend", {}).get("timeframes", {}).get("medium", "SIDEWAYS"),
+                    "trend_long": analysis_data.get("trend", {}).get("timeframes", {}).get("long", "SIDEWAYS")
+                },
+                
+                # Volatility - extract category
+                "volatility_category": analysis_data.get("volatility", {}).get("category", "MODERATE"),
+                "volatility_5m": analysis_data.get("volatility", {}).get("volatility_5m", 0),
+                
+                # Support/Resistance - pass full data
+                "support_resistance": analysis_data.get("support_resistance", {}),
+                
+                # Pressure - pass full data
+                "pressure_data": analysis_data.get("pressure", {}),
+                
+                # Pattern analysis - pass full data
+                "pattern_analysis": analysis_data.get("patterns", {}),
+                
+                # Volume profile - pass full data
+                "volume_profile_analysis": analysis_data.get("volume_profile", {}),
+                
+                # Funding analysis - pass full data
+                "funding_analysis": analysis_data.get("funding_analysis", {}),
+                
+                # Cross-asset analysis - pass full data
+                "cross_asset_analysis": analysis_data.get("cross_asset_analysis", {}),
+                
+                # Market conditions - pass full data
+                "market_conditions_analysis": analysis_data.get("market_conditions", {}),
+                
+                # Orderbook analysis - pass full data
+                "orderbook_analysis": analysis_data.get("orderbook_analysis", {}),
+                
+                # Raw data access for prediction engine
                 "raw_data_access": {
                     "hyperliquid_api": self.hyperliquid_api,
                     "hyperliquid_websocket": self.hyperliquid_websocket,
@@ -552,6 +619,7 @@ class MarketDataService:
                 }
             }
             
+            logger.debug(f"📊 Prediction data prepared with {len(prediction_data)} metrics")
             return prediction_data
             
         except Exception as e:
@@ -584,23 +652,13 @@ class MarketDataService:
     def get_data_status(self) -> Dict[str, Any]:
         """Get current processed data status"""
         try:
-            current_time = time.time()
-            data_status = {}
-            
-            for data_type, timestamp in self._data_timestamps.items():
-                age = current_time - timestamp
-                data_status[data_type] = {
-                    "age_seconds": round(age, 2),
-                    "is_valid": self._is_data_valid(data_type),
-                    "last_update": timestamp
-                }
+            # Get cache stats from centralized cache
+            cache_stats = self._cache.get_stats()
             
             return {
-                "processed_data_count": len(self._processed_data),
                 "registered_modules": list(self._analysis_modules.keys()),
-                "data_status": data_status,
-                "update_schedules": self._update_schedules,
-                "last_coordination": current_time
+                "cache_stats": cache_stats,
+                "last_coordination": time.time()
             }
         except Exception as e:
             logger.error(f"❌ Failed to get data status: {e}")
@@ -610,17 +668,24 @@ class MarketDataService:
         """Invalidate processed data - specific type or all"""
         try:
             if data_type:
-                # Invalidate specific data type
-                self._processed_data.pop(data_type, None)
-                self._data_timestamps.pop(data_type, None)
+                # Invalidate specific data type using centralized cache
+                self._cache.invalidate(data_type)
                 logger.info(f"🗑️ Invalidated {data_type} processed data")
             else:
-                # Invalidate all processed data
-                self._processed_data.clear()
-                self._data_timestamps.clear()
+                # Invalidate all processed data using centralized cache
+                self._cache.invalidate()
                 logger.info("🗑️ Invalidated all processed data")
         except Exception as e:
             logger.error(f"❌ Failed to invalidate processed data: {e}")
+    
+    def force_sr_recalculation(self):
+        """Force S/R recalculation by clearing all related caches"""
+        try:
+            # Use centralized cache to clear all S/R related data
+            self._cache.force_sr_recalculation()
+            logger.info("🗑️ FORCED S/R recalculation - all caches cleared")
+        except Exception as e:
+            logger.error(f"❌ Failed to force S/R recalculation: {e}")
     
     def get_analysis_module_status(self) -> Dict[str, Any]:
         """Get status of registered analysis modules"""
@@ -649,7 +714,7 @@ class MarketDataService:
         return {
             "hyperliquid_connected": True,
             "websocket_connected": self.hyperliquid_websocket.is_connected() if self.hyperliquid_websocket else False,
-            "processed_data_count": len(self._processed_data),
+            "cache_stats": self._cache.get_stats(),
             "registered_modules": list(self._analysis_modules.keys()),
             "last_update": time.time()
         }
@@ -708,24 +773,6 @@ class MarketDataService:
             logger.error(f"❌ Failed to get market data: {e}")
             return {}
     
-    def get_all_market_data(self) -> Dict[str, Any]:
-        """Get comprehensive market data (alias for get_market_data)"""
-        try:
-            return self.get_market_data()
-        except Exception as e:
-            logger.error(f"❌ Failed to get all market data: {e}")
-            return {}
-    
-    def get_historical_candles(self, symbol: str, timeframe: str, count: int) -> List[Dict]:
-        """Get historical candles from API"""
-        try:
-            from core.services.historical_data_service import get_global_historical_data_service
-            historical_service = get_global_historical_data_service()
-            return historical_service.get_historical_candles(symbol, timeframe, count)
-        except Exception as e:
-            logger.error(f"❌ Failed to get historical candles: {e}")
-            return []
-
 # Global instance
 _global_market_data_service = None
 

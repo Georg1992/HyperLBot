@@ -23,6 +23,10 @@ class VolumeCalculator:
     
     def __init__(self):
         logger.info("📊 Volume Calculator initialized")
+        # Volume tracking for 5-minute resets
+        self._last_reset_time = 0
+        self._current_volume = 0.0
+        self._last_raw_volume = None
     
     def calculate_hyperliquid_5m_volume(self, hyperliquid_websocket) -> Dict[str, Any]:
         """
@@ -38,8 +42,54 @@ class VolumeCalculator:
             if not hyperliquid_websocket:
                 raise ValueError("Hyperliquid WebSocket not available")
             
-            # Get current 5m volume from Hyperliquid
-            current_5m_volume = hyperliquid_websocket.get_current_5m_volume()
+            # Get raw trades from Hyperliquid WebSocket (PURE DATA)
+            raw_trades = hyperliquid_websocket.get_raw_trades()
+            
+            # Calculate volume from raw trades (BUSINESS LOGIC IN CALCULATOR)
+            current_time = time.time()
+            five_minutes_ago = current_time - (5 * 60)
+            
+            # Filter trades from last 5 minutes
+            recent_trades = [
+                trade for trade in raw_trades 
+                if trade.get('timestamp', 0) >= five_minutes_ago
+            ]
+            
+            # Calculate volume from filtered trades
+            raw_volume = sum(trade.get('size', 0) for trade in recent_trades)
+            
+            # Implement 5-minute reset logic aligned to exact 5-minute intervals (0:00, 0:05, 0:10, etc.)
+            current_utc_time = time.time()
+            current_minute = int(current_utc_time // 60) % 60
+            current_5min_boundary = (current_minute // 5) * 5  # 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55
+            
+            # Calculate the exact timestamp of the current 5-minute boundary
+            current_5min_timestamp = int(current_utc_time // 300) * 300  # Round down to nearest 5-minute boundary
+            
+            if self._last_reset_time == 0:
+                # First time - initialize
+                self._last_reset_time = current_5min_timestamp
+                self._current_volume = raw_volume
+                logger.info(f"📊 Volume initialized at 5min boundary: {current_5min_boundary:02d}:00")
+            elif current_5min_timestamp > self._last_reset_time:
+                # New 5-minute boundary reached - reset volume
+                logger.info(f"📊 Volume reset at 5min boundary {current_5min_boundary:02d}:00: {self._current_volume:.2f} -> 0.0 BTC")
+                self._last_reset_time = current_5min_timestamp
+                self._current_volume = 0.0
+            else:
+                # Same 5-minute period - accumulate volume from new trades
+                # Only add the difference to avoid double-counting
+                if self._last_raw_volume is not None:
+                    new_volume = max(0, raw_volume - self._last_raw_volume)
+                    self._current_volume += new_volume
+                else:
+                    # First calculation - use full volume
+                    self._current_volume = raw_volume
+                
+                # Store current raw volume for next calculation
+                self._last_raw_volume = raw_volume
+            
+            current_5m_volume = self._current_volume
             
             # Get volume history for momentum analysis
             volume_history = self._get_volume_history()
@@ -258,6 +308,12 @@ class VolumeCalculator:
             if hyperliquid_websocket:
                 try:
                     analysis["hyperliquid_5m"] = self.calculate_hyperliquid_5m_volume(hyperliquid_websocket)
+                    
+                    # Add debug information if available
+                    if hasattr(hyperliquid_websocket, 'get_volume_debug_info'):
+                        debug_info = hyperliquid_websocket.get_volume_debug_info()
+                        analysis["debug_info"] = debug_info
+                        
                 except Exception as e:
                     logger.warning(f"Hyperliquid 5m volume calculation failed: {e}")
                     analysis["hyperliquid_5m"] = {"error": str(e)}

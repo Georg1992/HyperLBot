@@ -31,9 +31,11 @@ class BlockCypherAPI:
     def __init__(self):
         # BlockCypher API configuration
         self.api_base_url = "https://api.blockcypher.com/v1/btc/main"
-        self.cache = {}
-        self.cache_timestamps = {}
-        self.cache_duration = 300  # 5 minutes cache
+        
+        # Use centralized cache system
+        from core.services.centralized_cache import get_global_centralized_cache
+        self._cache = get_global_centralized_cache()
+        
         self.rate_limit_delay = 1  # 1 second between requests (generous rate limit)
         
         # Whale transaction thresholds (BTC)
@@ -48,14 +50,11 @@ class BlockCypherAPI:
 
     def _get_cached_data(self, key: str) -> Optional[Dict[str, Any]]:
         """Retrieve data from cache if valid"""
-        if key in self.cache and (time.time() - self.cache_timestamps.get(key, 0) < self.cache_duration):
-            return self.cache[key]
-        return None
+        return self._cache.get(key)
 
     def _cache_data(self, key: str, data: Dict[str, Any]):
         """Cache data with current timestamp"""
-        self.cache[key] = data
-        self.cache_timestamps[key] = time.time()
+        self._cache.set(key, data, ttl=300)  # 5 minutes cache
 
     def _rate_limit(self):
         """Enforce rate limiting"""
@@ -109,156 +108,66 @@ class BlockCypherAPI:
             logger.error(f"❌ Failed to get recent transactions: {e}")
             raise ValueError(f"BlockCypher API fetch failed: {e}")
 
-    def get_whale_transactions(self, min_btc: float = 10.0) -> Dict[str, Any]:
+    def get_raw_transactions(self) -> List[Dict[str, Any]]:
         """
-        Get whale transactions from BlockCypher API
+        Get raw transaction data from BlockCypher API - PURE DATA ONLY
         
-        Args:
-            min_btc: Minimum transaction value in BTC (default: 10 BTC)
-            
         Returns:
-            Dictionary with whale transaction data
+            List of raw transactions without filtering or analysis
         """
         try:
-            cache_key = f"whale_transactions_{min_btc}"
+            cache_key = "raw_transactions"
             cached_data = self._get_cached_data(cache_key)
             
             if cached_data:
                 return cached_data
             
-            # Get recent transactions
+            # Get recent transactions (PURE DATA)
             transactions = self.get_recent_transactions(limit=100)
             
-            # Filter for whale transactions
-            whale_transactions = []
-            min_satoshis = int(min_btc * 100000000)  # Convert BTC to satoshis
-            
-            for tx in transactions:
-                # Calculate total output value
-                total_value = sum(output.get('value', 0) for output in tx.get('outputs', []))
-                
-                if total_value >= min_satoshis:
-                    whale_transactions.append({
-                        'hash': tx.get('hash', ''),
-                        'value_btc': total_value / 100000000,
-                        'value_satoshis': total_value,
-                        'confirmations': tx.get('confirmations', 0),
-                        'received': tx.get('received', ''),
-                        'inputs': len(tx.get('inputs', [])),
-                        'outputs': len(tx.get('outputs', []))
-                    })
-            
-            # Analyze whale activity
-            whale_analysis = self._analyze_whale_activity(whale_transactions)
-            
+            # Return raw transactions - NO BUSINESS LOGIC
             result = {
-                "whale_transactions": whale_transactions,
-                "whale_analysis": whale_analysis,
-                "count": len(whale_transactions),
-                "min_btc": min_btc,
+                "transactions": transactions,
+                "count": len(transactions),
                 "timestamp": time.time(),
                 "data_source": "blockcypher_api"
             }
             
             self._cache_data(cache_key, result)
-            logger.info(f"✅ Whale transactions fetched: {len(whale_transactions)} whales, {whale_analysis['activity_level']} activity")
+            logger.info(f"✅ Raw transactions fetched: {len(transactions)} transactions")
             return result
             
         except Exception as e:
             logger.error(f"❌ Failed to get whale transactions: {e}")
             raise ValueError(f"Whale transactions fetch failed: {e}")
 
-    def _analyze_whale_activity(self, whale_transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Analyze whale activity from transaction data"""
-        if not whale_transactions:
-            return {
-                "activity_level": "NONE",
-                "whale_count": 0,
-                "total_volume_btc": 0,
-                "largest_transaction_btc": 0,
-                "whale_breakdown": {"small": 0, "medium": 0, "large": 0, "mega": 0},
-                "sentiment": "NEUTRAL"
-            }
-        
-        # Calculate metrics
-        total_volume = sum(tx['value_btc'] for tx in whale_transactions)
-        largest_tx = max(whale_transactions, key=lambda x: x['value_btc'])
-        largest_amount = largest_tx['value_btc']
-        
-        # Count whales by size
-        whale_counts = {
-            "small": 0,
-            "medium": 0,
-            "large": 0,
-            "mega": 0
-        }
-        
-        for tx in whale_transactions:
-            amount_btc = tx['value_btc']
-            if amount_btc >= self.whale_thresholds["mega_whale"]:
-                whale_counts["mega"] += 1
-            elif amount_btc >= self.whale_thresholds["large_whale"]:
-                whale_counts["large"] += 1
-            elif amount_btc >= self.whale_thresholds["medium_whale"]:
-                whale_counts["medium"] += 1
-            elif amount_btc >= self.whale_thresholds["small_whale"]:
-                whale_counts["small"] += 1
-        
-        total_whales = sum(whale_counts.values())
-        
-        # Determine activity level
-        if total_whales >= 10 or largest_amount >= 5000:
-            activity_level = "EXTREME"
-        elif total_whales >= 5 or largest_amount >= 1000:
-            activity_level = "HIGH"
-        elif total_whales >= 2 or largest_amount >= 100:
-            activity_level = "MODERATE"
-        elif total_whales >= 1:
-            activity_level = "LOW"
-        else:
-            activity_level = "NONE"
-        
-        # Determine sentiment based on transaction patterns
-        if total_volume > 1000:  # > 1000 BTC total volume
-            sentiment = "BULLISH"
-        elif total_volume > 100:  # > 100 BTC total volume
-            sentiment = "NEUTRAL"
-        else:
-            sentiment = "BEARISH"
-        
-        return {
-            "activity_level": activity_level,
-            "whale_count": total_whales,
-            "whale_breakdown": whale_counts,
-            "total_volume_btc": total_volume,
-            "largest_transaction_btc": largest_amount,
-            "sentiment": sentiment
-        }
+    # REMOVED: All analysis methods moved to dedicated calculators in core/calculations/
+    # This API now provides PURE DATA ONLY - no business logic
 
     def get_whale_analytics(self) -> Dict[str, Any]:
         """
-        Get comprehensive whale analytics using BlockCypher API
+        Get raw whale transaction data using BlockCypher API - PURE DATA ONLY
         
         Returns:
-            Dictionary with whale activity analysis
+            Dictionary with raw whale transaction data
         """
         try:
-            # Get whale transactions (10+ BTC threshold)
-            whale_data = self.get_whale_transactions(min_btc=10.0)
+            # Get raw transactions (PURE DATA)
+            raw_data = self.get_raw_transactions()
             
-            if whale_data:
+            if raw_data and "transactions" in raw_data:
                 return {
-                    "whale_activity": whale_data["whale_analysis"],
-                    "recent_transactions": whale_data["whale_transactions"][:5],  # Last 5 transactions
-                    "timestamp": time.time(),
+                    "transactions": raw_data["transactions"],
+                    "count": raw_data["count"],
+                    "timestamp": raw_data["timestamp"],
                     "data_source": "blockcypher_api"
                 }
             else:
-                raise ValueError("No whale data available from BlockCypher API")
+                raise ValueError("No raw transaction data available from BlockCypher API")
                 
         except Exception as e:
-            logger.error(f"❌ Failed to get whale analytics: {e}")
-            raise ValueError(f"Whale analytics fetch failed: {e}")
+            logger.error(f"❌ Failed to get raw whale data: {e}")
+            raise ValueError(f"Raw whale data fetch failed: {e}")
 
     def test_connection(self) -> bool:
         """Test BlockCypher API connection"""

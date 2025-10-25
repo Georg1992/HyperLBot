@@ -31,8 +31,10 @@ class RSSNewsAPI:
     """
     
     def __init__(self):
-        self.cache = {}
-        self.cache_duration = 900  # 15 minutes cache
+        # Use centralized cache system
+        from core.services.centralized_cache import get_global_centralized_cache
+        self._cache = get_global_centralized_cache()
+        
         self.news_limit = 50  # Max articles to analyze per update
         
         # Initialize VADER sentiment analyzer (optimized for financial news)
@@ -108,12 +110,11 @@ class RSSNewsAPI:
             cache_key = "news_sentiment"
             current_time = time.time()
             
-            # Check cache
-            if cache_key in self.cache:
-                cached_data, cache_time = self.cache[cache_key]
-                if current_time - cache_time < self.cache_duration:
-                    logger.debug("📰 Using cached news sentiment data")
-                    return cached_data
+            # Check cache using centralized system
+            cached_data = self._cache.get(cache_key)
+            if cached_data:
+                logger.debug("📰 Using cached news sentiment data")
+                return cached_data
             
             # Fetch real RSS news articles
             logger.info("📰 Fetching real news from RSS feeds...")
@@ -146,11 +147,11 @@ class RSSNewsAPI:
                 'sources': list(set([article['source'] for article in all_articles])),
                 'timestamp': current_time,
                 'data_source': 'rss_feeds',
-                'cache_duration': self.cache_duration
+                'cache_duration': 900  # 15 minutes cache
             }
             
-            # Cache result
-            self.cache[cache_key] = (result, current_time)
+            # Cache result using centralized system
+            self._cache.set(cache_key, result, ttl=900)  # 15 minutes cache
             
             logger.info(f"📰 News sentiment: {sentiment_analysis['sentiment']['classification']} "
                        f"({sentiment_analysis['confidence']:.1%} confidence, {len(all_articles)} articles)")

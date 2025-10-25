@@ -992,7 +992,6 @@ class HyperliquidSimulator:
         
         return position
     
-    # REMOVED: Legacy compatibility methods - use place_order() directly
 
 
 # Global simulator instance (will be initialized with proper balance by SystemInitializer)

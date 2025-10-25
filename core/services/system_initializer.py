@@ -305,10 +305,7 @@ class SystemInitializer:
             
             # AI and ML systems will be initialized later after APIs are ready
             
-            return {
-                "success": True,
-                "singleton_count": len(self.singleton_systems)
-            }
+            return self.singleton_systems
             
         except Exception as e:
             logger.error(f"❌ Singleton system initialization failed: {e}")
@@ -496,6 +493,9 @@ class SystemInitializer:
             
             if "orderbook_analyzer" in self.singleton_systems:
                 market_data_service.register_analysis_module("orderbook", self.singleton_systems["orderbook_analyzer"])
+            
+            if "cross_asset_correlation_analyzer" in self.singleton_systems:
+                market_data_service.register_analysis_module("cross_asset_correlation_analyzer", self.singleton_systems["cross_asset_correlation_analyzer"])
             
             logger.info("📊 Analysis modules registered with MarketDataService")
             

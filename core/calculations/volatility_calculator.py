@@ -154,6 +154,8 @@ class VolatilityCalculator:
                     logger.debug(f"🔍 Overall volatility is HIGH/EXTREME, returning immediately: {primary_volatility:.6f} ({primary_volatility*100:.4f}%)")
                     return {
                         "volatility": round(primary_volatility, 6),
+                        "volatility_5m": round(primary_volatility, 6),  # Dashboard compatibility
+                        "volatility_5m_category": self._categorize_volatility(primary_volatility),
                         "period_minutes": actual_period_minutes,
                         "period_candles": actual_period_candles,
                         "strategy": strategy,
@@ -184,6 +186,8 @@ class VolatilityCalculator:
                         logger.debug(f"🔍 Final volatility: {final_volatility:.6f} ({final_volatility*100:.4f}%) - using max of primary and combined")
                         return {
                             "volatility": round(final_volatility, 6),
+                            "volatility_5m": round(final_volatility, 6),  # Dashboard compatibility
+                            "volatility_5m_category": self._categorize_volatility(final_volatility),
                             "period_minutes": actual_period_minutes,
                             "period_candles": actual_period_candles,
                             "strategy": strategy,
@@ -192,6 +196,8 @@ class VolatilityCalculator:
                 
                 return {
                     "volatility": round(primary_volatility, 6),
+                    "volatility_5m": round(primary_volatility, 6),  # Dashboard compatibility
+                    "volatility_5m_category": self._categorize_volatility(primary_volatility),
                     "period_minutes": actual_period_minutes,
                     "period_candles": actual_period_candles,
                     "strategy": strategy,
@@ -206,6 +212,8 @@ class VolatilityCalculator:
                 category, trend = self.categorize_volatility_for_trading(overall_volatility, timeframe)
                 return {
                     "volatility": round(overall_volatility, 6),
+                    "volatility_5m": round(overall_volatility, 6),  # Dashboard compatibility
+                    "volatility_5m_category": self._categorize_volatility(overall_volatility),
                     "period_minutes": actual_period_minutes,
                     "period_candles": actual_period_candles,
                     "strategy": strategy,
@@ -223,6 +231,8 @@ class VolatilityCalculator:
                     category, trend = self.categorize_volatility_for_trading(current_range, timeframe)
                     return {
                         "volatility": round(current_range, 6),
+                        "volatility_5m": round(current_range, 6),  # Dashboard compatibility
+                        "volatility_5m_category": self._categorize_volatility(current_range),
                         "period_minutes": actual_period_minutes,
                         "period_candles": actual_period_candles,
                         "strategy": strategy,
@@ -234,6 +244,8 @@ class VolatilityCalculator:
                     logger.debug(f"🔍 No candles available, returning 0")
                     return {
                         "volatility": 0.0,
+                        "volatility_5m": 0.0,  # Dashboard compatibility
+                        "volatility_5m_category": "LOW",  # 0.0 volatility is LOW
                         "period_minutes": actual_period_minutes,
                         "period_candles": actual_period_candles,
                         "strategy": strategy,
@@ -819,5 +831,25 @@ class VolatilityCalculator:
             logger.error(f"❌ Period volatility calculation failed: {e}")
             return 0.0
     
-    
-    
+    def _categorize_volatility(self, volatility: float) -> str:
+        """
+        Categorize volatility value into LOW, MODERATE, HIGH, EXTREME
+        
+        Args:
+            volatility: Volatility value (0-1)
+            
+        Returns:
+            Category string
+        """
+        try:
+            if volatility <= 0.0015:
+                return "LOW"
+            elif volatility <= 0.0030:
+                return "MODERATE"
+            elif volatility <= 0.0060:
+                return "HIGH"
+            else:
+                return "EXTREME"
+        except Exception as e:
+            logger.error(f"❌ Failed to categorize volatility: {e}")
+            return "UNKNOWN"

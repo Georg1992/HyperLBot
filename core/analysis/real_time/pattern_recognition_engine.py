@@ -6,7 +6,7 @@ Identifies important trading patterns for BTC market setups
 
 import time
 import numpy as np
-from typing import Dict, List, Any, Optional, Tuple, Callable
+from typing import Dict, List, Any, Optional, Tuple
 from loguru import logger
 
 # Singleton pattern implementation
@@ -36,30 +36,30 @@ class PatternRecognitionEngine:
         # Pattern expiration times (in minutes) for 5m chart
         # Formula: candle_interval (5m) × number_of_candles
         self.pattern_expiration = {
-            # Reversal patterns - discard after 8 candles (40 minutes)
-            "HEAD_SHOULDERS": 40,
-            "INVERSE_HEAD_SHOULDERS": 40,
-            "DOUBLE_TOP": 40,
-            "DOUBLE_BOTTOM": 40,
-            "TREND_CHANGE": 40,
+            # Reversal patterns - discard after 4 candles (20 minutes)
+            "HEAD_SHOULDERS": 20,
+            "INVERSE_HEAD_SHOULDERS": 20,
+            "DOUBLE_TOP": 20,
+            "DOUBLE_BOTTOM": 20,
+            "TREND_CHANGE": 20,
             
-            # Triangle patterns - discard after 6 candles (30 minutes)
-            "ASCENDING_TRIANGLE": 30,
-            "DESCENDING_TRIANGLE": 30,
-            "SYMMETRICAL_TRIANGLE": 30,
+            # Triangle patterns - discard after 3 candles (15 minutes)
+            "ASCENDING_TRIANGLE": 15,
+            "DESCENDING_TRIANGLE": 15,
+            "SYMMETRICAL_TRIANGLE": 15,
             
-            # Wedge patterns - discard after 6 candles (30 minutes)
-            "RISING_WEDGE": 30,
-            "FALLING_WEDGE": 30,
+            # Wedge patterns - discard after 3 candles (15 minutes)
+            "RISING_WEDGE": 15,
+            "FALLING_WEDGE": 15,
             
             # Channel patterns - longer validity (10 candles = 50 minutes)
             "HORIZONTAL_CHANNEL": 50,
             "ASCENDING_CHANNEL": 50,
             "DESCENDING_CHANNEL": 50,
             
-            # Continuation patterns - shorter validity (6 candles = 30 minutes)
-            "BULLISH_CONTINUATION": 30,
-            "BEARISH_CONTINUATION": 30,
+            # Continuation patterns - shorter validity (3 candles = 15 minutes)
+            "BULLISH_CONTINUATION": 15,
+            "BEARISH_CONTINUATION": 15,
             
             # Candlestick patterns - very short validity (3 candles = 15 minutes)
             "BULLISH_ENGULFING": 15,
@@ -75,60 +75,13 @@ class PatternRecognitionEngine:
             "THREE_BLACK_CROWS": 20,
         }
         
-        # Pattern weights for prediction engine (normalized impact scores)
-        # Higher weight = more significant for trading decisions
-        self.pattern_weights = {
-            # Tier 1: Strong Reversal Patterns (18-20%)
-            "HEAD_SHOULDERS": 0.20,
-            "INVERSE_HEAD_SHOULDERS": 0.20,
-            "DOUBLE_TOP": 0.18,
-            "DOUBLE_BOTTOM": 0.18,
-            
-            # Tier 2: Triangle Patterns (14-16%)
-            "ASCENDING_TRIANGLE": 0.16,
-            "DESCENDING_TRIANGLE": 0.16,
-            "SYMMETRICAL_TRIANGLE": 0.14,
-            
-            # Tier 3: Wedge Patterns (14-16%)
-            "FALLING_WEDGE": 0.16,
-            "RISING_WEDGE": 0.16,
-            
-            # Tier 4: Engulfing Patterns (15%) - Very reliable on 5m charts
-            "BULLISH_ENGULFING": 0.15,
-            "BEARISH_ENGULFING": 0.15,
-            
-            # Tier 5: Three Soldiers/Crows (14%) - Strong trend confirmation
-            "THREE_WHITE_SOLDIERS": 0.14,
-            "THREE_BLACK_CROWS": 0.14,
-            
-            # Tier 6: Hammer/Shooting Star (12%) - Local reversals
-            "HAMMER": 0.12,
-            "INVERTED_HAMMER": 0.12,
-            "SHOOTING_STAR": 0.12,
-            "HANGING_MAN": 0.12,
-            
-            # Tier 7: Channel Patterns (10-12%)
-            "ASCENDING_CHANNEL": 0.12,
-            "DESCENDING_CHANNEL": 0.12,
-            "HORIZONTAL_CHANNEL": 0.10,
-            
-            # Tier 8: Continuation Patterns (10%)
-            "BULLISH_CONTINUATION": 0.10,
-            "BEARISH_CONTINUATION": 0.10,
-            "TREND_CHANGE": 0.10,
-            
-            # Tier 9: Doji Patterns (8%) - Indecision signals
-            "DOJI": 0.08,
-            "DRAGONFLY_DOJI": 0.08,
-            "GRAVESTONE_DOJI": 0.08,
-        }
         
         # Pattern history to track first detection time
         self.pattern_history = {}
         
-        logger.info("📊 Pattern Recognition Engine initialized with pattern-specific weights")
-        logger.info(f"   ⚡ {len(self.pattern_weights)} pattern types with differentiated weights (8%-20%)")
-        logger.info(f"   🕯️ {len([p for p in self.pattern_weights.keys() if 'ENGULFING' in p or 'HAMMER' in p or 'DOJI' in p or 'SOLDIERS' in p or 'CROWS' in p])} candlestick patterns added")
+        logger.info("📊 Pattern Recognition Engine initialized")
+        logger.info(f"   ⚡ {len(self.pattern_expiration)} pattern types with expiration times")
+        logger.info(f"   🕯️ 9 candlestick patterns supported")
         logger.info(f"   ⏰ Pattern expiration: 10-50 minutes based on pattern type")
     
     def analyze_patterns(self, candles: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -162,11 +115,25 @@ class PatternRecognitionEngine:
                 "candlestick_patterns": self._detect_candlestick_patterns(candles)
             }
             
+            # CRITICAL FIX: Calculate pattern birth time from historical data
+            patterns = self._calculate_pattern_birth_times(patterns, candles, current_time)
+            
             # Track pattern first detection time and add timestamps
             self._track_pattern_timestamps(patterns, current_time)
             
             # Filter out expired patterns
             patterns = self._filter_expired_patterns(patterns, current_time)
+            
+            # Also clean up expired patterns from history
+            self._cleanup_expired_pattern_history(current_time)
+            
+            # Debug: Log pattern ages
+            for pattern_type, pattern_list in patterns.items():
+                for pattern in pattern_list:
+                    pattern_name = pattern.get("pattern", "UNKNOWN")
+                    age_minutes = pattern.get("age_minutes", 0)
+                    max_age = self.pattern_expiration.get(pattern_name, 40)
+                    logger.info(f"🔍 Pattern {pattern_name}: age={age_minutes:.1f}m, max={max_age}m, valid={age_minutes <= max_age}")
             
             # CRITICAL FIX: Resolve conflicting patterns BEFORE returning to dashboard
             # This ensures only viable patterns are displayed on the chart
@@ -191,6 +158,131 @@ class PatternRecognitionEngine:
             logger.error(f"❌ Pattern analysis failed: {e}")
             raise Exception(f"Pattern analysis failed: {e}")
     
+    def _calculate_pattern_birth_times(self, patterns: Dict[str, List[Dict[str, Any]]], candles: List[Dict[str, Any]], current_time: float) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Calculate when patterns were actually "born" in the historical data
+        
+        Args:
+            patterns: Dictionary of detected patterns
+            candles: List of candle data with timestamps
+            current_time: Current timestamp
+            
+        Returns:
+            Patterns with birth_time and age_minutes calculated from historical data
+        """
+        try:
+            # Get the most recent candle timestamp as reference
+            if not candles:
+                return patterns
+                
+            most_recent_candle_time = candles[-1].get('timestamp', current_time)
+            
+            # Calculate how many candles back each pattern was formed
+            for pattern_type, pattern_list in patterns.items():
+                for pattern in pattern_list:
+                    pattern_name = pattern.get("pattern", "UNKNOWN")
+                    
+                    # Estimate pattern birth based on pattern type and candle count
+                    birth_candles_ago = self._estimate_pattern_birth_candles(pattern_name, pattern)
+                    
+                    # Calculate birth timestamp
+                    if birth_candles_ago > 0 and birth_candles_ago < len(candles):
+                        # Get the candle timestamp from birth_candles_ago
+                        birth_candle_index = len(candles) - 1 - birth_candles_ago
+                        if birth_candle_index >= 0:
+                            birth_timestamp = candles[birth_candle_index].get('timestamp', current_time)
+                        else:
+                            birth_timestamp = candles[0].get('timestamp', current_time)
+                    else:
+                        # Fallback: use the oldest candle timestamp
+                        birth_timestamp = candles[0].get('timestamp', current_time)
+                    
+                    # Calculate age from birth time
+                    age_minutes = (current_time - birth_timestamp) / 60.0
+                    
+                    # Add birth information to pattern
+                    pattern["birth_timestamp"] = birth_timestamp
+                    pattern["birth_candles_ago"] = birth_candles_ago
+                    pattern["age_minutes"] = age_minutes
+                    
+                    logger.debug(f"🕐 Pattern {pattern_name}: born {birth_candles_ago} candles ago, age: {age_minutes:.1f}m")
+            
+            return patterns
+            
+        except Exception as e:
+            logger.error(f"❌ Pattern birth time calculation failed: {e}")
+            return patterns
+    
+    def _estimate_pattern_birth_candles(self, pattern_name: str, pattern: Dict[str, Any]) -> int:
+        """
+        Estimate how many candles ago a pattern was born based on pattern characteristics
+        
+        Args:
+            pattern_name: Name of the pattern
+            pattern: Pattern data
+            
+        Returns:
+            Number of candles ago the pattern was born
+        """
+        try:
+            # Pattern-specific birth estimation based on typical formation time
+            pattern_birth_estimates = {
+                # Reversal patterns - typically form over 5-15 candles
+                "HEAD_SHOULDERS": 12,
+                "INVERSE_HEAD_SHOULDERS": 12,
+                "DOUBLE_TOP": 8,
+                "DOUBLE_BOTTOM": 8,
+                "TREND_CHANGE": 6,
+                
+                # Triangle patterns - typically form over 8-12 candles
+                "ASCENDING_TRIANGLE": 10,
+                "DESCENDING_TRIANGLE": 10,
+                "SYMMETRIC_TRIANGLE": 10,
+                
+                # Wedge patterns - typically form over 6-10 candles
+                "RISING_WEDGE": 8,
+                "FALLING_WEDGE": 8,
+                
+                # Channel patterns - typically form over 10-20 candles
+                "HORIZONTAL_CHANNEL": 15,
+                "ASCENDING_CHANNEL": 15,
+                "DESCENDING_CHANNEL": 15,
+                
+                # Continuation patterns - typically form over 3-8 candles
+                "BULLISH_CONTINUATION": 5,
+                "BEARISH_CONTINUATION": 5,
+                
+                # Candlestick patterns - typically form over 1-3 candles
+                "BULLISH_ENGULFING": 2,
+                "BEARISH_ENGULFING": 2,
+                "HAMMER": 1,
+                "INVERTED_HAMMER": 1,
+                "SHOOTING_STAR": 1,
+                "THREE_WHITE_SOLDIERS": 3,
+                "THREE_BLACK_CROWS": 3,
+                "MORNING_DOJI_STAR": 3,
+                "EVENING_DOJI_STAR": 3
+            }
+            
+            # Get base estimate
+            base_estimate = pattern_birth_estimates.get(pattern_name, 8)
+            
+            # Adjust based on pattern confidence (higher confidence = more recent formation)
+            confidence = pattern.get("confidence", 0.5)
+            if confidence > 0.8:
+                # High confidence patterns are likely more recent
+                base_estimate = max(1, int(base_estimate * 0.7))
+            elif confidence < 0.4:
+                # Low confidence patterns might be older
+                base_estimate = int(base_estimate * 1.3)
+            
+            # Ensure reasonable bounds
+            return max(1, min(base_estimate, 20))
+            
+        except Exception as e:
+            logger.error(f"❌ Pattern birth estimation failed for {pattern_name}: {e}")
+            return 8  # Default fallback
+    
     def _track_pattern_timestamps(self, patterns: Dict[str, List[Dict[str, Any]]], current_time: float):
         """
         Track when patterns were first detected and add timestamps to pattern data
@@ -204,17 +296,26 @@ class PatternRecognitionEngine:
                 pattern_name = pattern.get("pattern", "UNKNOWN")
                 pattern_key = self._get_pattern_key(pattern)
                 
-                # If pattern is new, record first detection time
+                # Use the calculated birth time from historical data
+                birth_timestamp = pattern.get("birth_timestamp", current_time)
+                age_minutes = pattern.get("age_minutes", 0)
+                
+                # If pattern is new, record first detection time using birth timestamp
                 if pattern_key not in self.pattern_history:
                     self.pattern_history[pattern_key] = {
-                        "first_detected": current_time,
+                        "first_detected": birth_timestamp,  # Use birth time, not current time
                         "pattern_name": pattern_name,
                         "pattern_type": pattern_type
                     }
+                    logger.info(f"🆕 NEW PATTERN DETECTED: {pattern_name} born {age_minutes:.1f}m ago (key: {pattern_key})")
+                else:
+                    logger.debug(f"🔄 EXISTING PATTERN: {pattern_name} (key: {pattern_key})")
                 
-                # Add timestamp fields to pattern
-                pattern["first_detected"] = self.pattern_history[pattern_key]["first_detected"]
-                pattern["age_minutes"] = (current_time - pattern["first_detected"]) / 60.0
+                # Add timestamp fields to pattern (use birth time for age calculation)
+                original_first_detected = self.pattern_history[pattern_key]["first_detected"]
+                pattern["first_detected"] = original_first_detected
+                # Age is already calculated from birth time, but ensure it's consistent
+                pattern["age_minutes"] = (current_time - original_first_detected) / 60.0
     
     def _filter_expired_patterns(self, patterns: Dict[str, List[Dict[str, Any]]], current_time: float) -> Dict[str, List[Dict[str, Any]]]:
         """
@@ -241,6 +342,7 @@ class PatternRecognitionEngine:
                 if age_minutes <= max_age:
                     # Pattern is still valid
                     valid_patterns.append(pattern)
+                    logger.debug(f"⏰ Pattern VALID: {pattern_name} (age: {age_minutes:.1f}m / max: {max_age}m, confidence: {pattern.get('confidence', 0):.1%})")
                 else:
                     # Pattern expired - remove from history and discard
                     pattern_key = self._get_pattern_key(pattern)
@@ -257,6 +359,27 @@ class PatternRecognitionEngine:
         
         return filtered_patterns
     
+    def _cleanup_expired_pattern_history(self, current_time: float):
+        """Clean up expired patterns from pattern_history"""
+        try:
+            expired_keys = []
+            for pattern_key, history_entry in self.pattern_history.items():
+                pattern_name = history_entry.get("pattern_name", "UNKNOWN")
+                first_detected = history_entry.get("first_detected", current_time)
+                age_minutes = (current_time - first_detected) / 60.0
+                max_age = self.pattern_expiration.get(pattern_name, 40)
+                
+                if age_minutes > max_age:
+                    expired_keys.append(pattern_key)
+            
+            for key in expired_keys:
+                del self.pattern_history[key]
+            
+            if expired_keys:
+                logger.info(f"🧹 Cleaned up {len(expired_keys)} expired pattern(s) from history")
+        except Exception as e:
+            logger.error(f"❌ Failed to cleanup pattern history: {e}")
+    
     def _get_pattern_key(self, pattern: Dict[str, Any]) -> str:
         """
         Generate a unique key for a pattern based on its characteristics
@@ -269,18 +392,27 @@ class PatternRecognitionEngine:
         """
         pattern_name = pattern.get("pattern", "UNKNOWN")
         
-        # Use pattern-specific identifiers to create unique key
-        if "indices" in pattern:
-            # For patterns with specific indices (H&S, Double Top/Bottom)
-            indices = pattern["indices"]
-            return f"{pattern_name}_{indices[0]}_{indices[-1]}"
-        elif "start_candle_index" in pattern and "end_candle_index" in pattern:
-            # For patterns with start/end indices
-            return f"{pattern_name}_{pattern['start_candle_index']}_{pattern['end_candle_index']}"
+        # Use price levels instead of candle indices for consistent keys across time
+        # This ensures patterns maintain their identity even as new candles arrive
+        pattern_high = pattern.get("pattern_high", 0)
+        pattern_low = pattern.get("pattern_low", 0)
+        
+        # For patterns with specific price points (H&S, Double Top/Bottom)
+        if "head" in pattern:
+            # Head and shoulders patterns - use rounded head price for stability
+            head_price = pattern.get("head", 0)
+            # Round to nearest 10 to handle minor price fluctuations
+            rounded_head = int(round(head_price / 10) * 10)
+            return f"{pattern_name}_{rounded_head}"
+        elif "shoulders" in pattern:
+            # Include shoulders for more specific identification
+            shoulders = pattern.get("shoulders", [])
+            # Round shoulder prices to nearest 10 for stability
+            rounded_shoulders = [int(round(s / 10) * 10) for s in shoulders]
+            shoulder_prices = "_".join([str(s) for s in rounded_shoulders])
+            return f"{pattern_name}_{shoulder_prices}"
         else:
-            # Generic key based on pattern name and rough price levels
-            pattern_high = pattern.get("pattern_high", 0)
-            pattern_low = pattern.get("pattern_low", 0)
+            # Generic key based on pattern name and price levels
             return f"{pattern_name}_{int(pattern_high)}_{int(pattern_low)}"
     
     def _extract_price_data(self, candles: List[Dict[str, Any]]) -> Dict[str, List[float]]:
@@ -1150,11 +1282,18 @@ class PatternRecognitionEngine:
             if high_slope < 0 and low_slope < 0 and high_slope < low_slope:  # Converging downward
                 convergence_rate = low_slope - high_slope
                 confidence = min(0.8, convergence_rate * 20)
+                
+                # Calculate pattern boundaries for stable key generation
+                pattern_high = max(recent_highs)
+                pattern_low = min(recent_lows)
+                
                 return {
                     "pattern": "FALLING_WEDGE",
                     "type": "REVERSAL",
                     "direction": "BULLISH",
                     "confidence": confidence,
+                    "pattern_high": pattern_high,
+                    "pattern_low": pattern_low,
                     "high_slope": high_slope,
                     "low_slope": low_slope,
                     "convergence_rate": convergence_rate,
@@ -1437,9 +1576,23 @@ class PatternRecognitionEngine:
                             resolved_list.append(best_ihs)
                             logger.info(f"📊 Pattern conflict resolved: Selected INVERSE_HEAD_SHOULDERS (more recent) over HEAD_SHOULDERS")
                 else:
-                    # No conflict - add all patterns from both groups
-                    resolved_list.extend(hs_patterns)
-                    resolved_list.extend(ihs_patterns)
+                    # No conflict - add all patterns from both groups, but deduplicate HEAD_SHOULDERS
+                    if hs_patterns:
+                        # If multiple HEAD_SHOULDERS patterns detected, take only the best one
+                        if len(hs_patterns) > 1:
+                            best_hs = max(hs_patterns, key=lambda p: p.get("confidence", 0))
+                            resolved_list.append(best_hs)
+                            logger.debug(f"📊 Multiple HEAD_SHOULDERS patterns detected, selected best (confidence: {best_hs.get('confidence', 0):.1%})")
+                        else:
+                            resolved_list.extend(hs_patterns)
+                    if ihs_patterns:
+                        # If multiple INVERSE_HEAD_SHOULDERS patterns detected, take only the best one
+                        if len(ihs_patterns) > 1:
+                            best_ihs = max(ihs_patterns, key=lambda p: p.get("confidence", 0))
+                            resolved_list.append(best_ihs)
+                            logger.debug(f"📊 Multiple INVERSE_HEAD_SHOULDERS patterns detected, selected best (confidence: {best_ihs.get('confidence', 0):.1%})")
+                        else:
+                            resolved_list.extend(ihs_patterns)
                 
                 # Handle DOUBLE_TOP vs DOUBLE_BOTTOM conflict
                 dt_patterns = conflicting_groups["DOUBLE_TOP"]
@@ -1468,22 +1621,24 @@ class PatternRecognitionEngine:
                     best_hs = max(hs_patterns, key=lambda p: p.get("confidence", 0))
                     best_db = max(db_patterns, key=lambda p: p.get("confidence", 0))
                     
+                    # Remove any existing HEAD_SHOULDERS or DOUBLE_BOTTOM patterns to avoid duplicates
+                    resolved_list = [p for p in resolved_list if p not in hs_patterns and p not in db_patterns]
+                    
+                    # Add only the best pattern
                     if best_hs.get("confidence", 0) > best_db.get("confidence", 0):
                         resolved_list.append(best_hs)
                         logger.info(f"📊 Pattern conflict resolved: Selected HEAD_SHOULDERS ({best_hs.get('confidence', 0):.1%}) over DOUBLE_BOTTOM ({best_db.get('confidence', 0):.1%})")
                     else:
                         resolved_list.append(best_db)
                         logger.info(f"📊 Pattern conflict resolved: Selected DOUBLE_BOTTOM ({best_db.get('confidence', 0):.1%}) over HEAD_SHOULDERS ({best_hs.get('confidence', 0):.1%})")
-                    
-                    # Remove the conflicting patterns from the original groups to avoid duplicates
-                    resolved_list = [p for p in resolved_list if p not in hs_patterns and p not in db_patterns]
-                    resolved_list.extend([best_hs if best_hs.get("confidence", 0) > best_db.get("confidence", 0) else best_db])
                 elif hs_patterns:
-                    # Only HEAD_SHOULDERS patterns
-                    resolved_list.extend(hs_patterns)
+                    # Only HEAD_SHOULDERS patterns - check if already added to avoid duplicates
+                    if not any(p.get("pattern") == "HEAD_SHOULDERS" for p in resolved_list):
+                        resolved_list.extend(hs_patterns)
                 elif db_patterns:
-                    # Only DOUBLE_BOTTOM patterns (already added above)
-                    pass
+                    # Only DOUBLE_BOTTOM patterns - check if already added to avoid duplicates
+                    if not any(p.get("pattern") == "DOUBLE_BOTTOM" for p in resolved_list):
+                        pass  # Already added above
                 
                 # Add all other non-conflicting patterns
                 resolved_list.extend(conflicting_groups["OTHER"])

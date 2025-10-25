@@ -44,6 +44,11 @@ class HyperliquidWebSocket:
         self.trades_cache = []
         self.max_trades_cache = 5000  # Keep last 5000 trades for better volume accuracy
         
+        # Volume tracking to prevent doubling and track changes
+        self._last_volume_calculation = 0.0
+        self._last_candle_start = 0.0
+        self._volume_history = []  # Track volume over time for debugging
+        
         # Thread safety
         self._lock = threading.RLock()
         self._price_callbacks = []
@@ -286,49 +291,27 @@ class HyperliquidWebSocket:
             logger.error(f"❌ Failed to get trades data: {e}")
             return []
     
-    def get_current_5m_volume(self) -> float:
-        """Calculate volume for current 5m candle from real-time trades (UTC synchronized)"""
+    def get_raw_trades(self) -> List[Dict[str, Any]]:
+        """Get raw trade data from WebSocket - PURE DATA ONLY"""
         try:
-            current_time = time.time()
-            
-            # Calculate the start of the current 5m candle using UTC time for global synchronization
-            import datetime
-            current_dt = datetime.datetime.utcfromtimestamp(current_time)  # Use UTC for global sync
-            
-            # Get the current minute and calculate the start of the current 5m candle
-            current_minute = current_dt.minute
-            candle_start_minute = (current_minute // 5) * 5  # Round down to nearest 5-minute boundary
-            
-            # Create the start time of the current 5m candle in UTC
-            candle_start_dt = current_dt.replace(minute=candle_start_minute, second=0, microsecond=0)
-            candle_start_timestamp = candle_start_dt.timestamp()
-            
             with self._lock:
                 if not hasattr(self, 'trades_cache') or not self.trades_cache:
-                    return 0.0
+                    return []
                 
-                # Filter trades from the current 5m candle only
-                current_candle_trades = [
+                # Clean up old trades (older than 2 hours) to prevent memory leaks
+                current_time = time.time()
+                cutoff_timestamp = current_time - (2 * 60 * 60)  # 2 hours ago
+                self.trades_cache = [
                     trade for trade in self.trades_cache 
-                    if trade.get('timestamp', 0) >= candle_start_timestamp
+                    if trade.get('timestamp', 0) >= cutoff_timestamp
                 ]
                 
-                # Sum up the volume for the current candle
-                total_volume = sum(trade.get('size', 0) for trade in current_candle_trades)
-                
-                # Debug logging for volume tracking
-                if len(current_candle_trades) > 0:
-                    logger.debug(f"📊 Volume calculation: {len(current_candle_trades)} trades, total volume: {total_volume:.2f} BTC")
-                
-                # Calculate time remaining in current candle
-                next_candle_start = candle_start_timestamp + (5 * 60)  # Next 5m boundary
-                time_remaining = next_candle_start - current_time
-                
-                return total_volume
+                # Return raw trades - NO BUSINESS LOGIC
+                return self.trades_cache.copy()
                 
         except Exception as e:
-            logger.error(f"❌ Failed to calculate current 5m volume: {e}")
-            return 0.0
+            logger.error(f"❌ Failed to get raw trades: {e}")
+            return []
     
     def clear_old_trades(self, cutoff_timestamp: float):
         """Clear trades older than cutoff timestamp to free memory"""
@@ -343,6 +326,31 @@ class HyperliquidWebSocket:
                     logger.debug(f"🧹 Cleared old trades, {len(self.trades_cache)} trades remaining")
         except Exception as e:
             logger.error(f"❌ Failed to clear old trades: {e}")
+    
+    def get_volume_debug_info(self) -> Dict[str, Any]:
+        """Get debugging information about volume calculations"""
+        try:
+            with self._lock:
+                current_time = time.time()
+                import datetime
+                current_dt = datetime.datetime.utcfromtimestamp(current_time)
+                current_minute = current_dt.minute
+                candle_start_minute = (current_minute // 5) * 5
+                candle_start_dt = current_dt.replace(minute=candle_start_minute, second=0, microsecond=0)
+                candle_start_timestamp = candle_start_dt.timestamp()
+                
+                return {
+                    "current_time": current_time,
+                    "current_candle_start": candle_start_timestamp,
+                    "last_candle_start": self._last_candle_start,
+                    "last_volume_calculation": self._last_volume_calculation,
+                    "trades_cache_size": len(self.trades_cache) if hasattr(self, 'trades_cache') else 0,
+                    "volume_history": self._volume_history[-5:] if self._volume_history else [],
+                    "is_new_candle": self._last_candle_start != candle_start_timestamp
+                }
+        except Exception as e:
+            logger.error(f"❌ Failed to get volume debug info: {e}")
+            return {"error": str(e)}
     
     async def _process_orderbook_update(self, orderbook_data: Dict[str, Any]):
         """Process orderbook update and extract price"""

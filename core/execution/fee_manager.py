@@ -259,7 +259,6 @@ class FeeManager:
             "fee_history": self.fee_history[-10:]  # Last 10 trades
         }
     
-    # REMOVED: optimize_position_size method - use hybrid_position_sizer instead
     
     def get_fee_breakdown_for_strategy(self, strategy_params: Dict[str, Any]) -> Dict[str, Any]:
         """

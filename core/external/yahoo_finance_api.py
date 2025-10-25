@@ -17,9 +17,10 @@ class YahooFinanceAPI:
     
     def __init__(self):
         """Initialize Yahoo Finance API service"""
-        self._cache = {}
-        self._cache_lock = threading.Lock()
-        self._cache_duration = 300  # 5 minutes cache
+        # Use centralized cache system
+        from core.services.centralized_cache import get_global_centralized_cache
+        self._cache = get_global_centralized_cache()
+        
         self._last_request_time = 0
         self._min_request_interval = 1.0  # Minimum 1 second between requests
         
@@ -52,23 +53,11 @@ class YahooFinanceAPI:
     
     def _get_cached_data(self, key: str) -> Optional[Dict[str, Any]]:
         """Get cached data if still valid"""
-        with self._cache_lock:
-            if key in self._cache:
-                cached_item = self._cache[key]
-                if time.time() - cached_item['timestamp'] < self._cache_duration:
-                    return cached_item['data']
-                else:
-                    # Remove expired cache
-                    del self._cache[key]
-        return None
+        return self._cache.get(key)
     
     def _set_cached_data(self, key: str, data: Dict[str, Any]):
         """Cache data with timestamp"""
-        with self._cache_lock:
-            self._cache[key] = {
-                'data': data,
-                'timestamp': time.time()
-            }
+        self._cache.set(key, data, ttl=300)  # 5 minutes cache
     
     def _fetch_yahoo_data(self, symbol: str, period: str = "1d") -> Optional[Dict[str, Any]]:
         """Fetch data from Yahoo Finance with error handling"""

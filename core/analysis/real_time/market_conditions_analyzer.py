@@ -12,7 +12,7 @@ INTEGRATION: Used by TradingEngine before making any trading decisions
 from typing import Dict, Any, Tuple
 from loguru import logger
 from core.external.fear_greed_api import fear_greed_api
-from core.external.whale_analytics_api import whale_analytics_api
+from core.external.whale_analytics_api import get_global_whale_analytics_api
 from core.external.rss_news_api import rss_news_api
 
 
@@ -616,10 +616,11 @@ class MarketConditionsAnalyzer:
             Dict containing whale factors, risk factors, and positive factors
         """
         try:
-            # Get whale analytics data
-            whale_data = whale_analytics_api.get_whale_analytics()
+            # Get raw whale transaction data
+            whale_analytics_api = get_global_whale_analytics_api()
+            raw_whale_data = whale_analytics_api.get_raw_whale_transactions()
             
-            if not whale_data or "error" in whale_data:
+            if not raw_whale_data or "error" in raw_whale_data:
                 return {
                     "factors": ["Whale analytics unavailable"],
                     "risk_factors": [],
@@ -628,9 +629,27 @@ class MarketConditionsAnalyzer:
                     "positive": False
                 }
             
-            whale_activity = whale_data.get("whale_activity", {})
-            exchange_flows = whale_data.get("exchange_flows", {})
-            sentiment = whale_data.get("sentiment", {})
+            # Process raw data with whale analysis calculator
+            from core.calculations.whale_analysis_calculator import get_global_whale_analysis_calculator
+            whale_calculator = get_global_whale_analysis_calculator()
+            
+            # Get transactions from raw data
+            transactions = raw_whale_data.get("transactions", [])
+            if not transactions:
+                return {
+                    "factors": ["No whale transactions available"],
+                    "risk_factors": [],
+                    "positive_factors": [],
+                    "risk": 0,
+                    "positive": False
+                }
+            
+            # Analyze whale data
+            whale_analysis = whale_calculator.analyze_whale_data(transactions)
+            
+            whale_activity = whale_analysis.get("whale_activity", {})
+            exchange_flows = whale_analysis.get("exchange_flows", {})
+            sentiment = whale_analysis.get("sentiment", {})
             
             factors = []
             risk_factors = []
@@ -694,7 +713,7 @@ class MarketConditionsAnalyzer:
                 "positive_factors": positive_factors,
                 "risk": risk_level,
                 "positive": is_positive,
-                "whale_data": whale_data
+                "whale_data": whale_analysis
             }
             
         except Exception as e:
@@ -840,9 +859,9 @@ class MarketConditionsAnalyzer:
             # The API returns more than 7 candles, so we need to take the last 7
             last_7_candles = candles_1d[-7:] if len(candles_1d) >= 7 else candles_1d
             
-            logger.info(f"📊 Using last 7 candles from {len(candles_1d)} returned candles")
+            logger.debug(f"📊 Using last 7 candles from {len(candles_1d)} returned candles")
             for i, candle in enumerate(last_7_candles):
-                logger.info(f"  Day {i+1}: Close=${candle['close']:,.2f}")
+                logger.debug(f"  Day {i+1}: Close=${candle['close']:,.2f}")
             
             # Calculate trend from 7-day candles
             start_price = last_7_candles[0]["close"]
@@ -886,7 +905,8 @@ class MarketConditionsAnalyzer:
             factors.append(f"7-day range: ${min_low:,.0f} - ${max_high:,.0f}")
             factors.append(f"Current: ${current_price:,.0f}")
             
-            logger.info(f"📊 7-day market status: {market_status} ({price_change_pct:+.1f}%, {range_pct:.1f}% range)")
+            # Log at DEBUG level - this runs every 2 seconds, only significant changes logged at INFO
+            logger.debug(f"📊 7-day market status: {market_status} ({price_change_pct:+.1f}%, {range_pct:.1f}% range)")
             
             return {
                 "factors": factors,

@@ -186,11 +186,11 @@ class SessionOrchestrator:
 
                     # Get orderbook data (Level 2 orderbook with bids/asks)
                     orderbook_data = {}
-                    if hasattr(market_data_service, "get_all_market_data"):
-                        orderbook_data = market_data_service.get_all_market_data()
+                    if hasattr(market_data_service, "get_market_data"):
+                        orderbook_data = market_data_service.get_market_data()
                     else:
                         logger.warning(
-                            "⚠️ MarketDataService get_all_market_data not available, skipping iteration"
+                            "⚠️ MarketDataService get_market_data not available, skipping iteration"
                         )
                         time.sleep(check_interval)
                         continue
@@ -319,12 +319,49 @@ class SessionOrchestrator:
                             analysis_result = module_instance.get_latest_analysis()
                         elif module_name == "volatility":
                             # Volatility analysis
+                            logger.debug(f"📊 Triggering volatility analysis...")
                             analysis_result = module_instance.get_latest_analysis()
+                            logger.debug(f"📊 Volatility analysis result: {analysis_result}")
                         elif module_name == "pressure":
                             # Pressure analysis
                             logger.debug(f"📊 Triggering pressure analysis...")
                             analysis_result = module_instance.get_latest_analysis()
                             logger.debug(f"📊 Pressure analysis result: {analysis_result}")
+                        elif module_name == "pattern_recognition":
+                            # Pattern analysis needs candles
+                            from core.services.historical_data_service import get_global_historical_data_service
+                            historical_service = get_global_historical_data_service()
+                            candles = historical_service.get_5m_candles("BTC", 50)  # Get 50 candles for pattern analysis
+                            if candles:
+                                analysis_result = module_instance.analyze_patterns(candles)
+                                logger.debug(f"📊 Pattern analysis completed: {len(analysis_result.get('all_patterns', []))} patterns")
+                            else:
+                                logger.warning("⚠️ No candles available for pattern analysis")
+                                analysis_result = None
+                        elif module_name == "market_conditions":
+                            # Market conditions analysis needs comprehensive market data
+                            logger.debug(f"📊 Triggering market conditions analysis...")
+                            # Get current market data for conditions analysis
+                            market_data = {
+                                "current_price": current_price,
+                                "rsi": market_data_service.get_rsi_analysis().get("rsi", 50.0),
+                                "trend": market_data_service.get_trend_analysis("standard").get("direction", "SIDEWAYS"),
+                                "volatility_5m": market_data_service.get_volatility_analysis("standard").get("volatility_5m", 0.0),
+                                "volatility_category": market_data_service.get_volatility_analysis("standard").get("volatility_5m_category", "MODERATE"),
+                                "volume_category": market_data_service.get_volume_analysis().get("hyperliquid_5m", {}).get("volume_category", "MODERATE")
+                            }
+                            # Get 1d candles for market trend analysis
+                            from core.services.historical_data_service import get_global_historical_data_service
+                            historical_service = get_global_historical_data_service()
+                            candles_1d = historical_service.get_1d_candles("BTC", 30)  # Request 30 days to ensure we have at least 7
+                            
+                            analysis_result = module_instance.analyze_trading_conditions(market_data, candles_1d=candles_1d)
+                            logger.debug(f"📊 Market conditions analysis completed: {analysis_result.get('condition', 'UNKNOWN')} condition")
+                        elif module_name == "cross_asset_correlation_analyzer":
+                            # Cross asset correlation analysis needs current price
+                            logger.debug(f"📊 Triggering cross asset correlation analysis...")
+                            analysis_result = module_instance.analyze_cross_asset_correlations(current_price)
+                            logger.debug(f"📊 Cross asset correlation analysis completed: {analysis_result.get('status', 'UNKNOWN')} status")
                         else:
                             # Other modules get their own data
                             analysis_result = module_instance.get_latest_analysis()

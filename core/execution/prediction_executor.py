@@ -10,7 +10,6 @@ from typing import Dict, Any, Optional
 from loguru import logger
 from dataclasses import dataclass
 from core.execution.order_lifecycle_manager import get_global_order_lifecycle_manager
-# REMOVED: prediction_state_manager import - not needed for single prediction system
 
 
 @dataclass

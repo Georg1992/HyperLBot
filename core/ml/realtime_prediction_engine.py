@@ -422,7 +422,6 @@ class RealtimePredictionEngine:
     # MODULE 3: CONFIDENCE CALCULATION
     # ==========================================
     
-    # REMOVED: Old confidence calculation methods
     # All confidence calculation is now handled by Bayesian fusion only
     # This eliminates the 8 competing confidence systems that were causing conflicts
     
@@ -647,11 +646,6 @@ class RealtimePredictionEngine:
             logger.error(f"❌ Bayesian fusion failed: {e}")
             raise RuntimeError(f"Bayesian fusion failed: {e}")
     
-    # REMOVED: _apply_timeframe_adjustment - no longer needed with Bayesian-only system
-    
-    # REMOVED: _apply_calibration - no longer needed with Bayesian-only system
-    
-    # REMOVED: _calculate_kelly_position - no longer needed with Bayesian-only system
     
     def get_active_prediction(self) -> Optional[RealtimePrediction]:
         """Get the current active prediction (singleton)"""

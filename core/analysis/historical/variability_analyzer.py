@@ -280,7 +280,6 @@ class VariabilityAnalyzer:
         else:
             return "EXTREME_VOLATILITY_AVOID"
     
-    # REMOVED: _calculate_optimal_trading_params method - use hybrid_position_sizer instead
     
     def _analyze_volatility_trend(self) -> Dict[str, Any]:
         """Analyze volatility trend over time"""

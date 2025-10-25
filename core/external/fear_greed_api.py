@@ -24,9 +24,10 @@ class FearGreedAPI:
     
     def __init__(self):
         self.api_url = "https://api.alternative.me/fng/"
-        self.cache_duration = 300  # 5 minutes cache (API updates hourly)
-        self.last_fetch_time = 0
-        self.cached_data = None
+        
+        # Use centralized cache system
+        from core.services.centralized_cache import get_global_centralized_cache
+        self._cache = get_global_centralized_cache()
         
         logger.info("😨 Fear & Greed Index Fetcher initialized - Market sentiment analysis")
     
@@ -38,50 +39,55 @@ class FearGreedAPI:
             Dict containing index value, classification, and sentiment signals
         """
         try:
-            # Check cache first
-            if self._is_cache_valid():
-                logger.debug("📊 Using cached Fear & Greed data")
-                return self.cached_data
+            # Use centralized cache with get_or_set pattern
+            cache_key = "fear_greed_index"
             
-            # Use actual Fear & Greed Index API from alternative.me
-            logger.info("📊 Fetching Fear & Greed data from alternative.me API")
+            def fetch_fresh_fear_greed():
+                # Use actual Fear & Greed Index API from alternative.me
+                logger.info("📊 Fetching Fear & Greed data from alternative.me API")
+                
+                try:
+                    response = requests.get("https://api.alternative.me/fng/", timeout=10)
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    
+                    if data.get("data") and len(data["data"]) > 0:
+                        fng_data = data["data"][0]
+                        
+                        # Parse the Fear & Greed data
+                        index_value = int(fng_data["value"])
+                        classification = fng_data["value_classification"]
+                        
+                        # Convert to our format
+                        fear_greed_data = {
+                            'index_value': index_value,
+                            'sentiment': classification.upper().replace(" ", "_"),
+                            'timestamp': int(fng_data["timestamp"]),
+                            'data_source': 'alternative.me_fng',
+                            'confidence': 0.9,  # High confidence from official API
+                            'sentiment_signals': self._generate_sentiment_signals(index_value, classification)
+                        }
+                        
+                        logger.success(f"✅ Fear & Greed Index: {index_value} ({classification})")
+                        return fear_greed_data
+                    else:
+                        logger.warning("⚠️ No Fear & Greed data returned from API")
+                        raise ValueError("Real Fear & Greed data not available - NO FALLBACKS")
+                        
+                except requests.RequestException as e:
+                    logger.error(f"❌ Failed to fetch Fear & Greed data from API: {e}")
+                    raise ValueError(f"Real Fear & Greed data not available - NO FALLBACKS: {e}")
             
-            try:
-                response = requests.get("https://api.alternative.me/fng/", timeout=10)
-                response.raise_for_status()
-                
-                data = response.json()
-                
-                if data.get("data") and len(data["data"]) > 0:
-                    fng_data = data["data"][0]
-                    
-                    # Parse the Fear & Greed data
-                    index_value = int(fng_data["value"])
-                    classification = fng_data["value_classification"]
-                    
-                    # Convert to our format
-                    fear_greed_data = {
-                        'index_value': index_value,
-                        'sentiment': classification.upper().replace(" ", "_"),
-                        'timestamp': int(fng_data["timestamp"]),
-                        'data_source': 'alternative.me_fng',
-                        'confidence': 0.9,  # High confidence from official API
-                        'sentiment_signals': self._generate_sentiment_signals(index_value, classification)
-                    }
-                    
-                    # Cache the result
-                    self.cached_data = fear_greed_data
-                    self.last_fetch_time = time.time()
-                    
-                    logger.success(f"✅ Fear & Greed Index: {index_value} ({classification})")
-                    return fear_greed_data
-                else:
-                    logger.warning("⚠️ No Fear & Greed data returned from API")
-                    raise ValueError("Real Fear & Greed data not available - NO FALLBACKS")
-                    
-            except requests.RequestException as e:
-                logger.error(f"❌ Failed to fetch Fear & Greed data from API: {e}")
-                raise ValueError(f"Real Fear & Greed data not available - NO FALLBACKS: {e}")
+            # Get from cache or fetch fresh
+            fear_greed_data = self._cache.get_or_set(
+                key=cache_key,
+                factory_func=fetch_fresh_fear_greed,
+                ttl=600,  # 10 minutes cache (API updates hourly)
+                force_fresh=False
+            )
+            
+            return fear_greed_data
                 
         except Exception as e:
             logger.error(f"❌ Fear & Greed Index fetch failed: {e}")
@@ -222,13 +228,6 @@ class FearGreedAPI:
         else:
             return "AGGRESSIVE_SELL"
     
-    def _is_cache_valid(self) -> bool:
-        """Check if cached data is still valid"""
-        if not self.cached_data or not self.last_fetch_time:
-            return False
-        
-        time_since_fetch = time.time() - self.last_fetch_time
-        return time_since_fetch < self.cache_duration
     
     def _get_default_data(self) -> Dict[str, Any]:
         """Get default data when API fails"""

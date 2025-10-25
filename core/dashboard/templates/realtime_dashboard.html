@@ -1069,12 +1069,15 @@
                 
                 
                 
-                // Update Support/Resistance
-                if (market.support_resistance && market.support_resistance.key_levels) {
+                // Update Support/Resistance with top 2 levels
+                if (market.support_resistance) {
                     const srElement = document.getElementById('market-key-levels');
                     if (srElement) {
-                        const supportLevels = market.support_resistance.key_levels.filter(level => level.type === 'support').slice(0, 2);
-                        const resistanceLevels = market.support_resistance.key_levels.filter(level => level.type === 'resistance').slice(0, 2);
+                        // Use top 2 support and resistance levels if available, otherwise fallback to filtering
+                        const supportLevels = market.support_resistance.top_2_support || 
+                                            market.support_resistance.key_levels.filter(level => level.type === 'support').slice(0, 2);
+                        const resistanceLevels = market.support_resistance.top_2_resistance || 
+                                              market.support_resistance.key_levels.filter(level => level.type === 'resistance').slice(0, 2);
                         
                         let srText = '';
                         if (supportLevels.length > 0) {
@@ -1113,7 +1116,6 @@
                 
                 // Patterns are handled by the main updateMarketData function below
             }
-            
             
             updateMarketData(market) {
                 console.log('📊 Dashboard received market data:', market);
@@ -1292,7 +1294,9 @@
                 console.log('📊 Volatility data check:', {
                     volatility_5m: market.volatility_5m,
                     volatility_5m_category: market.volatility_5m_category,
-                    volatility: market.volatility
+                    volatility: market.volatility,
+                    volatilityType: typeof market.volatility,
+                    volatilityKeys: market.volatility ? Object.keys(market.volatility) : 'N/A'
                 });
                 
                 // Handle volatility data from different possible structures
@@ -1300,13 +1304,17 @@
                 let volatilityCategory = null;
                 
                 if (market.volatility && typeof market.volatility === 'object') {
-                    // Volatility data as object
-                    volatilityValue = market.volatility.current || market.volatility.volatility_5m;
-                    volatilityCategory = market.volatility.category || market.volatility.volatility_5m_category;
+                    // Volatility data as object - check for the correct fields
+                    volatilityValue = market.volatility.volatility_5m || market.volatility.volatility;
+                    volatilityCategory = market.volatility.volatility_5m_category || market.volatility.category;
+                    console.log('📊 Using volatility object:', { volatilityValue, volatilityCategory });
                 } else if (market.volatility_5m !== undefined && market.volatility_5m_category) {
                     // Direct volatility values
                     volatilityValue = market.volatility_5m;
                     volatilityCategory = market.volatility_5m_category;
+                    console.log('📊 Using direct volatility values:', { volatilityValue, volatilityCategory });
+                } else {
+                    console.log('📊 No volatility data found');
                 }
                 
                 // Build multi-timeframe volatility display
@@ -1379,12 +1387,19 @@
                     
                     // ALWAYS show support and resistance levels from HISTORICAL DATA
                     if (strongestSupport > 0) {
+                        // Get support score from key levels
+                        const supportLevel = market.support_resistance.key_levels?.find(level => 
+                            Math.abs(level.level - strongestSupport) < 10 && level.type === 'support'
+                        );
+                        const supportScore = supportLevel?.score?.toFixed(1) || '0.0';
+                        const supportTouches = supportLevel?.touches || 0;
+                        
                         if (strongestSupport < currentPrice) {
                             // Valid support below current price
-                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
+                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()} (score: ${supportScore}, ${supportTouches}x)<br>`;
                         } else {
                             // Support above current price - still valid, not broken
-                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()}<br>`;
+                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()} (score: ${supportScore}, ${supportTouches}x)<br>`;
                         }
                     } else {
                         // This should never happen - S/R calculator should always find historical levels
@@ -1392,43 +1407,67 @@
                     }
                     
                     if (strongestResistance > 0) {
+                        // Get resistance score from key levels
+                        const resistanceLevel = market.support_resistance.key_levels?.find(level => 
+                            Math.abs(level.level - strongestResistance) < 10 && level.type === 'resistance'
+                        );
+                        const resistanceScore = resistanceLevel?.score?.toFixed(1) || '0.0';
+                        const resistanceTouches = resistanceLevel?.touches || 0;
+                        
                         if (strongestResistance > currentPrice) {
                             // Valid resistance above current price
-                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
+                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()} (score: ${resistanceScore}, ${resistanceTouches}x)<br>`;
                         } else {
                             // Resistance below current price - still valid, not broken
-                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()}<br>`;
+                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()} (score: ${resistanceScore}, ${resistanceTouches}x)<br>`;
                         }
                     } else {
                         // This should never happen - S/R calculator should always find historical levels
                         levelsText += `<span style="color: #888;">⚪</span> Resistance: ERROR - No historical data<br>`;
                     }
                     
-                    // Show key levels with detailed bounce validation data
-                    if (levels.length > 0) {
-                        const keyLevels = levels.slice(0, 3); // Show top 3 levels
-                        keyLevels.forEach(level => {
-                            const type = level.type === 'support' ? '🟢' : '🔴';
-                            const critical = level.critical ? ' ⭐' : '';
-                            const score = level.score ? level.score.toFixed(1) : '0.0';
-                            const timeframe = level.timeframe || '5m';
-                            const relevance = level.relevance || 'active';
-                            
-                            // Add strength indicator based on score
-                            let strengthIndicator = '';
-                            if (level.score > 100) strengthIndicator = ' 💪'; // Very strong
-                            else if (level.score > 50) strengthIndicator = ' 🔥'; // Strong
-                            else if (level.score > 20) strengthIndicator = ' ⚡'; // Moderate
-                            
-                            levelsText += `${type} $${Math.round(level.level).toLocaleString()} (${level.touches}x, score:${score})${strengthIndicator}${critical}<br>`;
-                            levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
-                        });
+                    // Show top 2 support and resistance levels with detailed info
+                    const topSupport = market.support_resistance.top_2_support || [];
+                    const topResistance = market.support_resistance.top_2_resistance || [];
+                    
+                    // Display top 2 support levels
+                    topSupport.forEach(level => {
+                        const score = level.score ? level.score.toFixed(1) : '0.0';
+                        const touches = level.touches || 0;
+                        const timeframe = level.timeframe || '5m';
+                        const relevance = level.relevance || 'active';
                         
-                        // Add timeframe info
-                        const timeframe = market.support_resistance.timeframe || '5m';
-                        const candlesAnalyzed = market.support_resistance.candles_analyzed || 0;
-                        levelsText += `<span style="font-size: 10px; color: #666;">From ${candlesAnalyzed} ${timeframe} candles</span>`;
-                    }
+                        // Add strength indicator based on score
+                        let strengthIndicator = '';
+                        if (level.score > 100) strengthIndicator = ' 💪'; // Very strong
+                        else if (level.score > 50) strengthIndicator = ' 🔥'; // Strong
+                        else if (level.score > 20) strengthIndicator = ' ⚡'; // Moderate
+                        
+                        levelsText += `🟢 $${Math.round(level.level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator}<br>`;
+                        levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
+                    });
+                    
+                    // Display top 2 resistance levels
+                    topResistance.forEach(level => {
+                        const score = level.score ? level.score.toFixed(1) : '0.0';
+                        const touches = level.touches || 0;
+                        const timeframe = level.timeframe || '5m';
+                        const relevance = level.relevance || 'active';
+                        
+                        // Add strength indicator based on score
+                        let strengthIndicator = '';
+                        if (level.score > 100) strengthIndicator = ' 💪'; // Very strong
+                        else if (level.score > 50) strengthIndicator = ' 🔥'; // Strong
+                        else if (level.score > 20) strengthIndicator = ' ⚡'; // Moderate
+                        
+                        levelsText += `🔴 $${Math.round(level.level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator}<br>`;
+                        levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
+                    });
+                    
+                    // Add timeframe info
+                    const timeframe = market.support_resistance.timeframe || '5m';
+                    const candlesAnalyzed = market.support_resistance.candles_analyzed || 0;
+                    levelsText += `<span style="font-size: 10px; color: #666;">From ${candlesAnalyzed} ${timeframe} candles</span>`;
                     
                     srElement.innerHTML = levelsText;
                     srElement.className = 'data-value trend-positive';
@@ -1473,8 +1512,8 @@
                             ...(patterns.wedge_patterns || [])
                         ].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
                         
-                        // Show top 2 patterns
-                        allPatterns.slice(0, 2).forEach(pattern => {
+                        // Show all patterns (not just top 2)
+                        allPatterns.forEach(pattern => {
                             const confidence = Math.round((pattern.confidence || 0) * 100);
                             const patternName = (pattern.pattern || pattern.pattern_type)?.replace(/_/g, ' ') || 'Unknown';
                             const patternEmoji = patternName.includes('DOUBLE TOP') || patternName.includes('HEAD SHOULDERS') ? '🔴' :
@@ -1588,7 +1627,7 @@
                         // Fear & Greed Index
                         const fearGreedElement = document.getElementById('overview-fear-greed-index');
                         const indexValue = sentimentData.index_value;
-                        const classification = sentimentData.classification;
+                        const classification = sentimentData.sentiment;
                         
                         // Color code based on sentiment
                         let fearGreedColor = 'trend-neutral';

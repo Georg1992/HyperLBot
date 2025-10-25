@@ -300,7 +300,6 @@ class StrategyManager:
     def _record_strategy_selection(self, strategy: str, market_data: Dict[str, Any], recommendation) -> None:
         """Record strategy selection for ML learning"""
         try:
-            # TODO: ML learning will be implemented later
             
             # Record the strategy selection (without outcome yet)
             # The outcome will be recorded later when trades are executed
@@ -330,13 +329,11 @@ class StrategyManager:
     def record_strategy_outcome(self, strategy: str, outcome: Dict[str, Any]) -> None:
         """Record the outcome of a strategy for ML learning"""
         try:
-            # TODO: ML learning will be implemented later
             
             # Find the most recent selection for this strategy
             if hasattr(self, 'pending_strategy_outcomes'):
                 for record in reversed(self.pending_strategy_outcomes):
                     if record["strategy"] == strategy:
-                        # TODO: Record outcome with ML when implemented
                         logger.debug(f"Strategy outcome recorded: {strategy}")
                         
                         # Remove from pending
@@ -373,7 +370,6 @@ class StrategyManager:
     def get_ml_strategy_performance(self) -> Dict[str, Any]:
         """Get ML strategy performance statistics"""
         try:
-            # TODO: ML learning will be implemented later
             return {"message": "ML performance tracking not implemented yet"}
         except Exception as e:
             logger.error(f"❌ Failed to get ML strategy performance: {e}")

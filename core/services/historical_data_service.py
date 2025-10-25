@@ -15,9 +15,9 @@ class HistoricalDataService:
     """Centralized service for all historical candle data"""
     
     def __init__(self):
-        # Simple cache to prevent redundant API calls
-        self._cache = {}
-        self._cache_duration = 60  # 1 minute cache
+        # Use centralized cache system
+        from core.services.centralized_cache import get_global_centralized_cache
+        self._cache = get_global_centralized_cache()
         logger.info("📊 Historical Data Service initialized - Single source for all candle data")
     
     def get_historical_candles(self, symbol: str, timeframe: str, count: int) -> List[Dict]:
@@ -34,15 +34,12 @@ class HistoricalDataService:
             List of historical candles
         """
         try:
-            # Check cache first
-            cache_key = f"{symbol}_{timeframe}_{count}"
-            current_time = time.time()
-            
-            if cache_key in self._cache:
-                cached_data, cache_time = self._cache[cache_key]
-                if current_time - cache_time < self._cache_duration:
-                    logger.debug(f"📊 Using cached {timeframe} candles for {symbol}")
-                    return cached_data
+            # Check cache first using centralized system
+            cache_key = f"historical_candles_{symbol}_{timeframe}_{count}"
+            cached_data = self._cache.get(cache_key)
+            if cached_data:
+                logger.debug(f"📊 Using cached {timeframe} candles for {symbol}")
+                return cached_data
             
             logger.debug(f"📊 Fetching {count} {timeframe} candles for {symbol} from HyperliquidAPI")
             
@@ -55,8 +52,8 @@ class HistoricalDataService:
                 logger.warning(f"⚠️ No {timeframe} candles available for {symbol}")
                 return []
             
-            # Cache the result
-            self._cache[cache_key] = (candles, current_time)
+            # Cache the result using centralized system
+            self._cache.set(cache_key, candles, ttl=60)  # 1 minute cache
             
             logger.debug(f"📊 Retrieved {len(candles)} {timeframe} candles for {symbol}")
             return candles
