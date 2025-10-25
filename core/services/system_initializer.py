@@ -43,7 +43,7 @@ class SystemInitializer:
             
             # Step 2: Initialize Singleton Systems
             singleton_results = self._initialize_singleton_systems(initial_balance)
-            if not singleton_results["success"]:
+            if not singleton_results or not isinstance(singleton_results, dict):
                 return {"success": False, "error": "Singleton system initialization failed"}
             
             # Step 3: Initialize Data Systems
