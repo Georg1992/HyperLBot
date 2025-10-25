@@ -258,12 +258,22 @@ class APIManager:
             "initialization_results": self.initialization_results
         }
 
-# Global API Manager instance
+# Factory function for dependency injection
+def create_api_manager() -> APIManager:
+    """
+    Factory function to create APIManager with dependency injection
+    
+    Returns:
+        Configured APIManager instance
+    """
+    return APIManager()
+
+# Global API Manager instance for backward compatibility
 _global_api_manager = None
 
 def get_global_api_manager() -> APIManager:
     """Get the global API Manager singleton instance"""
     global _global_api_manager
     if _global_api_manager is None:
-        _global_api_manager = APIManager()
+        _global_api_manager = create_api_manager()
     return _global_api_manager

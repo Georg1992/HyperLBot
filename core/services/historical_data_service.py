@@ -200,14 +200,31 @@ class HistoricalDataService:
         }
 
 
-# Singleton pattern implementation
+# Factory function for dependency injection with singleton pattern
+def create_historical_data_service() -> HistoricalDataService:
+    """
+    Factory function to create HistoricalDataService with singleton pattern
+    Prevents redundant initializations
+    
+    Returns:
+        Configured HistoricalDataService instance (singleton)
+    """
+    global _global_historical_data_service
+    if _global_historical_data_service is None:
+        _global_historical_data_service = HistoricalDataService()
+        logger.info("📊 HistoricalDataService singleton created")
+    else:
+        logger.debug("♻️ Reusing existing HistoricalDataService singleton")
+    return _global_historical_data_service
+
+# Singleton pattern implementation for backward compatibility
 _global_historical_data_service = None
 
 def get_global_historical_data_service() -> HistoricalDataService:
     """Get the global HistoricalDataService singleton instance"""
     global _global_historical_data_service
     if _global_historical_data_service is None:
-        _global_historical_data_service = HistoricalDataService()
+        _global_historical_data_service = create_historical_data_service()
     return _global_historical_data_service
 
 # Backward compatibility

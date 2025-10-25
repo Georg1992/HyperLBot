@@ -144,5 +144,15 @@ class MarketOpeningService:
                 "liquidation_risk": "UNKNOWN"
             }
 
-# Global instance
-global_market_opening_service = MarketOpeningService()
+# Factory function for dependency injection
+def create_market_opening_service() -> MarketOpeningService:
+    """
+    Factory function to create MarketOpeningService with dependency injection
+    
+    Returns:
+        Configured MarketOpeningService instance
+    """
+    return MarketOpeningService()
+
+# Global instance for backward compatibility
+global_market_opening_service = create_market_opening_service()

@@ -261,3 +261,26 @@ class DashboardService:
                 
         except Exception as e:
             logger.error(f"❌ Could not {'create' if is_initial else 'update'} heartbeat: {e}")
+
+
+# Factory function for dependency injection with singleton pattern
+_global_dashboard_service = None
+
+def create_dashboard_service(heartbeat_file=None) -> DashboardService:
+    """
+    Factory function to create DashboardService with singleton pattern
+    Prevents redundant initializations
+    
+    Args:
+        heartbeat_file: Optional heartbeat file path
+    
+    Returns:
+        Configured DashboardService instance (singleton)
+    """
+    global _global_dashboard_service
+    if _global_dashboard_service is None:
+        _global_dashboard_service = DashboardService(heartbeat_file=heartbeat_file)
+        logger.info("🎛️ DashboardService singleton created")
+    else:
+        logger.debug("♻️ Reusing existing DashboardService singleton")
+    return _global_dashboard_service

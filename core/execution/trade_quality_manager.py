@@ -99,10 +99,10 @@ class TradeManager:
             strategy_name = signal_data.get("strategy_name", "standard")
             
             # Use strategy-specific volatility thresholds
-            from core.calculations.volatility_calculator import get_global_volatility_calculator
+            from core.calculations.volatility_calculator import create_volatility_calculator
             
             # Get strategy-specific thresholds
-            volatility_calculator = get_global_volatility_calculator()
+            volatility_calculator = create_volatility_calculator("BTC")
             strategy_thresholds = {
                 "scalping": {"LOW": 0.0008, "MODERATE": 0.0015, "HIGH": 0.0025, "EXTREME": 0.0040},
                 "standard": {"LOW": 0.0015, "MODERATE": 0.0030, "HIGH": 0.0040, "EXTREME": 0.0080},

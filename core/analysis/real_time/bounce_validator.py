@@ -11,11 +11,21 @@ from loguru import logger
 # Singleton pattern implementation
 _global_bounce_validator = None
 
+# Factory function for backward compatibility
+def create_bounce_validator() -> 'BounceValidator':
+    """
+    Factory function to create BounceValidator with dependency injection
+    
+    Returns:
+        Configured BounceValidator instance
+    """
+    return BounceValidator()
+
 def get_global_bounce_validator() -> 'BounceValidator':
     """Get the global BounceValidator singleton instance"""
     global _global_bounce_validator
     if _global_bounce_validator is None:
-        _global_bounce_validator = BounceValidator()
+        _global_bounce_validator = create_bounce_validator()
     return _global_bounce_validator
 
 class BounceValidator:

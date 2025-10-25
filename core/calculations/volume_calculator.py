@@ -1,435 +1,198 @@
 #!/usr/bin/env python3
 """
-Volume Calculator Module
-Centralized volume calculations and analysis for trading decisions
+Volume Calculator - Clean Architecture
+Simple, working implementation with factory function
 """
 
-from typing import Dict, Any, List, Optional, Tuple
 import time
+from typing import Dict, List, Any, Optional
 from loguru import logger
+from .base_calculator import BaseCalculator
+from .volume_data_provider import VolumeDataProvider
+from .volume_analyzer import VolumeAnalyzer
+from .volume_classifier import VolumeClassifier
 
-# Singleton pattern implementation
-_global_volume_calculator = None
 
-def get_global_volume_calculator() -> 'VolumeCalculator':
-    """Get the global VolumeCalculator singleton instance"""
-    global _global_volume_calculator
-    if _global_volume_calculator is None:
-        _global_volume_calculator = VolumeCalculator()
-    return _global_volume_calculator
-
-class VolumeCalculator:
-    """Centralized volume calculation and analysis system"""
+class VolumeCalculator(BaseCalculator):
+    """
+    Volume Calculator - Clean, working implementation
+    """
     
-    def __init__(self):
-        logger.info("📊 Volume Calculator initialized")
-        # Volume tracking for 5-minute resets
-        self._last_reset_time = 0
-        self._current_volume = 0.0
-        self._last_raw_volume = None
+    def __init__(self, symbol: str = "BTC",
+                 data_provider: Optional[VolumeDataProvider] = None,
+                 analyzer: Optional[VolumeAnalyzer] = None,
+                 classifier: Optional[VolumeClassifier] = None):
+        """
+        Initialize Volume Calculator
+        
+        Args:
+            symbol: Trading symbol (default: "BTC")
+            data_provider: VolumeDataProvider instance (injected dependency)
+            analyzer: VolumeAnalyzer instance (injected dependency)
+            classifier: VolumeClassifier instance (injected dependency)
+        """
+        # Initialize base class
+        super().__init__(symbol)
+        
+        # Dependency injection with defaults
+        self._data_provider = data_provider or VolumeDataProvider(symbol)
+        self._analyzer = analyzer or VolumeAnalyzer()
+        self._classifier = classifier or VolumeClassifier()
+        
+        logger.info(f"📊 Volume Calculator initialized for {symbol}")
+    
+    def get_latest_analysis(self, hyperliquid_websocket=None) -> Dict[str, Any]:
+        """
+        Get latest volume analysis with websocket access
+        
+        Args:
+            hyperliquid_websocket: HyperliquidWebSocket instance (optional)
+        
+        Returns:
+            Volume analysis dictionary
+        """
+        try:
+            # Use provided websocket or get from system initializer
+            if not hyperliquid_websocket:
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                market_data_service = system_initializer.singleton_systems.get("market_data_service")
+                
+                if not market_data_service or not market_data_service.hyperliquid_websocket:
+                    logger.warning("⚠️ Hyperliquid WebSocket not available for volume calculation")
+                    return self._create_error_result("Hyperliquid WebSocket not available")
+                
+                hyperliquid_websocket = market_data_service.hyperliquid_websocket
+            
+            # Use the websocket for volume calculation
+            return self.calculate_hyperliquid_5m_volume(hyperliquid_websocket)
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get latest volume analysis: {e}")
+            return self._create_error_result(str(e))
+    
+    def _create_error_result(self, error_message: str) -> Dict[str, Any]:
+        """Create error result with volume-specific structure"""
+        base_result = super()._create_error_result(error_message)
+        return {
+            **base_result,
+            "current_5m_volume": 0.0,
+            "volume_category": "ERROR",
+            "volume_momentum": {"momentum": 0.0, "trend": "UNKNOWN"},
+            "volume_trend_strength": 0.0,
+            "relative_volume": 0.0,
+            "volume_anomaly": {"is_anomaly": False, "severity": "NORMAL"},
+            "volume_implications": {"implications": [], "trading_suitable": False, "risk_level": "UNKNOWN"},
+            "volume_recommendations": ["Volume analysis failed - use caution"],
+            "data_source": "error"
+        }
     
     def calculate_hyperliquid_5m_volume(self, hyperliquid_websocket) -> Dict[str, Any]:
         """
-        Calculate enhanced 5m volume from Hyperliquid WebSocket data with momentum and correlation analysis
+        Calculate enhanced 5m volume using the refactored modular system
         
         Args:
             hyperliquid_websocket: HyperliquidWebSocket instance
-            
+        
         Returns:
-            Dict with enhanced 5m volume analysis
+            Dictionary with enhanced 5m volume analysis
         """
         try:
             if not hyperliquid_websocket:
                 raise ValueError("Hyperliquid WebSocket not available")
             
-            # Get raw trades from Hyperliquid WebSocket (PURE DATA)
-            raw_trades = hyperliquid_websocket.get_raw_trades()
+            # 1. Fetch volume data via data provider
+            volume_data = self._data_provider.fetch_hyperliquid_volume_data(hyperliquid_websocket)
+            raw_trades = volume_data.get("raw_trades", [])
             
-            # Calculate volume from raw trades (BUSINESS LOGIC IN CALCULATOR)
+            if not raw_trades:
+                logger.warning("⚠️ No raw trades available for volume calculation")
+                return self._create_error_result("No raw trades available")
+            
+            # 2. Calculate 5m volume via data provider
             current_time = time.time()
-            five_minutes_ago = current_time - (5 * 60)
+            volume_calc = self._data_provider.calculate_5m_volume(raw_trades, current_time)
+            current_5m_volume = volume_calc.get("current_5m_volume", 0.0)
             
-            # Filter trades from last 5 minutes
-            recent_trades = [
-                trade for trade in raw_trades 
-                if trade.get('timestamp', 0) >= five_minutes_ago
-            ]
+            # 3. Get volume history for analysis
+            volume_history = self._data_provider.get_volume_history(10)
             
-            # Calculate volume from filtered trades
-            raw_volume = sum(trade.get('size', 0) for trade in recent_trades)
+            # 4. Calculate volume momentum via analyzer
+            momentum = self._analyzer.calculate_volume_momentum(volume_history)
             
-            # Implement 5-minute reset logic aligned to exact 5-minute intervals (0:00, 0:05, 0:10, etc.)
-            current_utc_time = time.time()
-            current_minute = int(current_utc_time // 60) % 60
-            current_5min_boundary = (current_minute // 5) * 5  # 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55
+            # 5. Calculate volume trend strength via analyzer
+            trend_strength = self._analyzer.calculate_volume_trend_strength(volume_history)
             
-            # Calculate the exact timestamp of the current 5-minute boundary
-            current_5min_timestamp = int(current_utc_time // 300) * 300  # Round down to nearest 5-minute boundary
+            # 6. Calculate relative volume via analyzer
+            relative_volume = self._analyzer.calculate_relative_volume(current_5m_volume, volume_history)
             
-            if self._last_reset_time == 0:
-                # First time - initialize
-                self._last_reset_time = current_5min_timestamp
-                self._current_volume = raw_volume
-                logger.info(f"📊 Volume initialized at 5min boundary: {current_5min_boundary:02d}:00")
-            elif current_5min_timestamp > self._last_reset_time:
-                # New 5-minute boundary reached - reset volume
-                logger.info(f"📊 Volume reset at 5min boundary {current_5min_boundary:02d}:00: {self._current_volume:.2f} -> 0.0 BTC")
-                self._last_reset_time = current_5min_timestamp
-                self._current_volume = 0.0
-            else:
-                # Same 5-minute period - accumulate volume from new trades
-                # Only add the difference to avoid double-counting
-                if self._last_raw_volume is not None:
-                    new_volume = max(0, raw_volume - self._last_raw_volume)
-                    self._current_volume += new_volume
-                else:
-                    # First calculation - use full volume
-                    self._current_volume = raw_volume
-                
-                # Store current raw volume for next calculation
-                self._last_raw_volume = raw_volume
+            # 7. Detect volume anomalies via analyzer
+            anomaly = self._analyzer.detect_volume_anomalies(current_5m_volume, volume_history)
             
-            current_5m_volume = self._current_volume
+            # 8. Categorize volume via classifier
+            categorization = self._classifier.categorize_volume(current_5m_volume, relative_volume)
             
-            # Get volume history for momentum analysis
-            volume_history = self._get_volume_history()
-            
-            # Calculate volume momentum
-            volume_momentum = self._calculate_volume_momentum(current_5m_volume, volume_history)
-            
-            # Calculate volume trend strength
-            volume_trend_strength = self._calculate_volume_trend_strength(volume_history)
-            
-            # Calculate volume acceleration
-            volume_acceleration = self._calculate_volume_acceleration(volume_history)
-            
-            # Enhanced categorization with momentum consideration
-            volume_category = self._categorize_enhanced_volume(
-                current_5m_volume, volume_momentum, volume_trend_strength
+            # 9. Determine implications via classifier
+            implications = self._classifier.determine_volume_implications(
+                categorization.get("level", "UNKNOWN"),
+                momentum,
+                anomaly
             )
             
-            return {
+            # 10. Get recommendations via classifier
+            recommendations = self._classifier.get_volume_recommendations(
+                categorization.get("level", "UNKNOWN"),
+                momentum,
+                anomaly
+            )
+            
+            # 11. Format results
+            result = {
                 "current_5m_volume": current_5m_volume,
-                "volume_category": volume_category,
-                "volume_momentum": volume_momentum,
-                "volume_trend_strength": volume_trend_strength,
-                "volume_acceleration": volume_acceleration,
+                "volume_category": categorization.get("level", "UNKNOWN"),
+                "volume_momentum": momentum,
+                "volume_trend_strength": trend_strength,
+                "relative_volume": relative_volume,
+                "volume_anomaly": anomaly,
+                "volume_implications": implications,
+                "volume_recommendations": recommendations,
                 "data_source": "hyperliquid_5m",
-                "timestamp": time.time()
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to calculate Hyperliquid 5m volume: {e}")
-            raise ValueError(f"Hyperliquid 5m volume calculation failed: {e}")
-    
-    
-    def calculate_relative_volume(self, current_volume: float, historical_volumes: List[float]) -> float:
-        """Calculate relative volume (current vs historical average)"""
-        try:
-            if not historical_volumes or len(historical_volumes) < 5:
-                return 1.0  # Default neutral relative volume
-            
-            historical_avg = sum(historical_volumes) / len(historical_volumes)
-            if historical_avg == 0:
-                return 1.0
-                
-            relative_volume = current_volume / historical_avg
-            return round(relative_volume, 3)
-            
-        except Exception as e:
-            logger.warning(f"Relative volume calculation failed: {e}")
-            return 1.0
-    
-    def calculate_volume_momentum(self, volumes: List[float]) -> Dict[str, Any]:
-        """Calculate volume momentum and acceleration"""
-        try:
-            if len(volumes) < 6:
-                return {
-                    "momentum": 0.0,
-                    "acceleration": 0.0,
-                    "trend": "UNKNOWN"
+                "timestamp": current_time,
+                "analysis_details": {
+                    "trade_count": volume_calc.get("trade_count", 0),
+                    "reset_time": volume_calc.get("reset_time", 0),
+                    "time_window": volume_calc.get("time_window", "5m"),
+                    "historical_volumes": volume_history
                 }
-            
-            # Recent vs older volume comparison
-            recent_volumes = volumes[-3:]  # Last 3 periods
-            older_volumes = volumes[-6:-3]  # Previous 3 periods
-            
-            recent_avg = sum(recent_volumes) / len(recent_volumes)
-            older_avg = sum(older_volumes) / len(older_volumes)
-            
-            # Calculate momentum (rate of change)
-            if older_avg > 0:
-                momentum = (recent_avg - older_avg) / older_avg
-            else:
-                momentum = 0.0
-            
-            # Calculate acceleration (change in momentum)
-            if len(volumes) >= 9:
-                earlier_volumes = volumes[-9:-6]
-                earlier_avg = sum(earlier_volumes) / len(earlier_volumes)
-                
-                if earlier_avg > 0:
-                    previous_momentum = (older_avg - earlier_avg) / earlier_avg
-                    acceleration = momentum - previous_momentum
-                else:
-                    acceleration = 0.0
-            else:
-                acceleration = 0.0
-            
-            # Determine trend
-            if momentum > 0.15:  # 15% increase
-                trend = "ACCELERATING"
-            elif momentum > 0.05:  # 5% increase
-                trend = "INCREASING"
-            elif momentum < -0.15:  # 15% decrease
-                trend = "DECLINING"
-            elif momentum < -0.05:  # 5% decrease
-                trend = "DECREASING"
-            else:
-                trend = "STABLE"
-            
-            return {
-                "momentum": round(momentum, 4),
-                "acceleration": round(acceleration, 4),
-                "trend": trend
             }
             
+            logger.info(f"📊 Volume analysis complete: {categorization.get('level', 'UNKNOWN')} ({current_5m_volume:.2f})")
+            return result
+            
         except Exception as e:
-            logger.warning(f"Volume momentum calculation failed: {e}")
-            return {
-                "momentum": 0.0,
-                "acceleration": 0.0,
-                "trend": "ERROR"
-            }
+            logger.error(f"❌ Hyperliquid 5m volume calculation failed: {e}")
+            return self._create_error_result(str(e))
     
     
-    # Old volume smoothing method removed - using CoinGecko volume data instead
-    
-    # Old relative volume analysis method removed - using CoinGecko volume data instead
-    
-    
-    def detect_volume_spike_from_hyperliquid(self, current_volume_btc: float, historical_volumes: List[float]) -> Dict[str, Any]:
-        """
-        Detect volume spikes using Hyperliquid 5m volume data
-        
-        Args:
-            current_volume_btc: Current volume in BTC from Hyperliquid 5m candles
-            historical_volumes: List of recent volumes for comparison
-        
-        Returns:
-            Dict with volume spike analysis
-        """
+    def invalidate_cache(self):
+        """Clear all cached volume data to force fresh calculation"""
         try:
-            if not historical_volumes or len(historical_volumes) < 5:
-                # Use updated Bitcoin volume thresholds for 5m candle trading volume
-                if current_volume_btc >= 500:  # 500+ BTC per 5m candle (EXTREME - major market event)
-                    volume_category = "EXTREME"
-                elif current_volume_btc >= 150:  # 150+ BTC per 5m candle (very high activity)
-                    volume_category = "VERY_HIGH"
-                elif current_volume_btc >= 80:  # 80+ BTC per 5m candle (high activity)
-                    volume_category = "HIGH"
-                elif current_volume_btc >= 20:  # 20+ BTC per 5m candle (moderate activity)
-                    volume_category = "MODERATE"
-                elif current_volume_btc >= 10:  # 10+ BTC per 5m candle (low activity)
-                    volume_category = "LOW"
-                else:  # <10 BTC per 5m candle (very low activity)
-                    volume_category = "VERY_LOW"
-                
-                return {
-                    "volume_spike_detected": False,
-                    "volume_ratio": 1.0,
-                    "volume_category": volume_category,
-                    "current_volume_btc": current_volume_btc,
-                    "average_volume_btc": current_volume_btc,
-                    "data_source": "hyperliquid_estimated"
-                }
-            
-            # Calculate average volume from historical data
-            avg_volume = sum(historical_volumes) / len(historical_volumes)
-            volume_ratio = current_volume_btc / avg_volume if avg_volume > 0 else 1.0
-            
-            # Detect volume spikes based on ratio
-            if volume_ratio >= 3.0:  # 3x+ normal volume
-                volume_category = "EXTREMELY_HIGH"
-                volume_spike_detected = True
-            elif volume_ratio >= 2.0:  # 2x+ normal volume
-                volume_category = "VERY_HIGH"
-                volume_spike_detected = True
-            elif volume_ratio >= 1.5:  # 1.5x+ normal volume
-                volume_category = "HIGH"
-                volume_spike_detected = True
-            elif volume_ratio >= 0.8:  # 0.8x+ normal volume
-                volume_category = "NORMAL"
-                volume_spike_detected = False
-            elif volume_ratio >= 0.5:  # 0.5x+ normal volume
-                volume_category = "BELOW_AVERAGE"
-                volume_spike_detected = False
-            else:  # < 0.5x normal volume
-                volume_category = "LOW"
-                volume_spike_detected = False
-            
-            return {
-                "volume_spike_detected": volume_spike_detected,
-                "volume_ratio": round(volume_ratio, 2),
-                "volume_category": volume_category,
-                "current_volume_btc": current_volume_btc,
-                "average_volume_btc": round(avg_volume, 2),
-                "data_source": "binance"
-            }
-            
+            self._cache.invalidate_pattern("volume_*")
+            self._data_provider.invalidate_cache()
+            logger.info("📊 Volume cache invalidated - next calculation will be fresh")
         except Exception as e:
-            logger.warning(f"Volume spike detection failed: {e}")
-            return {
-                "volume_spike_detected": False,
-                "volume_ratio": 1.0,
-                "volume_category": "ERROR",
-                "current_volume_btc": current_volume_btc,
-                "average_volume_btc": 0,
-                "data_source": "error"
-            }
+            logger.error(f"❌ Failed to invalidate volume cache: {e}")
+
+
+# Factory function for backward compatibility
+def create_volume_calculator(symbol: str = "BTC") -> VolumeCalculator:
+    """
+    Factory function to create VolumeCalculator with dependency injection
     
-    def get_latest_analysis(self, hyperliquid_websocket=None) -> Dict[str, Any]:
-        """
-        Get latest volume analysis for MarketDataService coordination
-        
-        Args:
-            hyperliquid_websocket: HyperliquidWebSocket instance for 5m volume
-            
-        Returns:
-            Dict with volume analysis
-        """
-        try:
-            analysis = {
-                "hyperliquid_5m": {},
-                "timestamp": time.time()
-            }
-            
-            # Get Hyperliquid 5m volume if available
-            if hyperliquid_websocket:
-                try:
-                    analysis["hyperliquid_5m"] = self.calculate_hyperliquid_5m_volume(hyperliquid_websocket)
-                    
-                    # Add debug information if available
-                    if hasattr(hyperliquid_websocket, 'get_volume_debug_info'):
-                        debug_info = hyperliquid_websocket.get_volume_debug_info()
-                        analysis["debug_info"] = debug_info
-                        
-                except Exception as e:
-                    logger.warning(f"Hyperliquid 5m volume calculation failed: {e}")
-                    analysis["hyperliquid_5m"] = {"error": str(e)}
-            
-            return analysis
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get latest volume analysis: {e}")
-            return {
-                "hyperliquid_5m": {"error": str(e)},
-                "timestamp": time.time()
-            }
+    Args:
+        symbol: Trading symbol
     
-    def _get_volume_history(self) -> List[float]:
-        """Get volume history for momentum analysis"""
-        # This would be implemented to store and retrieve volume history
-        # For now, return empty list - will be enhanced with proper storage
-        return []
-    
-    def _calculate_volume_momentum(self, current_volume: float, volume_history: List[float]) -> float:
-        """Calculate volume momentum (rate of change)"""
-        try:
-            if len(volume_history) < 2:
-                return 0.0
-            
-            # Calculate momentum as rate of change
-            recent_avg = sum(volume_history[-3:]) / min(3, len(volume_history))
-            if recent_avg == 0:
-                return 0.0
-            
-            momentum = (current_volume - recent_avg) / recent_avg
-            return max(-1.0, min(1.0, momentum))  # Clamp between -1 and 1
-            
-        except Exception as e:
-            logger.warning(f"Volume momentum calculation failed: {e}")
-            return 0.0
-    
-    def _calculate_volume_trend_strength(self, volume_history: List[float]) -> float:
-        """Calculate volume trend strength (consistency of direction)"""
-        try:
-            if len(volume_history) < 5:
-                return 0.0
-            
-            # Calculate trend strength as consistency of direction
-            increases = sum(1 for i in range(1, len(volume_history)) 
-                           if volume_history[i] > volume_history[i-1])
-            total_changes = len(volume_history) - 1
-            
-            if total_changes == 0:
-                return 0.0
-            
-            # Return strength as deviation from 0.5 (random)
-            strength = abs(increases / total_changes - 0.5) * 2
-            return max(0.0, min(1.0, strength))
-            
-        except Exception as e:
-            logger.warning(f"Volume trend strength calculation failed: {e}")
-            return 0.0
-    
-    def _calculate_volume_acceleration(self, volume_history: List[float]) -> float:
-        """Calculate volume acceleration (rate of momentum change)"""
-        try:
-            if len(volume_history) < 3:
-                return 0.0
-            
-            # Calculate acceleration as second derivative
-            recent_volumes = volume_history[-3:]
-            if len(recent_volumes) < 3:
-                return 0.0
-            
-            # Simple acceleration calculation
-            first_diff = recent_volumes[1] - recent_volumes[0]
-            second_diff = recent_volumes[2] - recent_volumes[1]
-            acceleration = second_diff - first_diff
-            
-            # Normalize by average volume
-            avg_volume = sum(recent_volumes) / len(recent_volumes)
-            if avg_volume == 0:
-                return 0.0
-            
-            normalized_acceleration = acceleration / avg_volume
-            return max(-1.0, min(1.0, normalized_acceleration))
-            
-        except Exception as e:
-            logger.warning(f"Volume acceleration calculation failed: {e}")
-            return 0.0
-    
-    def _categorize_enhanced_volume(self, current_volume: float, momentum: float, trend_strength: float) -> str:
-        """Enhanced volume categorization considering momentum and trend"""
-        try:
-            # Base categorization
-            if current_volume >= 400:
-                base_category = "EXTREME"
-            elif current_volume >= 150:
-                base_category = "HIGH"
-            elif current_volume >= 50:
-                base_category = "MODERATE"
-            elif current_volume >= 20:
-                base_category = "LOW"
-            else:
-                base_category = "VERY_LOW"
-            
-            # Adjust based on momentum and trend
-            if momentum > 0.3 and trend_strength > 0.6:  # Strong upward momentum
-                if base_category == "MODERATE":
-                    return "HIGH"
-                elif base_category == "LOW":
-                    return "MODERATE"
-            elif momentum < -0.3 and trend_strength > 0.6:  # Strong downward momentum
-                if base_category == "HIGH":
-                    return "MODERATE"
-                elif base_category == "MODERATE":
-                    return "LOW"
-            
-            return base_category
-            
-        except Exception as e:
-            logger.warning(f"Enhanced volume categorization failed: {e}")
-            return "UNKNOWN"
+    Returns:
+        Configured VolumeCalculator instance
+    """
+    return VolumeCalculator(symbol=symbol)

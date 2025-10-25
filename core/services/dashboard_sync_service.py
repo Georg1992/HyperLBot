@@ -169,12 +169,25 @@ class DashboardSyncService:
             logger.error(f"❌ Failed to clear stale pending orders: {e}")
 
 
-# Global instance
+# Factory function for dependency injection
+def create_dashboard_sync_service(dashboard_service) -> DashboardSyncService:
+    """
+    Factory function to create DashboardSyncService with dependency injection
+    
+    Args:
+        dashboard_service: DashboardService instance
+    
+    Returns:
+        Configured DashboardSyncService instance
+    """
+    return DashboardSyncService(dashboard_service)
+
+# Global instance for backward compatibility
 _global_dashboard_sync_service = None
 
 def get_global_dashboard_sync_service(dashboard_service=None) -> DashboardSyncService:
     """Get global dashboard sync service singleton"""
     global _global_dashboard_sync_service
     if _global_dashboard_sync_service is None and dashboard_service:
-        _global_dashboard_sync_service = DashboardSyncService(dashboard_service)
+        _global_dashboard_sync_service = create_dashboard_sync_service(dashboard_service)
     return _global_dashboard_sync_service

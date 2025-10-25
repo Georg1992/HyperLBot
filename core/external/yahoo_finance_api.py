@@ -59,7 +59,7 @@ class YahooFinanceAPI:
         """Cache data with timestamp"""
         self._cache.set(key, data, ttl=300)  # 5 minutes cache
     
-    def _fetch_yahoo_data(self, symbol: str, period: str = "1d") -> Optional[Dict[str, Any]]:
+    def _fetch_yahoo_data(self, symbol: str, period: str = "5d") -> Optional[Dict[str, Any]]:
         """Fetch data from Yahoo Finance with error handling"""
         try:
             self._rate_limit()
@@ -73,6 +73,11 @@ class YahooFinanceAPI:
             
             # Get the latest data
             latest = hist.iloc[-1]
+            previous = hist.iloc[-2] if len(hist) > 1 else latest
+            
+            # Calculate change over the period (not just daily)
+            period_change = float((latest['Close'] - previous['Close']) / previous['Close'] * 100)
+            daily_change = float((latest['Close'] - latest['Open']) / latest['Open'] * 100)
             
             # Get additional info
             info = ticker.info
@@ -85,14 +90,16 @@ class YahooFinanceAPI:
                 'low': float(latest['Low']),
                 'volume': int(latest['Volume']),
                 'change': float(latest['Close'] - latest['Open']),
-                'change_percent': float((latest['Close'] - latest['Open']) / latest['Open'] * 100),
+                'change_percent': period_change,  # Use period change instead of daily
+                'daily_change_percent': daily_change,  # Keep daily change for reference
                 'timestamp': time.time(),
                 'data_source': 'yahoo_finance',
                 'name': info.get('longName', symbol),
                 'currency': info.get('currency', 'USD'),
                 'market_cap': info.get('marketCap', 0),
                 'pe_ratio': info.get('trailingPE', 0),
-                'beta': info.get('beta', 0)
+                'beta': info.get('beta', 0),
+                'period_days': len(hist)
             }
             
         except Exception as e:

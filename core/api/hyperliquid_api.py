@@ -249,11 +249,19 @@ class HyperliquidAPI:
         """Convert interval string to seconds"""
         interval_map = {
             "1m": 60,
+            "3m": 180,
             "5m": 300,
             "15m": 900,
+            "30m": 1800,
             "1h": 3600,
+            "2h": 7200,
             "4h": 14400,
-            "1d": 86400
+            "8h": 28800,
+            "12h": 43200,
+            "1d": 86400,
+            "3d": 259200,
+            "1w": 604800,
+            "1M": 2592000
         }
         return interval_map.get(interval, 300)  # Default to 5m
 
@@ -298,8 +306,15 @@ class HyperliquidAPI:
                 # For intraday candles, use rolling window approach
                 interval_minutes = {
                     "1m": 1,
+                    "3m": 3,
                     "5m": 5,
-                    "1h": 60
+                    "15m": 15,
+                    "30m": 30,
+                    "1h": 60,
+                    "2h": 120,
+                    "4h": 240,
+                    "8h": 480,
+                    "12h": 720
                 }.get(interval, 1)
                 
                 start_timestamp = int((time.time() - (limit * interval_minutes * 60)) * 1000)

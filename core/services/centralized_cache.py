@@ -33,6 +33,11 @@ class CentralizedCache:
         self._ttl_policies = {}
         self._lock = threading.RLock()
         
+        # Cache performance tracking
+        self._hit_count = 0
+        self._miss_count = 0
+        self._access_times = {}  # Track when keys were last accessed
+        
         # Default TTL policies for different data types
         self._default_ttl_policies = {
             # Market data - frequent updates
@@ -82,14 +87,19 @@ class CentralizedCache:
                     return None
                 
                 if key not in self._cache:
+                    self._miss_count += 1
                     return None
                 
                 # Check if cache is still valid
                 if not self._is_valid(key):
                     # Auto-cleanup expired entries
                     self._remove(key)
+                    self._miss_count += 1
                     return None
                 
+                # Track hit and access time
+                self._hit_count += 1
+                self._access_times[key] = time.time()
                 logger.debug(f"🗄️ Cache HIT: {key}")
                 return self._cache[key]
                 
@@ -251,6 +261,9 @@ class CentralizedCache:
                     else:
                         expired_entries += 1
                 
+                total_requests = self._hit_count + self._miss_count
+                hit_rate = (self._hit_count / total_requests * 100) if total_requests > 0 else 0
+                
                 return {
                     "total_entries": len(self._cache),
                     "valid_entries": valid_entries,
@@ -258,7 +271,11 @@ class CentralizedCache:
                     "cache_keys": list(self._cache.keys()),
                     "memory_usage_mb": self._estimate_memory_usage(),
                     "oldest_entry_age": self._get_oldest_entry_age(),
-                    "newest_entry_age": self._get_newest_entry_age()
+                    "newest_entry_age": self._get_newest_entry_age(),
+                    "hit_count": self._hit_count,
+                    "miss_count": self._miss_count,
+                    "hit_rate_percent": hit_rate,
+                    "total_requests": total_requests
                 }
                 
         except Exception as e:

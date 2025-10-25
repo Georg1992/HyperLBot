@@ -8,14 +8,24 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
-# Singleton pattern implementation
+# Factory function for dependency injection
+def create_volume_profile_analyzer() -> 'VolumeProfileAnalyzer':
+    """
+    Factory function to create VolumeProfileAnalyzer with dependency injection
+    
+    Returns:
+        Configured VolumeProfileAnalyzer instance
+    """
+    return VolumeProfileAnalyzer()
+
+# Global instance for backward compatibility (DEPRECATED - use create_volume_profile_analyzer)
 _global_volume_profile_analyzer = None
 
 def get_global_volume_profile_analyzer() -> 'VolumeProfileAnalyzer':
-    """Get the global VolumeProfileAnalyzer singleton instance"""
+    """Get the global VolumeProfileAnalyzer singleton instance (DEPRECATED)"""
     global _global_volume_profile_analyzer
     if _global_volume_profile_analyzer is None:
-        _global_volume_profile_analyzer = VolumeProfileAnalyzer()
+        _global_volume_profile_analyzer = create_volume_profile_analyzer()
     return _global_volume_profile_analyzer
 
 class VolumeProfileAnalyzer:

@@ -12,11 +12,21 @@ from loguru import logger
 # Singleton pattern implementation
 _global_pattern_recognition_engine = None
 
+# Factory function for backward compatibility
+def create_pattern_recognition_engine() -> 'PatternRecognitionEngine':
+    """
+    Factory function to create PatternRecognitionEngine with dependency injection
+    
+    Returns:
+        Configured PatternRecognitionEngine instance
+    """
+    return PatternRecognitionEngine()
+
 def get_global_pattern_recognition_engine() -> 'PatternRecognitionEngine':
     """Get the global PatternRecognitionEngine singleton instance"""
     global _global_pattern_recognition_engine
     if _global_pattern_recognition_engine is None:
-        _global_pattern_recognition_engine = PatternRecognitionEngine()
+        _global_pattern_recognition_engine = create_pattern_recognition_engine()
     return _global_pattern_recognition_engine
 
 class PatternRecognitionEngine:
@@ -32,6 +42,11 @@ class PatternRecognitionEngine:
         self.high_confidence = 0.8
         self.medium_confidence = 0.6
         self.low_confidence = 0.4
+        
+        # Caching to prevent excessive recalculation
+        self._last_analysis_time = 0
+        self._last_analysis_result = {}
+        self._analysis_cache_ttl = 60  # Cache for 1 minute (12 5m candles)
         
         # Pattern expiration times (in minutes) for 5m chart
         # Formula: candle_interval (5m) × number_of_candles
@@ -86,7 +101,7 @@ class PatternRecognitionEngine:
     
     def analyze_patterns(self, candles: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze candles for trading patterns
+        Analyze candles for trading patterns with caching to prevent excessive recalculation
         
         Args:
             candles: List of candle data with OHLC
@@ -95,11 +110,28 @@ class PatternRecognitionEngine:
             Dictionary with pattern analysis
         """
         try:
+            current_time = time.time()
+            
+            # Check if we can use cached results
+            if (self._last_analysis_time > 0 and 
+                current_time - self._last_analysis_time < self._analysis_cache_ttl and
+                self._last_analysis_result):
+                logger.debug(f"📊 Using cached pattern analysis (age: {current_time - self._last_analysis_time:.1f}s)")
+                return self._last_analysis_result
+            
+            # Check if candle data has changed significantly (stability check)
+            current_candle_hash = self._calculate_candle_data_hash(candles)
+            if (hasattr(self, '_last_candle_hash') and 
+                self._last_candle_hash == current_candle_hash and
+                current_time - self._last_analysis_time < 60):  # 1 minute stability
+                logger.debug("📊 Candle data unchanged - skipping pattern re-analysis")
+                return self._last_analysis_result
+            
             if len(candles) < self.min_pattern_length:
                 logger.warning(f"⚠️ Insufficient candles for pattern analysis: {len(candles)} < {self.min_pattern_length}")
                 raise Exception(f"Insufficient candles for pattern analysis: {len(candles)} < {self.min_pattern_length}")
             
-            current_time = time.time()
+            logger.debug(f"📊 Performing fresh pattern analysis on {len(candles)} candles")
             
             # Extract price data
             prices = self._extract_price_data(candles)
@@ -145,7 +177,8 @@ class PatternRecognitionEngine:
             # Determine market setup
             market_setup = self._determine_market_setup(patterns, overall_confidence)
             
-            return {
+            # Cache the results
+            result = {
                 "patterns": patterns,
                 "overall_confidence": overall_confidence,
                 "market_setup": market_setup,
@@ -154,9 +187,39 @@ class PatternRecognitionEngine:
                 "data_source": "pattern_recognition"
             }
             
+            # Update cache
+            self._last_analysis_time = current_time
+            self._last_analysis_result = result
+            self._last_candle_hash = current_candle_hash
+            
+            return result
+            
         except Exception as e:
             logger.error(f"❌ Pattern analysis failed: {e}")
             raise Exception(f"Pattern analysis failed: {e}")
+    
+    def _calculate_candle_data_hash(self, candles: List[Dict[str, Any]]) -> str:
+        """Calculate hash of candle data to detect changes"""
+        try:
+            # Create a simple hash based on OHLC data
+            hash_data = []
+            for candle in candles[-10:]:  # Only use last 10 candles for hash
+                hash_data.append((
+                    candle.get('open', 0),
+                    candle.get('high', 0),
+                    candle.get('low', 0),
+                    candle.get('close', 0)
+                ))
+            return str(hash(tuple(hash_data)))
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to calculate candle hash: {e}")
+            return str(time.time())  # Fallback to timestamp
+    
+    def invalidate_cache(self):
+        """Invalidate the pattern analysis cache to force fresh calculation"""
+        self._last_analysis_time = 0
+        self._last_analysis_result = {}
+        logger.debug("📊 Pattern analysis cache invalidated")
     
     def _calculate_pattern_birth_times(self, patterns: Dict[str, List[Dict[str, Any]]], candles: List[Dict[str, Any]], current_time: float) -> Dict[str, List[Dict[str, Any]]]:
         """

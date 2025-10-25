@@ -19,6 +19,10 @@ class SystemInitializer:
         self.initialization_results = {}
         self.singleton_systems = {}
         
+        # Service initialization tracking to prevent redundant initializations
+        self._service_initialization_count = {}
+        self._service_initialization_times = {}
+        
         logger.info("⚙️ System Initializer created - Phase management enabled")
     
     def initialize_system(self, initial_balance: float) -> Dict[str, Any]:
@@ -96,13 +100,17 @@ class SystemInitializer:
             logger.info("🔌 Initializing all APIs and WebSockets...")
             
             # Initialize API Manager
-            from core.services.api_manager import get_global_api_manager
-            api_manager = get_global_api_manager()
+            from core.services.api_manager import create_api_manager
+            api_manager = create_api_manager()
             
             # Initialize all APIs and WebSockets
             api_results = api_manager.initialize_all()
             if not api_results["success"]:
                 return {"success": False, "error": api_results["error"]}
+            
+            # Store API results in singleton_systems
+            self.singleton_systems.update(api_results["apis"])
+            self.singleton_systems.update(api_results["websockets"])
             
             # Price logging will be done after MarketDataService is initialized
             
@@ -127,12 +135,12 @@ class SystemInitializer:
         try:
             logger.info("🔬 Initializing RSI with historical data...")
             
-            from core.calculations.rsi_calculator import get_global_rsi_calculator
-            rsi_calculator = get_global_rsi_calculator()
+            from core.calculations.rsi_calculator import create_rsi_calculator
+            rsi_calculator = create_rsi_calculator()
             # Get 5-minute data for RSI baseline calculation from MarketDataService (single source of truth)
             market_data_service = self.singleton_systems.get("market_data_service")
-            from core.services.historical_data_service import get_global_historical_data_service
-            historical_service = get_global_historical_data_service()
+            from core.services.historical_data_service import create_historical_data_service
+            historical_service = create_historical_data_service()
             candles_5m = historical_service.get_5m_candles("BTC", 30)
             if candles_5m and len(candles_5m) >= 15:
                 rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
@@ -147,73 +155,15 @@ class SystemInitializer:
             return {"success": False, "error": str(e)}
     
     def _initialize_singleton_systems(self, initial_balance: float) -> Dict[str, Any]:
-        """Initialize all singleton systems"""
+        """Initialize core singleton systems only (no analysis modules)"""
         try:
-            logger.info("🔧 Initializing singleton systems...")
+            logger.info("🔧 Initializing core singleton systems...")
             
-            # 1. RSI Calculator
-            from core.calculations.rsi_calculator import get_global_rsi_calculator
-            rsi_calculator = get_global_rsi_calculator()
-            self.singleton_systems["rsi_calculator"] = rsi_calculator
+            # Preserve existing API results (WebSocket, APIs, etc.)
+            existing_systems = self.singleton_systems.copy()
             
-            # 2. Trend Calculator
-            from core.calculations.trend_calculator import get_global_trend_calculator
-            trend_calculator = get_global_trend_calculator()
-            self.singleton_systems["trend_calculator"] = trend_calculator
-            
-            # 3. Market Conditions Analyzer
-            from core.analysis.real_time.market_conditions_analyzer import global_conditions_analyzer
-            self.singleton_systems["conditions_analyzer"] = global_conditions_analyzer
-            
-            # 4. Volume Calculator
-            from core.calculations.volume_calculator import get_global_volume_calculator
-            volume_calculator = get_global_volume_calculator()
-            self.singleton_systems["volume_calculator"] = volume_calculator
-            
-            # 5. Volume Profile Analyzer
-            from core.analysis.real_time.volume_profile_analyzer import get_global_volume_profile_analyzer
-            volume_profile_analyzer = get_global_volume_profile_analyzer()
-            self.singleton_systems["volume_profile_analyzer"] = volume_profile_analyzer
-            
-            # 6. Support/Resistance Calculator
-            from core.calculations.support_resistance_calculator import get_global_support_resistance_calculator
-            support_resistance_calculator = get_global_support_resistance_calculator()
-            self.singleton_systems["support_resistance_calculator"] = support_resistance_calculator
-            
-            # 7. Volatility Calculator
-            from core.calculations.volatility_calculator import get_global_volatility_calculator
-            volatility_calculator = get_global_volatility_calculator()
-            self.singleton_systems["volatility_calculator"] = volatility_calculator
-            
-            # 8. Pressure Calculator
-            from core.calculations.pressure_calculator import get_global_pressure_calculator
-            pressure_calculator = get_global_pressure_calculator()
-            self.singleton_systems["pressure_calculator"] = pressure_calculator
-            
-            # 9. Order Book Analyzer
-            from core.analysis.real_time.orderbook_analyzer import get_global_orderbook_analyzer
-            orderbook_analyzer = get_global_orderbook_analyzer()
-            self.singleton_systems["orderbook_analyzer"] = orderbook_analyzer
-            
-            # 10. Pattern Recognition Engine
-            from core.analysis.real_time.pattern_recognition_engine import get_global_pattern_recognition_engine
-            pattern_recognition_engine = get_global_pattern_recognition_engine()
-            self.singleton_systems["pattern_recognition_engine"] = pattern_recognition_engine
-            
-            # 11. Bounce Validator
-            from core.analysis.real_time.bounce_validator import get_global_bounce_validator
-            bounce_validator = get_global_bounce_validator()
-            self.singleton_systems["bounce_validator"] = bounce_validator
-            
-            # 12. Cross-Asset Correlation Analyzer
-            from core.analysis.real_time.cross_asset_correlation_analyzer import get_global_cross_asset_correlation_analyzer
-            cross_asset_correlation_analyzer = get_global_cross_asset_correlation_analyzer()
-            self.singleton_systems["cross_asset_correlation_analyzer"] = cross_asset_correlation_analyzer
-            
-            # 13. Funding Rate Analyzer
-            from core.analysis.real_time.funding_rate_analyzer import get_global_funding_rate_analyzer
-            funding_rate_analyzer = get_global_funding_rate_analyzer()
-            self.singleton_systems["funding_rate_analyzer"] = funding_rate_analyzer
+            # NOTE: Analysis modules are now created via factory functions in _register_analysis_modules
+            # Only core singleton systems that truly need to be singletons are initialized here
             
             # On-Chain Data & Psychological Levels Analyzers removed (not implemented)
             
@@ -260,12 +210,12 @@ class SystemInitializer:
             self.singleton_systems["account_manager"] = account_manager
             
             # Initialize trading services
-            from core.services.market_data_service import MarketDataService
+            from core.services.market_data_service import create_market_data_service
             from core.services.trading_engine import TradingEngine
-            from core.services.dashboard_service import DashboardService
+            from core.services.dashboard_service import create_dashboard_service
             from core.services.session_orchestrator import SessionOrchestrator
             
-            market_data_service = MarketDataService(
+            market_data_service = create_market_data_service(
                 self.singleton_systems.get("hyperliquid_api"),
                 self.singleton_systems.get("hyperliquid_websocket"),
                 self.singleton_systems.get("binance_api"),
@@ -281,9 +231,10 @@ class SystemInitializer:
             )
             
             # Use global instance if available, otherwise create new one
+            from core.services.dashboard_service import DashboardService
             dashboard_service = DashboardService.get_global_instance()
             if not dashboard_service:
-                dashboard_service = DashboardService()
+                dashboard_service = create_dashboard_service()
             session_orchestrator = SessionOrchestrator(config, initial_balance)  # Use real account balance
             
             self.singleton_systems["market_data_service"] = market_data_service
@@ -304,6 +255,11 @@ class SystemInitializer:
             # Trading components and services initialized
             
             # AI and ML systems will be initialized later after APIs are ready
+            
+            # Restore existing API systems (WebSocket, APIs, etc.)
+            for key, value in existing_systems.items():
+                if key not in self.singleton_systems:
+                    self.singleton_systems[key] = value
             
             return self.singleton_systems
             
@@ -457,50 +413,87 @@ class SystemInitializer:
             logger.error(f"❌ Failed to ensure .env file: {e}")
     
     def _register_analysis_modules(self, market_data_service) -> None:
-        """Register analysis modules with MarketDataService"""
+        """Register analysis modules with MarketDataService using new factory functions"""
         try:
-            logger.info("📊 Registering analysis modules with MarketDataService...")
+            logger.info("📊 Registering analysis modules with MarketDataService using new architecture...")
             
-            # Register calculation modules with names that MarketDataService expects
-            if "rsi_calculator" in self.singleton_systems:
-                market_data_service.register_analysis_module("rsi_calculator", self.singleton_systems["rsi_calculator"])
+            # Use new factory functions instead of singleton pattern
+            from core.calculations.rsi_calculator import create_rsi_calculator
+            from core.calculations.volatility_calculator import create_volatility_calculator
+            from core.calculations.trend_calculator import create_trend_calculator
+            from core.calculations.support_resistance_calculator import create_sr_calculator
+            from core.calculations.volume_calculator import create_volume_calculator
+            from core.calculations.pressure_calculator import create_pressure_calculator
+            from core.analysis.real_time.market_conditions_analyzer import create_market_conditions_analyzer
+            from core.analysis.real_time.pattern_recognition_engine import create_pattern_recognition_engine
+            from core.analysis.real_time.funding_rate_analyzer import create_funding_rate_analyzer
+            from core.analysis.real_time.orderbook_analyzer import create_orderbook_analyzer
+            from core.analysis.real_time.cross_asset_correlation_analyzer import create_cross_asset_correlation_analyzer
             
-            if "volatility_calculator" in self.singleton_systems:
-                market_data_service.register_analysis_module("volatility", self.singleton_systems["volatility_calculator"])
+            # Register calculation modules with new factory functions
+            rsi_calculator = create_rsi_calculator()
+            # Initialize RSI calculator with baseline data
+            try:
+                from core.services.historical_data_service import create_historical_data_service
+                historical_service = create_historical_data_service()
+                candles_5m = historical_service.get_5m_candles("BTC", 30)
+                if candles_5m and len(candles_5m) >= 15:
+                    rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
+                    logger.debug("📊 RSI calculator initialized with baseline data")
+                else:
+                    logger.warning("⚠️ RSI Calculator - insufficient historical data, using defaults")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize RSI: {e}")
             
-            if "trend_calculator" in self.singleton_systems:
-                market_data_service.register_analysis_module("trend", self.singleton_systems["trend_calculator"])
+            market_data_service.register_analysis_module("rsi_calculator", rsi_calculator)
+            market_data_service.register_analysis_module("volatility", create_volatility_calculator("BTC"))
+            market_data_service.register_analysis_module("trend", create_trend_calculator())
+            market_data_service.register_analysis_module("support_resistance", create_sr_calculator("BTC"))
+            market_data_service.register_analysis_module("volume", create_volume_calculator("BTC"))
+            market_data_service.register_analysis_module("pressure", create_pressure_calculator("BTC"))
             
-            if "support_resistance_calculator" in self.singleton_systems:
-                market_data_service.register_analysis_module("support_resistance", self.singleton_systems["support_resistance_calculator"])
+            # Register analysis modules with new factory functions
+            market_data_service.register_analysis_module("market_conditions", create_market_conditions_analyzer())
+            market_data_service.register_analysis_module("pattern_recognition", create_pattern_recognition_engine())
+            market_data_service.register_analysis_module("funding_rate", create_funding_rate_analyzer())
+            market_data_service.register_analysis_module("orderbook", create_orderbook_analyzer())
+            market_data_service.register_analysis_module("cross_asset_correlation_analyzer", create_cross_asset_correlation_analyzer())
             
-            if "volume_calculator" in self.singleton_systems:
-                market_data_service.register_analysis_module("volume", self.singleton_systems["volume_calculator"])
-            
-            # Register analysis modules
-            if "conditions_analyzer" in self.singleton_systems:
-                market_data_service.register_analysis_module("market_conditions", self.singleton_systems["conditions_analyzer"])
-            
-            # Register additional analysis modules
-            if "pressure_calculator" in self.singleton_systems:
-                market_data_service.register_analysis_module("pressure", self.singleton_systems["pressure_calculator"])
-            
-            if "pattern_recognition_engine" in self.singleton_systems:
-                market_data_service.register_analysis_module("pattern_recognition", self.singleton_systems["pattern_recognition_engine"])
-            
-            if "funding_rate_analyzer" in self.singleton_systems:
-                market_data_service.register_analysis_module("funding_rate", self.singleton_systems["funding_rate_analyzer"])
-            
-            if "orderbook_analyzer" in self.singleton_systems:
-                market_data_service.register_analysis_module("orderbook", self.singleton_systems["orderbook_analyzer"])
-            
-            if "cross_asset_correlation_analyzer" in self.singleton_systems:
-                market_data_service.register_analysis_module("cross_asset_correlation_analyzer", self.singleton_systems["cross_asset_correlation_analyzer"])
-            
-            logger.info("📊 Analysis modules registered with MarketDataService")
+            logger.info("📊 Analysis modules registered with MarketDataService using new factory functions")
             
         except Exception as e:
             logger.error(f"❌ Failed to register analysis modules: {e}")
+    
+    def _track_service_initialization(self, service_name: str) -> None:
+        """Track service initialization to prevent redundant initializations"""
+        current_time = time.time()
+        
+        if service_name not in self._service_initialization_count:
+            self._service_initialization_count[service_name] = 0
+        
+        self._service_initialization_count[service_name] += 1
+        self._service_initialization_times[service_name] = current_time
+        
+        count = self._service_initialization_count[service_name]
+        if count > 1:
+            logger.warning(f"⚠️ {service_name} initialized {count} times - potential redundancy")
+    
+    def get_service_initialization_stats(self) -> Dict[str, Any]:
+        """Get statistics about service initializations"""
+        current_time = time.time()
+        stats = {}
+        
+        for service_name, count in self._service_initialization_count.items():
+            last_init = self._service_initialization_times.get(service_name, 0)
+            age = current_time - last_init
+            
+            stats[service_name] = {
+                'initialization_count': count,
+                'last_initialization_age_seconds': age,
+                'is_redundant': count > 1
+            }
+        
+        return stats
 
 # Global system initializer instance
 _global_system_initializer = None

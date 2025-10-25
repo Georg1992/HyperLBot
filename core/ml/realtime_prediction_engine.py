@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from loguru import logger
 from core.ml.bayesian_fusion import get_global_bayesian_fusion, Signal
 from core.ml.direction_recognizer import get_global_direction_recognizer
-from core.ml.entry_price_calculator import get_global_entry_price_calculator
+from core.ml.entry_price_calculator import create_entry_price_calculator
 from core.ml.probability_engine import ExpectedValue, get_global_probability_engine
 
 
@@ -215,7 +215,7 @@ class RealtimePredictionEngine:
             confidence = best_confidence
             
             # MODULE 2: ENTRY PRICE CALCULATION
-            entry_price_calculator = get_global_entry_price_calculator()
+            entry_price_calculator = create_entry_price_calculator()
             entry_price = entry_price_calculator.calculate_entry_price(
                 current_price=current_price,
                 direction=direction,

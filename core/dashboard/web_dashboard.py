@@ -271,22 +271,11 @@ class EventDrivenTradingDashboard:
             logger.error(f"❌ Failed to force data update: {e}")
     
     def _get_dashboard_data(self) -> Dict[str, Any]:
-        """Get dashboard data from DashboardService - SINGLE SOURCE OF TRUTH"""
+        """Get dashboard data from DashboardService - NEW ARCHITECTURE"""
         try:
-            # Get the global dashboard service instance directly
-            from core.services.dashboard_service import DashboardService
-            dashboard_service = DashboardService.get_global_instance()
-            
-            if not dashboard_service:
-                # Try to get from system initializer first
-                from core.services.system_initializer import get_system_initializer
-                system_initializer = get_system_initializer()
-                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
-                
-                if not dashboard_service:
-                    # Create dashboard service if not available
-                    dashboard_service = DashboardService()
-                    logger.info("🎛️ Created dashboard service instance")
+            # Use new factory function architecture instead of singleton pattern
+            from core.services.dashboard_service import create_dashboard_service
+            dashboard_service = create_dashboard_service()
             
             if not dashboard_service:
                 logger.error("❌ Dashboard service not available")
@@ -373,10 +362,10 @@ class EventDrivenTradingDashboard:
     def _get_chart_data(self) -> Dict[str, Any]:
         """Dashboard fetches its own chart data (frontend responsibility)"""
         try:
-            from core.services.historical_data_service import get_global_historical_data_service
+            from core.services.historical_data_service import create_historical_data_service
             from core.services.system_initializer import get_system_initializer
             
-            # Get market data service from system initializer
+            # Get market data service from system initializer (it has the APIs)
             system_initializer = get_system_initializer()
             market_data_service = system_initializer.singleton_systems.get("market_data_service")
             
@@ -390,8 +379,8 @@ class EventDrivenTradingDashboard:
                 logger.warning("⚠️ No current price available, using default")
                 current_price = 50000.0
             
-            # HistoricalDataService fetches its own candles
-            historical_service = get_global_historical_data_service()
+            # Use new factory function for historical data service
+            historical_service = create_historical_data_service()
             
             # Get pattern data from MarketDataService to include in chart
             pattern_data = market_data_service.get_pattern_analysis() if market_data_service else {}

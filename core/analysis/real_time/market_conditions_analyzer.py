@@ -7,41 +7,71 @@ Determines when market conditions are suitable/unsuitable for trading
 PURPOSE: Identify untradable conditions to avoid losses and false signals
 FOCUS: Multiple condition checks (volatility, volume, trend, RSI zones)
 INTEGRATION: Used by TradingEngine before making any trading decisions
+
+ARCHITECTURE: Follows SOLID principles with dependency injection
 """
 
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Protocol
 from loguru import logger
-from core.external.fear_greed_api import fear_greed_api
-from core.external.whale_analytics_api import get_global_whale_analytics_api
-from core.external.rss_news_api import rss_news_api
+from .condition_analyzers import (
+    VolatilityConditionAnalyzer, 
+    VolumeConditionAnalyzer,
+    SentimentConditionAnalyzer,
+    WhaleConditionAnalyzer,
+    RSIConditionAnalyzer
+)
+
+
+class DataProvider(Protocol):
+    """Protocol for data providers to ensure dependency inversion"""
+    def get_current_price(self) -> float: ...
+    def get_volatility_data(self) -> Dict[str, Any]: ...
+    def get_sentiment_data(self) -> Dict[str, Any]: ...
+    def get_whale_data(self) -> Dict[str, Any]: ...
+    def get_news_data(self) -> Dict[str, Any]: ...
 
 
 class MarketConditionsAnalyzer:
-    """Analyzes market conditions to determine trading suitability"""
+    """
+    Analyzes market conditions to determine trading suitability.
     
-    def __init__(self):
+    Follows SOLID principles:
+    - SRP: Single responsibility for market condition analysis
+    - OCP: Open for extension via strategy pattern
+    - LSP: Substitutable with other condition analyzers
+    - ISP: Focused interface for condition analysis
+    - DIP: Depends on abstractions (DataProvider) not concretions
+    """
+    
+    def __init__(self, data_provider: DataProvider = None):
         self.name = "MarketConditionsAnalyzer"
-        logger.info("🔍 Market Conditions Analyzer initialized - Untradable condition detection")
+        self._data_provider = data_provider
+        
+        # Initialize specialized condition analyzers (SRP compliance)
+        self.volatility_analyzer = VolatilityConditionAnalyzer()
+        self.volume_analyzer = VolumeConditionAnalyzer()
+        self.sentiment_analyzer = SentimentConditionAnalyzer()
+        self.whale_analyzer = WhaleConditionAnalyzer()
+        self.rsi_analyzer = RSIConditionAnalyzer()
+        
+        logger.info("🔍 Market Conditions Analyzer initialized - Clean architecture with SRP compliance")
     
     def analyze_trading_conditions(self, market_data: Dict[str, Any], 
-                                 historical_context: Dict[str, Any] = None, candles_1d=None) -> Dict[str, Any]:
+                                 historical_context: Dict[str, Any] = None, 
+                                 candles_1d=None) -> Dict[str, Any]:
         """
-        Comprehensive market conditions analysis for trading decisions
+        Analyze market conditions for trading suitability.
         
-        RETURNS: {
-            "condition": str,  # EXCELLENT, GOOD, FAIR, POOR
-            "reasons": [str],  # List of condition factors
-            "risk_level": str, # LOW, MODERATE, HIGH, EXTREME
-            "confidence": float, # 0.0-1.0 confidence in analysis
-            "market_status": str  # BEARISH/NEUTRAL/BULLISH based on 7-day trend
-        }
+        Args:
+            market_data: Current market data
+            historical_context: Historical context data
+            candles_1d: Daily candles for trend analysis
+            
+        Returns:
+            Dict with condition analysis results
         """
-        # Initialize analysis results (outside try block to avoid scope issues)
-        condition_factors = []
-        risk_factors = []
-        positive_factors = []
-        
         try:
+            # Extract market data
             current_price = market_data.get("current_price", 0)
             rsi = market_data.get("rsi", 50.0)
             trend = market_data.get("trend", "NEUTRAL")
@@ -49,239 +79,163 @@ class MarketConditionsAnalyzer:
             volatility_category = market_data.get("volatility_category", "MODERATE")
             volume_category = market_data.get("volume_category", "NORMAL")
             
-            # 1. VOLATILITY CONDITIONS (strategy-independent)
-            volatility_analysis = self._analyze_volatility_conditions(volatility_5m, volatility_category)
-            condition_factors.extend(volatility_analysis["factors"])
-            if volatility_analysis["risk"] > 0:
-                risk_factors.extend(volatility_analysis["risk_factors"])
-            if volatility_analysis["positive"]:
-                positive_factors.extend(volatility_analysis["positive_factors"])
-            
-            # 2. VOLUME CONDITIONS  
-            volume_analysis = self._analyze_volume_conditions(volume_category)
-            condition_factors.extend(volume_analysis["factors"])
-            if volume_analysis["risk"] > 0:
-                risk_factors.extend(volume_analysis["risk_factors"])
-            
-            # 3. FEAR & GREED SENTIMENT CONDITIONS
-            sentiment_analysis = self._analyze_sentiment_conditions()
-            condition_factors.extend(sentiment_analysis["factors"])
-            if sentiment_analysis["risk"] > 0:
-                risk_factors.extend(sentiment_analysis["risk_factors"])
-            if sentiment_analysis["positive"]:
-                positive_factors.extend(sentiment_analysis["positive_factors"])
-            
-            # 4. WHALE ANALYTICS CONDITIONS
-            whale_analysis = self._analyze_whale_conditions()
-            condition_factors.extend(whale_analysis["factors"])
-            if whale_analysis["risk"] > 0:
-                risk_factors.extend(whale_analysis["risk_factors"])
-            if whale_analysis["positive"]:
-                positive_factors.extend(whale_analysis["positive_factors"])
-            
-            # 5. RSS NEWS SENTIMENT CONDITIONS
-            news_analysis = self._analyze_rss_news_conditions()
-            condition_factors.extend(news_analysis["factors"])
-            if news_analysis["risk"] > 0:
-                risk_factors.extend(news_analysis["risk_factors"])
-            if news_analysis["positive"]:
-                positive_factors.extend(news_analysis["positive_factors"])
-            
-            # 6. RSI CONDITIONS (dead zones, extreme conditions)
-            rsi_analysis = self._analyze_rsi_conditions(rsi)
-            condition_factors.extend(rsi_analysis["factors"])
-            if rsi_analysis["risk"] > 0:
-                risk_factors.extend(rsi_analysis["risk_factors"])
-            if rsi_analysis["positive"]:
-                positive_factors.extend(rsi_analysis["positive_factors"])
-            
-            # Store neutral factors for override logic
-            neutral_rsi = rsi_analysis.get("neutral", False)
-            neutral_factors = rsi_analysis.get("neutral_factors", [])
-            
-            # 5. TREND CONDITIONS (strategy-independent)
-            trend_analysis = self._analyze_trend_conditions(trend)
-            condition_factors.extend(trend_analysis["factors"])
-            if trend_analysis["risk"] > 0:
-                risk_factors.extend(trend_analysis["risk_factors"])
-            if trend_analysis["positive"]:
-                positive_factors.extend(trend_analysis["positive_factors"])
-            
-            # 5. HISTORICAL CONTEXT CONDITIONS
-            context_analysis = self._analyze_historical_context(historical_context, current_price)
-            condition_factors.extend(context_analysis["factors"])
-            if context_analysis["risk"] > 0:
-                risk_factors.extend(context_analysis["risk_factors"])
-            
-            # 6. 7-DAY MARKET TREND STATUS ANALYSIS
-            market_status_analysis = self._analyze_7day_market_trend(current_price, candles_1d)
-            condition_factors.extend(market_status_analysis["factors"])
-            
-            # DETERMINE OVERALL CONDITIONS (no tradable/untradable logic)
-            overall_analysis = self._determine_overall_conditions(
-                risk_factors, positive_factors, condition_factors, 
-                neutral_rsi, volume_analysis, trend_analysis, volatility_analysis, market_data
+            # Run all condition analyses
+            analyses = self._run_condition_analyses(
+                current_price, rsi, trend, volatility_5m, 
+                volatility_category, volume_category, 
+                historical_context, candles_1d
             )
             
-            result = {
-                "condition": overall_analysis["condition"],
-                "reasons": condition_factors,
-                "risk_level": overall_analysis["risk_level"], 
-                "confidence": overall_analysis["confidence"],
-                "risk_factors": risk_factors,
-                "positive_factors": positive_factors,
-                "analysis_timestamp": market_data.get("timestamp", 0),
-                "market_status": market_status_analysis["market_status"]
-            }
+            # Determine overall conditions
+            overall_analysis = self._determine_overall_conditions(analyses)
             
-            # Add sentiment data if available
-            if sentiment_analysis.get("sentiment_data"):
-                result["sentiment_data"] = sentiment_analysis["sentiment_data"]
+            # Build result
+            result = self._build_analysis_result(overall_analysis, analyses, market_data)
             
-            # Add whale analytics data if available
-            if whale_analysis.get("whale_data"):
-                result["whale_analytics"] = whale_analysis["whale_data"]
-            
-            # Add news sentiment data if available
-            if news_analysis.get("news_data"):
-                result["news_sentiment"] = news_analysis["news_data"]
-            
-            # Log important condition changes
-            if overall_analysis["condition"] == "EXCELLENT":
-                factors_text = ', '.join(positive_factors[:2]) if positive_factors else 'No factors'
-                logger.success(f"🎯 EXCELLENT market conditions: {factors_text}")
-            elif overall_analysis["condition"] == "POOR":
-                factors_text = ', '.join(risk_factors[:2]) if risk_factors else 'No factors'
-                logger.warning(f"⚠️ POOR market conditions: {factors_text}")
+            # Log significant changes
+            self._log_condition_changes(result)
             
             return result
             
         except Exception as e:
-            # Ultra-safe error handling - avoid any string conversion that might reference variables
-            error_type = type(e).__name__
-            logger.error(f"❌ Market conditions analysis failed: {error_type}")
-            return {
-                "condition": "POOR",
-                "reasons": [f"Analysis failed: {error_type}"],
-                "risk_level": "HIGH",
-                "confidence": 0.3,
-                "risk_factors": [f"Analysis error: {error_type}"],
-                "positive_factors": [],
-                "analysis_timestamp": market_data.get("timestamp", 0),
-                "market_status": "NEUTRAL"
-            }
+            logger.error(f"❌ Market conditions analysis failed: {e}")
+            return self._create_error_result(market_data)
     
-    def _analyze_volatility_conditions(self, volatility_5m: float, category: str) -> Dict[str, Any]:
-        """Analyze volatility for trading suitability"""
-        factors = []
+    def _run_condition_analyses(self, current_price: float, rsi: float, trend: str,
+                               volatility_5m: float, volatility_category: str, 
+                               volume_category: str, historical_context: Dict[str, Any],
+                               candles_1d) -> Dict[str, Any]:
+        """Run all condition analyses - follows SRP"""
+        return {
+            "volatility": self.volatility_analyzer.analyze_volatility_conditions(volatility_5m, volatility_category),
+            "volume": self.volume_analyzer.analyze_volume_conditions(volume_category),
+            "sentiment": self.sentiment_analyzer.analyze_sentiment_conditions(),
+            "whale": self.whale_analyzer.analyze_whale_conditions(),
+            "news": self._analyze_rss_news_conditions(),
+            "rsi": self.rsi_analyzer.analyze_rsi_conditions(rsi),
+            "trend": self._analyze_trend_conditions(trend),
+            "historical": self._analyze_historical_context(historical_context, current_price),
+            "market_status": self._analyze_7day_market_trend(current_price, candles_1d)
+        }
+    
+    def _determine_overall_conditions(self, analyses: Dict[str, Any]) -> Dict[str, Any]:
+        """Determine overall conditions from individual analyses - follows SRP"""
+        # Collect all factors
+        all_factors = []
         risk_factors = []
         positive_factors = []
-        risk_level = 0
         
-        if category == "VERY_LOW":
-            factors.append("Very low volatility - range-bound market")
-            # Strategy-independent: Very low volatility is generally challenging for most trading
-            risk_factors.append("Limited profit potential due to very low volatility")
-            risk_level = 2  # Moderate risk - not excellent conditions
-            
-        elif category == "LOW":
-            factors.append("Low volatility - limited opportunities") 
-            # Strategy-independent: Low volatility reduces profit potential
-            risk_factors.append("Reduced profit potential due to low volatility")
-            risk_level = 1  # Low risk but limited opportunities
-            
-        elif category == "MODERATE":
-            factors.append("Moderate volatility - good for trading")
-            # FIXED: MODERATE volatility should be considered positive for trading
-            positive_factors.append("Stable trading conditions with moderate volatility")
-            
-        elif category == "HIGH":
-            factors.append("High volatility - increased opportunities")
-            positive_factors.append("Strong price movements available")
-            
-        elif category == "EXTREME":
-            factors.append("Extreme volatility - high risk/reward")
-            risk_factors.append("Unpredictable price swings")
-            risk_level = 2
-            
+        for analysis_name, analysis in analyses.items():
+            if analysis_name == "market_status":
+                continue  # Skip market status, it's informational
+                
+            all_factors.extend(analysis.get("factors", []))
+            risk_factors.extend(analysis.get("risk_factors", []))
+            positive_factors.extend(analysis.get("positive_factors", []))
+        
+        # Determine condition based on factors
+        total_risk_score = len(risk_factors)
+        total_positive_score = len(positive_factors)
+        
+        condition = "FAIR"  # Default
+        risk_level = "MODERATE"
+        confidence = 0.65
+        
+        # Positive factors boost condition
+        if total_positive_score >= 3:
+            condition = "EXCELLENT"
+            risk_level = "LOW"
+            confidence = 0.85
+        elif total_positive_score >= 2:
+            condition = "GOOD"
+            risk_level = "LOW"
+            confidence = 0.75
+        elif total_positive_score >= 1:
+            condition = "GOOD"
+            risk_level = "LOW"
+            confidence = 0.70
+        
+        # Risk factors can downgrade condition
+        if total_risk_score >= 3:
+            condition = "POOR"
+            risk_level = "HIGH"
+            confidence = max(0.3, confidence - 0.2)
+        elif total_risk_score >= 2:
+            if condition == "EXCELLENT":
+                condition = "GOOD"
+            elif condition == "GOOD":
+                condition = "FAIR"
+            risk_level = "MODERATE"
+            confidence = max(0.4, confidence - 0.1)
+        elif total_risk_score >= 1:
+            if condition == "EXCELLENT":
+                condition = "GOOD"
+            risk_level = "MODERATE"
+            confidence = max(0.5, confidence - 0.05)
+        
         return {
-            "factors": factors,
-            "risk": risk_level,
+            "condition": condition,
+            "risk_level": risk_level,
+            "confidence": confidence,
+            "all_factors": all_factors,
             "risk_factors": risk_factors,
-            "positive": len(positive_factors) > 0,
             "positive_factors": positive_factors
         }
     
-    def _analyze_volume_conditions(self, volume_category: str) -> Dict[str, Any]:
-        """Analyze volume for trading suitability"""
-        factors = []
-        risk_factors = []
-        positive_factors = []
-        risk_level = 0
+    def _build_analysis_result(self, overall_analysis: Dict[str, Any], 
+                             analyses: Dict[str, Any], market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Build the final analysis result - follows SRP"""
+        result = {
+            "condition": overall_analysis["condition"],
+            "reasons": overall_analysis["all_factors"],
+            "risk_level": overall_analysis["risk_level"],
+            "confidence": overall_analysis["confidence"],
+            "risk_factors": overall_analysis["risk_factors"],
+            "positive_factors": overall_analysis["positive_factors"],
+            "analysis_timestamp": market_data.get("timestamp", 0),
+            "market_status": analyses["market_status"]["market_status"]
+        }
         
-        if volume_category in ["VERY_LOW", "LOW"]:
-            factors.append(f"{volume_category.lower().replace('_', ' ').title()} volume - limited liquidity")
-            risk_factors.append("Slippage risk due to low liquidity")
-            risk_level = 2
-            
-        elif volume_category == "NORMAL":
-            factors.append("Normal volume - adequate liquidity")
-            # FIXED: Normal volume should be considered positive for trading
-            positive_factors.append("Adequate liquidity for trading")
-            
-        elif volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-            factors.append(f"{volume_category.lower().replace('_', ' ').title()} volume - strong market interest")
-            positive_factors = [f"Strong {volume_category.lower().replace('_', ' ')} volume activity"]  # Mark as positive for override
-            
-        elif volume_category == "ABOVE_AVERAGE":
-            factors.append("Above average volume - good liquidity")
-            # No positive factors for ABOVE_AVERAGE - only HIGH and above get positive factors
-            
+        # Add optional data if available
+        if analyses["sentiment"].get("sentiment_data"):
+            result["sentiment_data"] = analyses["sentiment"]["sentiment_data"]
+        
+        if analyses["whale"].get("whale_data"):
+            result["whale_analytics"] = analyses["whale"]["whale_data"]
+        
+        if analyses["news"].get("news_data"):
+            result["news_sentiment"] = analyses["news"]["news_data"]
+        
+        return result
+    
+    def _log_condition_changes(self, result: Dict[str, Any]) -> None:
+        """Log significant condition changes - follows SRP"""
+        condition = result.get("condition", "UNKNOWN")
+        positive_factors = result.get("positive_factors", [])
+        risk_factors = result.get("risk_factors", [])
+        
+        if condition == "EXCELLENT":
+            factors_text = ', '.join(positive_factors[:2]) if positive_factors else 'No factors'
+            logger.success(f"🎯 EXCELLENT market conditions: {factors_text}")
+        elif condition == "POOR":
+            factors_text = ', '.join(risk_factors[:2]) if risk_factors else 'No factors'
+            logger.warning(f"⚠️ POOR market conditions: {factors_text}")
+    
+    def _create_error_result(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create error result - follows SRP"""
         return {
-            "factors": factors,
-            "risk": risk_level,
-            "risk_factors": risk_factors,
-            "positive": volume_category in ["HIGH", "VERY_HIGH", "EXTREME"],
-            "positive_factors": positive_factors
+            "condition": "POOR",
+            "reasons": ["Analysis failed"],
+            "risk_level": "HIGH",
+            "confidence": 0.3,
+            "risk_factors": ["Analysis error"],
+            "positive_factors": [],
+            "analysis_timestamp": market_data.get("timestamp", 0),
+            "market_status": "NEUTRAL"
         }
     
-    def _analyze_rsi_conditions(self, rsi: float) -> Dict[str, Any]:
-        """Analyze RSI for trading suitability"""
-        factors = []
-        risk_factors = []
-        risk_level = 0
-        
-        
-        if 45 <= rsi <= 55:
-            factors.append("RSI in neutral zone - no directional bias (OVERRIDE possible)")
-            # RSI neutrality is NO LONGER a blocking risk factor (Option 3: Override)
-            risk_level = 0  # Changed from 2 to 0
-            
-        elif rsi <= 25 or rsi >= 75:
-            factors.append(f"RSI extreme zone ({rsi:.1f}) - strong signal")
-            # Extreme RSI is ALWAYS a strong trading opportunity, never a risk
-            # RSI >85 = perfect short opportunity, RSI <15 = perfect long opportunity
-            risk_level = 0  # No risk, just opportunity
-            
-        elif rsi <= 35:
-            factors.append(f"RSI oversold ({rsi:.1f}) - bullish potential")
-            
-        elif rsi >= 60:
-            factors.append(f"RSI overbought ({rsi:.1f}) - bearish potential")
-        else:
-            factors.append(f"RSI in tradable range ({rsi:.1f})")
-            # FIXED: Normal RSI range should be considered positive for trading
-            # Note: positive_factors is handled in the return statement
-            
-        return {
-            "factors": factors,
-            "risk": risk_level,
-            "risk_factors": risk_factors,
-            "positive": rsi <= 35 or rsi >= 60 or (rsi <= 25 or rsi >= 75),  # Oversold/overbought/extreme are positive signals
-            "positive_factors": ["Strong RSI signal"] if (rsi <= 35 or rsi >= 60 or (rsi <= 25 or rsi >= 75)) else [],
-            "neutral": 45 <= rsi <= 55,  # Flag neutral zone for override logic
-            "neutral_factors": ["RSI neutral zone"] if 45 <= rsi <= 55 else []
-        }
+    
+    
     
     def _analyze_trend_conditions(self, trend: str) -> Dict[str, Any]:
         """Analyze trend for trading suitability"""
@@ -370,8 +324,11 @@ class MarketConditionsAnalyzer:
             nearest_level = min(all_levels, key=lambda x: abs(current_price - x))
             distance_pct = abs(current_price - nearest_level) / current_price
             
-            if distance_pct < 0.005:  # Within 0.5% of major level
-                factors.append("Near major S/R level - breakout/bounce potential")
+            # Calculate dynamic proximity threshold based on market volatility
+            dynamic_threshold = self._calculate_dynamic_sr_proximity_threshold()
+            
+            if distance_pct < dynamic_threshold:
+                factors.append(f"Near major S/R level - breakout/bounce potential (within {dynamic_threshold*100:.1f}%)")
             
         return {
             "factors": factors,
@@ -381,67 +338,6 @@ class MarketConditionsAnalyzer:
             "positive_factors": []
         }
     
-    def _determine_overall_conditions(self, risk_factors: list, positive_factors: list, 
-                                     condition_factors: list, neutral_rsi: bool = False,
-                                     volume_analysis: Dict = None, trend_analysis: Dict = None, 
-                                     volatility_analysis: Dict = None, market_data: Dict = None) -> Dict[str, Any]:
-        """Determine overall market conditions based on factors"""
-        
-        total_risk_score = len(risk_factors)
-        total_positive_score = len(positive_factors)
-        
-        # FIXED: More balanced condition determination
-        # Start with FAIR as default, then adjust based on factors
-        condition = "FAIR"
-        risk_level = "MODERATE"
-        confidence = 0.65
-        
-        # Positive factors boost condition
-        if total_positive_score >= 3:
-            condition = "EXCELLENT"
-            risk_level = "LOW"
-            confidence = 0.85
-        elif total_positive_score >= 2:
-            condition = "GOOD"
-            risk_level = "LOW"
-            confidence = 0.75
-        elif total_positive_score >= 1:
-            condition = "GOOD"  # Changed from FAIR to GOOD for 1+ positive factors
-            risk_level = "LOW"
-            confidence = 0.70
-        
-        # Risk factors can downgrade condition
-        if total_risk_score >= 3:
-            condition = "POOR"
-            risk_level = "HIGH"
-            confidence = max(0.3, confidence - 0.2)
-        elif total_risk_score >= 2:
-            if condition == "EXCELLENT":
-                condition = "GOOD"
-            elif condition == "GOOD":
-                condition = "FAIR"
-            risk_level = "MODERATE"
-            confidence = max(0.4, confidence - 0.1)
-        elif total_risk_score >= 1:
-            if condition == "EXCELLENT":
-                condition = "GOOD"
-            risk_level = "MODERATE"
-            confidence = max(0.5, confidence - 0.05)
-        
-        # Adjust for high risk factors
-        if total_risk_score >= 3:
-            condition = "POOR"
-            risk_level = "HIGH"
-            confidence = max(0.3, confidence - 0.2)
-        elif total_risk_score >= 2:
-            risk_level = "MODERATE"
-            confidence = max(0.4, confidence - 0.1)
-        
-        return {
-            "condition": condition,
-            "risk_level": risk_level,
-            "confidence": confidence
-        }
     
     
     def get_condition_summary(self, analysis: Dict[str, Any]) -> str:
@@ -461,55 +357,6 @@ class MarketConditionsAnalyzer:
         else:
             return f"Conditions analysis unavailable"
     
-    def _analyze_dead_zone_conditions(self, market_data: Dict[str, Any], volatility_analysis: Dict = None, trend_analysis: Dict = None) -> Dict[str, Any]:
-        """Dead zone analysis DISABLED - always returns no dead zone"""
-        return {
-            "is_dead_zone": False,
-            "reason": "Dead zone analysis disabled"
-        }
-    
-    def _get_psychological_levels(self, current_price: float) -> list:
-        """Get nearby psychological levels for the current price"""
-        try:
-            # Major psychological levels (round numbers)
-            levels = []
-            
-            # Get the price range we're in (e.g., 110000-120000)
-            price_range_start = int(current_price // 10000) * 10000
-            price_range_end = price_range_start + 10000
-            
-            # Add major levels in this range
-            for level in range(price_range_start, price_range_end + 1, 1000):
-                levels.append(level)
-            
-            # Add more granular levels around current price
-            current_rounded = int(current_price // 100) * 100
-            for offset in [-200, -100, 0, 100, 200]:
-                levels.append(current_rounded + offset)
-            
-            return sorted(list(set(levels)))
-            
-        except Exception as e:
-            logger.error(f"❌ Psychological levels calculation failed: {e}")
-            return []
-    
-    def _is_near_psychological_level(self, current_price: float, psychological_levels: list, tolerance: float = 0.00005) -> str:
-        """Check if current price is near a psychological level"""
-        try:
-            for level in psychological_levels:
-                if level == 0:
-                    continue
-                    
-                # Check if price is within tolerance of the psychological level
-                price_diff_pct = abs(current_price - level) / level
-                if price_diff_pct <= tolerance:
-                    return f"${level:,.0f}"
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"❌ Psychological level check failed: {e}")
-            return None
     
     def _analyze_sentiment_conditions(self) -> Dict[str, Any]:
         """
@@ -519,9 +366,11 @@ class MarketConditionsAnalyzer:
             Dict containing sentiment factors, risk factors, and positive factors
         """
         try:
-            # Get Fear & Greed data
+            # Get sentiment data from existing calculation modules
             from core.external.fear_greed_api import get_global_fear_greed_api
-            fear_greed_data = get_global_fear_greed_api().get_fear_greed_index()
+            fear_greed_api = get_global_fear_greed_api()
+            
+            fear_greed_data = fear_greed_api.get_fear_greed_index()
             
             if not fear_greed_data or "error" in fear_greed_data:
                 return {
@@ -616,11 +465,15 @@ class MarketConditionsAnalyzer:
             Dict containing whale factors, risk factors, and positive factors
         """
         try:
-            # Get raw whale transaction data
-            whale_analytics_api = get_global_whale_analytics_api()
-            raw_whale_data = whale_analytics_api.get_raw_whale_transactions()
+            # Get whale analytics data from existing calculation modules
+            from core.calculations.whale_analysis_calculator import create_whale_analysis_calculator
             
-            if not raw_whale_data or "error" in raw_whale_data:
+            whale_calculator = create_whale_analysis_calculator()
+            
+            # Get whale analysis from the calculator
+            whale_analysis = whale_calculator.get_latest_analysis()
+            
+            if not whale_analysis or "error" in whale_analysis:
                 return {
                     "factors": ["Whale analytics unavailable"],
                     "risk_factors": [],
@@ -628,24 +481,6 @@ class MarketConditionsAnalyzer:
                     "risk": 0,
                     "positive": False
                 }
-            
-            # Process raw data with whale analysis calculator
-            from core.calculations.whale_analysis_calculator import get_global_whale_analysis_calculator
-            whale_calculator = get_global_whale_analysis_calculator()
-            
-            # Get transactions from raw data
-            transactions = raw_whale_data.get("transactions", [])
-            if not transactions:
-                return {
-                    "factors": ["No whale transactions available"],
-                    "risk_factors": [],
-                    "positive_factors": [],
-                    "risk": 0,
-                    "positive": False
-                }
-            
-            # Analyze whale data
-            whale_analysis = whale_calculator.analyze_whale_data(transactions)
             
             whale_activity = whale_analysis.get("whale_activity", {})
             exchange_flows = whale_analysis.get("exchange_flows", {})
@@ -734,7 +569,10 @@ class MarketConditionsAnalyzer:
             Dict containing news factors, risk factors, and positive factors
         """
         try:
-            # Get RSS news sentiment data
+            # Get news sentiment data from existing calculation modules
+            from core.external.rss_news_api import get_global_rss_news_api
+            rss_news_api = get_global_rss_news_api()
+            
             news_data = rss_news_api.get_news_sentiment()
             
             if not news_data or "error" in news_data:
@@ -876,28 +714,38 @@ class MarketConditionsAnalyzer:
             min_low = min(lows)
             range_pct = ((max_high - min_low) / min_low) * 100
             
-            # Determine market status based on price change and volatility
-            if price_change_pct > 5.0:  # Strong bullish trend (>5% gain)
-                market_status = "BULLISH"
-                factors = [f"Strong 7-day uptrend: +{price_change_pct:.1f}%"]
-            elif price_change_pct > 2.0:  # Moderate bullish trend (2-5% gain)
-                market_status = "BULLISH"
-                factors = [f"Moderate 7-day uptrend: +{price_change_pct:.1f}%"]
-            elif price_change_pct < -5.0:  # Strong bearish trend (>5% loss)
-                market_status = "BEARISH"
-                factors = [f"Strong 7-day downtrend: {price_change_pct:.1f}%"]
-            elif price_change_pct < -2.0:  # Moderate bearish trend (2-5% loss)
-                market_status = "BEARISH"
-                factors = [f"Moderate 7-day downtrend: {price_change_pct:.1f}%"]
-            else:  # Neutral trend (-2% to +2%)
-                market_status = "NEUTRAL"
-                factors = [f"Neutral 7-day trend: {price_change_pct:+.1f}%"]
+            # Calculate dynamic thresholds based on current volatility
+            dynamic_thresholds = self._calculate_dynamic_trend_thresholds()
             
-            # Add volatility context
-            if range_pct > 15.0:  # High volatility
-                factors.append(f"High volatility: {range_pct:.1f}% range")
-            elif range_pct < 5.0:  # Low volatility
-                factors.append(f"Low volatility: {range_pct:.1f}% range")
+            strong_bullish_threshold = dynamic_thresholds['strong_bullish']
+            moderate_bullish_threshold = dynamic_thresholds['moderate_bullish']
+            strong_bearish_threshold = dynamic_thresholds['strong_bearish']
+            moderate_bearish_threshold = dynamic_thresholds['moderate_bearish']
+            high_volatility_threshold = dynamic_thresholds['high_volatility']
+            low_volatility_threshold = dynamic_thresholds['low_volatility']
+            
+            # Determine market status based on dynamic thresholds
+            if price_change_pct > strong_bullish_threshold:
+                market_status = "BULLISH"
+                factors = [f"Strong 7-day uptrend: +{price_change_pct:.1f}% (threshold: {strong_bullish_threshold:.1f}%)"]
+            elif price_change_pct > moderate_bullish_threshold:
+                market_status = "BULLISH"
+                factors = [f"Moderate 7-day uptrend: +{price_change_pct:.1f}% (threshold: {moderate_bullish_threshold:.1f}%)"]
+            elif price_change_pct < strong_bearish_threshold:
+                market_status = "BEARISH"
+                factors = [f"Strong 7-day downtrend: {price_change_pct:.1f}% (threshold: {strong_bearish_threshold:.1f}%)"]
+            elif price_change_pct < moderate_bearish_threshold:
+                market_status = "BEARISH"
+                factors = [f"Moderate 7-day downtrend: {price_change_pct:.1f}% (threshold: {moderate_bearish_threshold:.1f}%)"]
+            else:  # Neutral trend
+                market_status = "NEUTRAL"
+                factors = [f"Neutral 7-day trend: {price_change_pct:+.1f}% (range: {moderate_bearish_threshold:.1f}% to {moderate_bullish_threshold:.1f}%)"]
+            
+            # Add volatility context using dynamic thresholds
+            if range_pct > high_volatility_threshold:
+                factors.append(f"High volatility: {range_pct:.1f}% range (threshold: {high_volatility_threshold:.1f}%)")
+            elif range_pct < low_volatility_threshold:
+                factors.append(f"Low volatility: {range_pct:.1f}% range (threshold: {low_volatility_threshold:.1f}%)")
             else:  # Normal volatility
                 factors.append(f"Normal volatility: {range_pct:.1f}% range")
             
@@ -923,6 +771,179 @@ class MarketConditionsAnalyzer:
                 "factors": [f"7-day trend analysis failed: {str(e)}"],
                 "market_status": "NEUTRAL"
             }
+    
+    def _calculate_dynamic_rsi_thresholds(self) -> Dict[str, float]:
+        """Calculate dynamic RSI thresholds based on market conditions"""
+        try:
+            # Get volatility data from existing calculation modules
+            volatility_data = self._get_volatility_data()
+            volatility_5m = volatility_data.get("volatility_5m", 0.0)
+            volatility_category = volatility_data.get("volatility_category", "MODERATE")
+            
+            # Base thresholds (standard RSI levels)
+            base_neutral_low = 45.0
+            base_neutral_high = 55.0
+            base_oversold = 35.0
+            base_overbought = 60.0
+            base_extreme_oversold = 25.0
+            base_extreme_overbought = 75.0
+            
+            # Adjust thresholds based on volatility
+            volatility_adjustment = 0.0
+            if volatility_category == "VERY_LOW":
+                volatility_adjustment = -5.0  # Tighter thresholds in low volatility
+            elif volatility_category == "LOW":
+                volatility_adjustment = -2.5
+            elif volatility_category == "HIGH":
+                volatility_adjustment = 2.5  # Wider thresholds in high volatility
+            elif volatility_category == "EXTREME":
+                volatility_adjustment = 5.0  # Much wider thresholds in extreme volatility
+            
+            # Apply volatility adjustment
+            neutral_low = max(30.0, min(60.0, base_neutral_low + volatility_adjustment))
+            neutral_high = max(40.0, min(70.0, base_neutral_high + volatility_adjustment))
+            oversold = max(20.0, min(45.0, base_oversold + volatility_adjustment))
+            overbought = max(55.0, min(80.0, base_overbought + volatility_adjustment))
+            extreme_oversold = max(15.0, min(35.0, base_extreme_oversold + volatility_adjustment))
+            extreme_overbought = max(65.0, min(85.0, base_extreme_overbought + volatility_adjustment))
+            
+            return {
+                'neutral_low': neutral_low,
+                'neutral_high': neutral_high,
+                'oversold': oversold,
+                'overbought': overbought,
+                'extreme_oversold': extreme_oversold,
+                'extreme_overbought': extreme_overbought,
+                'volatility_category': volatility_category,
+                'volatility_5m': volatility_5m,
+                'adjustment': volatility_adjustment,
+                'data_source': 'dynamic_volatility_based'
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Dynamic RSI threshold calculation failed: {e}")
+            # Fallback to standard thresholds
+            return {
+                'neutral_low': 45.0,
+                'neutral_high': 55.0,
+                'oversold': 35.0,
+                'overbought': 60.0,
+                'extreme_oversold': 25.0,
+                'extreme_overbought': 75.0,
+                'data_source': 'fallback_standard'
+            }
+    
+    def _calculate_dynamic_trend_thresholds(self) -> Dict[str, float]:
+        """Calculate dynamic trend thresholds based on current market volatility"""
+        try:
+            # Get volatility data from existing calculation modules
+            volatility_data = self._get_volatility_data()
+            current_volatility = volatility_data.get("volatility_5m", 10.0)
+            
+            # Base thresholds (standard levels)
+            base_strong_bullish = 5.0
+            base_moderate_bullish = 2.0
+            base_strong_bearish = -5.0
+            base_moderate_bearish = -2.0
+            base_high_volatility = 15.0
+            base_low_volatility = 5.0
+            
+            # Adjust thresholds based on current volatility
+            # Higher volatility = wider thresholds, lower volatility = tighter thresholds
+            volatility_factor = current_volatility / 10.0  # Normalize to 0-1 range
+            volatility_factor = max(0.5, min(2.0, volatility_factor))  # Clamp between 0.5x and 2.0x
+            
+            # Apply volatility adjustment
+            strong_bullish = base_strong_bullish * volatility_factor
+            moderate_bullish = base_moderate_bullish * volatility_factor
+            strong_bearish = base_strong_bearish * volatility_factor
+            moderate_bearish = base_moderate_bearish * volatility_factor
+            high_volatility = base_high_volatility * volatility_factor
+            low_volatility = base_low_volatility * volatility_factor
+            
+            return {
+                'strong_bullish': strong_bullish,
+                'moderate_bullish': moderate_bullish,
+                'strong_bearish': strong_bearish,
+                'moderate_bearish': moderate_bearish,
+                'high_volatility': high_volatility,
+                'low_volatility': low_volatility,
+                'volatility_factor': volatility_factor,
+                'current_volatility': current_volatility,
+                'data_source': 'dynamic_volatility_based'
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Dynamic trend threshold calculation failed: {e}")
+            # Fallback to standard thresholds
+            return {
+                'strong_bullish': 5.0,
+                'moderate_bullish': 2.0,
+                'strong_bearish': -5.0,
+                'moderate_bearish': -2.0,
+                'high_volatility': 15.0,
+                'low_volatility': 5.0,
+                'data_source': 'fallback_standard'
+            }
+    
+    def _calculate_dynamic_sr_proximity_threshold(self) -> float:
+        """Calculate dynamic S/R proximity threshold based on market volatility"""
+        try:
+            # Get volatility data from existing calculation modules
+            volatility_data = self._get_volatility_data()
+            volatility_5m = volatility_data.get("volatility_5m", 0.0)
+            volatility_category = volatility_data.get("volatility_category", "MODERATE")
+            
+            # Base threshold (0.5%)
+            base_threshold = 0.005
+            
+            # Adjust threshold based on volatility
+            # Higher volatility = wider threshold, lower volatility = tighter threshold
+            if volatility_category == "VERY_LOW":
+                volatility_multiplier = 0.5  # Tighter threshold in low volatility
+            elif volatility_category == "LOW":
+                volatility_multiplier = 0.7
+            elif volatility_category == "MODERATE":
+                volatility_multiplier = 1.0  # Standard threshold
+            elif volatility_category == "HIGH":
+                volatility_multiplier = 1.5  # Wider threshold in high volatility
+            elif volatility_category == "EXTREME":
+                volatility_multiplier = 2.0  # Much wider threshold in extreme volatility
+            else:
+                volatility_multiplier = 1.0
+            
+            # Apply volatility adjustment
+            dynamic_threshold = base_threshold * volatility_multiplier
+            
+            # Ensure reasonable bounds (0.1% to 2.0%)
+            dynamic_threshold = max(0.001, min(0.02, dynamic_threshold))
+            
+            return dynamic_threshold
+            
+        except Exception as e:
+            logger.error(f"❌ Dynamic S/R proximity threshold calculation failed: {e}")
+            # Fallback to standard threshold
+            return 0.005  # 0.5%
+    
+    def _get_volatility_data(self) -> Dict[str, Any]:
+        """Get volatility data from existing calculation modules - follows DRY"""
+        from core.calculations.volatility_calculator import create_volatility_calculator
+        volatility_calculator = create_volatility_calculator("BTC")
+        return volatility_calculator.get_latest_analysis()
 
 # Global instance for consistent conditions analysis across the system
-global_conditions_analyzer = MarketConditionsAnalyzer()
+# Factory function for backward compatibility
+def create_market_conditions_analyzer(data_provider: DataProvider = None) -> MarketConditionsAnalyzer:
+    """
+    Factory function to create MarketConditionsAnalyzer with dependency injection
+    
+    Args:
+        data_provider: DataProvider instance (optional)
+    
+    Returns:
+        Configured MarketConditionsAnalyzer instance
+    """
+    return MarketConditionsAnalyzer(data_provider=data_provider)
+
+# Global instance for backward compatibility
+global_conditions_analyzer = create_market_conditions_analyzer()

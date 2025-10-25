@@ -179,9 +179,7 @@ class MarketDataService:
             if "volume" in self._analysis_modules:
                 logger.info("📊 Triggering volume analysis...")
                 volume_calculator = self._analysis_modules["volume"]
-                return volume_calculator.get_latest_analysis(
-                    hyperliquid_websocket=self.hyperliquid_websocket
-                )
+                return volume_calculator.get_latest_analysis()
             
             logger.warning("⚠️ No volume calculator registered")
             return {}
@@ -226,7 +224,22 @@ class MarketDataService:
             # Update RSI with current price for real-time calculation
             if current_price and "rsi_calculator" in self._analysis_modules:
                 rsi_calculator = self._analysis_modules["rsi_calculator"]
-                rsi_calculator.update_realtime_rsi(current_price)
+                # Initialize RSI if not already initialized
+                if not rsi_calculator.rsi_initialized:
+                    try:
+                        # Get historical candles for RSI baseline calculation
+                        from core.services.historical_data_service import create_historical_data_service
+                        historical_service = create_historical_data_service()
+                        candles_5m = historical_service.get_5m_candles("BTC", 30)
+                        if candles_5m and len(candles_5m) >= 15:
+                            rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
+                            logger.debug("📊 RSI calculator initialized with baseline data")
+                        else:
+                            logger.warning("⚠️ RSI Calculator - insufficient historical data, using defaults")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Failed to initialize RSI: {e}")
+                else:
+                    rsi_calculator.update_realtime_rsi(current_price)
             
             # Get all processed analysis data
             unified_data = {
@@ -304,8 +317,8 @@ class MarketDataService:
             if "pattern_recognition" in self._analysis_modules:
                 pattern_engine = self._analysis_modules["pattern_recognition"]
                 # Get recent candles for pattern analysis
-                from core.services.historical_data_service import get_global_historical_data_service
-                historical_service = get_global_historical_data_service()
+                from core.services.historical_data_service import create_historical_data_service
+                historical_service = create_historical_data_service()
                 candles = historical_service.get_5m_candles("BTC", 20)
                 if candles:
                     return pattern_engine.analyze_patterns(candles)
@@ -335,8 +348,8 @@ class MarketDataService:
                         "volume_category": self.get_volume_analysis().get("hyperliquid_5m", {}).get("volume_category", "MODERATE")
                     }
                     # Get 1d candles for market trend analysis - request more to ensure we have enough
-                    from core.services.historical_data_service import get_global_historical_data_service
-                    historical_service = get_global_historical_data_service()
+                    from core.services.historical_data_service import create_historical_data_service
+                    historical_service = create_historical_data_service()
                     candles_1d = historical_service.get_1d_candles("BTC", 30)  # Request 30 days to ensure we have at least 7
                     
                     return conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d)
@@ -609,14 +622,7 @@ class MarketDataService:
                 "market_conditions_analysis": analysis_data.get("market_conditions", {}),
                 
                 # Orderbook analysis - pass full data
-                "orderbook_analysis": analysis_data.get("orderbook_analysis", {}),
-                
-                # Raw data access for prediction engine
-                "raw_data_access": {
-                    "hyperliquid_api": self.hyperliquid_api,
-                    "hyperliquid_websocket": self.hyperliquid_websocket,
-                    "binance_api": self.binance_api
-                }
+                "orderbook_analysis": analysis_data.get("orderbook_analysis", {})
             }
             
             logger.debug(f"📊 Prediction data prepared with {len(prediction_data)} metrics")
@@ -802,7 +808,23 @@ class MarketDataService:
             logger.error(f"❌ Failed to get market data: {e}")
             return {}
     
-# Global instance
+# Factory function for dependency injection
+def create_market_data_service(hyperliquid_api, hyperliquid_websocket, binance_api=None, binance_websocket=None) -> MarketDataService:
+    """
+    Factory function to create MarketDataService with dependency injection
+    
+    Args:
+        hyperliquid_api: HyperliquidAPI instance
+        hyperliquid_websocket: HyperliquidWebSocket instance
+        binance_api: BinanceAPI instance (optional)
+        binance_websocket: BinanceWebSocket instance (optional)
+    
+    Returns:
+        Configured MarketDataService instance
+    """
+    return MarketDataService(hyperliquid_api, hyperliquid_websocket, binance_api, binance_websocket)
+
+# Global instance for backward compatibility
 _global_market_data_service = None
 
 def get_global_market_data_service() -> MarketDataService:

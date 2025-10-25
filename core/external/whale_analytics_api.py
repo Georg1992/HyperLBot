@@ -57,9 +57,10 @@ class WhaleAnalyticsAPI:
                 from core.external.blockcypher_api import get_global_blockcypher_api
                 blockcypher_api = get_global_blockcypher_api()
                 
-                raw_transactions = blockcypher_api.get_raw_transactions()
+                raw_data = blockcypher_api.get_raw_transactions()
                 
-                if raw_transactions:
+                if raw_data and "transactions" in raw_data:
+                    raw_transactions = raw_data["transactions"]
                     logger.info(f"🐋 Raw whale transactions fetched: {len(raw_transactions)} transactions")
                     return raw_transactions
                 else:

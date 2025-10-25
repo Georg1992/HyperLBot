@@ -19,8 +19,8 @@ class TrendCalculator:
         """Get latest trend analysis for MarketDataService coordination"""
         try:
             # Get candles from HistoricalDataService
-            from core.services.historical_data_service import get_global_historical_data_service
-            historical_service = get_global_historical_data_service()
+            from core.services.historical_data_service import create_historical_data_service
+            historical_service = create_historical_data_service()
             
             # Get candles for all timeframes
             candles_5m = historical_service.get_5m_candles("BTC", 30)
@@ -193,13 +193,26 @@ class TrendCalculator:
 # Singleton pattern implementation
 _global_trend_calculator = None
 
+# Factory function for dependency injection
+def create_trend_calculator() -> TrendCalculator:
+    """
+    Factory function to create TrendCalculator with dependency injection
+    
+    Returns:
+        Configured TrendCalculator instance
+    """
+    return TrendCalculator()
+
+# Global instance for backward compatibility (DEPRECATED - use create_trend_calculator)
+_global_trend_calculator = None
+
 def get_global_trend_calculator() -> TrendCalculator:
-    """Get the global TrendCalculator singleton instance"""
+    """Get the global TrendCalculator singleton instance (DEPRECATED)"""
     global _global_trend_calculator
     if _global_trend_calculator is None:
-        _global_trend_calculator = TrendCalculator()
+        _global_trend_calculator = create_trend_calculator()
     return _global_trend_calculator
 
-# Backward compatibility - lazy initialization
+# Backward compatibility - lazy initialization (DEPRECATED)
 def global_trend_calculator():
     return get_global_trend_calculator()

@@ -4,7 +4,7 @@ Session Orchestrator - Centralized session management with NO FALLBACKS policy
 """
 
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from loguru import logger
 
 
@@ -233,6 +233,86 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Main data loop failed: {e}")
             raise
+    
+    def _get_modules_needing_update(self, analysis_modules: Dict[str, Any], 
+                                   current_price: float, orderbook_data: Dict[str, Any]) -> List[str]:
+        """Determine which modules need updates based on data changes and time intervals"""
+        modules_to_update = []
+        current_time = time.time()
+        
+        # Module update intervals (seconds)
+        update_intervals = {
+            'rsi_calculator': 5,      # 5 seconds - price sensitive
+            'volume': 30,             # 30 seconds
+            'pressure': 30,           # 30 seconds
+            'volatility': 60,         # 1 minute
+            'trend': 60,              # 1 minute
+            'orderbook': 60,          # 1 minute
+            'pattern_recognition': 120,  # 2 minutes
+            'support_resistance': 300,   # 5 minutes
+            'market_conditions': 300,    # 5 minutes
+            'cross_asset_correlation_analyzer': 300,  # 5 minutes
+            'funding_rate': 300,      # 5 minutes
+        }
+        
+        # Price change threshold for price-sensitive modules
+        price_change_threshold = 0.001  # 0.1%
+        
+        # Track price changes
+        if not hasattr(self, '_last_price'):
+            self._last_price = current_price
+            self._last_update_times = {}
+            # Force update all modules on first run
+            return list(analysis_modules.keys())
+        
+        price_change = abs(current_price - self._last_price) / self._last_price
+        self._last_price = current_price
+        
+        for module_name, module_instance in analysis_modules.items():
+            # Check if module should be updated
+            should_update = False
+            
+            # Check time interval
+            last_update = self._last_update_times.get(module_name, 0)
+            interval = update_intervals.get(module_name, 60)  # Default 1 minute
+            
+            if current_time - last_update >= interval:
+                should_update = True
+            
+            # Check price change for price-sensitive modules
+            price_sensitive_modules = ['rsi_calculator', 'support_resistance']
+            if module_name in price_sensitive_modules and price_change >= price_change_threshold:
+                should_update = True
+            
+            # Check for data changes in orderbook
+            if module_name in ['volume', 'pressure', 'orderbook']:
+                if self._has_orderbook_changed(orderbook_data):
+                    should_update = True
+            
+            if should_update:
+                modules_to_update.append(module_name)
+                self._last_update_times[module_name] = current_time
+        
+        return modules_to_update
+    
+    def _has_orderbook_changed(self, orderbook_data: Dict[str, Any]) -> bool:
+        """Check if orderbook data has changed significantly"""
+        if not hasattr(self, '_last_orderbook'):
+            self._last_orderbook = orderbook_data
+            return True
+        
+        # Simple comparison - could be enhanced with more sophisticated change detection
+        current_bids = orderbook_data.get('bids', [])
+        current_asks = orderbook_data.get('asks', [])
+        last_bids = self._last_orderbook.get('bids', [])
+        last_asks = self._last_orderbook.get('asks', [])
+        
+        # Check if bid/ask levels have changed
+        if current_bids != last_bids or current_asks != last_asks:
+            self._last_orderbook = orderbook_data
+            return True
+        
+        return False
 
     def _prepare_unified_market_data(
         self,
@@ -248,8 +328,8 @@ class SessionOrchestrator:
                 market_data_service, current_price, orderbook_data
             )
 
-            # Get comprehensive analysis data from MarketDataService
-            analysis_data = market_data_service.get_unified_analysis_data(strategy)
+            # Get comprehensive analysis data from MarketDataService (includes prediction data)
+            analysis_data = market_data_service.get_dashboard_data(strategy)
 
             # Remove non-serializable objects for dashboard compatibility
             if "raw_data_access" in analysis_data:
@@ -283,14 +363,26 @@ class SessionOrchestrator:
     def _trigger_analysis_modules(
         self, market_data_service, current_price: float, orderbook_data: Dict[str, Any]
     ) -> None:
-        """Trigger analysis modules to calculate and send data to MarketDataService - LIVE DATA STYLE"""
+        """Trigger analysis modules only when data changes - Event-driven architecture"""
         try:
             # Get analysis modules from MarketDataService
             analysis_modules = getattr(market_data_service, "_analysis_modules", {})
             logger.debug(f"📊 Found {len(analysis_modules)} analysis modules: {list(analysis_modules.keys())}")
 
-            # Update each analysis module with live data and get results
-            for module_name, module_instance in analysis_modules.items():
+            # Check which modules actually need updates
+            modules_to_update = self._get_modules_needing_update(
+                analysis_modules, current_price, orderbook_data
+            )
+            
+            if not modules_to_update:
+                logger.debug("📊 No modules need updates - skipping analysis")
+                return
+
+            logger.debug(f"📊 Updating {len(modules_to_update)} modules: {modules_to_update}")
+
+            # Update only modules that need updates
+            for module_name in modules_to_update:
+                module_instance = analysis_modules[module_name]
                 try:
                     logger.debug(f"📊 Processing module: {module_name}")
                     
@@ -305,7 +397,7 @@ class SessionOrchestrator:
                     if hasattr(module_instance, "get_latest_analysis"):
                         # Other modules: Get latest analysis with current price
                         if module_name == "volume":
-                            # Volume needs websocket for live data
+                            # Volume analysis needs websocket
                             analysis_result = module_instance.get_latest_analysis(
                                 hyperliquid_websocket=market_data_service.hyperliquid_websocket
                             )
@@ -329,8 +421,8 @@ class SessionOrchestrator:
                             logger.debug(f"📊 Pressure analysis result: {analysis_result}")
                         elif module_name == "pattern_recognition":
                             # Pattern analysis needs candles
-                            from core.services.historical_data_service import get_global_historical_data_service
-                            historical_service = get_global_historical_data_service()
+                            from core.services.historical_data_service import create_historical_data_service
+                            historical_service = create_historical_data_service()
                             candles = historical_service.get_5m_candles("BTC", 50)  # Get 50 candles for pattern analysis
                             if candles:
                                 analysis_result = module_instance.analyze_patterns(candles)
@@ -351,8 +443,8 @@ class SessionOrchestrator:
                                 "volume_category": market_data_service.get_volume_analysis().get("hyperliquid_5m", {}).get("volume_category", "MODERATE")
                             }
                             # Get 1d candles for market trend analysis
-                            from core.services.historical_data_service import get_global_historical_data_service
-                            historical_service = get_global_historical_data_service()
+                            from core.services.historical_data_service import create_historical_data_service
+                            historical_service = create_historical_data_service()
                             candles_1d = historical_service.get_1d_candles("BTC", 30)  # Request 30 days to ensure we have at least 7
                             
                             analysis_result = module_instance.analyze_trading_conditions(market_data, candles_1d=candles_1d)

@@ -38,6 +38,81 @@ class WhaleAnalysisCalculator:
         
         logger.info("🐋 Whale Analysis Calculator initialized")
     
+    def get_latest_analysis(self) -> Dict[str, Any]:
+        """
+        Get latest whale analysis - calculate fresh data instead of relying on cache
+        
+        Returns:
+            Dict containing latest whale analysis data
+        """
+        try:
+            # Get fresh whale transaction data
+            from core.external.whale_analytics_api import get_global_whale_analytics_api
+            whale_api = get_global_whale_analytics_api()
+            
+            if not whale_api:
+                logger.warning("⚠️ Whale Analytics API not available")
+                return self._create_neutral_whale_analysis("api_unavailable")
+            
+            # Fetch raw whale transactions
+            raw_transactions = whale_api.get_raw_whale_transactions()
+            
+            if not raw_transactions:
+                logger.debug("🐋 No whale transactions available")
+                return self._create_neutral_whale_analysis("no_transactions")
+            
+            # Analyze the whale data
+            analysis_result = self.analyze_whale_data(raw_transactions)
+            
+            # Cache the result
+            self._cache.set("whale_analysis", analysis_result, ttl=300)  # 5 minutes
+            
+            logger.info(f"🐋 Fresh whale analysis completed: {analysis_result['whale_activity']['whale_count']} whales")
+            return analysis_result
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get latest whale analysis: {e}")
+            return self._create_neutral_whale_analysis("error_fallback")
+    
+    def _create_neutral_whale_analysis(self, data_source: str) -> Dict[str, Any]:
+        """Create neutral whale analysis response - follows DRY and matches analyze_whale_data structure"""
+        return {
+            "whale_activity": self._create_empty_whale_activity(),
+            "exchange_flows": self._create_empty_exchange_flows(),
+            "sentiment": self._create_neutral_sentiment(),
+            "timestamp": time.time(),
+            "data_source": data_source
+        }
+    
+    def _create_empty_whale_activity(self) -> Dict[str, Any]:
+        """Create empty whale activity response - follows DRY"""
+        return {
+            "whale_count": 0,
+            "activity_level": "low",
+            "total_volume_usd": 0,
+            "average_transaction_size": 0,
+            "largest_transaction": 0
+        }
+    
+    def _create_empty_exchange_flows(self) -> Dict[str, Any]:
+        """Create empty exchange flows response - follows DRY"""
+        return {
+            "flow_direction": "neutral",
+            "net_flow": 0,
+            "inflow_volume": 0,
+            "outflow_volume": 0,
+            "exchange_transactions": 0
+        }
+    
+    def _create_neutral_sentiment(self) -> Dict[str, Any]:
+        """Create neutral sentiment response - follows DRY"""
+        return {
+            "classification": "neutral",
+            "confidence": "low",
+            "sentiment_score": 0,
+            "factors": {}
+        }
+    
     def analyze_whale_data(self, raw_transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Analyze raw whale transaction data
@@ -137,13 +212,7 @@ class WhaleAnalysisCalculator:
         """Analyze whale activity patterns"""
         try:
             if not whale_transactions:
-                return {
-                    "whale_count": 0,
-                    "activity_level": "low",
-                    "total_volume_usd": 0,
-                    "average_transaction_size": 0,
-                    "largest_transaction": 0
-                }
+                return self._create_empty_whale_activity()
             
             # Count whales and calculate volume
             whale_count = len(whale_transactions)
@@ -171,25 +240,13 @@ class WhaleAnalysisCalculator:
             
         except Exception as e:
             logger.error(f"❌ Failed to analyze whale activity: {e}")
-            return {
-                "whale_count": 0,
-                "activity_level": "low",
-                "total_volume_usd": 0,
-                "average_transaction_size": 0,
-                "largest_transaction": 0
-            }
+            return self._create_empty_whale_activity()
     
     def _analyze_exchange_flows(self, whale_transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Analyze exchange flows from whale transactions"""
         try:
             if not whale_transactions:
-                return {
-                    "flow_direction": "neutral",
-                    "net_flow": 0,
-                    "inflow_volume": 0,
-                    "outflow_volume": 0,
-                    "exchange_transactions": 0
-                }
+                return self._create_empty_exchange_flows()
             
             inflow_volume = 0
             outflow_volume = 0
@@ -202,17 +259,21 @@ class WhaleAnalysisCalculator:
                 
                 # Check inputs for exchange addresses
                 for input_tx in tx.get("inputs", []):
-                    for address in input_tx.get("addresses", []):
-                        if self._is_exchange_address(address):
-                            has_exchange_involvement = True
-                            tx_outflow += input_tx.get("output_value", 0) / 100000000  # Convert to BTC
+                    addresses = input_tx.get("addresses", [])
+                    if addresses is not None:  # Check for None
+                        for address in addresses:
+                            if self._is_exchange_address(address):
+                                has_exchange_involvement = True
+                                tx_outflow += input_tx.get("output_value", 0) / 100000000  # Convert to BTC
                 
                 # Check outputs for exchange addresses
                 for output in tx.get("outputs", []):
-                    for address in output.get("addresses", []):
-                        if self._is_exchange_address(address):
-                            has_exchange_involvement = True
-                            tx_inflow += output.get("value", 0) / 100000000  # Convert to BTC
+                    addresses = output.get("addresses", [])
+                    if addresses is not None:  # Check for None
+                        for address in addresses:
+                            if self._is_exchange_address(address):
+                                has_exchange_involvement = True
+                                tx_inflow += output.get("value", 0) / 100000000  # Convert to BTC
                 
                 if has_exchange_involvement:
                     exchange_transactions += 1
@@ -243,13 +304,7 @@ class WhaleAnalysisCalculator:
             
         except Exception as e:
             logger.error(f"❌ Failed to analyze exchange flows: {e}")
-            return {
-                "flow_direction": "neutral",
-                "net_flow": 0,
-                "inflow_volume": 0,
-                "outflow_volume": 0,
-                "exchange_transactions": 0
-            }
+            return self._create_empty_exchange_flows()
     
     def _calculate_whale_sentiment(self, whale_activity: Dict[str, Any], exchange_flows: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate whale sentiment based on activity and flows"""
@@ -321,12 +376,7 @@ class WhaleAnalysisCalculator:
             
         except Exception as e:
             logger.error(f"❌ Failed to calculate whale sentiment: {e}")
-            return {
-                "classification": "neutral",
-                "confidence": "low",
-                "sentiment_score": 0,
-                "factors": {}
-            }
+            return self._create_neutral_sentiment()
     
     def _is_exchange_address(self, address: str) -> bool:
         """Check if address belongs to a known exchange"""
@@ -358,13 +408,22 @@ class WhaleAnalysisCalculator:
     
 
 
-# Global instance for easy access
-# Singleton pattern implementation
+# Factory function for dependency injection
+def create_whale_analysis_calculator() -> WhaleAnalysisCalculator:
+    """
+    Factory function to create WhaleAnalysisCalculator with dependency injection
+    
+    Returns:
+        Configured WhaleAnalysisCalculator instance
+    """
+    return WhaleAnalysisCalculator()
+
+# Global instance for backward compatibility (DEPRECATED - use create_whale_analysis_calculator)
 _global_whale_analysis_calculator = None
 
 def get_global_whale_analysis_calculator() -> WhaleAnalysisCalculator:
-    """Get the global WhaleAnalysisCalculator singleton instance"""
+    """Get the global WhaleAnalysisCalculator singleton instance (DEPRECATED)"""
     global _global_whale_analysis_calculator
     if _global_whale_analysis_calculator is None:
-        _global_whale_analysis_calculator = WhaleAnalysisCalculator()
+        _global_whale_analysis_calculator = create_whale_analysis_calculator()
     return _global_whale_analysis_calculator

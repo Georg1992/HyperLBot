@@ -8,14 +8,24 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
-# Singleton pattern implementation
+# Factory function for dependency injection
+def create_funding_rate_analyzer() -> 'FundingRateAnalyzer':
+    """
+    Factory function to create FundingRateAnalyzer with dependency injection
+    
+    Returns:
+        Configured FundingRateAnalyzer instance
+    """
+    return FundingRateAnalyzer()
+
+# Global instance for backward compatibility (DEPRECATED - use create_funding_rate_analyzer)
 _global_funding_rate_analyzer = None
 
 def get_global_funding_rate_analyzer() -> 'FundingRateAnalyzer':
-    """Get the global FundingRateAnalyzer singleton instance"""
+    """Get the global FundingRateAnalyzer singleton instance (DEPRECATED)"""
     global _global_funding_rate_analyzer
     if _global_funding_rate_analyzer is None:
-        _global_funding_rate_analyzer = FundingRateAnalyzer()
+        _global_funding_rate_analyzer = create_funding_rate_analyzer()
     return _global_funding_rate_analyzer
 
 class FundingRateAnalyzer:
@@ -141,43 +151,47 @@ class FundingRateAnalyzer:
             return {"trend": "ERROR", "direction": "UNKNOWN", "strength": 0.0}
     
     def _analyze_funding_sentiment(self, funding_rate: float) -> Dict[str, Any]:
-        """Analyze market sentiment based on funding rate"""
+        """Analyze market sentiment based on funding rate using dynamic thresholds"""
         try:
-            # Categorize funding rate
-            if funding_rate > 0.001:  # > 0.1%
+            # Calculate dynamic thresholds based on historical funding rate data
+            thresholds = self._calculate_dynamic_thresholds()
+            
+            # Categorize funding rate using dynamic thresholds
+            if funding_rate > thresholds['extreme_positive']:
                 sentiment = "EXTREME_BULLISH"
-                description = "Very high funding - extreme bullish sentiment"
+                description = f"Very high funding ({funding_rate*100:.3f}%) - extreme bullish sentiment"
                 risk_level = "HIGH"
-            elif funding_rate > 0.0005:  # > 0.05%
+            elif funding_rate > thresholds['high_positive']:
                 sentiment = "BULLISH"
-                description = "High funding - bullish sentiment"
+                description = f"High funding ({funding_rate*100:.3f}%) - bullish sentiment"
                 risk_level = "MEDIUM"
-            elif funding_rate > 0.0001:  # > 0.01%
+            elif funding_rate > thresholds['low_positive']:
                 sentiment = "SLIGHTLY_BULLISH"
-                description = "Positive funding - slightly bullish"
+                description = f"Positive funding ({funding_rate*100:.3f}%) - slightly bullish"
                 risk_level = "LOW"
-            elif funding_rate > -0.0001:  # -0.01% to 0.01%
+            elif funding_rate > thresholds['low_negative']:
                 sentiment = "NEUTRAL"
-                description = "Neutral funding - balanced sentiment"
+                description = f"Neutral funding ({funding_rate*100:.3f}%) - balanced sentiment"
                 risk_level = "LOW"
-            elif funding_rate > -0.0005:  # -0.05% to -0.01%
+            elif funding_rate > thresholds['high_negative']:
                 sentiment = "SLIGHTLY_BEARISH"
-                description = "Negative funding - slightly bearish"
+                description = f"Negative funding ({funding_rate*100:.3f}%) - slightly bearish"
                 risk_level = "LOW"
-            elif funding_rate > -0.001:  # -0.1% to -0.05%
+            elif funding_rate > thresholds['extreme_negative']:
                 sentiment = "BEARISH"
-                description = "Low funding - bearish sentiment"
+                description = f"Low funding ({funding_rate*100:.3f}%) - bearish sentiment"
                 risk_level = "MEDIUM"
-            else:  # < -0.1%
+            else:  # Below extreme negative threshold
                 sentiment = "EXTREME_BEARISH"
-                description = "Very low funding - extreme bearish sentiment"
+                description = f"Very low funding ({funding_rate*100:.3f}%) - extreme bearish sentiment"
                 risk_level = "HIGH"
             
             return {
                 "sentiment": sentiment,
                 "description": description,
                 "risk_level": risk_level,
-                "funding_rate_pct": round(funding_rate * 100, 4)
+                "funding_rate_pct": round(funding_rate * 100, 4),
+                "thresholds_used": thresholds
             }
             
         except Exception as e:
@@ -259,4 +273,58 @@ class FundingRateAnalyzer:
         except Exception as e:
             logger.error(f"❌ Funding volatility calculation failed: {e}")
             return {"volatility": 0.0, "category": "ERROR"}
+    
+    def _calculate_dynamic_thresholds(self) -> Dict[str, float]:
+        """Calculate dynamic thresholds based on historical funding rate data"""
+        try:
+            if len(self._funding_rate_history) < 10:
+                # Use industry-standard thresholds if insufficient data
+                return {
+                    'extreme_positive': 0.001,   # 0.1%
+                    'high_positive': 0.0005,     # 0.05%
+                    'low_positive': 0.0001,     # 0.01%
+                    'low_negative': -0.0001,     # -0.01%
+                    'high_negative': -0.0005,    # -0.05%
+                    'extreme_negative': -0.001,  # -0.1%
+                    'data_source': 'industry_standard'
+                }
+            
+            # Get recent funding rates for analysis
+            recent_rates = [entry["funding_rate"] for entry in self._funding_rate_history[-50:]]
+            
+            # Calculate percentiles for dynamic thresholds
+            sorted_rates = sorted(recent_rates)
+            n = len(sorted_rates)
+            
+            # Calculate percentiles (90th, 75th, 25th, 10th percentiles)
+            extreme_positive = sorted_rates[int(n * 0.9)] if n > 0 else 0.001
+            high_positive = sorted_rates[int(n * 0.75)] if n > 0 else 0.0005
+            low_positive = sorted_rates[int(n * 0.6)] if n > 0 else 0.0001
+            low_negative = sorted_rates[int(n * 0.4)] if n > 0 else -0.0001
+            high_negative = sorted_rates[int(n * 0.25)] if n > 0 else -0.0005
+            extreme_negative = sorted_rates[int(n * 0.1)] if n > 0 else -0.001
+            
+            return {
+                'extreme_positive': max(0.0005, extreme_positive),  # Minimum 0.05%
+                'high_positive': max(0.0002, high_positive),       # Minimum 0.02%
+                'low_positive': max(0.00005, low_positive),         # Minimum 0.005%
+                'low_negative': min(-0.00005, low_negative),        # Maximum -0.005%
+                'high_negative': min(-0.0002, high_negative),       # Maximum -0.02%
+                'extreme_negative': min(-0.0005, extreme_negative), # Maximum -0.05%
+                'data_source': 'historical_analysis',
+                'data_points': n
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Dynamic threshold calculation failed: {e}")
+            # Fallback to industry standards
+            return {
+                'extreme_positive': 0.001,
+                'high_positive': 0.0005,
+                'low_positive': 0.0001,
+                'low_negative': -0.0001,
+                'high_negative': -0.0005,
+                'extreme_negative': -0.001,
+                'data_source': 'fallback_industry_standard'
+            }
     

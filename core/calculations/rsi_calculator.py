@@ -248,10 +248,23 @@ class RSICalculator:
 # Singleton pattern implementation
 _global_rsi_calculator = None
 
+# Factory function for dependency injection
+def create_rsi_calculator() -> RSICalculator:
+    """
+    Factory function to create RSICalculator with dependency injection
+    
+    Returns:
+        Configured RSICalculator instance
+    """
+    return RSICalculator()
+
+# Global instance for backward compatibility (DEPRECATED - use create_rsi_calculator)
+_global_rsi_calculator = None
+
 def get_global_rsi_calculator() -> RSICalculator:
-    """Get the global RSICalculator singleton instance"""
+    """Get the global RSICalculator singleton instance (DEPRECATED)"""
     global _global_rsi_calculator
     if _global_rsi_calculator is None:
-        _global_rsi_calculator = RSICalculator()
+        _global_rsi_calculator = create_rsi_calculator()
     return _global_rsi_calculator
 

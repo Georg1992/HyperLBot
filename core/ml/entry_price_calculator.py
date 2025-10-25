@@ -113,12 +113,22 @@ class EntryPriceCalculator:
         return entry_price
 
 
-# Global singleton
+# Factory function for dependency injection
+def create_entry_price_calculator() -> EntryPriceCalculator:
+    """
+    Factory function to create EntryPriceCalculator with dependency injection
+    
+    Returns:
+        Configured EntryPriceCalculator instance
+    """
+    return EntryPriceCalculator()
+
+# Global instance for backward compatibility (DEPRECATED - use create_entry_price_calculator)
 _global_entry_price_calculator = None
 
 def get_global_entry_price_calculator() -> EntryPriceCalculator:
-    """Get global entry price calculator singleton"""
+    """Get global entry price calculator singleton (DEPRECATED)"""
     global _global_entry_price_calculator
     if _global_entry_price_calculator is None:
-        _global_entry_price_calculator = EntryPriceCalculator()
+        _global_entry_price_calculator = create_entry_price_calculator()
     return _global_entry_price_calculator

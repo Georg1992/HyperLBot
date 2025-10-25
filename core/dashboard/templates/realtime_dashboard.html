@@ -165,7 +165,21 @@
             color: #f44336;
         }
 
+        .trend-strong-up {
+            color: #2E7D32;
+            font-weight: bold;
+        }
+
+        .trend-strong-down {
+            color: #C62828;
+            font-weight: bold;
+        }
+
         .trend-neutral {
+            color: #FF9800;
+        }
+
+        .trend-sideways {
             color: #FF9800;
         }
 
@@ -1071,26 +1085,33 @@
                 
                 // Update Support/Resistance with top 2 levels
                 if (market.support_resistance) {
-                    const srElement = document.getElementById('market-key-levels');
+                    const srElement = document.getElementById('support-resistance-levels');
                     if (srElement) {
-                        // Use top 2 support and resistance levels if available, otherwise fallback to filtering
-                        const supportLevels = market.support_resistance.top_2_support || 
-                                            market.support_resistance.key_levels.filter(level => level.type === 'support').slice(0, 2);
-                        const resistanceLevels = market.support_resistance.top_2_resistance || 
-                                              market.support_resistance.key_levels.filter(level => level.type === 'resistance').slice(0, 2);
-                        
-                        let srText = '';
-                        if (supportLevels.length > 0) {
-                            srText += `Support: $${supportLevels.map(s => s.level.toFixed(0)).join(', ')}`;
+                        // Check if S/R data is in error state
+                        if (market.support_resistance.status === 'error') {
+                            srElement.textContent = `ERROR - ${market.support_resistance.message}`;
+                            srElement.className = 'data-value negative';
+                            console.log('📊 S/R error:', market.support_resistance.message);
+                        } else {
+                            // Use top 2 support and resistance levels if available, otherwise fallback to filtering
+                            const supportLevels = market.support_resistance.top_2_support || 
+                                                market.support_resistance.key_levels.filter(level => level.type === 'support').slice(0, 2);
+                            const resistanceLevels = market.support_resistance.top_2_resistance || 
+                                                  market.support_resistance.key_levels.filter(level => level.type === 'resistance').slice(0, 2);
+                            
+                            let srText = '';
+                            if (supportLevels.length > 0) {
+                                srText += `Support: $${supportLevels.map(s => (s.price_level || s.level || 0).toFixed(0)).join(', ')}`;
+                            }
+                            if (resistanceLevels.length > 0) {
+                                if (srText) srText += ' | ';
+                                srText += `Resistance: $${resistanceLevels.map(r => (r.price_level || r.level || 0).toFixed(0)).join(', ')}`;
+                            }
+                            
+                            srElement.textContent = srText || 'No levels detected';
+                            srElement.className = 'data-value';
+                            console.log('📊 S/R updated:', srText);
                         }
-                        if (resistanceLevels.length > 0) {
-                            if (srText) srText += ' | ';
-                            srText += `Resistance: $${resistanceLevels.map(r => r.level.toFixed(0)).join(', ')}`;
-                        }
-                        
-                        srElement.textContent = srText || 'No levels detected';
-                        srElement.className = 'data-value';
-                        console.log('📊 S/R updated:', srText);
                     }
                 }
                 
@@ -1135,8 +1156,8 @@
                     }
                 }
                 
-                    // Update individual market fields directly
-                    this.updateIndividualMarketFields(market);
+                // Update individual market fields directly
+                this.updateIndividualMarketFields(market);
                 
                 
                 
@@ -1239,8 +1260,11 @@
                 let volumeCategory = null;
                 
                 if (market.volume && typeof market.volume === 'object') {
-                    // Volume data as object - check hyperliquid_5m structure
-                    if (market.volume.hyperliquid_5m && typeof market.volume.hyperliquid_5m === 'object') {
+                    // Volume data as object - check for current_5m_volume
+                    if (market.volume.current_5m_volume !== undefined) {
+                        volumeValue = market.volume.current_5m_volume;
+                        volumeCategory = market.volume.volume_category;
+                    } else if (market.volume.hyperliquid_5m && typeof market.volume.hyperliquid_5m === 'object') {
                         volumeValue = market.volume.hyperliquid_5m.current_5m_volume;
                         volumeCategory = market.volume.hyperliquid_5m.volume_category;
                     } else {
@@ -1305,8 +1329,8 @@
                 
                 if (market.volatility && typeof market.volatility === 'object') {
                     // Volatility data as object - check for the correct fields
-                    volatilityValue = market.volatility.volatility_5m || market.volatility.volatility;
-                    volatilityCategory = market.volatility.volatility_5m_category || market.volatility.category;
+                    volatilityValue = market.volatility.volatility_percentage || market.volatility.volatility_5m || market.volatility.volatility;
+                    volatilityCategory = market.volatility.level || market.volatility.volatility_5m_category || market.volatility.category;
                     console.log('📊 Using volatility object:', { volatilityValue, volatilityCategory });
                 } else if (market.volatility_5m !== undefined && market.volatility_5m_category) {
                     // Direct volatility values
@@ -1316,17 +1340,19 @@
                 } else {
                     console.log('📊 No volatility data found');
                 }
-                
+                    
                 // Build multi-timeframe volatility display
                 let volatilityDisplay = '';
                 const timestamp = new Date().toLocaleTimeString();
                 
                 if (volatilityValue !== null && volatilityCategory) {
-                    
-                    // Primary volatility (strategy-dependent period)
+                
+                // Primary volatility (strategy-dependent period)
                     const category5m = volatilityCategory;
                     const trend5m = market.volatility_5m_trend;
-                    const value5m = volatilityValue ? (volatilityValue * 100).toFixed(3) : '0.000';
+                    // Handle both percentage and decimal values
+                    const value5m = volatilityValue ? 
+                        (volatilityValue > 1 ? volatilityValue.toFixed(3) : (volatilityValue * 100).toFixed(3)) : '0.000';
                     const period5m = market.volatility_5m_period_minutes || 15; // Default to 15 minutes
                     const strategy5m = market.volatility_strategy || 'standard';
                     const candles5m = market.volatility_5m_period_candles || 3; // Default to 3 candles
@@ -1389,9 +1415,9 @@
                     if (strongestSupport > 0) {
                         // Get support score from key levels
                         const supportLevel = market.support_resistance.key_levels?.find(level => 
-                            Math.abs(level.level - strongestSupport) < 10 && level.type === 'support'
+                            Math.abs(level.price_level - strongestSupport) < 10 && level.type === 'support'
                         );
-                        const supportScore = supportLevel?.score?.toFixed(1) || '0.0';
+                        const supportScore = supportLevel?.strength_score?.toFixed(1) || '0.0';
                         const supportTouches = supportLevel?.touches || 0;
                         
                         if (strongestSupport < currentPrice) {
@@ -1409,9 +1435,9 @@
                     if (strongestResistance > 0) {
                         // Get resistance score from key levels
                         const resistanceLevel = market.support_resistance.key_levels?.find(level => 
-                            Math.abs(level.level - strongestResistance) < 10 && level.type === 'resistance'
+                            Math.abs(level.price_level - strongestResistance) < 10 && level.type === 'resistance'
                         );
-                        const resistanceScore = resistanceLevel?.score?.toFixed(1) || '0.0';
+                        const resistanceScore = resistanceLevel?.strength_score?.toFixed(1) || '0.0';
                         const resistanceTouches = resistanceLevel?.touches || 0;
                         
                         if (strongestResistance > currentPrice) {
@@ -1432,42 +1458,42 @@
                     
                     // Display top 2 support levels
                     topSupport.forEach(level => {
-                        const score = level.score ? level.score.toFixed(1) : '0.0';
+                        const score = level.strength_score ? level.strength_score.toFixed(1) : '0.0';
                         const touches = level.touches || 0;
-                        const timeframe = level.timeframe || '5m';
-                        const relevance = level.relevance || 'active';
+                        const timeframe = '5m'; // S/R analysis uses 5m as primary timeframe
+                        const relevance = level.status || 'active';
+                            
+                            // Add strength indicator based on score
+                            let strengthIndicator = '';
+                        if (level.strength_score > 100) strengthIndicator = ' 💪'; // Very strong
+                        else if (level.strength_score > 50) strengthIndicator = ' 🔥'; // Strong
+                        else if (level.strength_score > 20) strengthIndicator = ' ⚡'; // Moderate
                         
-                        // Add strength indicator based on score
-                        let strengthIndicator = '';
-                        if (level.score > 100) strengthIndicator = ' 💪'; // Very strong
-                        else if (level.score > 50) strengthIndicator = ' 🔥'; // Strong
-                        else if (level.score > 20) strengthIndicator = ' ⚡'; // Moderate
-                        
-                        levelsText += `🟢 $${Math.round(level.level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator}<br>`;
+                        levelsText += `🟢 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator}<br>`;
                         levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
                     });
                     
                     // Display top 2 resistance levels
                     topResistance.forEach(level => {
-                        const score = level.score ? level.score.toFixed(1) : '0.0';
+                        const score = level.strength_score ? level.strength_score.toFixed(1) : '0.0';
                         const touches = level.touches || 0;
-                        const timeframe = level.timeframe || '5m';
-                        const relevance = level.relevance || 'active';
+                        const timeframe = '5m'; // S/R analysis uses 5m as primary timeframe
+                        const relevance = level.status || 'active';
                         
                         // Add strength indicator based on score
                         let strengthIndicator = '';
-                        if (level.score > 100) strengthIndicator = ' 💪'; // Very strong
-                        else if (level.score > 50) strengthIndicator = ' 🔥'; // Strong
-                        else if (level.score > 20) strengthIndicator = ' ⚡'; // Moderate
+                        if (level.strength_score > 100) strengthIndicator = ' 💪'; // Very strong
+                        else if (level.strength_score > 50) strengthIndicator = ' 🔥'; // Strong
+                        else if (level.strength_score > 20) strengthIndicator = ' ⚡'; // Moderate
                         
-                        levelsText += `🔴 $${Math.round(level.level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator}<br>`;
-                        levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
-                    });
-                    
-                    // Add timeframe info
-                    const timeframe = market.support_resistance.timeframe || '5m';
-                    const candlesAnalyzed = market.support_resistance.candles_analyzed || 0;
-                    levelsText += `<span style="font-size: 10px; color: #666;">From ${candlesAnalyzed} ${timeframe} candles</span>`;
+                        levelsText += `🔴 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator}<br>`;
+                            levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
+                        });
+                        
+                        // Add timeframe info
+                    const timeframe = '5m'; // S/R analysis uses 5m as primary timeframe
+                    const candlesAnalyzed = market.support_resistance.metadata?.total_levels || 0;
+                        levelsText += `<span style="font-size: 10px; color: #666;">From ${candlesAnalyzed} ${timeframe} candles</span>`;
                     
                     srElement.innerHTML = levelsText;
                     srElement.className = 'data-value trend-positive';
@@ -1498,7 +1524,8 @@
                                         (patterns.continuation_patterns?.length || 0) + 
                                         (patterns.triangle_patterns?.length || 0) + 
                                         (patterns.channel_patterns?.length || 0) + 
-                                        (patterns.wedge_patterns?.length || 0);
+                                        (patterns.wedge_patterns?.length || 0) +
+                                        (patterns.candlestick_patterns?.length || 0);
                     
                     if (totalPatterns > 0) {
                         patternText += `📊 ${totalPatterns} patterns detected<br>`;
@@ -1509,7 +1536,8 @@
                             ...(patterns.continuation_patterns || []),
                             ...(patterns.triangle_patterns || []),
                             ...(patterns.channel_patterns || []),
-                            ...(patterns.wedge_patterns || [])
+                            ...(patterns.wedge_patterns || []),
+                            ...(patterns.candlestick_patterns || [])
                         ].sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
                         
                         // Show all patterns (not just top 2)
@@ -3292,24 +3320,45 @@
             getTrendClass(trend) {
                 if (!trend || typeof trend !== 'string') return 'trend-neutral';
                 const trendUpper = trend.toUpperCase();
-                if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY')) {
+                
+                // Bullish indicators (green)
+                if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY') ||
+                    trendUpper.includes('POSITIVE') || trendUpper.includes('STRONG_POSITIVE') || 
+                    trendUpper.includes('MODERATE_POSITIVE') || trendUpper.includes('BULLISH')) {
                     return 'trend-up';
-                } else if (trendUpper.includes('DOWN') || trendUpper.includes('BEAR') || trendUpper.includes('SELL')) {
+                } 
+                // Bearish indicators (red)
+                else if (trendUpper.includes('DOWN') || trendUpper.includes('BEAR') || trendUpper.includes('SELL') ||
+                         trendUpper.includes('NEGATIVE') || trendUpper.includes('STRONG_NEGATIVE') || 
+                         trendUpper.includes('MODERATE_NEGATIVE') || trendUpper.includes('BEARISH')) {
                     return 'trend-down';
                 }
+                
                 return 'trend-neutral';
             }
             
             getTrendColor(trend) {
                 if (!trend || typeof trend !== 'string') return '#888';
                 const trendUpper = trend.toUpperCase();
-                if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY')) {
+                
+                // Bullish indicators (green)
+                if (trendUpper.includes('UP') || trendUpper.includes('BULL') || trendUpper.includes('BUY') ||
+                    trendUpper.includes('POSITIVE') || trendUpper.includes('STRONG_POSITIVE') || 
+                    trendUpper.includes('MODERATE_POSITIVE') || trendUpper.includes('BULLISH')) {
                     return '#00ff88';  // Green for bullish
-                } else if (trendUpper.includes('DOWN') || trendUpper.includes('BEAR') || trendUpper.includes('SELL')) {
+                } 
+                // Bearish indicators (red)
+                else if (trendUpper.includes('DOWN') || trendUpper.includes('BEAR') || trendUpper.includes('SELL') ||
+                         trendUpper.includes('NEGATIVE') || trendUpper.includes('STRONG_NEGATIVE') || 
+                         trendUpper.includes('MODERATE_NEGATIVE') || trendUpper.includes('BEARISH')) {
                     return '#ff4444';  // Red for bearish
-                } else if (trendUpper.includes('SIDEWAYS') || trendUpper.includes('NEUTRAL')) {
-                    return '#ffaa00';  // Yellow for sideways
+                } 
+                // Neutral indicators (yellow/orange)
+                else if (trendUpper.includes('SIDEWAYS') || trendUpper.includes('NEUTRAL') || 
+                         trendUpper.includes('MIXED') || trendUpper.includes('STABLE')) {
+                    return '#ffaa00';  // Yellow for neutral
                 }
+                
                 return '#888';  // Gray for unknown
             }
             

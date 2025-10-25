@@ -8,14 +8,24 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 
-# Singleton pattern implementation
+# Factory function for dependency injection
+def create_orderbook_analyzer() -> 'OrderBookAnalyzer':
+    """
+    Factory function to create OrderBookAnalyzer with dependency injection
+    
+    Returns:
+        Configured OrderBookAnalyzer instance
+    """
+    return OrderBookAnalyzer()
+
+# Global instance for backward compatibility (DEPRECATED - use create_orderbook_analyzer)
 _global_orderbook_analyzer = None
 
 def get_global_orderbook_analyzer() -> 'OrderBookAnalyzer':
-    """Get the global OrderBookAnalyzer singleton instance"""
+    """Get the global OrderBookAnalyzer singleton instance (DEPRECATED)"""
     global _global_orderbook_analyzer
     if _global_orderbook_analyzer is None:
-        _global_orderbook_analyzer = OrderBookAnalyzer()
+        _global_orderbook_analyzer = create_orderbook_analyzer()
     return _global_orderbook_analyzer
 
 class OrderBookAnalyzer:
