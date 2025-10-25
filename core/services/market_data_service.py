@@ -627,18 +627,47 @@ class MarketDataService:
             return {}
     
     def get_dashboard_data(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get optimized data package for dashboard UI"""
+        """Get optimized data package for dashboard UI with prediction data"""
         try:
             # Get unified analysis data
             analysis_data = self.get_unified_analysis_data(strategy)
             
+            # Get prediction data for dashboard
+            prediction_data = self.get_prediction_data(strategy)
+            
+            # Get active prediction from prediction engine
+            prediction_result = None
+            try:
+                from core.ml.realtime_prediction_engine import get_global_realtime_prediction_engine
+                prediction_engine = get_global_realtime_prediction_engine()
+                if prediction_engine:
+                    active_prediction = prediction_engine.get_active_prediction()
+                    if active_prediction:
+                        prediction_result = {
+                            "direction": active_prediction.direction,
+                            "confidence": active_prediction.confidence,
+                            "entry_price": active_prediction.entry_price,
+                            "stop_loss": active_prediction.stop_loss,
+                            "take_profit": active_prediction.take_profit,
+                            "score": active_prediction.score,
+                            "age_seconds": active_prediction.age_seconds,
+                            "strategy": active_prediction.strategy,
+                            "reasoning": getattr(active_prediction, 'reasoning', []),
+                            "confidence_boosts": getattr(active_prediction, 'confidence_boosts', [])
+                        }
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to get active prediction: {e}")
+            
             # Add dashboard-specific data
             dashboard_data = {
                 **analysis_data,
+                "prediction_data": prediction_data,
+                "prediction": prediction_result,
                 "dashboard_ready": True,
                 "last_update": time.time()
             }
             
+            logger.debug(f"📊 Dashboard data prepared with prediction: {prediction_result is not None}")
             return dashboard_data
             
         except Exception as e:
