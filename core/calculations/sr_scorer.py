@@ -48,22 +48,6 @@ class SRScorer:
             scored_levels = []
             
             for level in levels:
-                # Reclassify levels based on current price position
-                level_price = level.get('level', 0)
-                original_type = level.get('type', 'unknown')
-                
-                # Skip levels exactly at current price (no trading value)
-                if abs(level_price - current_price) < atr_5m * 0.1:  # Within 10% of ATR
-                    continue
-                
-                # Reclassify based on current price position
-                if level_price > current_price:
-                    level['type'] = 'resistance'  # Above current price = resistance
-                elif level_price < current_price:
-                    level['type'] = 'support'     # Below current price = support
-                else:
-                    # Level is very close to current price, skip it
-                    continue
                 # Calculate individual score components (0-100)
                 mtf_score = self._calculate_mtf_score_enhanced(level)
                 proximity_score = self._calculate_proximity_score_enhanced(
