@@ -23,8 +23,8 @@ class SRScorer:
     def __init__(self):
         """Initialize the scorer"""
         self._scoring_weights = {
-            'mtf': 0.20,
-            'proximity': 0.40,
+            'mtf': 0.25,        # Increased from 0.20 to 0.25 (+0.05)
+            'proximity': 0.35,  # Reduced from 0.40 to 0.35 (-5%)
             'touch': 0.20,
             'volume': 0.15,
             'recency': 0.05
