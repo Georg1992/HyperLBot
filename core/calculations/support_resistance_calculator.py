@@ -252,8 +252,8 @@ class SupportResistanceCalculator(BaseCalculator):
                     "recalculation_reasons": state_summary['recalculation_reasons'],
                     "symbol": self.symbol
                 },
-                "top_2_support": [level for level in key_levels if level["type"] == "support"][:2],
-                "top_2_resistance": [level for level in key_levels if level["type"] == "resistance"][:2]
+                "top_2_support": [level for level in key_levels if level["type"] == "support" and level["price_level"] < current_price][:2],
+                "top_2_resistance": [level for level in key_levels if level["type"] == "resistance" and level["price_level"] > current_price][:2]
             }
             
             # Cache the result
