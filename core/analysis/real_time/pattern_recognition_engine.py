@@ -129,10 +129,12 @@ class PatternRecognitionEngine:
             # Check if candle data has changed significantly (stability check)
             current_candle_hash = self._calculate_candle_data_hash(candles)
             if (hasattr(self, '_last_candle_hash') and 
-                self._last_candle_hash == current_candle_hash and
-                current_time - self._last_analysis_time < 60):  # 1 minute stability
+                self._last_candle_hash == current_candle_hash):
                 logger.debug("📊 Candle data unchanged - skipping pattern re-analysis")
-                return self._last_analysis_result
+                # Return cached result if available, otherwise continue with analysis
+                cached_stable_result = self._cache.get(f"pattern_stable_{self.symbol}_{current_candle_hash}")
+                if cached_stable_result:
+                    return cached_stable_result
             
             if len(candles) < self.min_pattern_length:
                 logger.warning(f"⚠️ Insufficient candles for pattern analysis: {len(candles)} < {self.min_pattern_length}")
@@ -197,6 +199,11 @@ class PatternRecognitionEngine:
             # Cache result using CentralizedCache
             cache_key = f"pattern_analysis_{self.symbol}_{current_price:.0f}"
             self._cache.set(cache_key, result)
+            
+            # Also cache stable result for unchanged candle data
+            stable_cache_key = f"pattern_stable_{self.symbol}_{current_candle_hash}"
+            self._cache.set(stable_cache_key, result)
+            
             self._last_candle_hash = current_candle_hash
             
             return result
