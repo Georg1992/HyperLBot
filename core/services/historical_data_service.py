@@ -53,7 +53,8 @@ class HistoricalDataService:
                 return []
             
             # Cache the result using centralized system
-            self._cache.set(cache_key, candles, ttl=60)  # 1 minute cache
+            # Use CentralizedCache TTL instead of hardcoded value
+            self._cache.set(cache_key, candles)
             
             logger.debug(f"📊 Retrieved {len(candles)} {timeframe} candles for {symbol}")
             return candles

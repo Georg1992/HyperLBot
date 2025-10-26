@@ -24,10 +24,10 @@ class YahooFinanceAPI:
         self._last_request_time = 0
         self._min_request_interval = 1.0  # Minimum 1 second between requests
         
-        # Data symbols (updated 2025-10-12: DX-Y.NYB and GC=F delisted, using UUP and GLD instead)
+        # Data symbols (updated 2025-10-26: Using actual DXY index DX-Y.NYB)
         self.symbols = {
-            'dxy': 'UUP',       # DXY (US Dollar Index) - Invesco DB USD Index Bullish Fund ETF
-            'gold': 'GLD',      # Gold - SPDR Gold Shares ETF (GC=F delisted)
+            'dxy': 'DX-Y.NYB',    # DXY (US Dollar Index) - actual index
+            'gold': 'GLD',        # Gold - SPDR Gold Shares ETF (GC=F delisted)
             'spy': 'SPY',       # S&P 500 ETF
             'qqq': 'QQQ',       # NASDAQ ETF
             'dow': 'DIA',       # Dow Jones ETF
@@ -57,7 +57,7 @@ class YahooFinanceAPI:
     
     def _set_cached_data(self, key: str, data: Dict[str, Any]):
         """Cache data with timestamp"""
-        self._cache.set(key, data, ttl=300)  # 5 minutes cache
+        self._cache.set(key, data, ttl=60)  # 1 minute cache for more frequent updates
     
     def _fetch_yahoo_data(self, symbol: str, period: str = "5d") -> Optional[Dict[str, Any]]:
         """Fetch data from Yahoo Finance with error handling"""

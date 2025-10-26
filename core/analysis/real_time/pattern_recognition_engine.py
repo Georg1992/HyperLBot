@@ -32,7 +32,10 @@ def get_global_pattern_recognition_engine() -> 'PatternRecognitionEngine':
 class PatternRecognitionEngine:
     """Recognizes trading patterns for BTC market setups"""
     
-    def __init__(self):
+    def __init__(self, symbol: str = "BTC"):
+        # Trading symbol
+        self.symbol = symbol
+        
         # Pattern detection parameters
         self.min_pattern_length = 5  # Minimum candles for pattern
         self.max_pattern_length = 50  # Maximum candles for pattern
@@ -44,9 +47,10 @@ class PatternRecognitionEngine:
         self.low_confidence = 0.4
         
         # Caching to prevent excessive recalculation
-        self._last_analysis_time = 0
-        self._last_analysis_result = {}
-        self._analysis_cache_ttl = 60  # Cache for 1 minute (12 5m candles)
+        self._last_candle_hash = None
+        # Use CentralizedCache TTL instead of hardcoded value
+        from core.services.centralized_cache import get_global_centralized_cache
+        self._cache = get_global_centralized_cache()
         
         # Pattern expiration times (in minutes) for 5m chart
         # Formula: candle_interval (5m) × number_of_candles
@@ -112,12 +116,15 @@ class PatternRecognitionEngine:
         try:
             current_time = time.time()
             
-            # Check if we can use cached results
-            if (self._last_analysis_time > 0 and 
-                current_time - self._last_analysis_time < self._analysis_cache_ttl and
-                self._last_analysis_result):
-                logger.debug(f"📊 Using cached pattern analysis (age: {current_time - self._last_analysis_time:.1f}s)")
-                return self._last_analysis_result
+            # Calculate current price from latest candle
+            current_price = candles[-1]['close'] if candles else 0
+            
+            # Check if we can use cached results using CentralizedCache
+            cache_key = f"pattern_analysis_{self.symbol}_{current_price:.0f}"
+            cached_result = self._cache.get(cache_key)
+            if cached_result:
+                logger.debug(f"📊 Using cached pattern analysis from CentralizedCache")
+                return cached_result
             
             # Check if candle data has changed significantly (stability check)
             current_candle_hash = self._calculate_candle_data_hash(candles)
@@ -187,9 +194,9 @@ class PatternRecognitionEngine:
                 "data_source": "pattern_recognition"
             }
             
-            # Update cache
-            self._last_analysis_time = current_time
-            self._last_analysis_result = result
+            # Cache result using CentralizedCache
+            cache_key = f"pattern_analysis_{self.symbol}_{current_price:.0f}"
+            self._cache.set(cache_key, result)
             self._last_candle_hash = current_candle_hash
             
             return result
@@ -217,8 +224,8 @@ class PatternRecognitionEngine:
     
     def invalidate_cache(self):
         """Invalidate the pattern analysis cache to force fresh calculation"""
-        self._last_analysis_time = 0
-        self._last_analysis_result = {}
+        # Clear candle hash to force fresh analysis
+        self._last_candle_hash = None
         logger.debug("📊 Pattern analysis cache invalidated")
     
     def _calculate_pattern_birth_times(self, patterns: Dict[str, List[Dict[str, Any]]], candles: List[Dict[str, Any]], current_time: float) -> Dict[str, List[Dict[str, Any]]]:

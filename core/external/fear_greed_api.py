@@ -83,7 +83,7 @@ class FearGreedAPI:
             fear_greed_data = self._cache.get_or_set(
                 key=cache_key,
                 factory_func=fetch_fresh_fear_greed,
-                ttl=600,  # 10 minutes cache (API updates hourly)
+                # Use CentralizedCache TTL instead of hardcoded value
                 force_fresh=False
             )
             

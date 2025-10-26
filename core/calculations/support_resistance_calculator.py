@@ -119,7 +119,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 higher_tf_levels.extend(swing_1h)
             
             # 4. CLUSTER LEVELS - Optimized O(N) algorithm
-            cluster_tolerance = atr_14 * 0.5
+            # Increased tolerance to properly cluster nearby levels (was 0.5, now 0.7)
+            cluster_tolerance = atr_14 * 0.7
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
             
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer
@@ -257,7 +258,10 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # Cache the result
             cache_key = f"sr_analysis_{self.symbol}_{current_price:.0f}"
-            self._cache.set(cache_key, result, ttl=300)  # 5 minute cache
+            # Use CentralizedCache TTL instead of hardcoded value
+            from core.services.centralized_cache import get_global_centralized_cache
+            cache = get_global_centralized_cache()
+            cache.set(cache_key, result)
             
             return result
             

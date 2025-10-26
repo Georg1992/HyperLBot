@@ -52,7 +52,7 @@ class CentralizedCache:
             "support_resistance": 300,    # 5 minutes
             "patterns": 120,              # 2 minutes
             "market_conditions": 300,     # 5 minutes
-            "cross_asset_analysis": 300,  # 5 minutes
+            "cross_asset_analysis": 60,  # 1 minute
             "funding_analysis": 300,      # 5 minutes
             "orderbook_analysis": 60,     # 1 minute
             

@@ -151,7 +151,8 @@ class RSSNewsAPI:
             }
             
             # Cache result using centralized system
-            self._cache.set(cache_key, result, ttl=900)  # 15 minutes cache
+            # Use CentralizedCache TTL instead of hardcoded value
+            self._cache.set(cache_key, result)
             
             logger.info(f"📰 News sentiment: {sentiment_analysis['sentiment']['classification']} "
                        f"({sentiment_analysis['confidence']:.1%} confidence, {len(all_articles)} articles)")

@@ -54,7 +54,8 @@ class BlockCypherAPI:
 
     def _cache_data(self, key: str, data: Dict[str, Any]):
         """Cache data with current timestamp"""
-        self._cache.set(key, data, ttl=300)  # 5 minutes cache
+        # Use CentralizedCache TTL instead of hardcoded value
+        self._cache.set(key, data)
 
     def _rate_limit(self):
         """Enforce rate limiting"""

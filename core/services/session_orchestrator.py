@@ -241,6 +241,7 @@ class SessionOrchestrator:
         current_time = time.time()
         
         # Module update intervals (seconds)
+        # Note: TTL is now handled by CentralizedCache
         update_intervals = {
             'rsi_calculator': 5,      # 5 seconds - price sensitive
             'volume': 30,             # 30 seconds
@@ -251,7 +252,6 @@ class SessionOrchestrator:
             'pattern_recognition': 120,  # 2 minutes
             'support_resistance': 300,   # 5 minutes
             'market_conditions': 300,    # 5 minutes
-            'cross_asset_correlation_analyzer': 300,  # 5 minutes
             'funding_rate': 300,      # 5 minutes
         }
         

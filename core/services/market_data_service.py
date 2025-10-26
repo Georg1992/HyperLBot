@@ -23,6 +23,7 @@ class MarketDataService:
         self._cache = get_global_centralized_cache()
         
         # Legacy update schedules (for backward compatibility)
+        # Note: TTL is now handled by CentralizedCache
         self._update_schedules = {
             "volatility": 60,      # 1 minute
             "trend": 60,           # 1 minute  
@@ -30,7 +31,6 @@ class MarketDataService:
             "rsi": 60,             # 1 minute
             "volume": 30,          # 30 seconds
             "market_conditions": 300,  # 5 minutes
-            "cross_asset_correlation_analyzer": 300,  # 5 minutes
         }
         
         # Analysis module references (will be set by SystemInitializer)

@@ -65,7 +65,8 @@ class WhaleAnalysisCalculator:
             analysis_result = self.analyze_whale_data(raw_transactions)
             
             # Cache the result
-            self._cache.set("whale_analysis", analysis_result, ttl=300)  # 5 minutes
+            # Use CentralizedCache TTL instead of hardcoded value
+            self._cache.set("whale_analysis", analysis_result)
             
             logger.info(f"🐋 Fresh whale analysis completed: {analysis_result['whale_activity']['whale_count']} whales")
             return analysis_result
@@ -155,7 +156,7 @@ class WhaleAnalysisCalculator:
             result = self._cache.get_or_set(
                 key=cache_key,
                 factory_func=calculate_fresh_whale_analysis,
-                ttl=300,  # 5 minutes
+                # Use CentralizedCache TTL instead of hardcoded value
                 force_fresh=False
             )
             

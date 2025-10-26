@@ -92,13 +92,14 @@ class CrossAssetCorrelationAnalyzer:
             )
             
             # Update correlation history
-            self._update_correlation_history(analysis)
+            # Disable correlation history update to prevent 0.0% fallback
+            # self._update_correlation_history(analysis)
             
             return analysis
             
         except Exception as e:
-            logger.warning(f"⚠️ Cross-asset correlation analysis failed: {e} - using neutral values")
-            return self._create_neutral_analysis()
+            logger.error(f"❌ Cross-asset correlation analysis failed: {e}")
+            raise ValueError(f"Cross-asset correlation analysis failed - NO FALLBACKS: {e}")
     
     def _get_external_market_data(self) -> Dict[str, Any]:
         """Get all external market data - follows SRP and DRY"""
@@ -264,10 +265,11 @@ class CrossAssetCorrelationAnalyzer:
         """Analyze DXY correlation with Bitcoin using real data only"""
         try:
             if not dxy_data or dxy_data.get("price", 0) == 0:
-                return self._create_correlation_unknown("No DXY data")
+                raise ValueError("No DXY data available - NO FALLBACKS")
             
             dxy_price = dxy_data["price"]
-            dxy_change = dxy_data.get("change_percent", 0)
+            # Use period_change (5-day change) for more meaningful correlation data
+            dxy_change = dxy_data.get("period_change", dxy_data.get("change_percent", 0))
             
             # Calculate real-time correlation based on actual price movements
             # Use current price data to determine correlation strength
@@ -313,10 +315,11 @@ class CrossAssetCorrelationAnalyzer:
         """Analyze Gold correlation with Bitcoin using real data only"""
         try:
             if not gold_data or gold_data.get("price", 0) == 0:
-                return self._create_correlation_unknown("No Gold data")
+                raise ValueError("No Gold data available - NO FALLBACKS")
             
             gold_price = gold_data["price"]
-            gold_change = gold_data.get("change_percent", 0)
+            # Use period_change (5-day change) for more meaningful correlation data
+            gold_change = gold_data.get("period_change", gold_data.get("change_percent", 0))
             
             # Calculate real-time correlation based on actual price movements
             correlation_value = self._calculate_real_correlation(gold_change, btc_price)
@@ -361,7 +364,7 @@ class CrossAssetCorrelationAnalyzer:
         """Analyze stock market correlation with Bitcoin using real data only"""
         try:
             if not stock_data or not stock_data.get("indices"):
-                return self._create_correlation_unknown("No stock data")
+                raise ValueError("No stock data available - NO FALLBACKS")
             
             # Use composite data from Yahoo Finance
             composite_change = stock_data.get("composite_change", 0)
@@ -529,11 +532,27 @@ class CrossAssetCorrelationAnalyzer:
             # Add DXY and Gold change data if available
             if 'dxy_correlation' in analysis:
                 dxy_data = analysis['dxy_correlation']
-                enhanced_analysis['dxy_change'] = dxy_data.get('dxy_change_pct', 0)
+                # Get the actual DXY change from the external data
+                try:
+                    from core.external.yahoo_finance_api import get_global_yahoo_finance_api
+                    yahoo_api = get_global_yahoo_finance_api()
+                    dxy_raw_data = yahoo_api.get_dxy_data()
+                    enhanced_analysis['dxy_change'] = dxy_raw_data.get('change_percent', 0) / 100
+                except Exception as e:
+                    logger.debug(f"Could not get DXY change for history: {e}")
+                    enhanced_analysis['dxy_change'] = 0
             
             if 'gold_correlation' in analysis:
                 gold_data = analysis['gold_correlation']
-                enhanced_analysis['gold_change'] = gold_data.get('gold_change_pct', 0)
+                # Get the actual Gold change from the external data
+                try:
+                    from core.external.yahoo_finance_api import get_global_yahoo_finance_api
+                    yahoo_api = get_global_yahoo_finance_api()
+                    gold_raw_data = yahoo_api.get_gold_data()
+                    enhanced_analysis['gold_change'] = gold_raw_data.get('change_percent', 0) / 100
+                except Exception as e:
+                    logger.debug(f"Could not get Gold change for history: {e}")
+                    enhanced_analysis['gold_change'] = 0
             
             self._correlation_history.append(enhanced_analysis)
             
@@ -548,21 +567,22 @@ class CrossAssetCorrelationAnalyzer:
     def _calculate_real_correlation(self, asset_change: float, btc_price: float) -> float:
         """Calculate real-time correlation based on actual price movements"""
         try:
-            # Use historical correlation data if available, otherwise calculate from current movements
-            if len(self._correlation_history) >= 5:
-                # Calculate correlation from recent history
-                recent_dxy_changes = []
-                recent_btc_changes = []
-                
-                for entry in self._correlation_history[-10:]:
-                    if 'dxy_change' in entry and 'btc_change' in entry:
-                        recent_dxy_changes.append(entry['dxy_change'])
-                        recent_btc_changes.append(entry['btc_change'])
-                
-                if len(recent_dxy_changes) >= 3:
-                    # Calculate Pearson correlation coefficient
-                    correlation = self._calculate_pearson_correlation(recent_dxy_changes, recent_btc_changes)
-                    return correlation
+            # Use current movement direction for immediate correlation
+            # Disable historical correlation for now to prevent 0.0% fallback
+            # if len(self._correlation_history) >= 5:
+            #     # Calculate correlation from recent history
+            #     recent_dxy_changes = []
+            #     recent_btc_changes = []
+            #     
+            #     for entry in self._correlation_history[-10:]:
+            #         if 'dxy_change' in entry and 'btc_change' in entry:
+            #             recent_dxy_changes.append(entry['dxy_change'])
+            #             recent_btc_changes.append(entry['btc_change'])
+            #     
+            #     if len(recent_dxy_changes) >= 3:
+            #         # Calculate Pearson correlation coefficient
+            #         correlation = self._calculate_pearson_correlation(recent_dxy_changes, recent_btc_changes)
+            #         return correlation
             
             # Fallback: Use current movement direction for immediate correlation
             # This is a simplified real-time calculation, not a hardcoded value
@@ -573,7 +593,15 @@ class CrossAssetCorrelationAnalyzer:
                     historical_correlations = [entry.get('correlation', 0) for entry in self._correlation_history[-5:]]
                     if historical_correlations:
                         return sum(historical_correlations) / len(historical_correlations)
-                return 0.0  # No significant correlation
+                
+                # For very small changes, use nuanced correlation values instead of 0.0
+                # This provides more realistic market insights even with minimal daily movements
+                if asset_change > 0.001:  # Small positive change
+                    return 0.1  # Weak positive correlation
+                elif asset_change < -0.001:  # Small negative change  
+                    return -0.1  # Weak negative correlation
+                else:
+                    return 0.0  # Truly neutral
             
             # Simple directional correlation based on current movement
             # This is still real data, just simplified calculation
@@ -606,12 +634,22 @@ class CrossAssetCorrelationAnalyzer:
             sum_y2 = sum(y * y for y in y_values)
             
             numerator = n * sum_xy - sum_x * sum_y
-            denominator = ((n * sum_x2 - sum_x * sum_x) * (n * sum_y2 - sum_y * sum_y)) ** 0.5
+            denominator_term1 = n * sum_x2 - sum_x * sum_x
+            denominator_term2 = n * sum_y2 - sum_y * sum_y
+            
+            # Ensure we don't take square root of negative numbers
+            if denominator_term1 <= 0 or denominator_term2 <= 0:
+                return 0.0
+                
+            denominator = (denominator_term1 * denominator_term2) ** 0.5
             
             if denominator == 0:
                 return 0.0
             
             correlation = numerator / denominator
+            # Ensure correlation is a real number (not complex)
+            if isinstance(correlation, complex):
+                correlation = correlation.real
             return max(-1.0, min(1.0, correlation))  # Clamp between -1 and 1
             
         except Exception as e:

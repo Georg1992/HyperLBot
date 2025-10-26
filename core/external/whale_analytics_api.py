@@ -71,7 +71,7 @@ class WhaleAnalyticsAPI:
             raw_transactions = self._cache.get_or_set(
                 key=cache_key,
                 factory_func=fetch_fresh_transactions,
-                ttl=180,  # 3 minutes cache
+                # Use CentralizedCache TTL instead of hardcoded value
                 force_fresh=False
             )
             

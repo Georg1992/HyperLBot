@@ -89,15 +89,14 @@ class SRDataProvider:
             ValueError: If insufficient data
         """
         try:
-            # Check cache first
+            # Check cache first using CentralizedCache
             cache_key = f"{self.symbol}_{timeframe}_{lookback}"
-            if cache_key in self._cache:
-                cached_data, timestamp = self._cache[cache_key]
-                # Cache for 1 minute for 5m, 5 minutes for 15m, 15 minutes for 1h
-                cache_ttl = 60 if timeframe == "5m" else (300 if timeframe == "15m" else 900)
-                if time.time() - timestamp < cache_ttl:
-                    logger.debug(f"📊 Using cached {timeframe} data")
-                    return cached_data
+            from core.services.centralized_cache import get_global_centralized_cache
+            cache = get_global_centralized_cache()
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                logger.debug(f"📊 Using cached {timeframe} data")
+                return cached_data
             
             # Fetch fresh data
             candles = historical_service.get_historical_candles(self.symbol, timeframe, lookback)
@@ -110,8 +109,8 @@ class SRDataProvider:
             if len(candles) < min_candles.get(timeframe, 20):
                 raise ValueError(f"Insufficient {timeframe} candles: {len(candles)}")
             
-            # Cache the data
-            self._cache[cache_key] = (candles, time.time())
+            # Cache the data using CentralizedCache
+            cache.set(cache_key, candles)
             self._last_fetch_time[timeframe] = time.time()
             
             logger.debug(f"📊 Fetched {len(candles)} {timeframe} candles")
@@ -177,13 +176,10 @@ class SRDataProvider:
             Cached candle data or None
         """
         cache_key = f"{self.symbol}_{timeframe}_500"  # Default lookback
-        if cache_key in self._cache:
-            cached_data, timestamp = self._cache[cache_key]
-            # Check if cache is still valid
-            cache_ttl = 60 if timeframe == "5m" else (300 if timeframe == "15m" else 900)
-            if time.time() - timestamp < cache_ttl:
-                return cached_data
-        return None
+        from core.services.centralized_cache import get_global_centralized_cache
+        cache = get_global_centralized_cache()
+        cached_data = cache.get(cache_key)
+        return cached_data
     
     def invalidate_cache(self, timeframe: Optional[str] = None):
         """
