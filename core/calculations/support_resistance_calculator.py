@@ -119,8 +119,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 higher_tf_levels.extend(swing_1h)
             
             # 4. CLUSTER LEVELS - Optimized O(N) algorithm
-            # Increased tolerance to properly cluster nearby levels (was 0.5, now 0.7)
-            cluster_tolerance = atr_14 * 0.7
+            # Increased tolerance to properly cluster nearby levels (was 0.5, now 0.8)
+            cluster_tolerance = atr_14 * 0.8
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
             
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer
