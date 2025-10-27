@@ -12,7 +12,7 @@ class WhaleConditionAnalyzer:
     """Analyzes whale conditions - follows SRP"""
     
     def __init__(self):
-        logger.debug("WhaleConditionAnalyzer initialized")
+        # Removed excessive debug logging
     
     def analyze_whale_conditions(self) -> Dict[str, Any]:
         """Analyze whale conditions using existing WhaleAnalysisCalculator - NO DUPLICATION"""

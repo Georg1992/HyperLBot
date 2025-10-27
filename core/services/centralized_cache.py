@@ -100,7 +100,9 @@ class CentralizedCache:
                 # Track hit and access time
                 self._hit_count += 1
                 self._access_times[key] = time.time()
-                logger.debug(f"🗄️ Cache HIT: {key}")
+                # Only log cache hits for important keys to reduce noise
+                if any(important_key in key for important_key in ['support_resistance', 'pattern_recognition', 'whale_analytics']):
+                    logger.debug(f"🗄️ Cache HIT: {key}")
                 return self._cache[key]
                 
         except Exception as e:
@@ -128,7 +130,9 @@ class CentralizedCache:
                 self._timestamps[key] = time.time()
                 self._ttl_policies[key] = cache_ttl
                 
-                logger.debug(f"🗄️ Cache SET: {key} (TTL: {cache_ttl}s)")
+                # Only log cache sets for important keys to reduce noise
+                if any(important_key in key for important_key in ['support_resistance', 'pattern_recognition', 'whale_analytics']):
+                    logger.debug(f"🗄️ Cache SET: {key} (TTL: {cache_ttl}s)")
                 return True
                 
         except Exception as e:
@@ -204,7 +208,9 @@ class CentralizedCache:
                     return cached_data
             
             # Compute fresh data
-            logger.debug(f"🗄️ Cache MISS: {key} - computing fresh data")
+            # Only log cache misses for important keys to reduce noise
+            if any(important_key in key for important_key in ['support_resistance', 'pattern_recognition', 'whale_analytics']):
+                logger.debug(f"🗄️ Cache MISS: {key} - computing fresh data")
             fresh_data = factory_func()
             
             # Store in cache

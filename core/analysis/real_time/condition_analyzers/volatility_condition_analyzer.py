@@ -12,7 +12,7 @@ class VolatilityConditionAnalyzer:
     """Analyzes volatility conditions - follows SRP"""
     
     def __init__(self):
-        logger.debug("VolatilityConditionAnalyzer initialized")
+        # Removed excessive debug logging
     
     def analyze_volatility_conditions(self, volatility_5m: float, volatility_category: str) -> Dict[str, Any]:
         """Analyze volatility conditions using existing VolatilityCalculator - NO DUPLICATION"""

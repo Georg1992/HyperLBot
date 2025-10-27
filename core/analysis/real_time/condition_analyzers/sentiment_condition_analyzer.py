@@ -12,7 +12,7 @@ class SentimentConditionAnalyzer:
     """Analyzes sentiment conditions - follows SRP"""
     
     def __init__(self):
-        logger.debug("SentimentConditionAnalyzer initialized")
+        # Removed excessive debug logging
     
     def analyze_sentiment_conditions(self) -> Dict[str, Any]:
         """Analyze sentiment conditions for trading suitability"""

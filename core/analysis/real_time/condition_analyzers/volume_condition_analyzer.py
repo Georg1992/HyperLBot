@@ -12,7 +12,7 @@ class VolumeConditionAnalyzer:
     """Analyzes volume conditions - follows SRP"""
     
     def __init__(self):
-        logger.debug("VolumeConditionAnalyzer initialized")
+        # Removed excessive debug logging
     
     def analyze_volume_conditions(self, volume_category: str) -> Dict[str, Any]:
         """Analyze volume conditions using existing VolumeCalculator - NO DUPLICATION"""

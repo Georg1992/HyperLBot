@@ -38,10 +38,14 @@ class HistoricalDataService:
             cache_key = f"historical_candles_{symbol}_{timeframe}_{count}"
             cached_data = self._cache.get(cache_key)
             if cached_data:
-                logger.debug(f"📊 Using cached {timeframe} candles for {symbol}")
+                # Only log cache hits for important timeframes to reduce noise
+                if timeframe in ['1h', '1d']:  # Only log longer timeframes
+                    logger.debug(f"📊 Using cached {timeframe} candles for {symbol}")
                 return cached_data
             
-            logger.debug(f"📊 Fetching {count} {timeframe} candles for {symbol} from HyperliquidAPI")
+            # Only log fetches for important timeframes to reduce noise
+            if timeframe in ['1h', '1d']:  # Only log longer timeframes
+                logger.debug(f"📊 Fetching {count} {timeframe} candles for {symbol} from HyperliquidAPI")
             
             # Call HyperliquidAPI directly - single source of truth
             from core.api.hyperliquid_api import get_hyperliquid_api
@@ -56,7 +60,9 @@ class HistoricalDataService:
             # Use CentralizedCache TTL instead of hardcoded value
             self._cache.set(cache_key, candles)
             
-            logger.debug(f"📊 Retrieved {len(candles)} {timeframe} candles for {symbol}")
+            # Only log retrieval for important timeframes to reduce noise
+            if timeframe in ['1h', '1d']:  # Only log longer timeframes
+                logger.debug(f"📊 Retrieved {len(candles)} {timeframe} candles for {symbol}")
             return candles
             
         except Exception as e:
@@ -214,8 +220,7 @@ def create_historical_data_service() -> HistoricalDataService:
     if _global_historical_data_service is None:
         _global_historical_data_service = HistoricalDataService()
         logger.info("📊 HistoricalDataService singleton created")
-    else:
-        logger.debug("♻️ Reusing existing HistoricalDataService singleton")
+    # Removed excessive singleton reuse logging
     return _global_historical_data_service
 
 # Singleton pattern implementation for backward compatibility

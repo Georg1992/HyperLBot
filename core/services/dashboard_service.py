@@ -307,6 +307,5 @@ def create_dashboard_service(heartbeat_file=None) -> DashboardService:
     if _global_dashboard_service is None:
         _global_dashboard_service = DashboardService(heartbeat_file=heartbeat_file)
         logger.info("🎛️ DashboardService singleton created")
-    else:
-        logger.debug("♻️ Reusing existing DashboardService singleton")
+    # Removed excessive singleton reuse logging
     return _global_dashboard_service
