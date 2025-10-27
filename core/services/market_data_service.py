@@ -252,6 +252,8 @@ class MarketDataService:
                 "rsi": self.get_rsi_analysis(),
                 "trend": self.get_trend_analysis(strategy),
                 "volatility": self.get_volatility_analysis(strategy),
+                "volatility_5m": self.get_volatility_analysis(strategy).get("volatility_percentage", 0) / 100.0,
+                "volatility_category": self.get_volatility_analysis(strategy).get("level", "MODERATE"),
                 "volume": self.get_volume_analysis(),
                 "support_resistance": self.get_support_resistance_analysis(),
                 "pressure": self.get_pressure_analysis(),
@@ -343,8 +345,8 @@ class MarketDataService:
                         "current_price": current_price,
                         "rsi": self.get_rsi_analysis().get("rsi", 50.0),
                         "trend": self.get_trend_analysis("standard").get("direction", "SIDEWAYS"),
-                        "volatility_5m": self.get_volatility_analysis("standard").get("volatility_5m", 0.0),
-                        "volatility_category": self.get_volatility_analysis("standard").get("volatility_5m_category", "MODERATE"),
+                        "volatility_5m": self.get_volatility_analysis("standard").get("volatility_percentage", 0.0) / 100.0,
+                        "volatility_category": self.get_volatility_analysis("standard").get("level", "MODERATE"),
                         "volume_category": self.get_volume_analysis().get("hyperliquid_5m", {}).get("volume_category", "MODERATE")
                     }
                     # Get 1d candles for market trend analysis - request more to ensure we have enough
@@ -476,71 +478,81 @@ class MarketDataService:
                 "current_price": market_data.get("current_price", 0.0),
                 "strategy": market_data.get("strategy", strategy),
                 
-                # Technical Analysis (Primary Components)
-                "rsi": {
-                    "value": market_data["rsi"]["rsi"],
-                    "category": market_data["rsi"]["category"],
-                    "signal": market_data["rsi"]["signal"],
-                    "timestamp": market_data["rsi"]["timestamp"]
-                },
+                # Technical Analysis (Primary Components) - Handle missing modules gracefully
+                "rsi": market_data.get("rsi", {
+                    "value": 0.0,
+                    "category": "unknown",
+                    "signal": "neutral",
+                    "timestamp": time.time()
+                }),
                 
-                "trend": {
-                    "direction": market_data["trend"]["direction"],
-                    "strength": market_data["trend"]["strength"],
-                    "timeframes": market_data["trend"]["timeframes"],
-                    "consensus": market_data["trend"]["consensus"],
-                    "timestamp": market_data["trend"]["timestamp"]
-                },
+                "trend": market_data.get("trend", {
+                    "direction": "neutral",
+                    "strength": 0.0,
+                    "timeframes": {},
+                    "consensus": "neutral",
+                    "timestamp": time.time()
+                }),
                 
-                "volume": {
-                    "hyperliquid_5m": market_data["volume"]["hyperliquid_5m"],
-                    "binance_global": market_data["volume"]["binance_global"],
-                    "total_volume_btc": market_data["volume"]["hyperliquid_5m"]["current_volume_btc"],
-                    "volume_category": market_data["volume"]["hyperliquid_5m"]["volume_category"],
-                    "timestamp": market_data["volume"]["timestamp"]
-                },
+                "volume": market_data.get("volume", {
+                    "hyperliquid_5m": {"current_volume_btc": 0.0, "volume_category": "unknown"},
+                    "binance_global": {"current_volume_btc": 0.0, "volume_category": "unknown"},
+                    "total_volume_btc": 0.0,
+                    "volume_category": "unknown",
+                    "timestamp": time.time()
+                }),
                 
-                "volatility": {
-                    "current": market_data["volatility"]["volatility_5m"],
-                    "category": market_data["volatility"]["volatility_5m_category"],
-                    "change_detection": market_data["volatility"]["change_detection"],
+                "volatility": market_data.get("volatility", {
+                    "current": 0.0,
+                    "category": "unknown",
+                    "change_detection": {"status": "unknown"},
                     "multi_timeframe": {
-                        "1m": market_data["volatility"]["volatility_1m"],
-                        "5m": market_data["volatility"]["volatility_5m"],
-                        "1h": market_data["volatility"]["volatility_1h"],
-                        "1d": market_data["volatility"]["volatility_1d"]
+                        "1m": 0.0,
+                        "5m": 0.0,
+                        "1h": 0.0,
+                        "1d": 0.0
                     },
-                    "timestamp": market_data["volatility"]["timestamp"]
-                },
+                    "timestamp": time.time()
+                }),
                 
-                "pressure": {
-                    "buy_pressure": market_data["pressure"]["buy_pressure"],
-                    "sell_pressure": market_data["pressure"]["sell_pressure"],
-                    "net_pressure": market_data["pressure"]["net_pressure"],
-                    "pressure_ratio": market_data["pressure"]["pressure_ratio"],
-                    "timestamp": market_data["pressure"]["timestamp"]
-                },
+                # Dashboard-specific volatility fields
+                "volatility_5m": market_data.get("volatility_5m", 0.0),
+                "volatility_category": market_data.get("volatility_category", "UNKNOWN"),
+                
+                "pressure": market_data.get("pressure", {
+                    "buy_pressure": 0.0,
+                    "sell_pressure": 0.0,
+                    "net_pressure": 0.0,
+                    "pressure_ratio": 0.0,
+                    "timestamp": time.time()
+                }),
                 
                 "support_resistance": {
-                    "support_levels": market_data["support_resistance"]["support_levels"],
-                    "resistance_levels": market_data["support_resistance"]["resistance_levels"],
-                    "strongest_support": market_data["support_resistance"]["strongest_support"],
-                    "strongest_resistance": market_data["support_resistance"]["strongest_resistance"],
-                    "levels_count": market_data["support_resistance"]["levels_count"],
-                    "timestamp": market_data["support_resistance"]["timestamp"]
+                    "status": market_data.get("support_resistance", {}).get("status", "ok"),
+                    "levels": market_data.get("support_resistance", {}).get("levels", []),
+                    "metadata": market_data.get("support_resistance", {}).get("metadata", {}),
+                    "top_2_support": market_data.get("support_resistance", {}).get("top_2_support", []),
+                    "top_2_resistance": market_data.get("support_resistance", {}).get("top_2_resistance", []),
+                    "key_levels": market_data.get("support_resistance", {}).get("levels", []),
+                    "strongest_support": market_data.get("support_resistance", {}).get("metadata", {}).get("strongest_support", 0),
+                    "strongest_resistance": market_data.get("support_resistance", {}).get("metadata", {}).get("strongest_resistance", 0),
+                    "support_score": market_data.get("support_resistance", {}).get("metadata", {}).get("support_score", 0),
+                    "resistance_score": market_data.get("support_resistance", {}).get("metadata", {}).get("resistance_score", 0),
+                    "levels_count": market_data.get("support_resistance", {}).get("metadata", {}).get("total_levels", 0),
+                    "timestamp": market_data.get("support_resistance", {}).get("metadata", {}).get("timestamp", time.time())
                 },
                 
-                "patterns": {
-                    "active_patterns": market_data["patterns"]["active_patterns"],
-                    "pattern_signals": market_data["patterns"]["pattern_signals"],
-                    "confidence_scores": market_data["patterns"]["confidence_scores"],
-                    "timestamp": market_data["patterns"]["timestamp"]
-                },
+                "patterns": market_data.get("patterns", {
+                    "active_patterns": [],
+                    "pattern_signals": [],
+                    "confidence_scores": [],
+                    "timestamp": time.time()
+                }),
                 
                 # Additional market context
-                "market_conditions": market_data["market_conditions"],
-                "funding_analysis": market_data["funding_analysis"],
-                "orderbook_analysis": market_data["orderbook_analysis"],
+                "market_conditions": market_data.get("market_conditions", {}),
+                "funding_analysis": market_data.get("funding_analysis", {}),
+                "orderbook_analysis": market_data.get("orderbook_analysis", {}),
                 
                 # Data quality indicators
                 "data_quality": {
@@ -549,7 +561,7 @@ class MarketDataService:
                         market_data.get("trend"),
                         market_data.get("volume"),
                         market_data.get("volatility"),
-                        market_data.get("support_resistance")
+                        market_data.get("support_resistance", {}).get("status") == "ok"
                     ]),
                     "last_update": time.time(),
                     "update_frequency": "real-time"
@@ -597,8 +609,8 @@ class MarketDataService:
                 },
                 
                 # Volatility - extract category
-                "volatility_category": analysis_data.get("volatility", {}).get("category", "MODERATE"),
-                "volatility_5m": analysis_data.get("volatility", {}).get("volatility_5m", 0),
+                "volatility_category": analysis_data.get("volatility", {}).get("level", "MODERATE"),
+                "volatility_5m": analysis_data.get("volatility", {}).get("volatility_percentage", 0) / 100.0,
                 
                 # Support/Resistance - pass full data
                 "support_resistance": analysis_data.get("support_resistance", {}),

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 SRDataProvider - Handles data fetching, ATR calculation, and caching
-Responsible for fetching multi-timeframe candle data and computing volatility metrics
+CHANGELOG: Added dependency injection, standardized ATR calculation with min fallback,
+           improved error handling with graceful degradation for missing timeframes
 """
 
 import time
@@ -11,7 +12,7 @@ from loguru import logger
 
 class SRDataProvider:
     """
-    Data provider for Support/Resistance calculations
+    Data provider for Support/Resistance calculations with dependency injection
     
     Responsibilities:
     - Fetch multi-timeframe candle data
@@ -20,97 +21,131 @@ class SRDataProvider:
     - Provide clean data interface to other components
     """
     
-    def __init__(self, symbol: str = "BTC"):
+    def __init__(self, symbol: str = "BTC", historical_service=None, cache=None, settings=None):
         """
-        Initialize data provider
+        Initialize data provider with dependency injection
         
         Args:
             symbol: Trading symbol (default: "BTC")
+            historical_service: Historical data service instance
+            cache: Cache instance for data storage
+            settings: Optional settings dictionary
         """
         self.symbol = symbol
-        self._cache = {}
+        self.settings = settings or {}
+        
+        # Dependency injection with minimal factories
+        if historical_service is None:
+            from core.services.historical_data_service import create_historical_data_service
+            self._historical_service = create_historical_data_service()
+        else:
+            self._historical_service = historical_service
+            
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
+        
         self._last_fetch_time = {}
         
-    def fetch_multi_timeframe_data(self, current_price: float) -> Tuple[Dict[str, List[Dict]], float]:
+        # TTL mapping for different timeframes
+        self._ttl_mapping = {
+            "5m": 300,    # 5 minutes
+            "15m": 900,   # 15 minutes
+            "1h": 3600,   # 1 hour
+            "1d": 86400   # 1 day
+        }
+        
+    def fetch_multi_timeframe_data(self, current_price: float = None) -> Tuple[Dict[str, List[Dict]], Dict[str, float]]:
         """
-        Fetch multi-timeframe candle data and calculate ATR
+        Fetch multi-timeframe candle data and calculate ATR per timeframe
         
         Args:
-            current_price: Current price for validation
+            current_price: Current price for validation (optional)
             
         Returns:
-            Tuple of (candles_data, atr_14)
+            Tuple of (candles_data, atr_per_tf) where:
+            - candles_data: Dictionary of candles by timeframe
+            - atr_per_tf: Dictionary of ATR values per timeframe
             
         Raises:
-            ValueError: If insufficient data is available
+            ValueError: If insufficient data is available for primary timeframe
         """
         try:
             logger.debug(f"📊 Fetching multi-timeframe data for {self.symbol}")
             
-            # Import here to avoid circular dependencies
-            from core.services.historical_data_service import create_historical_data_service
-            historical_service = create_historical_data_service()
+            # Fetch candles with extended historical lookback for resistance detection
+            candles_5m = self._fetch_candles_with_validation("5m", 5000)  # ~417 hours (~17 days)
+            candles_15m = self._fetch_candles_with_validation("15m", 2000)  # ~500 hours (~21 days)  
+            candles_1h = self._fetch_candles_with_validation("1h", 2000)   # ~83 days
+            candles_1d = self._fetch_candles_with_validation("1d", 500)   # ~500 days
             
-            # Fetch candles with aggressive lookback for better MTF analysis
-            # Note: HyperliquidAPI supports 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 8h, 12h, 1d, 3d, 1w, 1M
-            candles_5m = self._fetch_candles_with_validation(historical_service, "5m", 500, "5m")
-            candles_15m = self._fetch_candles_with_validation(historical_service, "15m", 300, "15m")
-            candles_1h = self._fetch_candles_with_validation(historical_service, "1h", 300, "1h")
+            # Calculate ATR for each timeframe
+            atr_per_tf = {}
+            for tf, candles in [("5m", candles_5m), ("15m", candles_15m), 
+                               ("1h", candles_1h), ("1d", candles_1d)]:
+                if candles:
+                    atr_value = self.calculate_atr(candles, 14)
+                    atr_per_tf[tf] = atr_value
+                    logger.debug(f"📊 ATR({tf}): {atr_value:.2f}")
+                else:
+                    atr_per_tf[tf] = 0.0
+                    logger.warning(f"⚠️ No candles for {tf} timeframe")
             
-            # Calculate ATR(14) for volatility reference
-            atr_14 = self._calculate_atr(candles_5m, 14)
-            logger.debug(f"📊 ATR(14): {atr_14:.2f}")
+            # Ensure all timeframes are returned (empty list if failed)
+            candles_data = {
+                "5m": candles_5m or [],
+                "15m": candles_15m or [],
+                "1h": candles_1h or [],
+                "1d": candles_1d or []
+            }
             
-            return {
-                "5m": candles_5m,
-                "15m": candles_15m,
-                "1h": candles_1h
-            }, atr_14
+            return candles_data, atr_per_tf
             
         except Exception as e:
             logger.error(f"❌ Multi-timeframe data fetching failed: {e}")
             raise ValueError(f"Data fetching failed: {e}")
     
-    def _fetch_candles_with_validation(self, historical_service, timeframe: str, 
-                                      lookback: int, min_required: str) -> List[Dict]:
+    def _fetch_candles_with_validation(self, timeframe: str, lookback: int) -> List[Dict]:
         """
-        Fetch candles with validation and caching
+        Fetch candles with validation and caching using injected dependencies
         
         Args:
-            historical_service: Historical data service instance
             timeframe: Timeframe to fetch
             lookback: Number of candles to fetch
-            min_required: Minimum required timeframe for validation
             
         Returns:
-            List of candle dictionaries
-            
-        Raises:
-            ValueError: If insufficient data
+            List of candle dictionaries (empty list if insufficient data)
         """
         try:
-            # Check cache first using CentralizedCache
-            cache_key = f"{self.symbol}_{timeframe}_{lookback}"
-            from core.services.centralized_cache import get_global_centralized_cache
-            cache = get_global_centralized_cache()
-            cached_data = cache.get(cache_key)
+            # Check cache first using injected cache with proper key structure
+            timestamp_bucket = int(time.time() // 300) * 300  # 5-minute buckets
+            cache_key = f"sr_candles_{self.symbol}_{timeframe}_{lookback}_{timestamp_bucket}"
+            cached_data = self._cache.get(cache_key)
             if cached_data:
-                logger.debug(f"📊 Using cached {timeframe} data")
+                logger.debug(f"📊 Cache HIT: {cache_key}")
                 return cached_data
             
-            # Fetch fresh data
-            candles = historical_service.get_historical_candles(self.symbol, timeframe, lookback)
+            logger.debug(f"📊 Cache MISS: {cache_key}")
+            
+            # Fetch fresh data using injected historical service
+            candles = self._historical_service.get_historical_candles(self.symbol, timeframe, lookback)
             
             if not candles:
-                raise ValueError(f"No {timeframe} candles available")
+                logger.warning(f"⚠️ No {timeframe} candles available")
+                return []
             
-            # Validate minimum data requirements (more flexible)
-            min_candles = {"5m": 50, "15m": 20, "1h": 20}
+            # Validate minimum data requirements (graceful handling)
+            min_candles = {"5m": 50, "15m": 20, "1h": 20, "1d": 10}
             if len(candles) < min_candles.get(timeframe, 20):
-                raise ValueError(f"Insufficient {timeframe} candles: {len(candles)}")
+                logger.warning(f"⚠️ Insufficient {timeframe} candles: {len(candles)} (min: {min_candles.get(timeframe, 20)})")
+                # Return empty list instead of raising error for graceful degradation
+                return []
             
-            # Cache the data using CentralizedCache
-            cache.set(cache_key, candles)
+            # Cache the data using injected cache with TTL
+            ttl = self._ttl_mapping.get(timeframe, 300)
+            self._cache.set(cache_key, candles, ttl)
             self._last_fetch_time[timeframe] = time.time()
             
             logger.debug(f"📊 Fetched {len(candles)} {timeframe} candles")
@@ -118,22 +153,29 @@ class SRDataProvider:
             
         except Exception as e:
             logger.error(f"❌ Failed to fetch {timeframe} candles: {e}")
-            raise ValueError(f"Failed to fetch {timeframe} candles: {e}")
+            return []  # Return empty list for graceful degradation
     
-    def _calculate_atr(self, candles: List[Dict], period: int = 14) -> float:
+    def calculate_atr(self, candles: List[Dict], period: int = 14) -> float:
         """
-        Calculate Average True Range (ATR)
+        Calculate Average True Range (ATR) with minimum fallback
         
         Args:
             candles: List of candle dictionaries
             period: ATR period (default: 14)
             
         Returns:
-            ATR value
+            ATR value (never returns zero - uses minimum fallback)
         """
         try:
             if len(candles) < period:
-                return 0.0
+                # Return minimum ATR based on price
+                if candles:
+                    price = candles[-1].get('close', 100.0)
+                    min_atr = max(price * 0.0005, 0.1)  # 0.05% of price or 0.1 minimum
+                    logger.warning(f"⚠️ Insufficient candles for ATR, using min fallback: {min_atr:.2f}")
+                    return min_atr
+                else:
+                    return 0.1  # Absolute minimum
             
             true_ranges = []
             
@@ -151,7 +193,11 @@ class SRDataProvider:
                     true_ranges.append(true_range)
             
             if len(true_ranges) < period:
-                return 0.0
+                # Return minimum ATR based on price
+                price = candles[-1].get('close', 100.0)
+                min_atr = max(price * 0.0005, 0.1)
+                logger.warning(f"⚠️ Insufficient true ranges for ATR, using min fallback: {min_atr:.2f}")
+                return min_atr
             
             # Calculate ATR using Wilder's smoothing
             atr = sum(true_ranges[:period]) / period
@@ -159,11 +205,17 @@ class SRDataProvider:
             for i in range(period, len(true_ranges)):
                 atr = ((atr * (period - 1)) + true_ranges[i]) / period
             
-            return atr
+            # Ensure minimum ATR
+            price = candles[-1].get('close', 100.0)
+            min_atr = max(price * 0.0005, 0.1)
+            final_atr = max(atr, min_atr)
+            
+            return final_atr
             
         except Exception as e:
             logger.error(f"❌ ATR calculation failed: {e}")
-            return 0.0
+            # Return minimum ATR as fallback
+            return 0.1
     
     def get_cached_data(self, timeframe: str) -> Optional[List[Dict]]:
         """
@@ -176,9 +228,7 @@ class SRDataProvider:
             Cached candle data or None
         """
         cache_key = f"{self.symbol}_{timeframe}_500"  # Default lookback
-        from core.services.centralized_cache import get_global_centralized_cache
-        cache = get_global_centralized_cache()
-        cached_data = cache.get(cache_key)
+        cached_data = self._cache.get(cache_key)
         return cached_data
     
     def invalidate_cache(self, timeframe: Optional[str] = None):
@@ -189,15 +239,15 @@ class SRDataProvider:
             timeframe: Specific timeframe to invalidate, or None for all
         """
         if timeframe:
-            # Invalidate specific timeframe
-            keys_to_remove = [key for key in self._cache.keys() if f"_{timeframe}_" in key]
-            for key in keys_to_remove:
-                del self._cache[key]
+            # Invalidate specific timeframe - use cache invalidate method
+            pattern = f".*sr_candles_{self.symbol}_{timeframe}.*"
+            self._cache.invalidate(pattern)
             logger.debug(f"📊 Invalidated {timeframe} cache")
         else:
-            # Invalidate all cache
-            self._cache.clear()
-            logger.debug("📊 Invalidated all cache")
+            # Invalidate all cache - use cache invalidate method
+            pattern = f".*sr_candles_{self.symbol}.*"
+            self._cache.invalidate(pattern)
+            logger.debug(f"📊 Invalidated all S/R cache for {self.symbol}")
     
     def get_data_status(self) -> Dict[str, Any]:
         """

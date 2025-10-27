@@ -1413,11 +1413,12 @@
                     
                     // ALWAYS show support and resistance levels from HISTORICAL DATA
                     if (strongestSupport > 0) {
-                        // Get support score from key levels
-                        const supportLevel = market.support_resistance.key_levels?.find(level => 
+                        // Use root-level support score (already calculated)
+                        const supportScore = market.support_resistance.support_score?.toFixed(1) || '0.0';
+                        // Get support touches from levels array
+                        const supportLevel = market.support_resistance.levels?.find(level => 
                             Math.abs(level.price_level - strongestSupport) < 10 && level.type === 'support'
                         );
-                        const supportScore = supportLevel?.strength_score?.toFixed(1) || '0.0';
                         const supportTouches = supportLevel?.touches || 0;
                         
                         if (strongestSupport < currentPrice) {
@@ -1433,11 +1434,12 @@
                     }
                     
                     if (strongestResistance > 0) {
-                        // Get resistance score from key levels
-                        const resistanceLevel = market.support_resistance.key_levels?.find(level => 
+                        // Use root-level resistance score (already calculated)
+                        const resistanceScore = market.support_resistance.resistance_score?.toFixed(1) || '0.0';
+                        // Get resistance touches from levels array
+                        const resistanceLevel = market.support_resistance.levels?.find(level => 
                             Math.abs(level.price_level - strongestResistance) < 10 && level.type === 'resistance'
                         );
-                        const resistanceScore = resistanceLevel?.strength_score?.toFixed(1) || '0.0';
                         const resistanceTouches = resistanceLevel?.touches || 0;
                         
                         if (strongestResistance > currentPrice) {
