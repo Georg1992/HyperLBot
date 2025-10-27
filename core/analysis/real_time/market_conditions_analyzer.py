@@ -697,9 +697,8 @@ class MarketConditionsAnalyzer:
             # The API returns more than 7 candles, so we need to take the last 7
             last_7_candles = candles_1d[-7:] if len(candles_1d) >= 7 else candles_1d
             
-            logger.debug(f"📊 Using last 7 candles from {len(candles_1d)} returned candles")
-            for i, candle in enumerate(last_7_candles):
-                logger.debug(f"  Day {i+1}: Close=${candle['close']:,.2f}")
+            # Removed excessive day-by-day logging - only log summary
+            logger.debug(f"📊 Analyzing 7-day trend from {len(candles_1d)} available candles")
             
             # Calculate trend from 7-day candles
             start_price = last_7_candles[0]["close"]
