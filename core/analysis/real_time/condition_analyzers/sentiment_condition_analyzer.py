@@ -13,6 +13,7 @@ class SentimentConditionAnalyzer:
     
     def __init__(self):
         # Removed excessive debug logging
+        pass
     
     def analyze_sentiment_conditions(self) -> Dict[str, Any]:
         """Analyze sentiment conditions for trading suitability"""

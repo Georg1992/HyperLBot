@@ -13,6 +13,7 @@ class WhaleConditionAnalyzer:
     
     def __init__(self):
         # Removed excessive debug logging
+        pass
     
     def analyze_whale_conditions(self) -> Dict[str, Any]:
         """Analyze whale conditions using existing WhaleAnalysisCalculator - NO DUPLICATION"""

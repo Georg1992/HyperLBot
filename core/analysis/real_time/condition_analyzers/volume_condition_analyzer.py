@@ -13,6 +13,7 @@ class VolumeConditionAnalyzer:
     
     def __init__(self):
         # Removed excessive debug logging
+        pass
     
     def analyze_volume_conditions(self, volume_category: str) -> Dict[str, Any]:
         """Analyze volume conditions using existing VolumeCalculator - NO DUPLICATION"""

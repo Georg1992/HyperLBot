@@ -13,6 +13,7 @@ class VolatilityConditionAnalyzer:
     
     def __init__(self):
         # Removed excessive debug logging
+        pass
     
     def analyze_volatility_conditions(self, volatility_5m: float, volatility_category: str) -> Dict[str, Any]:
         """Analyze volatility conditions using existing VolatilityCalculator - NO DUPLICATION"""
