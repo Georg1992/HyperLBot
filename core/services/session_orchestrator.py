@@ -262,9 +262,9 @@ class SessionOrchestrator:
             
             # Check time interval using CentralizedCache intervals
             last_update = self._last_update_times.get(module_name, 0)
-            # Get interval from CentralizedCache or use default
-            from core.services.centralized_cache import CentralizedCache
-            cache = CentralizedCache()
+            # Get interval from CentralizedCache singleton
+            from core.services.centralized_cache import get_global_centralized_cache
+            cache = get_global_centralized_cache()
             interval = cache._get_ttl_policy(module_name)  # Get TTL policy for module
             
             if current_time - last_update >= interval:

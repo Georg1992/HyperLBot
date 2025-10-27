@@ -56,6 +56,13 @@ class CentralizedCache:
             "funding_analysis": 300,      # 5 minutes
             "orderbook_analysis": 60,     # 1 minute
             
+            # Historical data - long cache (data doesn't change)
+            "historical_candles": 1800,    # 30 minutes
+            "candles_5m": 1800,           # 30 minutes
+            "candles_15m": 1800,          # 30 minutes
+            "candles_1h": 1800,           # 30 minutes
+            "candles_1d": 3600,          # 1 hour
+            
             # External API data - longer cache
             "whale_analytics": 300,       # 5 minutes
             "fear_greed": 600,            # 10 minutes
