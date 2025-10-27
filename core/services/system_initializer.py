@@ -425,7 +425,7 @@ class SystemInitializer:
             from core.calculations.volume_calculator import create_volume_calculator
             from core.calculations.pressure_calculator import create_pressure_calculator
             from core.analysis.real_time.market_conditions_analyzer import create_market_conditions_analyzer
-            from core.analysis.real_time.pattern_recognition_engine import create_pattern_recognition_engine
+            from core.analysis.real_time.pattern_recognition_engine import PatternRecognitionEngine
             from core.analysis.real_time.funding_rate_analyzer import create_funding_rate_analyzer
             from core.analysis.real_time.orderbook_analyzer import create_orderbook_analyzer
             from core.analysis.real_time.cross_asset_correlation_analyzer import create_cross_asset_correlation_analyzer
@@ -454,7 +454,7 @@ class SystemInitializer:
             
             # Register analysis modules with new factory functions
             market_data_service.register_analysis_module("market_conditions", create_market_conditions_analyzer())
-            market_data_service.register_analysis_module("pattern_recognition", create_pattern_recognition_engine())
+            market_data_service.register_analysis_module("pattern_recognition", PatternRecognitionEngine())
             market_data_service.register_analysis_module("funding_rate", create_funding_rate_analyzer())
             market_data_service.register_analysis_module("orderbook", create_orderbook_analyzer())
             market_data_service.register_analysis_module("cross_asset_correlation_analyzer", create_cross_asset_correlation_analyzer())

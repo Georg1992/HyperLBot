@@ -2749,6 +2749,15 @@
                 
                 const patterns = patternAnalysis.patterns;
                 
+                // Draw all pattern types from the flat patterns array
+                if (Array.isArray(patterns)) {
+                    patterns.forEach(pattern => {
+                        this.drawPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    });
+                    return;
+                }
+                
+                // Legacy support for categorized patterns
                 // Draw reversal patterns
                 if (patterns.reversal_patterns && patterns.reversal_patterns.length > 0) {
                     patterns.reversal_patterns.forEach(pattern => {
@@ -2783,6 +2792,148 @@
                         this.drawWedgePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
                     });
                 }
+                
+                // Draw candlestick patterns
+                if (patterns.candlestick_patterns && patterns.candlestick_patterns.length > 0) {
+                    patterns.candlestick_patterns.forEach(pattern => {
+                        this.drawCandlestickPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    });
+                }
+            }
+            
+            // Main pattern drawing function that handles all pattern types
+            drawPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                const patternType = pattern.pattern || pattern.type || pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
+                
+                // Determine pattern category and call appropriate drawing function
+                if (this.isCandlestickPattern(patternType)) {
+                    this.drawCandlestickPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange);
+                } else if (this.isReversalPattern(patternType)) {
+                    this.drawReversalPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange);
+                } else if (this.isContinuationPattern(patternType)) {
+                    this.drawContinuationPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange);
+                } else {
+                    // Default pattern drawing
+                    this.drawGenericPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange);
+                }
+            }
+            
+            // Pattern type classification functions
+            isCandlestickPattern(patternType) {
+                const candlestickPatterns = [
+                    'BULLISH_ENGULFING', 'BEARISH_ENGULFING', 'HAMMER', 'DOJI', 'SHOOTING_STAR',
+                    'BULLISH_HARAMI', 'BEARISH_HARAMI', 'MORNING_STAR', 'EVENING_STAR'
+                ];
+                return candlestickPatterns.includes(patternType);
+            }
+            
+            isReversalPattern(patternType) {
+                const reversalPatterns = [
+                    'DOUBLE_TOP', 'DOUBLE_BOTTOM', 'HEAD_SHOULDERS', 'INVERSE_HEAD_SHOULDERS',
+                    'TRIPLE_TOP', 'TRIPLE_BOTTOM'
+                ];
+                return reversalPatterns.includes(patternType);
+            }
+            
+            isContinuationPattern(patternType) {
+                const continuationPatterns = [
+                    'FLAG', 'PENNANT', 'TRIANGLE', 'WEDGE', 'RECTANGLE'
+                ];
+                return continuationPatterns.includes(patternType);
+            }
+            
+            // Draw candlestick patterns
+            drawCandlestickPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                const patternType = pattern.pattern || pattern.type || pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
+                const startIndex = pattern.start_candle_index || pattern.indices?.[0] || 0;
+                const endIndex = pattern.end_candle_index || pattern.indices?.[1] || 0;
+                const patternHigh = pattern.pattern_high || 0;
+                const patternLow = pattern.pattern_low || 0;
+                
+                // Find the candle index for the pattern
+                let candleIndex = startIndex;
+                if (candleIndex >= candles.length) {
+                    candleIndex = candles.length - 1;
+                }
+                
+                // Calculate position based on pattern high/low
+                const x = chartStartX + (candleIndex * candleWidth) + (candleWidth / 2);
+                const y = height - ((patternHigh - minPrice) / priceRange) * height;
+                
+                // Set pattern-specific colors
+                let color = '#ff6b6b'; // Default red
+                if (patternType.includes('BULLISH') || pattern.direction === 'BULLISH') {
+                    color = '#51cf66'; // Green for bullish
+                } else if (patternType.includes('BEARISH') || pattern.direction === 'BEARISH') {
+                    color = '#ff6b6b'; // Red for bearish
+                }
+                
+                // Draw pattern indicator
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
+                ctx.lineWidth = 2;
+                
+                // Draw circle around the pattern candle
+                ctx.beginPath();
+                ctx.arc(x, y, candleWidth * 0.8, 0, 2 * Math.PI);
+                ctx.stroke();
+                
+                // Draw pattern label
+                ctx.fillStyle = color;
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${patternType} (${Math.round(confidence * 100)}%)`, x, y - 15);
+                
+                ctx.restore();
+            }
+            
+            // Draw generic pattern for unknown types
+            drawGenericPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+                const patternType = pattern.type || pattern.pattern || pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
+                const startTime = pattern.start_time || pattern.start_candle_index || 0;
+                const endTime = pattern.end_time || pattern.end_candle_index || 0;
+                
+                // Find the candle index for the pattern
+                let candleIndex = -1;
+                for (let i = 0; i < candles.length; i++) {
+                    if (candles[i].time >= startTime && candles[i].time <= endTime) {
+                        candleIndex = i;
+                        break;
+                    }
+                }
+                
+                if (candleIndex === -1) return;
+                
+                // Calculate position
+                const x = chartStartX + (candleIndex * candleWidth) + (candleWidth / 2);
+                const y = height - ((pattern.start_price - minPrice) / priceRange) * height;
+                
+                // Draw pattern indicator
+                ctx.save();
+                ctx.strokeStyle = '#ffd43b';
+                ctx.fillStyle = '#ffd43b';
+                ctx.lineWidth = 2;
+                
+                // Draw diamond around the pattern
+                ctx.beginPath();
+                ctx.moveTo(x, y - 8);
+                ctx.lineTo(x + 8, y);
+                ctx.lineTo(x, y + 8);
+                ctx.lineTo(x - 8, y);
+                ctx.closePath();
+                ctx.stroke();
+                
+                // Draw pattern label
+                ctx.fillStyle = '#ffd43b';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${patternType} (${Math.round(confidence * 100)}%)`, x, y - 20);
+                
+                ctx.restore();
             }
             
             drawReversalPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {

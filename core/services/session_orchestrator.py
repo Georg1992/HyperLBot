@@ -260,9 +260,12 @@ class SessionOrchestrator:
             # Check if module should be updated
             should_update = False
             
-            # Check time interval
+            # Check time interval using CentralizedCache intervals
             last_update = self._last_update_times.get(module_name, 0)
-            interval = update_intervals.get(module_name, 60)  # Default 1 minute
+            # Get interval from CentralizedCache or use default
+            from core.services.centralized_cache import CentralizedCache
+            cache = CentralizedCache()
+            interval = cache._get_ttl_policy(module_name)  # Get TTL policy for module
             
             if current_time - last_update >= interval:
                 should_update = True

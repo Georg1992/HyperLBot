@@ -54,6 +54,10 @@ class SupportResistanceCalculator(BaseCalculator):
         self._scorer = scorer or SRScorer()
         self._state = state_manager or SRState()
         
+        # Performance optimization: Track module update times
+        self._last_module_updates = {}
+        self._min_recalculation_interval = 300  # 5 minutes minimum
+        
         logger.info(f"📊 Refactored S/R Calculator initialized for {symbol} - Modular architecture")
     
     def _calculate_adaptive_tolerance(self, atr_14: float, current_price: float) -> float:
@@ -163,6 +167,15 @@ class SupportResistanceCalculator(BaseCalculator):
             current_time = time.time()
             logger.debug(f"🔍 Calculating S/R levels for {self.symbol} at ${current_price:.2f}")
             
+            # PERFORMANCE OPTIMIZATION: Check minimum recalculation interval
+            last_update = self._last_module_updates.get('support_resistance', 0)
+            if current_time - last_update < self._min_recalculation_interval:
+                logger.debug(f"⏱️ S/R calculation throttled - {self._min_recalculation_interval - (current_time - last_update):.0f}s remaining")
+                # Return cached result if available
+                cached_result = self._get_cached_analysis(current_price, current_time)
+                if cached_result.get("status") == "ok":
+                    return cached_result
+            
             # Reset session state to prevent cross-contamination
             self._state.reset_session_state()
             
@@ -230,6 +243,9 @@ class SupportResistanceCalculator(BaseCalculator):
             if result.get('status') == 'ok':
                 levels_count = len(result.get('levels', []))
                 logger.debug(f"📊 LEVEL FILTERING: {levels_count}/{len(scored_levels)} levels passed confidence filter")
+            
+            # PERFORMANCE OPTIMIZATION: Update last calculation time
+            self._last_module_updates['support_resistance'] = current_time
             
             return result
             

@@ -99,6 +99,11 @@ class DashboardService:
         """Update dashboard with market data"""
         try:
             with self._lock:
+                # Prepare candle data structure for dashboard
+                candle_data = self._prepare_candle_data(market_data)
+                if candle_data:
+                    market_data["candleData"] = candle_data
+                
                 self._data["market"].update(market_data)
                 self._save_data()
                 # Trigger WebSocket emission
@@ -110,6 +115,27 @@ class DashboardService:
                 # RSI removed - not working properly
         except Exception as e:
             logger.error(f"❌ Could not update market data: {e}")
+    
+    def _prepare_candle_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Prepare candle data structure for dashboard chart"""
+        try:
+            # Get pattern data from market data
+            patterns = market_data.get("patterns", {})
+            
+            # Prepare candle data structure
+            candle_data = {
+                "historical": [],  # Will be populated by historical data service
+                "ongoing": None,   # Current candle
+                "predicted": [],   # Predicted candles
+                "pattern_analysis": patterns  # Pattern data for chart overlays
+            }
+            
+            logger.debug(f"📊 Prepared candle data with pattern_analysis: {list(patterns.keys()) if patterns else 'None'}")
+            return candle_data
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to prepare candle data: {e}")
+            return None
     
     def _trigger_websocket_emission(self):
         """Trigger WebSocket emission to update dashboard"""

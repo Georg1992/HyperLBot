@@ -75,11 +75,11 @@ class SRDataProvider:
         try:
             logger.debug(f"📊 Fetching multi-timeframe data for {self.symbol}")
             
-            # Fetch candles with extended historical lookback for resistance detection
-            candles_5m = self._fetch_candles_with_validation("5m", 5000)  # ~417 hours (~17 days)
-            candles_15m = self._fetch_candles_with_validation("15m", 2000)  # ~500 hours (~21 days)  
-            candles_1h = self._fetch_candles_with_validation("1h", 2000)   # ~83 days
-            candles_1d = self._fetch_candles_with_validation("1d", 500)   # ~500 days
+            # Fetch candles with optimized historical lookback for performance
+            candles_5m = self._fetch_candles_with_validation("5m", 2000)  # ~167 hours (~7 days) - Reduced from 5000
+            candles_15m = self._fetch_candles_with_validation("15m", 1000)  # ~250 hours (~10 days) - Reduced from 2000
+            candles_1h = self._fetch_candles_with_validation("1h", 1000)   # ~42 days - Reduced from 2000
+            candles_1d = self._fetch_candles_with_validation("1d", 200)   # ~200 days - Reduced from 500
             
             # Calculate ATR for each timeframe
             atr_per_tf = {}
