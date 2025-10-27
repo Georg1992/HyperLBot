@@ -240,20 +240,8 @@ class SessionOrchestrator:
         modules_to_update = []
         current_time = time.time()
         
-        # Module update intervals (seconds)
-        # Note: TTL is now handled by CentralizedCache
-        update_intervals = {
-            'rsi_calculator': 5,      # 5 seconds - price sensitive
-            'volume': 30,             # 30 seconds
-            'pressure': 30,           # 30 seconds
-            'volatility': 60,         # 1 minute
-            'trend': 60,              # 1 minute
-            'orderbook': 60,          # 1 minute
-            'pattern_recognition': 120,  # 2 minutes
-            'support_resistance': 300,   # 5 minutes
-            'market_conditions': 300,    # 5 minutes
-            'funding_rate': 300,      # 5 minutes
-        }
+        # Module update intervals are now handled by CentralizedCache
+        # No need for duplicate definitions here
         
         # Price change threshold for price-sensitive modules
         price_change_threshold = 0.001  # 0.1%

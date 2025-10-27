@@ -22,16 +22,8 @@ class MarketDataService:
         from core.services.centralized_cache import get_global_centralized_cache
         self._cache = get_global_centralized_cache()
         
-        # Legacy update schedules (for backward compatibility)
-        # Note: TTL is now handled by CentralizedCache
-        self._update_schedules = {
-            "volatility": 60,      # 1 minute
-            "trend": 60,           # 1 minute  
-            "support_resistance": 300,  # 5 minutes
-            "rsi": 60,             # 1 minute
-            "volume": 30,          # 30 seconds
-            "market_conditions": 300,  # 5 minutes
-        }
+        # Update intervals are now handled by CentralizedCache
+        # No need for duplicate definitions here
         
         # Analysis module references (will be set by SystemInitializer)
         self._analysis_modules = {}

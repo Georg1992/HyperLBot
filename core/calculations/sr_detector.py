@@ -128,10 +128,11 @@ class SRDetector:
         """
         params = {
             "5m": {
-                "min_swing_size": 0.001,  # 0.1% minimum swing
-                "atr_multiplier": 0.5,    # ATR multiplier for noise filtering
-                "volume_threshold": 0.8,   # Volume threshold for significance
-                "wick_ratio": 0.3         # Maximum wick ratio
+                "min_swing_size": 0.0005,  # 0.05% minimum swing (more sensitive)
+                "min_swing_size_norm": 0.2,  # More sensitive ATR normalization
+                "atr_multiplier": 0.3,    # ATR multiplier for noise filtering
+                "volume_threshold": 0.5,   # Volume threshold for significance (more lenient)
+                "wick_ratio": 0.4         # Maximum wick ratio (more lenient)
             },
             "15m": {
                 "min_swing_size": 0.002,  # 0.2% minimum swing
@@ -338,7 +339,7 @@ class SRDetector:
             swing_size = high - low
             if atr and atr > 0:
                 swing_size_norm = swing_size / atr
-                min_swing_size_norm = params.get('min_swing_size_norm', 0.5)
+                min_swing_size_norm = params.get('min_swing_size_norm', 0.2)  # More sensitive for psychological levels
                 if swing_size_norm < min_swing_size_norm:
                     return False
             else:
@@ -359,7 +360,7 @@ class SRDetector:
             if volume > 0:
                 # Calculate average volume for context
                 avg_volume = sum(c.get('volume', 0) for c in candles[max(0, index-10):index+1]) / 11
-                if avg_volume > 0 and volume < avg_volume * params.get('volume_threshold', 0.8):
+                if avg_volume > 0 and volume < avg_volume * params.get('volume_threshold', 0.5):  # More lenient for psychological levels
                     return False
             
             return True
