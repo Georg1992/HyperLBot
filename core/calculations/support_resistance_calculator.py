@@ -75,8 +75,8 @@ class SupportResistanceCalculator(BaseCalculator):
             # Base tolerance from ATR (tighter clustering)
             atr_tolerance = atr_14 * 0.4
             
-            # Price percentage tolerance (0.2% of current price)
-            price_tolerance = current_price * 0.002
+            # Price percentage tolerance (0.1% of current price - balanced clustering)
+            price_tolerance = current_price * 0.001
             
             # Use the maximum of both to avoid over-merging
             adaptive_tolerance = max(atr_tolerance, price_tolerance)
@@ -365,8 +365,8 @@ class SupportResistanceCalculator(BaseCalculator):
             # Sort by strength score and filter low-confidence levels
             key_levels.sort(key=lambda x: x["strength_score"], reverse=True)
             
-            # Filter low-confidence levels (score < 30) - Balanced threshold
-            filtered_levels = [level for level in key_levels if level["strength_score"] >= 30.0]
+            # Filter low-confidence levels (score < 20) - More lenient threshold
+            filtered_levels = [level for level in key_levels if level["strength_score"] >= 20.0]
             
             # Keep top 10 levels per timeframe for performance
             key_levels = filtered_levels[:10]
