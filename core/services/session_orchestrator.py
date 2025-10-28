@@ -620,7 +620,38 @@ class SessionOrchestrator:
         """Execute a prediction that's ready for trading"""
         try:
             from core.execution.prediction_executor import PredictionExecutor
-            executor = PredictionExecutor()
+            from core.execution.trading_execution_wrapper import TradingExecutionWrapper
+            from core.simulated_account_manager import SimulatedAccountManager
+            
+            # Get required services from system initializer
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            
+            # Get HyperLiquid simulator for trading execution
+            hyperliquid_simulator = system_initializer.get_singleton_system("hyperliquid_simulator")
+            if not hyperliquid_simulator:
+                logger.error("❌ HyperLiquid simulator not available")
+                return
+            
+            # Create trading execution wrapper
+            trading_execution = TradingExecutionWrapper(
+                hyperliquid_simulator=hyperliquid_simulator,
+                account_manager=None,  # Will be set below
+                session_manager=self.session_manager
+            )
+            
+            # Create account manager
+            account_manager = SimulatedAccountManager()
+            
+            # Set account manager in trading execution wrapper
+            trading_execution.account_manager = account_manager
+            
+            # Create prediction executor with required services
+            executor = PredictionExecutor(
+                trading_execution=trading_execution,
+                account_manager=account_manager,
+                session_manager=self.session_manager
+            )
             
             # Convert prediction to dict format
             prediction_dict = prediction.to_dict()
