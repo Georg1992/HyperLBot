@@ -107,9 +107,6 @@ class FearGreedAPI:
         try:
             # Define sentiment zones
             extreme_fear = index_value <= 25
-            fear = 25 < index_value <= 45
-            neutral = 45 < index_value <= 55
-            greed = 55 < index_value <= 75
             extreme_greed = index_value > 75
             
             # Generate trading signals

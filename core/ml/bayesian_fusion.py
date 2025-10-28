@@ -284,11 +284,13 @@ class BayesianFusion:
         """Convert trend to a Bayesian signal - conservative for limit orders"""
         
         # Determine timeframe from signal name
-        is_5m_trend = "5m" in name
-        is_short_term = "Short" in name
-        is_medium_term = "Medium" in name
+        is_5m_trend = name == "Trend_5m"  # Exact match to avoid substring issues
+        is_short_term = "15m" in name
+        is_medium_term = "1h" in name or "4h" in name
+        is_long_term = "24h" in name
         
         # EXCLUDE 5-minute trends - too noisy for limit orders
+        # But allow 15m trends with reduced weight
         if is_5m_trend:
             return None
         
@@ -317,6 +319,17 @@ class BayesianFusion:
                     "WEAK_DOWNTREND": (0.45, 0.60),  # Less bearish
                     "DOWNTREND": (0.40, 0.65),       # Less bearish
                     "STRONG_DOWNTREND": (0.35, 0.70), # Less bearish
+                }
+            elif is_long_term:
+                # Long-term trends: higher impact for limit orders
+                trend_map = {
+                    "STRONG_UPTREND": (0.70, 0.75),  # Higher confidence for long-term
+                    "UPTREND": (0.65, 0.70),         # Higher confidence for long-term
+                    "WEAK_UPTREND": (0.58, 0.60),    # Higher confidence for long-term
+                    "SIDEWAYS": None,                # Exclude
+                    "WEAK_DOWNTREND": (0.42, 0.60),  # Less bearish
+                    "DOWNTREND": (0.35, 0.70),       # Less bearish
+                    "STRONG_DOWNTREND": (0.30, 0.75), # Less bearish
                 }
             else:
                 # Default (shouldn't happen with proper naming)
@@ -352,6 +365,17 @@ class BayesianFusion:
                     "UPTREND": (0.40, 0.65),           # Less bearish
                     "STRONG_UPTREND": (0.35, 0.70),   # Less bearish
                 }
+            elif is_long_term:
+                # Long-term trends: higher impact for limit orders
+                trend_map = {
+                    "STRONG_DOWNTREND": (0.70, 0.75),  # Higher confidence for long-term
+                    "DOWNTREND": (0.65, 0.70),         # Higher confidence for long-term
+                    "WEAK_DOWNTREND": (0.58, 0.60),    # Higher confidence for long-term
+                    "SIDEWAYS": None,                 # Exclude
+                    "WEAK_UPTREND": (0.42, 0.60),     # Less bearish
+                    "UPTREND": (0.35, 0.70),           # Less bearish
+                    "STRONG_UPTREND": (0.30, 0.75),   # Less bearish
+                }
             else:
                 # Default (shouldn't happen with proper naming)
                 trend_map = {
@@ -376,7 +400,7 @@ class BayesianFusion:
                 name=name,
                 probability=prob,
                 confidence=conf,
-                evidence=f"Trend: {trend} ({'15m' if is_short_term else '2h' if is_medium_term else 'unknown'})"
+                evidence=f"Trend: {trend} ({'24h' if '24h' in name else '4h' if '4h' in name else '1h' if '1h' in name else '15m' if '15m' in name else 'unknown'})"
             )
         
         return None

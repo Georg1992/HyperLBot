@@ -1172,30 +1172,33 @@
                 // Handle trend data from different possible structures
                 let trendDisplay = null;
                 
-                if (market.trend && typeof market.trend === 'object' && (market.trend.trend_display || market.trend.trend_15m)) {
-                    // Trend object - check for trend_15m, trend_1h, etc.
-                    if (market.trend.trend_display) {
+                if (market.trend && typeof market.trend === 'object') {
+                    // Check for detailed_timeframes structure first (new format)
+                    if (market.trend.detailed_timeframes) {
+                        const detailed = market.trend.detailed_timeframes;
+                        const trend15m = detailed.trend_15m || 'UNKNOWN';
+                        const trend1h = detailed.trend_1h || 'UNKNOWN';
+                        const trend4h = detailed.trend_4h || 'UNKNOWN';
+                        const trend24h = detailed.trend_24h || 'UNKNOWN';
+                        
+                        trendDisplay = `15m ${trend15m} | 1h ${trend1h} | 4h ${trend4h} | 24h ${trend24h}`;
+                    } else if (market.trend.trend_display) {
                         trendDisplay = market.trend.trend_display;
                     } else if (market.trend.trend_15m) {
-                        // Create multi-timeframe trend display with periods and colors
+                        // Legacy format - direct trend fields
                         const trend15m = market.trend.trend_15m;
                         const trend1h = market.trend.trend_1h;
                         const trend4h = market.trend.trend_4h;
                         const trend24h = market.trend.trend_24h;
                         
                         trendDisplay = `15m ${trend15m} | 1h ${trend1h} | 4h ${trend4h} | 24h ${trend24h}`;
+                    } else if (market.trend.direction) {
+                        trendDisplay = `${market.trend.direction} (${market.trend.strength})`;
                     }
                 } else if (market.trend_analysis && (market.trend_analysis.trend_display || market.trend_analysis.trend_15m)) {
                     // Trend analysis object
                     trendDisplay = market.trend_analysis.trend_display || 
                         `15m ${market.trend_analysis.trend_15m} | 1h ${market.trend_analysis.trend_1h} | 4h ${market.trend_analysis.trend_4h} | 24h ${market.trend_analysis.trend_24h}`;
-                } else if (market.trend && typeof market.trend === 'object') {
-                    // Trend object
-                    if (market.trend.trend_display) {
-                        trendDisplay = market.trend.trend_display;
-                    } else if (market.trend.direction) {
-                        trendDisplay = `${market.trend.direction} (${market.trend.strength})`;
-                    }
                 } else if (market.trend_display) {
                     // Direct trend display
                     trendDisplay = market.trend_display;
@@ -3527,6 +3530,8 @@
                         color = '#ff4444'; // Red for downtrends
                     } else if (trendUpper.includes('SIDEWAYS') || trendUpper.includes('NEUTRAL')) {
                         color = '#ffaa00'; // Yellow for sideways
+                    } else if (trendUpper.includes('UNKNOWN') || trendUpper.includes('N/A')) {
+                        color = '#888888'; // Gray for unknown/missing data
                     }
                     
                     return `<span style="color: ${color}">${timeframe} ${trend.trim()}</span>`;

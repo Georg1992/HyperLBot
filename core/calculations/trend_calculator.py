@@ -29,10 +29,10 @@ class TrendCalculator:
             
             if not candles_5m or len(candles_5m) < 3:
                 return {
-                    "trend_15m": "SIDEWAYS",
-                    "trend_1h": "SIDEWAYS", 
-                    "trend_4h": "SIDEWAYS",
-                    "trend_24h": "SIDEWAYS",
+                    "trend_15m": "UNKNOWN",
+                    "trend_1h": "UNKNOWN", 
+                    "trend_4h": "UNKNOWN",
+                    "trend_24h": "UNKNOWN",
                     "timestamp": time.time(),
                     "data_type": "trend",
                     "error": "Insufficient candle data"
@@ -42,10 +42,10 @@ class TrendCalculator:
             trend_analysis = self.calculate_universal_trends(candles_5m, candles_1h, candles_1d)
             
             return {
-                "trend_15m": trend_analysis.get("trend_15m", "SIDEWAYS"),
-                "trend_1h": trend_analysis.get("trend_1h", "SIDEWAYS"),
-                "trend_4h": trend_analysis.get("trend_4h", "SIDEWAYS"),
-                "trend_24h": trend_analysis.get("trend_24h", "SIDEWAYS"),
+                "trend_15m": trend_analysis.get("trend_15m", "UNKNOWN"),
+                "trend_1h": trend_analysis.get("trend_1h", "UNKNOWN"),
+                "trend_4h": trend_analysis.get("trend_4h", "UNKNOWN"),
+                "trend_24h": trend_analysis.get("trend_24h", "UNKNOWN"),
                 "timestamp": time.time(),
                 "data_type": "trend",
                 "full_analysis": trend_analysis
@@ -54,10 +54,10 @@ class TrendCalculator:
         except Exception as e:
             logger.error(f"❌ Failed to get latest trend analysis: {e}")
             return {
-                "trend_15m": "SIDEWAYS",
-                "trend_1h": "SIDEWAYS",
-                "trend_4h": "SIDEWAYS", 
-                "trend_24h": "SIDEWAYS",
+                "trend_15m": "UNKNOWN",
+                "trend_1h": "UNKNOWN",
+                "trend_4h": "UNKNOWN", 
+                "trend_24h": "UNKNOWN",
                 "timestamp": time.time(),
                 "data_type": "trend",
                 "error": str(e)
@@ -107,10 +107,10 @@ class TrendCalculator:
         except Exception as e:
             logger.error(f"❌ Universal trends calculation failed: {e}")
             return {
-                "trend_15m": "SIDEWAYS",
-                "trend_1h": "SIDEWAYS",
-                "trend_4h": "SIDEWAYS",
-                "trend_24h": "SIDEWAYS",
+                "trend_15m": "UNKNOWN",
+                "trend_1h": "UNKNOWN",
+                "trend_4h": "UNKNOWN",
+                "trend_24h": "UNKNOWN",
                 "error": str(e)
             }
     

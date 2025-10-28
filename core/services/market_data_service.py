@@ -95,22 +95,118 @@ class MarketDataService:
             return {}
     
     def get_trend_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get trend analysis from TrendCalculator"""
+        """Get trend analysis from TrendCalculator with proper mapping"""
         try:
             trend_data = self._get_processed_data("trend")
             if trend_data:
-                return trend_data
+                return self._map_trend_data(trend_data)
             
             if "trend" in self._analysis_modules:
                 logger.info("📊 Triggering trend analysis...")
-                return self._analysis_modules["trend"].get_latest_analysis(strategy)
+                raw_trend_data = self._analysis_modules["trend"].get_latest_analysis(strategy)
+                return self._map_trend_data(raw_trend_data)
             
             logger.warning("⚠️ No trend analysis module registered")
-            return {}
+            return self._get_default_trend_data()
             
         except Exception as e:
             logger.error(f"❌ Failed to get trend analysis: {e}")
-            return {}
+            return self._get_default_trend_data()
+    
+    def _map_trend_data(self, raw_trend_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Map trend calculator output to unified format"""
+        try:
+            # Extract all timeframe trends
+            trend_15m = raw_trend_data.get("trend_15m", "UNKNOWN")
+            trend_1h = raw_trend_data.get("trend_1h", "UNKNOWN")
+            trend_4h = raw_trend_data.get("trend_4h", "UNKNOWN")
+            trend_24h = raw_trend_data.get("trend_24h", "UNKNOWN")
+            
+            # Use 1h as primary for strategy decisions, but preserve all timeframes
+            primary_trend = trend_1h
+            mapped_direction = self._map_trend_to_direction(primary_trend)
+            
+            # Create unified trend structure with ALL timeframes
+            mapped_trend = {
+                "direction": mapped_direction,
+                "strength": self._map_trend_to_strength(primary_trend),
+                "timeframes": {
+                    "short": trend_15m,      # 15m trend
+                    "medium": trend_1h,       # 1h trend  
+                    "long": trend_24h         # 24h trend
+                },
+                "detailed_timeframes": {
+                    "trend_15m": trend_15m,
+                    "trend_1h": trend_1h,
+                    "trend_4h": trend_4h,
+                    "trend_24h": trend_24h
+                },
+                "raw_data": raw_trend_data,  # Keep original data for detailed analysis
+                "timestamp": raw_trend_data.get("timestamp", time.time()),
+                "data_type": "trend"
+            }
+            
+            logger.debug(f"📊 Trend mapped: {primary_trend} → {mapped_direction}")
+            logger.debug(f"📊 All timeframes: 15m={trend_15m}, 1h={trend_1h}, 4h={trend_4h}, 24h={trend_24h}")
+            return mapped_trend
+            
+        except Exception as e:
+            logger.error(f"❌ Trend mapping failed: {e}")
+            return self._get_default_trend_data()
+    
+    def _map_trend_to_direction(self, trend: str) -> str:
+        """Map detailed trend to simple direction for strategy manager"""
+        if not trend or trend == "UNKNOWN" or trend is None:
+            return "UNKNOWN"
+            
+        trend_mapping = {
+            "STRONG_UPTREND": "BULLISH",
+            "UPTREND": "BULLISH", 
+            "WEAK_UPTREND": "BULLISH",
+            "STRONG_DOWNTREND": "BEARISH",
+            "DOWNTREND": "BEARISH",
+            "WEAK_DOWNTREND": "BEARISH",
+            "SIDEWAYS": "SIDEWAYS"
+        }
+        return trend_mapping.get(trend, "UNKNOWN")
+    
+    def _map_trend_to_strength(self, trend: str) -> str:
+        """Map detailed trend to strength level"""
+        if not trend or trend == "UNKNOWN" or trend is None:
+            return "UNKNOWN"
+            
+        strength_mapping = {
+            "STRONG_UPTREND": "STRONG",
+            "STRONG_DOWNTREND": "STRONG",
+            "UPTREND": "MODERATE",
+            "DOWNTREND": "MODERATE", 
+            "WEAK_UPTREND": "WEAK",
+            "WEAK_DOWNTREND": "WEAK",
+            "SIDEWAYS": "NEUTRAL"
+        }
+        return strength_mapping.get(trend, "UNKNOWN")
+    
+    def _get_default_trend_data(self) -> Dict[str, Any]:
+        """Get default trend data when analysis fails"""
+        return {
+            "direction": "UNKNOWN",
+            "strength": "UNKNOWN",
+            "timeframes": {
+                "short": "UNKNOWN",
+                "medium": "UNKNOWN", 
+                "long": "UNKNOWN"
+            },
+            "detailed_timeframes": {
+                "trend_15m": "UNKNOWN",
+                "trend_1h": "UNKNOWN",
+                "trend_4h": "UNKNOWN",
+                "trend_24h": "UNKNOWN"
+            },
+            "raw_data": {},
+            "timestamp": time.time(),
+            "data_type": "trend",
+            "error": "Default trend data"
+        }
     
     def get_support_resistance_analysis(self) -> Dict[str, Any]:
         """Get S/R analysis from SupportResistanceCalculator"""
@@ -661,7 +757,7 @@ class MarketDataService:
                             "take_profit": active_prediction.take_profit,
                             "score": active_prediction.score,
                             "age_seconds": active_prediction.age_seconds,
-                            "strategy": active_prediction.strategy,
+                            "strategy": strategy,  # Use the strategy parameter passed to the method
                             "reasoning": getattr(active_prediction, 'reasoning', []),
                             "confidence_boosts": getattr(active_prediction, 'confidence_boosts', [])
                         }

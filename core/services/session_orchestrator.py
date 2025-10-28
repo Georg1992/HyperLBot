@@ -205,13 +205,18 @@ class SessionOrchestrator:
                         unified_data, dashboard_service
                     )
 
-                    # Generate ML prediction
-                    self._generate_price_prediction(unified_data, strategy)
-
-                    # Detect and update strategy
+                    # Detect and update strategy FIRST (before prediction generation)
                     current_strategy = self._detect_and_update_strategy(
                         unified_data, dashboard_service
                     )
+                    
+                    # Update unified data with new strategy if it changed
+                    if current_strategy != strategy:
+                        unified_data["strategy"] = current_strategy
+                        logger.info(f"🔄 Strategy updated in unified data: {strategy} → {current_strategy}")
+
+                    # Generate ML prediction with CORRECT strategy
+                    self._generate_price_prediction(unified_data, current_strategy)
 
                     # Update order lifecycle
                     self._update_order_lifecycle(current_price)
@@ -219,6 +224,9 @@ class SessionOrchestrator:
                     # Update session time
                     if self.session_manager:
                         self.session_manager._update_session_time()
+
+                    # Update strategy for next iteration
+                    strategy = current_strategy
 
                     # Historical data is managed by HistoricalDataService - single source of truth
 
@@ -512,30 +520,32 @@ class SessionOrchestrator:
     def _detect_and_update_strategy(
         self, unified_data: Dict[str, Any], dashboard_service
     ) -> str:
-        """Detect and update strategy based on market conditions"""
+        """Detect and update strategy based on market conditions using unified data"""
         try:
             if self.strategy_manager:
                 current_strategy = unified_data.get("strategy", "standard")
 
-                # Detect optimal strategy
+                # Detect optimal strategy using comprehensive unified data
                 new_strategy = self.strategy_manager.detect_optimal_strategy(unified_data)
 
                 if new_strategy != current_strategy:
                     logger.info(
                         f"🎯 Strategy updated: {current_strategy} → {new_strategy}"
                     )
+                    logger.info(f"   📊 Market conditions: volatility={unified_data.get('volatility_category', 'UNKNOWN')}, trend={unified_data.get('trend', {}).get('direction', 'UNKNOWN')}")
                     return new_strategy
                 else:
+                    logger.debug(f"🎯 Strategy unchanged: {current_strategy}")
                     return current_strategy
             else:
                 logger.warning(
                     "⚠️ Strategy Manager not available - using default strategy"
                 )
-                return unified_data.get("current_strategy", "standard")
+                return unified_data.get("strategy", "standard")
 
         except Exception as e:
             logger.warning(f"⚠️ Strategy detection failed: {e}")
-            return unified_data.get("current_strategy", "standard")
+            return unified_data.get("strategy", "standard")
 
     def _update_order_lifecycle(self, current_price: float):
         """Update order lifecycle management"""
@@ -582,9 +592,47 @@ class SessionOrchestrator:
             logger.error(f"❌ Dashboard update failed: {e}")
 
     def _generate_price_prediction(self, unified_data: Dict[str, Any], strategy: str):
-        """Generate ML price prediction"""
+        """Generate ML price prediction using RealtimePredictionEngine"""
         try:
-            # ML prediction logic would go here
-            logger.debug("🤖 ML prediction generated")
+            # Get prediction engine
+            from core.ml.realtime_prediction_engine import get_global_realtime_prediction_engine
+            prediction_engine = get_global_realtime_prediction_engine()
+            
+            # Update confidence threshold for strategy
+            prediction_engine.update_confidence_threshold(strategy)
+            
+            # Generate prediction with unified data
+            action = prediction_engine.update_prediction(unified_data, strategy)
+            
+            logger.info(f"🤖 ML prediction: {action}")
+            
+            # Check if ready to execute
+            if action == "EXECUTE":
+                active_prediction = prediction_engine.get_active_prediction()
+                if active_prediction:
+                    # Execute the prediction
+                    self._execute_prediction(active_prediction, strategy)
+                    
         except Exception as e:
             logger.error(f"❌ ML prediction failed: {e}")
+    
+    def _execute_prediction(self, prediction, strategy: str):
+        """Execute a prediction that's ready for trading"""
+        try:
+            from core.execution.prediction_executor import PredictionExecutor
+            executor = PredictionExecutor()
+            
+            # Convert prediction to dict format
+            prediction_dict = prediction.to_dict()
+            prediction_dict["strategy"] = strategy
+            
+            # Execute the prediction
+            result = executor.execute_prediction(prediction_dict, strategy)
+            
+            if result.get("success"):
+                logger.success(f"✅ Prediction executed: {prediction.direction} @ ${prediction.entry_price:,.2f}")
+            else:
+                logger.warning(f"⚠️ Prediction execution failed: {result.get('reason')}")
+                
+        except Exception as e:
+            logger.error(f"❌ Prediction execution failed: {e}")

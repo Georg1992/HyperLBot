@@ -101,30 +101,42 @@ class StrategyManager:
     def _select_strategy_business_logic(self, market_data: Dict[str, Any]) -> str:
         """Select strategy using pure business logic (no ML)"""
         try:
-            # Extract market conditions
-            volatility_category = market_data.get("volatility", {}).get("volatility_5m_category", "UNKNOWN")
-            # Use 1h trend as primary trend for strategy selection
-            trend = market_data.get("trend_1h", "SIDEWAYS")
-            volume_category = market_data.get("volume", {}).get("volume_category", "UNKNOWN")
+            # Extract market conditions from unified data structure
+            volatility_category = market_data.get("volatility_category", "MODERATE")
+            trend_direction = market_data.get("trend", {}).get("direction", "SIDEWAYS")
+            volume_category = market_data.get("volume_category", "MODERATE")
+            volatility_5m = market_data.get("volatility_5m", 0.0)
+            
+            logger.debug(f"📊 Strategy selection inputs: volatility={volatility_category}, trend={trend_direction}, volume={volume_category}, vol_5m={volatility_5m:.3f}")
             
             # Business logic strategy selection
-            if volatility_category == "LOW" or volatility_category == "VERY_LOW":
-                if trend == "SIDEWAYS":
+            if volatility_category in ["LOW", "VERY_LOW"]:
+                if trend_direction == "SIDEWAYS":
                     strategy = "low_volatility_range"
                     reasoning = f"Low volatility ({volatility_category}) + sideways trend"
                 else:
                     strategy = "standard"
                     reasoning = f"Low volatility ({volatility_category}) + trending market"
-            elif volatility_category == "HIGH" or volatility_category == "EXTREME":
-                if trend == "SIDEWAYS":
-                    strategy = "range_trading"
+            elif volatility_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
+                if trend_direction == "SIDEWAYS":
+                    strategy = "high_volatility"
                     reasoning = f"High volatility ({volatility_category}) + sideways trend"
                 else:
-                    strategy = "standard"
+                    strategy = "trend_following"
                     reasoning = f"High volatility ({volatility_category}) + trending market"
+            elif volatility_5m > 0.03:  # 3%+ volatility
+                if volume_category in ["HIGH", "VERY_HIGH"]:
+                    strategy = "spike_hunting"
+                    reasoning = f"High volatility ({volatility_5m:.1%}) + high volume"
+                else:
+                    strategy = "high_volatility"
+                    reasoning = f"High volatility ({volatility_5m:.1%}) + moderate volume"
+            elif trend_direction in ["BULLISH", "BEARISH"] and volume_category in ["HIGH", "VERY_HIGH"]:
+                strategy = "trend_following"
+                reasoning = f"Strong trend ({trend_direction}) + high volume"
             else:  # MODERATE volatility
                 strategy = "standard"
-                reasoning = f"Moderate volatility + {trend} trend"
+                reasoning = f"Moderate volatility + {trend_direction} trend"
             
             # Create simple recommendation object
             class SimpleRecommendation:
@@ -161,16 +173,18 @@ class StrategyManager:
         Returns True if strategy SHOULD NOT be used
         """
         try:
-            trend = market_data.get("trend", "SIDEWAYS")
+            # Extract trend direction from unified data structure
+            trend_data = market_data.get("trend", {})
+            trend_direction = trend_data.get("direction", "SIDEWAYS") if isinstance(trend_data, dict) else str(trend_data)
             volatility_5m = market_data.get("volatility_5m", 0)
             volatility_category = market_data.get("volatility_category", "LOW")
             volume_category = market_data.get("volume_category", "LOW")
             
             # TREND FOLLOWING incompatibility checks
             if strategy == "trend_following":
-                # CRITICAL: Trend Following requires STRONG trend
-                if trend not in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
-                    logger.warning(f"❌ INCOMPATIBLE: trend_following requires STRONG trend, got {trend}")
+                # CRITICAL: Trend Following requires trending market (BULLISH/BEARISH)
+                if trend_direction not in ["BULLISH", "BEARISH"]:
+                    logger.warning(f"❌ INCOMPATIBLE: trend_following requires trending market, got {trend_direction}")
                     return True
                 # Requires decent volume (not very low)
                 if volume_category in ["VERY_LOW"]:
@@ -203,8 +217,8 @@ class StrategyManager:
                     logger.warning(f"❌ INCOMPATIBLE: high_volatility requires HIGH volatility, got {volatility_category}")
                     return True
                 # Should NOT be used with strong trends (that's trend following territory)
-                if trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"]:
-                    logger.warning(f"❌ INCOMPATIBLE: high_volatility conflicts with STRONG trend {trend}")
+                if trend_direction in ["BULLISH", "BEARISH"]:
+                    logger.warning(f"❌ INCOMPATIBLE: high_volatility conflicts with trending market {trend_direction}")
                     return True
             
             # RANGE TRADING incompatibility checks
@@ -212,8 +226,8 @@ class StrategyManager:
                 # Range trading works well in volatile markets - only block in very specific conditions
                 # Allow range_trading in EXTREME volatility as it's designed for volatile conditions
                 # Only block if we have EXTREME volatility AND the market is in a clear breakout (no consolidation)
-                if volatility_category == "EXTREME" and trend in ["STRONG_UPTREND", "STRONG_DOWNTREND"] and volume_category in ["VERY_LOW", "LOW"]:
-                    logger.warning(f"❌ INCOMPATIBLE: range_trading not suitable for EXTREME volatility with strong trend and low volume, got {volatility_category} + {trend} + {volume_category}")
+                if volatility_category == "EXTREME" and trend_direction in ["BULLISH", "BEARISH"] and volume_category in ["VERY_LOW", "LOW"]:
+                    logger.warning(f"❌ INCOMPATIBLE: range_trading not suitable for EXTREME volatility with strong trend and low volume, got {volatility_category} + {trend_direction} + {volume_category}")
                     return True
             
             # BREAKOUT incompatibility checks

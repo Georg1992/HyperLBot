@@ -87,7 +87,8 @@ class DirectionRecognizer:
     
     def _analyze_rsi(self, market_data: Dict[str, Any], is_range_trading: bool) -> Tuple[float, List[str]]:
         """Analyze RSI signals"""
-        rsi = market_data.get("rsi", 50)
+        rsi_data = market_data.get("rsi", {})
+        rsi = rsi_data.get("rsi", 50) if isinstance(rsi_data, dict) else rsi_data
         score = 0.0
         reasoning = []
         

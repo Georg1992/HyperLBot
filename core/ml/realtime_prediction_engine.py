@@ -131,9 +131,9 @@ class RealtimePredictionEngine:
     
     def update_confidence_threshold(self, strategy: str) -> None:
         """Update confidence threshold based on active strategy"""
-        from config.config import Config
+        from config.config import TradingConfig
         
-        strategy_config = Config.STRATEGY_CONFIGS.get(strategy, {})
+        strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
         new_threshold = strategy_config.get("confidence_threshold", 0.60)
         
         logger.info(f"🔧 Threshold update requested: strategy={strategy}, current={self.confidence_threshold:.1%}, new={new_threshold:.1%}")
@@ -521,45 +521,58 @@ class RealtimePredictionEngine:
             signals = []
             
             # RSI signal
-            rsi = market_data.get("rsi", 50)
-            if rsi:
+            rsi_data = market_data.get("rsi", {})
+            rsi = rsi_data.get("rsi", 50) if isinstance(rsi_data, dict) else rsi_data
+            if rsi and isinstance(rsi, (int, float)):
                 rsi_signal = bayesian.calculate_signal_from_metric("RSI", rsi, "RSI", direction)
                 if rsi_signal:
                     signals.append(rsi_signal)
             
             # Volume signal
-            volume_category = market_data.get("volume_category", "MODERATE")
+            volume_data = market_data.get("volume", {})
+            volume_category = volume_data.get("category", "MODERATE") if isinstance(volume_data, dict) else str(volume_data)
             if volume_category:
                 volume_signal = bayesian.calculate_signal_from_metric("Volume", volume_category, "VOLUME", direction)
                 if volume_signal:
                     signals.append(volume_signal)
             
             # Trend signals - use multiple timeframes and pick the highest confidence
-            trend_5m = market_data.get("trend", "SIDEWAYS")
-            trend_5m_data = market_data.get("trend_5m", {})
-            trend_short = trend_5m_data.get("trend_short", "SIDEWAYS")
-            trend_medium = trend_5m_data.get("trend_medium", "SIDEWAYS")
+            trend_data = market_data.get("trend", {})
+            trend_5m = trend_data.get("direction", "SIDEWAYS") if isinstance(trend_data, dict) else str(trend_data)
+            
+            # Get detailed timeframes from the trend data
+            detailed_timeframes = trend_data.get("detailed_timeframes", {})
+            trend_15m = detailed_timeframes.get("trend_15m", "UNKNOWN")
+            trend_1h = detailed_timeframes.get("trend_1h", "UNKNOWN")
+            trend_4h = detailed_timeframes.get("trend_4h", "UNKNOWN")
+            trend_24h = detailed_timeframes.get("trend_24h", "UNKNOWN")
             
             # Calculate confidence for each timeframe
             trend_signals = []
             
-            # 5m trend
-            if trend_5m:
-                trend_5m_signal = bayesian.calculate_signal_from_metric("Trend_5m", trend_5m, "TREND", direction)
-                if trend_5m_signal:
-                    trend_signals.append(trend_5m_signal)
+            # 15m trend (short-term)
+            if trend_15m and trend_15m != "UNKNOWN":
+                trend_15m_signal = bayesian.calculate_signal_from_metric("Trend_15m", trend_15m, "TREND", direction)
+                if trend_15m_signal:
+                    trend_signals.append(trend_15m_signal)
             
-            # Short-term trend (1m equivalent)
-            if trend_short:
-                trend_short_signal = bayesian.calculate_signal_from_metric("Trend_Short", trend_short, "TREND", direction)
-                if trend_short_signal:
-                    trend_signals.append(trend_short_signal)
+            # 1h trend (medium-term)
+            if trend_1h and trend_1h != "UNKNOWN":
+                trend_1h_signal = bayesian.calculate_signal_from_metric("Trend_1h", trend_1h, "TREND", direction)
+                if trend_1h_signal:
+                    trend_signals.append(trend_1h_signal)
             
-            # Medium-term trend (1h equivalent)
-            if trend_medium:
-                trend_medium_signal = bayesian.calculate_signal_from_metric("Trend_Medium", trend_medium, "TREND", direction)
-                if trend_medium_signal:
-                    trend_signals.append(trend_medium_signal)
+            # 4h trend (medium-long-term)
+            if trend_4h and trend_4h != "UNKNOWN":
+                trend_4h_signal = bayesian.calculate_signal_from_metric("Trend_4h", trend_4h, "TREND", direction)
+                if trend_4h_signal:
+                    trend_signals.append(trend_4h_signal)
+            
+            # 24h trend (long-term)
+            if trend_24h and trend_24h != "UNKNOWN":
+                trend_24h_signal = bayesian.calculate_signal_from_metric("Trend_24h", trend_24h, "TREND", direction)
+                if trend_24h_signal:
+                    trend_signals.append(trend_24h_signal)
             
             # Add all trend signals to Bayesian fusion (don't pick just one)
             # This allows Bayesian fusion to properly weigh multiple timeframe trends
@@ -567,7 +580,8 @@ class RealtimePredictionEngine:
                 signals.append(trend_signal)
             
             # 4. VOLATILITY SIGNAL
-            volatility_category = market_data.get("volatility_category", "MODERATE")
+            volatility_data = market_data.get("volatility", {})
+            volatility_category = volatility_data.get("level", "MODERATE") if isinstance(volatility_data, dict) else str(volatility_data)
             if volatility_category:
                 volatility_signal = bayesian.calculate_signal_from_metric("Volatility", volatility_category, "VOLATILITY", direction)
                 if volatility_signal:

@@ -8,7 +8,7 @@ import json
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, List, Tuple, Optional
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from loguru import logger
 from sklearn.linear_model import LogisticRegression

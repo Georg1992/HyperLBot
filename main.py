@@ -134,12 +134,7 @@ def check_and_install_dependencies():
     # Check each module
     for module in required_modules:
         try:
-            if module == 'flask_socketio':
-                import flask_socketio
-            elif module == 'python-dotenv':
-                import dotenv
-            else:
-                __import__(module)
+            __import__(module)
         except ImportError:
             missing_modules.append(module)
     
@@ -238,7 +233,6 @@ def run_paper_trading():
     with instance_manager:
         try:
             from core.services.system_initializer import get_system_initializer
-            from core.services.session_orchestrator import SessionOrchestrator
             from core.simulated_account_manager import account_manager
             
             logger.info("Starting Paper Trading Bot...")
@@ -306,10 +300,8 @@ def run_paper_trading():
             
             # Get services from system initializer (all singletons)
             market_data_service = system_initializer.singleton_systems.get("market_data_service")
-            trading_engine = system_initializer.singleton_systems.get("trading_engine")
             dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
             session_orchestrator = system_initializer.singleton_systems.get("session_orchestrator")
-            strategy_manager = system_initializer.singleton_systems.get("strategy_manager")
             
             if not all([market_data_service, dashboard_service, session_orchestrator]):
                 logger.error("Failed to get required services")

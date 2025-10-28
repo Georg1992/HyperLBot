@@ -8,7 +8,7 @@ and provide single source of truth for all cached data.
 
 import time
 import threading
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from loguru import logger
 
 # Singleton pattern implementation

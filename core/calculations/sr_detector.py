@@ -6,9 +6,8 @@ CHANGELOG: Added Level dataclass support, TF-specific sensitivity, ATR-normalize
 """
 
 import time
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any
 from loguru import logger
-from dataclasses import dataclass
 
 from .level import Level
 
