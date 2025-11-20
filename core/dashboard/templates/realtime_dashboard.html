@@ -3409,7 +3409,41 @@
                 const timeDisplay = timestamp ? new Date(timestamp).toLocaleTimeString() : 'N/A';
                 
                 // Format entry price with fallback
-                const entryPrice = trade.entry_price || trade.price;
+                const entryPrice = trade.entry_price || trade.price || trade.limit_price;
+                const limitPrice = trade.limit_price;
+                const currentPrice = trade.current_price;
+                
+                // For pending orders, show limit price and distance from current price
+                let priceDisplay = '';
+                if (trade.status === 'PENDING' && limitPrice) {
+                    const distance = currentPrice ? ((currentPrice - limitPrice) / currentPrice * 100) : 0;
+                    const distanceAbs = Math.abs(distance);
+                    const distanceColor = trade.side === 'BUY' 
+                        ? (distance <= 0 ? '#28a745' : '#dc3545')  // BUY: negative distance is good
+                        : (distance >= 0 ? '#28a745' : '#dc3545');  // SELL: positive distance is good
+                    priceDisplay = `
+                        <div class="trade-detail">
+                            <span>Limit Price:</span>
+                            <span style="font-weight: bold; color: #FFD700;">$${parseFloat(limitPrice).toLocaleString()}</span>
+                        </div>
+                        ${currentPrice ? `<div class="trade-detail">
+                            <span>Current:</span>
+                            <span>$${parseFloat(currentPrice).toLocaleString()}</span>
+                        </div>
+                        <div class="trade-detail">
+                            <span>Distance:</span>
+                            <span style="color: ${distanceColor};">${distance >= 0 ? '+' : ''}${distance.toFixed(2)}%</span>
+                        </div>` : ''}
+                    `;
+                } else {
+                    // For filled/closed orders, show entry price
+                    priceDisplay = `
+                        <div class="trade-detail">
+                            <span>Entry:</span>
+                            <span>$${entryPrice ? parseFloat(entryPrice).toLocaleString() : 'N/A'}</span>
+                        </div>
+                    `;
+                }
                 
                 tradeDiv.innerHTML = `
                     <div class="trade-header">
@@ -3417,10 +3451,7 @@
                         <span class="${statusClass}">${trade.type || 'MARKET'} - ${trade.status || 'N/A'}</span>
                     </div>
                     <div class="trade-details">
-                        <div class="trade-detail">
-                            <span>Entry:</span>
-                            <span>$${entryPrice ? parseFloat(entryPrice).toLocaleString() : 'N/A'}</span>
-                        </div>
+                        ${priceDisplay}
                         ${trade.exit_price ? `<div class="trade-detail">
                             <span>Exit:</span>
                             <span>$${parseFloat(trade.exit_price).toLocaleString()}</span>

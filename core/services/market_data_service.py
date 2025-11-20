@@ -6,7 +6,7 @@ New Flow: Raw Data → Analysis Modules → MarketDataService → SessionOrchest
 """
 
 import time
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from loguru import logger
 
 class MarketDataService:
@@ -330,19 +330,29 @@ class MarketDataService:
                     rsi_calculator.update_realtime_rsi(current_price)
             
             # Get all processed analysis data
+            rsi_data = self.get_rsi_analysis()
+            trend_data = self.get_trend_analysis(strategy)
+            volatility_data = self.get_volatility_analysis(strategy)
+            volume_data = self.get_volume_analysis()
+            
             unified_data = {
                 # Core market data
                 "current_price": current_price,
                 "timestamp": time.time(),
                 "strategy": strategy,
                 
-                # Technical Analysis Components
-                "rsi": self.get_rsi_analysis(),
-                "trend": self.get_trend_analysis(strategy),
-                "volatility": self.get_volatility_analysis(strategy),
-                "volatility_5m": self.get_volatility_analysis(strategy).get("volatility_percentage", 0) / 100.0,
-                "volatility_category": self.get_volatility_analysis(strategy).get("level", "MODERATE"),
-                "volume": self.get_volume_analysis(),
+                # Flattened data for strategy selection (single source of truth)
+                "trend_direction": trend_data.get("direction", "SIDEWAYS") if isinstance(trend_data, dict) else str(trend_data),
+                "volatility_5m": volatility_data.get("volatility_percentage", 0) / 100.0,
+                "volatility_category": volatility_data.get("level", "MODERATE"),
+                "volume_category": volume_data.get("hyperliquid_5m", {}).get("volume_category", "MODERATE"),
+                "rsi_value": rsi_data.get("rsi", 50.0),
+                
+                # Technical Analysis Components (keep original nested structure for other uses)
+                "rsi": rsi_data,
+                "trend": trend_data,
+                "volatility": volatility_data,
+                "volume": volume_data,
                 "support_resistance": self.get_support_resistance_analysis(),
                 "pressure": self.get_pressure_analysis(),
                 "patterns": self.get_pattern_analysis(),

@@ -10,6 +10,7 @@ from typing import Dict, List, Any, Tuple
 from loguru import logger
 
 from .level import Level
+from config.config import TradingConfig
 
 
 class SRScorer:
@@ -33,12 +34,16 @@ class SRScorer:
             'recency': 0.05     # Time-based decay
         }
         
+        # Configurable decay factor for proximity
+        self.proximity_decay_k = TradingConfig.SR_PROXIMITY_DECAY_K
+        
         # Validate weights sum to 1.0
         weight_sum = sum(self._scoring_weights.values())
         if abs(weight_sum - 1.0) > 0.001:
             raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum}")
         
         logger.debug(f"📊 SRScorer initialized with weights: {self._scoring_weights}")
+        logger.debug(f"🔧 SR proximity decay k = {self.proximity_decay_k}")
         
     def score_levels_enhanced(self, levels: List[Level], current_price: float, 
                              atr_5m: float, atr_per_tf: Dict[str, float]) -> List[Level]:
@@ -147,7 +152,7 @@ class SRScorer:
             return 0.0
     
     def _calculate_proximity_score_enhanced(self, level_price: float, 
-                                          current_price: float, atr_5m: float, k: float = 5.0) -> float:
+                                          current_price: float, atr_5m: float, k: float = None) -> float:
         """
         Calculate proximity score using volatility-aware exponential decay
         
@@ -160,14 +165,14 @@ class SRScorer:
         Formula: proximity_score = 100 * exp(-distance / (k * atr_5m))
         Where:
         - distance = abs(level_price - current_price)
-        - k = decay factor (default 5.0 for moderate distance penalty)
+        - k = decay factor (default 2.0 from config, moderate distance penalty)
         - atr_5m = 5-minute ATR for volatility scaling
         
         Args:
             level_price: Level price
             current_price: Current price
             atr_5m: 5m ATR for volatility scaling
-            k: Decay factor (default 5.0) - higher values = less penalty for distance
+            k: Decay factor (default from config, typically 2.0) - higher values = less penalty for distance
             
         Returns:
             Proximity score (0-100) where 100 = level at current price, 0 = very far away
@@ -179,9 +184,10 @@ class SRScorer:
             distance = abs(level_price - current_price)
             
             # Volatility-aware exponential decay: proximity_score = 100 * exp(-distance / (k * atr_5m))
-            # k=5.0 means levels within 5*ATR get significant scores, providing moderate distance penalty
+            # k=2.0 means levels within ~2*ATR get significant scores (moderate distance penalty)
+            k_value = k if (k is not None and k > 0) else self.proximity_decay_k
             if atr_5m > 0:
-                proximity_score = 100.0 * math.exp(-(distance / (k * atr_5m)))
+                proximity_score = 100.0 * math.exp(-(distance / (k_value * atr_5m)))
             else:
                 # Fallback for zero ATR - use fixed distance penalty
                 proximity_score = max(0.0, 100.0 - distance / 50.0)

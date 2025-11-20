@@ -107,12 +107,18 @@ class BayesianFusion:
         # Convert back to probability
         posterior = self._log_odds_to_probability(log_odds_current)
         
-        # Overall confidence is average of signal confidences
-        overall_confidence = sum(s.confidence for s in signals) / len(signals) if signals else 0.0
+        # IMPROVED: Calculate confidence based on multiple factors, not just average
+        overall_confidence = self._calculate_confidence(
+            posterior=posterior,
+            signals=signals,
+            signal_contributions=signal_contributions,
+            prior=prior,
+            direction=direction
+        )
         
         reasoning = f"Prior: {prior:.1%} → Posterior: {posterior:.1%} | " + " | ".join(reasoning_parts)
         
-        logger.info(f"🧮 Bayesian Fusion: {prior:.1%} → {posterior:.1%} using {len(signals)} signals")
+        logger.info(f"🧮 Bayesian Fusion: {prior:.1%} → {posterior:.1%} using {len(signals)} signals (confidence: {overall_confidence:.1%})")
         
         return FusedProbability(
             prior_probability=prior,
@@ -122,6 +128,99 @@ class BayesianFusion:
             reasoning=reasoning,
             confidence=overall_confidence
         )
+    
+    def _calculate_confidence(
+        self, 
+        posterior: float, 
+        signals: List[Signal], 
+        signal_contributions: List[Tuple[str, float]],
+        prior: float,
+        direction: str = "LONG"
+    ) -> float:
+        """
+        Calculate realistic confidence based on multiple factors
+        
+        Factors considered:
+        1. Signal agreement (consensus strength)
+        2. Signal quality weights (important signals weighted more)
+        3. Prediction strength (how far from neutral)
+        4. Number of confirming signals
+        
+        Args:
+            posterior: Final posterior probability (0-1)
+            signals: List of signals used
+            signal_contributions: List of (signal_name, contribution) tuples
+            prior: Prior probability
+            
+        Returns:
+            Confidence value (0-1) that reflects prediction certainty
+        """
+        if not signals:
+            return 0.0
+        
+        # Factor 1: Signal Quality Weights (based on general market knowledge)
+        # These represent the typical reliability of each signal type
+        signal_quality_weights = {
+            "RSI": 0.25,              # Highly reliable for mean reversion
+            "Support_Resistance": 0.20,  # Very reliable for price action
+            "Trend_1h": 0.15,         # Medium-term trends are reliable
+            "Trend_4h": 0.12,         # Longer trends more reliable
+            "Trend_24h": 0.10,        # Long-term trends
+            "Trend_15m": 0.08,        # Short-term trends less reliable
+            "Pressure": 0.10,         # Orderbook pressure
+            "Volume": 0.08,           # Volume confirmation
+            "Pattern": 0.07,          # Pattern recognition
+            "Volatility": 0.05,       # Market condition context
+            "Volume_Profile": 0.05,   # Volume profile
+            "Funding_Rate": 0.03,    # Funding rate
+            "Cross_Asset": 0.02,      # Cross-asset correlation
+            "Market_Conditions": 0.02, # Market quality
+        }
+        
+        # Factor 2: Weighted Average of Signal Confidences
+        # Important signals (higher quality weight) contribute more
+        weighted_confidence_sum = 0.0
+        total_weight = 0.0
+        for signal in signals:
+            # Get quality weight for this signal type
+            quality_weight = signal_quality_weights.get(signal.name, 0.05)
+            weighted_confidence_sum += signal.confidence * quality_weight
+            total_weight += quality_weight
+        
+        base_confidence = weighted_confidence_sum / total_weight if total_weight > 0 else 0.5
+        
+        # Factor 3: Signal Agreement (Consensus Strength)
+        # High agreement = multiple signals pointing same direction = higher confidence
+        # Calculate how much all signals agree on the direction
+        total_contribution_magnitude = sum(abs(contrib) for _, contrib in signal_contributions)
+        # Strong agreement = high total magnitude, weak = low magnitude
+        agreement_strength = total_contribution_magnitude / len(signals) if signals else 0.0
+        # Normalize agreement to 0-1 (strong agreement = 0.8+, weak = 0.3-)
+        agreement_factor = min(1.0, agreement_strength * 2.0)
+        
+        # Factor 4: Prediction Strength (How far from neutral)
+        # Strong predictions (0.3 or 0.7) are more confident than weak ones (0.45 or 0.55)
+        prediction_strength = abs(posterior - 0.5) * 2.0  # 0.0 (neutral) to 1.0 (extreme)
+        
+        # Factor 5: Number of Confirming Signals
+        # More signals = higher confidence (but with diminishing returns)
+        num_signals = len(signals)
+        signal_count_factor = min(1.0, 0.5 + (num_signals / 10.0))  # 1 signal = 0.6, 5 signals = 1.0, 10+ = 1.0
+        
+        # Combine factors with weights
+        # Base confidence gets 40%, agreement 25%, strength 20%, count 15%
+        final_confidence = (
+            base_confidence * 0.40 +
+            agreement_factor * 0.25 +
+            prediction_strength * 0.20 +
+            signal_count_factor * 0.15
+        )
+        
+        # Clamp to realistic range (30% to 90% confidence)
+        # Very high confidence is rarely realistic in markets
+        final_confidence = max(0.30, min(0.90, final_confidence))
+        
+        return final_confidence
     
     def _apply_confidence_weighting(self, probability: float, confidence: float) -> float:
         """

@@ -383,30 +383,18 @@ class PredictionExecutor:
             logger.info(f"   Strategy: {strategy}")
             logger.info(f"   Confidence: {prediction.get('confidence', 0):.1%}")
             
-            # Add to dashboard (PENDING status)
+            # Enter TRACKING phase - prevent further entry_price recalculation
             try:
-                from core.services.dashboard_service import DashboardService
-                dashboard = DashboardService.get_global_instance()
-                if dashboard:
-                    trade_display = {
-                        "type": "LIMIT",
-                        "side": side,
-                        "status": "PENDING",
-                        "entry_price": entry_price,
-                        "size": position_size,
-                        "stop_loss": prediction.get("stop_loss"),
-                        "take_profit": prediction.get("take_profit"),
-                        "confidence": prediction.get("confidence", 0),
-                        "expected_value": prediction.get("expected_value", 0),
-                        "strategy": strategy,
-                        "bayesian_confidence": prediction.get("bayesian_confidence"),
-                        "prediction_id": prediction_id,
-                        "order_id": order_id,
-                        "timestamp": time.time()
-                    }
-                    logger.info(f"📊 Pending order: {trade_display['side']} {trade_display['size']} BTC @ ${trade_display['price']:.2f}")
+                from core.ml.realtime_prediction_engine import get_global_realtime_prediction_engine
+                prediction_engine = get_global_realtime_prediction_engine()
+                prediction_engine.enter_tracking_phase(order_id)
+                logger.info(f"📊 Prediction entered TRACKING phase for order {order_id}")
             except Exception as e:
-                logger.warning(f"⚠️ Could not add pending order to dashboard: {e}")
+                logger.warning(f"⚠️ Could not enter TRACKING phase: {e}")
+            
+            # Pending order will be synced to dashboard via OrderLifecycleManager in SessionOrchestrator
+            # No need to add directly here - OrderLifecycleManager.get_dashboard_data() provides it
+            logger.info(f"📊 Limit order placed: {side} {position_size} BTC @ ${entry_price:,.2f} (order_id: {order_id})")
             
             return {
                 "success": True,

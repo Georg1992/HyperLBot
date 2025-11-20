@@ -35,6 +35,8 @@ class DashboardService:
             "session": {},
             "market": {},
             "chart": {},
+            "trades": [],  # Initialize trades list for pending orders and executed trades
+            "logs": [],    # Initialize logs list
             "last_update": datetime.now().isoformat()
         }
         
@@ -104,7 +106,22 @@ class DashboardService:
                 if candle_data:
                     market_data["candleData"] = candle_data
                 
+                # Update nested market section
                 self._data["market"].update(market_data)
+                
+                # Surface prediction to top-level for UI consumption (always set, even None)
+                pred_obj = market_data.get("prediction") if isinstance(market_data, dict) else None
+                self._data["prediction"] = pred_obj
+                
+                # Enhanced logging for prediction tracking
+                if pred_obj:
+                    pred_keys = list(pred_obj.keys()) if isinstance(pred_obj, dict) else "NOT_A_DICT"
+                    pred_dir = pred_obj.get("direction", "N/A") if isinstance(pred_obj, dict) else "N/A"
+                    pred_conf = pred_obj.get("confidence", "N/A") if isinstance(pred_obj, dict) else "N/A"
+                    logger.info(f"🤖 ✅ SURFACED PREDICTION: dir={pred_dir} conf={pred_conf} keys={pred_keys}")
+                else:
+                    logger.warning(f"🤖 ❌ NO PREDICTION IN MARKET_DATA: keys={list(market_data.keys()) if isinstance(market_data, dict) else 'NOT_A_DICT'}")
+                
                 self._save_data()
                 # Trigger WebSocket emission
                 self._trigger_websocket_emission()
@@ -205,6 +222,8 @@ class DashboardService:
                     "session": {},
                     "market": {},
                     "chart": {},
+                    "trades": [],  # Initialize trades list
+                    "logs": [],    # Initialize logs list
                     "last_update": datetime.now().isoformat()
                 }
                 self._save_data()

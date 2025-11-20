@@ -195,17 +195,13 @@ class SessionOrchestrator:
                         time.sleep(check_interval)
                         continue
 
-                    # Prepare unified market data
+                    # Prepare unified market data (triggers all analysis modules)
                     unified_data = self._prepare_unified_market_data(
                         orderbook_data, current_price, market_data_service, strategy
                     )
 
-                    # Update dashboard
-                    self._update_dashboard_with_unified_data(
-                        unified_data, dashboard_service
-                    )
-
-                    # Detect and update strategy FIRST (before prediction generation)
+                    # Detect and update strategy AFTER all analysis modules are complete
+                    # This ensures we have the most up-to-date market data for strategy selection
                     current_strategy = self._detect_and_update_strategy(
                         unified_data, dashboard_service
                     )
@@ -217,6 +213,29 @@ class SessionOrchestrator:
 
                     # Generate ML prediction with CORRECT strategy
                     self._generate_price_prediction(unified_data, current_strategy)
+
+                    # Fetch active prediction and attach to unified data for dashboard
+                    try:
+                        from core.ml.realtime_prediction_engine import get_global_realtime_prediction_engine
+                        _pe = get_global_realtime_prediction_engine()
+                        _ap = _pe.get_active_prediction()
+                        if _ap:
+                            pred_dict = _ap.to_dict()
+                            # Ensure strategy is included in prediction dict
+                            pred_dict["strategy"] = current_strategy
+                            unified_data["prediction"] = pred_dict
+                            logger.info(f"📡 ✅ ATTACHED PREDICTION: dir={_ap.direction} conf={_ap.confidence:.1%} entry=${_ap.entry_price:,.2f} strategy={current_strategy}")
+                        else:
+                            unified_data["prediction"] = None
+                            logger.warning("📡 ⚠️ No active prediction available to attach (None)")
+                    except Exception as _e:
+                        logger.error(f"❌ Could not attach active prediction to dashboard data: {_e}", exc_info=True)
+                        unified_data["prediction"] = None
+
+                    # Update dashboard (after prediction so UI receives it in this cycle)
+                    self._update_dashboard_with_unified_data(
+                        unified_data, dashboard_service
+                    )
 
                     # Update order lifecycle
                     self._update_order_lifecycle(current_price)
@@ -327,6 +346,10 @@ class SessionOrchestrator:
                 market_data_service, current_price, orderbook_data
             )
 
+            # Small delay to ensure all analysis modules complete their calculations
+            # This prevents strategy selection from using stale data
+            time.sleep(0.1)  # 100ms delay for analysis completion
+
             # Get comprehensive analysis data from MarketDataService (includes prediction data)
             analysis_data = market_data_service.get_dashboard_data(strategy)
 
@@ -362,7 +385,7 @@ class SessionOrchestrator:
     def _trigger_analysis_modules(
         self, market_data_service, current_price: float, orderbook_data: Dict[str, Any]
     ) -> None:
-        """Trigger analysis modules only when data changes - Event-driven architecture"""
+        """Trigger analysis modules only when data changes - Event-driven architecture with completion tracking"""
         try:
             # Get analysis modules from MarketDataService
             analysis_modules = getattr(market_data_service, "_analysis_modules", {})
@@ -548,7 +571,7 @@ class SessionOrchestrator:
             return unified_data.get("strategy", "standard")
 
     def _update_order_lifecycle(self, current_price: float):
-        """Update order lifecycle management"""
+        """Update order lifecycle management and sync orders to dashboard"""
         try:
             from core.execution.order_lifecycle_manager import (
                 get_global_order_lifecycle_manager,
@@ -560,8 +583,148 @@ class SessionOrchestrator:
                 # Check for order fills and update position prices
                 order_lifecycle_manager.check_order_fills(current_price)
                 order_lifecycle_manager.update_position_prices(current_price)
+                
+                # Sync order data to dashboard
+                self._sync_order_data_to_dashboard(order_lifecycle_manager)
         except Exception as e:
             logger.error(f"❌ Order lifecycle update failed: {e}")
+    
+    def _sync_order_data_to_dashboard(self, order_lifecycle_manager):
+        """Sync pending orders, filled orders, and positions to dashboard"""
+        try:
+            from core.services.dashboard_service import create_dashboard_service
+            dashboard_service = create_dashboard_service()
+            
+            # Get order lifecycle data
+            lifecycle_data = order_lifecycle_manager.get_dashboard_data()
+            if not lifecycle_data:
+                return
+            
+            pending_orders = lifecycle_data.get("pending_orders", [])
+            active_positions = lifecycle_data.get("active_positions", [])
+            closed_positions = lifecycle_data.get("closed_positions", [])
+            
+            # Get current price for updating pending orders
+            from core.services.market_data_service import MarketDataService
+            market_data_service = self.market_data_service if hasattr(self, 'market_data_service') else None
+            current_price = 0
+            if market_data_service:
+                current_price = market_data_service.get_current_price() or 0
+            
+            # Format pending orders for dashboard
+            formatted_pending = []
+            for order in pending_orders:
+                # Use current price from market data service if order's current_price is stale
+                order_current_price = current_price if current_price > 0 else order.get("current_price", 0)
+                
+                formatted_order = {
+                    "id": order.get("order_id", "unknown"),
+                    "order_id": order.get("order_id", "unknown"),
+                    "side": order.get("side", "UNKNOWN"),
+                    "symbol": "BTC",
+                    "status": "PENDING",
+                    "type": "LIMIT",
+                    "entry_price": order.get("limit_price", 0),  # Limit price where order will execute
+                    "size": order.get("size", 0),
+                    "limit_price": order.get("limit_price", 0),  # Explicit limit price field
+                    "current_price": order_current_price,  # Current market price (updated)
+                    "stop_loss": order.get("stop_loss"),
+                    "take_profit": order.get("take_profit"),
+                    "confidence": order.get("confidence", 0),
+                    "expected_value": order.get("expected_value", 0),
+                    "strategy": order.get("strategy", "standard"),
+                    "timestamp": order.get("created_at", time.time()),
+                    "created_at": order.get("created_at", time.time()),
+                }
+                formatted_pending.append(formatted_order)
+            
+            # Format active positions for dashboard
+            formatted_positions = []
+            for pos in active_positions:
+                formatted_pos = {
+                    "id": pos.get("position_id", "unknown"),
+                    "order_id": pos.get("order_id", "unknown"),
+                    "position_id": pos.get("position_id", "unknown"),
+                    "side": pos.get("side", "UNKNOWN"),
+                    "symbol": "BTC",
+                    "status": "OPEN",
+                    "type": "LIMIT",
+                    "entry_price": pos.get("entry_price", 0),
+                    "exit_price": 0,
+                    "size": pos.get("size", 0),
+                    "current_price": pos.get("current_price", 0),
+                    "stop_loss": pos.get("stop_loss"),
+                    "take_profit": pos.get("take_profit"),
+                    "pnl": pos.get("unrealized_pnl", 0),
+                    "pnl_pct": pos.get("pnl_pct", 0),
+                    "confidence": pos.get("confidence", 0),
+                    "strategy": pos.get("strategy", "standard"),
+                    "timestamp": pos.get("entry_time", time.time()),
+                    "created_at": pos.get("entry_time", time.time()),
+                    "entry_time": pos.get("entry_time", time.time()),
+                }
+                formatted_positions.append(formatted_pos)
+            
+            # Format closed positions for dashboard
+            formatted_closed = []
+            for pos in closed_positions:
+                formatted_closed_pos = {
+                    "id": pos.get("position_id", "unknown"),
+                    "order_id": pos.get("order_id", "unknown"),
+                    "position_id": pos.get("position_id", "unknown"),
+                    "side": pos.get("side", "UNKNOWN"),
+                    "symbol": "BTC",
+                    "status": "CLOSED",
+                    "type": "LIMIT",
+                    "entry_price": pos.get("entry_price", 0),
+                    "exit_price": pos.get("exit_price", 0),
+                    "size": pos.get("size", 0),
+                    "stop_loss": pos.get("stop_loss"),
+                    "take_profit": pos.get("take_profit"),
+                    "pnl": pos.get("realized_pnl", 0),
+                    "pnl_pct": pos.get("pnl_pct", 0),
+                    "confidence": pos.get("confidence", 0),
+                    "strategy": pos.get("strategy", "standard"),
+                    "exit_reason": pos.get("exit_reason", "UNKNOWN"),
+                    "timestamp": pos.get("entry_time", time.time()),
+                    "created_at": pos.get("entry_time", time.time()),
+                    "entry_time": pos.get("entry_time", time.time()),
+                    "exit_time": pos.get("exit_time", time.time()) if pos.get("exit_time") else None,
+                }
+                formatted_closed.append(formatted_closed_pos)
+            
+            # Update dashboard with all order/trade data
+            all_trades = formatted_pending + formatted_positions + formatted_closed
+            
+            # Sort by timestamp (newest first)
+            all_trades.sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+            
+            with dashboard_service._lock:
+                # Keep existing trades that aren't from order lifecycle (from simulator)
+                existing_trades = dashboard_service._data.get("trades", [])
+                # Filter out old pending orders that might have been filled
+                existing_trades_filtered = [
+                    t for t in existing_trades 
+                    if t.get("status") not in ["PENDING", "OPEN"]  # Keep only CLOSED from other sources
+                    or (t.get("status") == "PENDING" and t.get("order_id") not in [o.get("order_id") for o in formatted_pending])
+                ]
+                
+                # Combine: new order lifecycle data + filtered existing
+                dashboard_service._data["trades"] = all_trades + existing_trades_filtered
+                
+                # Sort all trades by timestamp
+                dashboard_service._data["trades"].sort(key=lambda x: x.get("timestamp", 0), reverse=True)
+                
+                # Keep only last 100 trades for performance
+                dashboard_service._data["trades"] = dashboard_service._data["trades"][:100]
+                
+                dashboard_service._save_data()
+            
+            if len(formatted_pending) > 0 or len(formatted_positions) > 0 or len(formatted_closed) > 0:
+                logger.info(f"📊 ✅ Synced orders to dashboard: {len(formatted_pending)} pending, {len(formatted_positions)} open, {len(formatted_closed)} closed")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to sync order data to dashboard: {e}")
 
     def _end_session(self):
         """End trading session"""
@@ -621,7 +784,12 @@ class SessionOrchestrator:
         try:
             from core.execution.prediction_executor import PredictionExecutor
             from core.execution.trading_execution_wrapper import TradingExecutionWrapper
-            from core.simulated_account_manager import SimulatedAccountManager
+            # Use the global simulated account manager to access existing balance/state
+            from core.simulated_account_manager import account_manager
+            
+            # Ensure account is loaded
+            if not getattr(account_manager, 'account_data', None):
+                account_manager.load_account()
             
             # Get required services from system initializer
             from core.services.system_initializer import get_system_initializer
@@ -636,15 +804,9 @@ class SessionOrchestrator:
             # Create trading execution wrapper
             trading_execution = TradingExecutionWrapper(
                 hyperliquid_simulator=hyperliquid_simulator,
-                account_manager=None,  # Will be set below
+                account_manager=account_manager,  # pass the global manager with balance
                 session_manager=self.session_manager
             )
-            
-            # Create account manager
-            account_manager = SimulatedAccountManager()
-            
-            # Set account manager in trading execution wrapper
-            trading_execution.account_manager = account_manager
             
             # Create prediction executor with required services
             executor = PredictionExecutor(
@@ -653,17 +815,8 @@ class SessionOrchestrator:
                 session_manager=self.session_manager
             )
             
-            # Convert prediction to dict format
-            prediction_dict = prediction.to_dict()
-            prediction_dict["strategy"] = strategy
+            # Execute prediction (result is handled internally)
+            executor.execute_prediction(prediction.to_dict() if hasattr(prediction, 'to_dict') else prediction, strategy)
             
-            # Execute the prediction
-            result = executor.execute_prediction(prediction_dict, strategy)
-            
-            if result.get("success"):
-                logger.success(f"✅ Prediction executed: {prediction.direction} @ ${prediction.entry_price:,.2f}")
-            else:
-                logger.warning(f"⚠️ Prediction execution failed: {result.get('reason')}")
-                
         except Exception as e:
             logger.error(f"❌ Prediction execution failed: {e}")

@@ -25,15 +25,14 @@ class DirectionRecognizer:
     
     def recognize_direction(self, market_data: Dict[str, Any], forced_direction: Optional[str] = None) -> Tuple[str, float, List[str]]:
         """
-        Recognize market direction using multiple signals
+        Recognize market direction using multiple signals with proper weighting
         
         Returns:
             (direction, score, reasoning)
             - direction: "LONG" or "SHORT" (never NEUTRAL)
-            - score: -1.0 (strong SHORT) to +1.0 (strong LONG)
+            - score: -1.0 (strong SHORT) to +1.0 (strong LONG) - normalized weighted score
             - reasoning: List of human-readable reasons
         """
-        score = 0.0
         reasoning = []
         
         # Check if we're in a low-volatility range trading scenario
@@ -41,49 +40,91 @@ class DirectionRecognizer:
         volatility_5m = market_data.get("volatility_5m", 0.0)
         is_range_trading = volatility_category in ["LOW", "VERY_LOW"] and volatility_5m < 0.01
         
-        # 1. RSI ANALYSIS (Weight: 35% - PRIMARY for short-term mean reversion)
-        rsi_score, rsi_reasoning = self._analyze_rsi(market_data, is_range_trading)
-        score += rsi_score
-        reasoning.extend(rsi_reasoning)
+        # Define weights based on market regime
+        if is_range_trading:
+            # Range trading: RSI and S/R are most important (mean reversion)
+            weights = {
+                "rsi": 0.30,
+                "sr": 0.30,
+                "pattern": 0.18,
+                "psychological": 0.12,  # Psychological levels important in ranging markets
+                "trend": 0.05,  # Less important in ranging markets
+                "pressure": 0.05
+            }
+        else:
+            # Trending: Trends and S/R matter more (momentum)
+            weights = {
+                "rsi": 0.25,
+                "sr": 0.25,
+                "pattern": 0.15,
+                "psychological": 0.10,  # Psychological levels also matter in trends
+                "trend": 0.15,  # More important in trending markets
+                "pressure": 0.10
+            }
         
-        # 2. DUAL-TIMEFRAME TREND ANALYSIS (Weight: 10%)
-        trend_score, trend_reasoning = self._analyze_trends(market_data)
-        score += trend_score
-        reasoning.extend(trend_reasoning)
+        # Collect raw scores from each analysis (normalized to -1.0 to +1.0)
+        rsi_score_raw, rsi_reasoning = self._analyze_rsi(market_data, is_range_trading)
+        trend_score_raw, trend_reasoning = self._analyze_trends(market_data)
+        sr_score_raw, sr_reasoning = self._analyze_support_resistance(market_data, is_range_trading)
+        pattern_score_raw, pattern_reasoning = self._analyze_patterns(market_data, is_range_trading)
+        psychological_score_raw, psychological_reasoning = self._analyze_psychological_levels(market_data, is_range_trading)
         
-        # 3. SUPPORT/RESISTANCE (Weight: 35% for range trading, 30% for momentum)
-        sr_score, sr_reasoning = self._analyze_support_resistance(market_data, is_range_trading)
-        score += sr_score
-        reasoning.extend(sr_reasoning)
+        # Normalize raw scores to [-1.0, +1.0] range
+        # RSI typically gives ±0.35, normalize to ±1.0
+        rsi_score = max(-1.0, min(1.0, rsi_score_raw / 0.35 if abs(rsi_score_raw) > 0 else 0.0))
+        # Trend typically gives ±0.10, normalize to ±1.0
+        trend_score = max(-1.0, min(1.0, trend_score_raw / 0.10 if abs(trend_score_raw) > 0 else 0.0))
+        # S/R typically gives ±0.35, normalize to ±1.0
+        sr_score = max(-1.0, min(1.0, sr_score_raw / 0.35 if abs(sr_score_raw) > 0 else 0.0))
+        # Pattern already capped at ±0.20, normalize to ±1.0
+        pattern_score = max(-1.0, min(1.0, pattern_score_raw / 0.20 if abs(pattern_score_raw) > 0 else 0.0))
+        # Psychological typically gives ±0.20, normalize to ±1.0
+        psychological_score = max(-1.0, min(1.0, psychological_score_raw / 0.20 if abs(psychological_score_raw) > 0 else 0.0))
         
-        # 4. PATTERN ANALYSIS (Weight: up to 20% - pattern-specific)
-        pattern_score, pattern_reasoning = self._analyze_patterns(market_data, is_range_trading)
-        score += pattern_score
-        reasoning.extend(pattern_reasoning)
+        # Calculate weighted score
+        weighted_score = (
+            rsi_score * weights["rsi"] +
+            sr_score * weights["sr"] +
+            pattern_score * weights["pattern"] +
+            psychological_score * weights["psychological"] +
+            trend_score * weights["trend"]
+        )
         
-        # Normalize score to -1.0 to 1.0 (before pressure confirmation)
-        score = max(-1.0, min(1.0, score))
-        
-        # Determine initial direction (without pressure)
+        # Determine initial direction (before pressure confirmation)
         if forced_direction:
             direction = forced_direction
             reasoning.append(f"🎯 Forced direction: {forced_direction}")
-        elif score >= 0:
+        elif weighted_score >= 0:
             direction = "LONG"
         else:
             direction = "SHORT"
         
-        # 5. ORDERBOOK PRESSURE - MOMENTUM CONFIRMATION ONLY
-        pressure_score, pressure_reasoning = self._analyze_pressure(market_data, direction)
-        score += pressure_score
+        # Add pressure confirmation (affects confidence, not base direction much)
+        pressure_score_raw, pressure_reasoning = self._analyze_pressure(market_data, direction)
+        # Pressure is small, normalize and apply with small weight
+        pressure_score = max(-1.0, min(1.0, pressure_score_raw / 0.05 if abs(pressure_score_raw) > 0 else 0.0))
+        
+        # Final weighted score with pressure
+        final_score = weighted_score + (pressure_score * weights["pressure"])
+        
+        # Clamp final score
+        final_score = max(-1.0, min(1.0, final_score))
+        
+        # Add all reasoning
+        reasoning.extend(rsi_reasoning)
+        reasoning.extend(sr_reasoning)
+        reasoning.extend(pattern_reasoning)
+        reasoning.extend(psychological_reasoning)
+        reasoning.extend(trend_reasoning)
         reasoning.extend(pressure_reasoning)
         
-        # Final normalization after pressure confirmation
-        score = max(-1.0, min(1.0, score))
+        # Add summary
+        score_str = f"{final_score:+.3f}"
+        reasoning.append(f"📊 Final weighted score: {score_str} | RSI:{weights['rsi']:.0%} S/R:{weights['sr']:.0%} Pattern:{weights['pattern']:.0%} Psychological:{weights['psychological']:.0%} Trend:{weights['trend']:.0%} Pressure:{weights['pressure']:.0%}")
         
-        logger.info(f"🎯 Direction: {direction} (score: {score:+.3f})")
+        logger.info(f"🎯 Direction: {direction} (weighted score: {final_score:+.3f}, regime: {'RANGE' if is_range_trading else 'TREND'})")
         
-        return direction, score, reasoning
+        return direction, final_score, reasoning
     
     def _analyze_rsi(self, market_data: Dict[str, Any], is_range_trading: bool) -> Tuple[float, List[str]]:
         """Analyze RSI signals"""
@@ -297,6 +338,131 @@ class DirectionRecognizer:
         # Apply pattern score (capped at ±0.20 to prevent over-weighting)
         pattern_score = max(-0.20, min(0.20, pattern_score))
         score += pattern_score
+        
+        return score, reasoning
+    
+    def _analyze_psychological_levels(self, market_data: Dict[str, Any], is_range_trading: bool) -> Tuple[float, List[str]]:
+        """
+        Analyze psychological price levels (round numbers, significant thresholds)
+        
+        Psychological levels are important because:
+        - Traders place orders at round numbers ($100k, $105k, etc.)
+        - These levels often act as support/resistance
+        - Price can bounce or get stuck near these levels
+        """
+        score = 0.0
+        reasoning = []
+        
+        current_price = market_data.get("current_price", 0)
+        if not current_price or current_price <= 0:
+            return score, reasoning
+        
+        # Detect psychological levels based on current price range
+        # For BTC, psychological levels are typically:
+        # - Major round numbers: 100k, 110k, 120k, etc.
+        # - Half-way points: 105k, 115k, 125k, etc.
+        # - Smaller round numbers when price is high: 102k, 103k, 107k, etc.
+        
+        # Determine the magnitude for round numbers based on price
+        if current_price >= 100000:
+            # For prices >= 100k, round to nearest 1k, 2.5k, 5k, 10k
+            round_levels = [
+                1000,    # Every 1k: 100k, 101k, 102k...
+                2500,    # Every 2.5k: 100k, 102.5k, 105k...
+                5000,    # Every 5k: 100k, 105k, 110k...
+                10000,   # Every 10k: 100k, 110k, 120k...
+            ]
+        elif current_price >= 10000:
+            # For prices 10k-100k, round to nearest 100, 250, 500, 1000
+            round_levels = [
+                100,     # Every 100
+                250,     # Every 250
+                500,     # Every 500
+                1000,    # Every 1k
+            ]
+        else:
+            # For lower prices, round to nearest 10, 25, 50, 100
+            round_levels = [
+                10,
+                25,
+                50,
+                100,
+            ]
+        
+        # Find nearest psychological levels above and below
+        nearest_support_psych = None
+        nearest_resistance_psych = None
+        min_distance_support = float('inf')
+        min_distance_resistance = float('inf')
+        
+        for round_level in round_levels:
+            # Find levels below (support)
+            level_below = (current_price // round_level) * round_level
+            distance_below = current_price - level_below
+            if 0 < distance_below < min_distance_support and level_below > 0:
+                nearest_support_psych = level_below
+                min_distance_support = distance_below
+            
+            # Find levels above (resistance)
+            level_above = ((current_price // round_level) + 1) * round_level
+            distance_above = level_above - current_price
+            if 0 < distance_above < min_distance_resistance:
+                nearest_resistance_psych = level_above
+                min_distance_resistance = distance_above
+        
+        # Calculate proximity as percentage of price
+        if nearest_support_psych:
+            proximity_to_support_pct = (current_price - nearest_support_psych) / current_price
+        else:
+            proximity_to_support_pct = 1.0
+        
+        if nearest_resistance_psych:
+            proximity_to_resistance_pct = (nearest_resistance_psych - current_price) / current_price
+        else:
+            proximity_to_resistance_pct = 1.0
+        
+        # Stronger signal when very close to psychological level
+        # Use ATR or volatility for proximity threshold
+        volatility_5m = market_data.get("volatility_5m", 0.01)
+        atr_threshold = max(0.002, volatility_5m * 0.5)  # Within 50% of ATR
+        
+        if is_range_trading:
+            # In range trading, psychological levels are very important
+            if proximity_to_support_pct <= atr_threshold * 2:  # Within 2x ATR of support
+                strength = 1.0 - (proximity_to_support_pct / (atr_threshold * 2))
+                score += 0.20 * strength
+                reasoning.append(f"🧠 Near psychological SUPPORT ${nearest_support_psych:,.0f} ({proximity_to_support_pct:.2%} away) - strong bounce potential")
+            elif proximity_to_support_pct <= atr_threshold * 4:  # Within 4x ATR
+                score += 0.10
+                reasoning.append(f"🧠 Approaching psychological SUPPORT ${nearest_support_psych:,.0f} ({proximity_to_support_pct:.2%} away)")
+            
+            if proximity_to_resistance_pct <= atr_threshold * 2:  # Within 2x ATR of resistance
+                strength = 1.0 - (proximity_to_resistance_pct / (atr_threshold * 2))
+                score -= 0.20 * strength
+                reasoning.append(f"🧠 Near psychological RESISTANCE ${nearest_resistance_psych:,.0f} ({proximity_to_resistance_pct:.2%} away) - strong rejection risk")
+            elif proximity_to_resistance_pct <= atr_threshold * 4:  # Within 4x ATR
+                score -= 0.10
+                reasoning.append(f"🧠 Approaching psychological RESISTANCE ${nearest_resistance_psych:,.0f} ({proximity_to_resistance_pct:.2%} away)")
+        else:
+            # In trending markets, psychological levels act as magnets
+            if proximity_to_support_pct <= atr_threshold * 3:
+                strength = 1.0 - (proximity_to_support_pct / (atr_threshold * 3))
+                score += 0.15 * strength
+                reasoning.append(f"🧠 Near psychological SUPPORT ${nearest_support_psych:,.0f} ({proximity_to_support_pct:.2%} away) - support magnet")
+            elif proximity_to_support_pct <= atr_threshold * 5:
+                score += 0.08
+                reasoning.append(f"🧠 Approaching psychological SUPPORT ${nearest_support_psych:,.0f}")
+            
+            if proximity_to_resistance_pct <= atr_threshold * 3:
+                strength = 1.0 - (proximity_to_resistance_pct / (atr_threshold * 3))
+                score -= 0.15 * strength
+                reasoning.append(f"🧠 Near psychological RESISTANCE ${nearest_resistance_psych:,.0f} ({proximity_to_resistance_pct:.2%} away) - resistance magnet")
+            elif proximity_to_resistance_pct <= atr_threshold * 5:
+                score -= 0.08
+                reasoning.append(f"🧠 Approaching psychological RESISTANCE ${nearest_resistance_psych:,.0f}")
+        
+        # Cap psychological score to prevent over-weighting
+        score = max(-0.20, min(0.20, score))
         
         return score, reasoning
     

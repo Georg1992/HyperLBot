@@ -42,6 +42,9 @@ class TradingConfig:
     MIN_PROFIT_TARGET = float(os.getenv("MIN_PROFIT_TARGET", "0.002"))  # 0.2% (lower for 40x)
     MAX_STOP_LOSS = float(os.getenv("MAX_STOP_LOSS", "0.008"))  # 0.8% (tighter for 40x)
     
+    # Support/Resistance Scoring
+    SR_PROXIMITY_DECAY_K = float(os.getenv("SR_PROXIMITY_DECAY_K", "2.0"))  # k in exp(-distance/(k*ATR))
+    
     # Strategy Configurations
     STRATEGY_CONFIGS = {
     "standard": {

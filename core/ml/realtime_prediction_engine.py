@@ -8,11 +8,20 @@ import time
 import asyncio
 from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, field
+from enum import Enum
 from loguru import logger
 from core.ml.bayesian_fusion import get_global_bayesian_fusion, Signal
 from core.ml.direction_recognizer import get_global_direction_recognizer
 from core.ml.entry_price_calculator import create_entry_price_calculator
+from core.ml.target_calculator import create_target_calculator
 from core.ml.probability_engine import ExpectedValue, get_global_probability_engine
+
+
+class PredictionPhase(Enum):
+    """Prediction lifecycle phases"""
+    MONITORING = "MONITORING"   # Confidence < threshold, building up
+    BUILDING = "BUILDING"       # Confidence >= threshold, entry price finalized
+    TRACKING = "TRACKING"       # Order placed, tracking execution
 
 
 @dataclass
@@ -67,6 +76,10 @@ class RealtimePrediction:
     ready_to_execute: bool = False
     execution_reason: str = ""
     
+    # LIFECYCLE PHASE
+    phase: str = "MONITORING"  # MONITORING, BUILDING, TRACKING
+    order_id: Optional[str] = None  # Set when order is placed (TRACKING phase)
+    
     @property
     def age_seconds(self) -> float:
         """How old is this prediction"""
@@ -86,6 +99,8 @@ class RealtimePrediction:
             "age_seconds": self.age_seconds,
             "reasoning": self.reasoning,
             "ready_to_execute": self.ready_to_execute,
+            "phase": self.phase,
+            "order_id": self.order_id,
             "confidence_boosts": [{"reason": r, "boost": b} for r, b in self.confidence_boosts],
             # EV data
             "expected_value": self.expected_value,
@@ -147,43 +162,74 @@ class RealtimePredictionEngine:
     
     def _find_optimal_direction(self, market_data: Dict[str, Any]) -> tuple:
         """
-        Try both LONG and SHORT directions and return the one with highest confidence
+        Determine optimal direction by testing both LONG and SHORT to find highest confidence
+        This is THE PRIMARY DIRECTION SELECTION method - chooses direction that maximizes confidence
+        
+        Strategy:
+        1. Get natural direction from DirectionRecognizer (based on technical analysis)
+        2. Calculate Bayesian confidence for BOTH directions (LONG and SHORT)
+        3. Use combined score: DirectionRecognizer score (60%) + Bayesian confidence (40%)
+        4. Pick direction with HIGHEST CONFIDENCE (primary criterion - what determines execution)
+        5. Return the Bayesian result from the winning direction to avoid recalculation
+        
+        NOTE: This is called EVERY prediction update cycle to ensure we always pick the best direction
         
         Returns:
-            tuple: (best_direction, best_score, best_confidence, best_reasoning)
+            tuple: (best_direction, best_score, best_confidence, best_reasoning, bayesian_result)
         """
         try:
             direction_recognizer = get_global_direction_recognizer()
             
-            # Try LONG direction
-            long_direction, long_score, long_reasoning = direction_recognizer.recognize_direction(market_data, forced_direction="LONG")
+            # Step 1: Get natural direction from technical analysis (without forcing)
+            natural_direction, natural_score, natural_reasoning = direction_recognizer.recognize_direction(market_data, forced_direction=None)
+            
+            # Step 2: Calculate Bayesian confidence for both directions
             long_bayesian_result = self._apply_bayesian_fusion("LONG", market_data, 0.5)
             if not long_bayesian_result:
                 raise RuntimeError("Bayesian fusion failed for LONG direction")
             long_confidence = long_bayesian_result['confidence']
             
-            # Try SHORT direction
-            short_direction, short_score, short_reasoning = direction_recognizer.recognize_direction(market_data, forced_direction="SHORT")
             short_bayesian_result = self._apply_bayesian_fusion("SHORT", market_data, 0.5)
             if not short_bayesian_result:
                 raise RuntimeError("Bayesian fusion failed for SHORT direction")
             short_confidence = short_bayesian_result['confidence']
             
-            # Compare confidences and pick the best
-            if long_confidence > short_confidence:
-                best_direction = "LONG"
-                best_score = long_score
-                best_confidence = long_confidence
-                best_reasoning = f"LONG chosen (LONG: {long_confidence:.1%}, SHORT: {short_confidence:.1%}) - {'; '.join(long_reasoning)}"
-                logger.debug(f"🎯 Direction selection: LONG ({long_confidence:.1%}) > SHORT ({short_confidence:.1%})")
-            else:
-                best_direction = "SHORT"
-                best_score = short_score
-                best_confidence = short_confidence
-                best_reasoning = f"SHORT chosen (SHORT: {short_confidence:.1%}, LONG: {long_confidence:.1%}) - {'; '.join(short_reasoning)}"
-                logger.debug(f"🎯 Direction selection: SHORT ({short_confidence:.1%}) > LONG ({long_confidence:.1%})")
+            # Step 3: Calculate combined scores for both directions
+            # DirectionRecognizer score (normalized to 0-1): (score + 1) / 2 gives 0-1 range
+            long_technical_score = (natural_score + 1.0) / 2.0 if natural_direction == "LONG" else (1.0 - natural_score) / 2.0
+            short_technical_score = (1.0 - natural_score) / 2.0 if natural_direction == "LONG" else (natural_score + 1.0) / 2.0
             
-            return best_direction, best_score, best_confidence, best_reasoning
+            # Combined score: 60% technical analysis, 40% Bayesian confidence
+            long_combined = (long_technical_score * 0.60) + (long_confidence * 0.40)
+            short_combined = (short_technical_score * 0.60) + (short_confidence * 0.40)
+            
+            # Step 4: Pick best direction based on HIGHEST CONFIDENCE (primary criterion)
+            # We prioritize confidence because that's what determines execution readiness
+            # Combined score is secondary - used for logging and context
+            if long_confidence > short_confidence:
+                # LONG has higher confidence - choose it
+                best_direction = "LONG"
+                best_score = natural_score if natural_direction == "LONG" else -natural_score
+                best_confidence = long_confidence
+                best_bayesian_result = long_bayesian_result
+                best_reasoning = [
+                    f"🎯 LONG chosen | Conf:{long_confidence:.1%} > SHORT:{short_confidence:.1%} | Combined:{long_combined:.1%} vs {short_combined:.1%}",
+                    f"   Natural direction: {natural_direction} (score: {natural_score:+.3f})"
+                ] + natural_reasoning
+                logger.info(f"🎯 Direction: LONG | Confidence:{long_confidence:.1%} > SHORT:{short_confidence:.1%} | Combined:{long_combined:.1%} vs {short_combined:.1%}")
+            else:
+                # SHORT has higher or equal confidence - choose it
+                best_direction = "SHORT"
+                best_score = -natural_score if natural_direction == "LONG" else natural_score
+                best_confidence = short_confidence
+                best_bayesian_result = short_bayesian_result
+                best_reasoning = [
+                    f"🎯 SHORT chosen | Conf:{short_confidence:.1%} >= LONG:{long_confidence:.1%} | Combined:{short_combined:.1%} vs {long_combined:.1%}",
+                    f"   Natural direction: {natural_direction} (score: {natural_score:+.3f})"
+                ] + natural_reasoning
+                logger.info(f"🎯 Direction: SHORT | Confidence:{short_confidence:.1%} >= LONG:{long_confidence:.1%} | Combined:{short_combined:.1%} vs {long_combined:.1%}")
+            
+            return best_direction, best_score, best_confidence, best_reasoning, best_bayesian_result
             
         except Exception as e:
             logger.error(f"❌ Optimal direction selection failed: {e}")
@@ -206,15 +252,30 @@ class RealtimePredictionEngine:
             if not current_price or current_price <= 0:
                 return "NO_SIGNAL"
             
-            # MODULE 1: OPTIMAL DIRECTION SELECTION (try both directions for best confidence)
-            best_direction, best_score, best_confidence, best_reasoning = self._find_optimal_direction(market_data)
+            # ============================================================
+            # MODULE 1: DIRECTION SELECTION (FIRST - chooses highest confidence)
+            # ============================================================
+            # This MUST be first: choose direction that maximizes confidence
+            # We test both LONG and SHORT to find which gives higher confidence
+            best_direction, best_score, best_confidence, best_reasoning, bayesian_result = self._find_optimal_direction(market_data)
             
             direction = best_direction
             score = best_score
-            direction_reasoning = best_reasoning
-            confidence = best_confidence
+            direction_reasoning_list = best_reasoning  # This is now a List[str]
+            
+            # Use the Bayesian confidence already calculated in _find_optimal_direction
+            # This avoids redundant calculation
+            if not bayesian_result:
+                raise RuntimeError("Bayesian fusion result missing from direction selection")
+            
+            confidence = bayesian_result['confidence']
+            confidence_reasoning_str = bayesian_result['reasoning']  # String from Bayesian
+            final_confidence = confidence
+            
+            logger.info(f"🎯 Direction: {direction} | Confidence: {confidence:.1%} (from optimal direction selection)")
             
             # MODULE 2: ENTRY PRICE CALCULATION
+            # Always recalculate entry_price (including TRACKING phase) to potentially improve confidence
             entry_price_calculator = create_entry_price_calculator()
             entry_price = entry_price_calculator.calculate_entry_price(
                 current_price=current_price,
@@ -222,8 +283,12 @@ class RealtimePredictionEngine:
                 market_data=market_data
             )
             
-            # Calculate targets first (needed for EV calculation)
-            stop_loss, take_profit, risk_reward = self._calculate_targets(
+            # Store old entry_price for comparison (in any phase)
+            old_entry_price = self.active_prediction.entry_price if self.active_prediction else None
+            
+            # MODULE 3: TARGET CALCULATION (stop loss, take profit, risk/reward)
+            target_calculator = create_target_calculator()
+            stop_loss, take_profit, risk_reward = target_calculator.calculate_targets(
                 entry_price=entry_price,
                 direction=direction,
                 score=score,
@@ -240,25 +305,6 @@ class RealtimePredictionEngine:
                 position_size=1000.0  # Default position size for EV calculation
             )
             
-            # Add EV to market data for confidence calculation
-            market_data_with_ev = market_data.copy()
-            market_data_with_ev["expected_value"] = ev_result.ev_percent
-            
-            # MODULE 4: BAYESIAN FUSION (ONLY confidence calculation system)
-            # All other confidence systems have been removed - Bayesian fusion is the single source of truth
-            bayesian_result = self._apply_bayesian_fusion(
-                direction=direction,
-                market_data=market_data,
-                base_confidence=0.5  # Not used, but required for compatibility
-            )
-            
-            if not bayesian_result:
-                raise RuntimeError("Bayesian fusion failed - no result returned")
-            
-            confidence = bayesian_result['confidence']
-            confidence_reasoning = bayesian_result['reasoning']
-            logger.info(f"🧮 Bayesian-only confidence: {confidence:.1%}")
-            
             # DEBUG: Log confidence vs threshold for troubleshooting
             threshold = self.confidence_threshold
             if confidence >= threshold:
@@ -266,13 +312,11 @@ class RealtimePredictionEngine:
             else:
                 logger.warning(f"⚠️ CONFIDENCE INSUFFICIENT: {confidence:.1%} < {threshold:.1%} (NO TRADE)")
             
-            final_confidence = confidence
-            
             # REFACTORED: Use dedicated methods for SRP compliance
             if not self.active_prediction:
                 return self._create_new_prediction(
                     direction, score, confidence, final_confidence, entry_price, stop_loss, take_profit,
-                    risk_reward, 0.5, [], current_price, direction_reasoning, confidence_reasoning,
+                    risk_reward, 0.5, [], current_price, direction_reasoning_list, confidence_reasoning_str,
                     ev_result, bayesian_result, strategy
                 )
             
@@ -282,29 +326,54 @@ class RealtimePredictionEngine:
                 self.direction_changes += 1
                 return self._create_new_prediction(
                     direction, score, confidence, final_confidence, entry_price, stop_loss, take_profit,
-                    risk_reward, 0.5, [], current_price, direction_reasoning, confidence_reasoning,
+                    risk_reward, 0.5, [], current_price, direction_reasoning_list, confidence_reasoning_str,
                     ev_result, bayesian_result, strategy
                 )
             
-            # Update existing prediction
+            # Update existing prediction (all phases: MONITORING, BUILDING, or TRACKING)
+            # Entry price is recalculated in all phases to potentially improve confidence
             return self._update_existing_prediction(
                 confidence, final_confidence, entry_price, stop_loss, take_profit, risk_reward,
-                0.5, [], current_price, score, direction_reasoning, confidence_reasoning,
-                ev_result, bayesian_result, strategy
+                0.5, [], current_price, score, direction_reasoning_list, confidence_reasoning_str,
+                ev_result, bayesian_result, strategy, old_entry_price
             )
             
         except Exception as e:
             logger.error(f"❌ Prediction update failed: {e}")
             raise RuntimeError(f"Prediction update failed: {e}")
     
+    def _build_reasoning_list(self, direction_reasoning_list: List[str], confidence_reasoning_str: str,
+                             ev_result: Any, bayesian_result: Optional[Dict]) -> List[str]:
+        """
+        Build reasoning list with ONLY Bayesian confidence reasoning (as it was working before)
+        
+        Args:
+            direction_reasoning_list: List of direction analysis reasons (not used)
+            confidence_reasoning_str: Bayesian confidence reasoning (string) - THIS IS WHAT WE WANT
+            ev_result: Expected value result object (not used)
+            bayesian_result: Bayesian fusion result dict (not used, already extracted in confidence_reasoning_str)
+            
+        Returns:
+            List with single Bayesian confidence reasoning string for dashboard display
+        """
+        # Only return Bayesian confidence reasoning (what was working before)
+        if confidence_reasoning_str:
+            return [confidence_reasoning_str]
+        
+        # Fallback if no reasoning available
+        return ["📋 Confidence analysis in progress..."]
+    
     def _create_new_prediction(self, direction: str, score: float, confidence: float, final_confidence: float,
                               entry_price: float, stop_loss: float, take_profit: float, risk_reward: float,
                               base_confidence: float, boosts: List[Tuple[str, float]], current_price: float,
-                              direction_reasoning: str, confidence_reasoning: str, ev_result: Any,
+                              direction_reasoning_list: List[str], confidence_reasoning_str: str, ev_result: Any,
                               bayesian_result: Optional[Dict], strategy: str) -> str:
         """Create a new prediction (SRP: single responsibility)"""
         # Use the final calibrated confidence as the single confidence value
         single_confidence = final_confidence
+        
+        # Determine initial phase based on confidence
+        initial_phase = PredictionPhase.BUILDING.value if single_confidence >= self.confidence_threshold else PredictionPhase.MONITORING.value
         
         self.active_prediction = RealtimePrediction(
             direction=direction,
@@ -318,7 +387,9 @@ class RealtimePredictionEngine:
             confidence_history=[single_confidence],
             current_price=current_price,
             score=score,
-            reasoning=direction_reasoning + "; " + confidence_reasoning,
+            reasoning=self._build_reasoning_list(direction_reasoning_list, confidence_reasoning_str, ev_result, bayesian_result),
+            phase=initial_phase,  # Set initial phase
+            order_id=None,  # No order yet
             # EV data
             expected_value=ev_result.ev_percent,
             expected_value_dollars=ev_result.ev_dollars,
@@ -331,14 +402,15 @@ class RealtimePredictionEngine:
         )
         
         bayesian_conf_str = f"{bayesian_result['confidence']:.1%}" if bayesian_result else "N/A"
-        logger.info(f"🎯 NEW prediction: {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
-        return "CREATED"
+        logger.info(f"🎯 NEW prediction ({initial_phase}): {direction} @ ${entry_price:,.2f} ({final_confidence:.1%}) | EV: {ev_result.ev_percent:+.2%} | Bayesian: {bayesian_conf_str}")
+        return "CREATED" if initial_phase == PredictionPhase.MONITORING.value else "EXECUTE"
             
     def _update_existing_prediction(self, confidence: float, final_confidence: float, entry_price: float,
                                    stop_loss: float, take_profit: float, risk_reward: float,
                                    base_confidence: float, boosts: List[Tuple[str, float]], current_price: float,
-                                   score: float, direction_reasoning: str, confidence_reasoning: str,
-                                   ev_result: Any, bayesian_result: Optional[Dict], strategy: str) -> str:
+                                   score: float, direction_reasoning_list: List[str], confidence_reasoning_str: str,
+                                   ev_result: Any, bayesian_result: Optional[Dict], strategy: str,
+                                   old_entry_price: Optional[float] = None) -> str:
         """Update existing prediction (SRP: single responsibility)"""
         old_confidence = self.active_prediction.confidence
             
@@ -347,7 +419,31 @@ class RealtimePredictionEngine:
         
         # Update core fields
         self.active_prediction.confidence = single_confidence  # Single confidence field
-        self.active_prediction.entry_price = entry_price
+        
+        # Entry price: always recalculated to potentially improve confidence
+        # old_entry_price parameter is passed from caller
+        old_entry_for_comparison = old_entry_price if (old_entry_price is not None) else self.active_prediction.entry_price
+        
+        if self.active_prediction.phase == PredictionPhase.BUILDING.value:
+            # BUILDING phase: verify entry price is in perfect position before execution
+            # Use new entry_price if it improves confidence or is closer to current_price
+            entry_distance_new = abs(entry_price - current_price)
+            entry_distance_old = abs(old_entry_for_comparison - current_price)
+            
+            if entry_distance_new < entry_distance_old or single_confidence > old_confidence:
+                # New entry price is better (closer to current_price or higher confidence)
+                self.active_prediction.entry_price = entry_price
+                logger.info(f"🏗️ BUILDING: Entry price verified/updated ${old_entry_for_comparison:,.2f} → ${entry_price:,.2f} (perfect position)")
+            else:
+                # Keep old entry price (it's in better position)
+                entry_price = old_entry_for_comparison
+                logger.debug(f"🏗️ BUILDING: Keeping entry price ${entry_price:,.2f} (optimal position verified)")
+        else:
+            # MONITORING or TRACKING: always update entry_price to potentially improve confidence
+            if entry_price != old_entry_for_comparison:
+                logger.debug(f"📊 Entry price recalculated: ${old_entry_for_comparison:,.2f} → ${entry_price:,.2f} (phase: {self.active_prediction.phase})")
+            self.active_prediction.entry_price = entry_price
+        
         self.active_prediction.stop_loss = stop_loss
         self.active_prediction.take_profit = take_profit
         self.active_prediction.risk_reward_ratio = risk_reward
@@ -356,7 +452,7 @@ class RealtimePredictionEngine:
         self.active_prediction.confidence_history.append(single_confidence)  # Single confidence
         self.active_prediction.current_price = current_price
         self.active_prediction.score = score
-        self.active_prediction.reasoning = direction_reasoning + "; " + confidence_reasoning
+        self.active_prediction.reasoning = self._build_reasoning_list(direction_reasoning_list, confidence_reasoning_str, ev_result, bayesian_result)
         self.active_prediction.last_updated = time.time()
         
         # Update EV data
@@ -376,9 +472,17 @@ class RealtimePredictionEngine:
         
         self.updates_count += 1
         
-        # Check execution readiness
-        if self._check_execution_readiness(single_confidence):  # Use single confidence field
-            return "EXECUTE"
+        # PHASE TRANSITION: MONITORING -> BUILDING when confidence meets threshold
+        current_phase = self.active_prediction.phase
+        if current_phase == PredictionPhase.MONITORING.value and single_confidence >= self.confidence_threshold:
+            # Enter BUILDING phase - entry price is recalculated above, now finalize
+            self.active_prediction.phase = PredictionPhase.BUILDING.value
+            logger.info(f"🏗️ Entering BUILDING phase: Entry price recalculated to ${entry_price:,.2f} (confidence: {single_confidence:.1%})")
+        
+        # If in BUILDING phase, ready to execute
+        if self.active_prediction.phase == PredictionPhase.BUILDING.value:
+            if self._check_execution_readiness(single_confidence):
+                return "EXECUTE"
         
         # Log confidence changes
         self._log_confidence_change(old_confidence, single_confidence)  # Use single confidence field
@@ -405,6 +509,25 @@ class RealtimePredictionEngine:
         elif new_confidence < old_confidence:
             logger.info(f"📉 Confidence: {old_confidence:.1%} → {new_confidence:.1%} ({new_confidence - old_confidence:.1%})")
     
+    def enter_tracking_phase(self, order_id: str) -> bool:
+        """
+        Enter TRACKING phase after order is placed
+        Entry price continues to be recalculated to potentially improve confidence
+        """
+        if not self.active_prediction:
+            logger.warning("⚠️ Cannot enter TRACKING phase: No active prediction")
+            return False
+        
+        if self.active_prediction.phase == PredictionPhase.TRACKING.value:
+            logger.debug(f"📊 Already in TRACKING phase for order {order_id}")
+            return True
+        
+        self.active_prediction.phase = PredictionPhase.TRACKING.value
+        self.active_prediction.order_id = order_id
+        
+        logger.info(f"📊 Entered TRACKING phase: Order {order_id} | Entry price will continue to be recalculated to improve confidence")
+        return True
+    
     def _check_prediction_age(self) -> bool:
         """Check if prediction is too old (SRP: single responsibility)"""
         if self.active_prediction.age_seconds > self.max_prediction_age:
@@ -429,46 +552,8 @@ class RealtimePredictionEngine:
     # HELPER METHODS
     # ==========================================
     
-    def _calculate_targets(self, entry_price: float, direction: str, score: float,
-                          strategy: str, market_data: Dict[str, Any]) -> Tuple[float, float, float]:
-        """Calculate stop loss, take profit, and risk/reward ratio - OPTIMIZED FOR 40X LEVERAGE"""
-        
-        # Strategy-specific risk parameters - 40X LEVERAGE OPTIMIZED
-        if strategy == "scalping":
-            stop_loss_pct = 0.001  # 0.1% (tight for 40x leverage)
-            risk_reward = 2.0
-        elif strategy == "spike_hunting":
-            stop_loss_pct = 0.005  # 0.5% (reduced from 2% for 40x leverage)
-            risk_reward = 3.0
-        elif strategy == "trend_following":
-            stop_loss_pct = 0.002  # 0.2% (tight for 40x leverage)
-            risk_reward = 2.5
-        elif strategy == "high_volatility":
-            stop_loss_pct = 0.003  # 0.3% (reduced from 1.5% for 40x leverage)
-            risk_reward = 2.0
-        elif strategy == "range_trading":
-            stop_loss_pct = 0.0015  # 0.15% (tight for range trading with 40x leverage)
-            risk_reward = 2.0
-        elif strategy == "low_volatility_range":
-            stop_loss_pct = 0.001  # 0.1% (very tight for low volatility with 40x leverage)
-            risk_reward = 2.0
-        else:  # standard
-            stop_loss_pct = 0.002  # 0.2% (reduced from 1% for 40x leverage)
-            risk_reward = 2.0
-        
-        # Adjust based on score strength
-        score_strength = abs(score)
-        if score_strength > 0.7:
-            risk_reward *= 1.2  # Wider targets for strong signals
-        
-        if direction == "LONG":
-            stop_loss = entry_price * (1 - stop_loss_pct)
-            take_profit = entry_price * (1 + (stop_loss_pct * risk_reward))
-        else:  # SHORT
-            stop_loss = entry_price * (1 + stop_loss_pct)
-            take_profit = entry_price * (1 - (stop_loss_pct * risk_reward))
-        
-        return round(stop_loss, 2), round(take_profit, 2), risk_reward
+    # Target calculation is now handled by TargetCalculator module
+    # See core/ml/target_calculator.py
     
     # ==========================================
     # MODULE 4: EXPECTED VALUE CALCULATION

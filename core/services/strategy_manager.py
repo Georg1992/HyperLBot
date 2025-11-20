@@ -6,7 +6,7 @@ Single Responsibility: Strategy decision making and configuration
 """
 
 import time
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from loguru import logger
 from config.config import TradingConfig
 
@@ -63,8 +63,10 @@ class StrategyManager:
             # Pure business logic strategy selection (no ML for now)
             recommendation = self._select_strategy_business_logic(market_data)
             optimal_strategy = recommendation.strategy
-            confidence = recommendation.confidence
             reasoning = recommendation.reasoning
+            
+            # Store market data for dynamic cooldown calculation
+            self._last_market_data = market_data.copy()
             
             # Log business logic strategy selection
             logger.info(f"📊 Business Logic Strategy Decision: {optimal_strategy}")
@@ -74,8 +76,9 @@ class StrategyManager:
             # Use same market_data to ensure consistency with ML model
             if self._are_strategies_incompatible(optimal_strategy, market_data):
                 logger.warning(f"⚠️ Strategy {optimal_strategy} incompatible with market conditions")
-                logger.warning(f"   Falling back to 'standard' strategy")
-                optimal_strategy = "standard"
+                # Find next best strategy instead of fallback
+                optimal_strategy = self._find_next_best_strategy(market_data, optimal_strategy)
+                logger.info(f"🔄 Selected alternative strategy: {optimal_strategy}")
             
             # Check if strategy switch is needed and allowed
             if optimal_strategy != self.current_strategy:
@@ -99,44 +102,69 @@ class StrategyManager:
             return self.current_strategy
     
     def _select_strategy_business_logic(self, market_data: Dict[str, Any]) -> str:
-        """Select strategy using pure business logic (no ML)"""
+        """Select strategy using pure business logic (no ML) - Complete implementation"""
         try:
-            # Extract market conditions from unified data structure
+            # Extract market conditions from unified data structure (using flattened fields)
             volatility_category = market_data.get("volatility_category", "MODERATE")
-            trend_direction = market_data.get("trend", {}).get("direction", "SIDEWAYS")
+            trend_direction = market_data.get("trend_direction", "SIDEWAYS")
             volume_category = market_data.get("volume_category", "MODERATE")
             volatility_5m = market_data.get("volatility_5m", 0.0)
+            rsi_value = market_data.get("rsi_value", 50.0)
             
-            logger.debug(f"📊 Strategy selection inputs: volatility={volatility_category}, trend={trend_direction}, volume={volume_category}, vol_5m={volatility_5m:.3f}")
+            logger.debug(f"📊 Strategy selection inputs: volatility={volatility_category}, trend={trend_direction}, volume={volume_category}, vol_5m={volatility_5m:.3f}, rsi={rsi_value:.1f}")
             
-            # Business logic strategy selection
-            if volatility_category in ["LOW", "VERY_LOW"]:
-                if trend_direction == "SIDEWAYS":
-                    strategy = "low_volatility_range"
-                    reasoning = f"Low volatility ({volatility_category}) + sideways trend"
-                else:
-                    strategy = "standard"
-                    reasoning = f"Low volatility ({volatility_category}) + trending market"
-            elif volatility_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-                if trend_direction == "SIDEWAYS":
-                    strategy = "high_volatility"
-                    reasoning = f"High volatility ({volatility_category}) + sideways trend"
-                else:
-                    strategy = "trend_following"
-                    reasoning = f"High volatility ({volatility_category}) + trending market"
-            elif volatility_5m > 0.03:  # 3%+ volatility
+            # Complete business logic strategy selection with all strategies
+            # Priority 1: Spike Hunting (EXTREME volatility + high volume)
+            if volatility_5m > 0.05 or volatility_category == "EXTREME":  # 5%+ volatility
                 if volume_category in ["HIGH", "VERY_HIGH"]:
                     strategy = "spike_hunting"
-                    reasoning = f"High volatility ({volatility_5m:.1%}) + high volume"
+                    reasoning = f"Extreme volatility ({volatility_5m:.1%}) + high volume"
                 else:
                     strategy = "high_volatility"
-                    reasoning = f"High volatility ({volatility_5m:.1%}) + moderate volume"
-            elif trend_direction in ["BULLISH", "BEARISH"] and volume_category in ["HIGH", "VERY_HIGH"]:
+                    reasoning = f"Extreme volatility ({volatility_5m:.1%}) + moderate volume"
+            
+            # Priority 2: Scalping (MODERATE volatility + good RSI + decent volume)
+            elif volatility_category == "MODERATE" and 30 <= rsi_value <= 70 and volume_category in ["NORMAL", "HIGH", "VERY_HIGH"]:
+                strategy = "scalping"
+                reasoning = f"Moderate volatility + good RSI ({rsi_value:.1f}) + decent volume"
+            
+            # Priority 3: High Volatility (HIGH volatility + no strong trend)
+            elif volatility_category in ["HIGH", "VERY_HIGH"]:
+                if trend_direction in ["BULLISH", "BEARISH"]:
+                    strategy = "trend_following"
+                    reasoning = f"High volatility ({volatility_category}) + strong trend ({trend_direction})"
+                else:
+                    strategy = "high_volatility"
+                    reasoning = f"High volatility ({volatility_category}) + sideways trend"
+            
+            # Priority 4: Trend Following (strong trend + high volume + moderate volatility)
+            elif trend_direction in ["BULLISH", "BEARISH"] and volume_category in ["HIGH", "VERY_HIGH"] and volatility_category in ["MODERATE", "HIGH"]:
                 strategy = "trend_following"
-                reasoning = f"Strong trend ({trend_direction}) + high volume"
-            else:  # MODERATE volatility
+                reasoning = f"Strong trend ({trend_direction}) + high volume + {volatility_category} volatility"
+            
+            # Priority 5: Breakout (moderate-high volatility + trending conditions)
+            elif volatility_category in ["MODERATE", "HIGH"] and trend_direction in ["BULLISH", "BEARISH"] and volume_category in ["NORMAL", "HIGH", "VERY_HIGH"]:
+                strategy = "breakout"
+                reasoning = f"Breakout conditions: {volatility_category} volatility + {trend_direction} trend"
+            
+            # Priority 6: Range Trading (moderate volatility + sideways trend)
+            elif volatility_category in ["MODERATE", "LOW"] and trend_direction == "SIDEWAYS":
+                strategy = "range_trading"
+                reasoning = f"Range trading: {volatility_category} volatility + sideways trend"
+            
+            # Priority 7: Low Volatility Range (LOW/VERY_LOW volatility + sideways)
+            elif volatility_category in ["LOW", "VERY_LOW"]:
+                if trend_direction == "SIDEWAYS":
+                    strategy = "low_volatility_range"
+                    reasoning = f"Low volatility range: {volatility_category} + sideways trend"
+                else:
+                    strategy = "range_trading"
+                    reasoning = f"Low volatility + trending market: {trend_direction}"
+            
+            # Fallback: Standard strategy
+            else:
                 strategy = "standard"
-                reasoning = f"Moderate volatility + {trend_direction} trend"
+                reasoning = f"Standard fallback: {volatility_category} volatility + {trend_direction} trend + {volume_category} volume"
             
             # Create simple recommendation object
             class SimpleRecommendation:
@@ -173,32 +201,30 @@ class StrategyManager:
         Returns True if strategy SHOULD NOT be used
         """
         try:
-            # Extract trend direction from unified data structure
-            trend_data = market_data.get("trend", {})
-            trend_direction = trend_data.get("direction", "SIDEWAYS") if isinstance(trend_data, dict) else str(trend_data)
+            # Use flattened fields as single source of truth; fall back to nested if needed
+            trend_direction = market_data.get("trend_direction")
+            if not trend_direction:
+                trend_data = market_data.get("trend", {})
+                trend_direction = trend_data.get("direction", "SIDEWAYS") if isinstance(trend_data, dict) else str(trend_data)
             volatility_5m = market_data.get("volatility_5m", 0)
             volatility_category = market_data.get("volatility_category", "LOW")
             volume_category = market_data.get("volume_category", "LOW")
             
             # TREND FOLLOWING incompatibility checks
             if strategy == "trend_following":
-                # CRITICAL: Trend Following requires trending market (BULLISH/BEARISH)
                 if trend_direction not in ["BULLISH", "BEARISH"]:
                     logger.warning(f"❌ INCOMPATIBLE: trend_following requires trending market, got {trend_direction}")
                     return True
-                # Requires decent volume (not very low)
                 if volume_category in ["VERY_LOW"]:
                     logger.warning(f"❌ INCOMPATIBLE: trend_following requires decent volume, got {volume_category}")
                     return True
-                # Works in various volatility conditions (LOW, MODERATE, HIGH)
-                # Only block in EXTREME volatility (too risky for trend following)
                 if volatility_category == "EXTREME":
                     logger.warning(f"❌ INCOMPATIBLE: trend_following too risky in EXTREME volatility, got {volatility_category}")
                     return True
             
             # SPIKE HUNTING incompatibility checks
             elif strategy == "spike_hunting":
-                if volatility_category != "EXTREME":
+                if not (volatility_5m > 0.05 or volatility_category == "EXTREME"):
                     logger.warning(f"❌ INCOMPATIBLE: spike_hunting requires EXTREME volatility, got {volatility_category}")
                     return True
             
@@ -213,35 +239,29 @@ class StrategyManager:
             
             # HIGH VOLATILITY incompatibility checks
             elif strategy == "high_volatility":
-                if volatility_category != "HIGH":
-                    logger.warning(f"❌ INCOMPATIBLE: high_volatility requires HIGH volatility, got {volatility_category}")
+                if volatility_category not in ["HIGH", "VERY_HIGH", "EXTREME"]:
+                    logger.warning(f"❌ INCOMPATIBLE: high_volatility requires HIGH+ volatility, got {volatility_category}")
                     return True
-                # Should NOT be used with strong trends (that's trend following territory)
-                if trend_direction in ["BULLISH", "BEARISH"]:
-                    logger.warning(f"❌ INCOMPATIBLE: high_volatility conflicts with trending market {trend_direction}")
+                if trend_direction in ["BULLISH", "BEARISH"] and volatility_category != "EXTREME":
+                    logger.warning(f"❌ INCOMPATIBLE: high_volatility conflicts with strong trend {trend_direction}")
                     return True
             
             # RANGE TRADING incompatibility checks
             elif strategy == "range_trading":
-                # Range trading works well in volatile markets - only block in very specific conditions
-                # Allow range_trading in EXTREME volatility as it's designed for volatile conditions
-                # Only block if we have EXTREME volatility AND the market is in a clear breakout (no consolidation)
-                if volatility_category == "EXTREME" and trend_direction in ["BULLISH", "BEARISH"] and volume_category in ["VERY_LOW", "LOW"]:
-                    logger.warning(f"❌ INCOMPATIBLE: range_trading not suitable for EXTREME volatility with strong trend and low volume, got {volatility_category} + {trend_direction} + {volume_category}")
+                if trend_direction != "SIDEWAYS":
+                    logger.warning(f"❌ INCOMPATIBLE: range_trading expects sideways market, got {trend_direction}")
                     return True
             
             # BREAKOUT incompatibility checks
             elif strategy == "breakout":
-                # Breakout strategy works best in extreme volatility with strong trends
-                # Only block if volatility is too low for meaningful breakouts
                 if volatility_category in ["VERY_LOW", "LOW"]:
                     logger.warning(f"❌ INCOMPATIBLE: breakout requires higher volatility, got {volatility_category}")
                     return True
             
             # LOW VOLATILITY RANGE incompatibility checks
             elif strategy == "low_volatility_range":
-                if volatility_category not in ["LOW", "VERY_LOW"]:
-                    logger.warning(f"❌ INCOMPATIBLE: low_volatility_range requires LOW volatility, got {volatility_category}")
+                if volatility_category not in ["LOW", "VERY_LOW"] or trend_direction != "SIDEWAYS":
+                    logger.warning(f"❌ INCOMPATIBLE: low_volatility_range requires LOW volatility and SIDEWAYS, got {volatility_category} + {trend_direction}")
                     return True
             
             # Strategy is compatible
@@ -252,10 +272,24 @@ class StrategyManager:
             return False  # Allow strategy if check fails
     
     def _can_switch_strategy(self) -> bool:
-        """Check if strategy switching is allowed (cooldown period)"""
+        """Check if strategy switching is allowed (dynamic cooldown based on volatility)"""
         current_time = time.time()
         time_since_last_switch = current_time - self.last_strategy_switch
-        return time_since_last_switch >= self.strategy_switch_cooldown
+        
+        # Dynamic cooldown based on market volatility
+        # Get current volatility from the last market data if available
+        if hasattr(self, '_last_market_data'):
+            volatility_5m = self._last_market_data.get("volatility_5m", 0.0)
+            if volatility_5m > 0.03:  # High volatility (>3%)
+                cooldown = 60  # 1 minute for high volatility
+            elif volatility_5m > 0.01:  # Moderate volatility (1-3%)
+                cooldown = 180  # 3 minutes for moderate volatility
+            else:  # Low volatility (<1%)
+                cooldown = 300  # 5 minutes for low volatility
+        else:
+            cooldown = self.strategy_switch_cooldown  # Default 5 minutes
+        
+        return time_since_last_switch >= cooldown
     
     def _switch_strategy(self, new_strategy: str):
         """Switch to new strategy"""
@@ -388,6 +422,33 @@ class StrategyManager:
         except Exception as e:
             logger.error(f"❌ Failed to get ML strategy performance: {e}")
             return {"error": str(e)}
+    
+    def _find_next_best_strategy(self, market_data: Dict[str, Any], rejected_strategy: str) -> str:
+        """Find the next best strategy when the primary choice is incompatible"""
+        try:
+            # Strategy priority list (excluding the rejected strategy)
+            strategy_priorities = [
+                "spike_hunting", "scalping", "high_volatility", "trend_following", 
+                "breakout", "range_trading", "low_volatility_range", "standard"
+            ]
+            
+            # Remove rejected strategy from priorities
+            if rejected_strategy in strategy_priorities:
+                strategy_priorities.remove(rejected_strategy)
+            
+            # Test each strategy in priority order
+            for strategy in strategy_priorities:
+                if not self._are_strategies_incompatible(strategy, market_data):
+                    logger.info(f"✅ Found compatible alternative: {strategy}")
+                    return strategy
+            
+            # If no strategy is compatible, return standard (last resort)
+            logger.warning("⚠️ No compatible strategy found, using standard as last resort")
+            return "standard"
+            
+        except Exception as e:
+            logger.error(f"❌ Error finding next best strategy: {e}")
+            return "standard"
     
     def _notify_session_strategy_change(self, new_strategy: str):
         """Notify SessionManager of strategy change for dashboard update"""

@@ -306,8 +306,26 @@ class EventDrivenTradingDashboard:
             ai_system_status = market_data_dict.get("ai_system_status", {})
             ml_performance = market_data_dict.get("ml_performance", {})
             
-            # Get predictions from market data
-            predictions = market_data_dict.get("predictions", [])
+            # Get prediction - CHECK MULTIPLE SOURCES (top-level, market.prediction, market.predictions list)
+            prediction = None
+            if "prediction" in dashboard_data and dashboard_data["prediction"]:
+                prediction = dashboard_data["prediction"]
+                pred_dir = prediction.get("direction", "N/A") if isinstance(prediction, dict) else "N/A"
+                pred_conf = prediction.get("confidence", "N/A") if isinstance(prediction, dict) else "N/A"
+                logger.info(f"📡 ✅ FOUND PREDICTION (top-level): dir={pred_dir} conf={pred_conf}")
+            elif "prediction" in market_data_dict and market_data_dict["prediction"]:
+                prediction = market_data_dict["prediction"]
+                pred_dir = prediction.get("direction", "N/A") if isinstance(prediction, dict) else "N/A"
+                pred_conf = prediction.get("confidence", "N/A") if isinstance(prediction, dict) else "N/A"
+                logger.info(f"📡 ✅ FOUND PREDICTION (market_data_dict): dir={pred_dir} conf={pred_conf}")
+            else:
+                # Fallback: try predictions list
+                predictions_list = market_data_dict.get("predictions", [])
+                if predictions_list and len(predictions_list) > 0:
+                    prediction = predictions_list[-1] if isinstance(predictions_list, list) else predictions_list
+                    pred_dir = prediction.get("direction", "N/A") if isinstance(prediction, dict) else "N/A"
+                    pred_conf = prediction.get("confidence", "N/A") if isinstance(prediction, dict) else "N/A"
+                    logger.info(f"📡 ✅ FOUND PREDICTION (predictions list): dir={pred_dir} conf={pred_conf}")
             
             # Format data for dashboard - DashboardService ONLY
             dashboard_data = {
@@ -327,9 +345,9 @@ class EventDrivenTradingDashboard:
                 "ai_system_status": ai_system_status,  # Add AI system status
                 "ml_performance": ml_performance,  # Add ML performance data
                 "logs": dashboard_data.get("logs", []),
-                "predictions": predictions,
-                "prediction": predictions[-1] if predictions else None,  # Current active prediction
-                "trades": dashboard_data.get("trades", []),
+                "predictions": [prediction] if prediction else [],  # Always a list for compatibility
+                "prediction": prediction,  # Top-level prediction (single object) - THIS IS WHAT UI READS
+                "trades": dashboard_data.get("trades", []),  # Includes pending orders, open positions, closed trades
                 "orderbook": {"bids": [], "asks": []},
                 "candleData": candle_data,  # Add candle data to dashboard data
                 "timestamp": dashboard_data.get("timestamp", ""),
