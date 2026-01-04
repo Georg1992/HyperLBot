@@ -502,9 +502,10 @@ class SupportResistanceCalculator(BaseCalculator):
                 top_prices = [f"${level['price_level']:.2f}({level['strength_score']:.1f})" for level in key_levels[:5]]
                 logger.debug(f"   Top levels by score: {', '.join(top_prices)}")
             
-            # Calculate strongest levels AFTER distance filtering
+            # Calculate strongest levels - filtered by score (top 10)
             # Shared logic: Resistance MUST be above current price, Support MUST be below current price
             # EXCLUDE broken/inactive levels - only use active levels
+            # Score already incorporates proximity (60% weight), so best levels for trading have highest scores
             support_levels = [level for level in key_levels 
                              if level["price_level"] < current_price and level.get("status") == "active"]
             resistance_levels = [level for level in key_levels 
