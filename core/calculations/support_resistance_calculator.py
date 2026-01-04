@@ -219,9 +219,26 @@ class SupportResistanceCalculator(BaseCalculator):
             # 3. DETECT SWING POINTS - Via SRDetector with timeframe-specific sensitivity
             swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
             
+            # DEBUG: Log detected swing points above current price
+            resistance_swings = [sp for sp in swing_points_5m if sp.level > current_price]
+            if resistance_swings:
+                logger.info(f"🔍 DEBUG: Detected {len(resistance_swings)} 5m swing points above ${current_price:.2f}:")
+                for sp in sorted(resistance_swings, key=lambda x: x.level):
+                    distance = abs(sp.level - current_price)
+                    logger.info(f"   🔴 ${sp.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
+                              f"Touches: {sp.touches}x | Strength: {sp.strength:.1f}")
+            
             # 4. CLUSTER LEVELS - Adaptive tolerance algorithm
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
+            
+            # DEBUG: Log clustered resistance levels
+            resistance_clustered = [cl for cl in clustered_levels if cl.level > current_price]
+            if resistance_clustered:
+                logger.info(f"🔍 DEBUG: After clustering: {len(resistance_clustered)} resistance levels above ${current_price:.2f}:")
+                for cl in sorted(resistance_clustered, key=lambda x: x.level):
+                    distance = abs(cl.level - current_price)
+                    logger.info(f"   🔴 ${cl.level:.2f} | Distance: ${distance:.2f} | Touches: {cl.touches}x | Cluster size: {cl.cluster_size}")
             
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer with per-timeframe ATR
             aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
@@ -420,6 +437,29 @@ class SupportResistanceCalculator(BaseCalculator):
                              if level["price_level"] < current_price and level.get("status") == "active"]
             resistance_levels = [level for level in key_levels 
                                 if level["price_level"] > current_price and level.get("status") == "active"]
+            
+            # DEBUG: Log all resistance levels with their scores and breakdowns
+            if resistance_levels:
+                logger.info(f"🔍 DEBUG: Found {len(resistance_levels)} active resistance levels above ${current_price:.2f}:")
+                for level in sorted(resistance_levels, key=lambda x: x["strength_score"], reverse=True):
+                    score_breakdown = level.get("score_breakdown", {})
+                    proximity = score_breakdown.get("proximity", 0)
+                    touch = score_breakdown.get("touch", 0)
+                    mtf = score_breakdown.get("mtf", 0)
+                    volume = score_breakdown.get("volume", 0)
+                    distance = abs(level["price_level"] - current_price)
+                    logger.info(f"   🔴 ${level['price_level']:.2f} | Score: {level['strength_score']:.1f} | "
+                              f"Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
+                              f"Touches: {level.get('touches', 0)}x | "
+                              f"Breakdown: prox={proximity:.1f} touch={touch:.1f} mtf={mtf:.1f} vol={volume:.1f}")
+            else:
+                logger.warning(f"🔍 DEBUG: No active resistance levels found above ${current_price:.2f}")
+                # Check all levels above price (even inactive)
+                all_above = [level for level in key_levels if level["price_level"] > current_price]
+                if all_above:
+                    logger.warning(f"   Found {len(all_above)} levels above price but all inactive:")
+                    for level in sorted(all_above, key=lambda x: x["price_level"]):
+                        logger.warning(f"     ${level['price_level']:.2f} (status: {level.get('status')}, score: {level.get('strength_score', 0):.1f})")
             
             # Debug logging for resistance detection
             if not resistance_levels:

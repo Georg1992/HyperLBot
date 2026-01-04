@@ -109,6 +109,15 @@ class SRScorer:
                 )
                 
                 scored_levels.append(scored_level)
+                
+                # DEBUG: Log scoring details for resistance levels above current price
+                if level.level > current_price:
+                    distance = abs(level.level - current_price)
+                    logger.debug(f"🔍 SCORING DEBUG: Resistance ${level.level:.2f} | "
+                               f"Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
+                               f"Proximity: {proximity_score:.1f} | Touch: {touch_score:.1f} ({level.touches}x) | "
+                               f"MTF: {mtf_score:.1f} ({level.mtf_count}) | Volume: {volume_score:.1f} | "
+                               f"Final Score: {normalized_score:.1f}")
             
             # Sort by score (highest first)
             scored_levels.sort(key=lambda x: x.score, reverse=True)
