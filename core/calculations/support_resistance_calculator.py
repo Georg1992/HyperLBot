@@ -526,10 +526,16 @@ class SupportResistanceCalculator(BaseCalculator):
                     secondary = max(remaining, key=lambda x: x["strength_score"])
                     secondary_level = (secondary["price_level"], secondary["strength_score"])
                 elif len(levels) > 1:
-                    # No secondary within 3%, use second overall best
+                    # No secondary within 3%, use second overall best (sorted by score)
                     sorted_levels = sorted(levels, key=lambda x: x["strength_score"], reverse=True)
-                    secondary = sorted_levels[1] if len(sorted_levels) > 1 else sorted_levels[0]
-                    secondary_level = (secondary["price_level"], secondary["strength_score"])
+                    # Find second best that's different from best (must be at least 0.1% away)
+                    for candidate in sorted_levels[1:]:
+                        if abs(candidate["price_level"] - best_level[0]) > current_price * 0.001:
+                            secondary_level = (candidate["price_level"], candidate["strength_score"])
+                            break
+                    else:
+                        # All remaining levels too close to best, use second by score anyway
+                        secondary_level = (sorted_levels[1]["price_level"], sorted_levels[1]["strength_score"]) if len(sorted_levels) > 1 else (0.0, 0.0)
                 else:
                     secondary_level = (0.0, 0.0)
                 
