@@ -251,6 +251,13 @@ class SupportResistanceCalculator(BaseCalculator):
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
             
+            # 4.5. COUNT ACTUAL TOUCHES FROM CANDLE DATA
+            # Fix: Count actual price touches from candles, not just swing points
+            # This ensures levels with many touches (like $90,900-$91,000) get correct touch counts
+            candles_5m = candles_data.get("5m", [])
+            if candles_5m:
+                clustered_levels = self._count_actual_touches(clustered_levels, candles_5m, atr_14)
+            
             # DEBUG: Log clustered resistance levels by their original level_type (focus on closest to current price)
             resistance_clustered = [cl for cl in clustered_levels if cl.level_type == 'resistance']
             if resistance_clustered:
@@ -440,6 +447,90 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Cache retrieval failed: {e}")
             return self._create_error_result(str(e))
     
+    def _count_actual_touches(self, clustered_levels: List, candles: List[Dict], atr_14: float) -> List:
+        """
+        Count actual price touches from candle data for each level
+        
+        This fixes the issue where touch counts only reflected swing points, not actual
+        price touches. For example, a level at $90,900 might have many touches visible
+        on the chart, but was only showing 1 touch because only 1 swing point was detected.
+        
+        Args:
+            clustered_levels: List of clustered Level objects
+            candles: List of candle dictionaries (5m candles)
+            atr_14: ATR for touch tolerance
+            
+        Returns:
+            List of Level objects with updated touch counts
+        """
+        try:
+            if not candles or not clustered_levels:
+                return clustered_levels
+            
+            # Touch tolerance: price is considered to have "touched" if within 0.5*ATR
+            touch_tolerance = atr_14 * 0.5
+            
+            updated_levels = []
+            for level in clustered_levels:
+                level_price = level.level
+                level_type = level.level_type
+                actual_touches = 0
+                
+                # Track distinct touches (avoid counting same candle multiple times)
+                touched_timestamps = set()
+                
+                for candle in candles:
+                    high = candle.get('high', 0)
+                    low = candle.get('low', 0)
+                    timestamp = candle.get('timestamp', 0)
+                    
+                    if high <= 0 or low <= 0:
+                        continue
+                    
+                    # Check if price touched the level (within tolerance)
+                    if level_type == 'resistance':
+                        # Resistance: price touched if high >= (level - tolerance)
+                        if high >= (level_price - touch_tolerance):
+                            if timestamp not in touched_timestamps:
+                                actual_touches += 1
+                                touched_timestamps.add(timestamp)
+                    elif level_type == 'support':
+                        # Support: price touched if low <= (level + tolerance)
+                        if low <= (level_price + touch_tolerance):
+                            if timestamp not in touched_timestamps:
+                                actual_touches += 1
+                                touched_timestamps.add(timestamp)
+                
+                # Update the level with actual touch count (use max of actual touches or original)
+                # This ensures we don't reduce touch count if swing point counting was higher
+                final_touches = max(actual_touches, level.touches) if actual_touches > 0 else level.touches
+                
+                # Create updated level with correct touch count (Level is frozen, so create new instance)
+                from .level import Level
+                updated_level = Level(
+                    level=level.level,
+                    level_type=level.level_type,
+                    touches=final_touches,
+                    cluster_size=level.cluster_size,
+                    weighted_touches=float(final_touches),  # Update weighted touches too
+                    strength=level.strength,
+                    timestamp=level.timestamp,
+                    timeframe_distribution=level.timeframe_distribution,
+                    mtf_matches=level.mtf_matches,
+                    mtf_count=level.mtf_count,
+                    mtf_confidence=level.mtf_confidence,
+                    merged_from=level.merged_from,
+                    score=level.score,
+                    score_breakdown=level.score_breakdown
+                )
+                updated_levels.append(updated_level)
+            
+            return updated_levels
+            
+        except Exception as e:
+            logger.error(f"❌ Actual touch counting failed: {e}")
+            return clustered_levels  # Return original if counting fails
+    
     def _format_results_optimized(self, scored_levels: List, current_price: float, 
                                  atr_14: float, current_time: float) -> Dict[str, Any]:
         """
@@ -497,7 +588,16 @@ class SupportResistanceCalculator(BaseCalculator):
             key_levels.sort(key=lambda x: x["strength_score"], reverse=True)
             
             # Filter low-confidence levels (score < 20) - More lenient threshold
+            # BUT: If we don't have enough levels above threshold, use lower threshold to ensure we find levels
             filtered_levels = [level for level in key_levels if level["strength_score"] >= 20.0]
+            
+            # If we don't have enough levels above threshold, lower it to ensure we find support/resistance
+            if len(filtered_levels) < 4:  # Need at least 2 support + 2 resistance
+                # Lower threshold to 10.0 to catch more levels
+                filtered_levels = [level for level in key_levels if level["strength_score"] >= 10.0]
+                if len(filtered_levels) < 4:
+                    # If still not enough, use all levels (no threshold)
+                    filtered_levels = key_levels
             
             # Keep top 10 levels by score - score already incorporates all factors including proximity
             key_levels = filtered_levels[:10]
