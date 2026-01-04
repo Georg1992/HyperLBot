@@ -121,11 +121,17 @@ class HistoricalDataService:
                 real_time_volume = chart_candles_5m[-1].get("volume", 0.0)
             
             # NO FALLBACKS - Use exactly the candles provided
-            # Remove the last candle if it's the current ongoing one (same timestamp as our ongoing candle)
+            # Remove the last candle ONLY if it's the current ongoing one (exact timestamp match)
+            # The API returns completed candles, so we only remove if timestamp exactly matches current candle start
             if len(chart_candles_5m) > 0:
                 last_candle_timestamp = chart_candles_5m[-1]["timestamp"]
-                if abs(last_candle_timestamp - candle_start_timestamp) < 300:  # Within 5 minutes
+                # Only remove if timestamp matches current candle start (within 10 seconds tolerance)
+                # This ensures we don't remove the last completed candle that should be displayed
+                if abs(last_candle_timestamp - candle_start_timestamp) < 10:  # Within 10 seconds (exact match)
                     chart_candles_5m = chart_candles_5m[:-1]  # Remove the ongoing candle from historical data
+                    logger.debug(f"📊 Removed ongoing candle from historical (timestamp match: {last_candle_timestamp} == {candle_start_timestamp})")
+                else:
+                    logger.debug(f"📊 Keeping last completed candle (timestamp: {last_candle_timestamp}, current start: {candle_start_timestamp})")
             
             logger.debug(f"📊 Chart data prepared using fetched candles: {len(chart_candles_5m)} historical")
             

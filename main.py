@@ -69,7 +69,7 @@ def cleanup_on_exit():
             if dashboard_service:
                 dashboard_service.cleanup_heartbeat()
         except Exception as e:
-            print(f"Warning: Error during cleanup: {e}")
+            logger.warning(f"Error during cleanup: {e}")
 
 # Register signal handlers
 signal.signal(signal.SIGINT, shutdown_handler)  # Ctrl+C
@@ -120,6 +120,7 @@ def main():
         elif choice == "4":
             break
         else:
+            logger.warning("Invalid menu choice entered")
             print("Invalid choice. Please enter 1-4.")
 
 def check_and_install_dependencies():
@@ -244,7 +245,8 @@ def run_paper_trading():
                 account_data = account_manager.load_account()
                 if account_data:
                     summary = account_manager.get_account_summary()
-                    print(f"\nExisting Account Found:")
+                    logger.info(f"Existing Account Found: Balance=${summary['current_balance']:.2f}, Trades={summary['total_trades']}, Win Rate={summary['win_rate']:.1f}%")
+                    print("\nExisting Account Found:")
                     print(f"   Balance: ${summary['current_balance']:.2f}")
                     print(f"   Trades: {summary['total_trades']}")
                     print(f"   Win Rate: {summary['win_rate']:.1f}%")
@@ -270,6 +272,7 @@ def run_paper_trading():
                                 logger.error("Failed to reset account")
                                 return
                         else:
+                            logger.warning("Invalid account choice entered")
                             print("Invalid choice")
                             return
                 else:
@@ -288,7 +291,8 @@ def run_paper_trading():
                 account_data = account_manager.create_account(new_balance)
                 initial_balance = new_balance
             
-            print(f"\nConfiguration:")
+            logger.info(f"Paper Trading Configuration: Balance=${initial_balance:.2f} (simulated)")
+            print("\nConfiguration:")
             print(f"Balance: ${initial_balance:.2f} (simulated)")
             
             # Initialize system and get services (using singletons)
