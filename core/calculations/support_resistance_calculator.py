@@ -506,20 +506,23 @@ class SupportResistanceCalculator(BaseCalculator):
                 strongest = max(levels, key=lambda x: x["strength_score"])
                 return strongest["price_level"], strongest["strength_score"]
             
-            # Get best and secondary levels for live trading
-            # Scientific justification: For live trading, we need actionable levels within reasonable distance
-            # Best level: Highest score within 2% of price (actionable for next trades)
-            # Secondary level: Next best within 3% of price, or overall best if none within range
-            # This ensures we always have actionable levels while maintaining quality
+            # Get best and secondary levels - objective selection by score only
+            # Scientific justification: Score already includes all factors (proximity 60%, touch 15%, MTF 10%, volume 10%, recency 5%)
+            # Selecting by highest score is the objective measure of level quality
+            # No distance filtering needed - proximity is already factored into score
             
             def _get_trading_levels(levels: List[Dict], current_price: float, is_support: bool) -> tuple:
                 """
-                Get best and secondary levels for live trading
-                Prioritizes levels within reasonable trading distance while maintaining quality
+                Get best and secondary levels - objective selection by score
+                
+                Scientific justification:
+                - Score is comprehensive: proximity (60%), touches (15%), MTF (10%), volume (10%), recency (5%)
+                - Highest score = objectively best level for trading
+                - No arbitrary distance thresholds needed
                 
                 Args:
                     levels: List of level dictionaries
-                    current_price: Current price
+                    current_price: Current price (for logging only)
                     is_support: True for support, False for resistance
                 
                 Returns:
@@ -528,50 +531,22 @@ class SupportResistanceCalculator(BaseCalculator):
                 if not levels:
                     return (0.0, 0.0), (0.0, 0.0)
                 
-                # Define reasonable trading distances (scientifically justified)
-                # 2% = immediate actionable level for next trades
-                # 3% = secondary level for near-term planning
-                best_distance_pct = 0.02  # 2% - actionable for live trading
-                secondary_distance_pct = 0.03  # 3% - near-term planning
+                # Sort by score (highest first) - objective selection
+                sorted_levels = sorted(levels, key=lambda x: x["strength_score"], reverse=True)
                 
-                best_distance = current_price * best_distance_pct
-                secondary_distance = current_price * secondary_distance_pct
+                # Best level: highest score
+                best = sorted_levels[0]
+                best_level = (best["price_level"], best["strength_score"])
                 
-                # Filter levels within trading distances
-                best_candidates = [level for level in levels 
-                                 if abs(level["price_level"] - current_price) <= best_distance]
-                secondary_candidates = [level for level in levels 
-                                      if abs(level["price_level"] - current_price) <= secondary_distance]
-                
-                # Get best level: highest score within 2%
-                if best_candidates:
-                    best = max(best_candidates, key=lambda x: x["strength_score"])
-                    best_level = (best["price_level"], best["strength_score"])
-                else:
-                    # No levels within 2%, use overall best
-                    best = max(levels, key=lambda x: x["strength_score"])
-                    best_level = (best["price_level"], best["strength_score"])
-                    logger.debug(f"📊 No levels within {best_distance_pct*100:.1f}%, using overall best: "
-                               f"${best['price_level']:.2f} ({abs(best['price_level'] - current_price)/current_price*100:.2f}% away)")
-                
-                # Get secondary level: next best within 3%, excluding the best level
-                remaining = [level for level in secondary_candidates 
-                           if abs(level["price_level"] - best_level[0]) > current_price * 0.001]  # Exclude if too close to best
-                
-                if remaining:
-                    secondary = max(remaining, key=lambda x: x["strength_score"])
-                    secondary_level = (secondary["price_level"], secondary["strength_score"])
-                elif len(levels) > 1:
-                    # No secondary within 3%, use second overall best (sorted by score)
-                    sorted_levels = sorted(levels, key=lambda x: x["strength_score"], reverse=True)
-                    # Find second best that's different from best (must be at least 0.1% away)
+                # Secondary level: second highest score, must be at least 0.1% away from best
+                if len(sorted_levels) > 1:
                     for candidate in sorted_levels[1:]:
                         if abs(candidate["price_level"] - best_level[0]) > current_price * 0.001:
                             secondary_level = (candidate["price_level"], candidate["strength_score"])
                             break
                     else:
-                        # All remaining levels too close to best, use second by score anyway
-                        secondary_level = (sorted_levels[1]["price_level"], sorted_levels[1]["strength_score"]) if len(sorted_levels) > 1 else (0.0, 0.0)
+                        # All levels too close to best, use second by score anyway
+                        secondary_level = (sorted_levels[1]["price_level"], sorted_levels[1]["strength_score"])
                 else:
                     secondary_level = (0.0, 0.0)
                 
