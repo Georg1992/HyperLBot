@@ -466,6 +466,43 @@ class SRScorer:
                     
                     aligned_levels.append(updated_level)
             
+            # CRITICAL FIX: Include higher timeframe levels that don't match any 5m clustered levels
+            # This ensures resistance levels above current price are not lost
+            matched_htf_prices = set()
+            for level in aligned_levels:
+                for match in level.mtf_matches:
+                    matched_htf_prices.add(match['level'])
+            
+            # Add unmatched higher timeframe levels (especially important for resistance above current price)
+            for htf_level in higher_tf_levels:
+                if htf_level.level not in matched_htf_prices:
+                    # Create standalone higher timeframe level
+                    from .level import Level
+                    standalone_level = Level(
+                        level=htf_level.level,
+                        level_type=htf_level.level_type,
+                        touches=htf_level.touches,
+                        cluster_size=htf_level.cluster_size,
+                        weighted_touches=htf_level.weighted_touches,
+                        strength=htf_level.strength,
+                        timestamp=htf_level.timestamp,
+                        timeframe_distribution=htf_level.timeframe_distribution,
+                        mtf_matches=[{
+                            'level': htf_level.level,
+                            'timeframe': list(htf_level.timeframe_distribution.keys())[0] if htf_level.timeframe_distribution else '5m',
+                            'distance': 0.0,
+                            'weight': tf_weights.get(list(htf_level.timeframe_distribution.keys())[0] if htf_level.timeframe_distribution else '5m', 1.0),
+                            'contribution': 1.0
+                        }],
+                        mtf_count=1,
+                        mtf_confidence=0.7,  # Default confidence for standalone HTF levels
+                        merged_from=htf_level.merged_from,
+                        score=htf_level.score if hasattr(htf_level, 'score') else 0.0,
+                        score_breakdown=htf_level.score_breakdown if hasattr(htf_level, 'score_breakdown') else {}
+                    )
+                    aligned_levels.append(standalone_level)
+                    logger.debug(f"📊 Added standalone HTF level: ${htf_level.level:.2f} (not matched to 5m clusters)")
+            
             # Log MTF statistics
             confirmed_count = sum(1 for level in aligned_levels if level.mtf_count > 0)
             logger.debug(f"📊 MTF ALIGNMENT: {confirmed_count}/{len(aligned_levels)} levels confirmed across timeframes")
