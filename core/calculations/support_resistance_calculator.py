@@ -604,14 +604,16 @@ class SupportResistanceCalculator(BaseCalculator):
                 if len(support_levels) >= 2:
                     # Log all support levels for debugging
                     sorted_support = sorted(support_levels, key=lambda x: x["strength_score"], reverse=True)
-                    logger.debug(f"   Available support levels: {[(f'${l[\"price_level\"]:.2f}({l[\"strength_score\"]:.1f})') for l in sorted_support[:5]]}")
+                    support_str = ", ".join([f"${l['price_level']:.2f}({l['strength_score']:.1f})" for l in sorted_support[:5]])
+                    logger.debug(f"   Available support levels: {support_str}")
             if (best_resistance == 0.0 or secondary_resistance == 0.0) and len(resistance_levels) > 0:
                 logger.warning(f"⚠️ Could not find 2 resistance levels from {len(resistance_levels)} available. "
                              f"Best: ${best_resistance:.2f}, Secondary: ${secondary_resistance:.2f}")
                 if len(resistance_levels) >= 2:
                     # Log all resistance levels for debugging
                     sorted_resistance = sorted(resistance_levels, key=lambda x: x["strength_score"], reverse=True)
-                    logger.debug(f"   Available resistance levels: {[(f'${l[\"price_level\"]:.2f}({l[\"strength_score\"]:.1f})') for l in sorted_resistance[:5]]}")
+                    resistance_str = ", ".join([f"${l['price_level']:.2f}({l['strength_score']:.1f})" for l in sorted_resistance[:5]])
+                    logger.debug(f"   Available resistance levels: {resistance_str}")
                 else:
                     logger.warning(f"   Only {len(resistance_levels)} resistance level(s) found above ${current_price:.2f}")
             
