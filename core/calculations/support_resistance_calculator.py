@@ -90,6 +90,44 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Adaptive tolerance calculation failed: {e}")
             return atr_14 * 0.4  # Fallback to ATR-based tolerance
     
+    def _deduplicate_scored_levels(self, scored_levels: List, tolerance: float) -> List:
+        """
+        Final deduplication of scored levels to merge levels that are too close
+        
+        Args:
+            scored_levels: List of scored Level objects
+            tolerance: Distance tolerance for merging
+            
+        Returns:
+            Deduplicated list of Level objects (merged by highest score)
+        """
+        try:
+            if len(scored_levels) <= 1:
+                return scored_levels
+            
+            # Sort by score (highest first) to keep best levels
+            sorted_levels = sorted(scored_levels, key=lambda x: x.score, reverse=True)
+            deduplicated = []
+            
+            for level in sorted_levels:
+                is_duplicate = False
+                for existing in deduplicated:
+                    if abs(level.level - existing.level) <= tolerance:
+                        # Merge: keep the one with higher score (already sorted, so existing is better)
+                        is_duplicate = True
+                        logger.debug(f"📊 Merging duplicate levels: ${level.level:.2f} into ${existing.level:.2f} "
+                                   f"(distance: {abs(level.level - existing.level):.2f} <= {tolerance:.2f})")
+                        break
+                
+                if not is_duplicate:
+                    deduplicated.append(level)
+            
+            return deduplicated
+            
+        except Exception as e:
+            logger.error(f"❌ Final deduplication failed: {e}")
+            return scored_levels
+    
     def _calculate_atr_per_timeframe(self, candles_data: Dict[str, List[Dict]]) -> Dict[str, float]:
         """
         Calculate ATR for each timeframe as volatility reference
@@ -235,6 +273,13 @@ class SupportResistanceCalculator(BaseCalculator):
             # Debug: Log scored levels above current price
             levels_above_price = [level for level in scored_levels if level.level > current_price]
             logger.debug(f"📊 Scored levels above ${current_price:.2f}: {len(levels_above_price)}")
+            
+            # 5.5. FINAL DEDUPLICATION - Merge levels that are too close (after scoring)
+            # Use tighter tolerance to catch levels that slipped through clustering
+            # For BTC at ~$91k, $29 apart should definitely be merged
+            final_dedup_tolerance = max(atr_14 * 0.5, current_price * 0.0003)  # 0.5×ATR or 0.03% of price (~$27 for $91k)
+            scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
+            logger.debug(f"📊 Final deduplication: tolerance={final_dedup_tolerance:.2f}, levels={len(scored_levels)}")
             
             # 6. FORMAT RESULTS - With proper state management
             result = self._format_results_optimized(scored_levels, current_price, atr_14, current_time)
