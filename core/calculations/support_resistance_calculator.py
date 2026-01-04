@@ -289,64 +289,73 @@ class SupportResistanceCalculator(BaseCalculator):
             # Scientific justification: For live trading, we need exactly 2 actionable support and 2 actionable resistance levels
             # Actionable = within reasonable trading distance (5×ATR or 5% of price)
             # Scan nearby first (from current data), if not found, scan further in past until we find actionable levels
+            # Loop until we find enough actionable levels (max 3 attempts to prevent infinite loops)
             
-            # Calculate actionable distance (same as in _get_trading_levels)
-            atr_based_distance = atr_14 * 5.0  # 5×ATR
-            price_based_distance = current_price * 0.05  # 5% of price
-            actionable_distance = max(atr_based_distance, price_based_distance)
+            max_attempts = 3
+            attempt = 0
             
-            # Count actionable levels (within trading distance)
-            actionable_support = [level for level in scored_levels 
-                                 if level.level < current_price and abs(level.level - current_price) <= actionable_distance]
-            actionable_resistance = [level for level in scored_levels 
-                                    if level.level > current_price and abs(level.level - current_price) <= actionable_distance]
-            
-            actionable_support_count = len(actionable_support)
-            actionable_resistance_count = len(actionable_resistance)
-            
-            # Check if we need more data to find actionable levels
-            if (actionable_support_count < 2 or actionable_resistance_count < 2) and current_price > 0:
-                logger.debug(f"📊 Insufficient actionable levels: {actionable_support_count} actionable support, "
-                           f"{actionable_resistance_count} actionable resistance (distance: {actionable_distance:.2f}). "
-                           f"Fetching more historical data...")
-                
-                # Fetch more historical data and recalculate
-                candles_data, atr_per_tf = self._data_provider.fetch_multi_timeframe_data(current_price, force_extended_lookback=True)
-                atr_14 = atr_per_tf.get('5m', 0.0)
-                
-                # Recalculate actionable distance with updated ATR
-                atr_based_distance = atr_14 * 5.0
+            while attempt < max_attempts:
+                # Calculate actionable distance (same as in _get_trading_levels)
+                atr_based_distance = atr_14 * 5.0  # 5×ATR
+                price_based_distance = current_price * 0.05  # 5% of price
                 actionable_distance = max(atr_based_distance, price_based_distance)
                 
-                # Re-detect swing points with extended data
-                swing_points_5m = self._detector.detect_swing_points(
-                    candles_data.get("5m", []), current_price, n=1, timeframe="5m")
-                
-                higher_tf_levels = []
-                for tf in ["15m", "1h", "1d"]:
-                    tf_candles = candles_data.get(tf, [])
-                    if tf_candles:
-                        n_value = {"15m": 2, "1h": 3, "1d": 4}[tf]
-                        swing_tf = self._detector.detect_swing_points(tf_candles, current_price, n=n_value, timeframe=tf)
-                        higher_tf_levels.extend(swing_tf)
-                
-                # Re-cluster and score with extended data
-                cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
-                clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
-                aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
-                scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
-                scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
-                
-                # Re-count actionable levels after extended fetch
+                # Count actionable levels (within trading distance)
                 actionable_support = [level for level in scored_levels 
                                      if level.level < current_price and abs(level.level - current_price) <= actionable_distance]
                 actionable_resistance = [level for level in scored_levels 
-                                       if level.level > current_price and abs(level.level - current_price) <= actionable_distance]
+                                        if level.level > current_price and abs(level.level - current_price) <= actionable_distance]
                 
                 actionable_support_count = len(actionable_support)
                 actionable_resistance_count = len(actionable_resistance)
-                logger.debug(f"📊 After extended fetch: {actionable_support_count} actionable support, "
-                           f"{actionable_resistance_count} actionable resistance")
+                
+                # If we have enough actionable levels, break the loop
+                if actionable_support_count >= 2 and actionable_resistance_count >= 2:
+                    logger.debug(f"✅ Found sufficient actionable levels: {actionable_support_count} support, "
+                               f"{actionable_resistance_count} resistance (distance: {actionable_distance:.2f})")
+                    # Log the actual actionable levels for debugging
+                    if actionable_support:
+                        support_prices = [f"${level.level:.2f}" for level in actionable_support[:5]]
+                        logger.debug(f"   Actionable support: {', '.join(support_prices)}")
+                    if actionable_resistance:
+                        resistance_prices = [f"${level.level:.2f}" for level in actionable_resistance[:5]]
+                        logger.debug(f"   Actionable resistance: {', '.join(resistance_prices)}")
+                    break
+                
+                # If we don't have enough and haven't exceeded max attempts, fetch more data
+                if attempt < max_attempts - 1:
+                    logger.debug(f"📊 Attempt {attempt + 1}/{max_attempts}: Insufficient actionable levels: "
+                               f"{actionable_support_count} actionable support, {actionable_resistance_count} actionable resistance "
+                               f"(distance: {actionable_distance:.2f}). Fetching more historical data...")
+                    
+                    # Fetch more historical data and recalculate
+                    candles_data, atr_per_tf = self._data_provider.fetch_multi_timeframe_data(current_price, force_extended_lookback=True)
+                    atr_14 = atr_per_tf.get('5m', 0.0)
+                    
+                    # Re-detect swing points with extended data
+                    swing_points_5m = self._detector.detect_swing_points(
+                        candles_data.get("5m", []), current_price, n=1, timeframe="5m")
+                    
+                    higher_tf_levels = []
+                    for tf in ["15m", "1h", "1d"]:
+                        tf_candles = candles_data.get(tf, [])
+                        if tf_candles:
+                            n_value = {"15m": 2, "1h": 3, "1d": 4}[tf]
+                            swing_tf = self._detector.detect_swing_points(tf_candles, current_price, n=n_value, timeframe=tf)
+                            higher_tf_levels.extend(swing_tf)
+                    
+                    # Re-cluster and score with extended data
+                    cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
+                    clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
+                    aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
+                    scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
+                    scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
+                else:
+                    # Last attempt - log warning but continue with what we have
+                    logger.warning(f"⚠️ After {max_attempts} attempts: Only found {actionable_support_count} actionable support, "
+                                 f"{actionable_resistance_count} actionable resistance. Proceeding with available levels.")
+                
+                attempt += 1
             
             # 6. FORMAT RESULTS - With proper state management
             result = self._format_results_optimized(scored_levels, current_price, atr_14, current_time)
@@ -491,8 +500,31 @@ class SupportResistanceCalculator(BaseCalculator):
             # Filter low-confidence levels (score < 20) - More lenient threshold
             filtered_levels = [level for level in key_levels if level["strength_score"] >= 20.0]
             
-            # Keep top 10 levels per timeframe for performance
-            key_levels = filtered_levels[:10]
+            # Calculate actionable distance to prioritize actionable levels
+            atr_based_distance = atr_14 * 5.0  # 5×ATR
+            price_based_distance = current_price * 0.05  # 5% of price
+            actionable_distance = max(atr_based_distance, price_based_distance)
+            
+            # Separate actionable and non-actionable levels
+            actionable_levels = [level for level in filtered_levels 
+                               if abs(level["price_level"] - current_price) <= actionable_distance]
+            non_actionable_levels = [level for level in filtered_levels 
+                                    if abs(level["price_level"] - current_price) > actionable_distance]
+            
+            # Prioritize actionable levels: include all actionable, then top non-actionable up to 10 total
+            # This ensures we always have actionable levels available for trading
+            if len(actionable_levels) >= 10:
+                key_levels = actionable_levels[:10]  # If many actionable, take top 10 by score
+            else:
+                # Include all actionable + top non-actionable to fill up to 10
+                remaining_slots = 10 - len(actionable_levels)
+                key_levels = actionable_levels + non_actionable_levels[:remaining_slots]
+            
+            logger.debug(f"📊 Level filtering: {len(actionable_levels)} actionable, {len(non_actionable_levels)} non-actionable, "
+                        f"{len(key_levels)} total selected (distance: {actionable_distance:.2f}, current_price: ${current_price:.2f})")
+            if actionable_levels:
+                actionable_prices = [f"${level['price_level']:.2f}" for level in actionable_levels[:5]]
+                logger.debug(f"   Actionable levels: {', '.join(actionable_prices)}")
             
             # Calculate strongest levels AFTER distance filtering
             # Shared logic: Resistance MUST be above current price, Support MUST be below current price
@@ -604,6 +636,14 @@ class SupportResistanceCalculator(BaseCalculator):
                 _get_trading_levels(support_levels, current_price, is_support=True)
             (best_resistance, best_resistance_score), (secondary_resistance, secondary_resistance_score) = \
                 _get_trading_levels(resistance_levels, current_price, is_support=False)
+            
+            # Log if we couldn't find enough actionable levels (shouldn't happen after verification)
+            if (best_support == 0.0 or secondary_support == 0.0) and len(support_levels) > 0:
+                logger.warning(f"⚠️ Could not find 2 actionable support levels from {len(support_levels)} available. "
+                             f"Best: ${best_support:.2f}, Secondary: ${secondary_support:.2f}")
+            if (best_resistance == 0.0 or secondary_resistance == 0.0) and len(resistance_levels) > 0:
+                logger.warning(f"⚠️ Could not find 2 actionable resistance levels from {len(resistance_levels)} available. "
+                             f"Best: ${best_resistance:.2f}, Secondary: ${secondary_resistance:.2f}")
             
             # For backward compatibility, strongest = best
             strongest_support, support_score = best_support, best_support_score
