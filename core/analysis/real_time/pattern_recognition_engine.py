@@ -164,12 +164,24 @@ class PatternRecognitionEngine:
                         # Use actual pattern indices to get timestamp
                         start_idx = pattern.get("start_candle_index", 0)
                         if start_idx < len(candles):
-                            pattern_timestamp = candles[start_idx].get("timestamp", current_time * 1000)
-                            pattern_birth_time = pattern_timestamp / 1000.0  # Convert to seconds
-                            age_minutes = (current_time - pattern_birth_time) / 60.0
-                            pattern["age_minutes"] = age_minutes
+                            pattern_timestamp = candles[start_idx].get("timestamp", current_time)
                             
-                            logger.debug(f"🕐 Pattern {pattern.get('pattern', 'unknown')}: age: {age_minutes:.1f}m")
+                            # Handle both seconds and milliseconds timestamps
+                            # If timestamp is > 1e10, it's in milliseconds, convert to seconds
+                            if pattern_timestamp > 1e10:
+                                pattern_birth_time = pattern_timestamp / 1000.0
+                            else:
+                                pattern_birth_time = pattern_timestamp
+                            
+                            age_minutes = (current_time - pattern_birth_time) / 60.0
+                            
+                            # Sanity check: age should be reasonable (0 to 1000 minutes max)
+                            if age_minutes < 0 or age_minutes > 1000:
+                                logger.warning(f"⚠️ Invalid pattern age: {age_minutes:.1f}m for pattern {pattern.get('pattern', 'unknown')}, using 0")
+                                pattern["age_minutes"] = 0
+                            else:
+                                pattern["age_minutes"] = age_minutes
+                                logger.debug(f"🕐 Pattern {pattern.get('pattern', 'unknown')}: age: {age_minutes:.1f}m")
                         else:
                             pattern["age_minutes"] = 0
                     except Exception as e:

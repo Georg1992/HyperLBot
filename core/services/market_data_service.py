@@ -677,102 +677,15 @@ class MarketDataService:
                 "data_quality": {"all_components_available": False}
             }
     
-    def get_prediction_data(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get optimized data package for prediction engine with clean metric mapping"""
-        try:
-            # Get unified analysis data
-            analysis_data = self.get_unified_analysis_data(strategy)
-            
-            # Clean metric mapping for prediction engine
-            prediction_data = {
-                # Core data
-                "current_price": analysis_data.get("current_price", 0),
-                "timestamp": analysis_data.get("timestamp", time.time()),
-                "strategy": strategy,
-                
-                # RSI - extract number and category
-                "rsi": analysis_data.get("rsi", {}).get("rsi", 50),
-                "rsi_category": analysis_data.get("rsi", {}).get("category", "NEUTRAL"),
-                
-                # Volume - extract category
-                "volume_category": analysis_data.get("volume", {}).get("category", "MODERATE"),
-                "volume_5m": analysis_data.get("volume", {}).get("volume_5m", 0),
-                
-                # Trend - extract direction and create trend_5m structure
-                "trend": analysis_data.get("trend", {}).get("direction", "SIDEWAYS"),
-                "trend_5m": {
-                    "trend_short": analysis_data.get("trend", {}).get("timeframes", {}).get("short", "SIDEWAYS"),
-                    "trend_medium": analysis_data.get("trend", {}).get("timeframes", {}).get("medium", "SIDEWAYS"),
-                    "trend_long": analysis_data.get("trend", {}).get("timeframes", {}).get("long", "SIDEWAYS")
-                },
-                
-                # Volatility - extract category
-                "volatility_category": analysis_data.get("volatility", {}).get("level", "MODERATE"),
-                "volatility_5m": analysis_data.get("volatility", {}).get("volatility_percentage", 0) / 100.0,
-                
-                # Support/Resistance - pass full data
-                "support_resistance": analysis_data.get("support_resistance", {}),
-                
-                # Pressure - pass full data
-                "pressure_data": analysis_data.get("pressure", {}),
-                
-                # Pattern analysis - pass full data
-                "pattern_analysis": analysis_data.get("patterns", {}),
-                
-                # Volume profile - pass full data
-                "volume_profile_analysis": analysis_data.get("volume_profile", {}),
-                
-                # Funding analysis - pass full data
-                "funding_analysis": analysis_data.get("funding_analysis", {}),
-                
-                # Cross-asset analysis - pass full data
-                "cross_asset_analysis": analysis_data.get("cross_asset_analysis", {}),
-                
-                # Market conditions - pass full data
-                "market_conditions_analysis": analysis_data.get("market_conditions", {}),
-                
-                # Orderbook analysis - pass full data
-                "orderbook_analysis": analysis_data.get("orderbook_analysis", {})
-            }
-            
-            logger.debug(f"📊 Prediction data prepared with {len(prediction_data)} metrics")
-            return prediction_data
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get prediction data: {e}")
-            return {}
-    
     def get_dashboard_data(self, strategy: str = "standard") -> Dict[str, Any]:
         """Get optimized data package for dashboard UI with prediction data"""
         try:
             # Get unified analysis data
             analysis_data = self.get_unified_analysis_data(strategy)
             
-            # Get prediction data for dashboard
-            prediction_data = self.get_prediction_data(strategy)
-            
-            # Get active prediction from prediction engine
+            # Prediction data removed - will be re-implemented with clean architecture
+            prediction_data = {}
             prediction_result = None
-            try:
-                from core.ml.realtime_prediction_engine import get_global_realtime_prediction_engine
-                prediction_engine = get_global_realtime_prediction_engine()
-                if prediction_engine:
-                    active_prediction = prediction_engine.get_active_prediction()
-                    if active_prediction:
-                        prediction_result = {
-                            "direction": active_prediction.direction,
-                            "confidence": active_prediction.confidence,
-                            "entry_price": active_prediction.entry_price,
-                            "stop_loss": active_prediction.stop_loss,
-                            "take_profit": active_prediction.take_profit,
-                            "score": active_prediction.score,
-                            "age_seconds": active_prediction.age_seconds,
-                            "strategy": strategy,  # Use the strategy parameter passed to the method
-                            "reasoning": getattr(active_prediction, 'reasoning', []),
-                            "confidence_boosts": getattr(active_prediction, 'confidence_boosts', [])
-                        }
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to get active prediction: {e}")
             
             # Add dashboard-specific data
             dashboard_data = {

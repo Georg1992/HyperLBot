@@ -167,51 +167,32 @@ class SystemInitializer:
             
             # On-Chain Data & Psychological Levels Analyzers removed (not implemented)
             
-            # 14. Trading Components
+            # 14. Data Analysis Components (execution removed)
             from core.analysis.historical.variability_analyzer import VariabilityAnalyzer
             from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
             from core.services.strategy_manager import StrategyManager
-            from core.execution.fee_manager import FeeManager
-            from core.logging.trading_logger import TradingLogger
-            from core.execution.trade_quality_manager import TradeManager
             from core.simulated_account_manager import account_manager
             from core.api.hyperliquid_simulator import HyperliquidSimulator
-            from core.execution.trading_execution_wrapper import TradingExecutionWrapper
             
-            # Initialize trading components
+            # Initialize data analysis components
             from config.config import TradingConfig
             config = TradingConfig()
             
             variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
             historical_data_coordinator = MarketDataAnalyzer()
             strategy_manager = StrategyManager(config)
-            fee_manager = FeeManager()
-            trading_logger = TradingLogger()
-            trade_quality_manager = TradeManager(config.STRATEGY_CONFIGS.get("standard", {}))
             
-            # Initialize HyperLiquid simulator with account balance
+            # Initialize HyperLiquid simulator with account balance (for data gathering)
             hyperliquid_simulator = HyperliquidSimulator(initial_balance=initial_balance)
-            
-            # Initialize trading execution wrapper (thin wrapper around simulator)
-            trading_execution = TradingExecutionWrapper(
-                hyperliquid_simulator=hyperliquid_simulator,
-                account_manager=account_manager,
-                session_manager=None  # Will be set after session manager initialization
-            )
             
             self.singleton_systems["variability_analyzer"] = variability_analyzer
             self.singleton_systems["historical_data_coordinator"] = historical_data_coordinator
             self.singleton_systems["strategy_manager"] = strategy_manager
-            self.singleton_systems["fee_manager"] = fee_manager
-            self.singleton_systems["trading_logger"] = trading_logger
-            self.singleton_systems["trade_quality_manager"] = trade_quality_manager
             self.singleton_systems["hyperliquid_simulator"] = hyperliquid_simulator
-            self.singleton_systems["trading_execution"] = trading_execution
             self.singleton_systems["account_manager"] = account_manager
             
-            # Initialize trading services
+            # Initialize data services (execution removed)
             from core.services.market_data_service import create_market_data_service
-            from core.services.trading_engine import TradingEngine
             from core.services.dashboard_service import create_dashboard_service
             from core.services.session_orchestrator import SessionOrchestrator
             
@@ -222,14 +203,6 @@ class SystemInitializer:
                 self.singleton_systems.get("binance_websocket")
             )
             
-            trading_engine = TradingEngine(
-                config,
-                config.STRATEGY_CONFIGS.get("standard", {}),
-                trade_quality_manager,
-                trading_execution,  # Use new trading execution wrapper
-                variability_analyzer
-            )
-            
             # Use global instance if available, otherwise create new one
             from core.services.dashboard_service import DashboardService
             dashboard_service = DashboardService.get_global_instance()
@@ -238,23 +211,13 @@ class SystemInitializer:
             session_orchestrator = SessionOrchestrator(config, initial_balance)  # Use real account balance
             
             self.singleton_systems["market_data_service"] = market_data_service
-            self.singleton_systems["trading_engine"] = trading_engine
             self.singleton_systems["dashboard_service"] = dashboard_service
             self.singleton_systems["session_orchestrator"] = session_orchestrator
             
             # Register analysis modules with MarketDataService
             self._register_analysis_modules(market_data_service)
             
-            # FIXED: Set session manager in trading execution wrapper
-            # SessionOrchestrator initializes session manager lazily, so we need to trigger it
-            from core.session.session_manager import get_global_session_manager
-            session_manager = get_global_session_manager()
-            trading_execution.set_session_manager(session_manager)
-            logger.info("🔗 Session manager linked to TradingExecutionWrapper")
-            
-            # Trading components and services initialized
-            
-            # AI and ML systems will be initialized later after APIs are ready
+            # Data components and services initialized
             
             # Restore existing API systems (WebSocket, APIs, etc.)
             for key, value in existing_systems.items():
@@ -296,31 +259,14 @@ class SystemInitializer:
             return {"success": False, "error": str(e)}
     
     def _initialize_ml_systems(self) -> Dict[str, Any]:
-        """Initialize ML systems (AI prediction logic removed)"""
+        """Initialize ML systems - Currently no ML systems (prediction removed)"""
         try:
-            logger.info("🤖 Initializing ML systems...")
-            
-            # ML Systems (strategy selection only - predictions removed)
-            from core.ml.probability_engine import get_global_probability_engine
-            # Note: calibration_tracker removed - using only Bayesian fusion
-            from core.ml.monte_carlo_simulator import get_global_monte_carlo_simulator
-            from core.ml.bayesian_fusion import get_global_bayesian_fusion
-            from core.ml.multitimeframe_probability import get_global_multitimeframe_probability
-            # StrategySelector removed - using StrategyManager only
-            
-            self.singleton_systems["probability_engine"] = get_global_probability_engine()
-            # Note: calibration_tracker removed - using only Bayesian fusion
-            self.singleton_systems["monte_carlo_simulator"] = get_global_monte_carlo_simulator()
-            self.singleton_systems["bayesian_fusion"] = get_global_bayesian_fusion()
-            self.singleton_systems["multitimeframe_probability"] = get_global_multitimeframe_probability()
-            # StrategySelector removed - using StrategyManager only
-            
-            # ML Systems initialized
-            # AI/ML systems ready
+            logger.info("🧠 ML systems initialization skipped - prediction system removed")
+            # ML systems will be re-implemented in the future with clean architecture
             return {"success": True}
             
         except Exception as e:
-            logger.error(f"❌ AI system initialization failed: {e}")
+            logger.error(f"❌ ML system initialization failed: {e}")
             return {"success": False, "error": str(e)}
     
     def _initialize_trading_systems(self) -> Dict[str, Any]:
@@ -329,18 +275,7 @@ class SystemInitializer:
             logger.info("💰 Initializing trading systems...")
             
             # Trading systems are initialized through singletons
-            # Verify key systems are ready
-            required_systems = [
-                # "strategy_selector",  # Removed - using StrategyManager only 
-                "probability_engine", 
-                # Note: calibration_tracker removed 
-                "monte_carlo_simulator",
-                "bayesian_fusion",
-                "multitimeframe_probability"
-            ]
-            for system_name in required_systems:
-                if system_name not in self.singleton_systems:
-                    return {"success": False, "error": f"Required system {system_name} not initialized"}
+            # ML/prediction systems removed - no verification needed
             
             # Trading systems ready
             return {"success": True}
@@ -358,8 +293,8 @@ class SystemInitializer:
                 "apis_connected": True,
                 "singletons_ready": len(self.singleton_systems) > 0,
                 "data_systems_ready": True,
-                "ml_systems_ready": True,  # StrategySelector removed
-                "trading_systems_ready": "probability_engine" in self.singleton_systems
+                "ml_systems_ready": True,  # ML systems removed, will be re-implemented
+                "trading_systems_ready": True  # Trading systems ready
             }
             
             all_healthy = all(health_status.values())

@@ -76,20 +76,27 @@ class TrendCalculator:
             Dict with trend_15m, trend_1h, trend_4h, trend_24h
         """
         try:
-            # Universal thresholds for all timeframes
-            thresholds = {"strong": 0.5, "moderate": 0.2, "weak": 0.08}
+            # Timeframe-specific thresholds (adjusted for shorter timeframes)
+            # 15m: Lower thresholds since it's a very short period
+            thresholds_15m = {"strong": 0.3, "moderate": 0.15, "weak": 0.05}
+            # 1h: Standard thresholds
+            thresholds_1h = {"strong": 0.5, "moderate": 0.2, "weak": 0.08}
+            # 4h: Slightly higher thresholds for longer period
+            thresholds_4h = {"strong": 0.8, "moderate": 0.4, "weak": 0.15}
+            # 24h: Higher thresholds for daily trends
+            thresholds_24h = {"strong": 2.0, "moderate": 1.0, "weak": 0.3}
             
-            # Calculate 15m trend (3 candles from 5m data)
-            trend_15m = self._calculate_trend_for_period(candles_5m, 3, thresholds, "15m")
+            # Calculate 15m trend (3 candles from 5m data) with adjusted thresholds
+            trend_15m = self._calculate_trend_for_period(candles_5m, 3, thresholds_15m, "15m")
             
             # Calculate 1h trend (1 candle from 1h data)
-            trend_1h = self._calculate_trend_for_period(candles_1h, 1, thresholds, "1h")
+            trend_1h = self._calculate_trend_for_period(candles_1h, 1, thresholds_1h, "1h")
             
             # Calculate 4h trend (4 candles from 1h data)
-            trend_4h = self._calculate_trend_for_period(candles_1h, 4, thresholds, "4h")
+            trend_4h = self._calculate_trend_for_period(candles_1h, 4, thresholds_4h, "4h")
             
             # Calculate 24h trend (1 candle from 1d data)
-            trend_24h = self._calculate_trend_for_period(candles_1d, 1, thresholds, "24h")
+            trend_24h = self._calculate_trend_for_period(candles_1d, 1, thresholds_24h, "24h")
             
             return {
                 "trend_15m": trend_15m["trend"],
