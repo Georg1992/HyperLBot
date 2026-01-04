@@ -470,9 +470,80 @@ class SupportResistanceCalculator(BaseCalculator):
                 strongest = max(levels, key=lambda x: x["strength_score"])
                 return strongest["price_level"], strongest["strength_score"]
             
-            # Get strongest support and resistance using shared logic (score-based selection)
-            strongest_support, support_score = _get_strongest_level(support_levels)
-            strongest_resistance, resistance_score = _get_strongest_level(resistance_levels)
+            # Get best and secondary levels for live trading
+            # Scientific justification: For live trading, we need actionable levels within reasonable distance
+            # Best level: Highest score within 2% of price (actionable for next trades)
+            # Secondary level: Next best within 3% of price, or overall best if none within range
+            # This ensures we always have actionable levels while maintaining quality
+            
+            def _get_trading_levels(levels: List[Dict], current_price: float, is_support: bool) -> tuple:
+                """
+                Get best and secondary levels for live trading
+                Prioritizes levels within reasonable trading distance while maintaining quality
+                
+                Args:
+                    levels: List of level dictionaries
+                    current_price: Current price
+                    is_support: True for support, False for resistance
+                
+                Returns:
+                    Tuple of (best_level, secondary_level) as (price, score) tuples
+                """
+                if not levels:
+                    return (0.0, 0.0), (0.0, 0.0)
+                
+                # Define reasonable trading distances (scientifically justified)
+                # 2% = immediate actionable level for next trades
+                # 3% = secondary level for near-term planning
+                best_distance_pct = 0.02  # 2% - actionable for live trading
+                secondary_distance_pct = 0.03  # 3% - near-term planning
+                
+                best_distance = current_price * best_distance_pct
+                secondary_distance = current_price * secondary_distance_pct
+                
+                # Filter levels within trading distances
+                best_candidates = [level for level in levels 
+                                 if abs(level["price_level"] - current_price) <= best_distance]
+                secondary_candidates = [level for level in levels 
+                                      if abs(level["price_level"] - current_price) <= secondary_distance]
+                
+                # Get best level: highest score within 2%
+                if best_candidates:
+                    best = max(best_candidates, key=lambda x: x["strength_score"])
+                    best_level = (best["price_level"], best["strength_score"])
+                else:
+                    # No levels within 2%, use overall best
+                    best = max(levels, key=lambda x: x["strength_score"])
+                    best_level = (best["price_level"], best["strength_score"])
+                    logger.debug(f"📊 No levels within {best_distance_pct*100:.1f}%, using overall best: "
+                               f"${best['price_level']:.2f} ({abs(best['price_level'] - current_price)/current_price*100:.2f}% away)")
+                
+                # Get secondary level: next best within 3%, excluding the best level
+                remaining = [level for level in secondary_candidates 
+                           if abs(level["price_level"] - best_level[0]) > current_price * 0.001]  # Exclude if too close to best
+                
+                if remaining:
+                    secondary = max(remaining, key=lambda x: x["strength_score"])
+                    secondary_level = (secondary["price_level"], secondary["strength_score"])
+                elif len(levels) > 1:
+                    # No secondary within 3%, use second overall best
+                    sorted_levels = sorted(levels, key=lambda x: x["strength_score"], reverse=True)
+                    secondary = sorted_levels[1] if len(sorted_levels) > 1 else sorted_levels[0]
+                    secondary_level = (secondary["price_level"], secondary["strength_score"])
+                else:
+                    secondary_level = (0.0, 0.0)
+                
+                return best_level, secondary_level
+            
+            # Get best and secondary levels for support and resistance
+            (best_support, best_support_score), (secondary_support, secondary_support_score) = \
+                _get_trading_levels(support_levels, current_price, is_support=True)
+            (best_resistance, best_resistance_score), (secondary_resistance, secondary_resistance_score) = \
+                _get_trading_levels(resistance_levels, current_price, is_support=False)
+            
+            # For backward compatibility, strongest = best
+            strongest_support, support_score = best_support, best_support_score
+            strongest_resistance, resistance_score = best_resistance, best_resistance_score
             
             # Validation: These should already be filtered correctly, but double-check
             if strongest_support > 0 and strongest_support >= current_price:
@@ -497,6 +568,27 @@ class SupportResistanceCalculator(BaseCalculator):
             # Get state summary for metadata
             state_summary = self._state.get_state_summary()
             
+            # Build top 2 support and resistance lists (best + secondary)
+            top_2_support_list = []
+            if best_support > 0:
+                best_support_obj = next((level for level in support_levels if abs(level["price_level"] - best_support) < 1), None)
+                if best_support_obj:
+                    top_2_support_list.append(best_support_obj)
+            if secondary_support > 0 and abs(secondary_support - best_support) > current_price * 0.001:
+                secondary_support_obj = next((level for level in support_levels if abs(level["price_level"] - secondary_support) < 1), None)
+                if secondary_support_obj:
+                    top_2_support_list.append(secondary_support_obj)
+            
+            top_2_resistance_list = []
+            if best_resistance > 0:
+                best_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - best_resistance) < 1), None)
+                if best_resistance_obj:
+                    top_2_resistance_list.append(best_resistance_obj)
+            if secondary_resistance > 0 and abs(secondary_resistance - best_resistance) > current_price * 0.001:
+                secondary_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - secondary_resistance) < 1), None)
+                if secondary_resistance_obj:
+                    top_2_resistance_list.append(secondary_resistance_obj)
+            
             result = {
                 "status": "ok",
                 "levels": key_levels,
@@ -518,11 +610,9 @@ class SupportResistanceCalculator(BaseCalculator):
                     "support_score": support_score,
                     "resistance_score": resistance_score
                 },
-                # Top 2 support and resistance - sorted by score (proximity already factored into score)
-                "top_2_support": sorted(support_levels, 
-                                       key=lambda x: -x["strength_score"])[:2],
-                "top_2_resistance": sorted(resistance_levels,
-                                         key=lambda x: -x["strength_score"])[:2],
+                # Top 2 support and resistance - exactly 2 levels: best + secondary
+                "top_2_support": top_2_support_list[:2],  # Ensure exactly 2
+                "top_2_resistance": top_2_resistance_list[:2],  # Ensure exactly 2
                 # Add root-level fields for dashboard compatibility
                 "strongest_support": strongest_support,
                 "strongest_resistance": strongest_resistance,
