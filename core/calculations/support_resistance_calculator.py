@@ -285,6 +285,42 @@ class SupportResistanceCalculator(BaseCalculator):
             scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
             logger.debug(f"📊 Final deduplication: tolerance={final_dedup_tolerance:.2f}, levels={len(scored_levels)}")
             
+            # 5.6. VERIFY WE HAVE 2 SUPPORT + 2 RESISTANCE - If not, fetch more data and recalculate
+            # Scientific justification: For live trading, we need exactly 2 support and 2 resistance levels
+            # Scan nearby first (from current data), if not found, scan further in past
+            support_count = sum(1 for level in scored_levels if level.level < current_price)
+            resistance_count = sum(1 for level in scored_levels if level.level > current_price)
+            
+            # Check if we need more data (only check if we have less than 2 of either type)
+            if (support_count < 2 or resistance_count < 2) and current_price > 0:
+                logger.debug(f"📊 Insufficient levels: {support_count} support, {resistance_count} resistance. Fetching more historical data...")
+                # Fetch more historical data and recalculate
+                candles_data, atr_per_tf = self._data_provider.fetch_multi_timeframe_data(current_price, force_extended_lookback=True)
+                atr_14 = atr_per_tf.get('5m', 0.0)
+                
+                # Re-detect swing points with extended data
+                swing_points_5m = self._detector.detect_swing_points(
+                    candles_data.get("5m", []), current_price, n=1, timeframe="5m")
+                
+                higher_tf_levels = []
+                for tf in ["15m", "1h", "1d"]:
+                    tf_candles = candles_data.get(tf, [])
+                    if tf_candles:
+                        n_value = {"15m": 2, "1h": 3, "1d": 4}[tf]
+                        swing_tf = self._detector.detect_swing_points(tf_candles, current_price, n=n_value, timeframe=tf)
+                        higher_tf_levels.extend(swing_tf)
+                
+                # Re-cluster and score with extended data
+                cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
+                clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
+                aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
+                scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
+                scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
+                
+                support_count = sum(1 for level in scored_levels if level.level < current_price)
+                resistance_count = sum(1 for level in scored_levels if level.level > current_price)
+                logger.debug(f"📊 After extended fetch: {support_count} support, {resistance_count} resistance")
+            
             # 6. FORMAT RESULTS - With proper state management
             result = self._format_results_optimized(scored_levels, current_price, atr_14, current_time)
             

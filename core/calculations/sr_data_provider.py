@@ -57,7 +57,7 @@ class SRDataProvider:
             "1d": 86400   # 1 day
         }
         
-    def fetch_multi_timeframe_data(self, current_price: float = None) -> Tuple[Dict[str, List[Dict]], Dict[str, float]]:
+    def fetch_multi_timeframe_data(self, current_price: float = None, force_extended_lookback: bool = False) -> Tuple[Dict[str, List[Dict]], Dict[str, float]]:
         """
         Fetch multi-timeframe candle data with progressive lookback
         Starts with minimal data and only increases if support (below) or resistance (above) is not found
@@ -101,8 +101,9 @@ class SRDataProvider:
                         logger.debug(f"📊 Found resistance above current price in initial daily data (max: ${max_price:.2f})")
                 
                 # Progressive lookback steps for daily candles if support or resistance not found
+                # If force_extended_lookback, start from maximum lookback immediately
                 lookback_steps = [200, 300, 500, 750, 1000, 1500, 2000]
-                current_lookback = 100
+                current_lookback = 2000 if force_extended_lookback else 100
                 
                 for step_lookback in lookback_steps:
                     if support_found and resistance_found:
