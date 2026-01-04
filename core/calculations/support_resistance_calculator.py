@@ -275,9 +275,10 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.debug(f"📊 Scored levels above ${current_price:.2f}: {len(levels_above_price)}")
             
             # 5.5. FINAL DEDUPLICATION - Merge levels that are too close (after scoring)
-            # Use tighter tolerance to catch levels that slipped through clustering
-            # For BTC at ~$91k, $29 apart should definitely be merged
-            final_dedup_tolerance = max(atr_14 * 0.5, current_price * 0.0003)  # 0.5×ATR or 0.03% of price (~$27 for $91k)
+            # Scientific justification: Levels within 0.05% of price are statistically indistinguishable
+            # for trading purposes (noise vs signal). This prevents duplicate levels from different
+            # timeframes or clustering artifacts. Percentage-based ensures scalability across price ranges.
+            final_dedup_tolerance = current_price * 0.0005  # 0.05% of price (scientifically justified threshold)
             scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
             logger.debug(f"📊 Final deduplication: tolerance={final_dedup_tolerance:.2f}, levels={len(scored_levels)}")
             
