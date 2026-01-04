@@ -27,15 +27,16 @@ class SRScorer:
     def __init__(self):
         """Initialize the scorer with validated weights
         
-        Weights: proximity 60% (primary), touch 15%, MTF 10%, volume 10%, recency 5%
+        Weights: proximity 65% (primary), touch 20%, MTF 10%, volume 5%
         Score (0-100) represents trading quality: higher = better for trading at current moment
+        Removed recency: time distance doesn't predict trading quality - proximity and strength matter more
         """
         self._scoring_weights = {
             'mtf': 0.10,        # Multi-timeframe confirmation (10%)
-            'proximity': 0.60,  # Distance from current price (60% - PRIMARY FACTOR)
-            'touch': 0.15,      # Number of touches (15%)
-            'volume': 0.10,     # Volume confirmation (10%)
-            'recency': 0.05     # Time-based decay (5%)
+            'proximity': 0.65,  # Distance from current price (65% - PRIMARY FACTOR)
+            'touch': 0.20,      # Number of touches (20% - strength indicator)
+            'volume': 0.05,     # Volume confirmation (5% - execution quality)
+            'recency': 0.0      # Removed: time distance doesn't improve trading quality prediction
         }
         
         # Configurable decay factor for proximity
@@ -54,7 +55,7 @@ class SRScorer:
         """
         Enhanced scoring of S/R levels with bias reduction and normalization
         
-        Final score (0-100) = weighted sum: proximity 60%, touch 15%, MTF 10%, volume 10%, recency 5%
+        Final score (0-100) = weighted sum: proximity 65%, touch 20%, MTF 10%, volume 5%
         Higher score = better level for trading at current moment
         Score interpretation: 80-100 excellent, 60-79 good, 40-59 moderate, 20-39 poor, 0-19 very poor
         
@@ -77,11 +78,10 @@ class SRScorer:
                     level.level, current_price, atr_5m)
                 touch_score = self._calculate_touch_score(level.touches)
                 volume_score = self._calculate_volume_score(level, atr_5m)
-                recency_score = self._calculate_recency_score(level)
                 
-                # Calculate weighted score with normalization
+                # Calculate weighted score with normalization (recency removed)
                 weighted_score = self._calculate_weighted_score(
-                    mtf_score, proximity_score, touch_score, volume_score, recency_score)
+                    mtf_score, proximity_score, touch_score, volume_score, 0.0)
                 
                 # Normalize and clamp score to [0,100]
                 normalized_score = min(100.0, max(0.0, weighted_score))
@@ -107,7 +107,6 @@ class SRScorer:
                         'proximity': proximity_score,
                         'touch': touch_score,
                         'volume': volume_score,
-                        'recency': recency_score,
                         'weighted': normalized_score
                     }
                 )
@@ -323,7 +322,7 @@ class SRScorer:
     
     def _calculate_weighted_score(self, mtf_score: float, proximity_score: float,
                                 touch_score: float, volume_score: float, 
-                                recency_score: float) -> float:
+                                recency_score: float = 0.0) -> float:
         """
         Calculate weighted score with normalization
         
@@ -332,19 +331,19 @@ class SRScorer:
             proximity_score: Proximity score (0-100)
             touch_score: Touch score (0-100)
             volume_score: Volume score (0-100)
-            recency_score: Recency score (0-100)
+            recency_score: Recency score (0-100) - deprecated, kept for compatibility
             
         Returns:
             Weighted score (0-100)
         """
         try:
             # Calculate weighted score (individual scores are 0-100, so divide by 100 to get 0-1 range)
+            # Recency removed: time distance doesn't predict trading quality
             weighted_score = (
                 (mtf_score / 100.0) * self._scoring_weights['mtf'] +
                 (proximity_score / 100.0) * self._scoring_weights['proximity'] +
                 (touch_score / 100.0) * self._scoring_weights['touch'] +
-                (volume_score / 100.0) * self._scoring_weights['volume'] +
-                (recency_score / 100.0) * self._scoring_weights['recency']
+                (volume_score / 100.0) * self._scoring_weights['volume']
             )
             
             # Convert back to 0-100 range with validation

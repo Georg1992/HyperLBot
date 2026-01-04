@@ -544,8 +544,8 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # Get best and secondary levels - objective selection by score
             # Scientific justification: 
-            # - Score is comprehensive: proximity (60%), touches (15%), MTF (10%), volume (10%), recency (5%)
-            # - Proximity is already heavily weighted (60%), so levels far away will have lower scores
+            # - Score is comprehensive: proximity (65%), touches (20%), MTF (10%), volume (5%)
+            # - Proximity is heavily weighted (65%), so levels far away will have lower scores
             # - Highest score = objectively best level for trading at the moment
             
             def _get_trading_levels(levels: List[Dict], current_price: float, is_support: bool) -> tuple:
@@ -553,8 +553,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 Get best and secondary levels - objective selection by score
                 
                 Scientific justification:
-                - Score is comprehensive: proximity (60%), touches (15%), MTF (10%), volume (10%), recency (5%)
-                - Proximity is already heavily weighted (60%), so levels far away will have lower scores
+                - Score is comprehensive: proximity (65%), touches (20%), MTF (10%), volume (5%)
+                - Proximity is heavily weighted (65%), so levels far away will have lower scores
                 - Highest score = objectively best level for trading at the moment
                 - No need for additional distance filtering - score already incorporates everything
                 
