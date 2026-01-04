@@ -568,26 +568,51 @@ class SupportResistanceCalculator(BaseCalculator):
             # Get state summary for metadata
             state_summary = self._state.get_state_summary()
             
-            # Build top 2 support and resistance lists (best + secondary)
+            # Build top 2 support and resistance lists - ensure exactly 2 of each
+            # If secondary is 0 or same as best, use top 2 by score instead
             top_2_support_list = []
             if best_support > 0:
                 best_support_obj = next((level for level in support_levels if abs(level["price_level"] - best_support) < 1), None)
                 if best_support_obj:
                     top_2_support_list.append(best_support_obj)
+            
+            # Add secondary if available and different from best
             if secondary_support > 0 and abs(secondary_support - best_support) > current_price * 0.001:
                 secondary_support_obj = next((level for level in support_levels if abs(level["price_level"] - secondary_support) < 1), None)
                 if secondary_support_obj:
                     top_2_support_list.append(secondary_support_obj)
+            
+            # If we don't have 2 yet, fill with top 2 by score
+            if len(top_2_support_list) < 2 and len(support_levels) >= 2:
+                sorted_support = sorted(support_levels, key=lambda x: x["strength_score"], reverse=True)
+                for level in sorted_support:
+                    if len(top_2_support_list) >= 2:
+                        break
+                    # Skip if already added
+                    if not any(abs(existing["price_level"] - level["price_level"]) < 1 for existing in top_2_support_list):
+                        top_2_support_list.append(level)
             
             top_2_resistance_list = []
             if best_resistance > 0:
                 best_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - best_resistance) < 1), None)
                 if best_resistance_obj:
                     top_2_resistance_list.append(best_resistance_obj)
+            
+            # Add secondary if available and different from best
             if secondary_resistance > 0 and abs(secondary_resistance - best_resistance) > current_price * 0.001:
                 secondary_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - secondary_resistance) < 1), None)
                 if secondary_resistance_obj:
                     top_2_resistance_list.append(secondary_resistance_obj)
+            
+            # If we don't have 2 yet, fill with top 2 by score
+            if len(top_2_resistance_list) < 2 and len(resistance_levels) >= 2:
+                sorted_resistance = sorted(resistance_levels, key=lambda x: x["strength_score"], reverse=True)
+                for level in sorted_resistance:
+                    if len(top_2_resistance_list) >= 2:
+                        break
+                    # Skip if already added
+                    if not any(abs(existing["price_level"] - level["price_level"]) < 1 for existing in top_2_resistance_list):
+                        top_2_resistance_list.append(level)
             
             result = {
                 "status": "ok",
