@@ -1474,8 +1474,7 @@
                         else if (level.strength_score > 50) strengthIndicator = ' 🔥'; // Strong
                         else if (level.strength_score > 20) strengthIndicator = ' ⚡'; // Moderate
                         
-                        levelsText += `🟢 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator}<br>`;
-                        levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
+                        levelsText += `🟢 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator} <span style="font-size: 9px; color: #888;">${timeframe} • ${relevance}</span><br>`;
                     });
                     
                     // Display top 2 resistance levels
@@ -1491,8 +1490,7 @@
                         else if (level.strength_score > 50) strengthIndicator = ' 🔥'; // Strong
                         else if (level.strength_score > 20) strengthIndicator = ' ⚡'; // Moderate
                         
-                        levelsText += `🔴 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator}<br>`;
-                            levelsText += `<span style="font-size: 9px; color: #888; margin-left: 20px;">${timeframe} • ${relevance}</span><br>`;
+                        levelsText += `🔴 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator} <span style="font-size: 9px; color: #888;">${timeframe} • ${relevance}</span><br>`;
                         });
                         
                         // Add timeframe info
