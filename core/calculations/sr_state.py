@@ -144,15 +144,15 @@ class SRState:
             # Shared logic: Determine if level is support or resistance based on price position
             if level_price < current_price:
                 # Level is below current price - it's support
-                # Support is broken if price has fallen through it (price < level + ATR tolerance)
-                # This means price has broken below the support level
-                if current_price < (level_price + atr_14):
+                # Support is broken if price has fallen BELOW it by more than ATR
+                # Price must be below (level - ATR) to confirm break
+                if current_price < (level_price - atr_14):
                     return 'inactive'  # Support broken - price fell through
             else:
                 # Level is above current price - it's resistance  
-                # Resistance is broken if price has risen through it (price > level - ATR tolerance)
-                # This means price has broken above the resistance level
-                if current_price > (level_price - atr_14):
+                # Resistance is broken if price has risen ABOVE it by more than ATR
+                # Price must be above (level + ATR) to confirm break
+                if current_price > (level_price + atr_14):
                     return 'inactive'  # Resistance broken - price rose through
             
             return 'active'
