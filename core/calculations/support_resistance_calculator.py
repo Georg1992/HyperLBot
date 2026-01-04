@@ -5,7 +5,7 @@ Modular architecture with dependency injection and optimized performance
 """
 
 import time
-from typing import Dict, List, Any, Tuple, Optional, TYPE_CHECKING
+from typing import Dict, List, Any, Optional, TYPE_CHECKING
 from loguru import logger
 
 # Import modular components
@@ -372,13 +372,49 @@ class SupportResistanceCalculator(BaseCalculator):
             key_levels = filtered_levels[:10]
             
             # Calculate strongest levels AFTER distance filtering
-            support_levels = [level for level in key_levels if level["price_level"] < current_price]
-            resistance_levels = [level for level in key_levels if level["price_level"] > current_price]
+            # Shared logic: Resistance MUST be above current price, Support MUST be below current price
+            # EXCLUDE broken/inactive levels - only use active levels
+            support_levels = [level for level in key_levels 
+                             if level["price_level"] < current_price and level.get("status") == "active"]
+            resistance_levels = [level for level in key_levels 
+                                if level["price_level"] > current_price and level.get("status") == "active"]
             
-            strongest_support = max(support_levels, key=lambda x: x["strength_score"])["price_level"] if support_levels else 0.0
-            strongest_resistance = max(resistance_levels, key=lambda x: x["strength_score"])["price_level"] if resistance_levels else 0.0
-            support_score = max(support_levels, key=lambda x: x["strength_score"])["strength_score"] if support_levels else 0.0
-            resistance_score = max(resistance_levels, key=lambda x: x["strength_score"])["strength_score"] if resistance_levels else 0.0
+            # Validate and get strongest support (below current price)
+            if support_levels:
+                strongest_support = max(support_levels, key=lambda x: x["strength_score"])["price_level"]
+                support_score = max(support_levels, key=lambda x: x["strength_score"])["strength_score"]
+                # Validate: support must be below current price
+                if strongest_support >= current_price:
+                    logger.error(f"❌ Invalid support level: ${strongest_support:.2f} >= current price ${current_price:.2f}")
+                    strongest_support = 0.0
+                    support_score = 0.0
+            else:
+                strongest_support = 0.0
+                support_score = 0.0
+            
+            # Validate and get strongest resistance (above current price)
+            if resistance_levels:
+                strongest_resistance = max(resistance_levels, key=lambda x: x["strength_score"])["price_level"]
+                resistance_score = max(resistance_levels, key=lambda x: x["strength_score"])["strength_score"]
+                # Validate: resistance must be above current price
+                if strongest_resistance <= current_price:
+                    logger.error(f"❌ Invalid resistance level: ${strongest_resistance:.2f} <= current price ${current_price:.2f}")
+                    strongest_resistance = 0.0
+                    resistance_score = 0.0
+            else:
+                strongest_resistance = 0.0
+                resistance_score = 0.0
+            
+            # Log validation results
+            if strongest_support > 0:
+                logger.debug(f"✅ Valid support: ${strongest_support:.2f} (below ${current_price:.2f}, score: {support_score:.1f})")
+            else:
+                logger.warning(f"⚠️ No valid support found below ${current_price:.2f}")
+            
+            if strongest_resistance > 0:
+                logger.debug(f"✅ Valid resistance: ${strongest_resistance:.2f} (above ${current_price:.2f}, score: {resistance_score:.1f})")
+            else:
+                logger.warning(f"⚠️ No valid resistance found above ${current_price:.2f}")
             
             # Get state summary for metadata
             state_summary = self._state.get_state_summary()
@@ -404,11 +440,13 @@ class SupportResistanceCalculator(BaseCalculator):
                     "support_score": support_score,
                     "resistance_score": resistance_score
                 },
+                # Top 2 support (below current price, active only) - sorted by strength, then proximity
                 "top_2_support": sorted([level for level in key_levels 
-                                        if level["price_level"] < current_price],
+                                        if level["price_level"] < current_price and level.get("status") == "active"],
                                        key=lambda x: (-x["strength_score"], abs(x["price_level"] - current_price)))[:2],
+                # Top 2 resistance (above current price, active only) - sorted by strength, then proximity
                 "top_2_resistance": sorted([level for level in key_levels 
-                                          if level["price_level"] > current_price],
+                                          if level["price_level"] > current_price and level.get("status") == "active"],
                                          key=lambda x: (-x["strength_score"], abs(x["price_level"] - current_price)))[:2],
                 # Add root-level fields for dashboard compatibility
                 "strongest_support": strongest_support,

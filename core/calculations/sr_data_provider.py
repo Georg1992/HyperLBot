@@ -59,10 +59,11 @@ class SRDataProvider:
         
     def fetch_multi_timeframe_data(self, current_price: float = None) -> Tuple[Dict[str, List[Dict]], Dict[str, float]]:
         """
-        Fetch multi-timeframe candle data and calculate ATR per timeframe
+        Fetch multi-timeframe candle data with progressive lookback
+        Starts with minimal data and only increases if support (below) or resistance (above) is not found
         
         Args:
-            current_price: Current price for validation (optional)
+            current_price: Current price - used to determine if we need more historical data
             
         Returns:
             Tuple of (candles_data, atr_per_tf) where:
@@ -75,11 +76,65 @@ class SRDataProvider:
         try:
             logger.debug(f"📊 Fetching multi-timeframe data for {self.symbol}")
             
-            # Fetch candles with optimized historical lookback for performance
-            candles_5m = self._fetch_candles_with_validation("5m", 2000)  # ~167 hours (~7 days) - Reduced from 5000
-            candles_15m = self._fetch_candles_with_validation("15m", 1000)  # ~250 hours (~10 days) - Reduced from 2000
-            candles_1h = self._fetch_candles_with_validation("1h", 1000)   # ~42 days - Reduced from 2000
-            candles_1d = self._fetch_candles_with_validation("1d", 200)   # ~200 days - Reduced from 500
+            # Start with minimal lookback - only what's needed for basic detection
+            candles_5m = self._fetch_candles_with_validation("5m", 1000)  # ~83 hours (~3.5 days) - minimal for swing detection
+            candles_15m = self._fetch_candles_with_validation("15m", 500)  # ~125 hours (~5 days) - minimal for MTF
+            candles_1h = self._fetch_candles_with_validation("1h", 200)   # ~8 days - minimal for MTF
+            candles_1d = self._fetch_candles_with_validation("1d", 100)   # ~100 days - minimal initial fetch
+            
+            # Progressive lookback: Only increase if we can't find both support and resistance
+            if current_price and current_price > 0:
+                # Check if we have both support (below) and resistance (above) current price
+                support_found = False
+                resistance_found = False
+                
+                if candles_1d:
+                    min_price = min(candle.get('low', float('inf')) for candle in candles_1d)
+                    max_price = max(candle.get('high', 0) for candle in candles_1d)
+                    
+                    if min_price < current_price:
+                        support_found = True
+                        logger.debug(f"📊 Found support below current price in initial daily data (min: ${min_price:.2f})")
+                    
+                    if max_price > current_price:
+                        resistance_found = True
+                        logger.debug(f"📊 Found resistance above current price in initial daily data (max: ${max_price:.2f})")
+                
+                # Progressive lookback steps for daily candles if support or resistance not found
+                lookback_steps = [200, 300, 500, 750, 1000, 1500, 2000]
+                current_lookback = 100
+                
+                for step_lookback in lookback_steps:
+                    if support_found and resistance_found:
+                        break
+                    
+                    if step_lookback > current_lookback:
+                        missing = []
+                        if not support_found:
+                            missing.append("support")
+                        if not resistance_found:
+                            missing.append("resistance")
+                        
+                        logger.debug(f"📊 Missing {', '.join(missing)} for ${current_price:.2f}, increasing daily lookback to {step_lookback} candles")
+                        candles_1d = self._fetch_candles_with_validation("1d", step_lookback)
+                        current_lookback = step_lookback
+                        
+                        if candles_1d:
+                            min_price = min(candle.get('low', float('inf')) for candle in candles_1d)
+                            max_price = max(candle.get('high', 0) for candle in candles_1d)
+                            
+                            if not support_found and min_price < current_price:
+                                support_found = True
+                                logger.debug(f"📊 Found support below current price at {step_lookback} daily candles (min: ${min_price:.2f})")
+                            
+                            if not resistance_found and max_price > current_price:
+                                resistance_found = True
+                                logger.debug(f"📊 Found resistance above current price at {step_lookback} daily candles (max: ${max_price:.2f})")
+                
+                if not support_found:
+                    logger.warning(f"⚠️ Could not find support below ${current_price:.2f} even with {current_lookback} daily candles")
+                if not resistance_found:
+                    logger.warning(f"⚠️ Could not find resistance above ${current_price:.2f} even with {current_lookback} daily candles")
             
             # Calculate ATR for each timeframe
             atr_per_tf = {}

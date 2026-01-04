@@ -128,6 +128,7 @@ class SRState:
     def check_level_status(self, level: Dict, current_price: float, atr_14: float) -> str:
         """
         Check if a level is active or inactive based on breakout conditions
+        Shared logic for both support and resistance
         
         Args:
             level: Level dictionary
@@ -140,17 +141,19 @@ class SRState:
         try:
             level_price = level.level
             
-            # Use price-based classification instead of original swing detection type
+            # Shared logic: Determine if level is support or resistance based on price position
             if level_price < current_price:
                 # Level is below current price - it's support
-                # Support is broken if price falls below it by more than ATR
-                if current_price < (level_price - atr_14):
-                    return 'inactive'
+                # Support is broken if price has fallen through it (price < level + ATR tolerance)
+                # This means price has broken below the support level
+                if current_price < (level_price + atr_14):
+                    return 'inactive'  # Support broken - price fell through
             else:
                 # Level is above current price - it's resistance  
-                # Resistance is broken if price rises above it by more than ATR
-                if current_price > (level_price + atr_14):
-                    return 'inactive'
+                # Resistance is broken if price has risen through it (price > level - ATR tolerance)
+                # This means price has broken above the resistance level
+                if current_price > (level_price - atr_14):
+                    return 'inactive'  # Resistance broken - price rose through
             
             return 'active'
             
