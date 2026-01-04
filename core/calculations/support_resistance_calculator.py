@@ -506,23 +506,26 @@ class SupportResistanceCalculator(BaseCalculator):
                 strongest = max(levels, key=lambda x: x["strength_score"])
                 return strongest["price_level"], strongest["strength_score"]
             
-            # Get best and secondary levels - objective selection by score only
-            # Scientific justification: Score already includes all factors (proximity 60%, touch 15%, MTF 10%, volume 10%, recency 5%)
-            # Selecting by highest score is the objective measure of level quality
-            # No distance filtering needed - proximity is already factored into score
+            # Get best and secondary levels - objective selection by score within actionable distance
+            # Scientific justification: 
+            # - For live trading, levels must be within actionable distance (based on ATR/volatility)
+            # - Score is comprehensive: proximity (60%), touches (15%), MTF (10%), volume (10%), recency (5%)
+            # - Select highest score from actionable levels = objectively best level for trading at the moment
             
             def _get_trading_levels(levels: List[Dict], current_price: float, is_support: bool) -> tuple:
                 """
-                Get best and secondary levels - objective selection by score
+                Get best and secondary levels - objective selection by score within actionable distance
                 
                 Scientific justification:
-                - Score is comprehensive: proximity (60%), touches (15%), MTF (10%), volume (10%), recency (5%)
-                - Highest score = objectively best level for trading
-                - No arbitrary distance thresholds needed
+                - Actionable distance: 5×ATR or 5% of price (whichever is larger)
+                - This represents ~5 standard deviations of typical price movement
+                - Levels beyond this are not actionable for current trading decisions
+                - Score is comprehensive measure of level quality
+                - Select highest score from actionable levels = best for trading at the moment
                 
                 Args:
                     levels: List of level dictionaries
-                    current_price: Current price (for logging only)
+                    current_price: Current price
                     is_support: True for support, False for resistance
                 
                 Returns:
@@ -531,14 +534,31 @@ class SupportResistanceCalculator(BaseCalculator):
                 if not levels:
                     return (0.0, 0.0), (0.0, 0.0)
                 
-                # Sort by score (highest first) - objective selection
-                sorted_levels = sorted(levels, key=lambda x: x["strength_score"], reverse=True)
+                # Calculate actionable distance - scientifically justified
+                # 5×ATR represents ~5 standard deviations of typical price movement
+                # 5% of price is a reasonable maximum for actionable levels
+                # Use the larger of the two to ensure we capture meaningful levels
+                atr_based_distance = atr_14 * 5.0  # 5×ATR
+                price_based_distance = current_price * 0.05  # 5% of price
+                actionable_distance = max(atr_based_distance, price_based_distance)
                 
-                # Best level: highest score
+                # Filter for actionable levels (within reasonable trading distance)
+                actionable_levels = [level for level in levels 
+                                   if abs(level["price_level"] - current_price) <= actionable_distance]
+                
+                # If no actionable levels, use all levels (fallback - but log warning)
+                if not actionable_levels:
+                    logger.warning(f"⚠️ No levels within actionable distance ({actionable_distance:.2f}), using all levels")
+                    actionable_levels = levels
+                
+                # Sort by score (highest first) - objective selection from actionable levels
+                sorted_levels = sorted(actionable_levels, key=lambda x: x["strength_score"], reverse=True)
+                
+                # Best level: highest score from actionable levels
                 best = sorted_levels[0]
                 best_level = (best["price_level"], best["strength_score"])
                 
-                # Secondary level: second highest score, must be at least 0.1% away from best
+                # Secondary level: second highest score from actionable levels, must be at least 0.1% away from best
                 if len(sorted_levels) > 1:
                     for candidate in sorted_levels[1:]:
                         if abs(candidate["price_level"] - best_level[0]) > current_price * 0.001:
