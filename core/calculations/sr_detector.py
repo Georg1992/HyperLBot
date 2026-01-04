@@ -475,7 +475,10 @@ class SRDetector:
                 for tf, count in point.timeframe_distribution.items():
                     timeframe_distribution[tf] = timeframe_distribution.get(tf, 0) + count
             
-            # Calculate distinct touches
+            # Calculate distinct touches from swing points
+            # NOTE: This is a preliminary count. Actual touches are counted from candle data
+            # after clustering in support_resistance_calculator._count_actual_touches()
+            # This count is only used as a fallback if actual counting fails
             distinct_touches = self._calculate_distinct_touches([{
                 'timestamp': p.timestamp,
                 'level': p.level
