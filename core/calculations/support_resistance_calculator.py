@@ -404,54 +404,26 @@ class SupportResistanceCalculator(BaseCalculator):
                                  f"Total levels: {len(key_levels)}, "
                                  f"Levels above price: 0")
             
-            # Shared helper function to get strongest level prioritizing proximity for live trading
-            def _get_strongest_level(levels: List[Dict], current_price: float, max_distance_pct: float = 0.03) -> tuple:
+            # Shared helper function to get strongest level by score (proximity already factored into score)
+            def _get_strongest_level(levels: List[Dict]) -> tuple:
                 """
-                Get strongest level price and score, prioritizing proximity for live trading
+                Get strongest level price and score
+                Proximity is already factored into the score calculation (60% weight in scorer)
                 
                 Args:
                     levels: List of level dictionaries
-                    current_price: Current price
-                    max_distance_pct: Maximum distance as percentage (default 3% = 0.03)
                 
                 Returns:
                     Tuple of (price, score)
                 """
                 if not levels:
                     return 0.0, 0.0
-                
-                # Calculate max distance in price terms
-                max_distance = current_price * max_distance_pct
-                
-                # Filter levels within reasonable trading distance
-                nearby_levels = [level for level in levels 
-                               if abs(level["price_level"] - current_price) <= max_distance]
-                
-                if nearby_levels:
-                    # Prioritize nearby levels: balance score and proximity
-                    # Score weight: 0.7, Proximity weight: 0.3
-                    def combined_score(level):
-                        distance = abs(level["price_level"] - current_price)
-                        proximity_score = max(0, 1.0 - (distance / max_distance))  # Closer = higher
-                        return level["strength_score"] * 0.7 + proximity_score * 100 * 0.3
-                    
-                    strongest = max(nearby_levels, key=combined_score)
-                    logger.debug(f"📊 Selected nearby level: ${strongest['price_level']:.2f} "
-                               f"(distance: {abs(strongest['price_level'] - current_price):.2f}, "
-                               f"score: {strongest['strength_score']:.1f})")
-                    return strongest["price_level"], strongest["strength_score"]
-                else:
-                    # Fallback: use highest score if no nearby levels
-                    strongest = max(levels, key=lambda x: x["strength_score"])
-                    distance = abs(strongest["price_level"] - current_price)
-                    logger.debug(f"📊 No nearby levels (max {max_distance:.2f}), using highest score: "
-                               f"${strongest['price_level']:.2f} (distance: {distance:.2f}, "
-                               f"score: {strongest['strength_score']:.1f})")
-                    return strongest["price_level"], strongest["strength_score"]
+                strongest = max(levels, key=lambda x: x["strength_score"])
+                return strongest["price_level"], strongest["strength_score"]
             
-            # Get strongest support and resistance using shared logic (prioritize proximity)
-            strongest_support, support_score = _get_strongest_level(support_levels, current_price)
-            strongest_resistance, resistance_score = _get_strongest_level(resistance_levels, current_price)
+            # Get strongest support and resistance using shared logic (score-based selection)
+            strongest_support, support_score = _get_strongest_level(support_levels)
+            strongest_resistance, resistance_score = _get_strongest_level(resistance_levels)
             
             # Validation: These should already be filtered correctly, but double-check
             if strongest_support > 0 and strongest_support >= current_price:
@@ -497,12 +469,11 @@ class SupportResistanceCalculator(BaseCalculator):
                     "support_score": support_score,
                     "resistance_score": resistance_score
                 },
-                # Top 2 support and resistance - prioritize proximity for live trading
-                # Sort by: 1) Proximity (closer = better), 2) Score (higher = better)
+                # Top 2 support and resistance - sorted by score (proximity already factored into score)
                 "top_2_support": sorted(support_levels, 
-                                       key=lambda x: (abs(x["price_level"] - current_price), -x["strength_score"]))[:2],
+                                       key=lambda x: -x["strength_score"])[:2],
                 "top_2_resistance": sorted(resistance_levels,
-                                         key=lambda x: (abs(x["price_level"] - current_price), -x["strength_score"]))[:2],
+                                         key=lambda x: -x["strength_score"])[:2],
                 # Add root-level fields for dashboard compatibility
                 "strongest_support": strongest_support,
                 "strongest_resistance": strongest_resistance,
