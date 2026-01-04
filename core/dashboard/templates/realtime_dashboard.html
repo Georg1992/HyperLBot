@@ -1419,27 +1419,12 @@
                     const topResistance = market.support_resistance.top_2_resistance || [];
                     
                     // Display top 2 support levels
-                    topSupport.forEach(level => {
+                    topSupport.forEach((level, index) => {
                         const score = level.strength_score ? level.strength_score.toFixed(1) : '0.0';
                         const touches = level.touches || 0;
                         const timeframe = '5m'; // S/R analysis uses 5m as primary timeframe
                         const relevance = level.status || 'active';
-                            
-                            // Add strength indicator based on score
-                            let strengthIndicator = '';
-                        if (level.strength_score > 100) strengthIndicator = ' 💪'; // Very strong
-                        else if (level.strength_score > 50) strengthIndicator = ' 🔥'; // Strong
-                        else if (level.strength_score > 20) strengthIndicator = ' ⚡'; // Moderate
-                        
-                        levelsText += `🟢 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator} <span style="font-size: 9px; color: #888;">${timeframe} • ${relevance}</span><br>`;
-                    });
-                    
-                    // Display top 2 resistance levels
-                    topResistance.forEach(level => {
-                        const score = level.strength_score ? level.strength_score.toFixed(1) : '0.0';
-                        const touches = level.touches || 0;
-                        const timeframe = '5m'; // S/R analysis uses 5m as primary timeframe
-                        const relevance = level.status || 'active';
+                        const isBest = index === 0;
                         
                         // Add strength indicator based on score
                         let strengthIndicator = '';
@@ -1447,8 +1432,38 @@
                         else if (level.strength_score > 50) strengthIndicator = ' 🔥'; // Strong
                         else if (level.strength_score > 20) strengthIndicator = ' ⚡'; // Moderate
                         
-                        levelsText += `🔴 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator} <span style="font-size: 9px; color: #888;">${timeframe} • ${relevance}</span><br>`;
-                        });
+                        // Highlight best level with bold and "BEST" label
+                        const bestLabel = isBest ? '<span style="font-weight: bold; color: #4ade80; font-size: 10px;">★ BEST</span> ' : '';
+                        const levelStyle = isBest ? 'font-weight: bold; font-size: 13px;' : 'font-size: 12px;';
+                        
+                        levelsText += `<span style="${levelStyle}">${bestLabel}🟢 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator} <span style="font-size: 9px; color: #888;">${timeframe} • ${relevance}</span></span><br>`;
+                    });
+                    
+                    // Add separator between support and resistance if both exist
+                    if (topSupport.length > 0 && topResistance.length > 0) {
+                        levelsText += `<span style="font-size: 9px; color: #555; display: block; margin: 4px 0;">━━━━━━━━━━━━━━━━━━━━</span>`;
+                    }
+                    
+                    // Display top 2 resistance levels
+                    topResistance.forEach((level, index) => {
+                        const score = level.strength_score ? level.strength_score.toFixed(1) : '0.0';
+                        const touches = level.touches || 0;
+                        const timeframe = '5m'; // S/R analysis uses 5m as primary timeframe
+                        const relevance = level.status || 'active';
+                        const isBest = index === 0;
+                        
+                        // Add strength indicator based on score
+                        let strengthIndicator = '';
+                        if (level.strength_score > 100) strengthIndicator = ' 💪'; // Very strong
+                        else if (level.strength_score > 50) strengthIndicator = ' 🔥'; // Strong
+                        else if (level.strength_score > 20) strengthIndicator = ' ⚡'; // Moderate
+                        
+                        // Highlight best level with bold and "BEST" label
+                        const bestLabel = isBest ? '<span style="font-weight: bold; color: #f87171; font-size: 10px;">★ BEST</span> ' : '';
+                        const levelStyle = isBest ? 'font-weight: bold; font-size: 13px;' : 'font-size: 12px;';
+                        
+                        levelsText += `<span style="${levelStyle}">${bestLabel}🔴 $${Math.round(level.price_level).toLocaleString()} (${touches}x, score:${score})${strengthIndicator} <span style="font-size: 9px; color: #888;">${timeframe} • ${relevance}</span></span><br>`;
+                    });
                         
                         // Add timeframe info
                     const timeframe = '5m'; // S/R analysis uses 5m as primary timeframe
