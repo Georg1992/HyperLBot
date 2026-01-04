@@ -584,6 +584,12 @@ class SupportResistanceCalculator(BaseCalculator):
                 # Check level status
                 level_status = self._state.check_level_status(level, current_price, atr_14)
                 
+                # DEBUG: Log status check for levels near current price
+                distance = abs(level.level - current_price)
+                if distance < current_price * 0.01:  # Within 1% of current price
+                    logger.debug(f"🔍 Status check: ${level.level:.2f} ({level.level_type}) | "
+                               f"Price: ${current_price:.2f} | ATR: ${atr_14:.2f} | Status: {level_status}")
+                
                 # Track broken levels
                 if level_status == 'inactive':
                     self._state.track_broken_level(level, current_price)

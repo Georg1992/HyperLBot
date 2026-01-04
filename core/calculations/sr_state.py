@@ -145,12 +145,18 @@ class SRState:
             if level_type == 'resistance':
                 # Resistance is broken if price has risen ABOVE it by more than ATR
                 # Price must be above (level + ATR) to confirm break
-                if current_price > (level_price + atr_14):
+                break_threshold = level_price + atr_14
+                is_broken = current_price > break_threshold
+                if is_broken:
+                    logger.debug(f"🔴 Resistance ${level_price:.2f} BROKEN: price ${current_price:.2f} > (${level_price:.2f} + ${atr_14:.2f} = ${break_threshold:.2f})")
                     return 'inactive'  # Resistance broken - price rose through
             elif level_type == 'support':
                 # Support is broken if price has fallen BELOW it by more than ATR
                 # Price must be below (level - ATR) to confirm break
-                if current_price < (level_price - atr_14):
+                break_threshold = level_price - atr_14
+                is_broken = current_price < break_threshold
+                if is_broken:
+                    logger.debug(f"🟢 Support ${level_price:.2f} BROKEN: price ${current_price:.2f} < (${level_price:.2f} - ${atr_14:.2f} = ${break_threshold:.2f})")
                     return 'inactive'  # Support broken - price fell through
             
             return 'active'
