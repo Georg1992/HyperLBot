@@ -1414,50 +1414,7 @@
                     let levelsText = '';
                     const currentPrice = market.current_price || 0;
                     
-                    // ALWAYS show support and resistance levels from HISTORICAL DATA
-                    if (strongestSupport > 0) {
-                        // Use root-level support score (already calculated)
-                        const supportScore = market.support_resistance.support_score?.toFixed(1) || '0.0';
-                        // Get support touches from levels array
-                        const supportLevel = market.support_resistance.levels?.find(level => 
-                            Math.abs(level.price_level - strongestSupport) < 10 && level.type === 'support'
-                        );
-                        const supportTouches = supportLevel?.touches || 0;
-                        
-                        if (strongestSupport < currentPrice) {
-                            // Valid support below current price
-                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()} (score: ${supportScore}, ${supportTouches}x)<br>`;
-                        } else {
-                            // Support above current price - still valid, not broken
-                            levelsText += `<span style="color: #28a745;">🟢</span> Support: $${Math.round(strongestSupport).toLocaleString()} (score: ${supportScore}, ${supportTouches}x)<br>`;
-                        }
-                    } else {
-                        // This should never happen - S/R calculator should always find historical levels
-                        levelsText += `<span style="color: #888;">⚪</span> Support: ERROR - No historical data<br>`;
-                    }
-                    
-                    if (strongestResistance > 0) {
-                        // Use root-level resistance score (already calculated)
-                        const resistanceScore = market.support_resistance.resistance_score?.toFixed(1) || '0.0';
-                        // Get resistance touches from levels array
-                        const resistanceLevel = market.support_resistance.levels?.find(level => 
-                            Math.abs(level.price_level - strongestResistance) < 10 && level.type === 'resistance'
-                        );
-                        const resistanceTouches = resistanceLevel?.touches || 0;
-                        
-                        if (strongestResistance > currentPrice) {
-                            // Valid resistance above current price
-                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()} (score: ${resistanceScore}, ${resistanceTouches}x)<br>`;
-                        } else {
-                            // Resistance below current price - still valid, not broken
-                            levelsText += `<span style="color: #dc3545;">🔴</span> Resistance: $${Math.round(strongestResistance).toLocaleString()} (score: ${resistanceScore}, ${resistanceTouches}x)<br>`;
-                        }
-                    } else {
-                        // This should never happen - S/R calculator should always find historical levels
-                        levelsText += `<span style="color: #888;">⚪</span> Resistance: ERROR - No historical data<br>`;
-                    }
-                    
-                    // Show top 2 support and resistance levels with detailed info
+                    // Show exactly 2 support and 2 resistance levels (no summary, only detailed list)
                     const topSupport = market.support_resistance.top_2_support || [];
                     const topResistance = market.support_resistance.top_2_resistance || [];
                     
