@@ -123,13 +123,13 @@ class SRState:
         self._last_calculation_time = current_time
         self._last_price = current_price
     
-    def check_level_status(self, level: Dict, current_price: float, atr_14: float) -> str:
+    def check_level_status(self, level, current_price: float, atr_14: float) -> str:
         """
         Check if a level is active or inactive based on breakout conditions
-        Shared logic for both support and resistance
+        Uses original level_type from swing detection (not price position)
         
         Args:
-            level: Level dictionary
+            level: Level object (has .level and .level_type attributes)
             current_price: Current price
             atr_14: ATR for breakout confirmation
             
@@ -138,20 +138,20 @@ class SRState:
         """
         try:
             level_price = level.level
+            level_type = level.level_type  # Use original level_type from swing detection
             
-            # Shared logic: Determine if level is support or resistance based on price position
-            if level_price < current_price:
-                # Level is below current price - it's support
-                # Support is broken if price has fallen BELOW it by more than ATR
-                # Price must be below (level - ATR) to confirm break
-                if current_price < (level_price - atr_14):
-                    return 'inactive'  # Support broken - price fell through
-            else:
-                # Level is above current price - it's resistance  
+            # Use original level_type to determine break conditions
+            # Historical levels keep their type: broken resistance is still resistance
+            if level_type == 'resistance':
                 # Resistance is broken if price has risen ABOVE it by more than ATR
                 # Price must be above (level + ATR) to confirm break
                 if current_price > (level_price + atr_14):
                     return 'inactive'  # Resistance broken - price rose through
+            elif level_type == 'support':
+                # Support is broken if price has fallen BELOW it by more than ATR
+                # Price must be below (level - ATR) to confirm break
+                if current_price < (level_price - atr_14):
+                    return 'inactive'  # Support broken - price fell through
             
             return 'active'
             
