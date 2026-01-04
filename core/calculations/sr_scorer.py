@@ -25,44 +25,10 @@ class SRScorer:
     """
     
     def __init__(self):
-        """
-        Initialize the scorer with validated weights
+        """Initialize the scorer with validated weights
         
-        SCORING WEIGHTS - Scientific Justification:
-        ============================================
-        
-        1. PROXIMITY (60%): Primary factor for trading quality
-           - Rationale: For live trading, proximity is the most critical factor
-           - Closer levels = lower risk, faster execution, better entry/exit
-           - 60% weight ensures proximity dominates (prevents far-away levels from ranking high)
-           - Scientific basis: Risk-adjusted returns decrease exponentially with distance
-           - Trading psychology: Traders prefer actionable levels within reach
-        
-        2. TOUCH (15%): Historical validation of level strength
-           - Rationale: More touches = stronger level (proven support/resistance)
-           - 15% weight: Important but secondary to proximity for trading decisions
-           - Scientific basis: Statistical significance increases with sample size (touches)
-           - Diminishing returns: Each additional touch matters less (logarithmic relationship)
-        
-        3. MTF (10%): Multi-timeframe confirmation
-           - Rationale: Levels confirmed across timeframes are more reliable
-           - 10% weight: Confirmation is valuable but not as critical as proximity for trading
-           - Scientific basis: Higher timeframe confirmation = stronger institutional support
-           - Trading edge: MTF levels have higher probability of holding
-        
-        4. VOLUME (10%): Trading activity confirmation
-           - Rationale: High volume at level = strong interest, better liquidity
-           - 10% weight: Important for execution quality but secondary to proximity
-           - Scientific basis: Volume confirms price action validity
-           - Trading benefit: Better fills, less slippage at high-volume levels
-        
-        5. RECENCY (5%): Time-based relevance
-           - Rationale: Recent levels are more relevant than old ones
-           - 5% weight: Small but important - prevents stale levels from ranking high
-           - Scientific basis: Market structure evolves; recent levels reflect current market
-           - Trading relevance: Recent levels are more likely to be respected
-        
-        TOTAL: 100% - All factors normalized to ensure objective comparison
+        Weights: proximity 60% (primary), touch 15%, MTF 10%, volume 10%, recency 5%
+        Score (0-100) represents trading quality: higher = better for trading at current moment
         """
         self._scoring_weights = {
             'mtf': 0.10,        # Multi-timeframe confirmation (10%)
@@ -88,43 +54,9 @@ class SRScorer:
         """
         Enhanced scoring of S/R levels with bias reduction and normalization
         
-        FINAL SCORE REPRESENTS TRADING QUALITY:
-        =======================================
-        
-        The final score (0-100) is a comprehensive measure of how good a level is for trading
-        at the current moment. It combines:
-        
-        1. PROXIMITY (60%): How close is the level to current price?
-           - Closer = lower risk, faster execution, better entry/exit
-           - Volatility-scaled exponential decay ensures levels adapt to market conditions
-        
-        2. TOUCH (15%): How many times has price touched this level?
-           - More touches = stronger level, proven support/resistance
-           - Diminishing returns: first few touches matter most
-        
-        3. MTF (10%): Is this level confirmed across multiple timeframes?
-           - Multi-timeframe confirmation = higher reliability
-           - Institutional support across timeframes
-        
-        4. VOLUME (10%): How much trading activity at this level?
-           - High volume = better liquidity, less slippage
-           - Confirms price action validity
-        
-        5. RECENCY (5%): How recent is this level?
-           - Recent levels reflect current market structure
-           - Prevents stale levels from ranking high
-        
-        SCORE INTERPRETATION:
-        - 80-100: Excellent trading level (close, strong, confirmed, recent)
-        - 60-79: Good trading level (most factors favorable)
-        - 40-59: Moderate trading level (some factors favorable)
-        - 20-39: Poor trading level (few factors favorable)
-        - 0-19: Very poor trading level (not suitable for trading)
-        
-        SELECTION LOGIC:
-        - Highest score = objectively best level for trading at the moment
-        - Score already incorporates all factors, so no additional filtering needed
-        - Proximity dominates (60%), ensuring actionable levels rank highest
+        Final score (0-100) = weighted sum: proximity 60%, touch 15%, MTF 10%, volume 10%, recency 5%
+        Higher score = better level for trading at current moment
+        Score interpretation: 80-100 excellent, 60-79 good, 40-59 moderate, 20-39 poor, 0-19 very poor
         
         Args:
             levels: List of Level dataclass objects
@@ -134,7 +66,6 @@ class SRScorer:
             
         Returns:
             List of scored Level dataclass objects with normalized scores [0-100]
-            where higher score = better level for trading at the current moment
         """
         try:
             scored_levels = []
@@ -233,46 +164,19 @@ class SRScorer:
         """
         Calculate proximity score using volatility-aware exponential decay
         
-        SCIENTIFIC JUSTIFICATION:
-        ========================
-        
-        Formula: proximity_score = 100 * exp(-distance / (k * atr_5m))
-        
-        Why Exponential Decay?
-        - Exponential decay models diminishing returns: each unit of distance matters less
-        - Mathematically smooth and continuous (no discontinuities)
-        - Reflects trading reality: 1 ATR away vs 2 ATR away is significant; 10 ATR vs 11 ATR is not
-        
-        Why Volatility-Scaled (ATR)?
-        - ATR represents market volatility: in volatile markets, levels further away are still actionable
-        - In calm markets, only nearby levels matter
-        - Adapts to market conditions automatically
-        
-        Why k=2.0?
-        - k=2.0 means: levels within ~2*ATR get significant scores (>36% of max)
-        - 2*ATR represents ~2 standard deviations of typical price movement
-        - Scientifically justified: 95% of price action occurs within 2 standard deviations
-        - Levels beyond 2*ATR are statistically less relevant for current trading
-        
-        Score Interpretation:
-        - 100: Level at current price (perfect proximity)
-        - ~36: Level at 2*ATR distance (k=2.0, exp(-1) ≈ 0.368)
-        - ~13: Level at 4*ATR distance (exp(-2) ≈ 0.135)
-        - ~5: Level at 6*ATR distance (exp(-3) ≈ 0.050)
-        - 0: Level very far away (exp(-∞) = 0)
-        
-        Trading Quality Correlation:
-        - Higher proximity score = Lower risk, faster execution, better entry/exit
-        - Reflects actual trading quality: closer levels are objectively better for trading
+        Formula: 100 * exp(-distance / (k * atr_5m))
+        - k=2.0: levels within ~2*ATR get significant scores (>36%)
+        - 2*ATR ≈ 2 standard deviations (95% of price action)
+        - Volatility-scaled: adapts to market conditions automatically
         
         Args:
             level_price: Level price
             current_price: Current price
             atr_5m: 5m ATR for volatility scaling
-            k: Decay factor (default 2.0 from config) - higher values = less penalty for distance
+            k: Decay factor (default 2.0 from config)
             
         Returns:
-            Proximity score (0-100) where 100 = level at current price, 0 = very far away
+            Proximity score (0-100) where 100 = at current price, 0 = very far
         """
         try:
             if current_price <= 0 or level_price <= 0:
@@ -299,31 +203,14 @@ class SRScorer:
         """
         Calculate touch count score with diminishing returns
         
-        SCIENTIFIC JUSTIFICATION:
-        ========================
-        
-        Why Diminishing Returns?
-        - First touch: Establishes level (20 points) - critical validation
-        - Second touch: Confirms level (40 points) - doubles confidence
-        - Third touch: Strong confirmation (60 points) - proven level
-        - Fourth touch: Very strong (80 points) - highly reliable
-        - 5+ touches: Diminishing returns (80 + 5*(n-4)) - each additional touch matters less
-        
-        Scientific Basis:
-        - Statistical significance: 2-3 touches = 95% confidence level
-        - Beyond 4 touches: Additional touches add minimal information value
-        - Logarithmic relationship: log(n) growth reflects diminishing information gain
-        
-        Trading Quality Correlation:
-        - More touches = stronger level = higher probability of holding
-        - But proximity still dominates (60% vs 15%) for trading decisions
-        - A level with 1 touch but very close > level with 10 touches but far away
+        Scale: 1 touch=20, 2=40, 3=60, 4=80, 5+=80+5*(n-4)
+        Rationale: First few touches matter most; 2-3 touches = 95% confidence
         
         Args:
             touches: Number of touches
             
         Returns:
-            Touch score (0-100) with diminishing returns
+            Touch score (0-100)
         """
         try:
             if touches <= 0:
@@ -348,31 +235,15 @@ class SRScorer:
         """
         Calculate volume confirmation score around S/R areas
         
-        SCIENTIFIC JUSTIFICATION:
-        ========================
-        
-        Why Volume Matters:
-        - High volume at level = strong institutional interest
-        - Volume confirms price action validity (not just noise)
-        - Better liquidity = better execution quality (less slippage)
-        
-        Score Components:
-        1. Base score (touches + weighted_touches): Direct volume activity indicator
-        2. Merge bonus: Merged levels = more significant = more volume
-        3. Volume spike bonus: 3+ touches = high activity = strong interest
-        4. MTF volume bonus: Multiple timeframes = broader market participation
-        
-        Trading Quality Correlation:
-        - Higher volume = Better fills, less slippage, stronger level
-        - But proximity (60%) still dominates for trading decisions
-        - Volume is execution quality factor, not primary trading factor
+        Components: base (touches), merge bonus, volume spike (3+ touches), MTF bonus
+        Higher volume = better liquidity, less slippage, stronger level
         
         Args:
             level: Level dataclass object
-            atr_14: ATR for volume scaling (not currently used but kept for future use)
+            atr_14: ATR for volume scaling (reserved for future use)
             
         Returns:
-            Volume score (0-100) based on trading activity and volume indicators
+            Volume score (0-100)
         """
         try:
             touches = level.touches
@@ -404,40 +275,17 @@ class SRScorer:
     
     def _calculate_recency_score(self, level: Level) -> float:
         """
-        Calculate recency score with exponential decay function
+        Calculate recency score with exponential decay
         
-        SCIENTIFIC JUSTIFICATION:
-        ========================
-        
-        Why Recency Matters:
-        - Market structure evolves: recent levels reflect current market conditions
-        - Old levels may be invalidated by market changes
-        - Recent levels are more likely to be respected by current market participants
-        
-        Exponential Decay Function:
-        - Formula: recency_multiplier = exp(-age_seconds / 7200)
-        - Half-life: 7200 seconds (2 hours)
-        - Rationale: Levels older than 2 hours lose relevance exponentially
-        - After 2 hours: 50% of score, after 4 hours: 25%, after 6 hours: 12.5%
-        
-        Base Score Tiers:
-        - <1 hour: 100 (very recent, highly relevant)
-        - <4 hours: 80 (recent, still relevant)
-        - <1 day: 60 (moderately recent)
-        - <3 days: 40 (somewhat stale)
-        - <1 week: 20 (stale, low relevance)
-        - >1 week: 0 (very stale, likely invalidated)
-        
-        Trading Quality Correlation:
-        - Recent levels = current market structure = higher probability of holding
-        - But only 5% weight: proximity and touches are more important
-        - Prevents very old levels from ranking high despite other factors
+        Formula: exp(-age_seconds / 7200) with base tiers
+        Half-life: 2 hours. Tiers: <1h=100, <4h=80, <1d=60, <3d=40, <1w=20, >1w=0
+        Recent levels reflect current market structure
         
         Args:
             level: Level dataclass object
             
         Returns:
-            Recency score (0-100) with exponential decay based on age
+            Recency score (0-100)
         """
         try:
             timestamp = level.timestamp
