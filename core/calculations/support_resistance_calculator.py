@@ -219,11 +219,13 @@ class SupportResistanceCalculator(BaseCalculator):
             # 3. DETECT SWING POINTS - Via SRDetector with timeframe-specific sensitivity
             swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
             
-            # DEBUG: Log detected swing points above current price
+            # DEBUG: Log detected swing points above current price (focus on levels near current price)
             resistance_swings = [sp for sp in swing_points_5m if sp.level > current_price]
             if resistance_swings:
                 logger.info(f"🔍 DEBUG: Detected {len(resistance_swings)} 5m swing points above ${current_price:.2f}:")
-                for sp in sorted(resistance_swings, key=lambda x: x.level):
+                # Show closest levels first, then all others
+                sorted_swings = sorted(resistance_swings, key=lambda x: abs(x.level - current_price))
+                for sp in sorted_swings[:10]:  # Show top 10 closest
                     distance = abs(sp.level - current_price)
                     logger.info(f"   🔴 ${sp.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
                               f"Touches: {sp.touches}x | Strength: {sp.strength:.1f}")
@@ -232,24 +234,30 @@ class SupportResistanceCalculator(BaseCalculator):
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
             
-            # DEBUG: Log clustered resistance levels
+            # DEBUG: Log clustered resistance levels (focus on closest to current price)
             resistance_clustered = [cl for cl in clustered_levels if cl.level > current_price]
             if resistance_clustered:
                 logger.info(f"🔍 DEBUG: After clustering: {len(resistance_clustered)} resistance levels above ${current_price:.2f}:")
-                for cl in sorted(resistance_clustered, key=lambda x: x.level):
+                # Show closest levels first
+                sorted_clustered = sorted(resistance_clustered, key=lambda x: abs(x.level - current_price))
+                for cl in sorted_clustered[:10]:  # Show top 10 closest
                     distance = abs(cl.level - current_price)
-                    logger.info(f"   🔴 ${cl.level:.2f} | Distance: ${distance:.2f} | Touches: {cl.touches}x | Cluster size: {cl.cluster_size}")
+                    logger.info(f"   🔴 ${cl.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
+                              f"Touches: {cl.touches}x | Cluster size: {cl.cluster_size}")
             
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer with per-timeframe ATR
             aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
             
-            # DEBUG: Log aligned resistance levels before scoring
+            # DEBUG: Log aligned resistance levels before scoring (focus on closest to current price)
             resistance_aligned = [al for al in aligned_levels if al.level > current_price]
             if resistance_aligned:
                 logger.info(f"🔍 DEBUG: After MTF alignment: {len(resistance_aligned)} resistance levels above ${current_price:.2f}:")
-                for al in sorted(resistance_aligned, key=lambda x: x.level):
+                # Show closest levels first
+                sorted_aligned = sorted(resistance_aligned, key=lambda x: abs(x.level - current_price))
+                for al in sorted_aligned[:10]:  # Show top 10 closest
                     distance = abs(al.level - current_price)
-                    logger.info(f"   🔴 ${al.level:.2f} | Distance: ${distance:.2f} | Touches: {al.touches}x | MTF: {al.mtf_count}")
+                    logger.info(f"   🔴 ${al.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
+                              f"Touches: {al.touches}x | MTF: {al.mtf_count}")
             
             scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
             
