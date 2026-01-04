@@ -287,7 +287,7 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # 5.6. VERIFY WE HAVE 2 SUPPORT + 2 RESISTANCE
             # Scientific justification: For live trading, we need exactly 2 support and 2 resistance levels
-            # Score already includes proximity (60% weight), so best levels for trading will have highest scores
+            # Score already includes proximity (65% weight), so best levels for trading will have highest scores
             # Scan nearby first (from current data), if not found, scan further in past until we find levels
             # Loop until we find enough levels (max 3 attempts to prevent infinite loops)
             
@@ -488,7 +488,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 })
             
             # Sort by strength score and filter low-confidence levels
-            # Score already includes proximity (60% weight), so best levels for trading will have highest scores
+            # Score already includes proximity (65% weight), so best levels for trading will have highest scores
             key_levels.sort(key=lambda x: x["strength_score"], reverse=True)
             
             # Filter low-confidence levels (score < 20) - More lenient threshold
@@ -505,7 +505,7 @@ class SupportResistanceCalculator(BaseCalculator):
             # Calculate strongest levels - filtered by score (top 10)
             # Shared logic: Resistance MUST be above current price, Support MUST be below current price
             # EXCLUDE broken/inactive levels - only use active levels
-            # Score already incorporates proximity (60% weight), so best levels for trading have highest scores
+            # Score already incorporates proximity (65% weight), so best levels for trading have highest scores
             support_levels = [level for level in key_levels 
                              if level["price_level"] < current_price and level.get("status") == "active"]
             resistance_levels = [level for level in key_levels 
@@ -529,7 +529,7 @@ class SupportResistanceCalculator(BaseCalculator):
             def _get_strongest_level(levels: List[Dict]) -> tuple:
                 """
                 Get strongest level price and score
-                Proximity is already factored into the score calculation (60% weight in scorer)
+                Proximity is already factored into the score calculation (65% weight in scorer)
                 
                 Args:
                     levels: List of level dictionaries
@@ -570,7 +570,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     return (0.0, 0.0), (0.0, 0.0)
                 
                 # Sort by score (highest first) - objective selection
-                # Score already includes proximity (60% weight), so best levels for trading will have highest scores
+                # Score already includes proximity (65% weight), so best levels for trading will have highest scores
                 sorted_levels = sorted(levels, key=lambda x: x["strength_score"], reverse=True)
                 
                 # Best level: highest score
