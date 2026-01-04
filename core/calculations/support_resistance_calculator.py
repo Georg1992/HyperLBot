@@ -85,7 +85,6 @@ class SupportResistanceCalculator(BaseCalculator):
             tolerance_pct = 0.001  # 0.1% - scientifically justified threshold
             adaptive_tolerance = current_price * tolerance_pct
             
-            logger.debug(f"📊 Adaptive tolerance: {tolerance_pct*100:.2f}% of price = ${adaptive_tolerance:.2f}")
             
             return adaptive_tolerance
             
@@ -118,8 +117,6 @@ class SupportResistanceCalculator(BaseCalculator):
                     if abs(level.level - existing.level) <= tolerance:
                         # Merge: keep the one with higher score (already sorted, so existing is better)
                         is_duplicate = True
-                        logger.debug(f"📊 Merging duplicate levels: ${level.level:.2f} into ${existing.level:.2f} "
-                                   f"(distance: {abs(level.level - existing.level):.2f} <= {tolerance:.2f})")
                         break
                 
                 if not is_duplicate:
@@ -196,12 +193,10 @@ class SupportResistanceCalculator(BaseCalculator):
         """
         try:
             current_time = time.time()
-            logger.debug(f"🔍 Calculating S/R levels for {self.symbol} at ${current_price:.2f}")
             
             # PERFORMANCE OPTIMIZATION: Check minimum recalculation interval
             last_update = self._last_module_updates.get('support_resistance', 0)
             if current_time - last_update < self._min_recalculation_interval:
-                logger.debug(f"⏱️ S/R calculation throttled - {self._min_recalculation_interval - (current_time - last_update):.0f}s remaining")
                 # Return cached result if available
                 cached_result = self._get_cached_analysis(current_price, current_time)
                 if cached_result.get("status") == "ok":
@@ -218,10 +213,7 @@ class SupportResistanceCalculator(BaseCalculator):
             if not self._state.should_recalculate(current_price, current_time, atr_14):
                 # Check if cached result is an error - if so, force recalculation
                 cached_result = self._get_cached_analysis(current_price, current_time)
-                if cached_result.get("status") == "error":
-                    logger.debug("📊 Cached result is error - forcing recalculation")
-                else:
-                    logger.debug("📊 Using cached calculation - no recalculation needed")
+                if cached_result.get("status") != "error":
                     return cached_result
             
             # 3. DETECT SWING POINTS - Via SRDetector with timeframe-specific sensitivity
@@ -231,20 +223,9 @@ class SupportResistanceCalculator(BaseCalculator):
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
             
-            # Debug: Log swing point detection results
-            logger.debug(f"📊 Swing detection: 5m={len(swing_points_5m)}, higher_tf={len(higher_tf_levels)}, "
-                        f"clustered={len(clustered_levels)}")
-            if higher_tf_levels:
-                levels_above = [level for level in higher_tf_levels if level.level > current_price]
-                logger.debug(f"📊 Higher TF levels above ${current_price:.2f}: {len(levels_above)}")
-            
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer with per-timeframe ATR
             aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
             scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
-            
-            # Debug: Log scored levels above current price
-            levels_above_price = [level for level in scored_levels if level.level > current_price]
-            logger.debug(f"📊 Scored levels above ${current_price:.2f}: {len(levels_above_price)}")
             
             # 5.5. FINAL DEDUPLICATION - Merge levels that are too close (after scoring)
             # Scientific justification: Levels within 0.05% of price are statistically indistinguishable
@@ -252,7 +233,6 @@ class SupportResistanceCalculator(BaseCalculator):
             # timeframes or clustering artifacts. Percentage-based ensures scalability across price ranges.
             final_dedup_tolerance = current_price * 0.0005  # 0.05% of price (scientifically justified threshold)
             scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
-            logger.debug(f"📊 Final deduplication: tolerance={final_dedup_tolerance:.2f}, levels={len(scored_levels)}")
             
             # 5.6. VERIFY WE HAVE 2 SUPPORT + 2 RESISTANCE
             # Scientific justification: For live trading, we need exactly 2 support and 2 resistance levels
@@ -273,22 +253,11 @@ class SupportResistanceCalculator(BaseCalculator):
                 
                 # If we have enough levels, break the loop
                 if support_count >= 2 and resistance_count >= 2:
-                    logger.debug(f"✅ Found sufficient levels: {support_count} support, {resistance_count} resistance")
-                    # Log the top levels by score for debugging
-                    if support_levels:
-                        top_support = sorted(support_levels, key=lambda x: x.score, reverse=True)[:5]
-                        support_prices = [f"${level.level:.2f}({level.score:.1f})" for level in top_support]
-                        logger.debug(f"   Top support by score: {', '.join(support_prices)}")
-                    if resistance_levels:
-                        top_resistance = sorted(resistance_levels, key=lambda x: x.score, reverse=True)[:5]
-                        resistance_prices = [f"${level.level:.2f}({level.score:.1f})" for level in top_resistance]
-                        logger.debug(f"   Top resistance by score: {', '.join(resistance_prices)}")
                     break
                 
                 # If we don't have enough and haven't exceeded max attempts, fetch more data
                 if attempt < max_attempts - 1:
-                    logger.debug(f"📊 Attempt {attempt + 1}/{max_attempts}: Insufficient levels: "
-                               f"{support_count} support, {resistance_count} resistance. Fetching more historical data...")
+                    logger.warning(f"⚠️ Insufficient levels: {support_count} support, {resistance_count} resistance. Fetching more historical data...")
                     
                     # Fetch more historical data and recalculate
                     candles_data, atr_per_tf = self._data_provider.fetch_multi_timeframe_data(current_price, force_extended_lookback=True)
@@ -316,18 +285,7 @@ class SupportResistanceCalculator(BaseCalculator):
             # 7. UPDATE STATE - Track calculation completion
             self._state.update_calculation_state(current_price, current_time)
             
-            # Get state summary and count MTF confirmations for logging
-            state_summary = self._state.get_state_summary()
-            mtf_confirmed_count = sum(1 for level in scored_levels if level.mtf_count > 0)
-            
             logger.info(f"📊 S/R calculation complete: {len(scored_levels)} levels processed")
-            logger.debug(f"📊 RECALCULATION: {state_summary['recalculation_reasons']}")
-            logger.debug(f"📊 MTF STATS: {mtf_confirmed_count}/{len(scored_levels)} levels confirmed")
-            
-            # Log level filtering info if result is successful
-            if result.get('status') == 'ok':
-                levels_count = len(result.get('levels', []))
-                logger.debug(f"📊 LEVEL FILTERING: {levels_count}/{len(scored_levels)} levels passed confidence filter")
             
             # PERFORMANCE OPTIMIZATION: Update last calculation time
             self._last_module_updates['support_resistance'] = current_time
@@ -382,12 +340,8 @@ class SupportResistanceCalculator(BaseCalculator):
             cache_key = self._get_cache_key(current_price, current_time)
             
             cached_data = self._cache.get(cache_key)
-            
             if cached_data:
-                logger.debug(f"📊 Cache HIT: {cache_key}")
                 return cached_data
-            
-            logger.debug(f"📊 Cache MISS: {cache_key}")
             # No valid cache, return error result
             return self._create_error_result("No cached analysis available")
             
@@ -457,10 +411,6 @@ class SupportResistanceCalculator(BaseCalculator):
             # Keep top 10 levels by score - score already incorporates all factors including proximity
             key_levels = filtered_levels[:10]
             
-            logger.debug(f"📊 Level filtering: {len(key_levels)} levels selected by score (current_price: ${current_price:.2f})")
-            if key_levels:
-                top_prices = [f"${level['price_level']:.2f}({level['strength_score']:.1f})" for level in key_levels[:5]]
-                logger.debug(f"   Top levels by score: {', '.join(top_prices)}")
             
             # Calculate strongest levels - filtered by score (top 10)
             # Shared logic: Resistance MUST be above current price, Support MUST be below current price

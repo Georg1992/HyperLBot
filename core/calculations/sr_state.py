@@ -41,7 +41,6 @@ class SRState:
         self._recalculation_reasons.clear()
         self._active_levels.clear()
         self._inactive_levels.clear()
-        logger.debug("📊 Reset S/R session state (preserved historical roles)")
     
     def should_recalculate(self, current_price: float, current_time: float, 
                           atr_5m: float) -> bool:
@@ -123,7 +122,6 @@ class SRState:
         """
         self._last_calculation_time = current_time
         self._last_price = current_price
-        logger.debug(f"📊 Updated calculation state: price=${current_price:.2f}")
     
     def check_level_status(self, level: Dict, current_price: float, atr_14: float) -> str:
         """
@@ -180,7 +178,6 @@ class SRState:
             }
             
             self._broken_levels.append(broken_level)
-            logger.debug(f"📊 Tracked broken {level.level_type} at ${level.level:.2f}")
             
         except Exception as e:
             logger.error(f"❌ Failed to track broken level: {e}")
@@ -203,7 +200,6 @@ class SRState:
             }
             
             self._role_reversals.append(reversal)
-            logger.debug(f"📊 Tracked role reversal: {level.level_type} → {reversal['new_type']}")
             
         except Exception as e:
             logger.error(f"❌ Failed to track role reversal: {e}")

@@ -46,8 +46,6 @@ class SRScorer:
         if abs(weight_sum - 1.0) > 0.001:
             raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum}")
         
-        logger.debug(f"📊 SRScorer initialized with weights: {self._scoring_weights}")
-        logger.debug(f"🔧 SR proximity decay k = {self.proximity_decay_k}")
         
     def score_levels_enhanced(self, levels: List[Level], current_price: float, 
                              atr_5m: float, atr_per_tf: Dict[str, float]) -> List[Level]:
@@ -115,7 +113,6 @@ class SRScorer:
             # Sort by score (highest first)
             scored_levels.sort(key=lambda x: x.score, reverse=True)
             
-            logger.debug(f"📊 Scored {len(scored_levels)} levels")
             return scored_levels
             
         except Exception as e:
@@ -326,7 +323,6 @@ class SRScorer:
         """
         try:
             if not higher_tf_levels:
-                logger.debug("📊 No higher timeframe levels for MTF alignment")
                 return clustered_levels
             
             # Timeframe weights (higher = more important)
@@ -399,12 +395,6 @@ class SRScorer:
                         score_breakdown=level.score_breakdown
                     )
                     
-                    # Count timeframes represented
-                    tf_count = len(set(match['timeframe'] for match in mtf_matches))
-                    
-                    logger.debug(f"📊 MTF CONFIRMED: Level ${level_price:.0f} - {len(mtf_matches)} matches, "
-                               f"weighted_score={weighted_score:.2f}, timeframes={tf_count}")
-                    
                     aligned_levels.append(updated_level)
                 else:
                     # Create new Level instance without MTF information
@@ -463,11 +453,6 @@ class SRScorer:
                         score_breakdown=htf_level.score_breakdown if hasattr(htf_level, 'score_breakdown') else {}
                     )
                     aligned_levels.append(standalone_level)
-                    logger.debug(f"📊 Added standalone HTF level: ${htf_level.level:.2f} (not matched to 5m clusters)")
-            
-            # Log MTF statistics
-            confirmed_count = sum(1 for level in aligned_levels if level.mtf_count > 0)
-            logger.debug(f"📊 MTF ALIGNMENT: {confirmed_count}/{len(aligned_levels)} levels confirmed across timeframes")
             
             return aligned_levels
             

@@ -108,7 +108,6 @@ class SRDetector:
                     )
                     swing_points.append(level)
             
-            logger.debug(f"📊 Detected {len(swing_points)} swing points for {timeframe}")
             return swing_points
             
         except Exception as e:
@@ -438,7 +437,6 @@ class SRDetector:
             # Post-clustering deduplication to catch any remaining duplicates
             clusters = self._deduplicate_clusters(clusters, cluster_tolerance * 0.5)
             
-            logger.debug(f"📊 CLUSTERING: {len(swing_points)} points → {len(clusters)} levels (tolerance: {cluster_tolerance:.2f})")
             return clusters
             
         except Exception as e:
@@ -531,7 +529,6 @@ class SRDetector:
                 if not is_duplicate:
                     deduplicated.append(cluster)
             
-            logger.debug(f"📊 DEDUPLICATION: {len(clusters)} → {len(deduplicated)} clusters")
             return deduplicated
             
         except Exception as e:

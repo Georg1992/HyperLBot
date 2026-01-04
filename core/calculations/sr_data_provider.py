@@ -74,8 +74,6 @@ class SRDataProvider:
             ValueError: If insufficient data is available for primary timeframe
         """
         try:
-            logger.debug(f"📊 Fetching multi-timeframe data for {self.symbol}")
-            
             # Start with minimal lookback - only what's needed for basic detection
             candles_5m = self._fetch_candles_with_validation("5m", 1000)  # ~83 hours (~3.5 days) - minimal for swing detection
             candles_15m = self._fetch_candles_with_validation("15m", 500)  # ~125 hours (~5 days) - minimal for MTF
@@ -94,11 +92,9 @@ class SRDataProvider:
                     
                     if min_price < current_price:
                         support_found = True
-                        logger.debug(f"📊 Found support below current price in initial daily data (min: ${min_price:.2f})")
                     
                     if max_price > current_price:
                         resistance_found = True
-                        logger.debug(f"📊 Found resistance above current price in initial daily data (max: ${max_price:.2f})")
                 
                 # Progressive lookback steps for daily candles if support or resistance not found
                 # If force_extended_lookback, start from maximum lookback immediately
@@ -116,7 +112,7 @@ class SRDataProvider:
                         if not resistance_found:
                             missing.append("resistance")
                         
-                        logger.debug(f"📊 Missing {', '.join(missing)} for ${current_price:.2f}, increasing daily lookback to {step_lookback} candles")
+                        logger.warning(f"⚠️ Missing {', '.join(missing)} for ${current_price:.2f}, increasing daily lookback to {step_lookback} candles")
                         candles_1d = self._fetch_candles_with_validation("1d", step_lookback)
                         current_lookback = step_lookback
                         
@@ -126,11 +122,9 @@ class SRDataProvider:
                             
                             if not support_found and min_price < current_price:
                                 support_found = True
-                                logger.debug(f"📊 Found support below current price at {step_lookback} daily candles (min: ${min_price:.2f})")
                             
                             if not resistance_found and max_price > current_price:
                                 resistance_found = True
-                                logger.debug(f"📊 Found resistance above current price at {step_lookback} daily candles (max: ${max_price:.2f})")
                 
                 if not support_found:
                     logger.warning(f"⚠️ Could not find support below ${current_price:.2f} even with {current_lookback} daily candles")
@@ -144,7 +138,6 @@ class SRDataProvider:
                 if candles:
                     atr_value = self.calculate_atr(candles, 14)
                     atr_per_tf[tf] = atr_value
-                    logger.debug(f"📊 ATR({tf}): {atr_value:.2f}")
                 else:
                     atr_per_tf[tf] = 0.0
                     logger.warning(f"⚠️ No candles for {tf} timeframe")
@@ -180,10 +173,7 @@ class SRDataProvider:
             cache_key = f"sr_candles_{self.symbol}_{timeframe}_{lookback}_{timestamp_bucket}"
             cached_data = self._cache.get(cache_key)
             if cached_data:
-                logger.debug(f"📊 Cache HIT: {cache_key}")
                 return cached_data
-            
-            logger.debug(f"📊 Cache MISS: {cache_key}")
             
             # Fetch fresh data using injected historical service
             candles = self._historical_service.get_historical_candles(self.symbol, timeframe, lookback)
@@ -204,7 +194,6 @@ class SRDataProvider:
             self._cache.set(cache_key, candles, ttl)
             self._last_fetch_time[timeframe] = time.time()
             
-            logger.debug(f"📊 Fetched {len(candles)} {timeframe} candles")
             return candles
             
         except Exception as e:
