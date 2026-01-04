@@ -221,6 +221,8 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # DEBUG: Log detected swing points by their original level_type (focus on levels near current price)
             resistance_swings = [sp for sp in swing_points_5m if sp.level_type == 'resistance']
+            support_swings = [sp for sp in swing_points_5m if sp.level_type == 'support']
+            
             if resistance_swings:
                 # Filter to show only those above current price for active resistance
                 active_resistance_swings = [sp for sp in resistance_swings if sp.level > current_price]
@@ -231,6 +233,19 @@ class SupportResistanceCalculator(BaseCalculator):
                     distance = abs(sp.level - current_price)
                     logger.info(f"   🔴 ${sp.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
                               f"Touches: {sp.touches}x | Strength: {sp.strength:.1f}")
+            
+            if support_swings:
+                # Filter to show only those below current price for active support
+                active_support_swings = [sp for sp in support_swings if sp.level < current_price]
+                logger.info(f"🔍 DEBUG: Detected {len(support_swings)} support swing points ({len(active_support_swings)} below ${current_price:.2f}):")
+                # Show closest levels first (only those below current price for active support)
+                sorted_swings = sorted(active_support_swings, key=lambda x: abs(x.level - current_price))
+                for sp in sorted_swings[:10]:  # Show top 10 closest
+                    distance = abs(sp.level - current_price)
+                    logger.info(f"   🟢 ${sp.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
+                              f"Touches: {sp.touches}x | Strength: {sp.strength:.1f}")
+            else:
+                logger.warning(f"⚠️ No support swing points detected at all!")
             
             # 4. CLUSTER LEVELS - Adaptive tolerance algorithm
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
@@ -246,6 +261,18 @@ class SupportResistanceCalculator(BaseCalculator):
                 for cl in sorted_clustered[:10]:  # Show top 10 closest
                     distance = abs(cl.level - current_price)
                     logger.info(f"   🔴 ${cl.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
+                              f"Touches: {cl.touches}x | Cluster size: {cl.cluster_size}")
+            
+            # DEBUG: Log clustered support levels by their original level_type (focus on closest to current price)
+            support_clustered = [cl for cl in clustered_levels if cl.level_type == 'support']
+            if support_clustered:
+                active_support_clustered = [cl for cl in support_clustered if cl.level < current_price]
+                logger.info(f"🔍 DEBUG: After clustering: {len(support_clustered)} support levels ({len(active_support_clustered)} below ${current_price:.2f}):")
+                # Show closest levels first (only those below current price for active support)
+                sorted_clustered = sorted(active_support_clustered, key=lambda x: abs(x.level - current_price))
+                for cl in sorted_clustered[:10]:  # Show top 10 closest
+                    distance = abs(cl.level - current_price)
+                    logger.info(f"   🟢 ${cl.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
                               f"Touches: {cl.touches}x | Cluster size: {cl.cluster_size}")
             
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer with per-timeframe ATR
@@ -264,6 +291,18 @@ class SupportResistanceCalculator(BaseCalculator):
                               f"Touches: {al.touches}x | MTF: {al.mtf_count}")
             
             scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
+            
+            # DEBUG: Log top scored support levels by their original level_type
+            support_scored = [sl for sl in scored_levels if sl.level_type == 'support']
+            if support_scored:
+                active_support_scored = [sl for sl in support_scored if sl.level < current_price]
+                logger.info(f"🔍 DEBUG: After scoring: Top 5 support levels below ${current_price:.2f}:")
+                for sl in sorted(active_support_scored, key=lambda x: x.score, reverse=True)[:5]:
+                    distance = abs(sl.level - current_price)
+                    score_breakdown = sl.score_breakdown or {}
+                    logger.info(f"   🟢 ${sl.level:.2f} | Score: {sl.score:.1f} | Distance: ${distance:.2f} | "
+                              f"Prox: {score_breakdown.get('proximity', 0):.1f} Touch: {score_breakdown.get('touch', 0):.1f} "
+                              f"MTF: {score_breakdown.get('mtf', 0):.1f} Vol: {score_breakdown.get('volume', 0):.1f}")
             
             # DEBUG: Log top scored resistance levels by their original level_type
             resistance_scored = [sl for sl in scored_levels if sl.level_type == 'resistance']
@@ -477,6 +516,29 @@ class SupportResistanceCalculator(BaseCalculator):
                                 if level.get("type") == "resistance" and 
                                 level["price_level"] > current_price and 
                                 level.get("status") == "active"]
+            
+            # DEBUG: Log all support levels with their scores and breakdowns
+            if support_levels:
+                logger.info(f"🔍 DEBUG: Found {len(support_levels)} active support levels below ${current_price:.2f}:")
+                for level in sorted(support_levels, key=lambda x: x["strength_score"], reverse=True):
+                    score_breakdown = level.get("score_breakdown", {})
+                    proximity = score_breakdown.get("proximity", 0)
+                    touch = score_breakdown.get("touch", 0)
+                    mtf = score_breakdown.get("mtf", 0)
+                    volume = score_breakdown.get("volume", 0)
+                    distance = abs(level["price_level"] - current_price)
+                    logger.info(f"   🟢 ${level['price_level']:.2f} | Score: {level['strength_score']:.1f} | "
+                              f"Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
+                              f"Touches: {level.get('touches', 0)}x | "
+                              f"Breakdown: prox={proximity:.1f} touch={touch:.1f} mtf={mtf:.1f} vol={volume:.1f}")
+            else:
+                logger.warning(f"🔍 DEBUG: No active support levels found below ${current_price:.2f}")
+                # Check all levels below price (even if inactive or wrong type)
+                all_below = [level for level in key_levels if level["price_level"] < current_price]
+                if all_below:
+                    logger.warning(f"   Found {len(all_below)} levels below price but filtered out:")
+                    for level in sorted(all_below, key=lambda x: x["price_level"], reverse=True)[:5]:
+                        logger.warning(f"     ${level['price_level']:.2f} (type: {level.get('type')}, status: {level.get('status')}, score: {level.get('strength_score', 0):.1f})")
             
             # DEBUG: Log all resistance levels with their scores and breakdowns
             if resistance_levels:
