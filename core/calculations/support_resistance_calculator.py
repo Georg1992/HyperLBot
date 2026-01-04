@@ -221,9 +221,20 @@ class SupportResistanceCalculator(BaseCalculator):
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
             
+            # Debug: Log swing point detection results
+            logger.debug(f"📊 Swing detection: 5m={len(swing_points_5m)}, higher_tf={len(higher_tf_levels)}, "
+                        f"clustered={len(clustered_levels)}")
+            if higher_tf_levels:
+                levels_above = [level for level in higher_tf_levels if level.level > current_price]
+                logger.debug(f"📊 Higher TF levels above ${current_price:.2f}: {len(levels_above)}")
+            
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer with per-timeframe ATR
             aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
             scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
+            
+            # Debug: Log scored levels above current price
+            levels_above_price = [level for level in scored_levels if level.level > current_price]
+            logger.debug(f"📊 Scored levels above ${current_price:.2f}: {len(levels_above_price)}")
             
             # 6. FORMAT RESULTS - With proper state management
             result = self._format_results_optimized(scored_levels, current_price, atr_14, current_time)
@@ -379,31 +390,40 @@ class SupportResistanceCalculator(BaseCalculator):
             resistance_levels = [level for level in key_levels 
                                 if level["price_level"] > current_price and level.get("status") == "active"]
             
-            # Validate and get strongest support (below current price)
-            if support_levels:
-                strongest_support = max(support_levels, key=lambda x: x["strength_score"])["price_level"]
-                support_score = max(support_levels, key=lambda x: x["strength_score"])["strength_score"]
-                # Validate: support must be below current price
-                if strongest_support >= current_price:
-                    logger.error(f"❌ Invalid support level: ${strongest_support:.2f} >= current price ${current_price:.2f}")
-                    strongest_support = 0.0
-                    support_score = 0.0
-            else:
-                strongest_support = 0.0
-                support_score = 0.0
+            # Debug logging for resistance detection
+            if not resistance_levels:
+                # Check if we have any levels above current price (even if inactive)
+                levels_above = [level for level in key_levels if level["price_level"] > current_price]
+                if levels_above:
+                    inactive_above = [level for level in levels_above if level.get("status") == "inactive"]
+                    logger.warning(f"⚠️ No active resistance found above ${current_price:.2f}. "
+                                 f"Found {len(levels_above)} levels above price ({len(inactive_above)} inactive). "
+                                 f"Top level: ${max(levels_above, key=lambda x: x['price_level'])['price_level']:.2f}")
+                else:
+                    logger.warning(f"⚠️ No resistance levels found above ${current_price:.2f}. "
+                                 f"Total levels: {len(key_levels)}, "
+                                 f"Levels above price: 0")
             
-            # Validate and get strongest resistance (above current price)
-            if resistance_levels:
-                strongest_resistance = max(resistance_levels, key=lambda x: x["strength_score"])["price_level"]
-                resistance_score = max(resistance_levels, key=lambda x: x["strength_score"])["strength_score"]
-                # Validate: resistance must be above current price
-                if strongest_resistance <= current_price:
-                    logger.error(f"❌ Invalid resistance level: ${strongest_resistance:.2f} <= current price ${current_price:.2f}")
-                    strongest_resistance = 0.0
-                    resistance_score = 0.0
-            else:
-                strongest_resistance = 0.0
-                resistance_score = 0.0
+            # Shared helper function to get strongest level and score (DRY principle)
+            def _get_strongest_level(levels: List[Dict]) -> tuple:
+                """Get strongest level price and score from filtered levels"""
+                if not levels:
+                    return 0.0, 0.0
+                strongest = max(levels, key=lambda x: x["strength_score"])
+                return strongest["price_level"], strongest["strength_score"]
+            
+            # Get strongest support and resistance using shared logic
+            strongest_support, support_score = _get_strongest_level(support_levels)
+            strongest_resistance, resistance_score = _get_strongest_level(resistance_levels)
+            
+            # Validation: These should already be filtered correctly, but double-check
+            if strongest_support > 0 and strongest_support >= current_price:
+                logger.error(f"❌ Invalid support level: ${strongest_support:.2f} >= current price ${current_price:.2f}")
+                strongest_support, support_score = 0.0, 0.0
+            
+            if strongest_resistance > 0 and strongest_resistance <= current_price:
+                logger.error(f"❌ Invalid resistance level: ${strongest_resistance:.2f} <= current price ${current_price:.2f}")
+                strongest_resistance, resistance_score = 0.0, 0.0
             
             # Log validation results
             if strongest_support > 0:
@@ -440,13 +460,10 @@ class SupportResistanceCalculator(BaseCalculator):
                     "support_score": support_score,
                     "resistance_score": resistance_score
                 },
-                # Top 2 support (below current price, active only) - sorted by strength, then proximity
-                "top_2_support": sorted([level for level in key_levels 
-                                        if level["price_level"] < current_price and level.get("status") == "active"],
+                # Top 2 support and resistance - reuse filtered lists with shared sorting logic
+                "top_2_support": sorted(support_levels, 
                                        key=lambda x: (-x["strength_score"], abs(x["price_level"] - current_price)))[:2],
-                # Top 2 resistance (above current price, active only) - sorted by strength, then proximity
-                "top_2_resistance": sorted([level for level in key_levels 
-                                          if level["price_level"] > current_price and level.get("status") == "active"],
+                "top_2_resistance": sorted(resistance_levels,
                                          key=lambda x: (-x["strength_score"], abs(x["price_level"] - current_price)))[:2],
                 # Add root-level fields for dashboard compatibility
                 "strongest_support": strongest_support,
