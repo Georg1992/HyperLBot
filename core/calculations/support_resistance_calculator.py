@@ -601,9 +601,19 @@ class SupportResistanceCalculator(BaseCalculator):
             if (best_support == 0.0 or secondary_support == 0.0) and len(support_levels) > 0:
                 logger.warning(f"⚠️ Could not find 2 support levels from {len(support_levels)} available. "
                              f"Best: ${best_support:.2f}, Secondary: ${secondary_support:.2f}")
+                if len(support_levels) >= 2:
+                    # Log all support levels for debugging
+                    sorted_support = sorted(support_levels, key=lambda x: x["strength_score"], reverse=True)
+                    logger.debug(f"   Available support levels: {[(f'${l[\"price_level\"]:.2f}({l[\"strength_score\"]:.1f})') for l in sorted_support[:5]]}")
             if (best_resistance == 0.0 or secondary_resistance == 0.0) and len(resistance_levels) > 0:
                 logger.warning(f"⚠️ Could not find 2 resistance levels from {len(resistance_levels)} available. "
                              f"Best: ${best_resistance:.2f}, Secondary: ${secondary_resistance:.2f}")
+                if len(resistance_levels) >= 2:
+                    # Log all resistance levels for debugging
+                    sorted_resistance = sorted(resistance_levels, key=lambda x: x["strength_score"], reverse=True)
+                    logger.debug(f"   Available resistance levels: {[(f'${l[\"price_level\"]:.2f}({l[\"strength_score\"]:.1f})') for l in sorted_resistance[:5]]}")
+                else:
+                    logger.warning(f"   Only {len(resistance_levels)} resistance level(s) found above ${current_price:.2f}")
             
             # For backward compatibility, strongest = best
             strongest_support, support_score = best_support, best_support_score
