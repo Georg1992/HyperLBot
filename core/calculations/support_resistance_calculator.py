@@ -251,16 +251,17 @@ class SupportResistanceCalculator(BaseCalculator):
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
             
-            # 4.5. COUNT ACTUAL TOUCHES FROM CANDLE DATA (REPLACES SWING-POINT COUNTING)
-            # CRITICAL: Count actual price touches from candles, not just swing points
-            # Swing point counting only counts detected swing points (e.g., 1 swing point = 1 touch)
-            # But a level can have many actual touches visible on the chart (e.g., $90,900 has 10+ touches)
-            # This is the SOURCE OF TRUTH for touch counts - replaces the preliminary swing-point count
-            # The updated touch count is then used in scoring (sr_scorer uses level.touches)
-            candles_5m = candles_data.get("5m", [])
-            if candles_5m:
-                clustered_levels = self._count_actual_touches(clustered_levels, candles_5m, atr_14)
-                logger.debug(f"📊 Updated touch counts from actual candle data for {len(clustered_levels)} levels")
+            # 4.5. TOUCH COUNTS: Use swing points only (they measure actual reversals)
+            # Swing points = actual price reversals (what matters for S/R strength)
+            # If swing detection is missing valid swing points, we should fix swing detection parameters
+            # NOT add a second counting method that includes noise
+            
+            # DEBUG: Log touch counts after clustering (before scoring)
+            logger.info(f"📊 TOUCH COUNT ANALYSIS: {len(clustered_levels)} clustered levels")
+            for level in clustered_levels[:10]:  # Show top 10
+                logger.info(f"   {'🔴' if level.level_type == 'resistance' else '🟢'} ${level.level:.2f} | "
+                          f"Touches: {level.touches}x | Cluster size: {level.cluster_size} | "
+                          f"Strength: {level.strength:.1f}")
             
             # DEBUG: Log clustered resistance levels by their original level_type (focus on closest to current price)
             resistance_clustered = [cl for cl in clustered_levels if cl.level_type == 'resistance']
@@ -384,6 +385,17 @@ class SupportResistanceCalculator(BaseCalculator):
             # 6. FORMAT RESULTS - With proper state management
             result = self._format_results_optimized(scored_levels, current_price, atr_14, current_time)
             
+            # DEBUG: Log final top levels that will be displayed
+            top_2_support = result.get('top_2_support', [])
+            top_2_resistance = result.get('top_2_resistance', [])
+            logger.info(f"📊 FINAL RESULTS: {len(top_2_support)} support, {len(top_2_resistance)} resistance levels")
+            for sup in top_2_support:
+                logger.info(f"   🟢 BEST SUPPORT: ${sup.get('price_level', 0):.2f} | Score: {sup.get('strength_score', 0):.1f} | "
+                          f"Touches: {sup.get('touches', 0)}x | Status: {sup.get('status', 'unknown')}")
+            for res in top_2_resistance:
+                logger.info(f"   🔴 BEST RESISTANCE: ${res.get('price_level', 0):.2f} | Score: {res.get('strength_score', 0):.1f} | "
+                          f"Touches: {res.get('touches', 0)}x | Status: {res.get('status', 'unknown')}")
+            
             # 7. UPDATE STATE - Track calculation completion
             self._state.update_calculation_state(current_price, current_time)
             
@@ -453,29 +465,28 @@ class SupportResistanceCalculator(BaseCalculator):
     
     def _count_actual_touches(self, clustered_levels: List, candles: List[Dict], atr_14: float) -> List:
         """
-        Count actual price touches from candle data for each level
+        Validate swing point touch counts by checking actual candle touches
         
-        This is the SOURCE OF TRUTH for touch counts. It replaces the swing-point-based
-        counting done during clustering (_calculate_distinct_touches in sr_detector.py).
+        NOTE: This method is kept for validation/debugging purposes only.
+        The final touch count uses swing points only, as they measure actual reversals.
         
-        Why this is needed:
-        - Swing point counting only counts detected swing points (e.g., 1 swing point = 1 touch)
-        - But a level can have many actual touches visible on the chart (e.g., $90,900 has 10+ touches)
-        - Actual touches are more accurate: they count how many candles actually touched the level
+        Why swing points are the correct measure:
+        - Swing points = actual price reversals (what matters for S/R strength)
+        - Actual touches = price got close (includes noise and non-reactions)
+        - If price touched a level 10 times but only reversed once, the level is WEAK
+        - Combining them would inflate weak levels, which is misleading
         
-        Flow:
-        1. Swing points detected (each has touches=1)
-        2. Clustered (uses _calculate_distinct_touches - preliminary count)
-        3. THIS METHOD: Counts actual touches from candles (REPLACES preliminary count)
-        4. Scoring uses level.touches (now the actual touch count)
+        If swing detection is missing valid swing points, we should:
+        1. Adjust swing detection parameters (n, filters) to be less strict
+        2. NOT add a second counting method that includes noise
         
         Args:
-            clustered_levels: List of clustered Level objects (with preliminary touch counts)
+            clustered_levels: List of clustered Level objects (with swing point touch counts)
             candles: List of candle dictionaries (5m candles)
             atr_14: ATR for touch tolerance
             
         Returns:
-            List of Level objects with ACTUAL touch counts from candle data
+            List of Level objects (touch counts unchanged - using swing points only)
         """
         try:
             if not candles or not clustered_levels:
@@ -515,10 +526,12 @@ class SupportResistanceCalculator(BaseCalculator):
                                 actual_touches += 1
                                 touched_timestamps.add(timestamp)
                 
-                # Use actual touch count from candles as the source of truth
-                # This replaces the swing-point-based count (which only counted swing points, not actual touches)
-                # Actual touches are more accurate: they count how many candles actually touched the level
-                final_touches = actual_touches if actual_touches > 0 else level.touches
+                # Use swing point touches as the source of truth
+                # Swing points measure what matters: actual price reversals at the level
+                # If price touched a level 10 times but only reversed once, the level is WEAK, not strong
+                # Actual touches include noise (candles that just grazed the level without reaction)
+                # Therefore, we use swing points only - they measure actual level strength
+                final_touches = level.touches  # From swing point detection (actual reversals)
                 
                 # Create updated level with correct touch count (Level is frozen, so create new instance)
                 from .level import Level

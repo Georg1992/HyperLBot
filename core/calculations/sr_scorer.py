@@ -110,14 +110,26 @@ class SRScorer:
                 
                 scored_levels.append(scored_level)
                 
-                # DEBUG: Log scoring details for resistance levels above current price
-                if level.level > current_price:
+                # DEBUG: Log detailed scoring breakdown for all active levels
+                is_active = (level.level_type == 'resistance' and level.level > current_price) or \
+                           (level.level_type == 'support' and level.level < current_price)
+                
+                if is_active:
                     distance = abs(level.level - current_price)
-                    logger.debug(f"🔍 SCORING DEBUG: Resistance ${level.level:.2f} | "
+                    level_emoji = "🔴" if level.level_type == 'resistance' else "🟢"
+                    # Calculate weighted contributions for clarity
+                    prox_contrib = (proximity_score / 100.0) * 0.65 * 100
+                    touch_contrib = (touch_score / 100.0) * 0.20 * 100
+                    mtf_contrib = (mtf_score / 100.0) * 0.10 * 100
+                    vol_contrib = (volume_score / 100.0) * 0.05 * 100
+                    
+                    logger.info(f"📊 SCORE BREAKDOWN {level_emoji} ${level.level:.2f} ({level.level_type.upper()}) | "
                                f"Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                               f"Proximity: {proximity_score:.1f} | Touch: {touch_score:.1f} ({level.touches}x) | "
-                               f"MTF: {mtf_score:.1f} ({level.mtf_count}) | Volume: {volume_score:.1f} | "
-                               f"Final Score: {normalized_score:.1f}")
+                               f"Proximity: {proximity_score:.1f} → {prox_contrib:.1f} pts (65%) | "
+                               f"Touch: {touch_score:.1f} ({level.touches}x) → {touch_contrib:.1f} pts (20%) | "
+                               f"MTF: {mtf_score:.1f} ({level.mtf_count}x) → {mtf_contrib:.1f} pts (10%) | "
+                               f"Volume: {volume_score:.1f} → {vol_contrib:.1f} pts (5%) | "
+                               f"FINAL: {normalized_score:.1f}/100")
             
             # Sort by score (highest first)
             scored_levels.sort(key=lambda x: x.score, reverse=True)
