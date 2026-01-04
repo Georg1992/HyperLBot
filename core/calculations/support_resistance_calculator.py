@@ -131,39 +131,29 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Final deduplication failed: {e}")
             return scored_levels
     
-    def _calculate_atr_per_timeframe(self, candles_data: Dict[str, List[Dict]]) -> Dict[str, float]:
+    def _detect_all_swing_points(self, candles_data: Dict[str, List[Dict]], current_price: float) -> tuple:
         """
-        Calculate ATR for each timeframe as volatility reference
+        Detect swing points for all timeframes - shared logic to avoid duplication
         
         Args:
             candles_data: Dictionary of candles by timeframe
+            current_price: Current price
             
         Returns:
-            Dictionary of ATR values per timeframe
+            Tuple of (swing_points_5m, higher_tf_levels)
         """
-        try:
-            atr_per_tf = {}
-            
-            for tf, candles in candles_data.items():
-                if candles:
-                    atr_value = self._data_provider.calculate_atr(candles, 14)
-                    atr_per_tf[tf] = atr_value
-                    logger.debug(f"📊 ATR({tf}): {atr_value:.2f}")
-                else:
-                    atr_per_tf[tf] = 0.0
-                    logger.warning(f"⚠️ No candles for {tf} timeframe")
-            
-            return atr_per_tf
-            
-        except Exception as e:
-            logger.error(f"❌ ATR per timeframe calculation failed: {e}")
-            # Return default ATR values
-            return {
-                "5m": 100.0,  # Default ATR values
-                "15m": 150.0,
-                "1h": 200.0,
-                "1d": 500.0
-            }
+        swing_points_5m = self._detector.detect_swing_points(
+            candles_data.get("5m", []), current_price, n=1, timeframe="5m")
+        
+        higher_tf_levels = []
+        for tf in ["15m", "1h", "1d"]:
+            tf_candles = candles_data.get(tf, [])
+            if tf_candles:
+                n_value = {"15m": 2, "1h": 3, "1d": 4}[tf]
+                swing_tf = self._detector.detect_swing_points(tf_candles, current_price, n=n_value, timeframe=tf)
+                higher_tf_levels.extend(swing_tf)
+        
+        return swing_points_5m, higher_tf_levels
     
     def invalidate_cache(self):
         """Clear all cached S/R data to force fresh calculation"""
@@ -235,28 +225,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     return cached_result
             
             # 3. DETECT SWING POINTS - Via SRDetector with timeframe-specific sensitivity
-            swing_points_5m = self._detector.detect_swing_points(
-                candles_data.get("5m", []), current_price, n=1, timeframe="5m")  # Most sensitive for recent levels
-            
-            # Detect higher timeframe swing points with safe access
-            higher_tf_levels = []
-            candles_15m = candles_data.get("15m", [])
-            if candles_15m:
-                swing_15m = self._detector.detect_swing_points(
-                    candles_15m, current_price, n=2, timeframe="15m")  # Moderate sensitivity
-                higher_tf_levels.extend(swing_15m)
-            
-            candles_1h = candles_data.get("1h", [])
-            if candles_1h:
-                swing_1h = self._detector.detect_swing_points(
-                    candles_1h, current_price, n=3, timeframe="1h")  # Less sensitive for major levels
-                higher_tf_levels.extend(swing_1h)
-            
-            candles_1d = candles_data.get("1d", [])
-            if candles_1d:
-                swing_1d = self._detector.detect_swing_points(
-                    candles_1d, current_price, n=4, timeframe="1d")  # Least sensitive for major levels
-                higher_tf_levels.extend(swing_1d)
+            swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
             
             # 4. CLUSTER LEVELS - Adaptive tolerance algorithm
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
@@ -326,16 +295,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     atr_14 = atr_per_tf.get('5m', 0.0)
                     
                     # Re-detect swing points with extended data
-                    swing_points_5m = self._detector.detect_swing_points(
-                        candles_data.get("5m", []), current_price, n=1, timeframe="5m")
-                    
-                    higher_tf_levels = []
-                    for tf in ["15m", "1h", "1d"]:
-                        tf_candles = candles_data.get(tf, [])
-                        if tf_candles:
-                            n_value = {"15m": 2, "1h": 3, "1d": 4}[tf]
-                            swing_tf = self._detector.detect_swing_points(tf_candles, current_price, n=n_value, timeframe=tf)
-                            higher_tf_levels.extend(swing_tf)
+                    swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
                     
                     # Re-cluster and score with extended data
                     cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)

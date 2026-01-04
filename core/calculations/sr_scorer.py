@@ -4,9 +4,8 @@ SRScorer - Handles scoring, MTF confirmation, and normalization
 Responsible for scoring S/R levels and managing multi-timeframe confirmations
 """
 
-import time
 import math
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List
 from loguru import logger
 
 from .level import Level
@@ -270,54 +269,6 @@ class SRScorer:
             
         except Exception as e:
             logger.error(f"❌ Volume score calculation failed: {e}")
-            return 50.0
-    
-    def _calculate_recency_score(self, level: Level) -> float:
-        """
-        Calculate recency score with exponential decay
-        
-        Formula: exp(-age_seconds / 7200) with base tiers
-        Half-life: 2 hours. Tiers: <1h=100, <4h=80, <1d=60, <3d=40, <1w=20, >1w=0
-        Recent levels reflect current market structure
-        
-        Args:
-            level: Level dataclass object
-            
-        Returns:
-            Recency score (0-100)
-        """
-        try:
-            timestamp = level.timestamp
-            current_time = time.time()
-            
-            # Calculate age in seconds
-            age_seconds = current_time - timestamp
-            
-            # Decay function: weight *= exp(-Δt / 7200) where 7200 = 2 hours
-            # This gives more weight to recent levels
-            decay_factor = 7200  # 2 hours in seconds
-            recency_multiplier = max(0.1, math.exp(-age_seconds / decay_factor))
-            
-            # Base recency score (0-100)
-            if age_seconds < 3600:  # Less than 1 hour
-                base_score = 100.0
-            elif age_seconds < 14400:  # Less than 4 hours
-                base_score = 80.0
-            elif age_seconds < 86400:  # Less than 1 day
-                base_score = 60.0
-            elif age_seconds < 259200:  # Less than 3 days
-                base_score = 40.0
-            elif age_seconds < 604800:  # Less than 1 week
-                base_score = 20.0
-            else:
-                base_score = 0.0
-            
-            # Apply decay function
-            final_score = base_score * recency_multiplier
-            return min(100.0, max(0.0, final_score))
-                
-        except Exception as e:
-            logger.error(f"❌ Recency score calculation failed: {e}")
             return 50.0
     
     def _calculate_weighted_score(self, mtf_score: float, proximity_score: float,

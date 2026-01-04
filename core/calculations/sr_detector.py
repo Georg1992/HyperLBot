@@ -177,26 +177,6 @@ class SRDetector:
         
         return avg_volumes
     
-    def _get_dynamic_sensitivity(self, timeframe: str) -> int:
-        """
-        Get dynamic sensitivity based on timeframe
-        
-        Args:
-            timeframe: Timeframe string
-            
-        Returns:
-            Number of candles for swing detection
-        """
-        # Dynamic sensitivity: shorter timeframes need more sensitivity
-        sensitivity_map = {
-            "5m": 2,   # 5m needs 2 touches minimum
-            "15m": 3,  # 15m needs 3 touches minimum  
-            "1h": 4,   # 1h needs 4 touches minimum
-            "1d": 5    # 1d needs 5 touches minimum
-        }
-        
-        return sensitivity_map.get(timeframe, 2)
-    
     def _calculate_distinct_touches(self, points: List[Dict]) -> int:
         """
         Calculate distinct touches avoiding same-bar touches
@@ -558,23 +538,3 @@ class SRDetector:
             logger.error(f"❌ Cluster deduplication failed: {e}")
             return clusters
     
-    def _calculate_timeframe_distribution(self, points: List[Level]) -> Dict[str, int]:
-        """
-        Calculate timeframe distribution for clustered Level objects
-        
-        Args:
-            points: List of Level objects
-            
-        Returns:
-            Dictionary mapping timeframes to counts
-        """
-        try:
-            distribution = {}
-            for point in points:
-                for tf, count in point.timeframe_distribution.items():
-                    distribution[tf] = distribution.get(tf, 0) + count
-            return distribution
-            
-        except Exception as e:
-            logger.error(f"❌ Timeframe distribution calculation failed: {e}")
-            return {}
