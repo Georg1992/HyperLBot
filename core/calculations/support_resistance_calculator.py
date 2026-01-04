@@ -435,7 +435,7 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Cache retrieval failed: {e}")
             return self._create_error_result(str(e))
     
-    def _format_results_optimized(self, scored_levels: List[Dict], current_price: float, 
+    def _format_results_optimized(self, scored_levels: List, current_price: float, 
                                  atr_14: float, current_time: float) -> Dict[str, Any]:
         """
         Format results with optimized performance and proper state management
@@ -604,7 +604,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 if len(support_levels) >= 2:
                     # Log all support levels for debugging
                     sorted_support = sorted(support_levels, key=lambda x: x["strength_score"], reverse=True)
-                    support_str = ", ".join([f"${l['price_level']:.2f}({l['strength_score']:.1f})" for l in sorted_support[:5]])
+                    support_str = ", ".join([f"${level['price_level']:.2f}({level['strength_score']:.1f})" for level in sorted_support[:5]])
                     logger.debug(f"   Available support levels: {support_str}")
             if (best_resistance == 0.0 or secondary_resistance == 0.0) and len(resistance_levels) > 0:
                 logger.warning(f"⚠️ Could not find 2 resistance levels from {len(resistance_levels)} available. "
@@ -612,7 +612,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 if len(resistance_levels) >= 2:
                     # Log all resistance levels for debugging
                     sorted_resistance = sorted(resistance_levels, key=lambda x: x["strength_score"], reverse=True)
-                    resistance_str = ", ".join([f"${l['price_level']:.2f}({l['strength_score']:.1f})" for l in sorted_resistance[:5]])
+                    resistance_str = ", ".join([f"${level['price_level']:.2f}({level['strength_score']:.1f})" for level in sorted_resistance[:5]])
                     logger.debug(f"   Available resistance levels: {resistance_str}")
                 else:
                     logger.warning(f"   Only {len(resistance_levels)} resistance level(s) found above ${current_price:.2f}")
@@ -645,7 +645,7 @@ class SupportResistanceCalculator(BaseCalculator):
             state_summary = self._state.get_state_summary()
             
             # Build top 2 support and resistance lists - exactly 2 of each (best + secondary)
-            # Simple logic: get best and secondary from _get_trading_levels, ensure they're different
+            # If we don't have enough after filtering, look back at all scored levels to find secondary
             top_2_support_list = []
             if best_support > 0:
                 best_support_obj = next((level for level in support_levels if abs(level["price_level"] - best_support) < 1), None)
@@ -655,6 +655,24 @@ class SupportResistanceCalculator(BaseCalculator):
                 secondary_support_obj = next((level for level in support_levels if abs(level["price_level"] - secondary_support) < 1), None)
                 if secondary_support_obj:
                     top_2_support_list.append(secondary_support_obj)
+                elif len(top_2_support_list) == 1:
+                    # If we only have 1 support, look back at all scored levels to find a second one
+                    all_support = [level for level in scored_levels if level.level < current_price]
+                    if len(all_support) >= 2:
+                        sorted_all_support = sorted(all_support, key=lambda x: x.score, reverse=True)
+                        for candidate in sorted_all_support:
+                            if abs(candidate.level - best_support) > current_price * 0.001:
+                                # Convert Level to dict format for consistency
+                                candidate_dict = {
+                                    "price_level": candidate.level,
+                                    "strength_score": candidate.score,
+                                    "touches": candidate.touches,
+                                    "status": self._state.check_level_status(candidate, current_price, atr_14),
+                                    "type": "support"
+                                }
+                                top_2_support_list.append(candidate_dict)
+                                logger.debug(f"   Added secondary support from all levels: ${candidate.level:.2f}({candidate.score:.1f})")
+                                break
             
             top_2_resistance_list = []
             if best_resistance > 0:
@@ -665,6 +683,24 @@ class SupportResistanceCalculator(BaseCalculator):
                 secondary_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - secondary_resistance) < 1), None)
                 if secondary_resistance_obj:
                     top_2_resistance_list.append(secondary_resistance_obj)
+                elif len(top_2_resistance_list) == 1:
+                    # If we only have 1 resistance, look back at all scored levels to find a second one
+                    all_resistance = [level for level in scored_levels if level.level > current_price]
+                    if len(all_resistance) >= 2:
+                        sorted_all_resistance = sorted(all_resistance, key=lambda x: x.score, reverse=True)
+                        for candidate in sorted_all_resistance:
+                            if abs(candidate.level - best_resistance) > current_price * 0.001:
+                                # Convert Level to dict format for consistency
+                                candidate_dict = {
+                                    "price_level": candidate.level,
+                                    "strength_score": candidate.score,
+                                    "touches": candidate.touches,
+                                    "status": self._state.check_level_status(candidate, current_price, atr_14),
+                                    "type": "resistance"
+                                }
+                                top_2_resistance_list.append(candidate_dict)
+                                logger.debug(f"   Added secondary resistance from all levels: ${candidate.level:.2f}({candidate.score:.1f})")
+                                break
             
             result = {
                 "status": "ok",
