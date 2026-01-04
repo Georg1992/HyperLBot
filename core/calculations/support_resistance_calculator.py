@@ -242,7 +242,27 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer with per-timeframe ATR
             aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
+            
+            # DEBUG: Log aligned resistance levels before scoring
+            resistance_aligned = [al for al in aligned_levels if al.level > current_price]
+            if resistance_aligned:
+                logger.info(f"🔍 DEBUG: After MTF alignment: {len(resistance_aligned)} resistance levels above ${current_price:.2f}:")
+                for al in sorted(resistance_aligned, key=lambda x: x.level):
+                    distance = abs(al.level - current_price)
+                    logger.info(f"   🔴 ${al.level:.2f} | Distance: ${distance:.2f} | Touches: {al.touches}x | MTF: {al.mtf_count}")
+            
             scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
+            
+            # DEBUG: Log top scored resistance levels
+            resistance_scored = [sl for sl in scored_levels if sl.level > current_price]
+            if resistance_scored:
+                logger.info(f"🔍 DEBUG: After scoring: Top 5 resistance levels above ${current_price:.2f}:")
+                for sl in sorted(resistance_scored, key=lambda x: x.score, reverse=True)[:5]:
+                    distance = abs(sl.level - current_price)
+                    score_breakdown = sl.score_breakdown or {}
+                    logger.info(f"   🔴 ${sl.level:.2f} | Score: {sl.score:.1f} | Distance: ${distance:.2f} | "
+                              f"Prox: {score_breakdown.get('proximity', 0):.1f} Touch: {score_breakdown.get('touch', 0):.1f} "
+                              f"MTF: {score_breakdown.get('mtf', 0):.1f} Vol: {score_breakdown.get('volume', 0):.1f}")
             
             # 5.5. FINAL DEDUPLICATION - Merge levels that are too close (after scoring)
             # Scientific justification: Levels within 0.05% of price are statistically indistinguishable
