@@ -398,7 +398,7 @@ class SRDetector:
     
     def cluster_levels(self, swing_points: List[Level], cluster_tolerance: float) -> List[Level]:
         """
-        Cluster nearby swing points using optimized binary search algorithm
+        Cluster nearby swing points by type (support with support, resistance with resistance)
         
         Args:
             swing_points: List of Level dataclass objects
@@ -411,28 +411,21 @@ class SRDetector:
             if not swing_points:
                 return []
             
-            # Sort by level price for binary search optimization
-            sorted_points = sorted(swing_points, key=lambda x: x.level)
+            # Separate support and resistance - cluster each type separately
+            support_points = [sp for sp in swing_points if sp.level_type == 'support']
+            resistance_points = [sp for sp in swing_points if sp.level_type == 'resistance']
             
             clusters = []
-            current_cluster = [sorted_points[0]]
             
-            for i in range(1, len(sorted_points)):
-                current_point = sorted_points[i]
-                last_point = current_cluster[-1]
-                
-                # Check if points are close enough to cluster
-                if abs(current_point.level - last_point.level) <= cluster_tolerance:
-                    current_cluster.append(current_point)
-                else:
-                    # Finalize current cluster
-                    if current_cluster:
-                        clusters.append(self._create_cluster(current_cluster))
-                    current_cluster = [current_point]
+            # Cluster support points
+            if support_points:
+                support_clusters = self._cluster_by_type(support_points, cluster_tolerance)
+                clusters.extend(support_clusters)
             
-            # Add final cluster
-            if current_cluster:
-                clusters.append(self._create_cluster(current_cluster))
+            # Cluster resistance points
+            if resistance_points:
+                resistance_clusters = self._cluster_by_type(resistance_points, cluster_tolerance)
+                clusters.extend(resistance_clusters)
             
             # Post-clustering deduplication to catch any remaining duplicates
             clusters = self._deduplicate_clusters(clusters, cluster_tolerance * 0.5)
@@ -442,6 +435,45 @@ class SRDetector:
         except Exception as e:
             logger.error(f"❌ Level clustering failed: {e}")
             return swing_points  # Return original if clustering fails
+    
+    def _cluster_by_type(self, points: List[Level], cluster_tolerance: float) -> List[Level]:
+        """
+        Cluster points of the same type (support or resistance)
+        
+        Args:
+            points: List of Level objects of the same type
+            cluster_tolerance: Distance tolerance for clustering
+            
+        Returns:
+            List of clustered Level objects
+        """
+        if not points:
+            return []
+        
+        # Sort by level price
+        sorted_points = sorted(points, key=lambda x: x.level)
+        
+        clusters = []
+        current_cluster = [sorted_points[0]]
+        
+        for i in range(1, len(sorted_points)):
+            current_point = sorted_points[i]
+            last_point = current_cluster[-1]
+            
+            # Check if points are close enough to cluster
+            if abs(current_point.level - last_point.level) <= cluster_tolerance:
+                current_cluster.append(current_point)
+            else:
+                # Finalize current cluster
+                if current_cluster:
+                    clusters.append(self._create_cluster(current_cluster))
+                current_cluster = [current_point]
+        
+        # Add final cluster
+        if current_cluster:
+            clusters.append(self._create_cluster(current_cluster))
+        
+        return clusters
     
     def _create_cluster(self, points: List[Level]) -> Level:
         """

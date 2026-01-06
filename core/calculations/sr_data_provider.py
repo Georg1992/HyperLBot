@@ -74,13 +74,20 @@ class SRDataProvider:
             ValueError: If insufficient data is available for primary timeframe
         """
         try:
-            # Start with minimal lookback - only what's needed for basic detection
-            candles_5m = self._fetch_candles_with_validation("5m", 1000)  # ~83 hours (~3.5 days) - minimal for swing detection
-            candles_15m = self._fetch_candles_with_validation("15m", 500)  # ~125 hours (~5 days) - minimal for MTF
-            candles_1h = self._fetch_candles_with_validation("1h", 200)   # ~8 days - minimal for MTF
-            candles_1d = self._fetch_candles_with_validation("1d", 100)   # ~100 days - minimal initial fetch
+            # Start with sufficient lookback to find both support and resistance
+            # Increased lookback to ensure we can count 2+ touches properly across historical data
+            # For 2x touch requirement, we need enough history to see price revisit levels
+            # We have 5 years of 5m candles in database (~525,600 candles), so we can look back much further
+            # Fetch enough to find levels that were touched months ago (most levels get retested within 3-6 months)
+            # 5m candles = 12/hour = 288/day = 8,640/month
+            # 30,000 candles = ~104 days (~3.5 months) - should find 2nd touch for most recent levels
+            candles_5m = self._fetch_candles_with_validation("5m", 30000)  # ~104 days (~3.5 months) - enough to find 2nd touch for recent levels
+            candles_15m = self._fetch_candles_with_validation("15m", 1000)  # ~250 hours (~10 days) - increased for 2x touch detection
+            candles_1h = self._fetch_candles_with_validation("1h", 500)   # ~21 days - increased for 2x touch detection
+            candles_1d = self._fetch_candles_with_validation("1d", 500)   # ~500 days (~1.4 years) - increased to find levels with 2+ touches
             
             # Progressive lookback: Only increase if we can't find both support and resistance
+            # Capped at 500 days (~1.5 years) - old levels (>1 year) are not actionable for short-term trading
             if current_price and current_price > 0:
                 # Check if we have both support (below) and resistance (above) current price
                 support_found = False
@@ -97,9 +104,9 @@ class SRDataProvider:
                         resistance_found = True
                 
                 # Progressive lookback steps for daily candles if support or resistance not found
-                # If force_extended_lookback, start from maximum lookback immediately
-                lookback_steps = [200, 300, 500, 750, 1000, 1500, 2000]
-                current_lookback = 2000 if force_extended_lookback else 100
+                # Need sufficient history to find resistance above month-high prices with 2+ touches
+                lookback_steps = [750, 1000, 1500, 2000]  # Up to 2000 days (~5.5 years) to find levels with 2+ touches
+                current_lookback = 2000 if force_extended_lookback else 500
                 
                 for step_lookback in lookback_steps:
                     if support_found and resistance_found:

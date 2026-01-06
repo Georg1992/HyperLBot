@@ -412,16 +412,62 @@ class MarketDataService:
             return {}
     
     def get_pattern_analysis(self) -> Dict[str, Any]:
-        """Get pattern recognition analysis data"""
+        """Get pattern recognition analysis data with centralized caching"""
         try:
             if "pattern_recognition" in self._analysis_modules:
+                # Use centralized cache for pattern analysis
+                from core.services.centralized_cache import get_global_centralized_cache
+                cache = get_global_centralized_cache()
+                
+                # Check cache first
+                cache_key = "pattern_recognition_analysis"
+                cached_data = cache.get(cache_key)
+                
+                # Validate cached data - if it's empty or has no patterns, force fresh analysis
+                if cached_data:
+                    # Check if cached data is valid (has patterns or proper structure)
+                    patterns_count = 0
+                    if isinstance(cached_data, dict):
+                        # Check both flat and nested patterns
+                        flat_patterns = cached_data.get("patterns", [])
+                        nested_patterns = cached_data.get("patterns_nested", {})
+                        if isinstance(flat_patterns, list):
+                            patterns_count += len(flat_patterns)
+                        if isinstance(nested_patterns, dict):
+                            for category, pattern_list in nested_patterns.items():
+                                if isinstance(pattern_list, list):
+                                    patterns_count += len(pattern_list)
+                    
+                    # If cached data has patterns, use it
+                    if patterns_count > 0 or cached_data.get("status") == "ok":
+                        logger.debug(f"🗄️ Using cached pattern analysis ({patterns_count} patterns)")
+                        return cached_data
+                    else:
+                        # Cached data is empty/invalid - force fresh analysis
+                        logger.info(f"🔄 Cached pattern data is empty/invalid - forcing fresh analysis")
+                        cache.invalidate(key=cache_key)
+                
+                # Cache miss or invalid - perform fresh analysis
+                logger.info("📊 Performing fresh pattern analysis...")
                 pattern_engine = self._analysis_modules["pattern_recognition"]
-                # Get recent candles for pattern analysis
+                # Get recent candles for pattern analysis (50 candles for detection)
                 from core.services.historical_data_service import create_historical_data_service
                 historical_service = create_historical_data_service()
-                candles = historical_service.get_5m_candles("BTC", 20)
+                candles = historical_service.get_5m_candles("BTC", 50)  # 50 candles for pattern detection
                 if candles:
-                    return pattern_engine.analyze_patterns(candles)
+                    logger.info(f"📊 Analyzing {len(candles)} candles for patterns...")
+                    analysis_result = pattern_engine.analyze_patterns(candles)
+                    
+                    # Log pattern detection results
+                    patterns_count = len(analysis_result.get("patterns", []))
+                    nested = analysis_result.get("patterns_nested", {})
+                    nested_count = sum(len(v) if isinstance(v, list) else 0 for v in nested.values())
+                    logger.info(f"📊 Pattern analysis complete: {patterns_count} flat patterns, {nested_count} nested patterns")
+                    
+                    # Store in centralized cache
+                    cache.set(cache_key, analysis_result)
+                    logger.debug(f"🗄️ Pattern analysis cached (TTL: {cache._get_ttl_policy(cache_key)}s)")
+                    return analysis_result
                 logger.warning("⚠️ No candle data available for pattern analysis")
                 return {}
             else:
@@ -429,6 +475,8 @@ class MarketDataService:
                 return {}
         except Exception as e:
             logger.error(f"❌ Failed to get pattern analysis: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return {}
     
     def get_market_conditions_analysis(self) -> Dict[str, Any]:

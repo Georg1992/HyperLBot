@@ -50,7 +50,8 @@ class CentralizedCache:
             
             # Analysis data - moderate updates
             "support_resistance": 300,    # 5 minutes
-            "patterns": 120,              # 2 minutes
+            "patterns": 300,              # 5 minutes (matches 5m candle closes)
+            "pattern_recognition": 300,   # 5 minutes (matches 5m candle closes)
             "market_conditions": 300,     # 5 minutes
             "cross_asset_analysis": 60,  # 1 minute
             "funding_analysis": 300,      # 5 minutes

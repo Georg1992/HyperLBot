@@ -44,16 +44,21 @@ class PatternRecognitionEngine:
         # Pattern history to track first detection time
         self.pattern_history = {}
         
-        # Caching to prevent excessive recalculation
-        self._last_candle_hash = None
-        self._last_analysis_time = 0
+        # No internal caching - rely on centralized cache system
+        # Centralized cache handles all caching logic
         
         logger.info("📊 Pattern Recognition Engine initialized")
         logger.info(f"   ⚡ {len(self.pattern_expiration)} pattern types with expiration times")
+        logger.info("   🗄️ Using centralized cache system (no internal cache)")
     
     def analyze_patterns(self, candles: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Analyze candles for trading patterns with caching to prevent excessive recalculation
+        Analyze candles for trading patterns
+        
+        Caching is handled by CentralizedCache system - this method always performs fresh analysis.
+        The cache system will determine if analysis is needed based on:
+        - New 5-minute candle closes
+        - Cache TTL expiration
         
         Args:
             candles: List of candle data dictionaries
@@ -66,12 +71,6 @@ class PatternRecognitionEngine:
                 return {"patterns": [], "overall_confidence": 0.0, "status": "no_data"}
             
             current_time = time.time()
-            
-            # Check if we need to recalculate
-            candle_hash = self._calculate_candle_data_hash(candles)
-            if (self._last_candle_hash == candle_hash and 
-                current_time - self._last_analysis_time < 60):  # Cache for 1 minute
-                return self._get_cached_result()
             
             logger.debug(f"📊 Performing fresh pattern analysis on {len(candles)} candles")
             
@@ -104,19 +103,18 @@ class PatternRecognitionEngine:
             # Calculate overall confidence
             overall_confidence = self._calculate_overall_confidence(patterns)
             
-            # Prepare result
+            # Prepare result with BOTH flat and nested structures for compatibility
+            # Flat array for chart drawing, nested for text display
             result = {
-                "patterns": self._flatten_patterns(patterns),
+                "patterns": self._flatten_patterns(patterns),  # Flat array for chart overlays
+                "patterns_nested": patterns,  # Nested structure for text display
                 "overall_confidence": overall_confidence,
                 "status": "ok",
-                "timestamp": current_time
+                "timestamp": current_time,
+                "last_candle_timestamp": candles[-1].get("timestamp", current_time) if candles else current_time  # Track last candle for change detection
             }
             
-            # Cache the result
-            self._last_candle_hash = candle_hash
-            self._last_analysis_time = current_time
-            self._cached_result = result
-            
+            # No internal caching - CentralizedCache handles this
             logger.info(f"📊 Pattern analysis complete: {len(result['patterns'])} patterns, {overall_confidence:.1%} confidence")
             
             return result
@@ -126,22 +124,20 @@ class PatternRecognitionEngine:
             return {"patterns": [], "overall_confidence": 0.0, "status": "error", "error": str(e)}
     
     def _calculate_candle_data_hash(self, candles: List[Dict[str, Any]]) -> str:
-        """Calculate hash of candle data for caching"""
+        """
+        Calculate hash of candle data for change detection
+        
+        Note: This is used for detecting candle changes, not for caching.
+        Caching is handled by CentralizedCache system.
+        """
         if not candles:
             return ""
         
-        # Use last 10 candles for hash calculation
-        recent_candles = candles[-10:] if len(candles) >= 10 else candles
-        hash_data = []
-        
-        for candle in recent_candles:
-            hash_data.append(f"{candle.get('timestamp', 0)}_{candle.get('close', 0)}")
-        
-        return hash(tuple(hash_data))
-    
-    def _get_cached_result(self) -> Dict[str, Any]:
-        """Get cached analysis result"""
-        return getattr(self, '_cached_result', {"patterns": [], "overall_confidence": 0.0, "status": "cached"})
+        # Use last candle timestamp and close price to detect new candles
+        last_candle = candles[-1] if candles else None
+        if last_candle:
+            return f"{last_candle.get('timestamp', 0)}_{last_candle.get('close', 0)}"
+        return ""
     
     def _extract_price_data(self, candles: List[Dict[str, Any]]) -> Dict[str, List[float]]:
         """Extract price data from candles"""
@@ -292,7 +288,10 @@ class PatternRecognitionEngine:
         return flattened
     
     def invalidate_cache(self):
-        """Invalidate pattern analysis cache"""
-        self._last_candle_hash = None
-        self._last_analysis_time = 0
-        logger.debug("🔄 Pattern analysis cache invalidated")
+        """
+        Invalidate pattern analysis cache
+        
+        Note: This method is kept for compatibility, but caching is now handled
+        by CentralizedCache system. Call CentralizedCache.invalidate() instead.
+        """
+        logger.debug("🔄 Pattern analysis cache invalidation requested (handled by CentralizedCache)")

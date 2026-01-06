@@ -14,6 +14,7 @@ from .sr_detector import SRDetector
 from .sr_scorer import SRScorer
 from .sr_state import SRState
 from .base_calculator import BaseCalculator
+from .liquidation_calculator import LiquidationCalculator
 
 if TYPE_CHECKING:
     from core.services.centralized_cache import CentralizedCache
@@ -53,6 +54,7 @@ class SupportResistanceCalculator(BaseCalculator):
         self._detector = detector or SRDetector()
         self._scorer = scorer or SRScorer()
         self._state = state_manager or SRState()
+        self._liquidation_calc = LiquidationCalculator()
         
         # Performance optimization: Track module update times
         self._last_module_updates = {}
@@ -219,113 +221,121 @@ class SupportResistanceCalculator(BaseCalculator):
             # 3. DETECT SWING POINTS - Via SRDetector with timeframe-specific sensitivity
             swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
             
-            # DEBUG: Log detected swing points by their original level_type (focus on levels near current price)
-            resistance_swings = [sp for sp in swing_points_5m if sp.level_type == 'resistance']
-            support_swings = [sp for sp in swing_points_5m if sp.level_type == 'support']
-            
-            if resistance_swings:
-                # Filter to show only those above current price for active resistance
-                active_resistance_swings = [sp for sp in resistance_swings if sp.level > current_price]
-                logger.info(f"🔍 DEBUG: Detected {len(resistance_swings)} resistance swing points ({len(active_resistance_swings)} above ${current_price:.2f}):")
-                # Show closest levels first (only those above current price for active resistance)
-                sorted_swings = sorted(active_resistance_swings, key=lambda x: abs(x.level - current_price))
-                for sp in sorted_swings[:10]:  # Show top 10 closest
-                    distance = abs(sp.level - current_price)
-                    logger.info(f"   🔴 ${sp.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                              f"Touches: {sp.touches}x | Strength: {sp.strength:.1f}")
-            
+            # DEBUG: Log swing point counts
+            logger.info(f"🔍 SWING POINT DETECTION: {len(swing_points_5m)} 5m swing points, {len(higher_tf_levels)} higher-TF swing points")
+            support_swings = [sp for sp in swing_points_5m if sp.level_type == 'support' and sp.level < current_price]
+            resistance_swings = [sp for sp in swing_points_5m if sp.level_type == 'resistance' and sp.level > current_price]
+            logger.info(f"   Support swings (below ${current_price:.2f}): {len(support_swings)}")
+            logger.info(f"   Resistance swings (above ${current_price:.2f}): {len(resistance_swings)}")
             if support_swings:
-                # Filter to show only those below current price for active support
-                active_support_swings = [sp for sp in support_swings if sp.level < current_price]
-                logger.info(f"🔍 DEBUG: Detected {len(support_swings)} support swing points ({len(active_support_swings)} below ${current_price:.2f}):")
-                # Show closest levels first (only those below current price for active support)
-                sorted_swings = sorted(active_support_swings, key=lambda x: abs(x.level - current_price))
-                for sp in sorted_swings[:10]:  # Show top 10 closest
-                    distance = abs(sp.level - current_price)
-                    logger.info(f"   🟢 ${sp.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                              f"Touches: {sp.touches}x | Strength: {sp.strength:.1f}")
-            else:
-                logger.warning(f"⚠️ No support swing points detected at all!")
+                logger.info(f"   Support swing prices: {[f'${sp.level:.2f}' for sp in sorted(support_swings, key=lambda x: x.level, reverse=True)[:10]]}")
+            if resistance_swings:
+                logger.info(f"   Resistance swing prices: {[f'${sp.level:.2f}' for sp in sorted(resistance_swings, key=lambda x: x.level)[:10]]}")
             
             # 4. CLUSTER LEVELS - Adaptive tolerance algorithm
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
             clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
+            
+            # 4.1. SEARCH DATABASE FOR ADDITIONAL TOUCHES - For levels with only 1 touch
+            # If we have levels with only 1 touch, search the database further back to find the 2nd touch
+            # We have 5 years of 5m candles in the database, so we can look back much further
+            levels_with_1_touch = [level for level in clustered_levels if level.touches == 1]
+            if levels_with_1_touch:
+                logger.info(f"🔍 Searching database for additional touches: {len(levels_with_1_touch)} levels with only 1 touch")
+                clustered_levels = self._search_database_for_additional_touches(
+                    clustered_levels, levels_with_1_touch, candles_data.get("5m", []), cluster_tolerance, atr_14
+                )
+            
+            # DEBUG: Log clustering results
+            logger.info(f"🔍 CLUSTERING: {len(clustered_levels)} clustered levels (tolerance: ${cluster_tolerance:.2f})")
+            logger.info("   ALL CLUSTERED LEVELS:")
+            levels_with_2plus = [level for level in clustered_levels if level.touches >= 2]
+            levels_with_1 = [level for level in clustered_levels if level.touches == 1]
+            logger.info(f"   Levels with 2+ touches: {len(levels_with_2plus)}, Levels with 1 touch: {len(levels_with_1)}")
+            for level in sorted(clustered_levels, key=lambda x: x.level, reverse=True)[:15]:
+                touch_indicator = "✅" if level.touches >= 2 else "⚠️"
+                logger.info(f"   {touch_indicator} {'🟢' if level.level_type == 'support' else '🔴'} {level.level_type.capitalize()} ${level.level:.2f}: {level.touches}x touches, cluster_size={level.cluster_size}, strength={level.strength:.1f}")
+            
+            # DON'T reclassify levels - keep original swing point type (support/resistance)
+            # Historical levels keep their original type regardless of current price position
+            # This ensures we can find resistance above current price even if it was detected from the past
+            # The filtering below will only select levels that are correctly positioned relative to current price
+            
+            clustered_support = [level for level in clustered_levels if level.level_type == 'support' and level.level < current_price]
+            clustered_resistance = [level for level in clustered_levels if level.level_type == 'resistance' and level.level > current_price]
+            logger.info(f"   Clustered support (below ${current_price:.2f}): {len(clustered_support)}")
+            logger.info(f"   Clustered resistance (above ${current_price:.2f}): {len(clustered_resistance)}")
             
             # 4.5. TOUCH COUNTS: Use swing points only (they measure actual reversals)
             # Swing points = actual price reversals (what matters for S/R strength)
             # If swing detection is missing valid swing points, we should fix swing detection parameters
             # NOT add a second counting method that includes noise
             
-            # DEBUG: Log touch counts after clustering (before scoring)
-            logger.info(f"📊 TOUCH COUNT ANALYSIS: {len(clustered_levels)} clustered levels")
-            for level in clustered_levels[:10]:  # Show top 10
-                logger.info(f"   {'🔴' if level.level_type == 'resistance' else '🟢'} ${level.level:.2f} | "
-                          f"Touches: {level.touches}x | Cluster size: {level.cluster_size} | "
-                          f"Strength: {level.strength:.1f}")
-            
-            # DEBUG: Log clustered resistance levels by their original level_type (focus on closest to current price)
-            resistance_clustered = [cl for cl in clustered_levels if cl.level_type == 'resistance']
-            if resistance_clustered:
-                active_resistance_clustered = [cl for cl in resistance_clustered if cl.level > current_price]
-                logger.info(f"🔍 DEBUG: After clustering: {len(resistance_clustered)} resistance levels ({len(active_resistance_clustered)} above ${current_price:.2f}):")
-                # Show closest levels first (only those above current price for active resistance)
-                sorted_clustered = sorted(active_resistance_clustered, key=lambda x: abs(x.level - current_price))
-                for cl in sorted_clustered[:10]:  # Show top 10 closest
-                    distance = abs(cl.level - current_price)
-                    logger.info(f"   🔴 ${cl.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                              f"Touches: {cl.touches}x | Cluster size: {cl.cluster_size}")
-            
-            # DEBUG: Log clustered support levels by their original level_type (focus on closest to current price)
-            support_clustered = [cl for cl in clustered_levels if cl.level_type == 'support']
-            if support_clustered:
-                active_support_clustered = [cl for cl in support_clustered if cl.level < current_price]
-                logger.info(f"🔍 DEBUG: After clustering: {len(support_clustered)} support levels ({len(active_support_clustered)} below ${current_price:.2f}):")
-                # Show closest levels first (only those below current price for active support)
-                sorted_clustered = sorted(active_support_clustered, key=lambda x: abs(x.level - current_price))
-                for cl in sorted_clustered[:10]:  # Show top 10 closest
-                    distance = abs(cl.level - current_price)
-                    logger.info(f"   🟢 ${cl.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                              f"Touches: {cl.touches}x | Cluster size: {cl.cluster_size}")
+            # Levels clustered - no verbose logging needed
             
             # 5. MTF ALIGNMENT AND SCORING - Via SRScorer with per-timeframe ATR
             aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
             
-            # DEBUG: Log aligned resistance levels by their original level_type (focus on closest to current price)
-            resistance_aligned = [al for al in aligned_levels if al.level_type == 'resistance']
-            if resistance_aligned:
-                active_resistance_aligned = [al for al in resistance_aligned if al.level > current_price]
-                logger.info(f"🔍 DEBUG: After MTF alignment: {len(resistance_aligned)} resistance levels ({len(active_resistance_aligned)} above ${current_price:.2f}):")
-                # Show closest levels first (only those above current price for active resistance)
-                sorted_aligned = sorted(active_resistance_aligned, key=lambda x: abs(x.level - current_price))
-                for al in sorted_aligned[:10]:  # Show top 10 closest
-                    distance = abs(al.level - current_price)
-                    logger.info(f"   🔴 ${al.level:.2f} | Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                              f"Touches: {al.touches}x | MTF: {al.mtf_count}")
+            # DEBUG: Log MTF alignment
+            logger.info(f"🔍 MTF ALIGNMENT: {len(aligned_levels)} aligned levels")
+            aligned_support = [level for level in aligned_levels if level.level_type == 'support' and level.level < current_price]
+            aligned_resistance = [level for level in aligned_levels if level.level_type == 'resistance' and level.level > current_price]
+            logger.info(f"   Aligned support: {len(aligned_support)}, Aligned resistance: {len(aligned_resistance)}")
             
-            scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
+            # RISK MANAGEMENT: Only process levels within liquidation range (saves processing power)
+            # Calculate liquidation prices once for filtering
+            long_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
+            short_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
             
-            # DEBUG: Log top scored support levels by their original level_type
-            support_scored = [sl for sl in scored_levels if sl.level_type == 'support']
-            if support_scored:
-                active_support_scored = [sl for sl in support_scored if sl.level < current_price]
-                logger.info(f"🔍 DEBUG: After scoring: Top 5 support levels below ${current_price:.2f}:")
-                for sl in sorted(active_support_scored, key=lambda x: x.score, reverse=True)[:5]:
-                    distance = abs(sl.level - current_price)
-                    score_breakdown = sl.score_breakdown or {}
-                    logger.info(f"   🟢 ${sl.level:.2f} | Score: {sl.score:.1f} | Distance: ${distance:.2f} | "
-                              f"Prox: {score_breakdown.get('proximity', 0):.1f} Touch: {score_breakdown.get('touch', 0):.1f} "
-                              f"MTF: {score_breakdown.get('mtf', 0):.1f} Vol: {score_breakdown.get('volume', 0):.1f}")
+            logger.info(f"🔍 LIQUIDATION RANGE: LONG liquidation=${long_liquidation:.2f}, SHORT liquidation=${short_liquidation:.2f}")
             
-            # DEBUG: Log top scored resistance levels by their original level_type
-            resistance_scored = [sl for sl in scored_levels if sl.level_type == 'resistance']
-            if resistance_scored:
-                logger.info(f"🔍 DEBUG: After scoring: Top 5 resistance levels above ${current_price:.2f}:")
-                for sl in sorted(resistance_scored, key=lambda x: x.score, reverse=True)[:5]:
-                    distance = abs(sl.level - current_price)
-                    score_breakdown = sl.score_breakdown or {}
-                    logger.info(f"   🔴 ${sl.level:.2f} | Score: {sl.score:.1f} | Distance: ${distance:.2f} | "
-                              f"Prox: {score_breakdown.get('proximity', 0):.1f} Touch: {score_breakdown.get('touch', 0):.1f} "
-                              f"MTF: {score_breakdown.get('mtf', 0):.1f} Vol: {score_breakdown.get('volume', 0):.1f}")
+            # Filter aligned levels BEFORE scoring to save processing power
+            # Only score levels that are safe from liquidation:
+            # - Support levels (LONG entries) must be above LONG liquidation price
+            # - Resistance levels (SHORT entries) must be below SHORT liquidation price
+            levels_within_range = []
+            filtered_out_support = 0
+            filtered_out_resistance = 0
+            for level in aligned_levels:
+                if level.level_type == 'support' and level.level < current_price:
+                    if level.level >= long_liquidation:  # Safe for LONG entry
+                        levels_within_range.append(level)
+                    else:
+                        filtered_out_support += 1
+                elif level.level_type == 'resistance' and level.level > current_price:
+                    if level.level <= short_liquidation:  # Safe for SHORT entry
+                        levels_within_range.append(level)
+                    else:
+                        filtered_out_resistance += 1
+            
+            logger.info(f"🔍 LIQUIDATION FILTER: {len(levels_within_range)} levels within range ({filtered_out_support} support, {filtered_out_resistance} resistance filtered out)")
+            
+            # Filter levels with minimum 2x touches requirement (we have enough data now)
+            # Levels with only 1 touch are not reliable - need at least 2 touches to confirm level strength
+            levels_with_2plus_touches = [level for level in levels_within_range if level.touches >= 2]
+            filtered_out_single_touch = len(levels_within_range) - len(levels_with_2plus_touches)
+            
+            if filtered_out_single_touch > 0:
+                logger.info(f"🔍 TOUCH FILTER: Filtered out {filtered_out_single_touch} levels with <2 touches (minimum 2x required)")
+            
+            # Score only levels with 2+ touches (saves processing power and ensures quality)
+            scored_levels = self._scorer.score_levels_enhanced(levels_with_2plus_touches, current_price, atr_14, atr_per_tf)
+            
+            # DEBUG: Log scored levels
+            logger.info(f"🔍 SCORED LEVELS: {len(scored_levels)} levels scored (all with 2+ touches)")
+            scored_support = [level for level in scored_levels if level.level_type == 'support' and level.level < current_price]
+            scored_resistance = [level for level in scored_levels if level.level_type == 'resistance' and level.level > current_price]
+            logger.info(f"   Scored support: {len(scored_support)}, Scored resistance: {len(scored_resistance)}")
+            for level in sorted(scored_support, key=lambda x: x.score, reverse=True)[:10]:
+                breakdown = level.score_breakdown or {}
+                logger.info(f"   🟢 Support ${level.level:.2f}: Score={level.score:.1f}, Touches={level.touches}x, "
+                          f"Proximity={breakdown.get('proximity', 0):.1f}, Touch={breakdown.get('touch', 0):.1f}, "
+                          f"Volume={breakdown.get('volume', 0):.1f}")
+            for level in sorted(scored_resistance, key=lambda x: x.score, reverse=True)[:10]:
+                breakdown = level.score_breakdown or {}
+                logger.info(f"   🔴 Resistance ${level.level:.2f}: Score={level.score:.1f}, Touches={level.touches}x, "
+                          f"Proximity={breakdown.get('proximity', 0):.1f}, Touch={breakdown.get('touch', 0):.1f}, "
+                          f"Volume={breakdown.get('volume', 0):.1f}")
             
             # 5.5. FINAL DEDUPLICATION - Merge levels that are too close (after scoring)
             # Scientific justification: Levels within 0.05% of price are statistically indistinguishable
@@ -336,7 +346,8 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # 5.6. VERIFY WE HAVE 2 SUPPORT + 2 RESISTANCE
             # Scientific justification: For live trading, we need exactly 2 support and 2 resistance levels
-            # Score already includes proximity (65% weight), so best levels for trading will have highest scores
+            # SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING
+            # All levels are scored - highest scores win (proximity penalty, touch rewards, etc.)
             # Scan nearby first (from current data), if not found, scan further in past until we find levels
             # Loop until we find enough levels (max 3 attempts to prevent infinite loops)
             
@@ -344,8 +355,7 @@ class SupportResistanceCalculator(BaseCalculator):
             attempt = 0
             
             while attempt < max_attempts:
-                # Count support and resistance levels by their original level_type
-                # For active levels: resistance must be above current price, support must be below
+                # Count support and resistance levels (already filtered to liquidation range before scoring)
                 support_levels = [level for level in scored_levels 
                                  if level.level_type == 'support' and level.level < current_price]
                 resistance_levels = [level for level in scored_levels 
@@ -373,7 +383,27 @@ class SupportResistanceCalculator(BaseCalculator):
                     cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
                     clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
                     aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
-                    scored_levels = self._scorer.score_levels_enhanced(aligned_levels, current_price, atr_14, atr_per_tf)
+                    
+                    # RISK MANAGEMENT: Only process levels within liquidation range (saves processing power)
+                    # Calculate liquidation prices for filtering
+                    long_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
+                    short_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
+                    
+                    # Filter aligned levels BEFORE scoring to save processing power
+                    levels_within_range = []
+                    for level in aligned_levels:
+                        if level.level_type == 'support' and level.level < current_price:
+                            if level.level >= long_liquidation:  # Safe for LONG entry
+                                levels_within_range.append(level)
+                        elif level.level_type == 'resistance' and level.level > current_price:
+                            if level.level <= short_liquidation:  # Safe for SHORT entry
+                                levels_within_range.append(level)
+                    
+                    # Filter levels with minimum 2x touches requirement
+                    levels_with_2plus_touches = [level for level in levels_within_range if level.touches >= 2]
+                    
+                    # Score only levels with 2+ touches (saves processing power and ensures quality)
+                    scored_levels = self._scorer.score_levels_enhanced(levels_with_2plus_touches, current_price, atr_14, atr_per_tf)
                     scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
                 else:
                     # Last attempt - log warning but continue with what we have
@@ -559,6 +589,119 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Actual touch counting failed: {e}")
             return clustered_levels  # Return original if counting fails
     
+    def _search_database_for_additional_touches(self, clustered_levels: List, levels_with_1_touch: List, 
+                                                current_candles: List[Dict], cluster_tolerance: float, 
+                                                atr_14: float) -> List:
+        """
+        Search database for additional touches for levels with only 1 touch
+        
+        For levels that only have 1 touch in the current dataset, search the database
+        further back to find additional swing points at similar price levels.
+        We have 5 years of 5m candles in the database, so we can look back much further.
+        
+        Args:
+            clustered_levels: All clustered levels
+            levels_with_1_touch: Levels that only have 1 touch (need to search for more)
+            current_candles: Current candles we've already analyzed
+            cluster_tolerance: Tolerance for matching price levels
+            atr_14: ATR for touch tolerance
+            
+        Returns:
+            Updated list of clustered levels with additional touches found
+        """
+        try:
+            if not levels_with_1_touch or not current_candles:
+                return clustered_levels
+            
+            # Get the oldest timestamp from current candles to know where to start looking back
+            oldest_timestamp = min(candle.get('timestamp', 0) for candle in current_candles)
+            
+            # Look back up to 2 years (we have 5 years of data)
+            # 2 years = ~105,000 5m candles, but we'll fetch in chunks to avoid memory issues
+            lookback_days = 730  # 2 years
+            lookback_timestamp = oldest_timestamp - (lookback_days * 24 * 3600)
+            
+            # Fetch additional candles from database (older than what we already have)
+            from core.services.historical_data_service import create_historical_data_service
+            historical_service = create_historical_data_service()
+            
+            # Get candles from database by range (older than our current dataset)
+            if hasattr(historical_service, '_candle_storage') and historical_service._candle_storage:
+                additional_candles = historical_service._candle_storage.get_candles_by_range(
+                    lookback_timestamp, oldest_timestamp - 300  # Exclude the last 5 minutes to avoid overlap
+                )
+                
+                if not additional_candles:
+                    logger.debug(f"🔍 No additional candles found in database (looking back {lookback_days} days)")
+                    return clustered_levels
+                
+                logger.info(f"🔍 Found {len(additional_candles)} additional candles in database (looking back {lookback_days} days)")
+                
+                # Detect swing points in the additional historical data
+                # Use a more sensitive swing detection to catch more potential touches
+                additional_swing_points = self._detector.detect_swing_points(
+                    additional_candles, 
+                    current_price=0,  # Not needed for historical detection
+                    n=1,  # More sensitive (n=1) to catch more swing points
+                    timeframe="5m"
+                )
+                
+                logger.info(f"🔍 Found {len(additional_swing_points)} additional swing points in historical data")
+                
+                # For each level with only 1 touch, check if any additional swing points match
+                from .level import Level
+                updated_levels = []
+                
+                for level in clustered_levels:
+                    if level in levels_with_1_touch:
+                        # Check if any additional swing points are within cluster tolerance
+                        matching_swings = []
+                        for swing in additional_swing_points:
+                            # Check if swing is same type and within tolerance
+                            if swing.level_type == level.level_type:
+                                price_diff = abs(swing.level - level.level)
+                                if price_diff <= cluster_tolerance:
+                                    matching_swings.append(swing)
+                        
+                        if matching_swings:
+                            # Found additional touches! Update the level
+                            total_touches = level.touches + len(matching_swings)
+                            logger.info(f"✅ Found {len(matching_swings)} additional touch(es) for {level.level_type} ${level.level:.2f} (now {total_touches}x touches)")
+                            
+                            # Create updated level with new touch count
+                            updated_level = Level(
+                                level=level.level,
+                                level_type=level.level_type,
+                                touches=total_touches,
+                                cluster_size=level.cluster_size + len(matching_swings),
+                                weighted_touches=level.weighted_touches + len(matching_swings),
+                                strength=level.strength,  # Keep original strength
+                                timestamp=max(level.timestamp, max(s.timestamp for s in matching_swings)),  # Latest touch
+                                timeframe_distribution=level.timeframe_distribution,
+                                mtf_matches=level.mtf_matches,
+                                mtf_count=level.mtf_count,
+                                mtf_confidence=level.mtf_confidence,
+                                merged_from=level.merged_from,
+                                score=level.score,
+                                score_breakdown=level.score_breakdown
+                            )
+                            updated_levels.append(updated_level)
+                        else:
+                            # No additional touches found, keep original level
+                            updated_levels.append(level)
+                    else:
+                        # Level already has 2+ touches, keep as is
+                        updated_levels.append(level)
+                
+                return updated_levels
+            else:
+                logger.warning("⚠️ Candle storage not available - cannot search database for additional touches")
+                return clustered_levels
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to search database for additional touches: {e}")
+            return clustered_levels
+    
     def _format_results_optimized(self, scored_levels: List, current_price: float, 
                                  atr_14: float, current_time: float) -> Dict[str, Any]:
         """
@@ -583,12 +726,6 @@ class SupportResistanceCalculator(BaseCalculator):
             for level in scored_levels:
                 # Check level status
                 level_status = self._state.check_level_status(level, current_price, atr_14)
-                
-                # DEBUG: Log status check for levels near current price
-                distance = abs(level.level - current_price)
-                if distance < current_price * 0.01:  # Within 1% of current price
-                    logger.debug(f"🔍 Status check: ${level.level:.2f} ({level.level_type}) | "
-                               f"Price: ${current_price:.2f} | ATR: ${atr_14:.2f} | Status: {level_status}")
                 
                 # Track broken levels
                 if level_status == 'inactive':
@@ -617,87 +754,50 @@ class SupportResistanceCalculator(BaseCalculator):
                     "merged_from": level.merged_from
                 })
             
-            # Sort by strength score and filter low-confidence levels
-            # Score already includes proximity (65% weight), so best levels for trading will have highest scores
+            # Sort by strength score - SCORING SYSTEM IS THE ONLY FACTOR (touch 50%, proximity 45%, volume 5%)
+            # Highest score wins - proximity penalty (distance), touch rewards, volume confirmation
             key_levels.sort(key=lambda x: x["strength_score"], reverse=True)
             
-            # Filter low-confidence levels (score < 20) - More lenient threshold
-            # BUT: If we don't have enough levels above threshold, use lower threshold to ensure we find levels
-            filtered_levels = [level for level in key_levels if level["strength_score"] >= 20.0]
+            # SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING BY SCORE THRESHOLD
+            # Ensure we have ACTIVE levels for both support and resistance
+            # Strategy: Filter for active levels only (broken levels are excluded), scoring system determines best
+            active_support_candidates = [level for level in key_levels 
+                                        if level.get("type") == "support" and 
+                                        level["price_level"] < current_price and 
+                                        level.get("status") == "active"]
+            active_resistance_candidates = [level for level in key_levels 
+                                           if level.get("type") == "resistance" and 
+                                           level["price_level"] > current_price and 
+                                           level.get("status") == "active"]
             
-            # If we don't have enough levels above threshold, lower it to ensure we find support/resistance
-            if len(filtered_levels) < 4:  # Need at least 2 support + 2 resistance
-                # Lower threshold to 10.0 to catch more levels
-                filtered_levels = [level for level in key_levels if level["strength_score"] >= 10.0]
-                if len(filtered_levels) < 4:
-                    # If still not enough, use all levels (no threshold)
-                    filtered_levels = key_levels
+            # Sort each by score
+            active_support_candidates.sort(key=lambda x: x["strength_score"], reverse=True)
+            active_resistance_candidates.sort(key=lambda x: x["strength_score"], reverse=True)
             
-            # Keep top 10 levels by score - score already incorporates all factors including proximity
-            key_levels = filtered_levels[:10]
+            # Take top 2 of each (or all if less than 2) - these are already active
+            top_support = active_support_candidates[:2]
+            top_resistance = active_resistance_candidates[:2]
             
+            # Combine and add remaining top-scored levels to fill up to 10 total
+            # SCORING SYSTEM IS THE ONLY FACTOR - highest scores win
+            final_key_levels = top_support + top_resistance
+            remaining_slots = 10 - len(final_key_levels)
+            if remaining_slots > 0:
+                # Add remaining top-scored levels (excluding already selected ones)
+                already_selected = {level["price_level"] for level in final_key_levels}
+                for level in key_levels:  # Use original key_levels (all levels sorted by score)
+                    if level["price_level"] not in already_selected and len(final_key_levels) < 10:
+                        final_key_levels.append(level)
             
-            # Calculate strongest levels - filtered by score (top 10)
-            # Use original level_type from swing detection AND validate position for active levels
-            # For active levels: resistance MUST be above current price, support MUST be below current price
-            # EXCLUDE broken/inactive levels - only use active levels
-            # Score already incorporates proximity (65% weight), so best levels for trading have highest scores
-            support_levels = [level for level in key_levels 
-                             if level.get("type") == "support" and 
-                             level["price_level"] < current_price and 
-                             level.get("status") == "active"]
-            resistance_levels = [level for level in key_levels 
-                                if level.get("type") == "resistance" and 
-                                level["price_level"] > current_price and 
-                                level.get("status") == "active"]
+            # Re-sort by score to maintain order - SCORING SYSTEM IS THE ONLY FACTOR
+            final_key_levels.sort(key=lambda x: x["strength_score"], reverse=True)
+            key_levels = final_key_levels
             
-            # DEBUG: Log all support levels with their scores and breakdowns
-            if support_levels:
-                logger.info(f"🔍 DEBUG: Found {len(support_levels)} active support levels below ${current_price:.2f}:")
-                for level in sorted(support_levels, key=lambda x: x["strength_score"], reverse=True):
-                    score_breakdown = level.get("score_breakdown", {})
-                    proximity = score_breakdown.get("proximity", 0)
-                    touch = score_breakdown.get("touch", 0)
-                    mtf = score_breakdown.get("mtf", 0)
-                    volume = score_breakdown.get("volume", 0)
-                    distance = abs(level["price_level"] - current_price)
-                    logger.info(f"   🟢 ${level['price_level']:.2f} | Score: {level['strength_score']:.1f} | "
-                              f"Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                              f"Touches: {level.get('touches', 0)}x | "
-                              f"Breakdown: prox={proximity:.1f} touch={touch:.1f} mtf={mtf:.1f} vol={volume:.1f}")
-            else:
-                logger.warning(f"🔍 DEBUG: No active support levels found below ${current_price:.2f}")
-                # Check all levels below price (even if inactive or wrong type)
-                all_below = [level for level in key_levels if level["price_level"] < current_price]
-                if all_below:
-                    logger.warning(f"   Found {len(all_below)} levels below price but filtered out:")
-                    for level in sorted(all_below, key=lambda x: x["price_level"], reverse=True)[:5]:
-                        logger.warning(f"     ${level['price_level']:.2f} (type: {level.get('type')}, status: {level.get('status')}, score: {level.get('strength_score', 0):.1f})")
+            # Final lists - these should have at least 2 of each if available (already filtered for active)
+            support_levels = top_support  # Already filtered for active support
+            resistance_levels = top_resistance  # Already filtered for active resistance
             
-            # DEBUG: Log all resistance levels with their scores and breakdowns
-            if resistance_levels:
-                logger.info(f"🔍 DEBUG: Found {len(resistance_levels)} active resistance levels above ${current_price:.2f}:")
-                for level in sorted(resistance_levels, key=lambda x: x["strength_score"], reverse=True):
-                    score_breakdown = level.get("score_breakdown", {})
-                    proximity = score_breakdown.get("proximity", 0)
-                    touch = score_breakdown.get("touch", 0)
-                    mtf = score_breakdown.get("mtf", 0)
-                    volume = score_breakdown.get("volume", 0)
-                    distance = abs(level["price_level"] - current_price)
-                    logger.info(f"   🔴 ${level['price_level']:.2f} | Score: {level['strength_score']:.1f} | "
-                              f"Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                              f"Touches: {level.get('touches', 0)}x | "
-                              f"Breakdown: prox={proximity:.1f} touch={touch:.1f} mtf={mtf:.1f} vol={volume:.1f}")
-            else:
-                logger.warning(f"🔍 DEBUG: No active resistance levels found above ${current_price:.2f}")
-                # Check all levels above price (even inactive)
-                all_above = [level for level in key_levels if level["price_level"] > current_price]
-                if all_above:
-                    logger.warning(f"   Found {len(all_above)} levels above price but all inactive:")
-                    for level in sorted(all_above, key=lambda x: x["price_level"]):
-                        logger.warning(f"     ${level['price_level']:.2f} (status: {level.get('status')}, score: {level.get('strength_score', 0):.1f})")
-            
-            # Debug logging for resistance detection
+            # Support and resistance levels filtered - no verbose logging needed
             if not resistance_levels:
                 # Check if we have any levels above current price (even if inactive)
                 levels_above = [level for level in key_levels if level["price_level"] > current_price]
@@ -711,11 +811,11 @@ class SupportResistanceCalculator(BaseCalculator):
                                  f"Total levels: {len(key_levels)}, "
                                  f"Levels above price: 0")
             
-            # Shared helper function to get strongest level by score (proximity already factored into score)
+            # Shared helper function to get strongest level by score
             def _get_strongest_level(levels: List[Dict]) -> tuple:
                 """
                 Get strongest level price and score
-                Proximity is already factored into the score calculation (65% weight in scorer)
+                SCORING SYSTEM IS THE ONLY FACTOR - highest score wins (touch 50%, proximity 45%, volume 5%)
                 
                 Args:
                     levels: List of level dictionaries
@@ -729,20 +829,21 @@ class SupportResistanceCalculator(BaseCalculator):
                 return strongest["price_level"], strongest["strength_score"]
             
             # Get best and secondary levels - objective selection by score
-            # Scientific justification: 
-            # - Score is comprehensive: proximity (65%), touches (20%), MTF (10%), volume (5%)
-            # - Proximity is heavily weighted (65%), so levels far away will have lower scores
+            # SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING
+            # - Score: touch (50%), proximity (45%), volume (5%)
+            # - Proximity: exponential decay penalty for distance (closer = higher score)
+            # - Touch: more touches = higher score
             # - Highest score = objectively best level for trading at the moment
             
             def _get_trading_levels(levels: List[Dict], current_price: float, is_support: bool) -> tuple:
                 """
                 Get best and secondary levels - objective selection by score
                 
-                Scientific justification:
-                - Score is comprehensive: proximity (65%), touches (20%), MTF (10%), volume (5%)
-                - Proximity is heavily weighted (65%), so levels far away will have lower scores
+                SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING
+                - Score: touch (50%), proximity (45%), volume (5%)
+                - Proximity: exponential decay penalty for distance (closer = higher score)
+                - Touch: more touches = higher score
                 - Highest score = objectively best level for trading at the moment
-                - No need for additional distance filtering - score already incorporates everything
                 
                 Args:
                     levels: List of level dictionaries
@@ -755,8 +856,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 if not levels:
                     return (0.0, 0.0), (0.0, 0.0)
                 
-                # Sort by score (highest first) - objective selection
-                # Score already includes proximity (65% weight), so best levels for trading will have highest scores
+                # Sort by score (highest first) - SCORING SYSTEM IS THE ONLY FACTOR
+                # Highest score wins - proximity penalty (distance), touch rewards, volume confirmation
                 sorted_levels = sorted(levels, key=lambda x: x["strength_score"], reverse=True)
                 
                 # Best level: highest score
@@ -816,15 +917,11 @@ class SupportResistanceCalculator(BaseCalculator):
                 logger.error(f"❌ Invalid resistance level: ${strongest_resistance:.2f} <= current price ${current_price:.2f}")
                 strongest_resistance, resistance_score = 0.0, 0.0
             
-            # Log validation results
-            if strongest_support > 0:
-                logger.debug(f"✅ Valid support: ${strongest_support:.2f} (below ${current_price:.2f}, score: {support_score:.1f})")
-            else:
+            # Log validation warnings if no levels found
+            if strongest_support == 0:
                 logger.warning(f"⚠️ No valid support found below ${current_price:.2f}")
             
-            if strongest_resistance > 0:
-                logger.debug(f"✅ Valid resistance: ${strongest_resistance:.2f} (above ${current_price:.2f}, score: {resistance_score:.1f})")
-            else:
+            if strongest_resistance == 0:
                 logger.warning(f"⚠️ No valid resistance found above ${current_price:.2f}")
             
             # Get state summary for metadata
@@ -844,22 +941,21 @@ class SupportResistanceCalculator(BaseCalculator):
                 if secondary_support_obj:
                     top_2_support_list.append(secondary_support_obj)
             
-            # If we only have 1 support, always try to find a second one from all scored levels
+            # If we only have 1 support, this should only happen in edge cases (all-time low with all support broken)
+            # The verification loop should have ensured we have 2+ levels, so this indicates a true edge case or bug
             if len(top_2_support_list) == 1:
-                # Get all active support levels by original level_type (must be below current price for active levels)
+                # Check if this is a true edge case (all-time low) or a bug
                 all_support = [level for level in scored_levels 
                               if level.level_type == 'support' and
                               level.level < current_price and 
                               self._state.check_level_status(level, current_price, atr_14) == "active"]
                 if len(all_support) >= 2:
+                    # Try to find second from all levels
                     sorted_all_support = sorted(all_support, key=lambda x: x.score, reverse=True)
                     for candidate in sorted_all_support:
-                        # Skip if this is already the best support
                         if abs(candidate.level - best_support) < 1:
                             continue
-                        # Must be at least 0.1% away from best
                         if abs(candidate.level - best_support) > current_price * 0.001:
-                            # Convert Level to dict format for consistency
                             candidate_dict = {
                                 "price_level": candidate.level,
                                 "strength_score": candidate.score,
@@ -868,10 +964,7 @@ class SupportResistanceCalculator(BaseCalculator):
                                 "type": "support"
                             }
                             top_2_support_list.append(candidate_dict)
-                            logger.info(f"✅ Added secondary support from all levels: ${candidate.level:.2f} (score: {candidate.score:.1f}, {candidate.touches}x)")
                             break
-                else:
-                    logger.warning(f"⚠️ Only {len(all_support)} active support level(s) found below ${current_price:.2f}, cannot find second support")
             
             top_2_resistance_list = []
             if best_resistance > 0:
@@ -885,22 +978,21 @@ class SupportResistanceCalculator(BaseCalculator):
                 if secondary_resistance_obj:
                     top_2_resistance_list.append(secondary_resistance_obj)
             
-            # If we only have 1 resistance, always try to find a second one from all scored levels
+            # If we only have 1 resistance, this should only happen in edge cases (all-time high with all resistance broken)
+            # The verification loop should have ensured we have 2+ levels, so this indicates a true edge case or bug
             if len(top_2_resistance_list) == 1:
-                # Get all active resistance levels by original level_type (must be above current price for active levels)
+                # Check if this is a true edge case (all-time high) or a bug
                 all_resistance = [level for level in scored_levels 
                                 if level.level_type == 'resistance' and
                                 level.level > current_price and 
                                 self._state.check_level_status(level, current_price, atr_14) == "active"]
                 if len(all_resistance) >= 2:
+                    # Try to find second from all levels
                     sorted_all_resistance = sorted(all_resistance, key=lambda x: x.score, reverse=True)
                     for candidate in sorted_all_resistance:
-                        # Skip if this is already the best resistance
                         if abs(candidate.level - best_resistance) < 1:
                             continue
-                        # Must be at least 0.1% away from best
                         if abs(candidate.level - best_resistance) > current_price * 0.001:
-                            # Convert Level to dict format for consistency
                             candidate_dict = {
                                 "price_level": candidate.level,
                                 "strength_score": candidate.score,
@@ -909,10 +1001,7 @@ class SupportResistanceCalculator(BaseCalculator):
                                 "type": "resistance"
                             }
                             top_2_resistance_list.append(candidate_dict)
-                            logger.info(f"✅ Added secondary resistance from all levels: ${candidate.level:.2f} (score: {candidate.score:.1f}, {candidate.touches}x)")
                             break
-                else:
-                    logger.warning(f"⚠️ Only {len(all_resistance)} active resistance level(s) found above ${current_price:.2f}, cannot find second resistance")
             
             result = {
                 "status": "ok",
@@ -942,7 +1031,11 @@ class SupportResistanceCalculator(BaseCalculator):
                 "strongest_support": strongest_support,
                 "strongest_resistance": strongest_resistance,
                 "support_score": support_score,
-                "resistance_score": resistance_score
+                "resistance_score": resistance_score,
+                # Liquidation prices for trading at current price and S/R levels
+                "liquidation_prices": self._liquidation_calc.calculate_liquidation_prices_for_levels(
+                    strongest_support, strongest_resistance, current_price
+                )
             }
             
             # Cache the result with proper key structure and TTL

@@ -47,6 +47,12 @@ class SRState:
         """
         Determine if S/R recalculation is needed with proper break confirmation
         
+        When a resistance/support is broken, recalculation happens:
+        1. Immediately when price breaks through by >1.5×ATR (confirmed breakout)
+        2. When new swing structure forms (new highs/lows)
+        3. Every 5 minutes after a break (to find new levels quickly)
+        4. Periodic refresh every 15 minutes (normal operation)
+        
         Args:
             current_price: Current price
             current_time: Current timestamp
@@ -62,21 +68,33 @@ class SRState:
                 return True
             
             # Check for confirmed level breakouts (>1.5×ATR)
+            # This triggers immediately when a level is broken
             if self._last_price > 0 and atr_5m > 0:
                 price_change = abs(current_price - self._last_price)
                 breakout_threshold = atr_5m * 1.5  # Require 1.5×ATR for confirmed breakout
                 
                 if price_change > breakout_threshold:
                     self._recalculation_reasons.append(f"confirmed_breakout_{price_change:.2f}")
+                    logger.info(f"🔄 S/R recalculation triggered: Level broken (price moved {price_change:.2f} > {breakout_threshold:.2f} ATR)")
                     return True
             
             # Check for new local swing high/low formation
             if self._has_new_swing_structure(current_price, atr_5m):
                 self._recalculation_reasons.append("new_swing_structure")
+                logger.info(f"🔄 S/R recalculation triggered: New swing structure detected")
                 return True
             
-            # Periodic refresh every 15 minutes
+            # After a level break, recalculate more frequently (every 5 minutes) to find new levels
+            # Check if we have broken levels that need new level detection
             time_since_last = current_time - self._last_calculation_time
+            if len(self._broken_levels) > 0:
+                # If we have broken levels, recalculate every 5 minutes to find new levels
+                if time_since_last > 300:  # 5 minutes
+                    self._recalculation_reasons.append("post_break_refresh")
+                    logger.info(f"🔄 S/R recalculation triggered: Post-break refresh (broken levels detected)")
+                    return True
+            
+            # Periodic refresh every 15 minutes (normal operation)
             if time_since_last > 900:  # 15 minutes
                 self._recalculation_reasons.append("periodic_refresh")
                 return True
@@ -148,7 +166,6 @@ class SRState:
                 break_threshold = level_price + atr_14
                 is_broken = current_price > break_threshold
                 if is_broken:
-                    logger.debug(f"🔴 Resistance ${level_price:.2f} BROKEN: price ${current_price:.2f} > (${level_price:.2f} + ${atr_14:.2f} = ${break_threshold:.2f})")
                     return 'inactive'  # Resistance broken - price rose through
             elif level_type == 'support':
                 # Support is broken if price has fallen BELOW it by more than ATR
@@ -156,7 +173,6 @@ class SRState:
                 break_threshold = level_price - atr_14
                 is_broken = current_price < break_threshold
                 if is_broken:
-                    logger.debug(f"🟢 Support ${level_price:.2f} BROKEN: price ${current_price:.2f} < (${level_price:.2f} - ${atr_14:.2f} = ${break_threshold:.2f})")
                     return 'inactive'  # Support broken - price fell through
             
             return 'active'

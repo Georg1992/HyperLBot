@@ -2,20 +2,23 @@
 """
 Binance API Client
 Provides real-time volume data via WebSocket for scalping strategies
+Also provides historical candle data for initial database population
 """
 
 import time
+import requests
 from typing import Dict, Any, List, Optional, Tuple, Callable
 from loguru import logger
 from .binance_websocket import get_binance_websocket, start_binance_websocket
 
 class BinanceAPI:
-    """Binance API client for real-time volume data"""
+    """Binance API client for real-time volume data and historical candles"""
     
     def __init__(self, symbol: str = "BTCUSDT"):
         self.symbol = symbol
         self.websocket = None
         self.last_volume_data = None
+        self.base_url = "https://api.binance.com/api/v3"
         
         logger.info("📊 Binance API Client initialized for real-time volume data")
     
@@ -81,6 +84,62 @@ class BinanceAPI:
                 "last_update": 0,
                 "symbol": self.symbol
             }
+    
+    def get_historical_klines(self, symbol: str, interval: str, start_time: int = None, end_time: int = None, limit: int = 1000) -> List[Dict[str, Any]]:
+        """
+        Get historical klines (candles) from Binance REST API
+        
+        Args:
+            symbol: Trading symbol (e.g., "BTCUSDT")
+            interval: Kline interval (e.g., "5m", "1h", "1d")
+            start_time: Start time in milliseconds (optional)
+            end_time: End time in milliseconds (optional)
+            limit: Maximum number of klines to retrieve (default: 1000, max: 1000)
+            
+        Returns:
+            List of candle dictionaries with timestamp, open, high, low, close, volume, trades_count
+        """
+        try:
+            url = f"{self.base_url}/klines"
+            params = {
+                "symbol": symbol,
+                "interval": interval,
+                "limit": min(limit, 1000)  # Binance max limit is 1000
+            }
+            
+            if start_time:
+                params["startTime"] = start_time
+            if end_time:
+                params["endTime"] = end_time
+            
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            
+            klines_data = response.json()
+            
+            # Convert Binance kline format to our candle format
+            # Binance format: [openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, ...]
+            candles = []
+            for kline in klines_data:
+                candle = {
+                    "timestamp": kline[0] / 1000.0,  # Convert ms to seconds
+                    "open": float(kline[1]),
+                    "high": float(kline[2]),
+                    "low": float(kline[3]),
+                    "close": float(kline[4]),
+                    "volume": float(kline[5]),
+                    "trades_count": int(kline[8]) if len(kline) > 8 else 0
+                }
+                candles.append(candle)
+            
+            return candles
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"❌ Failed to fetch historical klines from Binance: {e}")
+            raise ValueError(f"Binance historical klines fetch failed: {e}")
+        except Exception as e:
+            logger.error(f"❌ Error processing Binance klines: {e}")
+            raise ValueError(f"Binance klines processing failed: {e}")
 
 
 # Singleton pattern implementation

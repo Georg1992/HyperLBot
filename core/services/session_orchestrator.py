@@ -165,9 +165,69 @@ class SessionOrchestrator:
             logger.info(
                 f"🔄 Starting main data loop (interval: {check_interval}s, strategy: {strategy})"
             )
+            
+            # Track last candle storage update
+            last_candle_update_time = 0.0
+            
+            # Track last 5-minute candle boundary for pattern detection optimization
+            from core.utils.time_utils import TimeUtils
+            last_5m_boundary = None
+            if not hasattr(self, '_last_5m_boundary'):
+                current_5m_start = TimeUtils.get_5m_candle_start_time()
+                self._last_5m_boundary = current_5m_start
 
             while True:
                 try:
+                    current_time = time.time()
+                    current_5m_start = TimeUtils.get_5m_candle_start_time()
+                    
+                    # Detect new 5-minute candle close (boundary change) - EXACT UTC TIMING
+                    # Candles are tied to global UTC time and appear at 00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55 minutes
+                    new_candle_closed = False
+                    if self._last_5m_boundary is not None and current_5m_start != self._last_5m_boundary:
+                        new_candle_closed = True
+                        from datetime import datetime
+                        boundary_utc = datetime.utcfromtimestamp(current_5m_start)
+                        logger.info(f"🕐 New 5-minute candle boundary detected: {boundary_utc.strftime('%H:%M:%S')} UTC - updating database and invalidating caches")
+                        
+                        # Update candle storage IMMEDIATELY when boundary changes (exact 5-minute intervals: 00, 05, 10, 15, etc.)
+                        try:
+                            from core.services.historical_data_service import get_global_historical_data_service
+                            historical_service = get_global_historical_data_service()
+                            if hasattr(historical_service, '_candle_storage') and historical_service._candle_storage:
+                                historical_service._candle_storage.update_with_latest_candle()
+                                logger.info(f"✅ Candle storage updated at exact 5-minute boundary")
+                                
+                                # Invalidate chart cache to force dashboard refresh with new candle
+                                from core.services.centralized_cache import get_global_centralized_cache
+                                cache = get_global_centralized_cache()
+                                cache.invalidate(pattern="historical_candles")
+                                cache.invalidate(pattern="candles_5m")
+                                logger.debug(f"🔄 Chart cache invalidated for new candle - dashboard will refresh")
+                        except Exception as e:
+                            logger.error(f"❌ Failed to update candle storage at boundary: {e}")
+                        
+                        # Invalidate pattern cache when new candle closes
+                        from core.services.centralized_cache import get_global_centralized_cache
+                        cache = get_global_centralized_cache()
+                        cache.invalidate(pattern="pattern_recognition")
+                        cache.invalidate(pattern="patterns")
+                        self._last_5m_boundary = current_5m_start
+                        last_candle_update_time = current_time  # Reset timer
+                    
+                    # Fallback: Update candle storage if we missed the boundary (safety check)
+                    # This should rarely trigger if boundary detection works correctly
+                    elif current_time - last_candle_update_time >= 310:  # 5 minutes 10 seconds (slightly longer than 5 min)
+                        try:
+                            logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
+                            from core.services.historical_data_service import get_global_historical_data_service
+                            historical_service = get_global_historical_data_service()
+                            if hasattr(historical_service, '_candle_storage') and historical_service._candle_storage:
+                                historical_service._candle_storage.update_with_latest_candle()
+                                last_candle_update_time = current_time
+                        except Exception as e:
+                            logger.warning(f"⚠️ Failed to update candle storage (fallback): {e}")
+                    
                     # Get current market data from MarketDataService (centralized price provider)
                     current_price = None
                     if hasattr(market_data_service, "get_current_price"):
@@ -255,11 +315,31 @@ class SessionOrchestrator:
         if not hasattr(self, '_last_price'):
             self._last_price = current_price
             self._last_update_times = {}
+            # Initialize 5-minute boundary tracking
+            from core.utils.time_utils import TimeUtils
+            self._last_5m_boundary = TimeUtils.get_5m_candle_start_time()
             # Force update all modules on first run
             return list(analysis_modules.keys())
         
         price_change = abs(current_price - self._last_price) / self._last_price
         self._last_price = current_price
+        
+        # Check for new 5-minute candle close (for pattern detection optimization)
+        from core.utils.time_utils import TimeUtils
+        current_5m_start = TimeUtils.get_5m_candle_start_time()
+        new_candle_closed = False
+        if hasattr(self, '_last_5m_boundary') and self._last_5m_boundary is not None:
+            if current_5m_start != self._last_5m_boundary:
+                new_candle_closed = True
+                logger.info(f"🕐 New 5-minute candle closed - pattern detection will be triggered")
+                # Invalidate pattern cache when new candle closes
+                from core.services.centralized_cache import get_global_centralized_cache
+                cache = get_global_centralized_cache()
+                cache.invalidate(pattern="pattern_recognition")
+                cache.invalidate(pattern="patterns")
+                self._last_5m_boundary = current_5m_start
+        else:
+            self._last_5m_boundary = current_5m_start
         
         for module_name, module_instance in analysis_modules.items():
             # Check if module should be updated
@@ -274,6 +354,11 @@ class SessionOrchestrator:
             
             if current_time - last_update >= interval:
                 should_update = True
+            
+            # Pattern recognition: trigger on new 5-minute candle close (optimized)
+            if module_name == "pattern_recognition" and new_candle_closed:
+                should_update = True
+                logger.debug(f"🕐 Pattern recognition triggered by new 5m candle close")
             
             # Check price change for price-sensitive modules
             price_sensitive_modules = ['rsi_calculator', 'support_resistance']
@@ -421,14 +506,18 @@ class SessionOrchestrator:
                             logger.debug(f"📊 Pressure analysis result: {analysis_result}")
                         elif module_name == "pattern_recognition":
                             # Pattern analysis needs candles
-                            from core.services.historical_data_service import create_historical_data_service
-                            historical_service = create_historical_data_service()
-                            candles = historical_service.get_5m_candles("BTC", 50)  # Get 50 candles for pattern analysis
-                            if candles:
-                                analysis_result = module_instance.analyze_patterns(candles)
-                                logger.debug(f"📊 Pattern analysis completed: {len(analysis_result.get('all_patterns', []))} patterns")
+                            # Note: Pattern analysis is handled by MarketDataService.get_pattern_analysis()
+                            # which uses centralized caching. We don't need to trigger it here directly.
+                            # The analysis will be fetched when get_unified_analysis_data() is called.
+                            logger.debug("📊 Pattern recognition module update triggered (handled by MarketDataService)")
+                            # Get the analysis result from MarketDataService (which handles caching)
+                            if hasattr(market_data_service, "get_pattern_analysis"):
+                                analysis_result = market_data_service.get_pattern_analysis()
+                                patterns_count = len(analysis_result.get("patterns", []))
+                                nested = analysis_result.get("patterns_nested", {})
+                                nested_count = sum(len(v) if isinstance(v, list) else 0 for v in nested.values())
+                                logger.info(f"📊 Pattern analysis retrieved: {patterns_count} flat patterns, {nested_count} nested patterns")
                             else:
-                                logger.warning("⚠️ No candles available for pattern analysis")
                                 analysis_result = None
                         elif module_name == "market_conditions":
                             # Market conditions analysis needs comprehensive market data
@@ -534,9 +623,20 @@ class SessionOrchestrator:
                         f"🎯 Strategy updated: {current_strategy} → {new_strategy}"
                     )
                     logger.info(f"   📊 Market conditions: volatility={unified_data.get('volatility_category', 'UNKNOWN')}, trend={unified_data.get('trend', {}).get('direction', 'UNKNOWN')}")
+                    
+                    # Update session manager with new strategy
+                    if self.session_manager and hasattr(self.session_manager, 'current_session_data'):
+                        self.session_manager.current_session_data["strategy"] = new_strategy
+                        logger.debug(f"📊 Session manager strategy updated to: {new_strategy}")
+                    
                     return new_strategy
                 else:
                     logger.debug(f"🎯 Strategy unchanged: {current_strategy}")
+                    # Even if unchanged, ensure session manager has the correct strategy
+                    if self.session_manager and hasattr(self.session_manager, 'current_session_data'):
+                        if self.session_manager.current_session_data.get("strategy") != current_strategy:
+                            self.session_manager.current_session_data["strategy"] = current_strategy
+                            logger.debug(f"📊 Session manager strategy synced to: {current_strategy}")
                     return current_strategy
             else:
                 logger.warning(
@@ -563,14 +663,20 @@ class SessionOrchestrator:
     ):
         """Update dashboard with unified market data and session data"""
         try:
-            # Update market data with analysis data
+            # Update market data with analysis data (includes strategy in unified_data)
             dashboard_service.update_market_data(unified_data)
             
-            # Update session data from SessionManager
+            # Update session data from SessionManager (ensure strategy is synced)
             if self.session_manager:
                 session_data = self.session_manager.get_current_session_data()
+                # Ensure session data has the latest strategy from unified_data
+                if "strategy" in unified_data:
+                    session_data["strategy"] = unified_data["strategy"]
+                    # Also update session manager's internal data
+                    if hasattr(self.session_manager, 'current_session_data'):
+                        self.session_manager.current_session_data["strategy"] = unified_data["strategy"]
                 dashboard_service.update_session_data(session_data)
-                logger.debug(f"📊 Session data updated: {session_data.get('status', 'UNKNOWN')}")
+                logger.debug(f"📊 Session data updated: status={session_data.get('status', 'UNKNOWN')}, strategy={session_data.get('strategy', 'N/A')}")
             
             logger.debug("📊 Dashboard updated with unified market data and session data")
 

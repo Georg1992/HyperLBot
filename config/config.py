@@ -43,7 +43,10 @@ class TradingConfig:
     MAX_STOP_LOSS = float(os.getenv("MAX_STOP_LOSS", "0.008"))  # 0.8% (tighter for 40x)
     
     # Support/Resistance Scoring
-    SR_PROXIMITY_DECAY_K = float(os.getenv("SR_PROXIMITY_DECAY_K", "2.0"))  # k in exp(-distance/(k*ATR))
+    SR_PROXIMITY_DECAY_K = float(os.getenv("SR_PROXIMITY_DECAY_K", "25.0"))  # k in exp(-distance/(k*ATR))
+    # k=25.0: very gentle decay allows strong differentiation at 1-3% distances (trading-relevant ranges)
+    # With ATR ~$78: 1.6% away (~$1,500) gets ~42 pts, 3.4% away (~$3,100) gets ~11 pts
+    # This ensures proximity (75% weight) can overcome touch differences for actionable levels
     
     # Strategy Configurations
     STRATEGY_CONFIGS = {

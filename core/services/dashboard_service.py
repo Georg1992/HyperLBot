@@ -10,7 +10,7 @@ import time
 import json
 import threading
 from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any
 from loguru import logger
 
 class DashboardService:
@@ -129,6 +129,13 @@ class DashboardService:
                 # Debug: Log what data is being stored
                 logger.debug(f"📊 DashboardService updated with market data keys: {list(market_data.keys())}")
                 logger.debug(f"📊 DashboardService current_price: {market_data.get('current_price', 'N/A')}")
+                
+                # Log candle data status for debugging
+                if "candleData" in market_data:
+                    candle_data = market_data["candleData"]
+                    historical_count = len(candle_data.get("historical", [])) if candle_data else 0
+                    has_ongoing = bool(candle_data.get("ongoing")) if candle_data else False
+                    logger.debug(f"📊 Candle data: {historical_count} historical, ongoing: {has_ongoing}")
                 # RSI removed - not working properly
         except Exception as e:
             logger.error(f"❌ Could not update market data: {e}")
@@ -139,19 +146,31 @@ class DashboardService:
             # Get pattern data from market data
             patterns = market_data.get("patterns", {})
             
-            # Prepare candle data structure
-            candle_data = {
-                "historical": [],  # Will be populated by historical data service
-                "ongoing": None,   # Current candle
-                "predicted": [],   # Predicted candles
-                "pattern_analysis": patterns  # Pattern data for chart overlays
-            }
+            # Get current price for chart data preparation
+            current_price = market_data.get("current_price", 0.0)
+            if not current_price or current_price <= 0:
+                logger.warning("⚠️ No valid current price for chart data preparation")
+                return None
             
-            logger.debug(f"📊 Prepared candle data with pattern_analysis: {list(patterns.keys()) if patterns else 'None'}")
+            # Call historical_data_service.prepare_chart_data() to get actual candles
+            # This handles UTC-based 5-minute boundaries and proper candle display
+            from core.services.historical_data_service import get_global_historical_data_service
+            historical_service = get_global_historical_data_service()
+            
+            # prepare_chart_data returns complete chart data with historical candles, ongoing candle, and pattern analysis
+            candle_data = historical_service.prepare_chart_data(current_price, patterns)
+            
+            if not candle_data:
+                logger.warning("⚠️ Failed to prepare chart data from historical service")
+                return None
+            
+            logger.debug(f"📊 Prepared candle data: {len(candle_data.get('historical', []))} historical candles, ongoing: {bool(candle_data.get('ongoing'))}")
             return candle_data
             
         except Exception as e:
             logger.error(f"❌ Failed to prepare candle data: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return None
     
     def _trigger_websocket_emission(self):

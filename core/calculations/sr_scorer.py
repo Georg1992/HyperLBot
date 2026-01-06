@@ -26,16 +26,19 @@ class SRScorer:
     def __init__(self):
         """Initialize the scorer with validated weights
         
-        Weights: proximity 65% (primary), touch 20%, MTF 10%, volume 5%
+        SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING
+        Weights: touch 50%, proximity 45%, volume 5%
+        - Closer to current price -> higher proximity score (exponential decay penalty for distance)
+        - More touches -> higher touch score
+        - Highest total score wins - scoring system finds the perfect levels
         Score (0-100) represents trading quality: higher = better for trading at current moment
-        Removed recency: time distance doesn't predict trading quality - proximity and strength matter more
         """
         self._scoring_weights = {
-            'mtf': 0.10,        # Multi-timeframe confirmation (10%)
-            'proximity': 0.65,  # Distance from current price (65% - PRIMARY FACTOR)
-            'touch': 0.20,      # Number of touches (20% - strength indicator)
+            'mtf': 0.00,        # Multi-timeframe confirmation (0% - removed)
+            'proximity': 0.45,  # Distance from current price (45% - closer = higher score, further = penalty)
+            'touch': 0.50,      # Number of touches (50% - more touches = higher score)
             'volume': 0.05,     # Volume confirmation (5% - execution quality)
-            'recency': 0.0      # Removed: time distance doesn't improve trading quality prediction
+            'recency': 0.0      # Removed
         }
         
         # Configurable decay factor for proximity
@@ -50,9 +53,12 @@ class SRScorer:
     def score_levels_enhanced(self, levels: List[Level], current_price: float, 
                              atr_5m: float, atr_per_tf: Dict[str, float]) -> List[Level]:
         """
-        Enhanced scoring of S/R levels with bias reduction and normalization
+        Enhanced scoring of S/R levels - SCORING SYSTEM IS THE ONLY FACTOR (NO FILTERING)
         
-        Final score (0-100) = weighted sum: proximity 65%, touch 20%, MTF 10%, volume 5%
+        Final score (0-100) = weighted sum: touch 50%, proximity 45%, volume 5%
+        - Proximity: exponential decay penalty for distance (closer = higher score)
+        - Touch: more touches = higher score
+        - Highest score wins - scoring system finds the perfect levels to trade
         Higher score = better level for trading at current moment
         Score interpretation: 80-100 excellent, 60-79 good, 40-59 moderate, 20-39 poor, 0-19 very poor
         
@@ -109,27 +115,6 @@ class SRScorer:
                 )
                 
                 scored_levels.append(scored_level)
-                
-                # DEBUG: Log detailed scoring breakdown for all active levels
-                is_active = (level.level_type == 'resistance' and level.level > current_price) or \
-                           (level.level_type == 'support' and level.level < current_price)
-                
-                if is_active:
-                    distance = abs(level.level - current_price)
-                    level_emoji = "🔴" if level.level_type == 'resistance' else "🟢"
-                    # Calculate weighted contributions for clarity
-                    prox_contrib = (proximity_score / 100.0) * 0.65 * 100
-                    touch_contrib = (touch_score / 100.0) * 0.20 * 100
-                    mtf_contrib = (mtf_score / 100.0) * 0.10 * 100
-                    vol_contrib = (volume_score / 100.0) * 0.05 * 100
-                    
-                    logger.info(f"📊 SCORE BREAKDOWN {level_emoji} ${level.level:.2f} ({level.level_type.upper()}) | "
-                               f"Distance: ${distance:.2f} ({distance/current_price*100:.2f}%) | "
-                               f"Proximity: {proximity_score:.1f} → {prox_contrib:.1f} pts (65%) | "
-                               f"Touch: {touch_score:.1f} ({level.touches}x) → {touch_contrib:.1f} pts (20%) | "
-                               f"MTF: {mtf_score:.1f} ({level.mtf_count}x) → {mtf_contrib:.1f} pts (10%) | "
-                               f"Volume: {volume_score:.1f} → {vol_contrib:.1f} pts (5%) | "
-                               f"FINAL: {normalized_score:.1f}/100")
             
             # Sort by score (highest first)
             scored_levels.sort(key=lambda x: x.score, reverse=True)
@@ -181,15 +166,16 @@ class SRScorer:
         Calculate proximity score using volatility-aware exponential decay
         
         Formula: 100 * exp(-distance / (k * atr_5m))
-        - k=2.0: levels within ~2*ATR get significant scores (>36%)
-        - 2*ATR ≈ 2 standard deviations (95% of price action)
+        - k=25.0: very gentle decay allows strong differentiation at 1-3% distances (trading-relevant ranges)
+        - With ATR ~$78: 1.6% away (~$1,500) gets ~42 pts, 3.4% away (~$3,100) gets ~11 pts
+        - This ensures proximity (75% weight) can overcome touch differences for actionable levels
         - Volatility-scaled: adapts to market conditions automatically
         
         Args:
             level_price: Level price
             current_price: Current price
             atr_5m: 5m ATR for volatility scaling
-            k: Decay factor (default 2.0 from config)
+            k: Decay factor (default 25.0 from config)
             
         Returns:
             Proximity score (0-100) where 100 = at current price, 0 = very far
@@ -201,7 +187,9 @@ class SRScorer:
             distance = abs(level_price - current_price)
             
             # Volatility-aware exponential decay: proximity_score = 100 * exp(-distance / (k * atr_5m))
-            # k=2.0 means levels within ~2*ATR get significant scores (moderate distance penalty)
+            # k=25.0 means levels within ~25*ATR get meaningful scores (very gentle distance penalty)
+            # With ATR ~$78: 1.6% away gets ~42 pts, 3.4% away gets ~11 pts
+            # This ensures proximity (75% weight) can overcome touch differences for actionable levels
             k_value = k if (k is not None and k > 0) else self.proximity_decay_k
             if atr_5m > 0:
                 proximity_score = 100.0 * math.exp(-(distance / (k_value * atr_5m)))
