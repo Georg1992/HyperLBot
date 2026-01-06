@@ -939,23 +939,9 @@ class SupportResistanceCalculator(BaseCalculator):
                 logger.error(f"❌ Invalid resistance level: ${strongest_resistance:.2f} <= current price ${current_price:.2f}")
                 strongest_resistance, resistance_score = 0.0, 0.0
             
-            # Log validation warnings if no levels found - with detailed diagnostics
+            # Log validation warnings if no levels found
             if strongest_support == 0:
-                # Check all levels to see why support wasn't found
-                all_support = [level for level in key_levels if level.get("type") == "support" and level["price_level"] < current_price]
-                active_support = [level for level in all_support if level.get("status") == "active"]
-                inactive_support = [level for level in all_support if level.get("status") == "inactive"]
                 logger.warning(f"⚠️ No valid support found below ${current_price:.2f}")
-                logger.warning(f"   Total support levels: {len(all_support)}, Active: {len(active_support)}, Inactive: {len(inactive_support)}")
-                if all_support:
-                    top_support = sorted(all_support, key=lambda x: x["strength_score"], reverse=True)[:3]
-                    logger.warning(f"   Top support levels: {[(f'${l[\"price_level\"]:.2f}', l.get('status'), f'score={l[\"strength_score\"]:.1f}') for l in top_support]}")
-                # If we have inactive support, use them as fallback
-                if not active_support and inactive_support:
-                    logger.warning(f"   ⚠️ Using inactive support levels as fallback (no active support found)")
-                    inactive_support.sort(key=lambda x: x["strength_score"], reverse=True)
-                    top_support = inactive_support[:2]
-                    support_levels = top_support  # Override with inactive levels
             
             if strongest_resistance == 0:
                 logger.warning(f"⚠️ No valid resistance found above ${current_price:.2f}")
