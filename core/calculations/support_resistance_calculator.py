@@ -775,20 +775,30 @@ class SupportResistanceCalculator(BaseCalculator):
             active_resistance_candidates.sort(key=lambda x: x["strength_score"], reverse=True)
             
             # Take top 2 of each (or all if less than 2) - these are already active
-            # If no active support found, use inactive support as fallback (they're still valid levels)
-            if not active_support_candidates:
-                inactive_support = [level for level in key_levels 
-                                  if level.get("type") == "support" and 
-                                  level["price_level"] < current_price and 
-                                  level.get("status") == "inactive"]
-                inactive_support.sort(key=lambda x: x["strength_score"], reverse=True)
-                top_support = inactive_support[:2] if inactive_support else []
-                if top_support:
-                    logger.warning(f"⚠️ No active support found, using {len(top_support)} inactive support level(s) as fallback")
-            else:
-                top_support = active_support_candidates[:2]
-            
+            top_support = active_support_candidates[:2]
             top_resistance = active_resistance_candidates[:2]
+            
+            # DIAGNOSTICS: If no active support found, log why
+            if not active_support_candidates:
+                all_support = [level for level in key_levels 
+                             if level.get("type") == "support" and 
+                             level["price_level"] < current_price]
+                logger.warning(f"⚠️ NO ACTIVE SUPPORT FOUND - Investigating:")
+                logger.warning(f"   Total support levels below ${current_price:.2f}: {len(all_support)}")
+                if all_support:
+                    for level in sorted(all_support, key=lambda x: x["strength_score"], reverse=True)[:5]:
+                        level_price = level["price_level"]
+                        status = level.get("status", "unknown")
+                        score = level.get("strength_score", 0)
+                        touches = level.get("touches", 0)
+                        # Calculate why it's inactive
+                        break_threshold = level_price - atr_14
+                        is_broken = current_price < break_threshold
+                        logger.warning(f"   Support ${level_price:.2f}: status={status}, score={score:.1f}, touches={touches}x, "
+                                     f"break_threshold=${break_threshold:.2f}, is_broken={is_broken}, "
+                                     f"ATR_14=${atr_14:.2f}, current_price=${current_price:.2f}")
+                else:
+                    logger.warning(f"   No support levels found below current price at all!")
             
             # Combine and add remaining top-scored levels to fill up to 10 total
             # SCORING SYSTEM IS THE ONLY FACTOR - highest scores win
