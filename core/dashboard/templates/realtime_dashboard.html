@@ -1011,11 +1011,6 @@
                     // ML predictions are now handled by RealtimePredictionEngine
                     
                     // Update candle chart
-                    console.log('🕯️ Checking for candleData in data:', {
-                        hasCandleData: !!data.candleData,
-                        dataKeys: Object.keys(data),
-                        candleDataValue: data.candleData
-                    });
                     if (data.candleData) {
                         this.updateCandleChart(data.candleData);
                     }
@@ -2220,8 +2215,6 @@
             // updateMLPrediction method removed - ML predictions now handled by RealtimePredictionEngine
             
             updateCandleChart(candleData) {
-                console.log('🕯️ updateCandleChart called with:', candleData);
-                
                 if (candleData && candleData.historical) {
                     // Store candle data for responsive redraws
                     this.lastCandleData = candleData;
@@ -2231,18 +2224,7 @@
                     
                     // Update the candle data table
                     this.updateCandleDataTable(candleData.historical, candleData.predicted || []);
-                    
-                    const ongoingCount = candleData.ongoing ? 1 : 0;
-                    console.log(`📊 Dashboard: Updated candle chart with ${candleData.historical.length} historical + ${ongoingCount} ongoing + ${(candleData.predicted || []).length} predicted candles`);
                 } else {
-                    console.log('🕯️ Candle data structure:', {
-                        hasCandleData: !!candleData,
-                        hasHistorical: candleData ? !!candleData.historical : false,
-                        hasOngoing: candleData ? !!candleData.ongoing : false,
-                        hasPredicted: candleData ? !!candleData.predicted : false,
-                        candleDataKeys: candleData ? Object.keys(candleData) : 'null'
-                    });
-                    
                     // No candle data available
                     this.updateElement('candle-data-table', `
                         <div style="text-align: center; color: #888; padding: 20px;">
@@ -2326,8 +2308,10 @@
                 const totalCandles = 20; // Always exactly 20 candles
                 const priceLabelWidth = 100; // Space for price labels
                 const chartWidth = width - priceLabelWidth; // Available width for chart
-                const candleWidth = (chartWidth * 0.95) / totalCandles; // Use 95% of available chart width
-                const chartStartX = (chartWidth - (totalCandles * candleWidth)) / 2; // Center the chart within available space
+                // Use 70% of available width for candles, leaving 30% for spacing (more breathing room)
+                const candleSlotWidth = chartWidth / totalCandles; // Full slot width per candle
+                const candleBodyWidth = candleSlotWidth * 0.7; // Body uses 70% of slot, 30% for spacing
+                const chartStartX = priceLabelWidth; // Start after price labels
                 
                 // Draw professional grid with anti-aliasing
                 ctx.imageSmoothingEnabled = true;
@@ -2337,9 +2321,9 @@
                 ctx.strokeStyle = 'rgba(255,255,255,0.08)';
                 ctx.lineWidth = 0.5;
                 
-                // Vertical grid lines - align to candle boundaries (drawn first, doesn't depend on price range)
+                // Vertical grid lines - align to candle slot boundaries
                 for (let i = 0; i <= totalCandles; i++) {
-                    const x = chartStartX + (i * candleWidth);
+                    const x = chartStartX + (i * candleSlotWidth);
                     ctx.beginPath();
                     ctx.moveTo(x, 0);
                     ctx.lineTo(x, height);
@@ -2352,7 +2336,7 @@
                 
                 // Major vertical lines (every 3rd candle)
                 for (let i = 0; i <= totalCandles; i += 3) {
-                    const x = chartStartX + (i * candleWidth);
+                    const x = chartStartX + (i * candleSlotWidth);
                     ctx.beginPath();
                     ctx.moveTo(x, 0);
                     ctx.lineTo(x, height);
@@ -2448,27 +2432,6 @@
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
                 
-                // Debug: Log simple 20-candle structure
-                // Note: ongoingCandle is already declared above (before price range calculation)
-                console.log('🕯️ Simple 20-candle structure:', {
-                    totalCandles: historicalCandles.length,
-                    ongoing: ongoingCandle ? 'Yes' : 'No',
-                    candles: historicalCandles.map((c, i) => ({ 
-                        index: i, 
-                        timestamp: c.timestamp, 
-                        isOngoing: c.is_ongoing || false,
-                        price: c.close 
-                    }))
-                });
-                if (ongoingCandle) {
-                    console.log('🕯️ Ongoing candle:', {
-                        open: ongoingCandle.open,
-                        close: ongoingCandle.close,
-                        isOngoing: ongoingCandle.is_ongoing || false,
-                        timestamp: ongoingCandle.timestamp
-                    });
-                }
-                
                 // Combine historical and ongoing candles for display (total 20 candles)
                 // historicalCandles should have 19 completed candles
                 // ongoingCandle should be the current ongoing candle (1 candle)
@@ -2477,32 +2440,21 @@
                     displayCandles.push(ongoingCandle);
                 }
                 
-                // Draw exactly 20 candles (no more, no less)
-                const historicalStartX = chartStartX;
+                // Draw exactly 20 candles
                 const maxCandles = 20;
                 const candlesToDraw = Math.min(displayCandles.length, maxCandles);
                 
                 // Draw candles
                 for (let index = 0; index < candlesToDraw; index++) {
                     const candle = displayCandles[index];
-                    const x = historicalStartX + (index * candleWidth);
+                    const x = chartStartX + (index * candleSlotWidth) + (candleSlotWidth - candleBodyWidth) / 2; // Center candle body in slot
                     const isOngoing = (candle === ongoingCandle) || candle.is_ongoing || false;
-                    // Pass candlesToDraw for debug logging
-                    this.drawCandle(ctx, candle, x, candleWidth, height, adjustedMinPrice, adjustedPriceRange, false, isOngoing, displayCandles, index, candlesToDraw);
+                    this.drawCandle(ctx, candle, x, candleBodyWidth, height, adjustedMinPrice, adjustedPriceRange, false, isOngoing);
                 }
-                
-                // No separator line needed - simple 20-candle display
-                
-                // Add "NOW" label at the last candle (ongoing candle)
-                ctx.fillStyle = '#00FFFF';
-                ctx.font = 'bold 12px Arial';
-                ctx.textAlign = 'center';
-                const nowX = chartStartX + ((candlesToDraw - 1) * candleWidth) + (candleWidth / 2);
-                ctx.fillText('NOW', nowX, height - 10);
                 
                 // Draw pattern overlays on the chart
                 if (candleData && candleData.pattern_analysis) {
-                    this.drawPatternOverlays(ctx, candleData.pattern_analysis, historicalCandles, chartStartX, candleWidth, height, adjustedMinPrice, adjustedPriceRange);
+                    this.drawPatternOverlays(ctx, candleData.pattern_analysis, historicalCandles, chartStartX, candleSlotWidth, height, adjustedMinPrice, adjustedPriceRange);
                 }
                 
                 // Add current price indicator (use real-time price if available)
@@ -2569,10 +2521,10 @@
                 ctx.shadowOffsetX = 1;
                 ctx.shadowOffsetY = 1;
                 
-                // Add time labels for every 3rd candle (use displayCandles, not just historicalCandles)
+                // Add time labels for every 3rd candle
                 for (let i = 0; i < candlesToDraw; i += 3) {
                     const candle = displayCandles[i];
-                    const x = historicalStartX + (i * candleWidth) + (candleWidth / 2);
+                    const x = chartStartX + (i * candleSlotWidth) + (candleSlotWidth / 2);
                     const y = height - 10;
                     
                     // Convert timestamp to time string
@@ -2588,7 +2540,7 @@
                 
                 // Add "NOW" label for the last candle (ongoing candle)
                 if (candlesToDraw > 0 && ongoingCandle) {
-                    const lastCandleX = historicalStartX + ((candlesToDraw - 1) * candleWidth) + (candleWidth / 2);
+                    const lastCandleX = chartStartX + ((candlesToDraw - 1) * candleSlotWidth) + (candleSlotWidth / 2);
                     ctx.fillStyle = '#00FFFF';  // Bright cyan
                     ctx.font = 'bold 13px Arial';
                     ctx.fillText('NOW', lastCandleX, height - 10);
@@ -2601,25 +2553,15 @@
                 ctx.shadowOffsetY = 0;
             }
             
-            drawCandle(ctx, candle, x, width, height, minPrice, priceRange, isPredicted, isOngoing = false, displayCandles = null, index = -1, candlesToDraw = 20) {
-                // PARAMETERS:
-                // - x: Left edge of candle slot (horizontal position)
-                // - width: Width of candle slot (horizontal spacing between candles) 
-                // - height: Canvas height (vertical dimension)
-                // - minPrice: Minimum price in the visible range
-                // - priceRange: Price range (maxPrice - minPrice)
-                
+            drawCandle(ctx, candle, x, width, height, minPrice, priceRange, isPredicted, isOngoing = false) {
                 // Validate inputs
                 if (!candle || !priceRange || priceRange <= 0) {
-                    console.error('❌ Invalid candle data or price range:', { candle, priceRange });
                     return;
                 }
                 
-                // Calculate candle body dimensions - match Hyperliquid exactly
-                // Body width: Use most of the slot width (90%) for thick, visible bodies like Hyperliquid
-                // Hyperliquid uses substantial body widths, not thin lines
-                const candleBodyWidth = Math.max(width * 0.9, 8);  // 90% of slot width, minimum 8px
-                const centerX = x + (width / 2);  // Center of candle slot
+                // x is already the left edge of the candle body (centered in slot)
+                // width is the candle body width (70% of slot)
+                const centerX = x + (width / 2);  // Center of candle body
                 
                 // Enable anti-aliasing
                 ctx.imageSmoothingEnabled = true;
@@ -2643,20 +2585,7 @@
                     return;
                 }
                 
-                // CANVAS COORDINATE SYSTEM:
-                // - Y=0 is at TOP of canvas
-                // - Y=height is at BOTTOM of canvas
-                // - Higher prices should appear at TOP (lower Y values)
-                // - Lower prices should appear at BOTTOM (higher Y values)
-                // Formula: y = height - ((price - minPrice) / priceRange) * height
-                // This correctly maps: minPrice -> height (bottom), maxPrice -> 0 (top)
-                
-                // CRITICAL: Coordinate calculation must match grid exactly
-                // Grid formula: price = adjustedMaxPrice - (adjustedPriceRange * i / 10), y = (height / 10) * i
-                // Solving: y = height * (adjustedMaxPrice - price) / adjustedPriceRange
-                // Since adjustedMaxPrice = minPrice + priceRange, this equals:
-                // y = height - ((price - minPrice) / priceRange) * height
-                // This ensures candles align perfectly with grid price labels
+                // Calculate Y coordinates (Y=0 at top, higher prices = lower Y values)
                 const highY = height - ((high - minPrice) / priceRange) * height;
                 const lowY = height - ((low - minPrice) / priceRange) * height;
                 const openY = height - ((open - minPrice) / priceRange) * height;
@@ -2696,15 +2625,10 @@
                 ctx.lineTo(centerX, lowY);   // End at low (bottom of wick)
                 ctx.stroke();
                 
-                // DRAW BODY (vertical rectangle from open to close)
-                // In canvas coordinates:
-                // - bodyTopY = smaller Y value = higher price = top of body
-                // - bodyBottomY = larger Y value = lower price = bottom of body
-                // - bodyHeight = bodyBottomY - bodyTopY (positive, extends downward)
-                
-                let bodyTopY = Math.min(openY, closeY);      // Top edge (higher price, smaller Y)
-                let bodyBottomY = Math.max(openY, closeY);   // Bottom edge (lower price, larger Y)
-                let bodyHeight = bodyBottomY - bodyTopY;  // Height in pixels - determined by price range and grid
+                // Calculate body dimensions
+                let bodyTopY = Math.min(openY, closeY);
+                let bodyBottomY = Math.max(openY, closeY);
+                let bodyHeight = bodyBottomY - bodyTopY;
                 
                 // For doji candles (open == close), ensure minimum 1px visibility
                 if (bodyHeight < 1) {
@@ -2745,48 +2669,13 @@
                     bodyGradient.addColorStop(1, 'rgba(255,23,68,0.9)');
                 }
                 
-                // Draw body rectangle: fillRect(x, y, width, height)
-                // CRITICAL: Canvas coordinate system
-                // - x = horizontal position (left edge)
-                // - y = vertical position (top edge, Y=0 is at top)
-                // - width = horizontal size (extends rightward)
-                // - height = vertical size (extends downward)
-                // 
-                // For a VERTICAL candlestick:
-                // - bodyX = horizontal center minus half width
-                // - bodyY = top of body (smaller Y = higher price)
-                // - bodyW = horizontal width (small, like 10-20px)
-                // - bodyH = vertical height (larger, like 50-200px for normal candles)
-                
-                const bodyX = centerX - candleBodyWidth/2;
+                // Draw body rectangle
+                const bodyX = x;  // x is already the left edge of the body
                 const bodyY = bodyTopY;
-                const bodyW = candleBodyWidth;   // HORIZONTAL width (small, ~10-20px)
-                const bodyH = bodyHeight;        // VERTICAL height (should be larger for normal price movements)
+                const bodyW = width;   // width is already the body width
+                const bodyH = bodyHeight;
                 
-                // DEBUG: Enhanced logging to verify data accuracy and coordinate mapping
-                const candleAge = Date.now() / 1000 - candle.timestamp;
-                const isOldCandle = candleAge > 3600;
-                if (index === 0 || index === candlesToDraw - 1 || (isOldCandle && index < 5)) {
-                    const priceDiff = Math.abs(closePrice - open);
-                    const pixelsPerDollar = height / priceRange;
-                    const expectedHeight = priceDiff * pixelsPerDollar;
-                    const isHorizontal = bodyW > bodyH;
-                    
-                    // Verify coordinate calculation matches grid
-                    const adjustedMaxPrice = minPrice + priceRange;
-                    const expectedYFromGrid = ((adjustedMaxPrice - closePrice) / priceRange) * height;
-                    const coordinateMatch = Math.abs(closeY - expectedYFromGrid) < 2;
-                    
-                    console.log(`🕯️ ${isOldCandle ? 'OLD' : 'NEW'} candle [${index}] ${isHorizontal ? '⚠️ HORIZONTAL!' : '✓ vertical'}:`, {
-                        rawData: { open, high, low, close: closePrice, timestamp: candle.timestamp },
-                        priceRange: { minPrice, maxPrice: minPrice + priceRange, range: priceRange },
-                        coordinates: { openY: openY.toFixed(1), closeY: closeY.toFixed(1), highY: highY.toFixed(1), lowY: lowY.toFixed(1) },
-                        gridMatch: coordinateMatch ? '✓' : `❌ (expected Y=${expectedYFromGrid.toFixed(1)}, got ${closeY.toFixed(1)})`,
-                        dimensions: `W=${bodyW.toFixed(1)}px H=${bodyH.toFixed(1)}px`
-                    });
-                }
-                
-                // Draw body fill - use actual bodyHeight (represents real price movement)
+                // Draw body fill
                 ctx.fillStyle = bodyGradient;
                 ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
                 
@@ -2825,7 +2714,7 @@
             }
             
             // Pattern Drawing Functions for Chart Overlay
-            drawPatternOverlays(ctx, patternAnalysis, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange) {
+            drawPatternOverlays(ctx, patternAnalysis, historicalCandles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 if (!patternAnalysis || !patternAnalysis.patterns) {
                     return;
                 }
@@ -2835,70 +2724,62 @@
                 // Draw all pattern types from the flat patterns array
                 if (Array.isArray(patterns)) {
                     patterns.forEach(pattern => {
-                        this.drawPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                        this.drawPattern(ctx, pattern, historicalCandles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                     });
                     return;
                 }
                 
                 // Legacy support for categorized patterns
-                // Draw reversal patterns
                 if (patterns.reversal_patterns && patterns.reversal_patterns.length > 0) {
                     patterns.reversal_patterns.forEach(pattern => {
-                        this.drawReversalPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                        this.drawReversalPattern(ctx, pattern, historicalCandles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                     });
                 }
                 
-                // Draw continuation patterns
                 if (patterns.continuation_patterns && patterns.continuation_patterns.length > 0) {
                     patterns.continuation_patterns.forEach(pattern => {
-                        this.drawContinuationPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                        this.drawContinuationPattern(ctx, pattern, historicalCandles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                     });
                 }
                 
-                // Draw triangle patterns
                 if (patterns.triangle_patterns && patterns.triangle_patterns.length > 0) {
                     patterns.triangle_patterns.forEach(pattern => {
-                        this.drawTrianglePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                        this.drawTrianglePattern(ctx, pattern, historicalCandles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                     });
                 }
                 
-                // Draw channel patterns
                 if (patterns.channel_patterns && patterns.channel_patterns.length > 0) {
                     patterns.channel_patterns.forEach(pattern => {
-                        this.drawChannelPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                        this.drawChannelPattern(ctx, pattern, historicalCandles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                     });
                 }
                 
-                // Draw wedge patterns
                 if (patterns.wedge_patterns && patterns.wedge_patterns.length > 0) {
                     patterns.wedge_patterns.forEach(pattern => {
-                        this.drawWedgePattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                        this.drawWedgePattern(ctx, pattern, historicalCandles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                     });
                 }
                 
-                // Draw candlestick patterns
                 if (patterns.candlestick_patterns && patterns.candlestick_patterns.length > 0) {
                     patterns.candlestick_patterns.forEach(pattern => {
-                        this.drawCandlestickPattern(ctx, pattern, historicalCandles, chartStartX, candleWidth, height, minPrice, priceRange);
+                        this.drawCandlestickPattern(ctx, pattern, historicalCandles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                     });
                 }
             }
             
             // Main pattern drawing function that handles all pattern types
-            drawPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+            drawPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.pattern || pattern.type || pattern.pattern_type;
-                const confidence = pattern.confidence || 0;
                 
                 // Determine pattern category and call appropriate drawing function
                 if (this.isCandlestickPattern(patternType)) {
-                    this.drawCandlestickPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    this.drawCandlestickPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                 } else if (this.isReversalPattern(patternType)) {
-                    this.drawReversalPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    this.drawReversalPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                 } else if (this.isContinuationPattern(patternType)) {
-                    this.drawContinuationPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    this.drawContinuationPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                 } else {
-                    // Default pattern drawing
-                    this.drawGenericPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange);
+                    this.drawGenericPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange);
                 }
             }
             
@@ -2966,9 +2847,8 @@
             }
             
             // Draw candlestick patterns
-            drawCandlestickPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+            drawCandlestickPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.pattern || pattern.type || pattern.pattern_type;
-                const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || pattern.indices?.[0] || 0;
                 const endIndex = pattern.end_candle_index || pattern.indices?.[1] || 0;
                 const patternHigh = pattern.pattern_high || 0;
@@ -2981,7 +2861,7 @@
                 }
                 
                 // Calculate position based on pattern high/low
-                const x = chartStartX + (candleIndex * candleWidth) + (candleWidth / 2);
+                const x = chartStartX + (candleIndex * candleSlotWidth) + (candleSlotWidth / 2);
                 const y = height - ((patternHigh - minPrice) / priceRange) * height;
                 
                 // Set pattern-specific colors
@@ -3000,7 +2880,7 @@
                 
                 // Draw circle around the pattern candle
                 ctx.beginPath();
-                ctx.arc(x, y, candleWidth * 0.8, 0, 2 * Math.PI);
+                ctx.arc(x, y, candleSlotWidth * 0.4, 0, 2 * Math.PI);
                 ctx.stroke();
                 
                 // Draw pattern label
@@ -3013,7 +2893,7 @@
             }
             
             // Draw generic pattern for unknown types
-            drawGenericPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+            drawGenericPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.type || pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startTime = pattern.start_time || pattern.start_candle_index || 0;
@@ -3031,7 +2911,7 @@
                 if (candleIndex === -1) return;
                 
                 // Calculate position
-                const x = chartStartX + (candleIndex * candleWidth) + (candleWidth / 2);
+                const x = chartStartX + (candleIndex * candleSlotWidth) + (candleSlotWidth / 2);
                 const y = height - ((pattern.start_price - minPrice) / priceRange) * height;
                 
                 // Draw pattern indicator
@@ -3058,15 +2938,15 @@
                 ctx.restore();
             }
             
-            drawReversalPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+            drawReversalPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
                 
                 // Calculate pattern bounds
-                const startX = chartStartX + (startIndex * candleWidth);
-                const endX = chartStartX + (endIndex * candleWidth);
+                const startX = chartStartX + (startIndex * candleSlotWidth);
+                const endX = chartStartX + (endIndex * candleSlotWidth);
                 const patternWidth = endX - startX;
                 
                 // Get pattern price levels
@@ -3106,17 +2986,15 @@
                 ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + patternWidth/2, labelY);
             }
             
-            drawContinuationPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                console.log('🎨 drawContinuationPattern called with:', pattern);
+            drawContinuationPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
-                console.log('🎨 Continuation pattern bounds:', { startIndex, endIndex, patternType, confidence });
                 
                 // Calculate pattern bounds
-                const startX = chartStartX + (startIndex * candleWidth);
-                const endX = chartStartX + (endIndex * candleWidth);
+                const startX = chartStartX + (startIndex * candleSlotWidth);
+                const endX = chartStartX + (endIndex * candleSlotWidth);
                 
                 // Get pattern price levels
                 const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
@@ -3156,17 +3034,15 @@
                 ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + (endX - startX)/2, labelY);
             }
             
-            drawTrianglePattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                console.log('🎨 drawTrianglePattern called with:', pattern);
+            drawTrianglePattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
-                console.log('🎨 Triangle pattern bounds:', { startIndex, endIndex, patternType, confidence });
                 
                 // Calculate pattern bounds
-                const startX = chartStartX + (startIndex * candleWidth);
-                const endX = chartStartX + (endIndex * candleWidth);
+                const startX = chartStartX + (startIndex * candleSlotWidth);
+                const endX = chartStartX + (endIndex * candleSlotWidth);
                 
                 // Get pattern price levels
                 const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
@@ -3226,17 +3102,15 @@
                 ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + (endX - startX)/2, labelY);
             }
             
-            drawChannelPattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
-                console.log('🎨 drawChannelPattern called with:', pattern);
+            drawChannelPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
-                console.log('🎨 Channel pattern bounds:', { startIndex, endIndex, patternType, confidence });
                 
                 // Calculate pattern bounds
-                const startX = chartStartX + (startIndex * candleWidth);
-                const endX = chartStartX + (endIndex * candleWidth);
+                const startX = chartStartX + (startIndex * candleSlotWidth);
+                const endX = chartStartX + (endIndex * candleSlotWidth);
                 
                 // Get pattern price levels
                 const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
@@ -3276,15 +3150,15 @@
                 ctx.fillText(`${patternName} (${Math.round(confidence * 100)}%)`, startX + (endX - startX)/2, labelY);
             }
             
-            drawWedgePattern(ctx, pattern, candles, chartStartX, candleWidth, height, minPrice, priceRange) {
+            drawWedgePattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || 0;
                 const endIndex = pattern.end_candle_index || candles.length - 1;
                 
                 // Calculate pattern bounds
-                const startX = chartStartX + (startIndex * candleWidth);
-                const endX = chartStartX + (endIndex * candleWidth);
+                const startX = chartStartX + (startIndex * candleSlotWidth);
+                const endX = chartStartX + (endIndex * candleSlotWidth);
                 
                 // Get pattern price levels
                 const patternHigh = pattern.pattern_high || Math.max(...candles.slice(startIndex, endIndex + 1).map(c => c.high));
