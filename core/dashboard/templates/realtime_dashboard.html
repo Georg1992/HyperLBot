@@ -2649,8 +2649,8 @@
                 
                 // Create vertical gradient (top to bottom)
                 const bodyGradient = ctx.createLinearGradient(
-                    centerX - candleBodyWidth/2, bodyTopY,    // Start at top
-                    centerX - candleBodyWidth/2, bodyBottomY   // End at bottom
+                    centerX - width/2, bodyTopY,    // Start at top
+                    centerX - width/2, bodyBottomY   // End at bottom
                 );
                 
                 if (isOngoing) {
@@ -2701,14 +2701,14 @@
                     
                     // Open tick (left)
                     ctx.beginPath();
-                    ctx.moveTo(centerX - candleBodyWidth/2 - 3, openY);
-                    ctx.lineTo(centerX - candleBodyWidth/2, openY);
+                    ctx.moveTo(centerX - width/2 - 3, openY);
+                    ctx.lineTo(centerX - width/2, openY);
                     ctx.stroke();
                     
                     // Close tick (right)
                     ctx.beginPath();
-                    ctx.moveTo(centerX + candleBodyWidth/2, closeY);
-                    ctx.lineTo(centerX + candleBodyWidth/2 + 3, closeY);
+                    ctx.moveTo(centerX + width/2, closeY);
+                    ctx.lineTo(centerX + width/2 + 3, closeY);
                     ctx.stroke();
                 }
             }
