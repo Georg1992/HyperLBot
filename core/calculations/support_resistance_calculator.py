@@ -353,18 +353,16 @@ class SupportResistanceCalculator(BaseCalculator):
                     if level.level <= short_liquidation:
                         levels_within_range.append(level)
             
-            # 6. Filter by touch count (2+ or valid 1-touch)
+            # 6. Filter by cluster size - only allow actual clusters (cluster_size >= 2)
+            # Single isolated swing points are not valid S/R levels
             scorable_levels = []
             for level in levels_within_range:
-                if level.touches >= 2:
+                # Only allow levels that are actual clusters (at least 2 swing points clustered together)
+                # cluster_size >= 2 means multiple swing points were found at similar price levels
+                if hasattr(level, 'cluster_size') and level.cluster_size >= 2:
                     scorable_levels.append(level)
-                elif level.touches == 1:
-                    # Allow if clustered OR (close <0.5% AND recent <24h)
-                    is_clustered = hasattr(level, 'cluster_size') and level.cluster_size > 1
-                    distance_pct = (abs(level.level - current_price) / current_price) * 100.0
-                    hours_old = (current_time - level.timestamp) / 3600.0
-                    if is_clustered or (distance_pct < 0.5 and hours_old < 24.0):
-                        scorable_levels.append(level)
+                # Note: Single isolated swing points (cluster_size=1) are discarded
+                # They need to cluster with other swing points to be valid S/R levels
             
             # 7. Score with historical reversal probability
             trend_data = self._get_trend_data()
