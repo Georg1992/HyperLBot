@@ -258,13 +258,5 @@ def create_rsi_calculator() -> RSICalculator:
     """
     return RSICalculator()
 
-# Global instance for backward compatibility (DEPRECATED - use create_rsi_calculator)
-_global_rsi_calculator = None
-
-def get_global_rsi_calculator() -> RSICalculator:
-    """Get the global RSICalculator singleton instance (DEPRECATED)"""
-    global _global_rsi_calculator
-    if _global_rsi_calculator is None:
-        _global_rsi_calculator = create_rsi_calculator()
-    return _global_rsi_calculator
+# Deprecated singleton functions removed - use create_rsi_calculator() instead
 

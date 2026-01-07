@@ -419,12 +419,4 @@ def create_whale_analysis_calculator() -> WhaleAnalysisCalculator:
     """
     return WhaleAnalysisCalculator()
 
-# Global instance for backward compatibility (DEPRECATED - use create_whale_analysis_calculator)
-_global_whale_analysis_calculator = None
-
-def get_global_whale_analysis_calculator() -> WhaleAnalysisCalculator:
-    """Get the global WhaleAnalysisCalculator singleton instance (DEPRECATED)"""
-    global _global_whale_analysis_calculator
-    if _global_whale_analysis_calculator is None:
-        _global_whale_analysis_calculator = create_whale_analysis_calculator()
-    return _global_whale_analysis_calculator
+# Deprecated singleton functions removed - use create_whale_analysis_calculator() instead

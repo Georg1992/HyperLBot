@@ -546,8 +546,7 @@ def create_historical_data_service() -> HistoricalDataService:
     global _global_historical_data_service
     if _global_historical_data_service is None:
         _global_historical_data_service = HistoricalDataService()
-        logger.info("📊 HistoricalDataService singleton created")
-    # Removed excessive singleton reuse logging
+        logger.debug("📊 HistoricalDataService singleton created")
     return _global_historical_data_service
 
 # Singleton pattern implementation for backward compatibility

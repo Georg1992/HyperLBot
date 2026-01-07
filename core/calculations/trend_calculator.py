@@ -210,16 +210,4 @@ def create_trend_calculator() -> TrendCalculator:
     """
     return TrendCalculator()
 
-# Global instance for backward compatibility (DEPRECATED - use create_trend_calculator)
-_global_trend_calculator = None
-
-def get_global_trend_calculator() -> TrendCalculator:
-    """Get the global TrendCalculator singleton instance (DEPRECATED)"""
-    global _global_trend_calculator
-    if _global_trend_calculator is None:
-        _global_trend_calculator = create_trend_calculator()
-    return _global_trend_calculator
-
-# Backward compatibility - lazy initialization (DEPRECATED)
-def global_trend_calculator():
-    return get_global_trend_calculator()
+# Deprecated singleton functions removed - use create_trend_calculator() instead
