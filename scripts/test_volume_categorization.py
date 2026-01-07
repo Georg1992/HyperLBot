@@ -53,9 +53,6 @@ def test_volume_categorization():
         percentile_90 = sorted_volumes[int(n * 0.90)]
         percentile_95 = sorted_volumes[int(n * 0.95)]
         
-        # Calculate extreme threshold (500 BTC minimum or 95th percentile, whichever is higher)
-        extreme_threshold = max(500.0, percentile_95)
-        
         # 3. Display percentile thresholds
         logger.info("\n" + "="*60)
         logger.info("📊 VOLUME CATEGORIZATION THRESHOLDS (Percentile-Based)")
@@ -66,8 +63,9 @@ def test_volume_categorization():
         logger.info(f"  VERY_LOW:  < {percentile_10:.2f} BTC  (< 10th percentile)")
         logger.info(f"  LOW:       {percentile_10:.2f} - {percentile_25:.2f} BTC  (10th-25th percentile)")
         logger.info(f"  NORMAL:    {percentile_25:.2f} - {percentile_75:.2f} BTC  (25th-75th percentile)")
-        logger.info(f"  HIGH:      {percentile_75:.2f} - {extreme_threshold:.2f} BTC  (75th percentile - extreme threshold)")
-        logger.info(f"  VERY_HIGH: ≥ {extreme_threshold:.2f} BTC  (≥500 BTC minimum or 95th percentile)")
+        logger.info(f"  HIGH:      {percentile_75:.2f} - {percentile_90:.2f} BTC  (75th-90th percentile)")
+        logger.info(f"  VERY_HIGH: {percentile_90:.2f} - {percentile_95:.2f} BTC  (90th-95th percentile)")
+        logger.info(f"  EXTREME:   ≥ {percentile_95:.2f} BTC  (≥95th percentile)")
         logger.info("")
         logger.info("Percentile Values:")
         logger.info(f"  10th percentile (P10): {percentile_10:.2f} BTC")
@@ -76,7 +74,6 @@ def test_volume_categorization():
         logger.info(f"  75th percentile (P75/Q3): {percentile_75:.2f} BTC")
         logger.info(f"  90th percentile (P90): {percentile_90:.2f} BTC")
         logger.info(f"  95th percentile (P95): {percentile_95:.2f} BTC")
-        logger.info(f"  Extreme Threshold: {extreme_threshold:.2f} BTC (max of 500 BTC or P95)")
         logger.info("")
         
         # 4. Test categorization with example volumes
@@ -123,8 +120,9 @@ def test_volume_categorization():
                 logger.info(f"  VERY_LOW:  < ${percentile_10 * current_price:,.2f}  (< 10th percentile)")
                 logger.info(f"  LOW:       ${percentile_10 * current_price:,.2f} - ${percentile_25 * current_price:,.2f}  (10th-25th percentile)")
                 logger.info(f"  NORMAL:    ${percentile_25 * current_price:,.2f} - ${percentile_75 * current_price:,.2f}  (25th-75th percentile)")
-                logger.info(f"  HIGH:      ${percentile_75 * current_price:,.2f} - ${extreme_threshold * current_price:,.2f}  (75th percentile - extreme threshold)")
-                logger.info(f"  VERY_HIGH: ≥ ${extreme_threshold * current_price:,.2f}  (≥500 BTC minimum or 95th percentile)")
+                logger.info(f"  HIGH:      ${percentile_75 * current_price:,.2f} - ${percentile_90 * current_price:,.2f}  (75th-90th percentile)")
+                logger.info(f"  VERY_HIGH: ${percentile_90 * current_price:,.2f} - ${percentile_95 * current_price:,.2f}  (90th-95th percentile)")
+                logger.info(f"  EXTREME:   ≥ ${percentile_95 * current_price:,.2f}  (≥95th percentile)")
                 logger.info("")
         except Exception as e:
             logger.warning(f"⚠️ Could not fetch current price for USD conversion: {e}")

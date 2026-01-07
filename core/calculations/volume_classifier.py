@@ -25,7 +25,8 @@ class VolumeClassifier:
         - LOW: 10th-25th percentile
         - NORMAL: 25th-75th percentile
         - HIGH: 75th-90th percentile
-        - VERY_HIGH: > 90th percentile
+        - VERY_HIGH: 90th-95th percentile
+        - EXTREME: > 95th percentile
         
         Args:
             current_volume: Current 5-minute volume in BTC
@@ -57,19 +58,18 @@ class VolumeClassifier:
         percentile_50 = sorted_volumes[int(n * 0.50)]  # 50th percentile (median)
         percentile_75 = sorted_volumes[int(n * 0.75)]  # 75th percentile (Q3)
         percentile_90 = sorted_volumes[int(n * 0.90)]  # 90th percentile
-        percentile_95 = sorted_volumes[int(n * 0.95)]  # 95th percentile (for extreme threshold)
+        percentile_95 = sorted_volumes[int(n * 0.95)]  # 95th percentile
         
-        # Fixed extreme threshold: 500 BTC is always considered extreme
-        # This ensures that very high volumes are always properly categorized
-        extreme_threshold = max(500.0, percentile_95)  # Use 500 BTC minimum or 95th percentile, whichever is higher
-        
-        # Categorize based on percentiles with fixed extreme threshold (objective, mathematically justified)
-        if current_volume >= extreme_threshold:
+        # Categorize based on percentiles (objective, mathematically justified, no special logic)
+        if current_volume >= percentile_95:
+            level = "EXTREME"
+            description = f"Extreme volume: {current_volume:.2f} BTC (≥95th percentile: {percentile_95:.2f} BTC)"
+        elif current_volume >= percentile_90:
             level = "VERY_HIGH"
-            description = f"Extremely high volume: {current_volume:.2f} BTC (≥{extreme_threshold:.2f} BTC threshold)"
+            description = f"Very high volume: {current_volume:.2f} BTC (90th-95th percentile: {percentile_90:.2f}-{percentile_95:.2f} BTC)"
         elif current_volume >= percentile_75:
             level = "HIGH"
-            description = f"High volume: {current_volume:.2f} BTC (≥75th percentile: {percentile_75:.2f} BTC)"
+            description = f"High volume: {current_volume:.2f} BTC (75th-90th percentile: {percentile_75:.2f}-{percentile_90:.2f} BTC)"
         elif current_volume >= percentile_25:
             level = "NORMAL"
             description = f"Normal volume: {current_volume:.2f} BTC (25th-75th percentile: {percentile_25:.2f}-{percentile_75:.2f} BTC)"
@@ -92,7 +92,6 @@ class VolumeClassifier:
                 "p90": percentile_90,
                 "p95": percentile_95
             },
-            "extreme_threshold": extreme_threshold,
             "sample_size": n,
             "method": "percentile_based"
         }
@@ -133,7 +132,9 @@ class VolumeClassifier:
         try:
             recommendations = []
             
-            if level == "VERY_HIGH":
+            if level == "EXTREME":
+                recommendations.extend(["Extreme volatility - use extreme caution", "Consider reducing position sizes", "Monitor for major price movements"])
+            elif level == "VERY_HIGH":
                 recommendations.extend(["Consider position sizing", "Monitor for volatility spikes"])
             elif level == "HIGH":
                 recommendations.extend(["Good trading conditions", "Watch for trend continuation"])

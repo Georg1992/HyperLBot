@@ -33,6 +33,11 @@ class MarketDataService:
         self._price_timestamp = 0
         self._price_update_interval = 0.1  # 100ms for real-time updates
         
+        # Register WebSocket callback to update RSI immediately when price changes
+        if self.hyperliquid_websocket:
+            self.hyperliquid_websocket.add_price_callback(self._on_websocket_price_update)
+            logger.debug("📊 Registered WebSocket price callback for real-time RSI updates")
+        
         logger.info("📊 Processed Data Coordinator initialized - New architecture")
     
     # ==================================================================================
@@ -309,10 +314,9 @@ class MarketDataService:
             # Get current price (single source of truth)
             current_price = self.get_current_price()
             
-            # Update RSI with current price for real-time calculation
+            # Initialize RSI if not already initialized (only initialization, no updates here)
             if current_price and "rsi_calculator" in self._analysis_modules:
                 rsi_calculator = self._analysis_modules["rsi_calculator"]
-                # Initialize RSI if not already initialized
                 if not rsi_calculator.rsi_initialized:
                     try:
                         # Get historical candles for RSI baseline calculation
@@ -326,8 +330,7 @@ class MarketDataService:
                             logger.warning("⚠️ RSI Calculator - insufficient historical data, using defaults")
                     except Exception as e:
                         logger.warning(f"⚠️ Failed to initialize RSI: {e}")
-                else:
-                    rsi_calculator.update_realtime_rsi(current_price)
+                # RSI updates happen via WebSocket callback only - NO FALLBACKS
             
             # Get all processed analysis data
             rsi_data = self.get_rsi_analysis()
@@ -837,17 +840,21 @@ class MarketDataService:
                 # Update price from WebSocket (real-time)
                 if self.hyperliquid_websocket:
                     new_price = self.hyperliquid_websocket.get_current_price()
-                    if new_price is not None:
+                    if new_price is not None and new_price != self._current_price:
                         self._current_price = new_price
                         self._price_timestamp = current_time
                         logger.debug(f"📊 Real-time price updated: ${self._current_price:.2f}")
+                        # Update RSI immediately when price changes
+                        self._update_rsi_with_price(new_price)
                 elif self.hyperliquid_api:
                     # Fallback to API if WebSocket not available
                     new_price = self.hyperliquid_api.get_current_price("BTC")
-                    if new_price is not None:
+                    if new_price is not None and new_price != self._current_price:
                         self._current_price = new_price
                         self._price_timestamp = current_time
                         logger.debug(f"📊 Price updated from API: ${self._current_price:.2f}")
+                        # Update RSI immediately when price changes
+                        self._update_rsi_with_price(new_price)
             
             return self._current_price
             
@@ -860,14 +867,42 @@ class MarketDataService:
         try:
             if self.hyperliquid_websocket:
                 new_price = self.hyperliquid_websocket.get_current_price()
-                if new_price is not None:
+                if new_price is not None and new_price != self._current_price:
                     self._current_price = new_price
                     self._price_timestamp = time.time()
+                    # Update RSI immediately when price changes
+                    self._update_rsi_with_price(new_price)
                     return new_price
             return self._current_price
         except Exception as e:
             logger.error(f"❌ Failed to update current price: {e}")
             return self._current_price
+    
+    def _on_websocket_price_update(self, price_data: Dict[str, Any]):
+        """Callback for WebSocket price updates - update RSI immediately"""
+        try:
+            new_price = price_data.get("current_price")
+            if new_price and new_price > 0:
+                # Update internal price cache
+                self._current_price = new_price
+                self._price_timestamp = time.time()
+                # Update RSI immediately
+                self._update_rsi_with_price(new_price)
+        except Exception as e:
+            # Don't log errors here to avoid spam
+            pass
+    
+    def _update_rsi_with_price(self, new_price: float):
+        """Update RSI immediately when price changes (called from price updates)"""
+        try:
+            if "rsi_calculator" in self._analysis_modules:
+                rsi_calculator = self._analysis_modules["rsi_calculator"]
+                # Only update if RSI is already initialized
+                if rsi_calculator.rsi_initialized:
+                    rsi_calculator.update_realtime_rsi(new_price)
+        except Exception as e:
+            # Don't log errors here to avoid spam - RSI update failures are non-critical
+            pass
     
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data from API"""
