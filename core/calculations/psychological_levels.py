@@ -19,10 +19,13 @@ class PsychologicalLevelsCalculator:
     """
     Calculate psychological (round number) support/resistance levels
     
-    These are levels that traders psychologically use as reference points:
-    - Major round numbers: $90k, $95k, $100k, $105k, etc.
-    - Half-levels: $92.5k, $97.5k (for very high prices)
-    - Quarter-levels: $91.25k, $93.75k (for extreme prices)
+    Fixed intervals (from smallest to strongest):
+    - $500: Smallest level
+    - $1,000: Stronger level
+    - $2,500: Stronger level
+    - $5,000: Stronger level
+    - $10,000: Stronger level
+    - $100,000: Strongest level
     """
     
     def __init__(self):
