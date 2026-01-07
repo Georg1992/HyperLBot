@@ -6,6 +6,8 @@ CHANGELOG: Added Level dataclass support, TF-specific sensitivity, ATR-normalize
 """
 
 import time
+import math
+from dataclasses import replace
 from typing import Dict, List, Any
 from loguru import logger
 
@@ -396,20 +398,30 @@ class SRDetector:
         except Exception:
             return 50.0  # Default strength
     
-    def cluster_levels(self, swing_points: List[Level], cluster_tolerance: float) -> List[Level]:
+    def cluster_levels(self, swing_points: List[Level], cluster_tolerance: float, 
+                      current_price: float = None, current_time: float = None, 
+                      atr_5m: float = None) -> List[Level]:
         """
         Cluster nearby swing points by type (support with support, resistance with resistance)
+        Uses strength, proximity, and recency to calculate scores during clustering
         
         Args:
             swing_points: List of Level dataclass objects
             cluster_tolerance: Distance tolerance for clustering
+            current_price: Current market price (for proximity calculation)
+            current_time: Current timestamp (for recency calculation)
+            atr_5m: 5m ATR (for volatility-scaled proximity calculation)
             
         Returns:
-            List of clustered Level dataclass objects with timeframe_distribution
+            List of clustered Level dataclass objects with initial scores calculated
         """
         try:
             if not swing_points:
                 return []
+            
+            # Use current time if not provided
+            if current_time is None:
+                current_time = time.time()
             
             # Separate support and resistance - cluster each type separately
             support_points = [sp for sp in swing_points if sp.level_type == 'support']
@@ -419,12 +431,16 @@ class SRDetector:
             
             # Cluster support points
             if support_points:
-                support_clusters = self._cluster_by_type(support_points, cluster_tolerance)
+                support_clusters = self._cluster_by_type(
+                    support_points, cluster_tolerance, current_price, current_time, atr_5m
+                )
                 clusters.extend(support_clusters)
             
             # Cluster resistance points
             if resistance_points:
-                resistance_clusters = self._cluster_by_type(resistance_points, cluster_tolerance)
+                resistance_clusters = self._cluster_by_type(
+                    resistance_points, cluster_tolerance, current_price, current_time, atr_5m
+                )
                 clusters.extend(resistance_clusters)
             
             # Post-clustering deduplication to catch any remaining duplicates
@@ -436,16 +452,22 @@ class SRDetector:
             logger.error(f"❌ Level clustering failed: {e}")
             return swing_points  # Return original if clustering fails
     
-    def _cluster_by_type(self, points: List[Level], cluster_tolerance: float) -> List[Level]:
+    def _cluster_by_type(self, points: List[Level], cluster_tolerance: float,
+                         current_price: float = None, current_time: float = None,
+                         atr_5m: float = None) -> List[Level]:
         """
         Cluster points of the same type (support or resistance)
+        Uses strength, proximity, and recency for score-based clustering
         
         Args:
             points: List of Level objects of the same type
             cluster_tolerance: Distance tolerance for clustering
+            current_price: Current market price (for proximity calculation)
+            current_time: Current timestamp (for recency calculation)
+            atr_5m: 5m ATR (for volatility-scaled proximity calculation)
             
         Returns:
-            List of clustered Level objects
+            List of clustered Level objects with initial scores
         """
         if not points:
             return []
@@ -466,39 +488,68 @@ class SRDetector:
             else:
                 # Finalize current cluster
                 if current_cluster:
-                    clusters.append(self._create_cluster(current_cluster))
+                    clusters.append(self._create_cluster(
+                        current_cluster, current_price, current_time, atr_5m
+                    ))
                 current_cluster = [current_point]
         
         # Add final cluster
         if current_cluster:
-            clusters.append(self._create_cluster(current_cluster))
+            clusters.append(self._create_cluster(
+                current_cluster, current_price, current_time, atr_5m
+            ))
         
         return clusters
     
-    def _create_cluster(self, points: List[Level]) -> Level:
+    def _create_cluster(self, points: List[Level], current_price: float = None,
+                       current_time: float = None, atr_5m: float = None) -> Level:
         """
-        Create a cluster from multiple Level objects
+        Create a cluster from multiple Level objects using strength, proximity, and recency
+        
+        Calculates initial score during clustering based on:
+        - Strength: Raw swing point strength (0-100)
+        - Proximity: Distance from current price (exponential decay)
+        - Recency: Age of touch (exponential decay)
         
         Args:
             points: List of Level objects to cluster
+            current_price: Current market price (for proximity calculation)
+            current_time: Current timestamp (for recency calculation)
+            atr_5m: 5m ATR (for volatility-scaled proximity calculation)
             
         Returns:
-            Single Level object representing the cluster
+            Single Level object representing the cluster with initial score calculated
         """
         try:
             if not points:
                 return None
             
             if len(points) == 1:
-                return points[0]
+                # For single point, calculate initial score if we have current_price/time
+                point = points[0]
+                if current_price is not None and current_time is not None:
+                    initial_score = self._calculate_point_score(
+                        point, current_price, current_time, atr_5m
+                    )
+                    # Create new Level with score (Level is immutable, so we need to recreate)
+                    return replace(point, score=initial_score)
+                return point
             
-            # Calculate weighted average level and aggregate weighted touches
-            total_weight = sum(p.weighted_touches for p in points)
-            total_weighted_touches = sum(p.weighted_touches for p in points)
+            # Calculate score for each point (strength * proximity * recency)
+            point_scores = []
+            for point in points:
+                score = self._calculate_point_score(point, current_price, current_time, atr_5m)
+                point_scores.append(score)
             
-            if total_weight > 0:
-                weighted_level = sum(p.level * p.weighted_touches for p in points) / total_weight
+            # Calculate total weight (sum of all point scores)
+            total_score_weight = sum(point_scores)
+            
+            # Calculate weighted average level (weighted by score, not just touches)
+            # This ensures the cluster price is closer to high-scoring points
+            if total_score_weight > 0:
+                weighted_level = sum(p.level * score for p, score in zip(points, point_scores)) / total_score_weight
             else:
+                # Fallback to simple average if no scores
                 weighted_level = sum(p.level for p in points) / len(points)
             
             # Aggregate timeframe distribution
@@ -507,33 +558,96 @@ class SRDetector:
                 for tf, count in point.timeframe_distribution.items():
                     timeframe_distribution[tf] = timeframe_distribution.get(tf, 0) + count
             
-            # Calculate distinct touches from swing points
-            # NOTE: This is a preliminary count. Actual touches are counted from candle data
-            # after clustering in support_resistance_calculator._count_actual_touches()
-            # This count is only used as a fallback if actual counting fails
-            distinct_touches = self._calculate_distinct_touches([{
-                'timestamp': p.timestamp,
-                'level': p.level
-            } for p in points])
+            # Count touches: Each swing point in the cluster represents a touch of the level
+            cluster_touches = len(points)  # Each swing point = 1 touch
+            total_weighted_touches = sum(p.weighted_touches for p in points)
             
-            # Use the strongest point's type and timestamp
+            # Calculate initial cluster score as weighted average of point scores
+            # This represents the base reversal probability before historical analysis
+            if total_score_weight > 0:
+                initial_score = total_score_weight / len(points)  # Average score
+            else:
+                # Fallback: use max strength if we can't calculate scores
+                initial_score = max(p.strength for p in points)
+            
+            # Use the strongest point's type and most recent timestamp
             strongest_point = max(points, key=lambda x: x.strength)
+            most_recent_point = max(points, key=lambda x: x.timestamp)
             
             return Level(
                 level=weighted_level,
                 level_type=strongest_point.level_type,
-                touches=distinct_touches,
+                touches=cluster_touches,
                 cluster_size=len(points),
                 weighted_touches=total_weighted_touches,
                 strength=max(p.strength for p in points),
-                timestamp=strongest_point.timestamp,
+                timestamp=most_recent_point.timestamp,  # Use most recent, not strongest
                 timeframe_distribution=timeframe_distribution,
-                merged_from=len(points)
+                merged_from=len(points),
+                score=initial_score  # Initial score calculated during clustering
             )
             
         except Exception as e:
             logger.error(f"❌ Cluster creation failed: {e}")
             return points[0] if points else None
+    
+    def _calculate_point_score(self, point: Level, current_price: float = None,
+                               current_time: float = None, atr_5m: float = None) -> float:
+        """
+        Calculate initial score for a single point using strength, proximity, and recency
+        
+        Formula: score = strength * proximity_multiplier * recency_multiplier
+        
+        Args:
+            point: Level object to score
+            current_price: Current market price
+            current_time: Current timestamp
+            atr_5m: 5m ATR for volatility scaling
+            
+        Returns:
+            Initial score (0-100) representing base reversal probability
+        """
+        try:
+            # Base strength (0-100)
+            strength = point.strength
+            
+            # Proximity multiplier (0-1): exponential decay with distance
+            proximity_multiplier = 1.0
+            if current_price is not None and current_price > 0:
+                distance = abs(point.level - current_price)
+                distance_pct = (distance / current_price) * 100.0
+                
+                if atr_5m is not None and atr_5m > 0:
+                    # Volatility-scaled exponential decay: exp(-distance / (k * atr_5m))
+                    # k=25.0 means gentle decay (same as proximity score calculation)
+                    k_prox = 25.0
+                    proximity_multiplier = math.exp(-(distance / (k_prox * atr_5m)))
+                else:
+                    # Fallback: percentage-based exponential decay
+                    # k=0.25 means: 1% away = 0.78x, 2% away = 0.61x, 5% away = 0.29x
+                    k_prox = 0.25
+                    proximity_multiplier = math.exp(-k_prox * distance_pct)
+            
+            # Recency multiplier (0-1): exponential decay with time
+            recency_multiplier = 1.0
+            if current_time is not None:
+                time_since_touch = current_time - point.timestamp
+                hours_since_touch = time_since_touch / 3600.0
+                
+                # Exponential decay: exp(-k * hours)
+                # k=0.02 means: 24h = 0.62x, 72h = 0.24x, 168h = 0.03x
+                k_rec = 0.02
+                recency_multiplier = math.exp(-k_rec * hours_since_touch)
+            
+            # Combined score: strength * proximity * recency
+            # This gives us a base reversal probability (0-100)
+            score = strength * proximity_multiplier * recency_multiplier
+            
+            return min(100.0, max(0.0, score))
+            
+        except Exception as e:
+            logger.error(f"❌ Point score calculation failed: {e}")
+            return point.strength  # Fallback to raw strength
     
     def _deduplicate_clusters(self, clusters: List[Level], tolerance: float) -> List[Level]:
         """

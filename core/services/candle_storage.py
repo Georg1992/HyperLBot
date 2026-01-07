@@ -71,6 +71,16 @@ class CandleStorage:
                 ON candles_5m(timestamp)
             """)
             
+            # Create indexes on low and high for price range queries (smart S/R detection)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_low 
+                ON candles_5m(low)
+            """)
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_high 
+                ON candles_5m(high)
+            """)
+            
             conn.commit()
             conn.close()
             
@@ -227,6 +237,67 @@ class CandleStorage:
             
         except Exception as e:
             logger.error(f"❌ Failed to get candles by range: {e}")
+            return []
+    
+    def get_candles_by_price_range(self, min_price: float, max_price: float, 
+                                   max_candles: int = 50000,
+                                   min_timestamp: float = None) -> List[Dict[str, Any]]:
+        """
+        Get candles that have lows/highs within a price range AND time range (smart query for S/R detection)
+        This is much more efficient than fetching all candles and filtering
+        
+        Args:
+            min_price: Minimum price (for support levels, this is liquidation price)
+            max_price: Maximum price (for support levels, this is current price)
+            max_candles: Maximum number of candles to return (default: 50,000)
+            min_timestamp: Optional minimum timestamp (seconds) - only return candles after this time
+            
+        Returns:
+            List of candle dictionaries where:
+            - low <= max_price AND high >= min_price (price range overlap)
+            - timestamp >= min_timestamp (if provided)
+            sorted by timestamp (oldest first)
+        """
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Query candles where the price range overlaps with our target range
+            # A candle is relevant if: low <= max_price AND high >= min_price
+            # Also filter by time if min_timestamp is provided
+            if min_timestamp is not None:
+                cursor.execute("""
+                    SELECT timestamp, open, high, low, close, volume, trades_count
+                    FROM candles_5m
+                    WHERE low <= ? AND high >= ? AND timestamp >= ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (max_price, min_price, min_timestamp, max_candles))
+            else:
+                cursor.execute("""
+                    SELECT timestamp, open, high, low, close, volume, trades_count
+                    FROM candles_5m
+                    WHERE low <= ? AND high >= ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (max_price, min_price, max_candles))
+            
+            rows = cursor.fetchall()
+            conn.close()
+            
+            # Convert rows to dictionaries and reverse to get oldest first
+            candles = [dict(row) for row in reversed(rows)]
+            
+            if min_timestamp is not None:
+                logger.debug(f"🔍 Smart query (price + time): Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f} after {min_timestamp}")
+            else:
+                logger.debug(f"🔍 Price range query: Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f}")
+            
+            return candles
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get candles by price range: {e}")
             return []
     
     def cleanup_old_candles(self, years: float = 5.0):

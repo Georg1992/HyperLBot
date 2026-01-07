@@ -15,6 +15,7 @@ from .sr_scorer import SRScorer
 from .sr_state import SRState
 from .base_calculator import BaseCalculator
 from .liquidation_calculator import LiquidationCalculator
+from .level import Level
 
 if TYPE_CHECKING:
     from core.services.centralized_cache import CentralizedCache
@@ -45,8 +46,8 @@ class SupportResistanceCalculator(BaseCalculator):
         
         # Dependency injection with defaults
         if data_provider is None:
-            from core.services.historical_data_service import create_historical_data_service
-            historical_service = create_historical_data_service()
+            from core.services.historical_data_service import get_global_historical_data_service
+            historical_service = get_global_historical_data_service()
             self._data_provider = SRDataProvider(symbol, historical_service, self._cache)
         else:
             self._data_provider = data_provider
@@ -183,255 +184,108 @@ class SupportResistanceCalculator(BaseCalculator):
     
     def calculate_multi_timeframe_levels(self, current_price: float) -> Dict[str, Any]:
         """
-        Enhanced Support & Resistance Detection System - Refactored
+        Clean S/R Algorithm: Find best support/resistance levels for trading
         
-        Modular architecture with dependency injection:
-        1. Data fetching via SRDataProvider
-        2. Swing detection via SRDetector  
-        3. Scoring and MTF via SRScorer
-        4. State management via SRState
-        5. Optimized O(N) algorithms
-        6. Proper recalculation logic with oscillation prevention
+        Single unified algorithm:
+        1. Start with 1 month of data (liquidation + time filtered)
+        2. Process: swing detection → clustering → MTF → filtering → scoring
+        3. If not enough levels, progressively expand time range (3m → 6m → 1y → 2y → 5y)
+        4. Return top 2 support + 2 resistance levels (highest scores)
         """
         try:
             current_time = time.time()
             
-            # PERFORMANCE OPTIMIZATION: Check minimum recalculation interval
+            # Performance: Check cache first
             last_update = self._last_module_updates.get('support_resistance', 0)
             if current_time - last_update < self._min_recalculation_interval:
-                # Return cached result if available
                 cached_result = self._get_cached_analysis(current_price, current_time)
                 if cached_result.get("status") == "ok":
                     return cached_result
             
-            # Reset session state to prevent cross-contamination
             self._state.reset_session_state()
             
-            # 1. FETCH MULTI-TIMEFRAME DATA - Via SRDataProvider (needed for ATR)
-            candles_data, atr_per_tf = self._data_provider.fetch_multi_timeframe_data(current_price)
-            atr_14 = atr_per_tf.get('5m', 0.0)  # Extract 5m ATR for backward compatibility
-            
-            # 2. CHECK RECALCULATION NEEDS - Prevent oscillation recalculations
-            if not self._state.should_recalculate(current_price, current_time, atr_14):
-                # Check if cached result is an error - if so, force recalculation
-                cached_result = self._get_cached_analysis(current_price, current_time)
-                if cached_result.get("status") != "error":
-                    return cached_result
-            
-            # 3. DETECT SWING POINTS - Via SRDetector with timeframe-specific sensitivity
-            swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
-            
-            # DEBUG: Log swing point counts
-            logger.info(f"🔍 SWING POINT DETECTION: {len(swing_points_5m)} 5m swing points, {len(higher_tf_levels)} higher-TF swing points")
-            support_swings = [sp for sp in swing_points_5m if sp.level_type == 'support' and sp.level < current_price]
-            resistance_swings = [sp for sp in swing_points_5m if sp.level_type == 'resistance' and sp.level > current_price]
-            logger.info(f"   Support swings (below ${current_price:.2f}): {len(support_swings)}")
-            logger.info(f"   Resistance swings (above ${current_price:.2f}): {len(resistance_swings)}")
-            if support_swings:
-                logger.info(f"   Support swing prices: {[f'${sp.level:.2f}' for sp in sorted(support_swings, key=lambda x: x.level, reverse=True)[:10]]}")
-            if resistance_swings:
-                logger.info(f"   Resistance swing prices: {[f'${sp.level:.2f}' for sp in sorted(resistance_swings, key=lambda x: x.level)[:10]]}")
-            
-            # 4. CLUSTER LEVELS - Adaptive tolerance algorithm
-            cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
-            clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
-            
-            # 4.1. SEARCH DATABASE FOR ADDITIONAL TOUCHES - For levels with only 1 touch
-            # If we have levels with only 1 touch, search the database further back to find the 2nd touch
-            # We have 5 years of 5m candles in the database, so we can look back much further
-            levels_with_1_touch = [level for level in clustered_levels if level.touches == 1]
-            if levels_with_1_touch:
-                logger.info(f"🔍 Searching database for additional touches: {len(levels_with_1_touch)} levels with only 1 touch")
-                clustered_levels = self._search_database_for_additional_touches(
-                    clustered_levels, levels_with_1_touch, candles_data.get("5m", []), cluster_tolerance, atr_14
-                )
-            
-            # DEBUG: Log clustering results
-            logger.info(f"🔍 CLUSTERING: {len(clustered_levels)} clustered levels (tolerance: ${cluster_tolerance:.2f})")
-            logger.info("   ALL CLUSTERED LEVELS:")
-            levels_with_2plus = [level for level in clustered_levels if level.touches >= 2]
-            levels_with_1 = [level for level in clustered_levels if level.touches == 1]
-            logger.info(f"   Levels with 2+ touches: {len(levels_with_2plus)}, Levels with 1 touch: {len(levels_with_1)}")
-            for level in sorted(clustered_levels, key=lambda x: x.level, reverse=True)[:15]:
-                touch_indicator = "✅" if level.touches >= 2 else "⚠️"
-                logger.info(f"   {touch_indicator} {'🟢' if level.level_type == 'support' else '🔴'} {level.level_type.capitalize()} ${level.level:.2f}: {level.touches}x touches, cluster_size={level.cluster_size}, strength={level.strength:.1f}")
-            
-            # DON'T reclassify levels - keep original swing point type (support/resistance)
-            # Historical levels keep their original type regardless of current price position
-            # This ensures we can find resistance above current price even if it was detected from the past
-            # The filtering below will only select levels that are correctly positioned relative to current price
-            
-            clustered_support = [level for level in clustered_levels if level.level_type == 'support' and level.level < current_price]
-            clustered_resistance = [level for level in clustered_levels if level.level_type == 'resistance' and level.level > current_price]
-            logger.info(f"   Clustered support (below ${current_price:.2f}): {len(clustered_support)}")
-            logger.info(f"   Clustered resistance (above ${current_price:.2f}): {len(clustered_resistance)}")
-            
-            # 4.5. TOUCH COUNTS: Use swing points only (they measure actual reversals)
-            # Swing points = actual price reversals (what matters for S/R strength)
-            # If swing detection is missing valid swing points, we should fix swing detection parameters
-            # NOT add a second counting method that includes noise
-            
-            # Levels clustered - no verbose logging needed
-            
-            # 5. MTF ALIGNMENT AND SCORING - Via SRScorer with per-timeframe ATR
-            aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
-            
-            # DEBUG: Log MTF alignment
-            logger.info(f"🔍 MTF ALIGNMENT: {len(aligned_levels)} aligned levels")
-            aligned_support = [level for level in aligned_levels if level.level_type == 'support' and level.level < current_price]
-            aligned_resistance = [level for level in aligned_levels if level.level_type == 'resistance' and level.level > current_price]
-            logger.info(f"   Aligned support: {len(aligned_support)}, Aligned resistance: {len(aligned_resistance)}")
-            
-            # RISK MANAGEMENT: Only process levels within liquidation range (saves processing power)
-            # Calculate liquidation prices once for filtering
+            # Calculate liquidation prices once (used throughout)
             long_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
             short_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
+            logger.info(f"🔍 LIQUIDATION RANGE: LONG=${long_liquidation:.2f}, SHORT=${short_liquidation:.2f}, Current=${current_price:.2f}")
             
-            logger.info(f"🔍 LIQUIDATION RANGE: LONG liquidation=${long_liquidation:.2f}, SHORT liquidation=${short_liquidation:.2f}")
+            # Progressive time expansion: Start with 1 month, expand if needed
+            lookback_ranges = [
+                (30, "1 month"),
+                (90, "3 months"),
+                (180, "6 months"),
+                (365, "1 year"),
+                (730, "2 years"),
+                (1825, "5 years")
+            ]
             
-            # Filter aligned levels BEFORE scoring to save processing power
-            # Only score levels that are safe from liquidation:
-            # - Support levels (LONG entries) must be above LONG liquidation price
-            # - Resistance levels (SHORT entries) must be below SHORT liquidation price
-            levels_within_range = []
-            filtered_out_support = 0
-            filtered_out_resistance = 0
-            for level in aligned_levels:
-                if level.level_type == 'support' and level.level < current_price:
-                    if level.level >= long_liquidation:  # Safe for LONG entry
-                        levels_within_range.append(level)
-                    else:
-                        filtered_out_support += 1
-                elif level.level_type == 'resistance' and level.level > current_price:
-                    if level.level <= short_liquidation:  # Safe for SHORT entry
-                        levels_within_range.append(level)
-                    else:
-                        filtered_out_resistance += 1
+            scored_levels = []
+            candles_data = {'5m': [], '15m': [], '1h': [], '1d': []}
+            from core.services.historical_data_service import get_global_historical_data_service
+            historical_service = get_global_historical_data_service()
             
-            logger.info(f"🔍 LIQUIDATION FILTER: {len(levels_within_range)} levels within range ({filtered_out_support} support, {filtered_out_resistance} resistance filtered out)")
-            
-            # Filter levels with minimum 2x touches requirement (we have enough data now)
-            # Levels with only 1 touch are not reliable - need at least 2 touches to confirm level strength
-            levels_with_2plus_touches = [level for level in levels_within_range if level.touches >= 2]
-            filtered_out_single_touch = len(levels_within_range) - len(levels_with_2plus_touches)
-            
-            if filtered_out_single_touch > 0:
-                logger.info(f"🔍 TOUCH FILTER: Filtered out {filtered_out_single_touch} levels with <2 touches (minimum 2x required)")
-            
-            # Score only levels with 2+ touches (saves processing power and ensures quality)
-            scored_levels = self._scorer.score_levels_enhanced(levels_with_2plus_touches, current_price, atr_14, atr_per_tf)
-            
-            # DEBUG: Log scored levels
-            logger.info(f"🔍 SCORED LEVELS: {len(scored_levels)} levels scored (all with 2+ touches)")
-            scored_support = [level for level in scored_levels if level.level_type == 'support' and level.level < current_price]
-            scored_resistance = [level for level in scored_levels if level.level_type == 'resistance' and level.level > current_price]
-            logger.info(f"   Scored support: {len(scored_support)}, Scored resistance: {len(scored_resistance)}")
-            for level in sorted(scored_support, key=lambda x: x.score, reverse=True)[:10]:
-                breakdown = level.score_breakdown or {}
-                logger.info(f"   🟢 Support ${level.level:.2f}: Score={level.score:.1f}, Touches={level.touches}x, "
-                          f"Proximity={breakdown.get('proximity', 0):.1f}, Touch={breakdown.get('touch', 0):.1f}, "
-                          f"Volume={breakdown.get('volume', 0):.1f}")
-            for level in sorted(scored_resistance, key=lambda x: x.score, reverse=True)[:10]:
-                breakdown = level.score_breakdown or {}
-                logger.info(f"   🔴 Resistance ${level.level:.2f}: Score={level.score:.1f}, Touches={level.touches}x, "
-                          f"Proximity={breakdown.get('proximity', 0):.1f}, Touch={breakdown.get('touch', 0):.1f}, "
-                          f"Volume={breakdown.get('volume', 0):.1f}")
-            
-            # 5.5. FINAL DEDUPLICATION - Merge levels that are too close (after scoring)
-            # Scientific justification: Levels within 0.05% of price are statistically indistinguishable
-            # for trading purposes (noise vs signal). This prevents duplicate levels from different
-            # timeframes or clustering artifacts. Percentage-based ensures scalability across price ranges.
-            final_dedup_tolerance = current_price * 0.0005  # 0.05% of price (scientifically justified threshold)
-            scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
-            
-            # 5.6. VERIFY WE HAVE 2 SUPPORT + 2 RESISTANCE
-            # Scientific justification: For live trading, we need exactly 2 support and 2 resistance levels
-            # SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING
-            # All levels are scored - highest scores win (proximity penalty, touch rewards, etc.)
-            # Scan nearby first (from current data), if not found, scan further in past until we find levels
-            # Loop until we find enough levels (max 3 attempts to prevent infinite loops)
-            
-            max_attempts = 3
-            attempt = 0
-            
-            while attempt < max_attempts:
-                # Count support and resistance levels (already filtered to liquidation range before scoring)
-                support_levels = [level for level in scored_levels 
-                                 if level.level_type == 'support' and level.level < current_price]
-                resistance_levels = [level for level in scored_levels 
-                                  if level.level_type == 'resistance' and level.level > current_price]
+            # Progressive expansion: Start with 1 month, expand if not enough levels
+            for days, label in lookback_ranges:
+                # Check if we have enough levels
+                support_levels = [l for l in scored_levels if l.level_type == 'support' and l.level < current_price]
+                resistance_levels = [l for l in scored_levels if l.level_type == 'resistance' and l.level > current_price]
                 
-                support_count = len(support_levels)
-                resistance_count = len(resistance_levels)
-                
-                # If we have enough levels, break the loop
-                if support_count >= 2 and resistance_count >= 2:
+                if len(support_levels) >= 2 and len(resistance_levels) >= 2:
+                    logger.info(f"✅ Found sufficient levels: {len(support_levels)} support, {len(resistance_levels)} resistance")
                     break
                 
-                # If we don't have enough and haven't exceeded max attempts, fetch more data
-                if attempt < max_attempts - 1:
-                    logger.warning(f"⚠️ Insufficient levels: {support_count} support, {resistance_count} resistance. Fetching more historical data...")
-                    
-                    # Fetch more historical data and recalculate
-                    candles_data, atr_per_tf = self._data_provider.fetch_multi_timeframe_data(current_price, force_extended_lookback=True)
-                    atr_14 = atr_per_tf.get('5m', 0.0)
-                    
-                    # Re-detect swing points with extended data
-                    swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
-                    
-                    # Re-cluster and score with extended data
-                    cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
-                    clustered_levels = self._detector.cluster_levels(swing_points_5m, cluster_tolerance)
-                    aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
-                    
-                    # RISK MANAGEMENT: Only process levels within liquidation range (saves processing power)
-                    # Calculate liquidation prices for filtering
-                    long_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
-                    short_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
-                    
-                    # Filter aligned levels BEFORE scoring to save processing power
-                    levels_within_range = []
-                    for level in aligned_levels:
-                        if level.level_type == 'support' and level.level < current_price:
-                            if level.level >= long_liquidation:  # Safe for LONG entry
-                                levels_within_range.append(level)
-                        elif level.level_type == 'resistance' and level.level > current_price:
-                            if level.level <= short_liquidation:  # Safe for SHORT entry
-                                levels_within_range.append(level)
-                    
-                    # Filter levels with minimum 2x touches requirement
-                    levels_with_2plus_touches = [level for level in levels_within_range if level.touches >= 2]
-                    
-                    # Score only levels with 2+ touches (saves processing power and ensures quality)
-                    scored_levels = self._scorer.score_levels_enhanced(levels_with_2plus_touches, current_price, atr_14, atr_per_tf)
-                    scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
-                else:
-                    # Last attempt - log warning but continue with what we have
-                    logger.warning(f"⚠️ After {max_attempts} attempts: Only found {support_count} support, "
-                                 f"{resistance_count} resistance. Proceeding with available levels.")
+                logger.info(f"📊 Processing {label} of data (liquidation range filtered)...")
                 
-                attempt += 1
+                # Fetch 5m candles for this time range (price + time filtered at database level)
+                additional_5m_candles = self._data_provider._fetch_candles_in_liquidation_range(
+                    current_price, long_liquidation, short_liquidation, days
+                )
+                
+                if not additional_5m_candles:
+                    logger.warning(f"⚠️ No candles found in liquidation range for {label}")
+                    continue
+                
+                # Merge with existing 5m candles (avoid duplicates)
+                existing_timestamps = {c.get('timestamp') for c in candles_data['5m']}
+                new_5m_candles = [c for c in additional_5m_candles if c.get('timestamp') not in existing_timestamps]
+                
+                if new_5m_candles:
+                    candles_data['5m'].extend(new_5m_candles)
+                    candles_data['5m'].sort(key=lambda x: x.get('timestamp', 0))
+                    logger.info(f"🔍 Added {len(new_5m_candles)} 5m candles from {label} (total: {len(candles_data['5m'])})")
+                
+                # Fetch other timeframes for MTF alignment (no price filtering - just for swing detection)
+                candles_data['15m'] = historical_service.get_historical_candles("BTC", "15m", min(1000, days * 2)) or []
+                candles_data['1h'] = historical_service.get_historical_candles("BTC", "1h", min(500, days)) or []
+                candles_data['1d'] = historical_service.get_historical_candles("BTC", "1d", min(500, days)) or []
+                
+                # Process candles → levels (single unified pipeline)
+                processed_levels = self._process_candles_to_levels(
+                    candles_data, current_price, current_time,
+                    long_liquidation, short_liquidation
+                )
+                
+                # Merge with existing levels (avoid duplicates by price)
+                existing_prices = {l.level for l in scored_levels}
+                new_levels = [l for l in processed_levels if l.level not in existing_prices]
+                scored_levels.extend(new_levels)
+                
+                # Re-deduplicate and re-sort by score
+                final_dedup_tolerance = current_price * 0.0005
+                scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
+                scored_levels.sort(key=lambda x: x.score or 0, reverse=True)
             
-            # 6. FORMAT RESULTS - With proper state management
-            result = self._format_results_optimized(scored_levels, current_price, atr_14, current_time)
+            # Format and return results
+            result = self._format_results_optimized(scored_levels, current_price, 
+                                                   self._data_provider.calculate_atr(candles_data.get('5m', []), 14), 
+                                                   current_time)
             
-            # DEBUG: Log final top levels that will be displayed
+            # Log final results
             top_2_support = result.get('top_2_support', [])
             top_2_resistance = result.get('top_2_resistance', [])
-            logger.info(f"📊 FINAL RESULTS: {len(top_2_support)} support, {len(top_2_resistance)} resistance levels")
-            for sup in top_2_support:
-                logger.info(f"   🟢 BEST SUPPORT: ${sup.get('price_level', 0):.2f} | Score: {sup.get('strength_score', 0):.1f} | "
-                          f"Touches: {sup.get('touches', 0)}x | Status: {sup.get('status', 'unknown')}")
-            for res in top_2_resistance:
-                logger.info(f"   🔴 BEST RESISTANCE: ${res.get('price_level', 0):.2f} | Score: {res.get('strength_score', 0):.1f} | "
-                          f"Touches: {res.get('touches', 0)}x | Status: {res.get('status', 'unknown')}")
+            logger.info(f"📊 FINAL: {len(top_2_support)} support, {len(top_2_resistance)} resistance levels")
             
-            # 7. UPDATE STATE - Track calculation completion
             self._state.update_calculation_state(current_price, current_time)
-            
-            logger.info(f"📊 S/R calculation complete: {len(scored_levels)} levels processed")
-            
-            # PERFORMANCE OPTIMIZATION: Update last calculation time
             self._last_module_updates['support_resistance'] = current_time
             
             return result
@@ -439,6 +293,109 @@ class SupportResistanceCalculator(BaseCalculator):
         except Exception as e:
             logger.error(f"❌ S/R calculation failed: {e}")
             return self._create_error_result(str(e))
+    
+    def _process_candles_to_levels(self, candles_data: Dict[str, List[Dict]], current_price: float,
+                                   current_time: float, long_liquidation: float, short_liquidation: float) -> List:
+        """
+        Unified processing pipeline: candles → scored levels
+        
+        Single clean algorithm:
+        1. Detect swing points
+        2. Cluster with scoring (strength × proximity × recency)
+        3. Search for additional touches (1-touch levels)
+        4. MTF alignment
+        5. Filter by liquidation range
+        6. Filter by touch count (2+ or valid 1-touch)
+        7. Score with historical reversal probability
+        8. Deduplicate
+        
+        Returns: List of scored Level objects
+        """
+        try:
+            # Calculate ATR for all timeframes
+            atr_14 = self._data_provider.calculate_atr(candles_data.get('5m', []), 14)
+            atr_per_tf = {
+                '5m': atr_14,
+                '15m': self._data_provider.calculate_atr(candles_data.get('15m', []), 14) if candles_data.get('15m') else atr_14 * 3,
+                '1h': self._data_provider.calculate_atr(candles_data.get('1h', []), 14) if candles_data.get('1h') else atr_14 * 12,
+                '1d': self._data_provider.calculate_atr(candles_data.get('1d', []), 14) if candles_data.get('1d') else atr_14 * 288
+            }
+            
+            # 1. Detect swing points
+            swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
+            logger.debug(f"🔍 Detected {len(swing_points_5m)} swing points")
+            
+            # 2. Cluster with scoring (strength × proximity × recency)
+            cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
+            clustered_levels = self._detector.cluster_levels(
+                swing_points_5m, cluster_tolerance, current_price, current_time, atr_14
+            )
+            
+            # 3. Search for additional touches (1-touch levels)
+            levels_with_1_touch = [l for l in clustered_levels if l.touches == 1]
+            if levels_with_1_touch:
+                clustered_levels = self._search_database_for_additional_touches(
+                    clustered_levels, levels_with_1_touch, candles_data.get("5m", []), cluster_tolerance, atr_14
+                )
+            
+            # 4. MTF alignment
+            aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
+            
+            # 5. Filter by liquidation range
+            levels_within_range = []
+            for level in aligned_levels:
+                if level.level_type == 'support' and level.level < current_price:
+                    if level.level >= long_liquidation:
+                        levels_within_range.append(level)
+                elif level.level_type == 'resistance' and level.level > current_price:
+                    if level.level <= short_liquidation:
+                        levels_within_range.append(level)
+            
+            # 6. Filter by touch count (2+ or valid 1-touch)
+            scorable_levels = []
+            for level in levels_within_range:
+                if level.touches >= 2:
+                    scorable_levels.append(level)
+                elif level.touches == 1:
+                    # Allow if clustered OR (close <0.5% AND recent <24h)
+                    is_clustered = hasattr(level, 'cluster_size') and level.cluster_size > 1
+                    distance_pct = (abs(level.level - current_price) / current_price) * 100.0
+                    hours_old = (current_time - level.timestamp) / 3600.0
+                    if is_clustered or (distance_pct < 0.5 and hours_old < 24.0):
+                        scorable_levels.append(level)
+            
+            # 7. Score with historical reversal probability
+            trend_data = self._get_trend_data()
+            scored_levels = self._scorer.score_levels_enhanced(
+                scorable_levels, current_price, atr_14, atr_per_tf,
+                candles_data=candles_data, trend_data=trend_data
+            )
+            
+            # 8. Deduplicate
+            final_dedup_tolerance = current_price * 0.0005
+            scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
+            
+            return scored_levels
+            
+        except Exception as e:
+            logger.error(f"❌ Processing pipeline failed: {e}")
+            return []
+    
+    def _get_trend_data(self) -> Dict[str, Any]:
+        """Get trend data for probability adjustment"""
+        try:
+            from core.services.market_data_service import get_global_market_data_service
+            market_service = get_global_market_data_service()
+            if market_service:
+                trend_analysis = market_service.get_trend_analysis("standard")
+                if trend_analysis and isinstance(trend_analysis, dict):
+                    return {
+                        'direction': trend_analysis.get('direction', 'SIDEWAYS'),
+                        'strength': trend_analysis.get('strength', 0.0)
+                    }
+        except Exception:
+            pass
+        return None
     
     def _get_cache_key(self, current_price: float, current_time: float) -> str:
         """
@@ -493,102 +450,6 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Cache retrieval failed: {e}")
             return self._create_error_result(str(e))
     
-    def _count_actual_touches(self, clustered_levels: List, candles: List[Dict], atr_14: float) -> List:
-        """
-        Validate swing point touch counts by checking actual candle touches
-        
-        NOTE: This method is kept for validation/debugging purposes only.
-        The final touch count uses swing points only, as they measure actual reversals.
-        
-        Why swing points are the correct measure:
-        - Swing points = actual price reversals (what matters for S/R strength)
-        - Actual touches = price got close (includes noise and non-reactions)
-        - If price touched a level 10 times but only reversed once, the level is WEAK
-        - Combining them would inflate weak levels, which is misleading
-        
-        If swing detection is missing valid swing points, we should:
-        1. Adjust swing detection parameters (n, filters) to be less strict
-        2. NOT add a second counting method that includes noise
-        
-        Args:
-            clustered_levels: List of clustered Level objects (with swing point touch counts)
-            candles: List of candle dictionaries (5m candles)
-            atr_14: ATR for touch tolerance
-            
-        Returns:
-            List of Level objects (touch counts unchanged - using swing points only)
-        """
-        try:
-            if not candles or not clustered_levels:
-                return clustered_levels
-            
-            # Touch tolerance: price is considered to have "touched" if within 0.5*ATR
-            touch_tolerance = atr_14 * 0.5
-            
-            updated_levels = []
-            for level in clustered_levels:
-                level_price = level.level
-                level_type = level.level_type
-                actual_touches = 0
-                
-                # Track distinct touches (avoid counting same candle multiple times)
-                touched_timestamps = set()
-                
-                for candle in candles:
-                    high = candle.get('high', 0)
-                    low = candle.get('low', 0)
-                    timestamp = candle.get('timestamp', 0)
-                    
-                    if high <= 0 or low <= 0:
-                        continue
-                    
-                    # Check if price touched the level (within tolerance)
-                    if level_type == 'resistance':
-                        # Resistance: price touched if high >= (level - tolerance)
-                        if high >= (level_price - touch_tolerance):
-                            if timestamp not in touched_timestamps:
-                                actual_touches += 1
-                                touched_timestamps.add(timestamp)
-                    elif level_type == 'support':
-                        # Support: price touched if low <= (level + tolerance)
-                        if low <= (level_price + touch_tolerance):
-                            if timestamp not in touched_timestamps:
-                                actual_touches += 1
-                                touched_timestamps.add(timestamp)
-                
-                # Use swing point touches as the source of truth
-                # Swing points measure what matters: actual price reversals at the level
-                # If price touched a level 10 times but only reversed once, the level is WEAK, not strong
-                # Actual touches include noise (candles that just grazed the level without reaction)
-                # Therefore, we use swing points only - they measure actual level strength
-                final_touches = level.touches  # From swing point detection (actual reversals)
-                
-                # Create updated level with correct touch count (Level is frozen, so create new instance)
-                from .level import Level
-                updated_level = Level(
-                    level=level.level,
-                    level_type=level.level_type,
-                    touches=final_touches,
-                    cluster_size=level.cluster_size,
-                    weighted_touches=float(final_touches),  # Update weighted touches too
-                    strength=level.strength,
-                    timestamp=level.timestamp,
-                    timeframe_distribution=level.timeframe_distribution,
-                    mtf_matches=level.mtf_matches,
-                    mtf_count=level.mtf_count,
-                    mtf_confidence=level.mtf_confidence,
-                    merged_from=level.merged_from,
-                    score=level.score,
-                    score_breakdown=level.score_breakdown
-                )
-                updated_levels.append(updated_level)
-            
-            return updated_levels
-            
-        except Exception as e:
-            logger.error(f"❌ Actual touch counting failed: {e}")
-            return clustered_levels  # Return original if counting fails
-    
     def _search_database_for_additional_touches(self, clustered_levels: List, levels_with_1_touch: List, 
                                                 current_candles: List[Dict], cluster_tolerance: float, 
                                                 atr_14: float) -> List:
@@ -622,8 +483,8 @@ class SupportResistanceCalculator(BaseCalculator):
             lookback_timestamp = oldest_timestamp - (lookback_days * 24 * 3600)
             
             # Fetch additional candles from database (older than what we already have)
-            from core.services.historical_data_service import create_historical_data_service
-            historical_service = create_historical_data_service()
+            from core.services.historical_data_service import get_global_historical_data_service
+            historical_service = get_global_historical_data_service()
             
             # Get candles from database by range (older than our current dataset)
             if hasattr(historical_service, '_candle_storage') and historical_service._candle_storage:
@@ -649,7 +510,6 @@ class SupportResistanceCalculator(BaseCalculator):
                 logger.info(f"🔍 Found {len(additional_swing_points)} additional swing points in historical data")
                 
                 # For each level with only 1 touch, check if any additional swing points match
-                from .level import Level
                 updated_levels = []
                 
                 for level in clustered_levels:
@@ -761,6 +621,7 @@ class SupportResistanceCalculator(BaseCalculator):
             # SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING BY SCORE THRESHOLD
             # Ensure we have ACTIVE levels for both support and resistance
             # Strategy: Filter for active levels only (broken levels are excluded), scoring system determines best
+            # NO HARD FILTERS - scoring system naturally filters by penalizing distance
             active_support_candidates = [level for level in key_levels 
                                         if level.get("type") == "support" and 
                                         level["price_level"] < current_price and 

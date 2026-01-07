@@ -740,7 +740,7 @@
             <div class="card">
                 <h2>📊 Price Chart (20 × 5m)</h2>
                 <div style="background: rgba(0,0,0,0.3); border-radius: 10px; padding: 20px; border: 1px solid rgba(255,255,255,0.1);">
-                    <canvas id="candle-chart" style="width: 100%; max-width: 100%; height: 500px; background: rgba(0,0,0,0.2); border-radius: 8px; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"></canvas>
+                    <canvas id="candle-chart" style="width: 100%; max-width: 100%; height: 600px; min-height: 400px; background: rgba(0,0,0,0.2); border-radius: 8px; image-rendering: -webkit-optimize-contrast; image-rendering: crisp-edges;"></canvas>
                 </div>
             </div>
 
@@ -1143,6 +1143,9 @@
             
             updateMarketData(market) {
                 console.log('📊 Dashboard received market data:', market);
+                
+                // Store market data for chart drawing (especially S/R levels)
+                this.currentMarketData = market;
                 
                 // Update price
                 if (market.current_price) {
@@ -2219,6 +2222,11 @@
                     // Store candle data for responsive redraws
                     this.lastCandleData = candleData;
                     
+                    // Store market data for S/R level drawing
+                    if (!this.currentMarketData) {
+                        this.currentMarketData = {};
+                    }
+                    
                     // Draw the candle chart with new structure (historical + ongoing + predicted)
                     this.drawCandleChart(candleData.historical, candleData.predicted || [], candleData);
                     
@@ -2244,12 +2252,23 @@
                 
                 const ctx = canvas.getContext('2d');
                 
-                // Get canvas dimensions from CSS
+                // Get canvas dimensions from CSS - ensure we have valid dimensions
                 const rect = canvas.getBoundingClientRect();
-                const width = rect.width;
-                const height = rect.height;
+                let width = rect.width;
+                let height = rect.height;
                 
-                // Set canvas size
+                // Fallback: Use CSS computed style if getBoundingClientRect returns 0
+                if (width <= 0 || height <= 0) {
+                    const computedStyle = window.getComputedStyle(canvas);
+                    width = parseFloat(computedStyle.width) || 1200;
+                    height = parseFloat(computedStyle.height) || 600;
+                }
+                
+                // Ensure minimum dimensions
+                width = Math.max(width, 800);
+                height = Math.max(height, 400);
+                
+                // Set canvas size (this is critical - must match actual display size)
                 canvas.width = width;
                 canvas.height = height;
                 
@@ -2305,13 +2324,28 @@
                 ctx.fillRect(0, 0, width, height);
                 
                 // Calculate candle dimensions for exactly 20 candles
+                // CRITICAL: Use actual canvas width (after setting canvas.width/height)
                 const totalCandles = 20; // Always exactly 20 candles
-                const priceLabelWidth = 100; // Space for price labels
-                const chartWidth = width - priceLabelWidth; // Available width for chart
+                const priceLabelWidth = 100; // Space for price labels on the RIGHT side
+                // Chart starts at 0, ends before price labels on the right
+                const chartWidth = Math.max(0, width - priceLabelWidth); // Available width for chart (ensure non-negative)
+                
+                // Validate we have enough space
+                if (chartWidth <= 0) {
+                    console.error('❌ Invalid chart width:', { width, priceLabelWidth, chartWidth });
+                    return;
+                }
+                
                 // Use 70% of available width for candles, leaving 30% for spacing (more breathing room)
                 const candleSlotWidth = chartWidth / totalCandles; // Full slot width per candle
                 const candleBodyWidth = candleSlotWidth * 0.7; // Body uses 70% of slot, 30% for spacing
-                const chartStartX = priceLabelWidth; // Start after price labels
+                const chartStartX = 0; // Chart starts at left edge (price labels are on the right)
+                
+                // Validate chart dimensions
+                const maxChartEndX = chartStartX + (totalCandles * candleSlotWidth);
+                if (maxChartEndX > width) {
+                    console.warn(`⚠️ Chart extends beyond canvas: maxChartEndX=${maxChartEndX}, width=${width}`);
+                }
                 
                 // Draw professional grid with anti-aliasing
                 ctx.imageSmoothingEnabled = true;
@@ -2440,14 +2474,22 @@
                     displayCandles.push(ongoingCandle);
                 }
                 
-                // Draw exactly 20 candles
+                // Draw exactly 20 candles - ensure they fit within viewport
                 const maxCandles = 20;
                 const candlesToDraw = Math.min(displayCandles.length, maxCandles);
                 
-                // Draw candles
+                // Draw candles with bounds checking
                 for (let index = 0; index < candlesToDraw; index++) {
                     const candle = displayCandles[index];
-                    const x = chartStartX + (index * candleSlotWidth) + (candleSlotWidth - candleBodyWidth) / 2; // Center candle body in slot
+                    // Calculate X position (center of candle body in slot)
+                    const x = chartStartX + (index * candleSlotWidth) + (candleSlotWidth - candleBodyWidth) / 2;
+                    
+                    // CRITICAL: Validate X position is within canvas bounds
+                    if (x < 0 || x + candleBodyWidth > width) {
+                        console.warn(`⚠️ Candle ${index} out of bounds: x=${x.toFixed(2)}, bodyWidth=${candleBodyWidth.toFixed(2)}, canvas width=${width}`);
+                        continue; // Skip candles that would be drawn outside viewport
+                    }
+                    
                     const isOngoing = (candle === ongoingCandle) || candle.is_ongoing || false;
                     this.drawCandle(ctx, candle, x, candleBodyWidth, height, adjustedMinPrice, adjustedPriceRange, false, isOngoing);
                 }
@@ -2521,10 +2563,16 @@
                 ctx.shadowOffsetX = 1;
                 ctx.shadowOffsetY = 1;
                 
-                // Add time labels for every 3rd candle
+                // Add time labels for every 3rd candle - ensure they're within bounds
                 for (let i = 0; i < candlesToDraw; i += 3) {
                     const candle = displayCandles[i];
                     const x = chartStartX + (i * candleSlotWidth) + (candleSlotWidth / 2);
+                    
+                    // Validate X position is within canvas bounds
+                    if (x < 0 || x > width) {
+                        continue; // Skip labels outside viewport
+                    }
+                    
                     const y = height - 10;
                     
                     // Convert timestamp to time string
@@ -2538,12 +2586,16 @@
                     ctx.fillText(timeString, x, y);
                 }
                 
-                // Add "NOW" label for the last candle (ongoing candle)
+                // Add "NOW" label for the last candle (ongoing candle) - ensure it's within bounds
                 if (candlesToDraw > 0 && ongoingCandle) {
                     const lastCandleX = chartStartX + ((candlesToDraw - 1) * candleSlotWidth) + (candleSlotWidth / 2);
-                    ctx.fillStyle = '#00FFFF';  // Bright cyan
-                    ctx.font = 'bold 13px Arial';
-                    ctx.fillText('NOW', lastCandleX, height - 10);
+                    
+                    // Validate X position is within canvas bounds
+                    if (lastCandleX >= 0 && lastCandleX <= width) {
+                        ctx.fillStyle = '#00FFFF';  // Bright cyan
+                        ctx.font = 'bold 13px Arial';
+                        ctx.fillText('NOW', lastCandleX, height - 10);
+                    }
                 }
                 
                 // Reset shadow
@@ -2551,6 +2603,68 @@
                 ctx.shadowBlur = 0;
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
+                
+                // Draw Support/Resistance levels as horizontal lines on the chart
+                if (candleData && window.dashboard && window.dashboard.currentMarketData) {
+                    const srData = window.dashboard.currentMarketData.support_resistance;
+                    if (srData && srData.status === 'ok') {
+                        const topSupport = srData.top_2_support || [];
+                        const topResistance = srData.top_2_resistance || [];
+                        
+                        // Draw support levels (green lines)
+                        topSupport.forEach((level, index) => {
+                            const price = level.price_level || level.level || 0;
+                            if (price > 0 && price >= adjustedMinPrice && price <= adjustedMaxPrice) {
+                                const y = height - ((price - adjustedMinPrice) / adjustedPriceRange) * height;
+                                
+                                // Best support gets thicker, brighter line
+                                const isBest = index === 0;
+                                ctx.strokeStyle = isBest ? 'rgba(76, 175, 80, 0.9)' : 'rgba(76, 175, 80, 0.6)';
+                                ctx.lineWidth = isBest ? 2.5 : 1.5;
+                                ctx.setLineDash(isBest ? [] : [5, 5]);
+                                
+                                ctx.beginPath();
+                                ctx.moveTo(chartStartX, y);
+                                ctx.lineTo(width - priceLabelWidth, y);
+                                ctx.stroke();
+                                
+                                // Draw price label on the right
+                                ctx.fillStyle = isBest ? '#4CAF50' : '#66BB6A';
+                                ctx.font = isBest ? 'bold 12px Arial' : '11px Arial';
+                                ctx.textAlign = 'right';
+                                ctx.fillText(`$${Math.round(price).toLocaleString()}`, width - 15, y - 5);
+                            }
+                        });
+                        
+                        // Draw resistance levels (red lines)
+                        topResistance.forEach((level, index) => {
+                            const price = level.price_level || level.level || 0;
+                            if (price > 0 && price >= adjustedMinPrice && price <= adjustedMaxPrice) {
+                                const y = height - ((price - adjustedMinPrice) / adjustedPriceRange) * height;
+                                
+                                // Best resistance gets thicker, brighter line
+                                const isBest = index === 0;
+                                ctx.strokeStyle = isBest ? 'rgba(244, 67, 54, 0.9)' : 'rgba(244, 67, 54, 0.6)';
+                                ctx.lineWidth = isBest ? 2.5 : 1.5;
+                                ctx.setLineDash(isBest ? [] : [5, 5]);
+                                
+                                ctx.beginPath();
+                                ctx.moveTo(chartStartX, y);
+                                ctx.lineTo(width - priceLabelWidth, y);
+                                ctx.stroke();
+                                
+                                // Draw price label on the right
+                                ctx.fillStyle = isBest ? '#F44336' : '#EF5350';
+                                ctx.font = isBest ? 'bold 12px Arial' : '11px Arial';
+                                ctx.textAlign = 'right';
+                                ctx.fillText(`$${Math.round(price).toLocaleString()}`, width - 15, y - 5);
+                            }
+                        });
+                        
+                        // Reset line dash
+                        ctx.setLineDash([]);
+                    }
+                }
             }
             
             drawCandle(ctx, candle, x, width, height, minPrice, priceRange, isPredicted, isOngoing = false) {

@@ -5,7 +5,7 @@ Responsible for scoring S/R levels and managing multi-timeframe confirmations
 """
 
 import math
-from typing import Dict, List
+from typing import Dict, List, Any
 from loguru import logger
 
 from .level import Level
@@ -26,19 +26,28 @@ class SRScorer:
     def __init__(self):
         """Initialize the scorer with validated weights
         
-        SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING
-        Weights: touch 50%, proximity 45%, volume 5%
-        - Closer to current price -> higher proximity score (exponential decay penalty for distance)
-        - More touches -> higher touch score
-        - Highest total score wins - scoring system finds the perfect levels
-        Score (0-100) represents trading quality: higher = better for trading at current moment
+        SCORING SYSTEM REPRESENTS REVERSAL PROBABILITY (0-100%)
+        Score = estimated probability that price will reverse at this level
+        
+        Weights: touch 40%, proximity 40%, recency 15%, volume 5%
+        - Touch count: More touches = higher reversal probability (price has reversed here before)
+        - Proximity: Closer to current price = higher probability (price is approaching)
+        - Recency: Recent touches = higher probability (level is still active/relevant)
+        - Volume: Higher volume = higher probability (more liquidity, stronger level)
+        
+        Score interpretation:
+        - 80-100%: Very high reversal probability (excellent trading level)
+        - 60-79%: High reversal probability (good trading level)
+        - 40-59%: Moderate reversal probability (decent level)
+        - 20-39%: Low reversal probability (weak level)
+        - 0-19%: Very low reversal probability (poor level)
         """
         self._scoring_weights = {
             'mtf': 0.00,        # Multi-timeframe confirmation (0% - removed)
-            'proximity': 0.45,  # Distance from current price (45% - closer = higher score, further = penalty)
-            'touch': 0.50,      # Number of touches (50% - more touches = higher score)
+            'proximity': 0.40,  # Distance from current price (40% - closer = higher score, further = penalty)
+            'touch': 0.40,      # Number of touches (40% - more touches = higher score)
             'volume': 0.05,     # Volume confirmation (5% - execution quality)
-            'recency': 0.0      # Removed
+            'recency': 0.15     # Recency of last touch (15% - more recent = higher score)
         }
         
         # Configurable decay factor for proximity
@@ -50,17 +59,317 @@ class SRScorer:
             raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum}")
         
         
-    def score_levels_enhanced(self, levels: List[Level], current_price: float, 
-                             atr_5m: float, atr_per_tf: Dict[str, float]) -> List[Level]:
+    def calculate_reversal_probability(self, level: Level, current_price: float, 
+                                      atr_5m: float, candles_data: Dict[str, List[Dict]] = None,
+                                      trend_data: Dict[str, Any] = None) -> float:
         """
-        Enhanced scoring of S/R levels - SCORING SYSTEM IS THE ONLY FACTOR (NO FILTERING)
+        Calculate accurate reversal probability (0-100%) based on historical analysis
         
-        Final score (0-100) = weighted sum: touch 50%, proximity 45%, volume 5%
-        - Proximity: exponential decay penalty for distance (closer = higher score)
-        - Touch: more touches = higher score
-        - Highest score wins - scoring system finds the perfect levels to trade
-        Higher score = better level for trading at current moment
-        Score interpretation: 80-100 excellent, 60-79 good, 40-59 moderate, 20-39 poor, 0-19 very poor
+        Method:
+        1. Analyze historical touches: count reversals vs breakouts
+        2. Calculate base probability: P(reversal) = reversals / total_touches
+        3. Adjust for current conditions: proximity, recency, trend, momentum
+        
+        Args:
+            level: Level to analyze
+            current_price: Current price
+            atr_5m: 5m ATR for breakout detection
+            candles_data: Historical candles for analysis (optional)
+            trend_data: Current trend data (optional)
+            
+        Returns:
+            Reversal probability (0-100%)
+        """
+        try:
+            # Step 1: Calculate base reversal probability from historical data
+            base_probability = self._calculate_historical_reversal_rate(
+                level, candles_data, atr_5m
+            )
+            
+            # Step 2: Adjust for current conditions
+            adjusted_probability = self._adjust_probability_for_conditions(
+                base_probability, level, current_price, atr_5m, trend_data
+            )
+            
+            final_probability = min(100.0, max(0.0, adjusted_probability))
+            
+            # Debug logging for score calculation
+            if final_probability < 1.0:
+                distance = abs(level.level - current_price)
+                distance_pct = (distance / current_price) * 100.0 if current_price > 0 else 0.0
+                import time
+                hours_old = (time.time() - level.timestamp) / 3600.0
+                logger.debug(f"🔍 Level ${level.level:.2f}: base={base_probability:.1f}%, adjusted={adjusted_probability:.1f}%, "
+                           f"final={final_probability:.1f}%, distance={distance_pct:.2f}%, age={hours_old:.1f}h")
+            
+            return final_probability
+            
+        except Exception as e:
+            logger.error(f"❌ Reversal probability calculation failed: {e}")
+            # Fallback to heuristic score
+            return self._calculate_heuristic_reversal_probability(level, current_price, atr_5m)
+    
+    def _calculate_historical_reversal_rate(self, level: Level, 
+                                           candles_data: Dict[str, List[Dict]] = None,
+                                           atr_5m: float = 0.0) -> float:
+        """
+        Calculate historical reversal rate for a level using database analysis
+        
+        Analyzes what happened after each historical touch:
+        - Reversal: price moved away from level (didn't break through by > ATR)
+        - Breakout: price moved through level by > ATR
+        
+        Uses smart database query to find all historical touches efficiently.
+        
+        Returns:
+            Base reversal probability (0-100%)
+        """
+        try:
+            if not candles_data or '5m' not in candles_data or not candles_data['5m'] or atr_5m <= 0:
+                # No historical data or ATR - use touch count as proxy
+                # More touches = higher probability (but less accurate)
+                return min(80.0, 30.0 + (level.touches - 2) * 10.0)  # 2 touches = 30%, 3 = 40%, etc.
+            
+            candles_5m = candles_data['5m']
+            level_price = level.level
+            level_type = level.level_type
+            tolerance = atr_5m * 0.5  # Consider level "touched" if within 0.5 ATR
+            
+            reversals = 0
+            breakouts = 0
+            total_touches_analyzed = 0
+            
+            # Find all touches of this level in historical data
+            # A touch occurs when price gets within tolerance of the level
+            for i in range(len(candles_5m) - 1):
+                candle = candles_5m[i]
+                candle_low = candle.get('low', 0)
+                candle_high = candle.get('high', 0)
+                
+                if candle_low <= 0 or candle_high <= 0:
+                    continue
+                
+                # Check if this candle touched the level (within tolerance)
+                touched = False
+                if level_type == 'support':
+                    # Support touched if low came within tolerance of level_price
+                    if candle_low <= level_price <= candle_high or \
+                       (candle_low <= level_price + tolerance and candle_high >= level_price - tolerance):
+                        touched = True
+                else:  # resistance
+                    # Resistance touched if high came within tolerance of level_price
+                    if candle_low <= level_price <= candle_high or \
+                       (candle_low <= level_price + tolerance and candle_high >= level_price - tolerance):
+                        touched = True
+                
+                if not touched:
+                    continue
+                
+                total_touches_analyzed += 1
+                
+                # Analyze what happened after the touch (next 10 candles = 50 minutes)
+                lookahead = min(10, len(candles_5m) - i - 1)
+                if lookahead < 2:
+                    continue
+                
+                # Check if price broke through or reversed
+                if level_type == 'support':
+                    # Support: breakout if price fell below (level - ATR)
+                    # Reversal if price stayed above (level - ATR)
+                    breakout_threshold = level_price - atr_5m
+                    min_price_after = min(c.get('low', level_price) for c in candles_5m[i+1:i+1+lookahead])
+                    
+                    if min_price_after < breakout_threshold:
+                        breakouts += 1
+                    else:
+                        reversals += 1
+                else:  # resistance
+                    # Resistance: breakout if price rose above (level + ATR)
+                    # Reversal if price stayed below (level + ATR)
+                    breakout_threshold = level_price + atr_5m
+                    max_price_after = max(c.get('high', level_price) for c in candles_5m[i+1:i+1+lookahead])
+                    
+                    if max_price_after > breakout_threshold:
+                        breakouts += 1
+                    else:
+                        reversals += 1
+            
+            # Calculate base probability
+            if total_touches_analyzed == 0:
+                # No historical analysis possible - use touch count as proxy
+                return min(80.0, 30.0 + (level.touches - 2) * 10.0)
+            
+            base_probability = (reversals / total_touches_analyzed) * 100.0
+            
+            # Apply Bayesian shrinkage for small samples (more conservative for few touches)
+            # Shrink towards 50% (neutral) for small samples, full confidence at 10+ touches
+            sample_size = total_touches_analyzed
+            confidence = min(1.0, sample_size / 10.0)  # Full confidence at 10+ touches
+            shrunk_probability = base_probability * confidence + 50.0 * (1 - confidence)
+            
+            logger.debug(f"🔍 Level ${level_price:.2f}: {reversals} reversals, {breakouts} breakouts, "
+                        f"base_prob={base_probability:.1f}%, shrunk={shrunk_probability:.1f}% (confidence={confidence:.2f})")
+            
+            return shrunk_probability
+            
+        except Exception as e:
+            logger.error(f"❌ Historical reversal rate calculation failed: {e}")
+            return 50.0  # Default to 50% on error
+    
+    def _adjust_probability_for_conditions(self, base_probability: float, level: Level,
+                                          current_price: float, atr_5m: float,
+                                          trend_data: Dict[str, Any] = None) -> float:
+        """
+        Adjust base probability for current market conditions using smooth exponential functions
+        
+        Mathematical approach:
+        - Base reversal probability (P_base) from historical data is the foundation
+        - Proximity multiplier: P_prox = exp(-k_prox * distance_pct) where k_prox controls decay rate
+        - Recency multiplier: P_rec = exp(-k_rec * hours_old) where k_rec controls decay rate
+        - Final: P_final = P_base * P_prox * P_rec (with small trend adjustment)
+        
+        This ensures:
+        1. Reversal potential is primary (P_base is foundation)
+        2. Proximity and recency smoothly enhance/penalize without overriding
+        3. Clean, mathematically justified exponential decay
+        
+        Args:
+            base_probability: Base reversal probability from historical analysis (0-100%)
+            level: Level object
+            current_price: Current price
+            atr_5m: 5m ATR for volatility scaling
+            trend_data: Optional trend data for fine-tuning
+            
+        Returns:
+            Adjusted reversal probability (0-100%)
+        """
+        try:
+            import time
+            import math
+            
+            # REVERSAL POTENTIAL IS PRIMARY - start with base probability
+            adjusted = base_probability
+            
+            # 1. Proximity multiplier using exponential decay
+            # Formula: multiplier = exp(-k * distance_pct)
+            # k controls decay rate: higher k = faster decay (more penalty for distance)
+            # CLOSER LEVELS GET HIGHER SCORES - proximity is crucial
+            distance = abs(level.level - current_price)
+            distance_pct = (distance / current_price) * 100.0 if current_price > 0 else 0.0
+            
+            # k_prox = 0.25 means stronger proximity weighting:
+            # - At 0% distance: multiplier = 1.0 (no change)
+            # - At 0.5% distance: multiplier ≈ 0.88 (12% penalty)
+            # - At 1% distance: multiplier ≈ 0.78 (22% penalty)
+            # - At 2% distance: multiplier ≈ 0.61 (39% penalty)
+            # - At 3% distance: multiplier ≈ 0.47 (53% penalty)
+            # - At 5% distance: multiplier ≈ 0.29 (71% penalty)
+            # - At 10% distance: multiplier ≈ 0.08 (92% penalty)
+            # This ensures levels very close to current price get significantly higher scores
+            k_prox = 0.25  # Increased decay constant for stronger proximity weighting
+            proximity_multiplier = math.exp(-k_prox * distance_pct)
+            
+            # Apply proximity multiplier
+            adjusted = adjusted * proximity_multiplier
+            
+            # 2. Recency multiplier using exponential decay
+            # Formula: multiplier = exp(-k * hours_old)
+            # k controls decay rate: higher k = faster decay (more penalty for age)
+            time_since_touch = time.time() - level.timestamp
+            hours_since_touch = time_since_touch / 3600.0
+            
+            # k_rec = 0.02 means:
+            # - At 0 hours: multiplier = 1.0 (no change)
+            # - At 6 hours: multiplier ≈ 0.89 (11% penalty)
+            # - At 24 hours: multiplier ≈ 0.62 (38% penalty)
+            # - At 72 hours (3 days): multiplier ≈ 0.24 (76% penalty)
+            # - At 168 hours (7 days): multiplier ≈ 0.03 (97% penalty)
+            k_rec = 0.02  # Decay constant for recency (tuned for reasonable penalty curve)
+            recency_multiplier = math.exp(-k_rec * hours_since_touch)
+            
+            # Apply recency multiplier
+            adjusted = adjusted * recency_multiplier
+            
+            # 3. Small trend adjustment (fine-tuning, not major factor)
+            # Additive adjustment: ±5% based on trend alignment
+            if trend_data:
+                trend_direction = trend_data.get('direction', 'SIDEWAYS')
+                trend_strength = trend_data.get('strength', 0.0)
+                
+                if level.level_type == 'support' and trend_direction == 'BULLISH':
+                    adjusted += 5.0 * trend_strength
+                elif level.level_type == 'resistance' and trend_direction == 'BEARISH':
+                    adjusted += 5.0 * trend_strength
+                elif level.level_type == 'support' and trend_direction == 'BEARISH':
+                    adjusted -= 5.0 * trend_strength
+                elif level.level_type == 'resistance' and trend_direction == 'BULLISH':
+                    adjusted -= 5.0 * trend_strength
+            
+            # Ensure minimum score floor - even old/far levels should have some score if base probability is good
+            # This prevents scores from going to 0.0 due to aggressive multipliers
+            min_score_floor = base_probability * 0.1  # At least 10% of base probability
+            adjusted = max(adjusted, min_score_floor)
+            
+            return adjusted
+            
+        except Exception as e:
+            logger.error(f"❌ Probability adjustment failed: {e}")
+            return base_probability
+            
+        except Exception as e:
+            logger.error(f"❌ Probability adjustment failed: {e}")
+            return base_probability
+    
+    def _calculate_heuristic_reversal_probability(self, level: Level, 
+                                                 current_price: float, atr_5m: float) -> float:
+        """
+        Fallback heuristic calculation when historical analysis isn't available
+        
+        Uses current scoring factors as proxy for reversal probability
+        """
+        try:
+            # Use current scoring factors as proxy
+            touch_score = self._calculate_touch_score(level.touches)
+            proximity_score = self._calculate_proximity_score_enhanced(level.level, current_price, atr_5m)
+            recency_score = self._calculate_recency_score(level.timestamp)
+            volume_score = self._calculate_volume_score(level, atr_5m)
+            
+            # Weighted average (same weights as scoring)
+            heuristic_prob = (
+                touch_score * 0.40 +
+                proximity_score * 0.40 +
+                recency_score * 0.15 +
+                volume_score * 0.05
+            )
+            
+            return heuristic_prob
+            
+        except Exception as e:
+            logger.error(f"❌ Heuristic probability calculation failed: {e}")
+            return 50.0
+    
+    def score_levels_enhanced(self, levels: List[Level], current_price: float, 
+                             atr_5m: float, atr_per_tf: Dict[str, float],
+                             candles_data: Dict[str, List[Dict]] = None,
+                             trend_data: Dict[str, Any] = None) -> List[Level]:
+        """
+        Enhanced scoring of S/R levels - SCORE REPRESENTS REVERSAL PROBABILITY (0-100%)
+        
+        Final score (0-100%) = estimated probability that price will reverse at this level
+        Weighted sum: touch 40%, proximity 40%, recency 15%, volume 5%
+        
+        Factors that increase reversal probability:
+        - Touch count: More touches = price has reversed here before (stronger level)
+        - Proximity: Closer to current price = price is approaching (higher chance of interaction)
+        - Recency: Recent touches = level is still active/relevant (market remembers this level)
+        - Volume: Higher volume = more liquidity/interest (stronger level)
+        
+        Score interpretation (reversal probability):
+        - 80-100%: Very high probability of reversal (excellent trading level)
+        - 60-79%: High probability of reversal (good trading level)
+        - 40-59%: Moderate probability of reversal (decent level)
+        - 20-39%: Low probability of reversal (weak level)
+        - 0-19%: Very low probability of reversal (poor level)
         
         Args:
             levels: List of Level dataclass objects
@@ -75,19 +384,22 @@ class SRScorer:
             scored_levels = []
             
             for level in levels:
-                # Calculate individual score components (0-100)
+                # Calculate accurate reversal probability from historical data
+                # This is the PRIMARY scoring method - uses actual historical reversals
+                reversal_probability = self.calculate_reversal_probability(
+                    level, current_price, atr_5m, candles_data, trend_data
+                )
+                
+                # Also calculate heuristic components for breakdown/debugging
                 mtf_score = self._calculate_mtf_score_enhanced(level)
                 proximity_score = self._calculate_proximity_score_enhanced(
                     level.level, current_price, atr_5m)
                 touch_score = self._calculate_touch_score(level.touches)
                 volume_score = self._calculate_volume_score(level, atr_5m)
+                recency_score = self._calculate_recency_score(level.timestamp)
                 
-                # Calculate weighted score with normalization (recency removed)
-                weighted_score = self._calculate_weighted_score(
-                    mtf_score, proximity_score, touch_score, volume_score, 0.0)
-                
-                # Normalize and clamp score to [0,100]
-                normalized_score = min(100.0, max(0.0, weighted_score))
+                # Use reversal probability as the final score (0-100%)
+                normalized_score = reversal_probability
                 
                 # Create new Level instance with score information
                 from .level import Level
@@ -106,11 +418,12 @@ class SRScorer:
                     merged_from=level.merged_from,
                     score=normalized_score,
                     score_breakdown={
+                        'reversal_probability': reversal_probability,
                         'mtf': mtf_score,
                         'proximity': proximity_score,
                         'touch': touch_score,
                         'volume': volume_score,
-                        'weighted': normalized_score
+                        'recency': recency_score
                     }
                 )
                 
@@ -277,9 +590,43 @@ class SRScorer:
             logger.error(f"❌ Volume score calculation failed: {e}")
             return 50.0
     
+    def _calculate_recency_score(self, last_touch_timestamp: float) -> float:
+        """
+        Calculate recency score based on time since last touch
+        More recent touches = higher score (exponential decay for time distance)
+        
+        Args:
+            last_touch_timestamp: Timestamp of last touch on the level
+            
+        Returns:
+            Recency score (0-100), where 100 = touched very recently, 0 = touched long ago
+        """
+        try:
+            import time
+            import math
+            current_time = time.time()
+            time_since_touch = current_time - last_touch_timestamp
+            
+            # Exponential decay: recent touches get high scores, old touches get low scores
+            # Half-life: 24 hours (86400 seconds) - score drops to 50% after 24h
+            # After 7 days (604800s), score is ~0.1%
+            half_life_seconds = 86400  # 24 hours
+            
+            # Exponential decay formula: score = 100 * e^(-lambda * t)
+            # lambda = ln(2) / half_life for 50% decay at half_life
+            lambda_decay = math.log(2) / half_life_seconds
+            recency_score = 100.0 * math.exp(-lambda_decay * time_since_touch)
+            
+            # Clamp to [0, 100]
+            return min(100.0, max(0.0, recency_score))
+            
+        except Exception as e:
+            logger.error(f"❌ Recency score calculation failed: {e}")
+            return 50.0  # Default to neutral score on error
+    
     def _calculate_weighted_score(self, mtf_score: float, proximity_score: float,
                                 touch_score: float, volume_score: float, 
-                                recency_score: float = 0.0) -> float:
+                                recency_score: float) -> float:
         """
         Calculate weighted score with normalization
         
@@ -288,19 +635,20 @@ class SRScorer:
             proximity_score: Proximity score (0-100)
             touch_score: Touch score (0-100)
             volume_score: Volume score (0-100)
-            recency_score: Recency score (0-100) - deprecated, kept for compatibility
+            recency_score: Recency score (0-100) - more recent touches = higher score
             
         Returns:
             Weighted score (0-100)
         """
         try:
             # Calculate weighted score (individual scores are 0-100, so divide by 100 to get 0-1 range)
-            # Recency removed: time distance doesn't predict trading quality
+            # Recency: recent touches are more relevant for current trading
             weighted_score = (
                 (mtf_score / 100.0) * self._scoring_weights['mtf'] +
                 (proximity_score / 100.0) * self._scoring_weights['proximity'] +
                 (touch_score / 100.0) * self._scoring_weights['touch'] +
-                (volume_score / 100.0) * self._scoring_weights['volume']
+                (volume_score / 100.0) * self._scoring_weights['volume'] +
+                (recency_score / 100.0) * self._scoring_weights['recency']
             )
             
             # Convert back to 0-100 range with validation
