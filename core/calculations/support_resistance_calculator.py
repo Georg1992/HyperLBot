@@ -231,7 +231,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=60.0,  # Daily peaks are moderately strong
+                            strength=80.0,  # Daily peaks are strong (major daily extremes)
                             timestamp=day_timestamp,
                             timeframe_distribution={'daily_peak': 1},
                             merged_from=1
@@ -243,7 +243,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=60.0,
+                            strength=80.0,  # Daily peaks are strong (major daily extremes)
                             timestamp=day_timestamp,
                             timeframe_distribution={'daily_peak': 1},
                             merged_from=1
@@ -263,7 +263,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=75.0,  # Weekly peaks are stronger
+                            strength=90.0,  # Weekly peaks are very strong (major weekly extremes)
                             timestamp=week_timestamp,
                             timeframe_distribution={'weekly_peak': 1},
                             merged_from=1
@@ -275,7 +275,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=75.0,
+                            strength=90.0,  # Weekly peaks are very strong (major weekly extremes)
                             timestamp=week_timestamp,
                             timeframe_distribution={'weekly_peak': 1},
                             merged_from=1
@@ -295,7 +295,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=90.0,  # Monthly peaks are very strong
+                            strength=100.0,  # Monthly peaks are maximum strength (major monthly extremes)
                             timestamp=month_timestamp,
                             timeframe_distribution={'monthly_peak': 1},
                             merged_from=1
@@ -307,7 +307,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=90.0,
+                            strength=100.0,  # Monthly peaks are maximum strength (major monthly extremes)
                             timestamp=month_timestamp,
                             timeframe_distribution={'monthly_peak': 1},
                             merged_from=1
