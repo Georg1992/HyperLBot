@@ -114,7 +114,7 @@ class VolumeCalculator(BaseCalculator):
             volume_calc = self._data_provider.calculate_5m_volume(raw_trades, current_time)
             current_5m_volume = volume_calc.get("current_5m_volume", 0.0)
             
-            # 3. Get volume history for analysis
+            # 3. Get volume history for analysis (REQUIRED - no fallbacks)
             volume_history = self._data_provider.get_volume_history(10)
             
             # 4. Calculate volume momentum via analyzer
@@ -123,13 +123,13 @@ class VolumeCalculator(BaseCalculator):
             # 5. Calculate volume trend strength via analyzer
             trend_strength = self._analyzer.calculate_volume_trend_strength(volume_history)
             
-            # 6. Calculate relative volume via analyzer
+            # 6. Calculate relative volume via analyzer (for reference, not used in categorization)
             relative_volume = self._analyzer.calculate_relative_volume(current_5m_volume, volume_history)
             
             # 7. Detect volume anomalies via analyzer
             anomaly = self._analyzer.detect_volume_anomalies(current_5m_volume, volume_history)
             
-            # 8. Categorize volume via classifier (using percentile-based method with volume history)
+            # 8. Categorize volume via classifier (percentile-based method - solid implementation, no fallbacks)
             categorization = self._classifier.categorize_volume(current_5m_volume, relative_volume, volume_history)
             
             # 9. Determine implications via classifier

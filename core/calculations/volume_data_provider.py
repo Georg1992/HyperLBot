@@ -69,44 +69,49 @@ class VolumeDataProvider:
         """
         Get volume history from database for percentile-based categorization
         
+        Fetches last 7 days of completed candles (~2016 candles) for statistically
+        significant percentile calculation. This is a solid implementation with no fallbacks.
+        
         Args:
-            count: Number of recent candles to fetch (default: 10, but we'll use more for percentiles)
+            count: Parameter kept for compatibility, but uses 2016 candles for proper statistics
             
         Returns:
             List of volume dictionaries with timestamp and volume
+            
+        Raises:
+            ValueError: If database is unavailable or insufficient data exists
         """
-        try:
-            # For percentile calculation, we need a larger sample (30 days = ~8640 candles)
-            # But we'll use a reasonable sample size: last 7 days = ~2016 candles
-            # This gives us good statistical significance without being too heavy
-            from core.services.historical_data_service import get_global_historical_data_service
-            historical_service = get_global_historical_data_service()
-            
-            if not historical_service or not hasattr(historical_service, '_candle_storage'):
-                logger.warning("⚠️ Historical data service not available for volume history")
-                return []
-            
-            # Fetch last 7 days of candles (7 days * 288 candles/day = ~2016 candles)
-            # This provides a statistically significant sample for percentile calculation
-            candles = historical_service._candle_storage.get_candles_by_count(2016)
-            
-            if not candles:
-                logger.warning("⚠️ No candles available for volume history")
-                return []
-            
-            # Extract volume data
-            volume_history = [
-                {
-                    "volume": candle.get("volume", 0.0),
-                    "timestamp": candle.get("timestamp", 0.0)
-                }
-                for candle in candles
-                if candle.get("volume", 0.0) > 0  # Only include candles with volume
-            ]
-            
-            logger.debug(f"📊 Fetched {len(volume_history)} volume records from database for percentile calculation")
-            return volume_history
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get volume history: {e}")
-            return []
+        from core.services.historical_data_service import get_global_historical_data_service
+        historical_service = get_global_historical_data_service()
+        
+        if not historical_service:
+            raise ValueError("Historical data service not available for volume history")
+        
+        if not hasattr(historical_service, '_candle_storage') or not historical_service._candle_storage:
+            raise ValueError("Candle storage not available for volume history")
+        
+        # Fetch last 7 days of candles (7 days * 288 candles/day = 2016 candles)
+        # This provides a statistically significant sample for percentile calculation
+        candles = historical_service._candle_storage.get_candles_by_count(2016)
+        
+        if not candles:
+            raise ValueError("No candles available in database for volume history")
+        
+        if len(candles) < 20:
+            raise ValueError(f"Insufficient candles in database: {len(candles)} (minimum 20 required for percentile calculation)")
+        
+        # Extract volume data (only include candles with valid volume > 0)
+        volume_history = [
+            {
+                "volume": candle.get("volume", 0.0),
+                "timestamp": candle.get("timestamp", 0.0)
+            }
+            for candle in candles
+            if candle.get("volume", 0.0) > 0
+        ]
+        
+        if len(volume_history) < 20:
+            raise ValueError(f"Insufficient valid volume records: {len(volume_history)} (minimum 20 required)")
+        
+        logger.debug(f"📊 Fetched {len(volume_history)} volume records from database for percentile calculation")
+        return volume_history
