@@ -613,8 +613,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     "mtf_count": level.mtf_count,
                     "mtf_confidence": level.mtf_confidence,
                     "score_breakdown": level.score_breakdown or {},  # Ensure dict exists
-                    "merged_from": level.merged_from,
-                    "is_psychological": level.score_breakdown.get("psychological", False) if level.score_breakdown else False
+                    "merged_from": level.merged_from
                 })
             
             # Sort by strength score - SCORING SYSTEM IS THE ONLY FACTOR (touch 50%, proximity 45%, volume 5%)
