@@ -541,15 +541,32 @@ class SRDetector:
                 score = self._calculate_point_score(point, current_price, current_time, atr_5m)
                 point_scores.append(score)
             
-            # Calculate total weight (sum of all point scores)
-            total_score_weight = sum(point_scores)
-            
-            # Calculate weighted average level (weighted by score, not just touches)
-            # This ensures the cluster price is closer to high-scoring points
-            if total_score_weight > 0:
-                weighted_level = sum(p.level * score for p, score in zip(points, point_scores)) / total_score_weight
+            # Calculate recency-based weights for price calculation
+            # More recent swing points should have MORE influence on the final cluster price
+            recency_weights = []
+            if current_time is not None:
+                import math
+                for point in points:
+                    time_since_touch = current_time - point.timestamp
+                    hours_since_touch = time_since_touch / 3600.0
+                    # Exponential decay: more recent = higher weight
+                    # k=0.02 means: 0h = 1.0, 24h = 0.62, 72h = 0.24, 168h = 0.03
+                    k_rec = 0.02
+                    recency_weight = math.exp(-k_rec * hours_since_touch)
+                    recency_weights.append(recency_weight)
             else:
-                # Fallback to simple average if no scores
+                # If no current_time, use equal weights
+                recency_weights = [1.0] * len(points)
+            
+            # Calculate total recency weight
+            total_recency_weight = sum(recency_weights)
+            
+            # Calculate weighted average level using RECENCY weights (not just scores)
+            # This ensures more recent swing points have more influence on the final cluster price
+            if total_recency_weight > 0:
+                weighted_level = sum(p.level * rec_weight for p, rec_weight in zip(points, recency_weights)) / total_recency_weight
+            else:
+                # Fallback to simple average if no recency weights
                 weighted_level = sum(p.level for p in points) / len(points)
             
             # Aggregate timeframe distribution
