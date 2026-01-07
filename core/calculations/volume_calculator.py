@@ -129,8 +129,8 @@ class VolumeCalculator(BaseCalculator):
             # 7. Detect volume anomalies via analyzer
             anomaly = self._analyzer.detect_volume_anomalies(current_5m_volume, volume_history)
             
-            # 8. Categorize volume via classifier
-            categorization = self._classifier.categorize_volume(current_5m_volume, relative_volume)
+            # 8. Categorize volume via classifier (using percentile-based method with volume history)
+            categorization = self._classifier.categorize_volume(current_5m_volume, relative_volume, volume_history)
             
             # 9. Determine implications via classifier
             implications = self._classifier.determine_volume_implications(

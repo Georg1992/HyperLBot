@@ -15,8 +15,88 @@ class VolumeClassifier:
     def __init__(self):
         logger.debug("VolumeClassifier initialized")
     
-    def categorize_volume(self, current_volume: float, relative_volume: float) -> Dict[str, Any]:
-        """Categorize volume level"""
+    def categorize_volume(self, current_volume: float, relative_volume: float, 
+                          volume_history: List[Dict] = None) -> Dict[str, Any]:
+        """
+        Categorize volume level using percentile-based thresholds (mathematically justified)
+        
+        Uses historical percentiles from database for objective categorization:
+        - VERY_LOW: < 10th percentile
+        - LOW: 10th-25th percentile
+        - NORMAL: 25th-75th percentile
+        - HIGH: 75th-90th percentile
+        - VERY_HIGH: > 90th percentile
+        
+        Args:
+            current_volume: Current 5-minute volume in BTC
+            relative_volume: Relative volume (kept for backward compatibility, not used)
+            volume_history: List of historical volume records from database
+            
+        Returns:
+            Dictionary with level, description, and percentile information
+        """
+        try:
+            # If no volume history, fall back to relative volume (backward compatibility)
+            if not volume_history or len(volume_history) < 20:
+                logger.warning("⚠️ Insufficient volume history for percentile calculation, using relative volume fallback")
+                return self._categorize_by_relative_volume(relative_volume)
+            
+            # Extract volumes and calculate percentiles
+            volumes = [v.get('volume', 0.0) for v in volume_history if v.get('volume', 0.0) > 0]
+            
+            if not volumes or len(volumes) < 20:
+                logger.warning("⚠️ Insufficient volume data for percentile calculation")
+                return self._categorize_by_relative_volume(relative_volume)
+            
+            # Sort volumes for percentile calculation
+            sorted_volumes = sorted(volumes)
+            n = len(sorted_volumes)
+            
+            # Calculate percentiles (mathematically justified thresholds)
+            percentile_10 = sorted_volumes[int(n * 0.10)]  # 10th percentile
+            percentile_25 = sorted_volumes[int(n * 0.25)]  # 25th percentile (Q1)
+            percentile_50 = sorted_volumes[int(n * 0.50)]  # 50th percentile (median)
+            percentile_75 = sorted_volumes[int(n * 0.75)]  # 75th percentile (Q3)
+            percentile_90 = sorted_volumes[int(n * 0.90)]  # 90th percentile
+            
+            # Categorize based on percentiles (objective, mathematically justified)
+            if current_volume >= percentile_90:
+                level = "VERY_HIGH"
+                description = f"Extremely high volume: {current_volume:.2f} BTC (≥90th percentile: {percentile_90:.2f} BTC)"
+            elif current_volume >= percentile_75:
+                level = "HIGH"
+                description = f"High volume: {current_volume:.2f} BTC (≥75th percentile: {percentile_75:.2f} BTC)"
+            elif current_volume >= percentile_25:
+                level = "NORMAL"
+                description = f"Normal volume: {current_volume:.2f} BTC (25th-75th percentile: {percentile_25:.2f}-{percentile_75:.2f} BTC)"
+            elif current_volume >= percentile_10:
+                level = "LOW"
+                description = f"Low volume: {current_volume:.2f} BTC (10th-25th percentile: {percentile_10:.2f}-{percentile_25:.2f} BTC)"
+            else:
+                level = "VERY_LOW"
+                description = f"Very low volume: {current_volume:.2f} BTC (<10th percentile: {percentile_10:.2f} BTC)"
+            
+            return {
+                "level": level,
+                "description": description,
+                "current_volume": current_volume,
+                "percentiles": {
+                    "p10": percentile_10,
+                    "p25": percentile_25,
+                    "p50": percentile_50,
+                    "p75": percentile_75,
+                    "p90": percentile_90
+                },
+                "sample_size": n,
+                "method": "percentile_based"
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to categorize volume: {e}")
+            return {"level": "UNKNOWN", "description": "Volume analysis failed"}
+    
+    def _categorize_by_relative_volume(self, relative_volume: float) -> Dict[str, Any]:
+        """Fallback categorization using relative volume (backward compatibility)"""
         try:
             if relative_volume > 2.0:
                 level = "VERY_HIGH"
@@ -37,10 +117,11 @@ class VolumeClassifier:
             return {
                 "level": level,
                 "description": description,
-                "relative_volume": relative_volume
+                "relative_volume": relative_volume,
+                "method": "relative_volume_fallback"
             }
         except Exception as e:
-            logger.error(f"❌ Failed to categorize volume: {e}")
+            logger.error(f"❌ Failed to categorize by relative volume: {e}")
             return {"level": "UNKNOWN", "description": "Volume analysis failed"}
     
     def determine_volume_implications(self, level: str, momentum: Dict, anomaly: Dict) -> Dict[str, Any]:
