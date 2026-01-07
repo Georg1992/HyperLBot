@@ -34,23 +34,24 @@ class PsychologicalLevelsCalculator:
         """Initialize psychological levels calculator"""
         self.logger = logger
     
-    def calculate_psychological_levels(self, current_price: float, 
-                                       long_liquidation: float,
-                                       short_liquidation: float,
-                                       lookback_days: int = 30) -> List[Level]:
+    def get_psychological_levels(self, current_price: float, 
+                                long_liquidation: float,
+                                short_liquidation: float) -> List[Level]:
         """
-        Calculate psychological levels around current price within liquidation range
+        Get relevant psychological levels around current price within liquidation range
+        
+        Psychological levels are fixed intervals - we just identify which ones are relevant:
+        - $500, $1,000, $2,500, $5,000, $10,000, $100,000
         
         Args:
             current_price: Current market price
             long_liquidation: LONG liquidation price (for support filtering)
             short_liquidation: SHORT liquidation price (for resistance filtering)
-            lookback_days: Days to look back (unused, kept for interface compatibility)
             
         Returns:
-            List of Level objects representing psychological levels
+            List of Level objects representing relevant psychological levels
         """
-        # TODO: Implement basic psychological levels calculation
+        # TODO: Implement - find relevant psychological levels around current price
         # Fixed intervals: 500, 1000, 2500, 5000, 10000, 100000
-        logger.info("🧠 Psychological levels calculation - to be implemented")
+        logger.info("🧠 Psychological levels - to be implemented")
         return []
