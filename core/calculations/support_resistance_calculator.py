@@ -135,6 +135,8 @@ class SupportResistanceCalculator(BaseCalculator):
         """
         Detect swing points for all timeframes - shared logic to avoid duplication
         
+        Also detects daily/weekly/monthly peaks (absolute high/low of each period)
+        
         Args:
             candles_data: Dictionary of candles by timeframe
             current_price: Current price
@@ -153,7 +155,170 @@ class SupportResistanceCalculator(BaseCalculator):
                 swing_tf = self._detector.detect_swing_points(tf_candles, current_price, n=n_value, timeframe=tf)
                 higher_tf_levels.extend(swing_tf)
         
+        # Detect daily/weekly/monthly peaks from 1d candles
+        if candles_data.get("1d"):
+            period_peaks = self._detect_period_peaks(candles_data.get("1d", []))
+            higher_tf_levels.extend(period_peaks)
+        
         return swing_points_5m, higher_tf_levels
+    
+    def _detect_period_peaks(self, daily_candles: List[Dict]) -> List[Level]:
+        """
+        Detect daily/weekly/monthly peaks (absolute high/low of each period)
+        
+        These are important S/R levels representing major price extremes:
+        - Daily peaks: Highest/lowest price of each calendar day
+        - Weekly peaks: Highest/lowest price of each calendar week
+        - Monthly peaks: Highest/lowest price of each calendar month
+        
+        Args:
+            daily_candles: List of 1-day candles
+            
+        Returns:
+            List of Level objects representing period peaks
+        """
+        try:
+            from datetime import datetime, timedelta
+            
+            if not daily_candles:
+                return []
+            
+            period_peaks = []
+            
+            # Group candles by day/week/month
+            daily_groups = {}
+            weekly_groups = {}
+            monthly_groups = {}
+            
+            for candle in daily_candles:
+                timestamp = candle.get('timestamp', 0)
+                if timestamp == 0:
+                    continue
+                
+                dt = datetime.fromtimestamp(timestamp)
+                
+                # Group by day (YYYY-MM-DD)
+                day_key = dt.strftime('%Y-%m-%d')
+                if day_key not in daily_groups:
+                    daily_groups[day_key] = []
+                daily_groups[day_key].append(candle)
+                
+                # Group by week (YYYY-WW)
+                # ISO week: Monday is day 1
+                week_key = f"{dt.year}-W{dt.isocalendar()[1]:02d}"
+                if week_key not in weekly_groups:
+                    weekly_groups[week_key] = []
+                weekly_groups[week_key].append(candle)
+                
+                # Group by month (YYYY-MM)
+                month_key = dt.strftime('%Y-%m')
+                if month_key not in monthly_groups:
+                    monthly_groups[month_key] = []
+                monthly_groups[month_key].append(candle)
+            
+            # Find peaks for each period type
+            # Daily peaks
+            for day_key, day_candles in daily_groups.items():
+                if day_candles:
+                    day_high = max(c.get('high', 0) for c in day_candles)
+                    day_low = min(c.get('low', 0) for c in day_candles)
+                    day_timestamp = max(c.get('timestamp', 0) for c in day_candles)
+                    
+                    if day_high > 0:
+                        period_peaks.append(Level(
+                            level=day_high,
+                            level_type='resistance',
+                            touches=1,
+                            cluster_size=1,
+                            weighted_touches=1.0,
+                            strength=60.0,  # Daily peaks are moderately strong
+                            timestamp=day_timestamp,
+                            timeframe_distribution={'daily_peak': 1},
+                            merged_from=1
+                        ))
+                    if day_low > 0:
+                        period_peaks.append(Level(
+                            level=day_low,
+                            level_type='support',
+                            touches=1,
+                            cluster_size=1,
+                            weighted_touches=1.0,
+                            strength=60.0,
+                            timestamp=day_timestamp,
+                            timeframe_distribution={'daily_peak': 1},
+                            merged_from=1
+                        ))
+            
+            # Weekly peaks
+            for week_key, week_candles in weekly_groups.items():
+                if week_candles:
+                    week_high = max(c.get('high', 0) for c in week_candles)
+                    week_low = min(c.get('low', 0) for c in week_candles)
+                    week_timestamp = max(c.get('timestamp', 0) for c in week_candles)
+                    
+                    if week_high > 0:
+                        period_peaks.append(Level(
+                            level=week_high,
+                            level_type='resistance',
+                            touches=1,
+                            cluster_size=1,
+                            weighted_touches=1.0,
+                            strength=75.0,  # Weekly peaks are stronger
+                            timestamp=week_timestamp,
+                            timeframe_distribution={'weekly_peak': 1},
+                            merged_from=1
+                        ))
+                    if week_low > 0:
+                        period_peaks.append(Level(
+                            level=week_low,
+                            level_type='support',
+                            touches=1,
+                            cluster_size=1,
+                            weighted_touches=1.0,
+                            strength=75.0,
+                            timestamp=week_timestamp,
+                            timeframe_distribution={'weekly_peak': 1},
+                            merged_from=1
+                        ))
+            
+            # Monthly peaks
+            for month_key, month_candles in monthly_groups.items():
+                if month_candles:
+                    month_high = max(c.get('high', 0) for c in month_candles)
+                    month_low = min(c.get('low', 0) for c in month_candles)
+                    month_timestamp = max(c.get('timestamp', 0) for c in month_candles)
+                    
+                    if month_high > 0:
+                        period_peaks.append(Level(
+                            level=month_high,
+                            level_type='resistance',
+                            touches=1,
+                            cluster_size=1,
+                            weighted_touches=1.0,
+                            strength=90.0,  # Monthly peaks are very strong
+                            timestamp=month_timestamp,
+                            timeframe_distribution={'monthly_peak': 1},
+                            merged_from=1
+                        ))
+                    if month_low > 0:
+                        period_peaks.append(Level(
+                            level=month_low,
+                            level_type='support',
+                            touches=1,
+                            cluster_size=1,
+                            weighted_touches=1.0,
+                            strength=90.0,
+                            timestamp=month_timestamp,
+                            timeframe_distribution={'monthly_peak': 1},
+                            merged_from=1
+                        ))
+            
+            logger.debug(f"📊 Detected {len(period_peaks)} period peaks (daily/weekly/monthly)")
+            return period_peaks
+            
+        except Exception as e:
+            logger.error(f"❌ Period peaks detection failed: {e}")
+            return []
     
     def invalidate_cache(self):
         """Clear all cached S/R data to force fresh calculation"""
