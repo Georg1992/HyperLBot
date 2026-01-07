@@ -126,15 +126,15 @@ class RSICalculator:
                 # FIXED: RSI interpolation based on price movement (not broken tick-by-tick)
                 price_change_pct = (new_price - self.last_price) / self.last_price
                 
-                # RSI sensitivity: Increased reactivity to price changes for real-time updates
-                # 1% price move ≈ 30 RSI points (more sensitive)
-                rsi_sensitivity = 30.0  # Increased sensitivity for better real-time responsiveness
+                # RSI sensitivity: Balanced reactivity to price changes for real-time updates
+                # 1% price move ≈ 22 RSI points (moderate sensitivity - less fluctuation)
+                rsi_sensitivity = 22.0  # Moderate sensitivity to reduce excessive fluctuation
                 
                 # Calculate RSI adjustment based on price movement
                 rsi_adjustment = price_change_pct * 100 * rsi_sensitivity
                 
-                # Apply adjustment to baseline (increased responsiveness for real-time updates)
-                dampening = 0.90  # 90% of calculated adjustment (more immediate reaction)
+                # Apply adjustment to baseline (smoother reaction to reduce fluctuation)
+                dampening = 0.80  # 80% of calculated adjustment (smoother, less immediate reaction)
                 self.current_rsi = self.baseline_rsi + (rsi_adjustment * dampening)
                 
                 # Keep RSI in valid range [0, 100]
