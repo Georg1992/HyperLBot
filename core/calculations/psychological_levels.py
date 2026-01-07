@@ -126,38 +126,51 @@ class PsychologicalLevelsCalculator:
         """
         Determine appropriate round number interval based on price magnitude
         
-        Examples:
-        - $10,000 - $99,999: $1,000 intervals ($90k, $91k, $92k)
-        - $100,000 - $999,999: $5,000 intervals ($95k, $100k, $105k)
-        - $1,000,000+: $10,000 intervals
+        Fixed intervals (from smallest to strongest):
+        - $500: Smallest level
+        - $1,000: Stronger level
+        - $2,500: Stronger level
+        - $5,000: Stronger level
+        - $10,000: Stronger level
+        - $100,000: Strongest level
         
         Args:
             price: Current price
             
         Returns:
-            Round number interval (1000, 5000, 10000, etc.)
+            Round number interval (500, 1000, 2500, 5000, 10000, or 100000)
         """
-        if price < 100000:
-            return 1000  # $1k intervals for prices < $100k
+        # Determine which interval to use based on price magnitude
+        if price < 50000:
+            return 1000  # Use $1k intervals for prices < $50k
+        elif price < 100000:
+            return 2500  # Use $2.5k intervals for prices $50k-$100k
         elif price < 500000:
-            return 5000  # $5k intervals for prices $100k-$500k
+            return 5000  # Use $5k intervals for prices $100k-$500k
         elif price < 1000000:
-            return 10000  # $10k intervals for prices $500k-$1M
+            return 10000  # Use $10k intervals for prices $500k-$1M
         else:
-            return 25000  # $25k intervals for prices > $1M
+            return 100000  # Use $100k intervals for prices > $1M
     
     def _generate_round_levels(self, current_price: float, interval: int) -> List[float]:
         """
-        Generate round number levels around current price
+        Generate round number levels around current price using fixed intervals
+        
+        Fixed intervals (from smallest to strongest):
+        - $500: Smallest level
+        - $1,000: Stronger level
+        - $2,500: Stronger level
+        - $5,000: Stronger level
+        - $10,000: Stronger level
+        - $100,000: Strongest level
         
         Generates levels:
         - Below current price (support): 2-3 levels
         - Above current price (resistance): 2-3 levels
-        - Includes major round numbers and half-levels for high prices
         
         Args:
             current_price: Current market price
-            interval: Round number interval (e.g., 5000 for $5k intervals)
+            interval: Round number interval (500, 1000, 2500, 5000, 10000, or 100000)
             
         Returns:
             List of round number prices
@@ -179,20 +192,6 @@ class PsychologicalLevelsCalculator:
         for i in range(1, 4):
             level = base_level + (i * interval)
             levels.append(level)
-        
-        # For high prices (>$100k), also include half-levels (e.g., $92.5k, $97.5k)
-        if current_price >= 100000 and interval >= 5000:
-            half_interval = interval // 2
-            # Half-levels below
-            for i in range(1, 3):
-                level = base_level - (i * half_interval)
-                if level > 0 and level not in levels:
-                    levels.append(level)
-            # Half-levels above
-            for i in range(1, 3):
-                level = base_level + (i * half_interval)
-                if level not in levels:
-                    levels.append(level)
         
         # Sort and return
         levels.sort()
@@ -231,47 +230,39 @@ class PsychologicalLevelsCalculator:
     
     def _get_roundness_score(self, price: float, interval: int) -> float:
         """
-        Calculate how "round" a number is
+        Calculate roundness score based on interval strength
         
-        Major round numbers (ending in 00000, 0000, etc.) score higher
-        Half-levels score slightly lower
+        Fixed intervals (from smallest to strongest):
+        - $500: Smallest level (lowest score)
+        - $1,000: Stronger level
+        - $2,500: Stronger level
+        - $5,000: Stronger level
+        - $10,000: Stronger level
+        - $100,000: Strongest level (highest score)
         
         Args:
             price: Price level
-            interval: Round number interval
+            interval: Round number interval (500, 1000, 2500, 5000, 10000, or 100000)
             
         Returns:
-            Roundness score (0-100)
+            Roundness score (0-100) based on interval strength
         """
-        # Check if it's a major round number (ends in multiple zeros)
-        price_str = f"{price:.0f}"
-        
-        # Count trailing zeros
-        trailing_zeros = len(price_str) - len(price_str.rstrip('0'))
-        
-        # Major round numbers (e.g., $100,000, $90,000)
-        if trailing_zeros >= 4:  # $10,000 or more zeros
-            return 100.0
-        elif trailing_zeros >= 3:  # $1,000 zeros
-            return 90.0
-        elif trailing_zeros >= 2:  # $100 zeros
-            return 80.0
-        
-        # Half-levels (e.g., $92,500, $97,500) - VERY STRONG psychological levels
-        # These are major reference points (halfway between round numbers)
-        if interval >= 5000:
-            half_level = interval // 2
-            if abs(price % interval - half_level) < 1:
-                return 90.0  # Half-levels are very strong psychological levels (e.g., $92.5k, $97.5k)
-        
-        # Quarter-levels (e.g., $91,250, $93,750) - Moderate psychological levels
-        if interval >= 10000:
-            quarter_level = interval // 4
-            if abs(price % interval - quarter_level) < 1 or abs(price % interval - (3 * quarter_level)) < 1:
-                return 75.0  # Quarter-levels are moderate psychological levels
-        
-        # Other round numbers
-        return 50.0
+        # Score based on interval strength (larger interval = stronger level)
+        if interval == 500:
+            return 20.0  # Smallest level
+        elif interval == 1000:
+            return 40.0  # Stronger level
+        elif interval == 2500:
+            return 60.0  # Stronger level
+        elif interval == 5000:
+            return 75.0  # Stronger level
+        elif interval == 10000:
+            return 90.0  # Stronger level
+        elif interval == 100000:
+            return 100.0  # Strongest level
+        else:
+            # Fallback for any other interval
+            return 50.0
     
     def _get_proximity_score(self, level_price: float, current_price: float) -> float:
         """
