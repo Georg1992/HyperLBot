@@ -16,7 +16,6 @@ from .sr_state import SRState
 from .base_calculator import BaseCalculator
 from .liquidation_calculator import LiquidationCalculator
 from .level import Level
-from .psychological_levels import PsychologicalLevelsCalculator
 
 if TYPE_CHECKING:
     from core.services.centralized_cache import CentralizedCache
@@ -57,7 +56,6 @@ class SupportResistanceCalculator(BaseCalculator):
         self._scorer = scorer or SRScorer()
         self._state = state_manager or SRState()
         self._liquidation_calc = LiquidationCalculator()
-        self._psychological_calc = PsychologicalLevelsCalculator()
         
         # Performance optimization: Track module update times
         self._last_module_updates = {}
@@ -267,18 +265,10 @@ class SupportResistanceCalculator(BaseCalculator):
                     long_liquidation, short_liquidation
                 )
                 
-                # Add psychological levels (separate from swing-based levels)
-                psychological_levels = self._psychological_calc.calculate_psychological_levels(
-                    current_price, long_liquidation, short_liquidation, days
-                )
-                
-                # Merge all levels (avoid duplicates by price)
+                # Merge with existing levels (avoid duplicates by price)
                 existing_prices = {l.level for l in scored_levels}
                 new_levels = [l for l in processed_levels if l.level not in existing_prices]
-                new_psychological = [l for l in psychological_levels if l.level not in existing_prices]
-                
                 scored_levels.extend(new_levels)
-                scored_levels.extend(new_psychological)
                 
                 # Re-deduplicate and re-sort by score
                 final_dedup_tolerance = current_price * 0.0005
@@ -899,21 +889,9 @@ class SupportResistanceCalculator(BaseCalculator):
                             top_2_resistance_list.append(candidate_dict)
                             break
             
-            # Separate psychological levels from swing-based levels
-            psychological_levels_list = [
-                level for level in key_levels 
-                if level.get("is_psychological", False)
-            ]
-            swing_based_levels_list = [
-                level for level in key_levels 
-                if not level.get("is_psychological", False)
-            ]
-            
             result = {
                 "status": "ok",
-                "levels": key_levels,  # All levels combined
-                "psychological_levels": psychological_levels_list,  # Separate list
-                "swing_based_levels": swing_based_levels_list,  # Separate list
+                "levels": key_levels,  # All swing-based S/R levels
                 "metadata": {
                     "timestamp": current_time,
                     "symbol": self.symbol,
@@ -921,8 +899,6 @@ class SupportResistanceCalculator(BaseCalculator):
                     "atr_5m": atr_14,
                     "total_levels": len(scored_levels),
                     "filtered_levels": len(key_levels),
-                    "psychological_levels_count": len(psychological_levels_list),
-                    "swing_based_levels_count": len(swing_based_levels_list),
                     "active_levels": active_count,
                     "inactive_levels": inactive_count,
                     "mtf_confirmed": mtf_confirmed_count,
