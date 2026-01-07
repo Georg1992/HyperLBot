@@ -57,11 +57,16 @@ class VolumeClassifier:
         percentile_50 = sorted_volumes[int(n * 0.50)]  # 50th percentile (median)
         percentile_75 = sorted_volumes[int(n * 0.75)]  # 75th percentile (Q3)
         percentile_90 = sorted_volumes[int(n * 0.90)]  # 90th percentile
+        percentile_95 = sorted_volumes[int(n * 0.95)]  # 95th percentile (for extreme threshold)
         
-        # Categorize based on percentiles (objective, mathematically justified)
-        if current_volume >= percentile_90:
+        # Fixed extreme threshold: 500 BTC is always considered extreme
+        # This ensures that very high volumes are always properly categorized
+        extreme_threshold = max(500.0, percentile_95)  # Use 500 BTC minimum or 95th percentile, whichever is higher
+        
+        # Categorize based on percentiles with fixed extreme threshold (objective, mathematically justified)
+        if current_volume >= extreme_threshold:
             level = "VERY_HIGH"
-            description = f"Extremely high volume: {current_volume:.2f} BTC (≥90th percentile: {percentile_90:.2f} BTC)"
+            description = f"Extremely high volume: {current_volume:.2f} BTC (≥{extreme_threshold:.2f} BTC threshold)"
         elif current_volume >= percentile_75:
             level = "HIGH"
             description = f"High volume: {current_volume:.2f} BTC (≥75th percentile: {percentile_75:.2f} BTC)"
@@ -84,8 +89,10 @@ class VolumeClassifier:
                 "p25": percentile_25,
                 "p50": percentile_50,
                 "p75": percentile_75,
-                "p90": percentile_90
+                "p90": percentile_90,
+                "p95": percentile_95
             },
+            "extreme_threshold": extreme_threshold,
             "sample_size": n,
             "method": "percentile_based"
         }
