@@ -2,13 +2,13 @@
 """
 Psychological Levels Calculator
 
-Fixed intervals (from smallest to strongest):
-- $500: Smallest level
-- $1,000: Stronger level
-- $2,500: Stronger level
-- $5,000: Stronger level
-- $10,000: Stronger level
-- $100,000: Strongest level
+Fixed intervals (from smallest to strongest gravity):
+- $500: Smallest level (gravity: 20)
+- $1,000: Stronger level (gravity: 40)
+- $2,500: Stronger level (gravity: 60)
+- $5,000: Stronger level (gravity: 75)
+- $10,000: Stronger level (gravity: 90)
+- $100,000: Strongest level (gravity: 100)
 """
 
 from typing import List
@@ -19,15 +19,15 @@ from .level import Level
 
 class PsychologicalLevelsCalculator:
     """
-    Calculate psychological (round number) support/resistance levels
+    Get psychological (round number) support/resistance levels
     
-    Fixed intervals (from smallest to strongest):
-    - $500: Smallest level
-    - $1,000: Stronger level
-    - $2,500: Stronger level
-    - $5,000: Stronger level
-    - $10,000: Stronger level
-    - $100,000: Strongest level
+    Fixed intervals (from smallest to strongest gravity):
+    - $500: Smallest level (gravity: 20)
+    - $1,000: Stronger level (gravity: 40)
+    - $2,500: Stronger level (gravity: 60)
+    - $5,000: Stronger level (gravity: 75)
+    - $10,000: Stronger level (gravity: 90)
+    - $100,000: Strongest level (gravity: 100)
     """
     
     def __init__(self):
