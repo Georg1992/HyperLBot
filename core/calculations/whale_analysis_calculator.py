@@ -52,14 +52,14 @@ class WhaleAnalysisCalculator:
             
             if not whale_api:
                 logger.warning("⚠️ Whale Analytics API not available")
-                return self._create_neutral_whale_analysis("api_unavailable")
+                raise ValueError("Whale Analytics API not available - NO FALLBACKS")
             
             # Fetch raw whale transactions
             raw_transactions = whale_api.get_raw_whale_transactions()
             
             if not raw_transactions:
                 logger.debug("🐋 No whale transactions available")
-                return self._create_neutral_whale_analysis("no_transactions")
+                raise ValueError("No whale transactions available - NO FALLBACKS")
             
             # Analyze the whale data
             analysis_result = self.analyze_whale_data(raw_transactions)
@@ -73,17 +73,11 @@ class WhaleAnalysisCalculator:
             
         except Exception as e:
             logger.error(f"❌ Failed to get latest whale analysis: {e}")
-            return self._create_neutral_whale_analysis("error_fallback")
+            # NO FALLBACKS - Raise error instead of returning neutral analysis
+            raise ValueError(f"Whale analysis failed - NO FALLBACKS: {e}")
     
-    def _create_neutral_whale_analysis(self, data_source: str) -> Dict[str, Any]:
-        """Create neutral whale analysis response - follows DRY and matches analyze_whale_data structure"""
-        return {
-            "whale_activity": self._create_empty_whale_activity(),
-            "exchange_flows": self._create_empty_exchange_flows(),
-            "sentiment": self._create_neutral_sentiment(),
-            "timestamp": time.time(),
-            "data_source": data_source
-        }
+    # _create_neutral_whale_analysis method removed - NO FALLBACKS policy
+    # If whale analysis fails, it should raise an error instead of returning neutral values
     
     def _create_empty_whale_activity(self) -> Dict[str, Any]:
         """Create empty whale activity response - follows DRY"""

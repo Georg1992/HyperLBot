@@ -235,8 +235,9 @@ class SessionOrchestrator:
                         self._last_5m_boundary = current_5m_start
                         last_candle_update_time = current_time  # Reset timer
                     
-                    # Fallback: Update candle storage if we missed the boundary (safety check)
+                    # Safety check: Update candle storage if boundary detection somehow failed (clock drift protection)
                     # This should rarely trigger if boundary detection works correctly
+                    # NO FALLBACKS - This is a safety mechanism, not a business logic fallback
                     elif current_time - last_candle_update_time >= 310:  # 5 minutes 10 seconds (slightly longer than 5 min)
                         try:
                             logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
@@ -246,7 +247,7 @@ class SessionOrchestrator:
                                 historical_service._candle_storage.update_with_latest_candle()
                                 last_candle_update_time = current_time
                         except Exception as e:
-                            logger.warning(f"⚠️ Failed to update candle storage (fallback): {e}")
+                            logger.error(f"❌ Failed to update candle storage (safety check): {e}")
                     
                     # Get current market data from MarketDataService (centralized price provider)
                     current_price = None

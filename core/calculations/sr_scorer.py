@@ -106,8 +106,8 @@ class SRScorer:
             
         except Exception as e:
             logger.error(f"❌ Reversal probability calculation failed: {e}")
-            # Fallback to heuristic score
-            return self._calculate_heuristic_reversal_probability(level, current_price, atr_5m)
+            # NO FALLBACKS - Raise error instead of using heuristic fallback
+            raise ValueError(f"Reversal probability calculation failed - NO FALLBACKS: {e}")
     
     def _calculate_historical_reversal_rate(self, level: Level, 
                                            candles_data: Dict[str, List[Dict]] = None,
@@ -323,9 +323,10 @@ class SRScorer:
     def _calculate_heuristic_reversal_probability(self, level: Level, 
                                                  current_price: float, atr_5m: float) -> float:
         """
-        Fallback heuristic calculation when historical analysis isn't available
+        UNUSED - This method is no longer called (NO FALLBACKS policy)
         
-        Uses current scoring factors as proxy for reversal probability
+        Previously used as fallback heuristic calculation when historical analysis wasn't available.
+        Now errors are raised instead of using fallback values.
         """
         try:
             # Use current scoring factors as proxy

@@ -821,16 +821,8 @@ class MarketConditionsAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Dynamic RSI threshold calculation failed: {e}")
-            # Fallback to standard thresholds
-            return {
-                'neutral_low': 45.0,
-                'neutral_high': 55.0,
-                'oversold': 35.0,
-                'overbought': 60.0,
-                'extreme_oversold': 25.0,
-                'extreme_overbought': 75.0,
-                'data_source': 'fallback_standard'
-            }
+            # NO FALLBACKS - Raise error instead of returning default values
+            raise ValueError(f"Dynamic RSI threshold calculation failed - NO FALLBACKS: {e}")
     
     def _calculate_dynamic_trend_thresholds(self) -> Dict[str, float]:
         """Calculate dynamic trend thresholds based on current market volatility"""
@@ -874,16 +866,8 @@ class MarketConditionsAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Dynamic trend threshold calculation failed: {e}")
-            # Fallback to standard thresholds
-            return {
-                'strong_bullish': 5.0,
-                'moderate_bullish': 2.0,
-                'strong_bearish': -5.0,
-                'moderate_bearish': -2.0,
-                'high_volatility': 15.0,
-                'low_volatility': 5.0,
-                'data_source': 'fallback_standard'
-            }
+            # NO FALLBACKS - Raise error instead of returning default values
+            raise ValueError(f"Dynamic trend threshold calculation failed - NO FALLBACKS: {e}")
     
     def _calculate_dynamic_sr_proximity_threshold(self) -> float:
         """Calculate dynamic S/R proximity threshold based on market volatility"""
@@ -921,8 +905,8 @@ class MarketConditionsAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Dynamic S/R proximity threshold calculation failed: {e}")
-            # Fallback to standard threshold
-            return 0.005  # 0.5%
+            # NO FALLBACKS - Raise error instead of returning default value
+            raise ValueError(f"Dynamic S/R proximity threshold calculation failed - NO FALLBACKS: {e}")
     
     def _get_volatility_data(self) -> Dict[str, Any]:
         """Get volatility data from existing calculation modules - follows DRY"""

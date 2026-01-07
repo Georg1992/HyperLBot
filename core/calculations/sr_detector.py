@@ -215,7 +215,8 @@ class SRDetector:
             
         except Exception as e:
             logger.error(f"❌ Distinct touches calculation failed: {e}")
-            return len(points)  # Fallback to simple count
+            # NO FALLBACKS - Raise error instead of returning simple count
+            raise ValueError(f"Distinct touches calculation failed - NO FALLBACKS: {e}")
     
     def _is_swing_high(self, candles: List[Dict], index: int, n: int, params: Dict[str, Any], atr: float = None) -> bool:
         """
@@ -438,9 +439,8 @@ class SRDetector:
                     if sp.level_type == 'resistance' and sp.level > current_price
                 ]
             else:
-                # If no current_price, use all points (fallback)
-                support_points = [sp for sp in swing_points if sp.level_type == 'support']
-                resistance_points = [sp for sp in swing_points if sp.level_type == 'resistance']
+                # NO FALLBACKS - Current price is required for proper filtering
+                raise ValueError("Current price is required for swing point filtering - NO FALLBACKS")
             
             clusters = []
             
@@ -680,7 +680,8 @@ class SRDetector:
             
         except Exception as e:
             logger.error(f"❌ Point score calculation failed: {e}")
-            return point.strength  # Fallback to raw strength
+            # NO FALLBACKS - Raise error instead of returning raw strength
+            raise ValueError(f"Point score calculation failed - NO FALLBACKS: {e}")
     
     def _deduplicate_clusters(self, clusters: List[Level], tolerance: float) -> List[Level]:
         """

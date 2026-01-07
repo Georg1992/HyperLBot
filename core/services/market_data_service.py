@@ -841,24 +841,20 @@ class MarketDataService:
             if (self._current_price is None or 
                 current_time - self._price_timestamp > self._price_update_interval):
                 
-                # Update price from WebSocket (real-time)
-                if self.hyperliquid_websocket:
-                    new_price = self.hyperliquid_websocket.get_current_price()
-                    if new_price is not None and new_price != self._current_price:
-                        self._current_price = new_price
-                        self._price_timestamp = current_time
-                        logger.debug(f"📊 Real-time price updated: ${self._current_price:.2f}")
-                        # Update RSI immediately when price changes
-                        self._update_rsi_with_price(new_price)
-                elif self.hyperliquid_api:
-                    # Fallback to API if WebSocket not available
-                    new_price = self.hyperliquid_api.get_current_price("BTC")
-                    if new_price is not None and new_price != self._current_price:
-                        self._current_price = new_price
-                        self._price_timestamp = current_time
-                        logger.debug(f"📊 Price updated from API: ${self._current_price:.2f}")
-                        # Update RSI immediately when price changes
-                        self._update_rsi_with_price(new_price)
+                # Update price from WebSocket (real-time) - NO FALLBACKS
+                if not self.hyperliquid_websocket:
+                    raise Exception("Hyperliquid WebSocket not available - NO FALLBACKS")
+                
+                new_price = self.hyperliquid_websocket.get_current_price()
+                if new_price is None:
+                    raise Exception("No price data available from WebSocket - NO FALLBACKS")
+                
+                if new_price != self._current_price:
+                    self._current_price = new_price
+                    self._price_timestamp = current_time
+                    logger.debug(f"📊 Real-time price updated: ${self._current_price:.2f}")
+                    # Update RSI immediately when price changes
+                    self._update_rsi_with_price(new_price)
             
             return self._current_price
             

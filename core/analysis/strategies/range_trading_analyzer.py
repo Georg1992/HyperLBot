@@ -251,12 +251,4 @@ class RangeTradingAnalyzer:
         }
 
 
-# Global instance
-_global_range_trading_analyzer = None
-
-def get_global_range_trading_analyzer() -> RangeTradingAnalyzer:
-    """Get the global RangeTradingAnalyzer singleton instance"""
-    global _global_range_trading_analyzer
-    if _global_range_trading_analyzer is None:
-        _global_range_trading_analyzer = RangeTradingAnalyzer()
-    return _global_range_trading_analyzer
+# Deprecated global instance functions removed - use RangeTradingAnalyzer() directly instead

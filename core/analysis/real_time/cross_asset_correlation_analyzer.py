@@ -10,10 +10,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple, Protocol
 from loguru import logger
 
-# Singleton pattern implementation
-_global_cross_asset_correlation_analyzer = None
-
-# Factory function for backward compatibility
+# Factory function for dependency injection
 def create_cross_asset_correlation_analyzer(data_provider: 'ExternalDataProvider' = None) -> 'CrossAssetCorrelationAnalyzer':
     """
     Factory function to create CrossAssetCorrelationAnalyzer with dependency injection
@@ -26,12 +23,7 @@ def create_cross_asset_correlation_analyzer(data_provider: 'ExternalDataProvider
     """
     return CrossAssetCorrelationAnalyzer(data_provider=data_provider)
 
-def get_global_cross_asset_correlation_analyzer() -> 'CrossAssetCorrelationAnalyzer':
-    """Get the global CrossAssetCorrelationAnalyzer singleton instance"""
-    global _global_cross_asset_correlation_analyzer
-    if _global_cross_asset_correlation_analyzer is None:
-        _global_cross_asset_correlation_analyzer = create_cross_asset_correlation_analyzer()
-    return _global_cross_asset_correlation_analyzer
+# Deprecated global instance functions removed - use create_cross_asset_correlation_analyzer() instead
 
 
 class ExternalDataProvider(Protocol):
@@ -182,12 +174,8 @@ class CrossAssetCorrelationAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Risk sentiment analysis failed: {e}")
-            return {
-                "risk_sentiment": "UNKNOWN",
-                "risk_factors": [],
-                "risk_count": 0,
-                "data_source": "error_fallback"
-            }
+            # NO FALLBACKS - Raise error instead of returning default values
+            raise ValueError(f"Risk sentiment analysis failed - NO FALLBACKS: {e}")
     
     def _build_correlation_analysis(self, correlations: Dict[str, Any], 
                                   regime_analysis: Dict[str, Any], 
@@ -202,18 +190,8 @@ class CrossAssetCorrelationAnalyzer:
             "data_source": "external_apis"
         }
     
-    def _create_neutral_analysis(self) -> Dict[str, Any]:
-        """Create neutral analysis when data unavailable - follows SRP"""
-        return {
-            "dxy_correlation": 0.0,
-            "gold_correlation": 0.0,
-            "stock_correlation": 0.0,
-            "market_regime": "UNKNOWN",
-            "risk_sentiment": "NEUTRAL",
-            "correlation_trends": "STABLE",
-            "timestamp": time.time(),
-            "data_source": "unavailable_fallback"
-        }
+    # _create_neutral_analysis method removed - NO FALLBACKS policy
+    # If data is unavailable, analysis should raise an error instead of returning neutral values
     
     def _create_correlation_error(self, message: str) -> Dict[str, Any]:
         """Create correlation error response - follows DRY"""

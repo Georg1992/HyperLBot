@@ -18,15 +18,7 @@ def create_funding_rate_analyzer() -> 'FundingRateAnalyzer':
     """
     return FundingRateAnalyzer()
 
-# Global instance for backward compatibility (DEPRECATED - use create_funding_rate_analyzer)
-_global_funding_rate_analyzer = None
-
-def get_global_funding_rate_analyzer() -> 'FundingRateAnalyzer':
-    """Get the global FundingRateAnalyzer singleton instance (DEPRECATED)"""
-    global _global_funding_rate_analyzer
-    if _global_funding_rate_analyzer is None:
-        _global_funding_rate_analyzer = create_funding_rate_analyzer()
-    return _global_funding_rate_analyzer
+# Deprecated global instance functions removed - use create_funding_rate_analyzer() instead
 
 class FundingRateAnalyzer:
     """Analyzes funding rates for market sentiment and trend insights"""
@@ -317,14 +309,6 @@ class FundingRateAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Dynamic threshold calculation failed: {e}")
-            # Fallback to industry standards
-            return {
-                'extreme_positive': 0.001,
-                'high_positive': 0.0005,
-                'low_positive': 0.0001,
-                'low_negative': -0.0001,
-                'high_negative': -0.0005,
-                'extreme_negative': -0.001,
-                'data_source': 'fallback_industry_standard'
-            }
+            # NO FALLBACKS - Raise error instead of returning default values
+            raise ValueError(f"Dynamic funding rate threshold calculation failed - NO FALLBACKS: {e}")
     

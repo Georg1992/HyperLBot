@@ -18,15 +18,7 @@ def create_orderbook_analyzer() -> 'OrderBookAnalyzer':
     """
     return OrderBookAnalyzer()
 
-# Global instance for backward compatibility (DEPRECATED - use create_orderbook_analyzer)
-_global_orderbook_analyzer = None
-
-def get_global_orderbook_analyzer() -> 'OrderBookAnalyzer':
-    """Get the global OrderBookAnalyzer singleton instance (DEPRECATED)"""
-    global _global_orderbook_analyzer
-    if _global_orderbook_analyzer is None:
-        _global_orderbook_analyzer = create_orderbook_analyzer()
-    return _global_orderbook_analyzer
+# Deprecated global instance functions removed - use create_orderbook_analyzer() instead
 
 class OrderBookAnalyzer:
     """Analyzes order book data for market microstructure insights"""

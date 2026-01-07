@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 SRDataProvider - Handles data fetching, ATR calculation, and caching
-CHANGELOG: Added dependency injection, standardized ATR calculation with min fallback,
-           improved error handling with graceful degradation for missing timeframes
+CHANGELOG: Added dependency injection, standardized ATR calculation with minimum safety value,
+           improved error handling (NO FALLBACKS policy)
 """
 
 import time
@@ -122,12 +122,8 @@ class SRDataProvider:
         """
         try:
             if not current_price or current_price <= 0:
-                logger.warning("⚠️ No current price provided - using fallback fetch without price filtering")
-                # Fallback: fetch last 1 month without price filtering
-                candles_5m = self._fetch_candles_with_validation("5m", 8640)  # 1 month
-                candles_15m = self._fetch_candles_with_validation("15m", 480)  # 1 month
-                candles_1h = self._fetch_candles_with_validation("1h", 720)  # 1 month
-                candles_1d = self._fetch_candles_with_validation("1d", 30)  # 1 month
+                # NO FALLBACKS - Current price is required for proper S/R calculation
+                raise ValueError("Current price is required for S/R calculation - NO FALLBACKS")
                 
                 atr_per_tf = self._calculate_atr_for_all_timeframes(
                     {"5m": candles_5m, "15m": candles_15m, "1h": candles_1h, "1d": candles_1d}
@@ -150,12 +146,9 @@ class SRDataProvider:
                     if short_liquidation is None:
                         short_liquidation = liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
                 except Exception as e:
-                    logger.warning(f"⚠️ Could not calculate liquidation prices: {e}. Using 5% safety margin.")
-                    # Fallback: use 5% safety margin
-                    if long_liquidation is None:
-                        long_liquidation = current_price * 0.95
-                    if short_liquidation is None:
-                        short_liquidation = current_price * 1.05
+                    logger.error(f"❌ Could not calculate liquidation prices: {e}")
+                    # NO FALLBACKS - Liquidation prices are required for proper S/R filtering
+                    raise ValueError(f"Liquidation price calculation failed - NO FALLBACKS: {e}")
             
             logger.debug(f"🔍 LIQUIDATION RANGE: LONG=${long_liquidation:.2f}, SHORT=${short_liquidation:.2f}, Current=${current_price:.2f}")
             
@@ -168,9 +161,9 @@ class SRDataProvider:
             if candles_5m:
                 logger.info(f"✅ Found {len(candles_5m)} 5m candles within liquidation range for 1 month")
             else:
+                # NO FALLBACKS - If no candles found in liquidation range, this is a data issue
                 logger.warning(f"⚠️ No candles found in liquidation range for 1 month - price may be at extreme range")
-                # Fallback: fetch last 1 month without price filtering
-                candles_5m = self._fetch_candles_with_validation("5m", 8640)
+                # Don't fetch without price filtering - let the calculator handle progressive expansion
             
             # For other timeframes, fetch reasonable amounts (they're used for MTF confirmation)
             # These don't need price filtering - they're just for higher timeframe swing detection
@@ -336,7 +329,7 @@ class SRDataProvider:
             period: ATR period (default: 14)
             
         Returns:
-            ATR value (never returns zero - uses minimum fallback)
+            ATR value (never returns zero - uses minimum safety value to prevent division by zero)
         """
         try:
             if len(candles) < period:
@@ -344,7 +337,7 @@ class SRDataProvider:
                 if candles:
                     price = candles[-1].get('close', 100.0)
                     min_atr = max(price * 0.0005, 0.1)  # 0.05% of price or 0.1 minimum
-                    logger.warning(f"⚠️ Insufficient candles for ATR, using min fallback: {min_atr:.2f}")
+                    logger.warning(f"⚠️ Insufficient candles for ATR, using minimum safety value: {min_atr:.2f}")
                     return min_atr
                 else:
                     return 0.1  # Absolute minimum
@@ -368,7 +361,7 @@ class SRDataProvider:
                 # Return minimum ATR based on price
                 price = candles[-1].get('close', 100.0)
                 min_atr = max(price * 0.0005, 0.1)
-                logger.warning(f"⚠️ Insufficient true ranges for ATR, using min fallback: {min_atr:.2f}")
+                logger.warning(f"⚠️ Insufficient true ranges for ATR, using minimum safety value: {min_atr:.2f}")
                 return min_atr
             
             # Calculate ATR using Wilder's smoothing
@@ -386,8 +379,8 @@ class SRDataProvider:
             
         except Exception as e:
             logger.error(f"❌ ATR calculation failed: {e}")
-            # Return minimum ATR as fallback
-            return 0.1
+            # NO FALLBACKS - Raise error instead of returning default value
+            raise ValueError(f"ATR calculation failed - NO FALLBACKS: {e}")
     
     def get_cached_data(self, timeframe: str) -> Optional[List[Dict]]:
         """
