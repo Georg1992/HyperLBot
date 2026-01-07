@@ -212,6 +212,26 @@ class SessionOrchestrator:
                         cache = get_global_centralized_cache()
                         cache.invalidate(pattern="pattern_recognition")
                         cache.invalidate(pattern="patterns")
+                        
+                        # Recalculate RSI baseline at exact candle boundary (same time as candles reset)
+                        try:
+                            if market_data_service and "rsi_calculator" in market_data_service._analysis_modules:
+                                rsi_calculator = market_data_service._analysis_modules["rsi_calculator"]
+                                # Fetch fresh 5m candles for RSI baseline recalculation
+                                from core.services.historical_data_service import get_global_historical_data_service
+                                historical_service = get_global_historical_data_service()
+                                candles_5m = historical_service.get_5m_candles("BTC", 30)  # Need at least 15 for RSI(14)
+                                
+                                if candles_5m and len(candles_5m) >= 15:
+                                    rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
+                                    logger.info(f"✅ RSI baseline recalculated at exact 5-minute boundary: {rsi_calculator.baseline_rsi:.2f}")
+                                    # Invalidate RSI cache to force fresh calculations
+                                    cache.invalidate(pattern="rsi")
+                                else:
+                                    logger.warning(f"⚠️ Insufficient candles for RSI baseline recalculation: {len(candles_5m) if candles_5m else 0}")
+                        except Exception as e:
+                            logger.error(f"❌ Failed to recalculate RSI baseline at boundary: {e}")
+                        
                         self._last_5m_boundary = current_5m_start
                         last_candle_update_time = current_time  # Reset timer
                     
