@@ -25,6 +25,8 @@ urllib3.disable_warnings()
 class EventDrivenTradingDashboard:
     """Event-driven dashboard with WebSocket real-time updates"""
     
+    _global_instance = None
+    
     def __init__(self):
         self.log_dir = constants.LOG_DIR
         
@@ -54,7 +56,15 @@ class EventDrivenTradingDashboard:
         # Start background data monitoring
         self._start_data_monitoring()
         
+        # Set global instance for instant updates
+        EventDrivenTradingDashboard._global_instance = self
+        
         logger.info("🚀 Event-Driven Trading Dashboard initialized with WebSocket support")
+    
+    @classmethod
+    def get_global_instance(cls):
+        """Get global dashboard instance for instant updates"""
+        return cls._global_instance
     
     @staticmethod
     def is_dashboard_running(host='localhost', port=5002, log_detection=True) -> bool:

@@ -33,6 +33,10 @@ class MarketDataService:
         self._price_timestamp = 0
         self._price_update_interval = 0.1  # 100ms for real-time updates
         
+        # RSI update throttling for dashboard (prevent spam from rapid price changes)
+        self._last_rsi_dashboard_update = 0
+        self._rsi_dashboard_update_interval = 0.5  # Update dashboard at most every 500ms
+        
         # Register WebSocket callback to update RSI immediately when price changes
         if self.hyperliquid_websocket:
             self.hyperliquid_websocket.add_price_callback(self._on_websocket_price_update)
@@ -899,9 +903,37 @@ class MarketDataService:
                 rsi_calculator = self._analysis_modules["rsi_calculator"]
                 # Only update if RSI is already initialized
                 if rsi_calculator.rsi_initialized:
+                    old_rsi = rsi_calculator.current_rsi
                     rsi_calculator.update_realtime_rsi(new_price)
+                    new_rsi = rsi_calculator.current_rsi
+                    
+                    # Trigger instant dashboard update if RSI changed significantly (throttled)
+                    if abs(new_rsi - old_rsi) >= 0.1:  # Only if RSI changed by at least 0.1
+                        self._trigger_instant_rsi_dashboard_update()
         except Exception as e:
             # Don't log errors here to avoid spam - RSI update failures are non-critical
+            pass
+    
+    def _trigger_instant_rsi_dashboard_update(self):
+        """Trigger instant dashboard update for RSI changes (throttled to prevent spam)"""
+        try:
+            current_time = time.time()
+            # Throttle: Update dashboard at most every 500ms
+            if current_time - self._last_rsi_dashboard_update >= self._rsi_dashboard_update_interval:
+                self._last_rsi_dashboard_update = current_time
+                
+                # Get dashboard instance and trigger immediate update
+                try:
+                    from core.dashboard.web_dashboard import EventDrivenTradingDashboard
+                    dashboard = EventDrivenTradingDashboard.get_global_instance()
+                    if dashboard:
+                        dashboard.force_data_update()
+                        logger.debug("📡 Instant RSI dashboard update triggered")
+                except Exception as e:
+                    # Dashboard might not be initialized yet - that's okay
+                    pass
+        except Exception as e:
+            # Don't log errors here to avoid spam
             pass
     
     def get_market_data(self) -> Dict[str, Any]:

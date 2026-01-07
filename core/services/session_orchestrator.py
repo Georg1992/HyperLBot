@@ -491,13 +491,8 @@ class SessionOrchestrator:
                 try:
                     logger.debug(f"📊 Processing module: {module_name}")
                     
-                    # Update module with live price data (like live data streams)
-                    if hasattr(module_instance, "update_realtime_rsi"):
-                        # RSI: Update with live price data
-                        rsi_result = module_instance.update_realtime_rsi(current_price)
-                        if rsi_result:
-                            market_data_service.update_analysis_data("rsi", rsi_result)
-                            logger.debug(f"📊 RSI data updated: {rsi_result}")
+                    # RSI updates happen via WebSocket callback only - NO FALLBACKS
+                    # Removed redundant RSI update here - RSI is updated instantly when price changes
 
                     if hasattr(module_instance, "get_latest_analysis"):
                         # Other modules: Get latest analysis with current price
