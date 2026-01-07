@@ -289,10 +289,12 @@ class CandleStorage:
             # Convert rows to dictionaries and reverse to get oldest first
             candles = [dict(row) for row in reversed(rows)]
             
-            if min_timestamp is not None:
-                logger.debug(f"🔍 Smart query (price + time): Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f} after {min_timestamp}")
-            else:
-                logger.debug(f"🔍 Price range query: Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f}")
+            # Only log if significant number found (reduce noise)
+            if len(candles) > 1000:
+                if min_timestamp is not None:
+                    logger.debug(f"🔍 Smart query (price + time): Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f}")
+                else:
+                    logger.debug(f"🔍 Price range query: Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f}")
             
             return candles
             

@@ -113,14 +113,14 @@ class DashboardService:
                 pred_obj = market_data.get("prediction") if isinstance(market_data, dict) else None
                 self._data["prediction"] = pred_obj
                 
-                # Enhanced logging for prediction tracking
+                # Prediction tracking (removed excessive logging - prediction data is intentionally removed)
+                # Only log if prediction actually exists (rare case)
                 if pred_obj:
                     pred_keys = list(pred_obj.keys()) if isinstance(pred_obj, dict) else "NOT_A_DICT"
                     pred_dir = pred_obj.get("direction", "N/A") if isinstance(pred_obj, dict) else "N/A"
                     pred_conf = pred_obj.get("confidence", "N/A") if isinstance(pred_obj, dict) else "N/A"
                     logger.info(f"🤖 ✅ SURFACED PREDICTION: dir={pred_dir} conf={pred_conf} keys={pred_keys}")
-                else:
-                    logger.warning(f"🤖 ❌ NO PREDICTION IN MARKET_DATA: keys={list(market_data.keys()) if isinstance(market_data, dict) else 'NOT_A_DICT'}")
+                # No prediction is expected - removed excessive warning logging
                 
                 self._save_data()
                 # Trigger WebSocket emission

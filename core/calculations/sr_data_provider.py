@@ -81,10 +81,12 @@ class SRDataProvider:
                 candles = self._historical_service._candle_storage.get_candles_by_price_range(
                     min_price, max_price, max_candles, min_timestamp
                 )
-                if min_timestamp is not None:
-                    logger.info(f"🔍 Smart query (price + time): Found {len(candles)} candles in range ${min_price:.2f}-${max_price:.2f} after timestamp {min_timestamp}")
-                else:
-                    logger.info(f"🔍 Smart price range query: Found {len(candles)} candles in range ${min_price:.2f}-${max_price:.2f}")
+                # Log only if significant number of candles found (reduce noise)
+                if len(candles) > 1000:
+                    if min_timestamp is not None:
+                        logger.debug(f"🔍 Smart query (price + time): Found {len(candles)} candles in range ${min_price:.2f}-${max_price:.2f}")
+                    else:
+                        logger.debug(f"🔍 Smart price range query: Found {len(candles)} candles in range ${min_price:.2f}-${max_price:.2f}")
                 return candles
             else:
                 logger.warning("⚠️ Candle storage not available for price range query")
@@ -155,7 +157,7 @@ class SRDataProvider:
                     if short_liquidation is None:
                         short_liquidation = current_price * 1.05
             
-            logger.info(f"🔍 LIQUIDATION RANGE: LONG=${long_liquidation:.2f}, SHORT=${short_liquidation:.2f}, Current=${current_price:.2f}")
+            logger.debug(f"🔍 LIQUIDATION RANGE: LONG=${long_liquidation:.2f}, SHORT=${short_liquidation:.2f}, Current=${current_price:.2f}")
             
             # Start with 1 month - fetch only candles within liquidation range
             # Progressive expansion happens in calculator if not enough swing points
@@ -259,7 +261,9 @@ class SRDataProvider:
             # Convert to list and sort by timestamp (oldest first)
             filtered_candles = sorted(all_candles.values(), key=lambda x: x.get('timestamp', 0))
             
-            logger.info(f"🔍 Smart query (price + time): Found {len(filtered_candles)} candles in liquidation range for {days} days")
+            # Only log if significant number found (reduce noise)
+            if len(filtered_candles) > 100:
+                logger.debug(f"🔍 Smart query: Found {len(filtered_candles)} candles in liquidation range for {days} days")
             
             return filtered_candles
             

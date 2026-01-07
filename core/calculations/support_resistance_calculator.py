@@ -16,6 +16,7 @@ from .sr_state import SRState
 from .base_calculator import BaseCalculator
 from .liquidation_calculator import LiquidationCalculator
 from .level import Level
+from .psychological_levels import PsychologicalLevelsCalculator
 
 if TYPE_CHECKING:
     from core.services.centralized_cache import CentralizedCache
@@ -56,6 +57,7 @@ class SupportResistanceCalculator(BaseCalculator):
         self._scorer = scorer or SRScorer()
         self._state = state_manager or SRState()
         self._liquidation_calc = LiquidationCalculator()
+        self._psychological_calc = PsychologicalLevelsCalculator()
         
         # Performance optimization: Track module update times
         self._last_module_updates = {}
@@ -207,7 +209,7 @@ class SupportResistanceCalculator(BaseCalculator):
             # Calculate liquidation prices once (used throughout)
             long_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
             short_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
-            logger.info(f"🔍 LIQUIDATION RANGE: LONG=${long_liquidation:.2f}, SHORT=${short_liquidation:.2f}, Current=${current_price:.2f}")
+            logger.debug(f"🔍 LIQUIDATION RANGE: LONG=${long_liquidation:.2f}, SHORT=${short_liquidation:.2f}, Current=${current_price:.2f}")
             
             # Progressive time expansion: Start with 1 month, expand if needed
             lookback_ranges = [
@@ -234,7 +236,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     logger.info(f"✅ Found sufficient levels: {len(support_levels)} support, {len(resistance_levels)} resistance")
                     break
                 
-                logger.info(f"📊 Processing {label} of data (liquidation range filtered)...")
+                logger.debug(f"📊 Processing {label} of data (liquidation range filtered)...")
                 
                 # Fetch 5m candles for this time range (price + time filtered at database level)
                 additional_5m_candles = self._data_provider._fetch_candles_in_liquidation_range(
@@ -252,7 +254,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 if new_5m_candles:
                     candles_data['5m'].extend(new_5m_candles)
                     candles_data['5m'].sort(key=lambda x: x.get('timestamp', 0))
-                    logger.info(f"🔍 Added {len(new_5m_candles)} 5m candles from {label} (total: {len(candles_data['5m'])})")
+                    logger.debug(f"🔍 Added {len(new_5m_candles)} 5m candles from {label} (total: {len(candles_data['5m'])})")
                 
                 # Fetch other timeframes for MTF alignment (no price filtering - just for swing detection)
                 candles_data['15m'] = historical_service.get_historical_candles("BTC", "15m", min(1000, days * 2)) or []
@@ -265,10 +267,18 @@ class SupportResistanceCalculator(BaseCalculator):
                     long_liquidation, short_liquidation
                 )
                 
-                # Merge with existing levels (avoid duplicates by price)
+                # Add psychological levels (separate from swing-based levels)
+                psychological_levels = self._psychological_calc.calculate_psychological_levels(
+                    current_price, long_liquidation, short_liquidation, days
+                )
+                
+                # Merge all levels (avoid duplicates by price)
                 existing_prices = {l.level for l in scored_levels}
                 new_levels = [l for l in processed_levels if l.level not in existing_prices]
+                new_psychological = [l for l in psychological_levels if l.level not in existing_prices]
+                
                 scored_levels.extend(new_levels)
+                scored_levels.extend(new_psychological)
                 
                 # Re-deduplicate and re-sort by score
                 final_dedup_tolerance = current_price * 0.0005
@@ -323,7 +333,9 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # 1. Detect swing points
             swing_points_5m, higher_tf_levels = self._detect_all_swing_points(candles_data, current_price)
-            logger.debug(f"🔍 Detected {len(swing_points_5m)} swing points")
+            # Only log if significant number of swing points (reduce noise)
+            if len(swing_points_5m) > 50:
+                logger.debug(f"🔍 Detected {len(swing_points_5m)} swing points")
             
             # 2. Cluster with scoring (strength × proximity × recency)
             cluster_tolerance = self._calculate_adaptive_tolerance(atr_14, current_price)
@@ -496,7 +508,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     logger.debug(f"🔍 No additional candles found in database (looking back {lookback_days} days)")
                     return clustered_levels
                 
-                logger.info(f"🔍 Found {len(additional_candles)} additional candles in database (looking back {lookback_days} days)")
+                logger.debug(f"🔍 Found {len(additional_candles)} additional candles in database (looking back {lookback_days} days)")
                 
                 # Detect swing points in the additional historical data
                 # Use a more sensitive swing detection to catch more potential touches
@@ -507,7 +519,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     timeframe="5m"
                 )
                 
-                logger.info(f"🔍 Found {len(additional_swing_points)} additional swing points in historical data")
+                logger.debug(f"🔍 Found {len(additional_swing_points)} additional swing points in historical data")
                 
                 # For each level with only 1 touch, check if any additional swing points match
                 updated_levels = []
@@ -610,8 +622,9 @@ class SupportResistanceCalculator(BaseCalculator):
                     "last_touch_timestamp": level.timestamp,
                     "mtf_count": level.mtf_count,
                     "mtf_confidence": level.mtf_confidence,
-                    "score_breakdown": level.score_breakdown,
-                    "merged_from": level.merged_from
+                    "score_breakdown": level.score_breakdown or {},  # Ensure dict exists
+                    "merged_from": level.merged_from,
+                    "is_psychological": level.score_breakdown.get("psychological", False) if level.score_breakdown else False
                 })
             
             # Sort by strength score - SCORING SYSTEM IS THE ONLY FACTOR (touch 50%, proximity 45%, volume 5%)
@@ -886,9 +899,21 @@ class SupportResistanceCalculator(BaseCalculator):
                             top_2_resistance_list.append(candidate_dict)
                             break
             
+            # Separate psychological levels from swing-based levels
+            psychological_levels_list = [
+                level for level in key_levels 
+                if level.get("is_psychological", False)
+            ]
+            swing_based_levels_list = [
+                level for level in key_levels 
+                if not level.get("is_psychological", False)
+            ]
+            
             result = {
                 "status": "ok",
-                "levels": key_levels,
+                "levels": key_levels,  # All levels combined
+                "psychological_levels": psychological_levels_list,  # Separate list
+                "swing_based_levels": swing_based_levels_list,  # Separate list
                 "metadata": {
                     "timestamp": current_time,
                     "symbol": self.symbol,
@@ -896,6 +921,8 @@ class SupportResistanceCalculator(BaseCalculator):
                     "atr_5m": atr_14,
                     "total_levels": len(scored_levels),
                     "filtered_levels": len(key_levels),
+                    "psychological_levels_count": len(psychological_levels_list),
+                    "swing_based_levels_count": len(swing_based_levels_list),
                     "active_levels": active_count,
                     "inactive_levels": inactive_count,
                     "mtf_confirmed": mtf_confirmed_count,
