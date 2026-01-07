@@ -581,6 +581,7 @@ class SRDetector:
             
             # Calculate initial cluster score as weighted average of point scores
             # This represents the base reversal probability before historical analysis
+            total_score_weight = sum(point_scores)
             if total_score_weight > 0:
                 initial_score = total_score_weight / len(points)  # Average score
             else:
