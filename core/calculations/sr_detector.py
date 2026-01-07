@@ -423,9 +423,24 @@ class SRDetector:
             if current_time is None:
                 current_time = time.time()
             
-            # Separate support and resistance - cluster each type separately
-            support_points = [sp for sp in swing_points if sp.level_type == 'support']
-            resistance_points = [sp for sp in swing_points if sp.level_type == 'resistance']
+            # Filter swing points by current price position:
+            # - Support points must be BELOW current price (still acting as support)
+            # - Resistance points must be ABOVE current price (still acting as resistance)
+            # This ensures we only cluster levels that are currently relevant
+            # Broken levels (support above price, resistance below price) are discarded
+            if current_price is not None:
+                support_points = [
+                    sp for sp in swing_points 
+                    if sp.level_type == 'support' and sp.level < current_price
+                ]
+                resistance_points = [
+                    sp for sp in swing_points 
+                    if sp.level_type == 'resistance' and sp.level > current_price
+                ]
+            else:
+                # If no current_price, use all points (fallback)
+                support_points = [sp for sp in swing_points if sp.level_type == 'support']
+                resistance_points = [sp for sp in swing_points if sp.level_type == 'resistance']
             
             clusters = []
             
