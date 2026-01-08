@@ -140,9 +140,6 @@ class RSICalculator:
                 # Keep RSI in valid range [0, 100]
                 self.current_rsi = max(0.0, min(100.0, self.current_rsi))
                 
-                # Log RSI reaction to price changes
-                logger.debug(f"📊 RSI reaction: Price ${self.last_price:.2f} → ${new_price:.2f} ({price_change_pct*100:+.3f}%) → RSI {self.baseline_rsi:.1f} → {self.current_rsi:.1f} ({rsi_adjustment*dampening:+.1f})")
-                
                 # Don't update last_price here - keep Hyperliquid price as reference point
             
             # Get comprehensive RSI analysis

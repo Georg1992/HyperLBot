@@ -1064,7 +1064,7 @@
                 if (market.rsi !== undefined) {
                     const rsiElement = document.getElementById('market-rsi');
                     if (rsiElement) {
-                        const rsiValue = parseFloat(market.rsi).toFixed(1);
+                        const rsiValue = parseFloat(market.rsi).toFixed(2);
                         rsiElement.textContent = rsiValue;
                         rsiElement.className = `data-value ${getRSIClass(parseFloat(market.rsi))}`;
                         console.log('📊 RSI updated:', rsiValue);
