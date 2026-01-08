@@ -26,7 +26,8 @@ class SupportResistanceCalculator(BaseCalculator):
     
     def __init__(self, symbol: str = "BTC", cache: Optional["CentralizedCache"] = None,
                  data_provider: Optional[SRDataProvider] = None, detector: Optional[SRDetector] = None, 
-                 scorer: Optional[SRScorer] = None, state_manager: Optional[SRState] = None):
+                 scorer: Optional[SRScorer] = None, state_manager: Optional[SRState] = None,
+                 strategy: str = "standard"):
         """
         Initialize the refactored Support/Resistance Calculator
         
@@ -36,9 +37,13 @@ class SupportResistanceCalculator(BaseCalculator):
             detector: SRDetector instance (injected dependency)
             scorer: SRScorer instance (injected dependency)
             state_manager: SRState instance (injected dependency)
+            strategy: Trading strategy name (default: "standard")
         """
         # Initialize base class
         super().__init__(symbol)
+        
+        # Store strategy for level selection
+        self._strategy = strategy
         
         # Inject centralized cache dependency first
         from core.services.centralized_cache import get_global_centralized_cache
@@ -53,7 +58,8 @@ class SupportResistanceCalculator(BaseCalculator):
             self._data_provider = data_provider
             
         self._detector = detector or SRDetector()
-        self._scorer = scorer or SRScorer()
+        # Create scorer with strategy-specific configuration
+        self._scorer = scorer or SRScorer(strategy=strategy)
         self._state = state_manager or SRState()
         self._liquidation_calc = LiquidationCalculator()
         
@@ -61,7 +67,7 @@ class SupportResistanceCalculator(BaseCalculator):
         self._last_module_updates = {}
         self._min_recalculation_interval = 300  # 5 minutes minimum
         
-        logger.info(f"📊 Refactored S/R Calculator initialized for {symbol} - Modular architecture")
+        logger.info(f"📊 Refactored S/R Calculator initialized for {symbol} - Strategy: {strategy}")
     
     def _calculate_adaptive_tolerance(self, atr_14: float, current_price: float) -> float:
         """
@@ -347,7 +353,7 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Failed to get latest S/R analysis: {e}")
             return self._create_error_result(str(e))
     
-    def calculate_multi_timeframe_levels(self, current_price: float) -> Dict[str, Any]:
+    def calculate_multi_timeframe_levels(self, current_price: float, strategy: str = None) -> Dict[str, Any]:
         """
         Clean S/R Algorithm: Find best support/resistance levels for trading
         
@@ -355,15 +361,27 @@ class SupportResistanceCalculator(BaseCalculator):
         1. Start with 1 month of data (liquidation + time filtered)
         2. Process: swing detection → clustering → MTF → filtering → scoring
         3. If not enough levels, progressively expand time range (3m → 6m → 1y → 2y → 5y)
-        4. Return top 2 support + 2 resistance levels (highest scores)
+        4. Return strategy-specific number of support/resistance levels (highest scores)
+        
+        Args:
+            current_price: Current market price
+            strategy: Trading strategy name (default: uses instance strategy)
         """
+        # Use provided strategy or instance strategy
+        active_strategy = strategy or self._strategy
+        
+        # Update scorer if strategy changed
+        if active_strategy != self._strategy:
+            from core.calculations.sr_scorer import SRScorer
+            self._scorer = SRScorer(strategy=active_strategy)
+            self._strategy = active_strategy
         try:
             current_time = time.time()
             
-            # Performance: Check cache first
+            # Performance: Check cache first (strategy-aware)
             last_update = self._last_module_updates.get('support_resistance', 0)
             if current_time - last_update < self._min_recalculation_interval:
-                cached_result = self._get_cached_analysis(current_price, current_time)
+                cached_result = self._get_cached_analysis(current_price, current_time, strategy=active_strategy)
                 if cached_result.get("status") == "ok":
                     return cached_result
             
@@ -440,10 +458,10 @@ class SupportResistanceCalculator(BaseCalculator):
                 scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
                 scored_levels.sort(key=lambda x: x.score or 0, reverse=True)
             
-            # Format and return results
+            # Format and return results (with strategy-specific selection)
             result = self._format_results_optimized(scored_levels, current_price, 
                                                    self._data_provider.calculate_atr(candles_data.get('5m', []), 14), 
-                                                   current_time)
+                                                   current_time, strategy=active_strategy)
             
             # Log final results
             top_2_support = result.get('top_2_support', [])
@@ -562,21 +580,23 @@ class SupportResistanceCalculator(BaseCalculator):
             pass
         return None
     
-    def _get_cache_key(self, current_price: float, current_time: float) -> str:
+    def _get_cache_key(self, current_price: float, current_time: float, strategy: str = None) -> str:
         """
-        Generate consistent cache key for S/R analysis with collision avoidance
+        Generate consistent cache key for S/R analysis with strategy awareness
         
         Args:
             current_price: Current price
             current_time: Current timestamp
+            strategy: Trading strategy name (for strategy-aware caching)
             
         Returns:
-            Cache key string with price precision to avoid collisions
+            Cache key string with strategy and price precision
         """
         timestamp_bucket = self._get_timestamp_bucket(current_time)
         # Use price with 2 decimal precision to avoid collisions
         price_key = f"{current_price:.2f}".replace('.', 'p')
-        return f"sr_analysis_{self.symbol}_5m_{timestamp_bucket}_{price_key}"
+        strategy_suffix = f"_{strategy}" if strategy else ""
+        return f"sr_analysis_{self.symbol}_5m_{timestamp_bucket}_{price_key}{strategy_suffix}"
     
     def _get_timestamp_bucket(self, current_time: float) -> int:
         """
@@ -590,20 +610,21 @@ class SupportResistanceCalculator(BaseCalculator):
         """
         return int(current_time // 300) * 300
     
-    def _get_cached_analysis(self, current_price: float, current_time: float) -> Dict[str, Any]:
+    def _get_cached_analysis(self, current_price: float, current_time: float, strategy: str = None) -> Dict[str, Any]:
         """
-        Get cached analysis if available with proper cache key structure
+        Get cached analysis if available with strategy-aware cache key
         
         Args:
             current_price: Current price
             current_time: Current timestamp
+            strategy: Trading strategy name (for strategy-aware caching)
             
         Returns:
             Cached analysis or error result
         """
         try:
-            # Create timestamp bucket (5-minute buckets)
-            cache_key = self._get_cache_key(current_price, current_time)
+            # Create timestamp bucket (5-minute buckets) with strategy
+            cache_key = self._get_cache_key(current_price, current_time, strategy=strategy)
             
             cached_data = self._cache.get(cache_key)
             if cached_data:
@@ -728,7 +749,7 @@ class SupportResistanceCalculator(BaseCalculator):
             return clustered_levels
     
     def _format_results_optimized(self, scored_levels: List, current_price: float, 
-                                 atr_14: float, current_time: float) -> Dict[str, Any]:
+                                 atr_14: float, current_time: float, strategy: str = None) -> Dict[str, Any]:
         """
         Format results with optimized performance and proper state management
         
@@ -737,6 +758,7 @@ class SupportResistanceCalculator(BaseCalculator):
             current_price: Current price
             atr_14: ATR for level status checking
             current_time: Current timestamp
+            strategy: Trading strategy name (for strategy-specific level selection)
             
         Returns:
             Formatted result dictionary
@@ -800,9 +822,15 @@ class SupportResistanceCalculator(BaseCalculator):
             active_support_candidates.sort(key=lambda x: x["strength_score"], reverse=True)
             active_resistance_candidates.sort(key=lambda x: x["strength_score"], reverse=True)
             
-            # Take top 2 of each (or all if less than 2) - these are already active
-            top_support = active_support_candidates[:2]
-            top_resistance = active_resistance_candidates[:2]
+            # Get strategy-specific configuration
+            from config.config import TradingConfig
+            strategy_config = TradingConfig.SR_LEVEL_SELECTION.get(strategy or "standard", TradingConfig.SR_LEVEL_SELECTION["standard"])
+            max_levels_per_side = strategy_config["max_levels_per_side"]
+            min_level_distance_pct = strategy_config["min_level_distance_pct"]
+            
+            # Take strategy-specific number of levels (or all if less) - these are already active
+            top_support = active_support_candidates[:max_levels_per_side]
+            top_resistance = active_resistance_candidates[:max_levels_per_side]
             
             # DIAGNOSTICS: If no active support found, log why
             if not active_support_candidates:
@@ -975,35 +1003,40 @@ class SupportResistanceCalculator(BaseCalculator):
             # Get state summary for metadata
             state_summary = self._state.get_state_summary()
             
-            # Build top 2 support and resistance lists - exactly 2 of each (best + secondary)
-            # If we don't have enough after filtering, look back at all scored levels to find secondary
-            top_2_support_list = []
+            # Build strategy-specific support and resistance lists
+            # If we don't have enough after filtering, look back at all scored levels to find additional levels
+            top_support_list = []
             if best_support > 0:
                 best_support_obj = next((level for level in support_levels if abs(level["price_level"] - best_support) < 1), None)
                 if best_support_obj:
-                    top_2_support_list.append(best_support_obj)
+                    top_support_list.append(best_support_obj)
             
-            # Try to add secondary support from filtered levels first
-            if secondary_support > 0 and abs(secondary_support - best_support) > current_price * 0.001:
+            # Add secondary support if available and meets distance requirement
+            if secondary_support > 0 and abs(secondary_support - best_support) > current_price * min_level_distance_pct:
                 secondary_support_obj = next((level for level in support_levels if abs(level["price_level"] - secondary_support) < 1), None)
                 if secondary_support_obj:
-                    top_2_support_list.append(secondary_support_obj)
+                    top_support_list.append(secondary_support_obj)
             
-            # If we only have 1 support, this should only happen in edge cases (all-time low with all support broken)
-            # The verification loop should have ensured we have 2+ levels, so this indicates a true edge case or bug
-            if len(top_2_support_list) == 1:
-                # Check if this is a true edge case (all-time low) or a bug
+            # Add additional support levels up to max_levels_per_side
+            if len(top_support_list) < max_levels_per_side:
+                # Try to find additional levels from all scored levels
                 all_support = [level for level in scored_levels 
                               if level.level_type == 'support' and
                               level.level < current_price and 
                               self._state.check_level_status(level, current_price, atr_14) == "active"]
-                if len(all_support) >= 2:
-                    # Try to find second from all levels
+                if len(all_support) > len(top_support_list):
+                    # Sort by score and add levels that meet distance requirement
                     sorted_all_support = sorted(all_support, key=lambda x: x.score, reverse=True)
                     for candidate in sorted_all_support:
-                        if abs(candidate.level - best_support) < 1:
+                        if len(top_support_list) >= max_levels_per_side:
+                            break
+                        # Check if already added
+                        if any(abs(candidate.level - level["price_level"]) < 1 for level in top_support_list):
                             continue
-                        if abs(candidate.level - best_support) > current_price * 0.001:
+                        # Check distance from all existing levels
+                        too_close = any(abs(candidate.level - level["price_level"]) <= current_price * min_level_distance_pct 
+                                       for level in top_support_list)
+                        if not too_close:
                             candidate_dict = {
                                 "price_level": candidate.level,
                                 "strength_score": candidate.score,
@@ -1011,36 +1044,41 @@ class SupportResistanceCalculator(BaseCalculator):
                                 "status": "active",
                                 "type": "support"
                             }
-                            top_2_support_list.append(candidate_dict)
-                            break
+                            top_support_list.append(candidate_dict)
             
-            top_2_resistance_list = []
+            top_resistance_list = []
+            # Add best resistance
             if best_resistance > 0:
                 best_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - best_resistance) < 1), None)
                 if best_resistance_obj:
-                    top_2_resistance_list.append(best_resistance_obj)
+                    top_resistance_list.append(best_resistance_obj)
             
-            # Try to add secondary resistance from filtered levels first
-            if secondary_resistance > 0 and abs(secondary_resistance - best_resistance) > current_price * 0.001:
+            # Add secondary resistance if available and meets distance requirement
+            if secondary_resistance > 0 and abs(secondary_resistance - best_resistance) > current_price * min_level_distance_pct:
                 secondary_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - secondary_resistance) < 1), None)
                 if secondary_resistance_obj:
-                    top_2_resistance_list.append(secondary_resistance_obj)
+                    top_resistance_list.append(secondary_resistance_obj)
             
-            # If we only have 1 resistance, this should only happen in edge cases (all-time high with all resistance broken)
-            # The verification loop should have ensured we have 2+ levels, so this indicates a true edge case or bug
-            if len(top_2_resistance_list) == 1:
-                # Check if this is a true edge case (all-time high) or a bug
+            # Add additional resistance levels up to max_levels_per_side
+            if len(top_resistance_list) < max_levels_per_side:
+                # Try to find additional levels from all scored levels
                 all_resistance = [level for level in scored_levels 
                                 if level.level_type == 'resistance' and
                                 level.level > current_price and 
                                 self._state.check_level_status(level, current_price, atr_14) == "active"]
-                if len(all_resistance) >= 2:
-                    # Try to find second from all levels
+                if len(all_resistance) > len(top_resistance_list):
+                    # Sort by score and add levels that meet distance requirement
                     sorted_all_resistance = sorted(all_resistance, key=lambda x: x.score, reverse=True)
                     for candidate in sorted_all_resistance:
-                        if abs(candidate.level - best_resistance) < 1:
+                        if len(top_resistance_list) >= max_levels_per_side:
+                            break
+                        # Check if already added
+                        if any(abs(candidate.level - level["price_level"]) < 1 for level in top_resistance_list):
                             continue
-                        if abs(candidate.level - best_resistance) > current_price * 0.001:
+                        # Check distance from all existing levels
+                        too_close = any(abs(candidate.level - level["price_level"]) <= current_price * min_level_distance_pct 
+                                       for level in top_resistance_list)
+                        if not too_close:
                             candidate_dict = {
                                 "price_level": candidate.level,
                                 "strength_score": candidate.score,
@@ -1048,8 +1086,7 @@ class SupportResistanceCalculator(BaseCalculator):
                                 "status": "active",
                                 "type": "resistance"
                             }
-                            top_2_resistance_list.append(candidate_dict)
-                            break
+                            top_resistance_list.append(candidate_dict)
             
             result = {
                 "status": "ok",
@@ -1072,9 +1109,9 @@ class SupportResistanceCalculator(BaseCalculator):
                     "support_score": support_score,
                     "resistance_score": resistance_score
                 },
-                # Top 2 support and resistance - exactly 2 levels: best + secondary
-                "top_2_support": top_2_support_list[:2],  # Ensure exactly 2
-                "top_2_resistance": top_2_resistance_list[:2],  # Ensure exactly 2
+                # Strategy-specific support and resistance levels
+                "top_2_support": top_support_list[:max_levels_per_side],  # Strategy-specific count
+                "top_2_resistance": top_resistance_list[:max_levels_per_side],  # Strategy-specific count
                 # Add root-level fields for dashboard compatibility
                 "strongest_support": strongest_support,
                 "strongest_resistance": strongest_resistance,
@@ -1086,8 +1123,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 )
             }
             
-            # Cache the result with proper key structure and TTL
-            cache_key = self._get_cache_key(current_price, current_time)
+            # Cache the result with strategy-aware key and TTL
+            cache_key = self._get_cache_key(current_price, current_time, strategy=strategy)
             
             self._cache.set(cache_key, result, ttl=300)  # 5-minute TTL
             

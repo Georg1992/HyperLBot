@@ -23,17 +23,19 @@ class SRScorer:
     - Manage MTF alignment and merging
     """
     
-    def __init__(self):
-        """Initialize the scorer with validated weights
+    def __init__(self, strategy: str = "standard"):
+        """Initialize the scorer with strategy-specific weights
         
         SCORING SYSTEM REPRESENTS REVERSAL PROBABILITY (0-100%)
         Score = estimated probability that price will reverse at this level
         
-        Weights: touch 40%, proximity 40%, recency 15%, volume 5%
-        - Touch count: More touches = higher reversal probability (price has reversed here before)
-        - Proximity: Closer to current price = higher probability (price is approaching)
-        - Recency: Recent touches = higher probability (level is still active/relevant)
-        - Volume: Higher volume = higher probability (more liquidity, stronger level)
+        Weights are strategy-specific:
+        - Scalping: favors proximity (60%) for quick trades
+        - Swing trading: favors touch count (60%) for strong levels
+        - Standard: balanced (40% proximity, 40% touch)
+        
+        Args:
+            strategy: Trading strategy name (default: "standard")
         
         Score interpretation:
         - 80-100%: Very high reversal probability (excellent trading level)
@@ -42,21 +44,34 @@ class SRScorer:
         - 20-39%: Low reversal probability (weak level)
         - 0-19%: Very low reversal probability (poor level)
         """
+        # Get strategy-specific configuration
+        from config.config import TradingConfig
+        sr_config = TradingConfig.SR_LEVEL_SELECTION.get(strategy, TradingConfig.SR_LEVEL_SELECTION["standard"])
+        
+        # Use strategy-specific scoring weights
+        strategy_weights = sr_config.get("scoring_weights", {
+            "proximity": 0.40,
+            "touch": 0.40,
+            "recency": 0.15,
+            "volume": 0.05
+        })
+        
         self._scoring_weights = {
             'mtf': 0.00,        # Multi-timeframe confirmation (0% - removed)
-            'proximity': 0.40,  # Distance from current price (40% - closer = higher score, further = penalty)
-            'touch': 0.40,      # Number of touches (40% - more touches = higher score)
-            'volume': 0.05,     # Volume confirmation (5% - execution quality)
-            'recency': 0.15     # Recency of last touch (15% - more recent = higher score)
+            'proximity': strategy_weights.get("proximity", 0.40),
+            'touch': strategy_weights.get("touch", 0.40),
+            'volume': strategy_weights.get("volume", 0.05),
+            'recency': strategy_weights.get("recency", 0.15)
         }
         
-        # Configurable decay factor for proximity
-        self.proximity_decay_k = TradingConfig.SR_PROXIMITY_DECAY_K
+        # Use strategy-specific proximity decay factor
+        self.proximity_decay_k = sr_config.get("proximity_decay_k", TradingConfig.SR_PROXIMITY_DECAY_K)
+        self._strategy = strategy
         
         # Validate weights sum to 1.0
         weight_sum = sum(self._scoring_weights.values())
         if abs(weight_sum - 1.0) > 0.001:
-            raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum}")
+            raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum} for strategy {strategy}")
         
         
     def calculate_reversal_probability(self, level: Level, current_price: float, 
@@ -257,16 +272,10 @@ class SRScorer:
             distance = abs(level.level - current_price)
             distance_pct = (distance / current_price) * 100.0 if current_price > 0 else 0.0
             
-            # k_prox = 0.10 means reduced proximity weighting (reversal probability is primary):
-            # - At 0% distance: multiplier = 1.0 (no change)
-            # - At 0.5% distance: multiplier ≈ 0.95 (5% penalty)
-            # - At 1% distance: multiplier ≈ 0.90 (10% penalty)
-            # - At 2% distance: multiplier ≈ 0.82 (18% penalty)
-            # - At 3% distance: multiplier ≈ 0.74 (26% penalty)
-            # - At 5% distance: multiplier ≈ 0.61 (39% penalty)
-            # - At 10% distance: multiplier ≈ 0.37 (63% penalty)
-            # Historical reversal probability remains the primary factor, proximity is secondary
-            k_prox = 0.10  # Reduced decay constant - reversal probability is most important
+            # Use strategy-specific proximity decay constant
+            # Higher k_prox = more proximity sensitive (faster decay with distance)
+            # Lower k_prox = less proximity sensitive (slower decay with distance)
+            k_prox = self.proximity_decay_k  # Strategy-specific decay constant
             proximity_multiplier = math.exp(-k_prox * distance_pct)
             
             # Apply proximity multiplier

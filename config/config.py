@@ -48,6 +48,114 @@ class TradingConfig:
     # With ATR ~$78: 1.6% away (~$1,500) gets ~42 pts, 3.4% away (~$3,100) gets ~11 pts
     # This ensures proximity (75% weight) can overcome touch differences for actionable levels
     
+    # Strategy-Based Support/Resistance Level Selection
+    # Each strategy has different needs for S/R level selection:
+    # - max_levels_per_side: How many levels to return (scalping=1, swing=3-5, standard=2)
+    # - scoring_weights: How to weight factors (scalping=favors proximity, swing=favors touch count)
+    # - proximity_decay_k: Distance sensitivity (higher=more proximity sensitive)
+    # - min_level_distance_pct: Minimum distance between levels (0.1% = $100 at $100k)
+    SR_LEVEL_SELECTION = {
+        "scalping": {
+            "max_levels_per_side": 1,  # Only need closest level for quick trades
+            "scoring_weights": {
+                "proximity": 0.60,  # Proximity is critical (60%)
+                "touch": 0.30,      # Touch count matters but less (30%)
+                "recency": 0.08,    # Recent touches important (8%)
+                "volume": 0.02      # Volume less critical (2%)
+            },
+            "proximity_decay_k": 0.15,  # Higher = more proximity sensitive
+            "min_level_distance_pct": 0.0005  # 0.05% minimum distance
+        },
+        "swing_trading": {
+            "max_levels_per_side": 3,  # Need multiple levels for swing targets
+            "scoring_weights": {
+                "proximity": 0.20,  # Proximity less important (20%)
+                "touch": 0.60,      # Touch count is primary (60%)
+                "recency": 0.15,    # Recency matters (15%)
+                "volume": 0.05      # Volume confirmation (5%)
+            },
+            "proximity_decay_k": 0.05,  # Lower = less proximity sensitive
+            "min_level_distance_pct": 0.002  # 0.2% minimum distance
+        },
+        "trend_following": {
+            "max_levels_per_side": 2,  # Need support/resistance for trend confirmation
+            "scoring_weights": {
+                "proximity": 0.30,  # Moderate proximity (30%)
+                "touch": 0.50,      # Touch count is important (50%)
+                "recency": 0.15,    # Recent touches matter (15%)
+                "volume": 0.05      # Volume confirmation (5%)
+            },
+            "proximity_decay_k": 0.08,  # Moderate proximity sensitivity
+            "min_level_distance_pct": 0.0015  # 0.15% minimum distance
+        },
+        "breakout": {
+            "max_levels_per_side": 2,  # Need levels to break through
+            "scoring_weights": {
+                "proximity": 0.35,  # Proximity important for breakout targets (35%)
+                "touch": 0.45,      # Touch count critical (45%)
+                "recency": 0.15,    # Recent touches matter (15%)
+                "volume": 0.05      # Volume confirmation (5%)
+            },
+            "proximity_decay_k": 0.10,  # Moderate-high proximity sensitivity
+            "min_level_distance_pct": 0.001  # 0.1% minimum distance
+        },
+        "range_trading": {
+            "max_levels_per_side": 2,  # Need range boundaries
+            "scoring_weights": {
+                "proximity": 0.40,  # Proximity important for range boundaries (40%)
+                "touch": 0.40,      # Touch count equally important (40%)
+                "recency": 0.15,    # Recent touches matter (15%)
+                "volume": 0.05      # Volume confirmation (5%)
+            },
+            "proximity_decay_k": 0.10,  # Moderate proximity sensitivity
+            "min_level_distance_pct": 0.001  # 0.1% minimum distance
+        },
+        "low_volatility_range": {
+            "max_levels_per_side": 2,  # Need tight range boundaries
+            "scoring_weights": {
+                "proximity": 0.45,  # Proximity very important in tight ranges (45%)
+                "touch": 0.35,      # Touch count important (35%)
+                "recency": 0.15,    # Recent touches matter (15%)
+                "volume": 0.05      # Volume confirmation (5%)
+            },
+            "proximity_decay_k": 0.12,  # Higher proximity sensitivity for tight ranges
+            "min_level_distance_pct": 0.0008  # 0.08% minimum distance (tighter)
+        },
+        "high_volatility": {
+            "max_levels_per_side": 2,  # Need strong levels for volatile markets
+            "scoring_weights": {
+                "proximity": 0.30,  # Proximity less important in volatile markets (30%)
+                "touch": 0.50,      # Touch count critical for strength (50%)
+                "recency": 0.15,    # Recent touches matter (15%)
+                "volume": 0.05      # Volume confirmation (5%)
+            },
+            "proximity_decay_k": 0.08,  # Moderate proximity sensitivity
+            "min_level_distance_pct": 0.002  # 0.2% minimum distance
+        },
+        "spike_hunting": {
+            "max_levels_per_side": 1,  # Only need strongest level for spike targets
+            "scoring_weights": {
+                "proximity": 0.25,  # Proximity less important (25%)
+                "touch": 0.60,      # Touch count is critical for spike resistance (60%)
+                "recency": 0.10,    # Recency less important (10%)
+                "volume": 0.05      # Volume confirmation (5%)
+            },
+            "proximity_decay_k": 0.06,  # Lower proximity sensitivity
+            "min_level_distance_pct": 0.003  # 0.3% minimum distance
+        },
+        "standard": {  # Default behavior (current implementation)
+            "max_levels_per_side": 2,
+            "scoring_weights": {
+                "proximity": 0.40,  # Current default (40%)
+                "touch": 0.40,      # Current default (40%)
+                "recency": 0.15,    # Current default (15%)
+                "volume": 0.05      # Current default (5%)
+            },
+            "proximity_decay_k": 0.10,  # Current default
+            "min_level_distance_pct": 0.001  # Current default (0.1%)
+        }
+    }
+    
     # Strategy Configurations
     STRATEGY_CONFIGS = {
     "standard": {

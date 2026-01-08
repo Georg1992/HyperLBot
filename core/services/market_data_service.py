@@ -217,15 +217,21 @@ class MarketDataService:
             "error": "Default trend data"
         }
     
-    def get_support_resistance_analysis(self) -> Dict[str, Any]:
-        """Get S/R analysis from SupportResistanceCalculator"""
+    def get_support_resistance_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
+        """Get S/R analysis from SupportResistanceCalculator
+        
+        Args:
+            strategy: Trading strategy name (default: "standard")
+        """
         try:
-            sr_data = self._get_processed_data("support_resistance")
+            # Use strategy-aware cache key
+            cache_key = f"support_resistance_{strategy}"
+            sr_data = self._cache.get(cache_key)
             if sr_data:
                 return sr_data
             
             if "support_resistance" in self._analysis_modules:
-                logger.info("📊 Triggering S/R analysis...")
+                logger.info(f"📊 Triggering S/R analysis (strategy: {strategy})...")
                 # Get current price for S/R calculation
                 current_price = None
                 if self.hyperliquid_websocket:
@@ -233,7 +239,22 @@ class MarketDataService:
                 elif self.hyperliquid_api:
                     current_price = self.hyperliquid_api.get_current_price("BTC")
                 
-                return self._analysis_modules["support_resistance"].get_latest_analysis(current_price)
+                if not current_price or current_price <= 0:
+                    logger.warning("⚠️ No valid current price for S/R analysis")
+                    return {}
+                
+                # Pass strategy to SR calculator
+                sr_calculator = self._analysis_modules["support_resistance"]
+                if hasattr(sr_calculator, 'calculate_multi_timeframe_levels'):
+                    result = sr_calculator.calculate_multi_timeframe_levels(current_price, strategy=strategy)
+                    # Cache with strategy-aware key
+                    self._cache.set(cache_key, result, ttl=300)
+                    return result
+                else:
+                    result = sr_calculator.get_latest_analysis(current_price)
+                    # Cache with strategy-aware key
+                    self._cache.set(cache_key, result, ttl=300)
+                    return result
             
             logger.warning("⚠️ No S/R analysis module registered")
             return {}
@@ -360,7 +381,7 @@ class MarketDataService:
                 "trend": trend_data,
                 "volatility": volatility_data,
                 "volume": volume_data,
-                "support_resistance": self.get_support_resistance_analysis(),
+                "support_resistance": self.get_support_resistance_analysis(strategy),
                 "pressure": self.get_pressure_analysis(),
                 "patterns": self.get_pattern_analysis(),
                 
