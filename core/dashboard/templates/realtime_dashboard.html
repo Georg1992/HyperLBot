@@ -1246,9 +1246,9 @@
                 }
                 
                 if (rsiValue !== null && !isNaN(rsiValue)) {
-                    rsiElement.textContent = rsiValue.toFixed(1);
+                    rsiElement.textContent = rsiValue.toFixed(2);
                     rsiElement.className = `data-value ${getRSIClass(rsiValue)}`;
-                    console.log('📊 RSI displayed:', rsiValue.toFixed(1));
+                    console.log('📊 RSI displayed:', rsiValue.toFixed(2));
                 } else {
                     rsiElement.textContent = 'N/A';
                     rsiElement.className = 'data-value trend-neutral';
