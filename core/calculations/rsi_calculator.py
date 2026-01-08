@@ -90,6 +90,13 @@ class RSICalculator:
             self.wilder_avg_loss = avg_loss  # Store Wilder's smoothed values
             self.rsi_initialized = True
             
+            # CRITICAL FIX: Reset last_price to the close price of the most recent completed candle
+            # This ensures real-time interpolation uses the correct reference point (candle close)
+            # Without this, RSI drifts over time because it calculates from an old reference price
+            if closes:
+                self.last_price = closes[-1]  # Reset to last candle's close price
+                logger.debug(f"🔬 Baseline RSI reset: {self.baseline_rsi:.2f}, last_price reset to ${self.last_price:.2f} (candle close)")
+            
             # Store price history for real-time updates
             self.price_history.extend(closes)
             
