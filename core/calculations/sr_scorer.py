@@ -257,16 +257,16 @@ class SRScorer:
             distance = abs(level.level - current_price)
             distance_pct = (distance / current_price) * 100.0 if current_price > 0 else 0.0
             
-            # k_prox = 0.25 means stronger proximity weighting:
+            # k_prox = 0.10 means reduced proximity weighting (reversal probability is primary):
             # - At 0% distance: multiplier = 1.0 (no change)
-            # - At 0.5% distance: multiplier ≈ 0.88 (12% penalty)
-            # - At 1% distance: multiplier ≈ 0.78 (22% penalty)
-            # - At 2% distance: multiplier ≈ 0.61 (39% penalty)
-            # - At 3% distance: multiplier ≈ 0.47 (53% penalty)
-            # - At 5% distance: multiplier ≈ 0.29 (71% penalty)
-            # - At 10% distance: multiplier ≈ 0.08 (92% penalty)
-            # This ensures levels very close to current price get significantly higher scores
-            k_prox = 0.25  # Increased decay constant for stronger proximity weighting
+            # - At 0.5% distance: multiplier ≈ 0.95 (5% penalty)
+            # - At 1% distance: multiplier ≈ 0.90 (10% penalty)
+            # - At 2% distance: multiplier ≈ 0.82 (18% penalty)
+            # - At 3% distance: multiplier ≈ 0.74 (26% penalty)
+            # - At 5% distance: multiplier ≈ 0.61 (39% penalty)
+            # - At 10% distance: multiplier ≈ 0.37 (63% penalty)
+            # Historical reversal probability remains the primary factor, proximity is secondary
+            k_prox = 0.10  # Reduced decay constant - reversal probability is most important
             proximity_multiplier = math.exp(-k_prox * distance_pct)
             
             # Apply proximity multiplier
