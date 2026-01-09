@@ -201,6 +201,20 @@ class StrategyManager:
         market_condition = market_conditions.get("condition", "NEUTRAL") if isinstance(market_conditions, dict) else "NEUTRAL"
         risk_level = market_conditions.get("risk_level", "MEDIUM") if isinstance(market_conditions, dict) else "MEDIUM"
         
+        # Pattern data
+        patterns_data = market_data.get("patterns", {})
+        patterns_nested = patterns_data.get("patterns_nested", {}) if isinstance(patterns_data, dict) else {}
+        patterns_flat = patterns_data.get("patterns", []) if isinstance(patterns_data, dict) else []
+        pattern_confidence = patterns_data.get("overall_confidence", 0.0) if isinstance(patterns_data, dict) else 0.0
+        
+        # Extract pattern categories for strategy selection
+        reversal_patterns = patterns_nested.get("reversal_patterns", []) if isinstance(patterns_nested, dict) else []
+        continuation_patterns = patterns_nested.get("continuation_patterns", []) if isinstance(patterns_nested, dict) else []
+        triangle_patterns = patterns_nested.get("triangle_patterns", []) if isinstance(patterns_nested, dict) else []
+        channel_patterns = patterns_nested.get("channel_patterns", []) if isinstance(patterns_nested, dict) else []
+        wedge_patterns = patterns_nested.get("wedge_patterns", []) if isinstance(patterns_nested, dict) else []
+        trend_patterns = patterns_nested.get("trend_patterns", []) if isinstance(patterns_nested, dict) else []
+        
         return {
             "volatility_category": volatility_category,
             "volatility_5m": volatility_5m,
@@ -224,8 +238,28 @@ class StrategyManager:
             "funding_direction": funding_direction,
             "funding_strength": funding_strength,
             "market_condition": market_condition,
-            "risk_level": risk_level
+            "risk_level": risk_level,
+            # Pattern data for strategy selection
+            "pattern_confidence": pattern_confidence,
+            "reversal_patterns": reversal_patterns,
+            "continuation_patterns": continuation_patterns,
+            "triangle_patterns": triangle_patterns,
+            "channel_patterns": channel_patterns,
+            "wedge_patterns": wedge_patterns,
+            "trend_patterns": trend_patterns
         }
+    
+    def _has_pattern_in_list(self, pattern_list: List[Dict[str, Any]], pattern_names: List[str]) -> bool:
+        """Helper method to check if any pattern in list matches pattern_names"""
+        if not pattern_list or not isinstance(pattern_list, list):
+            return False
+        for pattern in pattern_list:
+            if not isinstance(pattern, dict):
+                continue
+            pattern_name = pattern.get("pattern", "").upper()
+            if any(name.upper() in pattern_name for name in pattern_names):
+                return True
+        return False
     
     def _score_strategy(self, strategy_name: str, data: Dict[str, Any]) -> tuple:
         """Score a strategy based on all available market data"""
@@ -342,14 +376,6 @@ class StrategyManager:
             score -= 20.0
             factors.append(f"{vol_cat} volume (insufficient)")
         
-        # S/R: Strong resistance for spike targets (20 points)
-        if data["strongest_resistance"] > 0 and len(data["top_resistance"]) > 0:
-            score += 20.0
-            factors.append("Strong resistance levels identified")
-        else:
-            score -= 10.0
-            factors.append("No strong resistance levels")
-        
         # Market condition: Acceptable risk (10 points)
         if data["risk_level"] in ["LOW", "MEDIUM"]:
             score += 10.0
@@ -361,7 +387,7 @@ class StrategyManager:
         return max(0.0, score), factors
     
     def _score_trend_following(self, data: Dict[str, Any]) -> tuple:
-        """Score trend following - requires strong trend + funding alignment + volume"""
+        """Score trend following - requires strong trend + funding alignment + volume + continuation patterns"""
         score = 0.0
         factors = []
         
@@ -383,13 +409,27 @@ class StrategyManager:
             score -= 25.0
             factors.append(f"{data['trend_direction']} trend (no trend)")
         
-        # Funding: Alignment with trend (25 points)
+        # Patterns: Continuation patterns confirm trend (25 points)
+        if self._has_pattern_in_list(data.get("continuation_patterns", []), ["BULLISH_CONTINUATION", "BEARISH_CONTINUATION"]):
+            score += 25.0
+            factors.append("Continuation pattern (trend confirmation)")
+        elif self._has_pattern_in_list(data.get("trend_patterns", []), ["TREND"]):
+            score += 15.0
+            factors.append("Trend pattern detected")
+        elif self._has_pattern_in_list(data.get("triangle_patterns", []), ["ASCENDING_TRIANGLE", "DESCENDING_TRIANGLE"]):
+            score += 10.0
+            factors.append("Trending triangle pattern")
+        else:
+            score += 5.0
+            factors.append("No continuation patterns")
+        
+        # Funding: Alignment with trend (20 points)
         funding_dir = data["funding_direction"]
         if data["trend_direction"] == "BULLISH" and funding_dir == "INCREASING":
-            score += 25.0
+            score += 20.0
             factors.append("Funding aligns with bullish trend")
         elif data["trend_direction"] == "BEARISH" and funding_dir == "DECREASING":
-            score += 25.0
+            score += 20.0
             factors.append("Funding aligns with bearish trend")
         elif funding_dir == "STABLE":
             score += 10.0
@@ -398,10 +438,10 @@ class StrategyManager:
             score -= 15.0
             factors.append(f"Funding misaligned ({funding_dir})")
         
-        # Volume: High volume confirms trend (20 points)
+        # Volume: High volume confirms trend (15 points)
         vol_cat = data["volume_category"]
         if vol_cat in ["HIGH", "VERY_HIGH", "EXTREME"]:
-            score += 20.0
+            score += 15.0
             factors.append(f"{vol_cat} volume confirms trend")
         elif vol_cat == "NORMAL":
             score += 10.0
@@ -410,9 +450,9 @@ class StrategyManager:
             score -= 10.0
             factors.append(f"{vol_cat} volume (weak)")
         
-        # Volatility: Moderate to high (15 points)
+        # Volatility: Moderate to high (10 points)
         if data["volatility_category"] in ["MODERATE", "HIGH"]:
-            score += 15.0
+            score += 10.0
             factors.append(f"{data['volatility_category']} volatility")
         elif data["volatility_category"] == "EXTREME":
             score -= 10.0
@@ -499,20 +539,23 @@ class StrategyManager:
         return max(0.0, score), factors
     
     def _score_range_trading(self, data: Dict[str, Any]) -> tuple:
-        """Score range trading - requires S/R levels + sideways trend"""
+        """Score range trading - requires S/R levels + sideways trend + range patterns"""
         score = 0.0
         factors = []
         
-        # S/R: Strong levels required (40 points)
-        if len(data["top_support"]) >= 2 and len(data["top_resistance"]) >= 2:
-            score += 40.0
-            factors.append("Strong S/R levels identified")
-        elif len(data["top_support"]) >= 1 and len(data["top_resistance"]) >= 1:
+        # Patterns: Range patterns strongly indicate range trading (30 points)
+        if self._has_pattern_in_list(data.get("channel_patterns", []), ["CHANNEL", "HORIZONTAL_CHANNEL"]):
+            score += 30.0
+            factors.append("Channel pattern detected (strong range signal)")
+        elif self._has_pattern_in_list(data.get("triangle_patterns", []), ["SYMMETRICAL_TRIANGLE"]):
             score += 20.0
-            factors.append("Some S/R levels")
+            factors.append("Symmetrical triangle (range-bound)")
+        elif self._has_pattern_in_list(data.get("wedge_patterns", []), ["WEDGE"]):
+            score += 15.0
+            factors.append("Wedge pattern (range potential)")
         else:
-            score -= 30.0
-            factors.append("No S/R levels (critical)")
+            score += 5.0
+            factors.append("No range patterns")
         
         # Trend: Sideways required (30 points)
         if data["trend_direction"] == "SIDEWAYS":
@@ -544,7 +587,7 @@ class StrategyManager:
         return max(0.0, score), factors
     
     def _score_low_volatility_range(self, data: Dict[str, Any]) -> tuple:
-        """Score low volatility range - requires LOW volatility + S/R + sideways"""
+        """Score low volatility range - requires LOW volatility + sideways trend + range patterns"""
         score = 0.0
         factors = []
         
@@ -564,13 +607,16 @@ class StrategyManager:
             score -= 20.0
             factors.append(f"{data['trend_direction']} trend (not sideways)")
         
-        # S/R: Need levels (20 points)
-        if len(data["top_support"]) >= 1 and len(data["top_resistance"]) >= 1:
+        # Patterns: Range patterns confirm low volatility range (20 points)
+        if self._has_pattern_in_list(data.get("channel_patterns", []), ["CHANNEL", "HORIZONTAL_CHANNEL"]):
             score += 20.0
-            factors.append("S/R levels identified")
+            factors.append("Channel pattern (range confirmation)")
+        elif self._has_pattern_in_list(data.get("triangle_patterns", []), ["SYMMETRICAL_TRIANGLE"]):
+            score += 15.0
+            factors.append("Symmetrical triangle (range potential)")
         else:
-            score -= 15.0
-            factors.append("No S/R levels")
+            score += 5.0
+            factors.append("No range patterns")
         
         # Volume: Low is acceptable (10 points)
         if data["volume_category"] in ["LOW", "NORMAL"]:

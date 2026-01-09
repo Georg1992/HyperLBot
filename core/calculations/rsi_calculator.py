@@ -134,8 +134,8 @@ class RSICalculator:
                 price_change_pct = (new_price - self.last_price) / self.last_price
                 
                 # RSI sensitivity: Balanced reactivity to price changes for real-time updates
-                # 1% price move ≈ 21 RSI points (reduced sensitivity - less fluctuation)
-                rsi_sensitivity = 21.0  # Reduced sensitivity to minimize excessive fluctuation
+                # 1% price move ≈ 19 RSI points (reduced sensitivity - less fluctuation)
+                rsi_sensitivity = 19.0  # Reduced sensitivity to minimize excessive fluctuation
                 
                 # Calculate RSI adjustment based on price movement
                 rsi_adjustment = price_change_pct * 100 * rsi_sensitivity
