@@ -228,8 +228,7 @@ class CentralizedCache:
             
         except Exception as e:
             logger.error(f"❌ Cache get_or_set failed for {key}: {e}")
-            # Fallback to factory function
-            return factory_func()
+            raise
     
     def _is_valid(self, key: str) -> bool:
         """Check if cache entry is still valid"""

@@ -291,15 +291,12 @@ class EventDrivenTradingDashboard:
                 logger.error("❌ Dashboard service not available")
                 return self._get_error_data("Dashboard service not available")
             
-            # Check for stale sessions and auto-cleanup (less aggressive)
-            # Only cleanup every 30 seconds to avoid interfering with fresh sessions
+            # Check for stale sessions and auto-cleanup
             if not hasattr(self, '_last_cleanup_time'):
                 self._last_cleanup_time = 0
             
             current_time = time.time()
-            if current_time - self._last_cleanup_time > 30:  # 30 second interval
-                # Auto-cleanup is now handled by heartbeat check
-                pass
+            if current_time - self._last_cleanup_time > 30:
                 self._last_cleanup_time = current_time
             
             # Get ALL data from DashboardService - SINGLE SOURCE OF TRUTH

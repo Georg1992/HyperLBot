@@ -122,19 +122,7 @@ class SRDataProvider:
         """
         try:
             if not current_price or current_price <= 0:
-                # NO FALLBACKS - Current price is required for proper S/R calculation
                 raise ValueError("Current price is required for S/R calculation - NO FALLBACKS")
-                
-                atr_per_tf = self._calculate_atr_for_all_timeframes(
-                    {"5m": candles_5m, "15m": candles_15m, "1h": candles_1h, "1d": candles_1d}
-                )
-                
-                return {
-                    "5m": candles_5m or [],
-                    "15m": candles_15m or [],
-                    "1h": candles_1h or [],
-                    "1d": candles_1d or []
-                }, atr_per_tf
             
             # Calculate liquidation prices if not provided
             if long_liquidation is None or short_liquidation is None:

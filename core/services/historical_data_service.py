@@ -22,20 +22,24 @@ class HistoricalDataService:
         from core.services.candle_storage import CandleStorage
         self._candle_storage = CandleStorage(symbol="BTC")
         
-        # Backfill missing candles on startup (only if database already has data)
-        # For initial 5-year download, use: python scripts/init_candle_storage.py
-        # Database is REQUIRED - no fallbacks
+        # Database should have 5 years of historical data
+        # On bot startup: backfill missing candles from last stored candle to now
         try:
             candle_count = self._candle_storage.get_candle_count()
-            if candle_count > 0:
-                # Database has data, backfill missing candles
-                self._candle_storage.backfill_missing_candles()
-                logger.info(f"💾 Candle storage database initialized with {candle_count:,} candles - database is the ONLY source for candle data")
+            
+            if candle_count == 0:
+                # Database is empty - initialize with 5 years of historical data
+                logger.info("📥 Candle storage database is empty - initializing with 5 years of historical data...")
+                self._candle_storage.initialize_with_historical_data(years=5.0)
+                candle_count = self._candle_storage.get_candle_count()
+                logger.info(f"✅ Candle storage initialized with {candle_count:,} candles")
             else:
-                # Database is empty - this is an error, not a warning
-                logger.error("❌ Candle storage database is empty - database is REQUIRED")
-                logger.error("💡 Run 'python scripts/init_candle_storage.py' to initialize with 5 years of data")
-                raise ValueError("Candle storage database is empty - database is required as the only source of candle data")
+                # Database has data - backfill missing candles from last candle to now
+                logger.info(f"💾 Candle storage has {candle_count:,} candles - backfilling missing candles...")
+                self._candle_storage.backfill_missing_candles()
+                final_count = self._candle_storage.get_candle_count()
+                logger.info(f"✅ Candle storage database ready with {final_count:,} candles")
+            
         except Exception as e:
             logger.error(f"❌ Failed to initialize candle storage: {e}")
             # Database is REQUIRED - raise error instead of continuing
@@ -218,14 +222,10 @@ class HistoricalDataService:
                 if is_ongoing_candle:
                     # Last candle is the current ongoing one - remove it from historical, we'll create a fresh ongoing candle
                     chart_candles_5m = chart_candles_5m[:-1]
-                    logger.debug(f"📊 Removed ongoing candle from historical (timestamp: {last_candle_timestamp}, current start: {candle_start_timestamp}, age: {candle_age:.0f}s)")
                 else:
                     # Last candle is completed - keep only 19 to make room for ongoing candle (total 20)
                     if len(chart_candles_5m) > 19:
                         chart_candles_5m = chart_candles_5m[-19:]  # Keep only last 19 completed candles
-                    logger.debug(f"📊 Keeping last {len(chart_candles_5m)} completed candles (last timestamp: {last_candle_timestamp}, current start: {candle_start_timestamp}, age: {candle_age:.0f}s)")
-            
-            logger.debug(f"📊 Chart data prepared using fetched candles: {len(chart_candles_5m)} historical")
             
             # Create ongoing candle using utility method
             ongoing_candle = self._create_ongoing_candle(

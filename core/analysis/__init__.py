@@ -7,17 +7,11 @@ This package provides comprehensive market analysis capabilities with clear sepa
 between real-time and historical analysis:
 
 REAL-TIME ANALYSIS (core/analysis/real_time/):
-- orderbook_data_fetcher.py: Fetches orderbook data from Hyperliquid API
-- volatility_calculator.py: Real-time volatility calculations
-- volume_calculator.py: Volume analysis calculations
-- pressure_calculator.py: Market pressure calculations
-- rsi_calculator.py: RSI calculations
-- support_resistance_calculator.py: Support/resistance calculations
-- trend_calculator.py: Trend analysis calculations
+- Real-time analysis modules for market data processing
+- Note: Calculators are in core/calculations/, analyzers are here
 
 HISTORICAL ANALYSIS (core/analysis/historical/):
-- historical_data_coordinator.py: Historical data coordination and analysis
-- variability_analyzer.py: Historical variability analysis from candle data
+- Historical data coordination is handled by HistoricalDataService
 
 DATA SOURCES:
 - Real-time: Hyperliquid API, live orderbooks

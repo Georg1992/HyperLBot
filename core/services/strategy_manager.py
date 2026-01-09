@@ -11,6 +11,14 @@ from loguru import logger
 from config.config import TradingConfig
 
 
+class SimpleRecommendation:
+    """Recommendation data structure for strategy selection"""
+    def __init__(self, strategy: str, reasoning: str, confidence: float):
+        self.strategy = strategy
+        self.reasoning = reasoning
+        self.confidence = confidence
+
+
 class StrategyManager:
     """
     Centralized strategy management component
@@ -48,6 +56,11 @@ class StrategyManager:
         
         logger.info("🎯 Strategy Manager initialized - Centralized strategy management")
         logger.info(f"   🎯 Current strategy: {self.current_strategy}")
+    
+    @staticmethod
+    def _safe_get(data: Any, key: str, default: Any) -> Any:
+        """Safely get value from dict, return default if not dict or key missing"""
+        return data.get(key, default) if isinstance(data, dict) else default
     
     def detect_optimal_strategy(self, market_data: Dict[str, Any]) -> str:
         """
@@ -111,13 +124,30 @@ class StrategyManager:
             strategy_scores = {}
             for strategy_name in self.strategy_configs.keys():
                 score, factors = self._score_strategy(strategy_name, data)
+                # Ensure score is always a float - handle all types safely
+                try:
+                    score = float(score) if score is not None else 0.0
+                except (ValueError, TypeError):
+                    score = 0.0
                 strategy_scores[strategy_name] = {
                     "score": score,
                     "factors": factors
                 }
             
-            # Select best strategy
-            best_strategy = max(strategy_scores.items(), key=lambda x: x[1]["score"])
+            # Select best strategy - ensure safe float conversion
+            def safe_get_score(item):
+                try:
+                    if not isinstance(item, tuple) or len(item) < 2:
+                        return 0.0
+                    score_data = item[1]
+                    if not isinstance(score_data, dict):
+                        return 0.0
+                    score_val = score_data.get("score", 0.0)
+                    return float(score_val) if score_val is not None else 0.0
+                except (ValueError, TypeError, AttributeError, IndexError):
+                    return 0.0
+            
+            best_strategy = max(strategy_scores.items(), key=safe_get_score)
             strategy_name = best_strategy[0]
             score_data = best_strategy[1]
             
@@ -130,36 +160,39 @@ class StrategyManager:
             # Build reasoning from factors
             reasoning = self._build_reasoning(strategy_name, score_data["factors"], confidence)
             
-            # Create recommendation object
-            class Recommendation:
-                def __init__(self, strategy, reasoning, confidence):
-                    self.strategy = strategy
-                    self.reasoning = reasoning
-                    self.confidence = confidence
-            
-            logger.debug(f"📊 Strategy scores: {[(s, d['score']) for s, d in sorted(strategy_scores.items(), key=lambda x: x[1]['score'], reverse=True)[:3]]}")
+            # Safe conversion for logging
+            try:
+                top_3 = sorted(strategy_scores.items(), key=safe_get_score, reverse=True)[:3]
+                score_display = [(s, float(d.get('score', 0.0))) for s, d in top_3]
+                logger.debug(f"📊 Strategy scores: {score_display}")
+            except Exception as e:
+                logger.debug(f"📊 Strategy scores: {[(s, d.get('score', 'N/A')) for s, d in list(strategy_scores.items())[:3]]}")
             logger.info(f"📊 Selected: {strategy_name} (score: {score_data['score']:.2f}, confidence: {confidence:.2f})")
             
-            return Recommendation(strategy_name, reasoning, confidence)
+            return SimpleRecommendation(strategy_name, reasoning, confidence)
                 
         except Exception as e:
             logger.error(f"❌ Strategy selection failed: {e}")
-            # Create fallback recommendation with low confidence
-            class Recommendation:
-                def __init__(self, strategy, reasoning, confidence):
-                    self.strategy = strategy
-                    self.reasoning = reasoning
-                    self.confidence = confidence
-            return Recommendation("standard", f"Fallback due to error: {e}", 0.3)
+            raise
     
     def _extract_market_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
         """Extract and normalize all available market data"""
-        # Basic data (flattened)
+        # Basic data (flattened) - ensure numeric types are floats
         volatility_category = market_data.get("volatility_category", "MODERATE")
         trend_direction = market_data.get("trend_direction", "SIDEWAYS")
         volume_category = market_data.get("volume_category", "MODERATE")
-        volatility_5m = market_data.get("volatility_5m", 0.0)
-        rsi_value = market_data.get("rsi_value", 50.0)
+        
+        volatility_5m_raw = market_data.get("volatility_5m", 0.0)
+        try:
+            volatility_5m = float(volatility_5m_raw) if volatility_5m_raw is not None else 0.0
+        except (ValueError, TypeError):
+            volatility_5m = 0.0
+        
+        rsi_value_raw = market_data.get("rsi_value", 50.0)
+        try:
+            rsi_value = float(rsi_value_raw) if rsi_value_raw is not None else 50.0
+        except (ValueError, TypeError):
+            rsi_value = 50.0
         
         # Extended data (nested)
         trend_data = market_data.get("trend", {})
@@ -170,50 +203,102 @@ class StrategyManager:
         funding_data = market_data.get("funding_analysis", {})
         market_conditions = market_data.get("market_conditions", {})
         
-        # Extract detailed values
-        trend_strength = trend_data.get("strength", 0.5) if isinstance(trend_data, dict) else 0.5
-        rsi_trend = rsi_data.get("rsi_trend", "NEUTRAL") if isinstance(rsi_data, dict) else "NEUTRAL"
-        rsi_signal = rsi_data.get("rsi_signal", "NEUTRAL") if isinstance(rsi_data, dict) else "NEUTRAL"
-        rsi_momentum = rsi_data.get("rsi_momentum", 0.0) if isinstance(rsi_data, dict) else 0.0
+        # Extract detailed values using safe get helper - ensure numeric types are floats
+        trend_strength_raw = self._safe_get(trend_data, "strength", 0.5)
+        try:
+            trend_strength = float(trend_strength_raw) if trend_strength_raw is not None else 0.5
+        except (ValueError, TypeError):
+            trend_strength = 0.5
         
-        # S/R data
-        sr_levels = sr_data.get("levels", []) if isinstance(sr_data, dict) else []
-        top_support = sr_data.get("top_2_support", []) if isinstance(sr_data, dict) else []
-        top_resistance = sr_data.get("top_2_resistance", []) if isinstance(sr_data, dict) else []
-        strongest_support = sr_data.get("strongest_support", 0.0) if isinstance(sr_data, dict) else 0.0
-        strongest_resistance = sr_data.get("strongest_resistance", 0.0) if isinstance(sr_data, dict) else 0.0
-        current_price = market_data.get("current_price", 0.0)
+        rsi_trend = self._safe_get(rsi_data, "rsi_trend", "NEUTRAL")
+        rsi_signal = self._safe_get(rsi_data, "rsi_signal", "NEUTRAL")
         
-        # Orderbook data
-        spread_pct = orderbook_data.get("spread_percentage", 0.0) if isinstance(orderbook_data, dict) else 0.0
-        liquidity_score = orderbook_data.get("liquidity_score", 0.5) if isinstance(orderbook_data, dict) else 0.5
+        rsi_momentum_raw = self._safe_get(rsi_data, "rsi_momentum", 0.0)
+        try:
+            rsi_momentum = float(rsi_momentum_raw) if rsi_momentum_raw is not None else 0.0
+        except (ValueError, TypeError):
+            rsi_momentum = 0.0
         
-        # Pressure data
-        net_pressure = pressure_data.get("net_pressure", 0.0) if isinstance(pressure_data, dict) else 0.0
-        pressure_ratio = pressure_data.get("pressure_ratio", 1.0) if isinstance(pressure_data, dict) else 1.0
+        # S/R data - ensure numeric types are floats
+        sr_levels = self._safe_get(sr_data, "levels", [])
+        top_support = self._safe_get(sr_data, "top_2_support", [])
+        top_resistance = self._safe_get(sr_data, "top_2_resistance", [])
+        
+        strongest_support_raw = self._safe_get(sr_data, "strongest_support", 0.0)
+        try:
+            strongest_support = float(strongest_support_raw) if strongest_support_raw is not None else 0.0
+        except (ValueError, TypeError):
+            strongest_support = 0.0
+        
+        strongest_resistance_raw = self._safe_get(sr_data, "strongest_resistance", 0.0)
+        try:
+            strongest_resistance = float(strongest_resistance_raw) if strongest_resistance_raw is not None else 0.0
+        except (ValueError, TypeError):
+            strongest_resistance = 0.0
+        
+        try:
+            current_price = float(market_data.get("current_price", 0.0)) if market_data.get("current_price") is not None else 0.0
+        except (ValueError, TypeError):
+            current_price = 0.0
+        
+        # Orderbook data - ensure numeric types are floats
+        spread_pct_raw = self._safe_get(orderbook_data, "spread_percentage", 0.0)
+        try:
+            spread_pct = float(spread_pct_raw) if spread_pct_raw is not None else 0.0
+        except (ValueError, TypeError):
+            spread_pct = 0.0
+        
+        liquidity_score_raw = self._safe_get(orderbook_data, "liquidity_score", 0.5)
+        try:
+            liquidity_score = float(liquidity_score_raw) if liquidity_score_raw is not None else 0.5
+        except (ValueError, TypeError):
+            liquidity_score = 0.5
+        
+        # Pressure data - ensure numeric types are floats
+        net_pressure_raw = self._safe_get(pressure_data, "net_pressure", 0.0)
+        try:
+            net_pressure = float(net_pressure_raw) if net_pressure_raw is not None else 0.0
+        except (ValueError, TypeError):
+            net_pressure = 0.0
+        
+        pressure_ratio_raw = self._safe_get(pressure_data, "pressure_ratio", 1.0)
+        try:
+            pressure_ratio = float(pressure_ratio_raw) if pressure_ratio_raw is not None else 1.0
+        except (ValueError, TypeError):
+            pressure_ratio = 1.0
         
         # Funding data
-        funding_trend = funding_data.get("trend", {}) if isinstance(funding_data, dict) else {}
-        funding_direction = funding_trend.get("direction", "STABLE") if isinstance(funding_trend, dict) else "STABLE"
-        funding_strength = funding_trend.get("strength", 0.0) if isinstance(funding_trend, dict) else 0.0
+        funding_trend = self._safe_get(funding_data, "trend", {})
+        funding_direction = self._safe_get(funding_trend, "direction", "STABLE")
+        
+        funding_strength_raw = self._safe_get(funding_trend, "strength", 0.0)
+        try:
+            funding_strength = float(funding_strength_raw) if funding_strength_raw is not None else 0.0
+        except (ValueError, TypeError):
+            funding_strength = 0.0
         
         # Market conditions
-        market_condition = market_conditions.get("condition", "NEUTRAL") if isinstance(market_conditions, dict) else "NEUTRAL"
-        risk_level = market_conditions.get("risk_level", "MEDIUM") if isinstance(market_conditions, dict) else "MEDIUM"
+        market_condition = self._safe_get(market_conditions, "condition", "NEUTRAL")
+        risk_level = self._safe_get(market_conditions, "risk_level", "MEDIUM")
         
         # Pattern data
         patterns_data = market_data.get("patterns", {})
-        patterns_nested = patterns_data.get("patterns_nested", {}) if isinstance(patterns_data, dict) else {}
-        patterns_flat = patterns_data.get("patterns", []) if isinstance(patterns_data, dict) else []
-        pattern_confidence = patterns_data.get("overall_confidence", 0.0) if isinstance(patterns_data, dict) else 0.0
+        patterns_nested = self._safe_get(patterns_data, "patterns_nested", {})
+        patterns_flat = self._safe_get(patterns_data, "patterns", [])
+        
+        pattern_confidence_raw = self._safe_get(patterns_data, "overall_confidence", 0.0)
+        try:
+            pattern_confidence = float(pattern_confidence_raw) if pattern_confidence_raw is not None else 0.0
+        except (ValueError, TypeError):
+            pattern_confidence = 0.0
         
         # Extract pattern categories for strategy selection
-        reversal_patterns = patterns_nested.get("reversal_patterns", []) if isinstance(patterns_nested, dict) else []
-        continuation_patterns = patterns_nested.get("continuation_patterns", []) if isinstance(patterns_nested, dict) else []
-        triangle_patterns = patterns_nested.get("triangle_patterns", []) if isinstance(patterns_nested, dict) else []
-        channel_patterns = patterns_nested.get("channel_patterns", []) if isinstance(patterns_nested, dict) else []
-        wedge_patterns = patterns_nested.get("wedge_patterns", []) if isinstance(patterns_nested, dict) else []
-        trend_patterns = patterns_nested.get("trend_patterns", []) if isinstance(patterns_nested, dict) else []
+        reversal_patterns = self._safe_get(patterns_nested, "reversal_patterns", [])
+        continuation_patterns = self._safe_get(patterns_nested, "continuation_patterns", [])
+        triangle_patterns = self._safe_get(patterns_nested, "triangle_patterns", [])
+        channel_patterns = self._safe_get(patterns_nested, "channel_patterns", [])
+        wedge_patterns = self._safe_get(patterns_nested, "wedge_patterns", [])
+        trend_patterns = self._safe_get(patterns_nested, "trend_patterns", [])
         
         return {
             "volatility_category": volatility_category,
@@ -263,27 +348,19 @@ class StrategyManager:
     
     def _score_strategy(self, strategy_name: str, data: Dict[str, Any]) -> tuple:
         """Score a strategy based on all available market data"""
-        score = 0.0
-        factors = []
+        strategy_scorers = {
+            "scalping": self._score_scalping,
+            "spike_hunting": self._score_spike_hunting,
+            "trend_following": self._score_trend_following,
+            "breakout": self._score_breakout,
+            "range_trading": self._score_range_trading,
+            "low_volatility_range": self._score_low_volatility_range,
+            "high_volatility": self._score_high_volatility,
+            "standard": self._score_standard
+        }
         
-        if strategy_name == "scalping":
-            score, factors = self._score_scalping(data)
-        elif strategy_name == "spike_hunting":
-            score, factors = self._score_spike_hunting(data)
-        elif strategy_name == "trend_following":
-            score, factors = self._score_trend_following(data)
-        elif strategy_name == "breakout":
-            score, factors = self._score_breakout(data)
-        elif strategy_name == "range_trading":
-            score, factors = self._score_range_trading(data)
-        elif strategy_name == "low_volatility_range":
-            score, factors = self._score_low_volatility_range(data)
-        elif strategy_name == "high_volatility":
-            score, factors = self._score_high_volatility(data)
-        else:  # standard
-            score, factors = self._score_standard(data)
-        
-        return score, factors
+        scorer = strategy_scorers.get(strategy_name, self._score_standard)
+        return scorer(data)
     
     def _score_scalping(self, data: Dict[str, Any]) -> tuple:
         """Score scalping strategy - requires tight spreads, moderate volatility, good RSI"""
@@ -302,7 +379,10 @@ class StrategyManager:
             factors.append(f"{data['volatility_category']} volatility (poor)")
         
         # RSI: 30-70 is ideal (25 points)
-        rsi = data["rsi_value"]
+        try:
+            rsi = float(data.get("rsi_value", 50.0)) if data.get("rsi_value") is not None else 50.0
+        except (ValueError, TypeError):
+            rsi = 50.0
         if 30 <= rsi <= 70:
             score += 25.0
             factors.append(f"RSI {rsi:.1f} (good)")
@@ -314,7 +394,10 @@ class StrategyManager:
             factors.append(f"RSI {rsi:.1f} (extreme)")
         
         # Spread: Tight spread is critical (30 points)
-        spread = data["spread_pct"]
+        try:
+            spread = float(data.get("spread_pct", 1.0)) if data.get("spread_pct") is not None else 1.0
+        except (ValueError, TypeError):
+            spread = 1.0
         if spread < 0.0001:  # <0.01%
             score += 30.0
             factors.append(f"Tight spread ({spread*100:.3f}%)")
@@ -338,7 +421,11 @@ class StrategyManager:
             factors.append(f"{vol_cat} volume (insufficient)")
         
         # RSI momentum: Neutral/positive momentum (10 points)
-        if -0.1 <= data["rsi_momentum"] <= 0.2:
+        try:
+            rsi_momentum = float(data.get("rsi_momentum", 0.0)) if data.get("rsi_momentum") is not None else 0.0
+        except (ValueError, TypeError):
+            rsi_momentum = 0.0
+        if -0.1 <= rsi_momentum <= 0.2:
             score += 10.0
             factors.append("Stable RSI momentum")
         else:
@@ -353,11 +440,14 @@ class StrategyManager:
         factors = []
         
         # Volatility: EXTREME is required (40 points)
-        vol_5m = data["volatility_5m"]
-        if vol_5m > 0.05 or data["volatility_category"] == "EXTREME":
+        try:
+            vol_5m = float(data.get("volatility_5m", 0.0)) if data.get("volatility_5m") is not None else 0.0
+        except (ValueError, TypeError):
+            vol_5m = 0.0
+        if vol_5m > 0.05 or data.get("volatility_category") == "EXTREME":
             score += 40.0
             factors.append(f"Extreme volatility ({vol_5m*100:.2f}%)")
-        elif data["volatility_category"] in ["HIGH", "VERY_HIGH"]:
+        elif data.get("volatility_category") in ["HIGH", "VERY_HIGH"]:
             score += 20.0
             factors.append(f"High volatility ({vol_5m*100:.2f}%)")
         else:
@@ -392,19 +482,23 @@ class StrategyManager:
         factors = []
         
         # Trend: Strong trend required (30 points)
-        if data["trend_direction"] in ["BULLISH", "BEARISH"]:
+        if data.get("trend_direction") in ["BULLISH", "BEARISH"]:
             score += 20.0
-            factors.append(f"{data['trend_direction']} trend")
-            # Trend strength bonus
-            if data["trend_strength"] > 0.7:
+            factors.append(f"{data.get('trend_direction')} trend")
+            # Trend strength bonus - ensure float conversion
+            try:
+                trend_strength = float(data.get("trend_strength", 0.5)) if data.get("trend_strength") is not None else 0.5
+            except (ValueError, TypeError):
+                trend_strength = 0.5
+            if trend_strength > 0.7:
                 score += 10.0
-                factors.append(f"Strong trend (strength: {data['trend_strength']:.2f})")
-            elif data["trend_strength"] > 0.5:
+                factors.append(f"Strong trend (strength: {trend_strength:.2f})")
+            elif trend_strength > 0.5:
                 score += 5.0
-                factors.append(f"Moderate trend (strength: {data['trend_strength']:.2f})")
+                factors.append(f"Moderate trend (strength: {trend_strength:.2f})")
             else:
                 score -= 5.0
-                factors.append(f"Weak trend (strength: {data['trend_strength']:.2f})")
+                factors.append(f"Weak trend (strength: {trend_strength:.2f})")
         else:
             score -= 25.0
             factors.append(f"{data['trend_direction']} trend (no trend)")
@@ -462,8 +556,12 @@ class StrategyManager:
             factors.append(f"{data['volatility_category']} volatility (low)")
         
         # RSI momentum: Aligned with trend (10 points)
-        if (data["trend_direction"] == "BULLISH" and data["rsi_momentum"] > 0) or \
-           (data["trend_direction"] == "BEARISH" and data["rsi_momentum"] < 0):
+        try:
+            rsi_momentum_check = float(data.get("rsi_momentum", 0.0)) if data.get("rsi_momentum") is not None else 0.0
+        except (ValueError, TypeError):
+            rsi_momentum_check = 0.0
+        if (data.get("trend_direction") == "BULLISH" and rsi_momentum_check > 0) or \
+           (data.get("trend_direction") == "BEARISH" and rsi_momentum_check < 0):
             score += 10.0
             factors.append("RSI momentum aligned")
         else:
@@ -642,15 +740,20 @@ class StrategyManager:
             factors.append(f"{data['volatility_category']} volatility (insufficient)")
         
         # Trend: Sideways or weak trend (20 points)
-        if data["trend_direction"] == "SIDEWAYS":
+        if data.get("trend_direction") == "SIDEWAYS":
             score += 20.0
             factors.append("Sideways trend")
-        elif data["trend_strength"] < 0.5:
-            score += 10.0
-            factors.append("Weak trend")
         else:
-            score -= 10.0
-            factors.append(f"Strong {data['trend_direction']} trend (use trend_following)")
+            try:
+                trend_strength_check = float(data.get("trend_strength", 0.5)) if data.get("trend_strength") is not None else 0.5
+            except (ValueError, TypeError):
+                trend_strength_check = 0.5
+            if trend_strength_check < 0.5:
+                score += 10.0
+                factors.append("Weak trend")
+            else:
+                score -= 10.0
+                factors.append(f"Strong {data.get('trend_direction', 'UNKNOWN')} trend (use trend_following)")
         
         # Volume: Moderate to high (20 points)
         if data["volume_category"] in ["NORMAL", "HIGH", "VERY_HIGH"]:
@@ -684,15 +787,36 @@ class StrategyManager:
             score += 10.0
             factors.append(f"{data['volume_category']} volume")
         
-        return score, factors
+        return max(0.0, score), factors
     
     def _calculate_confidence(self, strategy_scores: Dict[str, Dict], best_strategy: str, data: Dict[str, Any]) -> float:
         """Calculate dynamic confidence based on score quality and data completeness"""
-        best_score = strategy_scores[best_strategy]["score"]
+        # Ensure best_score is float
+        best_score_data = strategy_scores.get(best_strategy, {})
+        best_score = float(best_score_data.get("score", 0.0)) if isinstance(best_score_data.get("score"), (int, float, str)) else 0.0
+        try:
+            best_score = float(best_score)
+        except (ValueError, TypeError):
+            best_score = 0.0
         
-        # Get 2nd best score
-        sorted_scores = sorted(strategy_scores.items(), key=lambda x: x[1]["score"], reverse=True)
-        second_score = sorted_scores[1][1]["score"] if len(sorted_scores) > 1 else 0.0
+        # Get 2nd best score - ensure all scores are float before sorting
+        def safe_float_score(item):
+            try:
+                score_val = item[1].get("score", 0.0)
+                return float(score_val) if score_val is not None else 0.0
+            except (ValueError, TypeError):
+                return 0.0
+        
+        sorted_scores = sorted(strategy_scores.items(), key=safe_float_score, reverse=True)
+        if len(sorted_scores) > 1:
+            try:
+                second_score_data = sorted_scores[1][1]
+                second_score = float(second_score_data.get("score", 0.0)) if isinstance(second_score_data.get("score"), (int, float, str)) else 0.0
+                second_score = float(second_score)
+            except (ValueError, TypeError, IndexError, KeyError):
+                second_score = 0.0
+        else:
+            second_score = 0.0
         
         # Base confidence from score magnitude (0-0.5)
         score_confidence = min(0.5, best_score / 100.0)
@@ -714,7 +838,11 @@ class StrategyManager:
         if data["trend_direction"] == "UNKNOWN":
             missing_critical.append("trend")
             data_quality -= 0.05
-        if data["rsi_value"] is None or data["rsi_value"] <= 0:
+        try:
+            rsi_value_check = float(data.get("rsi_value", 0.0)) if data.get("rsi_value") is not None else 0.0
+        except (ValueError, TypeError):
+            rsi_value_check = 0.0
+        if rsi_value_check <= 0:
             missing_critical.append("rsi")
             data_quality -= 0.05
         

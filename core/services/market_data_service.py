@@ -6,7 +6,7 @@ New Flow: Raw Data → Analysis Modules → MarketDataService → SessionOrchest
 """
 
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from loguru import logger
 
 class MarketDataService:
@@ -67,7 +67,6 @@ class MarketDataService:
     def _store_processed_data(self, data_type: str, data: Any) -> None:
         """Store processed data from analysis modules"""
         self._cache.set(data_type, data)
-        logger.debug(f"📊 Stored processed data: {data_type}")
     
     def _get_processed_data(self, data_type: str) -> Any:
         """Get processed data if valid"""
@@ -80,7 +79,6 @@ class MarketDataService:
     def update_analysis_data(self, data_type: str, analysis_data: Any) -> None:
         """Receive processed analysis data from analysis modules"""
         self._store_processed_data(data_type, analysis_data)
-        logger.debug(f"📊 Updated {data_type} analysis data")
     
     def get_volatility_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
         """Get volatility analysis from VolatilityCalculator"""
@@ -93,34 +91,56 @@ class MarketDataService:
             # If no valid data, trigger analysis module to process
             if "volatility" in self._analysis_modules:
                 logger.info("📊 Triggering volatility analysis...")
-                # Analysis module will process raw data and call update_analysis_data
-                return self._analysis_modules["volatility"].get_latest_analysis()
+                volatility_result = self._analysis_modules["volatility"].get_latest_analysis()
+                # Store result for future use
+                self.update_analysis_data("volatility", volatility_result)
+                return volatility_result
             
-            logger.warning("⚠️ No volatility analysis module registered")
-            return {}
+            raise ValueError("No volatility analysis module registered")
             
         except Exception as e:
             logger.error(f"❌ Failed to get volatility analysis: {e}")
-            return {}
+            raise
     
     def get_trend_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
         """Get trend analysis from TrendCalculator with proper mapping"""
         try:
+            # Check cache for already-mapped trend data
             trend_data = self._get_processed_data("trend")
             if trend_data:
-                return self._map_trend_data(trend_data)
+                # Cache stores mapped data, check if it has UNKNOWN values
+                if isinstance(trend_data, dict) and "detailed_timeframes" in trend_data:
+                    # Check if all timeframes are UNKNOWN - if so, invalidate cache and recalculate
+                    timeframes = trend_data.get("detailed_timeframes", {})
+                    all_unknown = all(
+                        timeframes.get(key, "UNKNOWN") == "UNKNOWN" 
+                        for key in ["trend_15m", "trend_1h", "trend_4h", "trend_24h"]
+                    )
+                    if all_unknown:
+                        logger.warning("⚠️ Cached trend data has all UNKNOWN values - invalidating cache and recalculating")
+                        self._cache.invalidate("trend")
+                        trend_data = None
+                    else:
+                        # Already mapped with valid data, return as-is
+                        return trend_data
+                elif isinstance(trend_data, dict):
+                    # Raw data from cache (shouldn't happen, but handle it)
+                    return self._map_trend_data(trend_data)
             
+            # No valid cached data - fetch fresh trend data
             if "trend" in self._analysis_modules:
                 logger.info("📊 Triggering trend analysis...")
                 raw_trend_data = self._analysis_modules["trend"].get_latest_analysis(strategy)
-                return self._map_trend_data(raw_trend_data)
+                mapped_trend = self._map_trend_data(raw_trend_data)
+                # Store mapped result for future use
+                self.update_analysis_data("trend", mapped_trend)
+                return mapped_trend
             
-            logger.warning("⚠️ No trend analysis module registered")
-            return self._get_default_trend_data()
+            raise ValueError("No trend analysis module registered")
             
         except Exception as e:
             logger.error(f"❌ Failed to get trend analysis: {e}")
-            return self._get_default_trend_data()
+            raise
     
     def _map_trend_data(self, raw_trend_data: Dict[str, Any]) -> Dict[str, Any]:
         """Map trend calculator output to unified format"""
@@ -155,13 +175,14 @@ class MarketDataService:
                 "data_type": "trend"
             }
             
-            logger.debug(f"📊 Trend mapped: {primary_trend} → {mapped_direction}")
-            logger.debug(f"📊 All timeframes: 15m={trend_15m}, 1h={trend_1h}, 4h={trend_4h}, 24h={trend_24h}")
+            # Log trend mapping only if there are issues (not UNKNOWN)
+            if primary_trend != "UNKNOWN":
+                logger.debug(f"📊 Trend mapped: {primary_trend} → {mapped_direction}")
             return mapped_trend
             
         except Exception as e:
             logger.error(f"❌ Trend mapping failed: {e}")
-            return self._get_default_trend_data()
+            raise
     
     def _map_trend_to_direction(self, trend: str) -> str:
         """Map detailed trend to simple direction for strategy manager"""
@@ -195,28 +216,6 @@ class MarketDataService:
         }
         return strength_mapping.get(trend, "UNKNOWN")
     
-    def _get_default_trend_data(self) -> Dict[str, Any]:
-        """Get default trend data when analysis fails"""
-        return {
-            "direction": "UNKNOWN",
-            "strength": "UNKNOWN",
-            "timeframes": {
-                "short": "UNKNOWN",
-                "medium": "UNKNOWN", 
-                "long": "UNKNOWN"
-            },
-            "detailed_timeframes": {
-                "trend_15m": "UNKNOWN",
-                "trend_1h": "UNKNOWN",
-                "trend_4h": "UNKNOWN",
-                "trend_24h": "UNKNOWN"
-            },
-            "raw_data": {},
-            "timestamp": time.time(),
-            "data_type": "trend",
-            "error": "Default trend data"
-        }
-    
     def get_support_resistance_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
         """Get S/R analysis from SupportResistanceCalculator
         
@@ -240,28 +239,23 @@ class MarketDataService:
                     current_price = self.hyperliquid_api.get_current_price("BTC")
                 
                 if not current_price or current_price <= 0:
-                    logger.warning("⚠️ No valid current price for S/R analysis")
-                    return {}
+                    raise ValueError("No valid current price for S/R analysis")
                 
                 # Pass strategy to SR calculator
                 sr_calculator = self._analysis_modules["support_resistance"]
-                if hasattr(sr_calculator, 'calculate_multi_timeframe_levels'):
-                    result = sr_calculator.calculate_multi_timeframe_levels(current_price, strategy=strategy)
-                    # Cache with strategy-aware key
-                    self._cache.set(cache_key, result, ttl=300)
-                    return result
-                else:
-                    result = sr_calculator.get_latest_analysis(current_price)
-                    # Cache with strategy-aware key
-                    self._cache.set(cache_key, result, ttl=300)
-                    return result
+                # NO FALLBACKS - assume calculate_multi_timeframe_levels exists
+                result = sr_calculator.calculate_multi_timeframe_levels(current_price, strategy=strategy)
+                # Cache with strategy-aware key
+                self._cache.set(cache_key, result, ttl=300)
+                # Also store via MarketDataService for consistency
+                self.update_analysis_data("support_resistance", result)
+                return result
             
-            logger.warning("⚠️ No S/R analysis module registered")
-            return {}
+            raise ValueError("No S/R analysis module registered")
             
         except Exception as e:
             logger.error(f"❌ Failed to get S/R analysis: {e}")
-            return {}
+            raise
     
     def get_rsi_analysis(self) -> Dict[str, Any]:
         """Get RSI analysis from RSICalculator"""
@@ -274,16 +268,34 @@ class MarketDataService:
             # If no valid data, trigger RSI calculation
             if "rsi_calculator" in self._analysis_modules:
                 logger.info("📊 Triggering RSI analysis...")
-                # RSI module will process raw data and call update_analysis_data
                 rsi_result = self._analysis_modules["rsi_calculator"].get_latest_analysis()
+                # Store result for future use
+                self.update_analysis_data("rsi", rsi_result)
                 return rsi_result
             
-            logger.warning("⚠️ No RSI analysis module registered")
-            return {}
+            raise ValueError("No RSI analysis module registered")
             
         except Exception as e:
             logger.error(f"❌ Failed to get RSI analysis: {e}")
-            return {}
+            raise
+    
+    def recalculate_rsi_baseline(self, candles_5m: List[Dict]) -> None:
+        """Recalculate RSI baseline at candle boundary - SRP compliant method"""
+        try:
+            if "rsi_calculator" not in self._analysis_modules:
+                raise ValueError("No RSI calculator module registered")
+            
+            rsi_calculator = self._analysis_modules["rsi_calculator"]
+            if candles_5m and len(candles_5m) >= 15:
+                rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
+                # Invalidate RSI cache to force fresh calculations
+                self._cache.invalidate(pattern="rsi")
+                logger.info(f"✅ RSI baseline recalculated: {rsi_calculator.baseline_rsi:.2f}")
+            else:
+                logger.warning(f"⚠️ Insufficient candles for RSI baseline recalculation: {len(candles_5m) if candles_5m else 0}")
+        except Exception as e:
+            logger.error(f"❌ Failed to recalculate RSI baseline: {e}")
+            raise
     
     def get_volume_analysis(self) -> Dict[str, Any]:
         """Get volume analysis from VolumeCalculator"""
@@ -297,14 +309,18 @@ class MarketDataService:
             if "volume" in self._analysis_modules:
                 logger.info("📊 Triggering volume analysis...")
                 volume_calculator = self._analysis_modules["volume"]
-                return volume_calculator.get_latest_analysis()
+                volume_result = volume_calculator.get_latest_analysis(
+                    hyperliquid_websocket=self.hyperliquid_websocket
+                )
+                # Store result for future use
+                self.update_analysis_data("volume", volume_result)
+                return volume_result
             
-            logger.warning("⚠️ No volume calculator registered")
-            return {}
+            raise ValueError("No volume calculator registered")
             
         except Exception as e:
             logger.error(f"❌ Failed to get volume analysis: {e}")
-            return {}
+            raise
     
     def get_cross_asset_analysis(self) -> Dict[str, Any]:
         """Get cross asset correlation analysis"""
@@ -318,14 +334,17 @@ class MarketDataService:
             if "cross_asset_correlation_analyzer" in self._analysis_modules:
                 logger.info("📊 Triggering cross asset correlation analysis...")
                 cross_asset_analyzer = self._analysis_modules["cross_asset_correlation_analyzer"]
-                return cross_asset_analyzer.analyze_cross_asset_correlations(self._current_price or 110000.0)
+                current_price = self.get_current_price() or 110000.0
+                cross_asset_result = cross_asset_analyzer.analyze_cross_asset_correlations(current_price)
+                # Store result for future use
+                self.update_analysis_data("cross_asset_correlation_analyzer", cross_asset_result)
+                return cross_asset_result
             
-            logger.warning("⚠️ No cross asset correlation analyzer registered")
-            return {}
+            raise ValueError("No cross asset correlation analyzer registered")
             
         except Exception as e:
             logger.error(f"❌ Failed to get cross asset analysis: {e}")
-            return {}
+            raise
     
     # ==================================================================================
     # UNIFIED PROCESSED DATA PACKAGES - Pre-processed data for consumers
@@ -414,7 +433,7 @@ class MarketDataService:
             
         except Exception as e:
             logger.error(f"❌ Failed to coordinate unified analysis data: {e}")
-            return {}
+            raise
     
     # ==================================================================================
     # ADDITIONAL ANALYSIS METHODS - Missing components for comprehensive data structure
@@ -425,19 +444,16 @@ class MarketDataService:
         try:
             if "pressure" in self._analysis_modules:
                 pressure_calculator = self._analysis_modules["pressure"]
-                # Use the pressure calculator's get_latest_analysis method which handles orderbook retrieval correctly
-                if hasattr(pressure_calculator, 'get_latest_analysis'):
-                    pressure_result = pressure_calculator.get_latest_analysis()
-                    return pressure_result
-                else:
-                    logger.warning("⚠️ Pressure calculator does not have get_latest_analysis method")
-                    return {}
+                # NO FALLBACKS - assume get_latest_analysis exists
+                pressure_result = pressure_calculator.get_latest_analysis()
+                # Store result for future use
+                self.update_analysis_data("pressure", pressure_result)
+                return pressure_result
             else:
-                logger.warning("⚠️ No pressure analysis module registered")
-                return {}
+                raise ValueError("No pressure analysis module registered")
         except Exception as e:
             logger.error(f"❌ Failed to get pressure analysis: {e}")
-            return {}
+            raise
     
     def get_pattern_analysis(self) -> Dict[str, Any]:
         """Get pattern recognition analysis data with centralized caching"""
@@ -466,13 +482,13 @@ class MarketDataService:
                                 if isinstance(pattern_list, list):
                                     patterns_count += len(pattern_list)
                     
-                    # If cached data has patterns, use it
-                    if patterns_count > 0 or cached_data.get("status") == "ok":
+                    # Only use cached data if it has actual patterns
+                    if patterns_count > 0:
                         logger.debug(f"🗄️ Using cached pattern analysis ({patterns_count} patterns)")
                         return cached_data
                     else:
                         # Cached data is empty/invalid - force fresh analysis
-                        logger.info(f"🔄 Cached pattern data is empty/invalid - forcing fresh analysis")
+                        logger.info(f"🔄 Cached pattern data is empty ({patterns_count} patterns) - forcing fresh analysis")
                         cache.invalidate(key=cache_key)
                 
                 # Cache miss or invalid - perform fresh analysis
@@ -494,18 +510,17 @@ class MarketDataService:
                     
                     # Store in centralized cache
                     cache.set(cache_key, analysis_result)
-                    logger.debug(f"🗄️ Pattern analysis cached (TTL: {cache._get_ttl_policy(cache_key)}s)")
+                    # Also store via MarketDataService for consistency
+                    self.update_analysis_data("pattern_recognition", analysis_result)
                     return analysis_result
-                logger.warning("⚠️ No candle data available for pattern analysis")
-                return {}
+                raise ValueError("No candle data available for pattern analysis")
             else:
-                logger.warning("⚠️ No pattern recognition module registered")
-                return {}
+                raise ValueError("No pattern recognition module registered")
         except Exception as e:
             logger.error(f"❌ Failed to get pattern analysis: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            return {}
+            raise
     
     def get_market_conditions_analysis(self) -> Dict[str, Any]:
         """Get market conditions analysis data"""
@@ -528,15 +543,16 @@ class MarketDataService:
                     historical_service = create_historical_data_service()
                     candles_1d = historical_service.get_1d_candles("BTC", 30)  # Request 30 days to ensure we have at least 7
                     
-                    return conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d)
-                logger.warning("⚠️ No current price available for market conditions analysis")
-                return {}
+                    conditions_result = conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d)
+                    # Store result for future use
+                    self.update_analysis_data("market_conditions", conditions_result)
+                    return conditions_result
+                raise ValueError("No current price available for market conditions analysis")
             else:
-                logger.warning("⚠️ No market conditions module registered")
-                return {}
+                raise ValueError("No market conditions module registered")
         except Exception as e:
             logger.error(f"❌ Failed to get market conditions analysis: {e}")
-            return {}
+            raise
     
     def get_funding_analysis(self) -> Dict[str, Any]:
         """Get funding rate analysis data"""
@@ -547,15 +563,16 @@ class MarketDataService:
                 if self.hyperliquid_api:
                     funding_data = self.hyperliquid_api.get_funding_rate("BTC")
                     if funding_data:
-                        return funding_analyzer.analyze_funding_rate(funding_data)
-                logger.warning("⚠️ No funding rate data available")
-                return {}
+                        funding_result = funding_analyzer.analyze_funding_rate(funding_data)
+                        # Store result for future use
+                        self.update_analysis_data("funding_rate", funding_result)
+                        return funding_result
+                raise ValueError("No funding rate data available")
             else:
-                logger.warning("⚠️ No funding rate module registered")
-                return {}
+                raise ValueError("No funding rate module registered")
         except Exception as e:
             logger.error(f"❌ Failed to get funding analysis: {e}")
-            return {}
+            raise
     
     def get_orderbook_analysis(self) -> Dict[str, Any]:
         """Get orderbook analysis data"""
@@ -580,16 +597,16 @@ class MarketDataService:
                     bids, asks = self._extract_bids_asks(orderbook_data)
                     analysis_result['bids'] = bids
                     analysis_result['asks'] = asks
+                    # Store result for future use
+                    self.update_analysis_data("orderbook", analysis_result)
                     return analysis_result
                 
-                logger.warning("⚠️ No orderbook data available for analysis")
-                return {}
+                raise ValueError("No orderbook data available for analysis")
             else:
-                logger.warning("⚠️ No orderbook module registered")
-                return {}
+                raise ValueError("No orderbook module registered")
         except Exception as e:
             logger.error(f"❌ Failed to get orderbook analysis: {e}")
-            return {}
+            raise
     
     def _extract_bids_asks(self, orderbook_data: Dict[str, Any]) -> tuple:
         """Extract bids and asks from orderbook data"""
@@ -994,4 +1011,3 @@ def set_global_market_data_service(service: MarketDataService):
     """Set the global MarketDataService instance"""
     global _global_market_data_service
     _global_market_data_service = service
-    logger.info("📊 Global MarketDataService instance set")

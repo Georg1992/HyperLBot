@@ -16,39 +16,25 @@ class SessionOrchestrator:
         self.initial_balance = initial_balance
         self.session_manager = None
         self.strategy_manager = None
-        self._strategy_manager_initialized = False
+        self.prediction_engine = None
 
         logger.info("🎯 SessionOrchestrator initialized with NO FALLBACKS policy")
 
     def _ensure_strategy_manager_initialized(self, system_initializer):
-        """Ensure Strategy Manager is initialized (NO FALLBACKS)"""
-        if not self._strategy_manager_initialized:
-            try:
-                # Get Strategy Manager from system initializer (NO FALLBACKS)
-                if hasattr(system_initializer, "get_singleton_system"):
-                    self.strategy_manager = system_initializer.get_singleton_system(
-                        "strategy_manager"
-                    )
-                else:
-                    raise Exception(
-                        "System initializer does not have get_singleton_system method"
-                    )
-
-                if not self.strategy_manager:
-                    raise Exception(
-                        "Strategy Manager not available from system initializer"
-                    )
-
-                self._strategy_manager_initialized = True
-                logger.info(
-                    "✅ Strategy Manager initialized successfully (NO FALLBACKS)"
-                )
-
-            except Exception as e:
-                logger.error(f"❌ Strategy Manager initialization failed: {e}")
-                raise Exception(
-                    "Strategy Manager initialization required - NO FALLBACKS"
-                )
+        """Ensure Strategy Manager is initialized"""
+        if self.strategy_manager is None:
+            if not hasattr(system_initializer, "get_singleton_system"):
+                raise Exception("System initializer does not have get_singleton_system method")
+            
+            self.strategy_manager = system_initializer.get_singleton_system("strategy_manager")
+            if not self.strategy_manager:
+                raise Exception("Strategy Manager not available from system initializer")
+    
+    def _ensure_prediction_engine_initialized(self):
+        """Ensure Prediction Engine is initialized"""
+        if self.prediction_engine is None:
+            from core.execution.prediction_engine import PredictionEngine
+            self.prediction_engine = PredictionEngine()
 
     def run_paper_trading_session(
         self,
@@ -96,6 +82,9 @@ class SessionOrchestrator:
 
             # Verify data flow
             self._verify_data_flow(market_data_service)
+            
+            # Ensure Prediction Engine is initialized
+            self._ensure_prediction_engine_initialized()
 
             # Start session
             self._start_session(market_data_service, dashboard_service, strategy_name)
@@ -110,39 +99,20 @@ class SessionOrchestrator:
             raise
 
     def _verify_data_flow(self, market_data_service):
-        """Verify data flow from MarketDataService (centralized price provider)"""
-        try:
-            logger.info("🔍 Verifying MarketDataService data flow...")
-
-            # Test MarketDataService (centralized price provider)
-            if hasattr(market_data_service, "get_current_price"):
-                current_price = market_data_service.get_current_price()
-                if current_price and current_price > 0:
-                    logger.info(
-                        f"✅ MarketDataService price verified: Price=${current_price:.2f}"
-                    )
-                else:
-                    logger.warning("⚠️ MarketDataService price not available or invalid")
-            else:
-                logger.warning("⚠️ MarketDataService get_current_price method not available")
-
-            logger.info("✅ Data flow verification completed")
-
-        except Exception as e:
-            logger.error(f"❌ Data flow verification failed: {e}")
-            raise
+        """Verify data flow from MarketDataService"""
+        current_price = market_data_service.get_current_price()
+        if current_price and current_price > 0:
+            logger.info(f"✅ MarketDataService price verified: Price=${current_price:.2f}")
+        else:
+            raise Exception("MarketDataService price not available or invalid")
 
     def _start_session(self, market_data_service, dashboard_service, strategy: str):
         """Start trading session"""
         try:
             logger.info(f"🎯 Starting trading session with strategy: {strategy}")
 
-            # Clear stale data for fresh session
-            if hasattr(dashboard_service, "clear_stale_data"):
-                dashboard_service.clear_stale_data()
-
-            if hasattr(market_data_service, "invalidate_processed_data"):
-                market_data_service.invalidate_processed_data()
+            dashboard_service.clear_stale_data()
+            market_data_service.invalidate_processed_data()
 
             # Use provided strategy (strategy detection happens in main data loop with market data)
             optimal_strategy = strategy
@@ -166,8 +136,8 @@ class SessionOrchestrator:
                 f"🔄 Starting main data loop (interval: {check_interval}s, strategy: {strategy})"
             )
             
-            # Track last candle storage update
-            last_candle_update_time = 0.0
+            # Track last candle storage update (initialize to current time to avoid false warnings on first run)
+            last_candle_update_time = time.time()
             
             # Track last 5-minute candle boundary for pattern detection optimization
             from core.utils.time_utils import TimeUtils
@@ -194,7 +164,7 @@ class SessionOrchestrator:
                         try:
                             from core.services.historical_data_service import get_global_historical_data_service
                             historical_service = get_global_historical_data_service()
-                            if hasattr(historical_service, '_candle_storage') and historical_service._candle_storage:
+                            if historical_service._candle_storage:
                                 historical_service._candle_storage.update_with_latest_candle()
                                 logger.info(f"✅ Candle storage updated at exact 5-minute boundary")
                                 
@@ -215,20 +185,14 @@ class SessionOrchestrator:
                         
                         # Recalculate RSI baseline at exact candle boundary (same time as candles reset)
                         try:
-                            if market_data_service and "rsi_calculator" in market_data_service._analysis_modules:
-                                rsi_calculator = market_data_service._analysis_modules["rsi_calculator"]
-                                # Fetch fresh 5m candles for RSI baseline recalculation
-                                from core.services.historical_data_service import get_global_historical_data_service
-                                historical_service = get_global_historical_data_service()
-                                candles_5m = historical_service.get_5m_candles("BTC", 30)  # Need at least 15 for RSI(14)
-                                
-                                if candles_5m and len(candles_5m) >= 15:
-                                    rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
-                                    logger.info(f"✅ RSI baseline recalculated at exact 5-minute boundary: {rsi_calculator.baseline_rsi:.2f}")
-                                    # Invalidate RSI cache to force fresh calculations
-                                    cache.invalidate(pattern="rsi")
-                                else:
-                                    logger.warning(f"⚠️ Insufficient candles for RSI baseline recalculation: {len(candles_5m) if candles_5m else 0}")
+                            # Fetch fresh 5m candles for RSI baseline recalculation
+                            from core.services.historical_data_service import get_global_historical_data_service
+                            historical_service = get_global_historical_data_service()
+                            candles_5m = historical_service.get_5m_candles("BTC", 30)  # Need at least 15 for RSI(14)
+                            
+                            # Use MarketDataService method (SRP: MarketDataService coordinates RSI)
+                            if market_data_service:
+                                market_data_service.recalculate_rsi_baseline(candles_5m)
                         except Exception as e:
                             logger.error(f"❌ Failed to recalculate RSI baseline at boundary: {e}")
                         
@@ -238,43 +202,27 @@ class SessionOrchestrator:
                     # Safety check: Update candle storage if boundary detection somehow failed (clock drift protection)
                     # This should rarely trigger if boundary detection works correctly
                     # NO FALLBACKS - This is a safety mechanism, not a business logic fallback
-                    elif current_time - last_candle_update_time >= 310:  # 5 minutes 10 seconds (slightly longer than 5 min)
+                    # Only check if last_candle_update_time is valid (not 0.0) to avoid false warnings on first run
+                    elif last_candle_update_time > 0.0 and current_time - last_candle_update_time >= 310:  # 5 minutes 10 seconds (slightly longer than 5 min)
                         try:
                             logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
                             from core.services.historical_data_service import get_global_historical_data_service
                             historical_service = get_global_historical_data_service()
-                            if hasattr(historical_service, '_candle_storage') and historical_service._candle_storage:
+                            if historical_service._candle_storage:
                                 historical_service._candle_storage.update_with_latest_candle()
                                 last_candle_update_time = current_time
                         except Exception as e:
                             logger.error(f"❌ Failed to update candle storage (safety check): {e}")
                     
-                    # Get current market data from MarketDataService (centralized price provider)
-                    current_price = None
-                    if hasattr(market_data_service, "get_current_price"):
-                        current_price = market_data_service.get_current_price()
-                    else:
-                        logger.warning(
-                            "⚠️ MarketDataService get_current_price not available, skipping iteration"
-                        )
-                        time.sleep(check_interval)
-                        continue
-
+                    # Get current market data from MarketDataService
+                    current_price = market_data_service.get_current_price()
                     if not current_price or current_price <= 0:
                         logger.warning("⚠️ Invalid current price, skipping iteration")
                         time.sleep(check_interval)
                         continue
 
-                    # Get orderbook data (Level 2 orderbook with bids/asks)
-                    orderbook_data = {}
-                    if hasattr(market_data_service, "get_market_data"):
-                        orderbook_data = market_data_service.get_market_data()
-                    else:
-                        logger.warning(
-                            "⚠️ MarketDataService get_market_data not available, skipping iteration"
-                        )
-                        time.sleep(check_interval)
-                        continue
+                    # Get orderbook data
+                    orderbook_data = market_data_service.get_market_data()
 
                     # Prepare unified market data (triggers all analysis modules)
                     unified_data = self._prepare_unified_market_data(
@@ -292,7 +240,28 @@ class SessionOrchestrator:
                         unified_data["strategy"] = current_strategy
                         logger.info(f"🔄 Strategy updated in unified data: {strategy} → {current_strategy}")
 
-                    # Update dashboard with unified market data
+                    # Generate prediction
+                    try:
+                        prediction = self.prediction_engine.generate_prediction(unified_data, current_strategy)
+                        if prediction:
+                            unified_data["prediction"] = {
+                                "direction": prediction.direction,
+                                "entry_price": prediction.entry_price,
+                                "stop_loss": prediction.stop_loss,
+                                "take_profit": prediction.take_profit,
+                                "confidence": prediction.confidence / 100.0,
+                                "reasoning": prediction.reasoning,
+                                "strategy": prediction.strategy,
+                                "timestamp": prediction.timestamp,
+                                "status": "READY"
+                            }
+                        else:
+                            unified_data["prediction"] = None
+                    except Exception as e:
+                        logger.error(f"❌ Prediction generation failed: {e}")
+                        unified_data["prediction"] = None
+                    
+                    # Update dashboard with unified market data (includes prediction)
                     self._update_dashboard_with_unified_data(
                         unified_data, dashboard_service
                     )
@@ -326,6 +295,10 @@ class SessionOrchestrator:
         modules_to_update = []
         current_time = time.time()
         
+        # Modules handled directly by MarketDataService (not updated here)
+        # These modules are called on-demand via MarketDataService methods
+        modules_handled_by_market_data_service = {"funding_rate", "orderbook"}
+        
         # Module update intervals are now handled by CentralizedCache
         # No need for duplicate definitions here
         
@@ -339,8 +312,8 @@ class SessionOrchestrator:
             # Initialize 5-minute boundary tracking
             from core.utils.time_utils import TimeUtils
             self._last_5m_boundary = TimeUtils.get_5m_candle_start_time()
-            # Force update all modules on first run
-            return list(analysis_modules.keys())
+            # Force update all modules on first run (excluding those handled by MarketDataService)
+            return [m for m in analysis_modules.keys() if m not in modules_handled_by_market_data_service]
         
         price_change = abs(current_price - self._last_price) / self._last_price
         self._last_price = current_price
@@ -363,6 +336,10 @@ class SessionOrchestrator:
             self._last_5m_boundary = current_5m_start
         
         for module_name, module_instance in analysis_modules.items():
+            # Skip modules handled directly by MarketDataService
+            if module_name in modules_handled_by_market_data_service:
+                continue
+            
             # Check if module should be updated
             should_update = False
             
@@ -386,8 +363,8 @@ class SessionOrchestrator:
             if module_name in price_sensitive_modules and price_change >= price_change_threshold:
                 should_update = True
             
-            # Check for data changes in orderbook
-            if module_name in ['volume', 'pressure', 'orderbook']:
+            # Check for data changes in orderbook (orderbook module is handled by MarketDataService, so removed from here)
+            if module_name in ['volume', 'pressure']:
                 if self._has_orderbook_changed(orderbook_data):
                     should_update = True
             
@@ -469,9 +446,14 @@ class SessionOrchestrator:
     def _trigger_analysis_modules(
         self, market_data_service, current_price: float, orderbook_data: Dict[str, Any]
     ) -> None:
-        """Trigger analysis modules only when data changes - Event-driven architecture with completion tracking"""
+        """
+        Trigger analysis modules via MarketDataService - SRP compliant
+        
+        MarketDataService is the single coordinator for all analysis modules.
+        This method only determines which modules need updates and delegates to MarketDataService.
+        """
         try:
-            # Get analysis modules from MarketDataService
+            # Get analysis modules from MarketDataService to determine what needs updating
             analysis_modules = getattr(market_data_service, "_analysis_modules", {})
             logger.debug(f"📊 Found {len(analysis_modules)} analysis modules: {list(analysis_modules.keys())}")
 
@@ -486,95 +468,35 @@ class SessionOrchestrator:
 
             logger.debug(f"📊 Updating {len(modules_to_update)} modules: {modules_to_update}")
 
-            # Update only modules that need updates
+            # Map module names to MarketDataService get methods
+            module_to_getter = {
+                "rsi_calculator": lambda: market_data_service.get_rsi_analysis(),
+                "volatility": lambda: market_data_service.get_volatility_analysis("standard"),
+                "trend": lambda: market_data_service.get_trend_analysis("standard"),
+                "support_resistance": lambda: market_data_service.get_support_resistance_analysis("standard"),
+                "volume": lambda: market_data_service.get_volume_analysis(),
+                "pressure": lambda: market_data_service.get_pressure_analysis(),
+                "pattern_recognition": lambda: market_data_service.get_pattern_analysis(),
+                "market_conditions": lambda: market_data_service.get_market_conditions_analysis(),
+                "cross_asset_correlation_analyzer": lambda: market_data_service.get_cross_asset_analysis(),
+            }
+
+            # Update modules via MarketDataService (SRP: MarketDataService coordinates all module access)
             for module_name in modules_to_update:
-                module_instance = analysis_modules[module_name]
                 try:
                     logger.debug(f"📊 Processing module: {module_name}")
                     
-                    # RSI updates happen via WebSocket callback only - NO FALLBACKS
-                    # Removed redundant RSI update here - RSI is updated instantly when price changes
-
-                    if hasattr(module_instance, "get_latest_analysis"):
-                        # Other modules: Get latest analysis with current price
-                        if module_name == "volume":
-                            # Volume analysis needs websocket
-                            analysis_result = module_instance.get_latest_analysis(
-                                hyperliquid_websocket=market_data_service.hyperliquid_websocket
-                            )
-                        elif module_name == "support_resistance":
-                            # S/R needs current price
-                            analysis_result = module_instance.get_latest_analysis(
-                                current_price=current_price
-                            )
-                        elif module_name == "trend":
-                            # Trend analysis
-                            analysis_result = module_instance.get_latest_analysis()
-                        elif module_name == "volatility":
-                            # Volatility analysis
-                            logger.debug(f"📊 Triggering volatility analysis...")
-                            analysis_result = module_instance.get_latest_analysis()
-                            logger.debug(f"📊 Volatility analysis result: {analysis_result}")
-                        elif module_name == "pressure":
-                            # Pressure analysis
-                            logger.debug(f"📊 Triggering pressure analysis...")
-                            analysis_result = module_instance.get_latest_analysis()
-                            logger.debug(f"📊 Pressure analysis result: {analysis_result}")
-                        elif module_name == "pattern_recognition":
-                            # Pattern analysis needs candles
-                            # Note: Pattern analysis is handled by MarketDataService.get_pattern_analysis()
-                            # which uses centralized caching. We don't need to trigger it here directly.
-                            # The analysis will be fetched when get_unified_analysis_data() is called.
-                            logger.debug("📊 Pattern recognition module update triggered (handled by MarketDataService)")
-                            # Get the analysis result from MarketDataService (which handles caching)
-                            if hasattr(market_data_service, "get_pattern_analysis"):
-                                analysis_result = market_data_service.get_pattern_analysis()
-                                patterns_count = len(analysis_result.get("patterns", []))
-                                nested = analysis_result.get("patterns_nested", {})
-                                nested_count = sum(len(v) if isinstance(v, list) else 0 for v in nested.values())
-                                logger.info(f"📊 Pattern analysis retrieved: {patterns_count} flat patterns, {nested_count} nested patterns")
-                            else:
-                                analysis_result = None
-                        elif module_name == "market_conditions":
-                            # Market conditions analysis needs comprehensive market data
-                            logger.debug(f"📊 Triggering market conditions analysis...")
-                            # Get current market data for conditions analysis
-                            market_data = {
-                                "current_price": current_price,
-                                "rsi": market_data_service.get_rsi_analysis().get("rsi", 50.0),
-                                "trend": market_data_service.get_trend_analysis("standard").get("direction", "SIDEWAYS"),
-                                "volatility_5m": market_data_service.get_volatility_analysis("standard").get("volatility_5m", 0.0),
-                                "volatility_category": market_data_service.get_volatility_analysis("standard").get("volatility_5m_category", "MODERATE"),
-                                "volume_category": market_data_service.get_volume_analysis().get("hyperliquid_5m", {}).get("volume_category", "MODERATE")
-                            }
-                            # Get 1d candles for market trend analysis
-                            from core.services.historical_data_service import create_historical_data_service
-                            historical_service = create_historical_data_service()
-                            candles_1d = historical_service.get_1d_candles("BTC", 30)  # Request 30 days to ensure we have at least 7
-                            
-                            analysis_result = module_instance.analyze_trading_conditions(market_data, candles_1d=candles_1d)
-                            logger.debug(f"📊 Market conditions analysis completed: {analysis_result.get('condition', 'UNKNOWN')} condition")
-                        elif module_name == "cross_asset_correlation_analyzer":
-                            # Cross asset correlation analysis needs current price
-                            logger.debug(f"📊 Triggering cross asset correlation analysis...")
-                            analysis_result = module_instance.analyze_cross_asset_correlations(current_price)
-                            logger.debug(f"📊 Cross asset correlation analysis completed: {analysis_result.get('status', 'UNKNOWN')} status")
-                        else:
-                            # Other modules get their own data
-                            analysis_result = module_instance.get_latest_analysis()
-
-                        if analysis_result:
-                            market_data_service.update_analysis_data(module_name, analysis_result)
-                            logger.debug(f"📊 {module_name} data updated: {type(analysis_result)}")
-                        else:
-                            logger.warning(f"⚠️ {module_name} returned no data")
-
-                    logger.debug(f"📊 Updated live data for module: {module_name}")
+                    # Get analysis via MarketDataService (single source of truth)
+                    getter = module_to_getter.get(module_name)
+                    if getter:
+                        analysis_result = getter()
+                        # MarketDataService already stores the result via its get_* methods
+                        logger.debug(f"📊 {module_name} data retrieved via MarketDataService")
+                    else:
+                        logger.debug(f"📊 Module {module_name} not in getter map - may be handled differently")
 
                 except Exception as e:
-                    logger.warning(
-                        f"⚠️ Failed to update live data for module {module_name}: {e}"
-                    )
+                    logger.warning(f"⚠️ Failed to update {module_name} via MarketDataService: {e}")
                     continue
 
         except Exception as e:
@@ -583,9 +505,7 @@ class SessionOrchestrator:
     def _get_session_data(self) -> Dict[str, Any]:
         """Get session data"""
         try:
-            if self.session_manager and hasattr(
-                self.session_manager, "current_session_data"
-            ):
+            if self.session_manager:
                 session_data = self.session_manager.current_session_data
                 return {
                     "session_id": session_data.get("session_id", "unknown"),
@@ -649,7 +569,7 @@ class SessionOrchestrator:
                 else:
                     logger.debug(f"🎯 Strategy unchanged: {current_strategy}")
                     # Even if unchanged, ensure session manager has the correct strategy
-                    if self.session_manager and hasattr(self.session_manager, 'current_session_data'):
+                    if self.session_manager:
                         if self.session_manager.current_session_data.get("strategy") != current_strategy:
                             self.session_manager.current_session_data["strategy"] = current_strategy
                             logger.debug(f"📊 Session manager strategy synced to: {current_strategy}")
@@ -688,13 +608,9 @@ class SessionOrchestrator:
                 # Ensure session data has the latest strategy from unified_data
                 if "strategy" in unified_data:
                     session_data["strategy"] = unified_data["strategy"]
-                    # Also update session manager's internal data
-                    if hasattr(self.session_manager, 'current_session_data'):
+                    if self.session_manager:
                         self.session_manager.current_session_data["strategy"] = unified_data["strategy"]
                 dashboard_service.update_session_data(session_data)
-                logger.debug(f"📊 Session data updated: status={session_data.get('status', 'UNKNOWN')}, strategy={session_data.get('strategy', 'N/A')}")
-            
-            logger.debug("📊 Dashboard updated with unified market data and session data")
 
         except Exception as e:
             logger.error(f"❌ Dashboard update failed: {e}")

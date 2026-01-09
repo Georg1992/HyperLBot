@@ -166,7 +166,17 @@ class TradingConfig:
         "max_leverage": 40,
         "profit_target": 0.008,  # 0.8% profit target
         "stop_loss": 0.004,  # 0.4% stop loss
-        "position_size": 0.1  # 10% of balance
+        "position_size": 0.1,  # 10% of balance
+        "direction_weights": {
+            "rsi": 0.25,
+            "trend": 0.25,
+            "support_resistance": 0.20,
+            "pressure": 0.15,
+            "patterns": 0.10,
+            "volume": 0.05,
+            "funding": 0.05
+        },
+        "min_score_diff": 10.0  # Minimum score difference to make direction decision
     },
     "range_trading": {
         "min_range_percentage": 0.001,  # 0.1% minimum range
@@ -183,7 +193,17 @@ class TradingConfig:
         "max_range_width": 0.008,  # 0.8% maximum range width
         "require_range_confirmation": True,
         "support_resistance_required": True,
-        "description": "General range trading strategy for sideways markets"
+        "description": "General range trading strategy for sideways markets",
+        "direction_weights": {
+            "support_resistance": 0.40,  # Very high weight - S/R is everything in range trading
+            "rsi": 0.25,  # High weight - RSI for oversold/overbought at range boundaries
+            "pressure": 0.15,  # Medium weight - Pressure at boundaries
+            "trend": 0.10,  # Low weight - Trend less important in ranges
+            "patterns": 0.05,  # Low weight - Patterns less relevant
+            "volume": 0.05,  # Low weight - Volume confirmation
+            "funding": 0.00  # No weight - Funding irrelevant
+        },
+        "min_score_diff": 12.0  # Higher threshold for range trading (need clear signals)
     },
     "breakout": {
         "confidence_threshold": 0.58,  # 58% confidence minimum for extreme volatility
@@ -196,7 +216,17 @@ class TradingConfig:
         "trend_required": True,  # Breakouts need trend confirmation
         "volume_confirmation": True,  # Volume must confirm breakout
         "breakout_threshold": 0.003,  # 0.3% minimum breakout from S/R levels
-        "description": "Breakout strategy for extreme volatility markets"
+        "description": "Breakout strategy for extreme volatility markets",
+        "direction_weights": {
+            "patterns": 0.30,  # Very high weight - Breakout patterns are key
+            "volume": 0.25,  # High weight - Volume must confirm breakout
+            "trend": 0.20,  # High weight - Trend direction matters
+            "support_resistance": 0.15,  # Medium weight - Breakout from S/R levels
+            "pressure": 0.05,  # Low weight - Pressure less important
+            "rsi": 0.05,  # Low weight - RSI less relevant for breakouts
+            "funding": 0.00  # No weight - Funding irrelevant
+        },
+        "min_score_diff": 10.0
     },
     "low_volatility_range": {
         "min_range_percentage": 0.0003,  # 0.03% minimum range (very tight)
@@ -213,7 +243,17 @@ class TradingConfig:
         "max_range_width": 0.005,  # 0.5% maximum range width
         "require_range_confirmation": True,
         "support_resistance_required": True,
-        "description": "Optimized for LOW and VERY_LOW volatility conditions with range detection"
+        "description": "Optimized for LOW and VERY_LOW volatility conditions with range detection",
+        "direction_weights": {
+            "support_resistance": 0.45,  # Very high weight - S/R critical in tight ranges
+            "rsi": 0.30,  # High weight - RSI for oversold/overbought
+            "pressure": 0.15,  # Medium weight - Pressure at boundaries
+            "trend": 0.05,  # Low weight - Trend less relevant in tight ranges
+            "patterns": 0.03,  # Very low weight
+            "volume": 0.02,  # Very low weight
+            "funding": 0.00  # No weight
+        },
+        "min_score_diff": 10.0
     },
     "high_volatility": {
         "min_range_percentage": 0.005,  # 0.5% minimum range
@@ -223,7 +263,17 @@ class TradingConfig:
         "max_leverage": 40,  # FIXED: Match global limit
         "profit_target": 0.015,  # 1.5% profit target (adjusted for 40x)
         "stop_loss": 0.008,  # 0.8% stop loss (adjusted for 40x)
-        "position_size": 0.10  # 10% of balance (adjusted for 40x)
+        "position_size": 0.10,  # 10% of balance (adjusted for 40x)
+        "direction_weights": {
+            "trend": 0.30,  # High weight - Follow the trend in volatile markets
+            "pressure": 0.25,  # High weight - Pressure shows momentum
+            "volume": 0.20,  # High weight - Volume confirms moves
+            "rsi": 0.15,  # Medium weight - RSI for extremes
+            "support_resistance": 0.05,  # Low weight - S/R less reliable in high vol
+            "patterns": 0.05,  # Low weight
+            "funding": 0.00  # No weight
+        },
+        "min_score_diff": 12.0
     },
     "spike_hunting": {
         "min_range_percentage": 0.008,  # 0.8% minimum range
@@ -236,7 +286,17 @@ class TradingConfig:
         "position_size": 0.15,  # 15% of balance (SAFER: 15% x 40x = 600% exposure)
         "volume_spike_required": True,
         "min_spike_severity": "HIGH",
-        "require_momentum_alignment": True
+        "require_momentum_alignment": True,
+        "direction_weights": {
+            "volume": 0.40,  # Very high weight - Volume spikes are key
+            "pressure": 0.30,  # High weight - Extreme pressure
+            "trend": 0.15,  # Medium weight - Trend alignment
+            "rsi": 0.10,  # Low weight - RSI extremes
+            "patterns": 0.05,  # Low weight
+            "support_resistance": 0.00,  # No weight - S/R irrelevant for spikes
+            "funding": 0.00  # No weight
+        },
+        "min_score_diff": 20.0  # Very high threshold - need extreme signals
     },
     "trend_following": {
         "min_range_percentage": 0.003,  # 0.3% minimum range
@@ -250,7 +310,17 @@ class TradingConfig:
         "trend_confirmation_required": True,
         "min_trend_strength": "STRONG",
         "momentum_alignment_required": True,
-        "description": "Optimized for strong trending markets with momentum confirmation"
+        "description": "Optimized for strong trending markets with momentum confirmation",
+        "direction_weights": {
+            "trend": 0.45,  # Very high weight - Trend is everything
+            "rsi": 0.20,  # Medium weight - RSI for entry timing
+            "support_resistance": 0.15,  # Medium weight - S/R for entry points
+            "pressure": 0.10,  # Low weight - Pressure confirmation
+            "patterns": 0.05,  # Low weight - Patterns less important
+            "volume": 0.05,  # Low weight - Volume confirmation
+            "funding": 0.00  # No weight - Funding irrelevant
+        },
+        "min_score_diff": 15.0  # Higher threshold - need strong trend confirmation
     },
     "scalping": {
         "min_range_percentage": 0.0005,  # 0.05% minimum range (very tight)
@@ -267,7 +337,17 @@ class TradingConfig:
         "volume_spike_required": False,  # Don't need volume spikes for scalping
         "rsi_range": [30, 70],  # Avoid extreme RSI zones
         "spread_threshold": 0.0001,  # Max spread of 0.01%
-        "description": "High-frequency scalping for small, quick profits with tight risk management"
+        "description": "High-frequency scalping for small, quick profits with tight risk management",
+        "direction_weights": {
+            "rsi": 0.35,  # High weight - RSI is critical for scalping
+            "pressure": 0.30,  # High weight - Orderbook pressure is key
+            "support_resistance": 0.15,  # Medium weight - S/R for entry/exit
+            "trend": 0.10,  # Low weight - Short-term, trend less important
+            "patterns": 0.05,  # Low weight - Patterns too slow for scalping
+            "volume": 0.05,  # Low weight - Volume confirmation
+            "funding": 0.00  # No weight - Funding irrelevant for scalping
+        },
+        "min_score_diff": 8.0  # Lower threshold for faster decisions
     },
     }
     

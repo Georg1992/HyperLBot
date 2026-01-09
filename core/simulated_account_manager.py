@@ -21,22 +21,14 @@ class SimulatedAccountManager:
         self.account_file = "data/accounts/simulated_account.json"
         self.account_data = None
         
-        # Dashboard service will be initialized lazily when needed
         self.dashboard_service = None
-        self._dashboard_initialized = False
     
     def _ensure_dashboard_initialized(self):
-        """Ensure dashboard service is available (lazy initialization)"""
-        if not self._dashboard_initialized:
-            try:
-                # Get dashboard service from system initializer
-                from core.services.system_initializer import get_system_initializer
-                system_initializer = get_system_initializer()
-                self.dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
-                self._dashboard_initialized = True
-            except Exception:
-                self.dashboard_service = None
-                logger.warning("⚠️ Dashboard service not available - AccountManager will work independently")
+        """Ensure dashboard service is available"""
+        if self.dashboard_service is None:
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            self.dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
     
     def account_exists(self) -> bool:
         """Check if a simulated account file exists"""

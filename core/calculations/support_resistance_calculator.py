@@ -960,25 +960,28 @@ class SupportResistanceCalculator(BaseCalculator):
             (best_resistance, best_resistance_score), (secondary_resistance, secondary_resistance_score) = \
                 _get_trading_levels(resistance_levels, current_price, is_support=False)
             
-            # Log if we couldn't find enough levels (shouldn't happen after verification)
+            # Log if we couldn't find enough levels (this is normal when fewer levels are available)
+            # Only warn if we expected more levels but found fewer, and only at debug level
             if (best_support == 0.0 or secondary_support == 0.0) and len(support_levels) > 0:
-                logger.warning(f"⚠️ Could not find 2 support levels from {len(support_levels)} available. "
-                             f"Best: ${best_support:.2f}, Secondary: ${secondary_support:.2f}")
                 if len(support_levels) >= 2:
-                    # Log all support levels for debugging
+                    # Multiple levels available but couldn't select 2 - this is a real issue
                     sorted_support = sorted(support_levels, key=lambda x: x["strength_score"], reverse=True)
                     support_str = ", ".join([f"${level['price_level']:.2f}({level['strength_score']:.1f})" for level in sorted_support[:5]])
-                    logger.debug(f"   Available support levels: {support_str}")
+                    logger.debug(f"⚠️ Could not find 2 support levels from {len(support_levels)} available. "
+                               f"Best: ${best_support:.2f}, Secondary: ${secondary_support:.2f}. Available: {support_str}")
+                else:
+                    # Only 1 level available - this is normal, just debug log
+                    logger.debug(f"📊 Only {len(support_levels)} support level(s) available (requested {max_levels_per_side})")
             if (best_resistance == 0.0 or secondary_resistance == 0.0) and len(resistance_levels) > 0:
-                logger.warning(f"⚠️ Could not find 2 resistance levels from {len(resistance_levels)} available. "
-                             f"Best: ${best_resistance:.2f}, Secondary: ${secondary_resistance:.2f}")
                 if len(resistance_levels) >= 2:
-                    # Log all resistance levels for debugging
+                    # Multiple levels available but couldn't select 2 - this is a real issue
                     sorted_resistance = sorted(resistance_levels, key=lambda x: x["strength_score"], reverse=True)
                     resistance_str = ", ".join([f"${level['price_level']:.2f}({level['strength_score']:.1f})" for level in sorted_resistance[:5]])
-                    logger.debug(f"   Available resistance levels: {resistance_str}")
+                    logger.debug(f"⚠️ Could not find 2 resistance levels from {len(resistance_levels)} available. "
+                               f"Best: ${best_resistance:.2f}, Secondary: ${secondary_resistance:.2f}. Available: {resistance_str}")
                 else:
-                    logger.warning(f"   Only {len(resistance_levels)} resistance level(s) found above ${current_price:.2f}")
+                    # Only 1 level available - this is normal, just debug log
+                    logger.debug(f"📊 Only {len(resistance_levels)} resistance level(s) found above ${current_price:.2f} (requested {max_levels_per_side})")
             
             # For backward compatibility, strongest = best
             strongest_support, support_score = best_support, best_support_score

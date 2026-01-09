@@ -125,17 +125,6 @@ class DashboardService:
                 self._save_data()
                 # Trigger WebSocket emission
                 self._trigger_websocket_emission()
-                
-                # Debug: Log what data is being stored
-                logger.debug(f"📊 DashboardService updated with market data keys: {list(market_data.keys())}")
-                logger.debug(f"📊 DashboardService current_price: {market_data.get('current_price', 'N/A')}")
-                
-                # Log candle data status for debugging
-                if "candleData" in market_data:
-                    candle_data = market_data["candleData"]
-                    historical_count = len(candle_data.get("historical", [])) if candle_data else 0
-                    has_ongoing = bool(candle_data.get("ongoing")) if candle_data else False
-                    logger.debug(f"📊 Candle data: {historical_count} historical, ongoing: {has_ongoing}")
                 # RSI removed - not working properly
         except Exception as e:
             logger.error(f"❌ Could not update market data: {e}")
@@ -164,7 +153,6 @@ class DashboardService:
                 logger.warning("⚠️ Failed to prepare chart data from historical service")
                 return None
             
-            logger.debug(f"📊 Prepared candle data: {len(candle_data.get('historical', []))} historical candles, ongoing: {bool(candle_data.get('ongoing'))}")
             return candle_data
             
         except Exception as e:
@@ -178,7 +166,7 @@ class DashboardService:
         try:
             # The dashboard will automatically detect data changes through its monitoring loop
             # The data has been saved to file, so the dashboard's _start_data_monitoring will pick it up
-            logger.debug("📡 Market data updated - WebSocket emission triggered")
+            pass
         except Exception as e:
             logger.error(f"❌ Could not trigger WebSocket emission: {e}")
     
@@ -198,7 +186,6 @@ class DashboardService:
             with self._lock:
                 self._data["chart"] = chart_data.copy()
                 self._save_data()
-                logger.debug(f"📊 Chart data updated: {len(chart_data.get('historical', []))} candles")
         except Exception as e:
             logger.error(f"❌ Could not update chart data: {e}")
     

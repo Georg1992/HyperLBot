@@ -1949,18 +1949,24 @@
                     </div>
                     
                     <!-- Entry & Targets -->
-                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px;">
                         <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
                             <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Entry Price</div>
-                            <div style="font-size: 14px; font-weight: bold; color: #FFD700;">$${prediction.entry_price ? prediction.entry_price.toLocaleString() : 'N/A'}</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #FFD700;">$${prediction.entry_price ? prediction.entry_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
                         </div>
                         <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
                             <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Stop Loss</div>
-                            <div style="font-size: 14px; font-weight: bold; color: #FF4444;">$${prediction.stop_loss ? prediction.stop_loss.toLocaleString() : 'N/A'}</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #FF4444;">$${prediction.stop_loss ? prediction.stop_loss.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
                         </div>
                         <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
                             <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Take Profit</div>
-                            <div style="font-size: 14px; font-weight: bold; color: #00FF88;">$${prediction.take_profit ? prediction.take_profit.toLocaleString() : 'N/A'}</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #00FF88;">$${prediction.take_profit ? prediction.take_profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Status</div>
+                            <div style="font-size: 14px; font-weight: bold; color: ${prediction.status === 'READY' ? '#00FF88' : prediction.status === 'PENDING' ? '#FFC107' : prediction.status === 'EXECUTED' ? '#2196F3' : '#888'};">
+                                ${prediction.status || 'N/A'}
+                            </div>
                         </div>
                     </div>
                     

@@ -22,12 +22,40 @@ class TrendCalculator:
             from core.services.historical_data_service import create_historical_data_service
             historical_service = create_historical_data_service()
             
-            # Get candles for all timeframes
-            candles_5m = historical_service.get_5m_candles("BTC", 30)
-            candles_1h = historical_service.get_1h_candles("BTC", 30)
-            candles_1d = historical_service.get_1d_candles("BTC", 30)
+            # Get candles for all timeframes (with error handling for each)
+            candles_5m = []
+            candles_1h = []
+            candles_1d = []
             
-            if not candles_5m or len(candles_5m) < 3:
+            try:
+                candles_5m = historical_service.get_5m_candles("BTC", 30)
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to get 5m candles: {e}")
+                candles_5m = []
+            
+            try:
+                candles_1h = historical_service.get_1h_candles("BTC", 30)
+            except ValueError as e:
+                # ValueError means insufficient 5m candles in database for aggregation
+                logger.warning(f"⚠️ Failed to get 1h candles (need 360 5m candles): {e}")
+                candles_1h = []
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to get 1h candles: {e}")
+                candles_1h = []
+            
+            try:
+                candles_1d = historical_service.get_1d_candles("BTC", 30)
+            except ValueError as e:
+                # ValueError means insufficient 5m candles in database for aggregation
+                logger.warning(f"⚠️ Failed to get 1d candles (need 8,640 5m candles): {e}")
+                candles_1d = []
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to get 1d candles: {e}")
+                candles_1d = []
+            
+            # Check if we have sufficient data
+            if len(candles_5m) < 3:
+                logger.warning(f"⚠️ Insufficient 5m candles: {len(candles_5m)} (need at least 3)")
                 return {
                     "trend_15m": "UNKNOWN",
                     "trend_1h": "UNKNOWN", 
@@ -35,7 +63,7 @@ class TrendCalculator:
                     "trend_24h": "UNKNOWN",
                     "timestamp": time.time(),
                     "data_type": "trend",
-                    "error": "Insufficient candle data"
+                    "error": f"Insufficient 5m candle data: {len(candles_5m)} < 3"
                 }
             
             # Calculate universal multi-timeframe trends
@@ -87,16 +115,28 @@ class TrendCalculator:
             thresholds_24h = {"strong": 2.0, "moderate": 1.0, "weak": 0.3}
             
             # Calculate 15m trend (3 candles from 5m data) with adjusted thresholds
-            trend_15m = self._calculate_trend_for_period(candles_5m, 3, thresholds_15m, "15m")
+            if candles_5m and len(candles_5m) >= 3:
+                trend_15m = self._calculate_trend_for_period(candles_5m, 3, thresholds_15m, "15m")
+            else:
+                trend_15m = {"trend": "UNKNOWN", "strength": 0.0, "change_pct": 0.0}
             
             # Calculate 1h trend (1 candle from 1h data)
-            trend_1h = self._calculate_trend_for_period(candles_1h, 1, thresholds_1h, "1h")
+            if candles_1h and len(candles_1h) >= 1:
+                trend_1h = self._calculate_trend_for_period(candles_1h, 1, thresholds_1h, "1h")
+            else:
+                trend_1h = {"trend": "UNKNOWN", "strength": 0.0, "change_pct": 0.0}
             
             # Calculate 4h trend (4 candles from 1h data)
-            trend_4h = self._calculate_trend_for_period(candles_1h, 4, thresholds_4h, "4h")
+            if candles_1h and len(candles_1h) >= 4:
+                trend_4h = self._calculate_trend_for_period(candles_1h, 4, thresholds_4h, "4h")
+            else:
+                trend_4h = {"trend": "UNKNOWN", "strength": 0.0, "change_pct": 0.0}
             
             # Calculate 24h trend (1 candle from 1d data)
-            trend_24h = self._calculate_trend_for_period(candles_1d, 1, thresholds_24h, "24h")
+            if candles_1d and len(candles_1d) >= 1:
+                trend_24h = self._calculate_trend_for_period(candles_1d, 1, thresholds_24h, "24h")
+            else:
+                trend_24h = {"trend": "UNKNOWN", "strength": 0.0, "change_pct": 0.0}
             
             return {
                 "trend_15m": trend_15m["trend"],

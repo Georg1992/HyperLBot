@@ -19,10 +19,6 @@ class SystemInitializer:
         self.initialization_results = {}
         self.singleton_systems = {}
         
-        # Service initialization tracking to prevent redundant initializations
-        self._service_initialization_count = {}
-        self._service_initialization_times = {}
-        
         logger.info("⚙️ System Initializer created - Phase management enabled")
     
     def initialize_system(self, initial_balance: float) -> Dict[str, Any]:
@@ -167,33 +163,24 @@ class SystemInitializer:
             
             # On-Chain Data & Psychological Levels Analyzers removed (not implemented)
             
-            # 14. Data Analysis Components (execution removed)
-            from core.analysis.historical.variability_analyzer import VariabilityAnalyzer
-            from core.analysis.historical.historical_data_coordinator import MarketDataAnalyzer
+            # 14. Data Analysis Components
             from core.services.strategy_manager import StrategyManager
-            from core.simulated_account_manager import account_manager
-            from core.api.hyperliquid_simulator import HyperliquidSimulator
             
             # Initialize data analysis components
             from config.config import TradingConfig
             config = TradingConfig()
             
-            variability_analyzer = VariabilityAnalyzer(lookback_periods=100)
-            historical_data_coordinator = MarketDataAnalyzer()
             strategy_manager = StrategyManager(config)
             
-            # Initialize HyperLiquid simulator with account balance (for data gathering)
-            hyperliquid_simulator = HyperliquidSimulator(initial_balance=initial_balance)
-            
-            self.singleton_systems["variability_analyzer"] = variability_analyzer
-            self.singleton_systems["historical_data_coordinator"] = historical_data_coordinator
             self.singleton_systems["strategy_manager"] = strategy_manager
-            self.singleton_systems["hyperliquid_simulator"] = hyperliquid_simulator
-            self.singleton_systems["account_manager"] = account_manager
             
-            # Initialize data services (execution removed)
-            from core.services.market_data_service import create_market_data_service
-            from core.services.dashboard_service import create_dashboard_service
+            # Note: account_manager is used via direct import, not via singleton
+            # Note: hyperliquid_simulator is not used yet (trading execution not implemented)
+            # Note: historical_data_coordinator is not used (replaced by HistoricalDataService)
+            
+            # Initialize data services
+            from core.services.market_data_service import create_market_data_service, set_global_market_data_service
+            from core.services.dashboard_service import create_dashboard_service, DashboardService
             from core.services.session_orchestrator import SessionOrchestrator
             
             market_data_service = create_market_data_service(
@@ -202,17 +189,20 @@ class SystemInitializer:
                 self.singleton_systems.get("binance_api"),
                 self.singleton_systems.get("binance_websocket")
             )
+            set_global_market_data_service(market_data_service)
             
-            # Use global instance if available, otherwise create new one
-            from core.services.dashboard_service import DashboardService
-            dashboard_service = DashboardService.get_global_instance()
-            if not dashboard_service:
-                dashboard_service = create_dashboard_service()
+            dashboard_service = DashboardService.get_global_instance() or create_dashboard_service()
             session_orchestrator = SessionOrchestrator(config, initial_balance)  # Use real account balance
             
             self.singleton_systems["market_data_service"] = market_data_service
             self.singleton_systems["dashboard_service"] = dashboard_service
             self.singleton_systems["session_orchestrator"] = session_orchestrator
+            
+            # Initialize trading logger for session metadata
+            from core.logging.trading_logger import TradingLogger
+            trading_logger = TradingLogger()
+            self.singleton_systems["trading_logger"] = trading_logger
+            logger.info("📝 Trading logger initialized")
             
             # Register analysis modules with MarketDataService
             self._register_analysis_modules(market_data_service)
@@ -399,36 +389,6 @@ class SystemInitializer:
         except Exception as e:
             logger.error(f"❌ Failed to register analysis modules: {e}")
     
-    def _track_service_initialization(self, service_name: str) -> None:
-        """Track service initialization to prevent redundant initializations"""
-        current_time = time.time()
-        
-        if service_name not in self._service_initialization_count:
-            self._service_initialization_count[service_name] = 0
-        
-        self._service_initialization_count[service_name] += 1
-        self._service_initialization_times[service_name] = current_time
-        
-        count = self._service_initialization_count[service_name]
-        if count > 1:
-            logger.warning(f"⚠️ {service_name} initialized {count} times - potential redundancy")
-    
-    def get_service_initialization_stats(self) -> Dict[str, Any]:
-        """Get statistics about service initializations"""
-        current_time = time.time()
-        stats = {}
-        
-        for service_name, count in self._service_initialization_count.items():
-            last_init = self._service_initialization_times.get(service_name, 0)
-            age = current_time - last_init
-            
-            stats[service_name] = {
-                'initialization_count': count,
-                'last_initialization_age_seconds': age,
-                'is_redundant': count > 1
-            }
-        
-        return stats
 
 # Global system initializer instance
 _global_system_initializer = None
