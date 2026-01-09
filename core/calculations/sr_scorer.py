@@ -329,35 +329,6 @@ class SRScorer:
             logger.error(f"❌ Probability adjustment failed: {e}")
             return base_probability
     
-    def _calculate_heuristic_reversal_probability(self, level: Level, 
-                                                 current_price: float, atr_5m: float) -> float:
-        """
-        UNUSED - This method is no longer called (NO FALLBACKS policy)
-        
-        Previously used as fallback heuristic calculation when historical analysis wasn't available.
-        Now errors are raised instead of using fallback values.
-        """
-        try:
-            # Use current scoring factors as proxy
-            touch_score = self._calculate_touch_score(level.touches)
-            proximity_score = self._calculate_proximity_score_enhanced(level.level, current_price, atr_5m)
-            recency_score = self._calculate_recency_score(level.timestamp)
-            volume_score = self._calculate_volume_score(level, atr_5m)
-            
-            # Weighted average (same weights as scoring)
-            heuristic_prob = (
-                touch_score * 0.40 +
-                proximity_score * 0.40 +
-                recency_score * 0.15 +
-                volume_score * 0.05
-            )
-            
-            return heuristic_prob
-            
-        except Exception as e:
-            logger.error(f"❌ Heuristic probability calculation failed: {e}")
-            return 50.0
-    
     def score_levels_enhanced(self, levels: List[Level], current_price: float, 
                              atr_5m: float, atr_per_tf: Dict[str, float],
                              candles_data: Dict[str, List[Dict]] = None,

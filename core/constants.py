@@ -31,7 +31,6 @@ class TradingConstants:
     # File Paths
     LOCK_FILE = "data/temp/bot_instance.lock"
     DASHBOARD_STATE_FILE = "data/cache/dashboard_state.json"
-    POSITIONS_FILE = "data/open_positions.json"
     SIMULATED_ACCOUNT_FILE = "data/accounts/simulated_account.json"
     
     # Log Configuration
@@ -44,11 +43,6 @@ class TradingConstants:
     # Dashboard Update Intervals
     DASHBOARD_UPDATE_INTERVAL = 2    # seconds
     FORCE_UPDATE_INTERVAL = 10       # seconds
-    
-    # Volume and Market Data
-    BASE_VOLUME = 2500000000  # 2.5B baseline volume
-    BUSINESS_HOURS_MULTIPLIER = 1.2
-    OFF_HOURS_MULTIPLIER = 0.8
     
     # Confidence Thresholds
     MIN_CONFIDENCE_THRESHOLD = 0.3
@@ -127,15 +121,6 @@ class MagicNumbers:
     DEFAULT_WIN_PROBABILITY = 0.5
     HIGH_WIN_PROBABILITY = 0.95
     
-    # Price multipliers
-    PROFIT_TARGET_MULTIPLIER = 1.02  # 2% profit target
-    STOP_LOSS_MULTIPLIER = 0.98      # 2% stop loss
-    PARTIAL_CLOSE_MULTIPLIER = 0.5   # 50% partial close
-    SCALE_SIZE_MULTIPLIER = 0.5      # 50% scale size
-    
-    # Imbalance thresholds
-    ORDERBOOK_IMBALANCE_THRESHOLD = 0.3  # 30% imbalance
-    
     # Market pressure thresholds - MORE STRICT to avoid noise
     PRESSURE_STRONG_THRESHOLD = 0.4      # 40% imbalance for strong pressure (was 25%)
     PRESSURE_MODERATE_THRESHOLD = 0.2    # 20% imbalance for moderate pressure (was 10%)
@@ -147,53 +132,8 @@ class MagicNumbers:
     
     
     
-    # Position size defaults
-    DEFAULT_POSITION_SIZE_BTC = 0.001
-    DEFAULT_POSITION_SIZE_USD = 50.0
-    
-    # Test values
-    TEST_BALANCE = 100.0
-    TEST_BTC_PRICE = 45000.0
-    
-    # Strength caps
-    MAX_STRENGTH_CAP = 0.1           # 10% max strength
-    
     # Time intervals
     DASHBOARD_SLEEP_INTERVAL = 0.5   # 0.5 seconds
-    
-    # Risk management
-    MIN_PROFIT_MARGIN = 0.001        # 0.1% minimum profit margin
-    CHANGE_THRESHOLD = 0.001         # 0.1% change threshold
-    
-    # Position sizing
-    BASE_POSITION_SIZE = 0.10        # 10% base position
-    BASE_PROFIT_TARGET = 0.003       # 0.3% base profit target
-    BASE_STOP_LOSS = 0.0015          # 0.15% base stop loss
-    
-    # Multipliers
-    POSITION_MULTIPLIER_LOW = 0.5
-    POSITION_MULTIPLIER_MED = 0.7
-    LEVERAGE_MULTIPLIER = 0.9
-    
-    # Heat thresholds
-    HEAT_THRESHOLD_ULTRA = 0.9
-    HEAT_THRESHOLD_HIGH = 0.7
-    HEAT_THRESHOLD_MED = 0.5
-    HEAT_THRESHOLD_LOW = 0.3
-    
-    # Close percentages
-    CLOSE_PERCENTAGE_HALF = 0.50
-    CLOSE_PERCENTAGE_THREE_QUARTERS = 0.75
-    
-    # Correlation risk
-    CORRELATION_RISK_SINGLE = 1.0
-    CORRELATION_RISK_MIXED = 0.5
-    
-    # Variability thresholds
-    VARIABILITY_LOW = 0.3
-    VARIABILITY_MEDIUM = 0.7
-    VARIABILITY_OPTIMAL = 0.7
-    VARIABILITY_GOOD = 0.5
     
     # Confidence thresholds (using TradingConstants values)
     # MIN_CONFIDENCE_THRESHOLD = 0.1  # Duplicate - use TradingConstants.MIN_CONFIDENCE_THRESHOLD
@@ -303,32 +243,6 @@ class TradingExecutionConstants:
     SCALE_IN_MULTIPLIER = 0.5        # 50% scale multiplier
 
 
-class FeeConstants:
-    """Fee and cost calculation constants"""
-    
-    # Fee Rates
-    MAKER_FEE = 0.0001               # 0.01% maker fee
-    TAKER_FEE = 0.0002               # 0.02% taker fee
-    FUNDING_RATE = 0.0001            # 0.01% funding rate
-    
-    # Order Size Thresholds
-    SMALL_ORDER_THRESHOLD = 100      # $100 small order
-    MEDIUM_ORDER_THRESHOLD = 1000    # $1000 medium order
-    
-    # Fee Categories
-    SMALL_ORDER_FEE = 0.0001         # 0.01% for orders < $100
-    MEDIUM_ORDER_FEE = 0.0002        # 0.02% for orders $100-$1000
-    LARGE_ORDER_FEE = 0.0005         # 0.05% for orders > $1000
-    
-    # Risk Calculations
-    LIQUIDATION_RISK_CHANCE = 0.01   # 1% liquidation chance
-    OPPORTUNITY_COST_RATE = 0.0001   # 0.01% per hour opportunity cost
-    
-    # Profit Analysis
-    MIN_PROFIT_MARGIN = 0.001        # 0.1% minimum profit margin
-    PROFIT_BUFFER = 0.001            # 0.1% profit buffer
-
-
 class VariabilityConstants:
     """Variability analysis constants"""
     
@@ -367,25 +281,6 @@ class VariabilityConstants:
     CONFIDENCE_REDUCTION_FACTOR = 0.1 # 10% confidence reduction
 
 
-class SimulationConstants:
-    """Simulation and testing constants"""
-    
-    # Test Parameters
-    TEST_MONITORING_TIME = 30        # 30 seconds monitoring time
-    TEST_TIMEOUT = 300               # 5 minutes test timeout
-    
-    # Simulation Data
-    BASE_SIMULATION_PRICE = 50000    # $50,000 base price
-    SIMULATION_VOLUME_BASE = 1000    # 1000 base volume
-    SIMULATION_VOLUME_VARIANCE = 200 # 200 volume variance
-    
-    # Test Hosts
-    TEST_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
-    
-    # Data Limits
-    MAX_MARKET_DATA_POINTS = 1000    # Limit to last 1000 points
-
-
 class TimeConstants:
     """Time-related constants"""
     
@@ -411,7 +306,5 @@ data_constants = DataFetchingConstants()
 # volume_constants removed - using CoinGecko volume data instead
 technical_constants = TechnicalAnalysisConstants()
 trading_constants = TradingExecutionConstants()
-fee_constants = FeeConstants()
 variability_constants = VariabilityConstants()
-simulation_constants = SimulationConstants()
 time_constants = TimeConstants()
