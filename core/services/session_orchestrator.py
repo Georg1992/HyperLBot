@@ -249,7 +249,7 @@ class SessionOrchestrator:
                                 "entry_price": prediction.entry_price,
                                 "stop_loss": prediction.stop_loss,
                                 "take_profit": prediction.take_profit,
-                                "confidence": prediction.confidence / 100.0,
+                                "confidence": prediction.confidence,  # Already 0-100 percentage
                                 "reasoning": prediction.reasoning,
                                 "strategy": prediction.strategy,
                                 "timestamp": prediction.timestamp,
