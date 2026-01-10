@@ -110,17 +110,16 @@ class DashboardService:
                 self._data["market"].update(market_data)
                 
                 # Surface prediction to top-level for UI consumption (always set, even None)
-                pred_obj = market_data.get("prediction") if isinstance(market_data, dict) else None
+                pred_obj = market_data.get("prediction")
                 self._data["prediction"] = pred_obj
                 
-                # Prediction tracking (removed excessive logging - prediction data is intentionally removed)
-                # Only log if prediction actually exists (rare case)
+                # Log prediction status for debugging
                 if pred_obj:
-                    pred_keys = list(pred_obj.keys()) if isinstance(pred_obj, dict) else "NOT_A_DICT"
-                    pred_dir = pred_obj.get("direction", "N/A") if isinstance(pred_obj, dict) else "N/A"
-                    pred_conf = pred_obj.get("confidence", "N/A") if isinstance(pred_obj, dict) else "N/A"
-                    logger.info(f"🤖 ✅ SURFACED PREDICTION: dir={pred_dir} conf={pred_conf} keys={pred_keys}")
-                # No prediction is expected - removed excessive warning logging
+                    pred_dir = pred_obj.get("direction", "N/A")
+                    pred_conf = pred_obj.get("confidence", "N/A")
+                    logger.info(f"🤖 ✅ Prediction surfaced to dashboard: {pred_dir} @ {pred_conf:.1f}%")
+                else:
+                    logger.debug(f"🤖 No prediction available (prediction is None)")
                 
                 self._save_data()
                 # Trigger WebSocket emission

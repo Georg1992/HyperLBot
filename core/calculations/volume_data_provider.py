@@ -87,7 +87,7 @@ class VolumeDataProvider:
         if not historical_service:
             raise ValueError("Historical data service not available for volume history")
         
-        if not hasattr(historical_service, '_candle_storage') or not historical_service._candle_storage:
+        if not historical_service._candle_storage:
             raise ValueError("Candle storage not available for volume history")
         
         # Fetch last 7 days of candles (7 days * 288 candles/day = 2016 candles)

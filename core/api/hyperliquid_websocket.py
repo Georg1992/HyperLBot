@@ -272,7 +272,7 @@ class HyperliquidWebSocket:
         """Get current orderbook data from WebSocket cache"""
         try:
             with self._lock:
-                if hasattr(self, 'orderbook_cache') and self.orderbook_cache:
+                if self.orderbook_cache:
                     return self.orderbook_cache
                 else:
                     return {}
@@ -284,7 +284,7 @@ class HyperliquidWebSocket:
         """Get cached trades data"""
         try:
             with self._lock:
-                if hasattr(self, 'trades_cache') and self.trades_cache:
+                if self.trades_cache:
                     return self.trades_cache.copy()
                 return []
         except Exception as e:
@@ -295,7 +295,7 @@ class HyperliquidWebSocket:
         """Get raw trade data from WebSocket - PURE DATA ONLY"""
         try:
             with self._lock:
-                if not hasattr(self, 'trades_cache') or not self.trades_cache:
+                if not self.trades_cache:
                     return []
                 
                 # Clean up old trades (older than 2 hours) to prevent memory leaks
@@ -317,7 +317,7 @@ class HyperliquidWebSocket:
         """Clear trades older than cutoff timestamp to free memory"""
         try:
             with self._lock:
-                if hasattr(self, 'trades_cache') and self.trades_cache:
+                if self.trades_cache:
                     # Keep only trades newer than cutoff
                     self.trades_cache = [
                         trade for trade in self.trades_cache 
@@ -344,7 +344,7 @@ class HyperliquidWebSocket:
                     "current_candle_start": candle_start_timestamp,
                     "last_candle_start": self._last_candle_start,
                     "last_volume_calculation": self._last_volume_calculation,
-                    "trades_cache_size": len(self.trades_cache) if hasattr(self, 'trades_cache') else 0,
+                    "trades_cache_size": len(self.trades_cache),
                     "volume_history": self._volume_history[-5:] if self._volume_history else [],
                     "is_new_candle": self._last_candle_start != candle_start_timestamp
                 }

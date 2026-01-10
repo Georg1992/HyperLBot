@@ -46,6 +46,7 @@ class EventDrivenTradingDashboard:
         # Force update counter for reliability
         self.force_update_counter = 0
         self.last_update_cycle = 0
+        self._last_cleanup_time = 0
         
         # Setup WebSocket event handlers
         self._setup_websocket_handlers()
@@ -227,7 +228,7 @@ class EventDrivenTradingDashboard:
             
             hash_data = {
                 'price': market_data.get('current_price', 0),
-                'rsi': market_data.get('rsi', {}).get('rsi', 0) if isinstance(market_data.get('rsi'), dict) else market_data.get('rsi', 0),
+                'rsi': market_data.get('rsi', {}).get('rsi', 0),
                 'overall_trend': trend_analysis.get('overall_trend'),
                 'trading_volume_btc': market_data.get('trading_volume_btc', 0),
                 'trading_volume_category': market_data.get('trading_volume_category'),
@@ -292,9 +293,6 @@ class EventDrivenTradingDashboard:
                 return self._get_error_data("Dashboard service not available")
             
             # Check for stale sessions and auto-cleanup
-            if not hasattr(self, '_last_cleanup_time'):
-                self._last_cleanup_time = 0
-            
             current_time = time.time()
             if current_time - self._last_cleanup_time > 30:
                 self._last_cleanup_time = current_time
@@ -317,21 +315,20 @@ class EventDrivenTradingDashboard:
             prediction = None
             if "prediction" in dashboard_data and dashboard_data["prediction"]:
                 prediction = dashboard_data["prediction"]
-                pred_dir = prediction.get("direction", "N/A") if isinstance(prediction, dict) else "N/A"
-                pred_conf = prediction.get("confidence", "N/A") if isinstance(prediction, dict) else "N/A"
+                pred_dir = prediction.get("direction", "N/A")
+                pred_conf = prediction.get("confidence", "N/A")
                 logger.info(f"📡 ✅ FOUND PREDICTION (top-level): dir={pred_dir} conf={pred_conf}")
             elif "prediction" in market_data_dict and market_data_dict["prediction"]:
                 prediction = market_data_dict["prediction"]
-                pred_dir = prediction.get("direction", "N/A") if isinstance(prediction, dict) else "N/A"
-                pred_conf = prediction.get("confidence", "N/A") if isinstance(prediction, dict) else "N/A"
+                pred_dir = prediction.get("direction", "N/A")
+                pred_conf = prediction.get("confidence", "N/A")
                 logger.info(f"📡 ✅ FOUND PREDICTION (market_data_dict): dir={pred_dir} conf={pred_conf}")
             else:
-                # Fallback: try predictions list
                 predictions_list = market_data_dict.get("predictions", [])
-                if predictions_list and len(predictions_list) > 0:
-                    prediction = predictions_list[-1] if isinstance(predictions_list, list) else predictions_list
-                    pred_dir = prediction.get("direction", "N/A") if isinstance(prediction, dict) else "N/A"
-                    pred_conf = prediction.get("confidence", "N/A") if isinstance(prediction, dict) else "N/A"
+                if predictions_list:
+                    prediction = predictions_list[-1]
+                    pred_dir = prediction.get("direction", "N/A")
+                    pred_conf = prediction.get("confidence", "N/A")
                     logger.info(f"📡 ✅ FOUND PREDICTION (predictions list): dir={pred_dir} conf={pred_conf}")
             
             # Format data for dashboard - DashboardService ONLY

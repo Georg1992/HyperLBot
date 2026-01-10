@@ -43,6 +43,8 @@ class StrategyManager:
         # Strategy performance tracking
         self.strategy_performance = {}
         self.strategy_usage_count = {}
+        self._last_market_data = None
+        self.pending_strategy_outcomes = []
         
         # Initialize performance tracking
         for strategy_name in self.strategy_configs.keys():
@@ -237,7 +239,7 @@ class StrategyManager:
             strongest_resistance = 0.0
         
         try:
-            current_price = float(market_data.get("current_price", 0.0)) if market_data.get("current_price") is not None else 0.0
+            current_price = float(market_data.get("current_price", 0.0))
         except (ValueError, TypeError):
             current_price = 0.0
         
@@ -422,7 +424,7 @@ class StrategyManager:
         
         # RSI momentum: Neutral/positive momentum (10 points)
         try:
-            rsi_momentum = float(data.get("rsi_momentum", 0.0)) if data.get("rsi_momentum") is not None else 0.0
+            rsi_momentum = float(data.get("rsi_momentum", 0.0))
         except (ValueError, TypeError):
             rsi_momentum = 0.0
         if -0.1 <= rsi_momentum <= 0.2:
@@ -441,7 +443,7 @@ class StrategyManager:
         
         # Volatility: EXTREME is required (40 points)
         try:
-            vol_5m = float(data.get("volatility_5m", 0.0)) if data.get("volatility_5m") is not None else 0.0
+            vol_5m = float(data.get("volatility_5m", 0.0))
         except (ValueError, TypeError):
             vol_5m = 0.0
         if vol_5m > 0.05 or data.get("volatility_category") == "EXTREME":
@@ -907,7 +909,7 @@ class StrategyManager:
         
         # Dynamic cooldown based on market volatility
         # Get current volatility from the last market data if available
-        if hasattr(self, '_last_market_data'):
+        if self._last_market_data:
             volatility_5m = self._last_market_data.get("volatility_5m", 0.0)
             if volatility_5m > 0.03:  # High volatility (>3%)
                 cooldown = 60  # 1 minute for high volatility
@@ -989,9 +991,6 @@ class StrategyManager:
             }
             
             # Store for later outcome recording
-            if not hasattr(self, 'pending_strategy_outcomes'):
-                self.pending_strategy_outcomes = []
-            
             self.pending_strategy_outcomes.append(selection_record)
             
             # Keep only recent records
@@ -1008,8 +1007,7 @@ class StrategyManager:
         try:
             
             # Find the most recent selection for this strategy
-            if hasattr(self, 'pending_strategy_outcomes'):
-                for record in reversed(self.pending_strategy_outcomes):
+            for record in reversed(self.pending_strategy_outcomes):
                     if record["strategy"] == strategy:
                         logger.debug(f"Strategy outcome recorded: {strategy}")
                         
@@ -1060,7 +1058,7 @@ class StrategyManager:
             from core.session.session_manager import session_manager
             
             # Update session data with new strategy
-            if hasattr(session_manager, 'current_session_data') and session_manager.current_session_data:
+            if session_manager.current_session_data:
                 session_manager.current_session_data["strategy"] = new_strategy
                 
                 # Sync updated session data to dashboard

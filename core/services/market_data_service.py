@@ -52,11 +52,6 @@ class MarketDataService:
         """Register an analysis module for data coordination"""
         self._analysis_modules[module_name] = module_instance
         
-        # Set raw data sources for modules that need them
-        if hasattr(module_instance, 'set_raw_data_sources'):
-            module_instance.set_raw_data_sources(self.hyperliquid_api, self.hyperliquid_websocket)
-            logger.debug(f"📊 Set raw data sources for: {module_name}")
-        
         logger.debug(f"📊 Registered analysis module: {module_name}")
     
     def _is_data_valid(self, data_type: str) -> bool:
@@ -389,7 +384,7 @@ class MarketDataService:
                 "strategy": strategy,
                 
                 # Flattened data for strategy selection (single source of truth)
-                "trend_direction": trend_data.get("direction", "SIDEWAYS") if isinstance(trend_data, dict) else str(trend_data),
+                "trend_direction": trend_data.get("direction", "SIDEWAYS"),
                 "volatility_5m": volatility_data.get("volatility_percentage", 0) / 100.0,
                 "volatility_category": volatility_data.get("level", "MODERATE"),
                 "volume_category": volume_data.get("hyperliquid_5m", {}).get("volume_category", "MODERATE"),
@@ -844,11 +839,7 @@ class MarketDataService:
             module_status = {}
             for module_name, module_instance in self._analysis_modules.items():
                 try:
-                    # Try to get status from module if it has a status method
-                    if hasattr(module_instance, 'get_status'):
-                        module_status[module_name] = module_instance.get_status()
-                    else:
-                        module_status[module_name] = {"status": "registered", "type": type(module_instance).__name__}
+                    module_status[module_name] = {"status": "registered", "type": type(module_instance).__name__}
                 except Exception as e:
                     module_status[module_name] = {"status": "error", "error": str(e)}
             

@@ -542,7 +542,7 @@ class SupportResistanceCalculator(BaseCalculator):
             for level in levels_within_range:
                 # Only allow levels that are actual clusters (at least 2 swing points clustered together)
                 # cluster_size >= 2 means multiple swing points were found at similar price levels
-                if hasattr(level, 'cluster_size') and level.cluster_size >= 2:
+                if level.cluster_size >= 2:
                     scorable_levels.append(level)
                 # Note: Single isolated swing points (cluster_size=1) are discarded
                 # They need to cluster with other swing points to be valid S/R levels
@@ -673,7 +673,7 @@ class SupportResistanceCalculator(BaseCalculator):
             historical_service = get_global_historical_data_service()
             
             # Get candles from database by range (older than our current dataset)
-            if hasattr(historical_service, '_candle_storage') and historical_service._candle_storage:
+            if historical_service._candle_storage:
                 additional_candles = historical_service._candle_storage.get_candles_by_range(
                     lookback_timestamp, oldest_timestamp - 300  # Exclude the last 5 minutes to avoid overlap
                 )
@@ -987,16 +987,7 @@ class SupportResistanceCalculator(BaseCalculator):
             strongest_support, support_score = best_support, best_support_score
             strongest_resistance, resistance_score = best_resistance, best_resistance_score
             
-            # Validation: These should already be filtered correctly, but double-check
-            if strongest_support > 0 and strongest_support >= current_price:
-                logger.error(f"❌ Invalid support level: ${strongest_support:.2f} >= current price ${current_price:.2f}")
-                strongest_support, support_score = 0.0, 0.0
-            
-            if strongest_resistance > 0 and strongest_resistance <= current_price:
-                logger.error(f"❌ Invalid resistance level: ${strongest_resistance:.2f} <= current price ${current_price:.2f}")
-                strongest_resistance, resistance_score = 0.0, 0.0
-            
-            # Log validation warnings if no levels found
+            # Log warnings if no levels found
             if strongest_support == 0:
                 logger.warning(f"⚠️ No valid support found below ${current_price:.2f}")
             

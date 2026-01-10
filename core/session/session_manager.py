@@ -30,12 +30,13 @@ class SessionManager:
         return cls._instance
     
     def __init__(self):
-        if hasattr(self, '_initialized'):
+        if getattr(self, '_initialized', False):
             return
         
         self._initialized = True
         self.session_lock = threading.RLock()
         self.current_session_id = None
+        self.current_session_data = None
         
         logger.success("📅 Session Manager initialized")
     
@@ -174,7 +175,7 @@ class SessionManager:
                     return False
                 
                 # Use internal session data to avoid circular dependency
-                if hasattr(self, 'current_session_data') and self.current_session_data:
+                if self.current_session_data:
                     session_data = self.current_session_data.copy()
                 else:
                     session_data = {
@@ -252,7 +253,7 @@ class SessionManager:
         """Get current session data for dashboard - integrated with account data"""
         with self.session_lock:
             try:
-                if not self.current_session_id or not hasattr(self, 'current_session_data'):
+                if not self.current_session_id or not self.current_session_data:
                     return {
                         "session_id": "no_session",
                         "start_time": datetime.now().isoformat(),
@@ -321,7 +322,7 @@ class SessionManager:
                     return
                 
                 # Update internal session data
-                if hasattr(self, 'current_session_data') and self.current_session_data:
+                if self.current_session_data:
                     self.current_session_data["current_balance"] = new_balance
                     balance_change = new_balance - self.current_session_data.get("initial_balance", 0)
                     self.current_session_data["balance_change"] = balance_change
@@ -351,7 +352,7 @@ class SessionManager:
                     dashboard_service.add_trade(trade_data)
                 
                 # Update internal session data
-                if hasattr(self, 'current_session_data') and self.current_session_data:
+                if self.current_session_data:
                     self.current_session_data["total_trades"] = self.current_session_data.get("total_trades", 0) + 1
                     if trade_data.get("was_profitable", False):
                         self.current_session_data["winning_trades"] = self.current_session_data.get("winning_trades", 0) + 1
@@ -425,7 +426,7 @@ class SessionManager:
     def _update_session_time(self):
         """Calculate and update session time - SessionManager responsibility, NOT dashboard"""
         try:
-            if not hasattr(self, 'current_session_data') or not self.current_session_data:
+            if not self.current_session_data:
                 return
                 
             start_time = self.current_session_data.get("start_time")
@@ -460,7 +461,7 @@ class SessionManager:
         """Update session time if session is active - called periodically by bot"""
         with self.session_lock:
             try:
-                if not self.current_session_id or not hasattr(self, 'current_session_data'):
+                if not self.current_session_id or not self.current_session_data:
                     return False
                     
                 if self.current_session_data.get("status") != "ACTIVE":
@@ -493,7 +494,7 @@ class SessionManager:
                 from core.simulated_account_manager import account_manager
                 account_data = account_manager.get_account_summary()
                 
-                if account_data and hasattr(self, 'current_session_data'):
+                if account_data and self.current_session_data:
                     # Only update balance if account balance differs significantly
                     account_balance = account_data.get("current_balance", 0.0)
                     session_balance = self.current_session_data.get("current_balance", 0.0)

@@ -36,9 +36,18 @@ class PredictionEngine:
         logger.info("🤖 Prediction Engine initialized")
     
     @staticmethod
-    def _safe_get(data: Any, key: str, default: Any) -> Any:
-        """Safely get value from dict, return default if not dict or key missing"""
-        return data.get(key, default) if isinstance(data, dict) else default
+    def _require_key(data: Dict[str, Any], key: str, context: str = "") -> Any:
+        """
+        Require key to be present in data (NO FALLBACKS policy)
+        
+        Raises KeyError with descriptive message if key is missing
+        """
+        if key not in data:
+            error_msg = f"Required key '{key}' missing from data"
+            if context:
+                error_msg += f" ({context})"
+            raise KeyError(error_msg)
+        return data[key]
     
     def generate_prediction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[TradingPrediction]:
         """
@@ -58,26 +67,17 @@ class PredictionEngine:
                 logger.warning(f"⚠️ Unknown strategy: {strategy}")
                 return None
             
-            # Get confidence threshold for this strategy
-            confidence_threshold = strategy_config.get("confidence_threshold", 0.5)
-            
-            # Generate strategy-specific prediction
+            # Generate strategy-specific prediction (confidence will be calculated after all parameters integrated)
             prediction = self._generate_strategy_prediction(unified_data, strategy, strategy_config)
             
-            # Always return prediction if generated (user wants to see highest confidence prediction always)
+            # Always return prediction if generated
             if prediction:
                 # Ensure timestamp is set
                 if not prediction.timestamp:
                     prediction.timestamp = time.time()
                 
-                # Log prediction (always show, even if below threshold)
-                confidence_threshold_pct = confidence_threshold * 100.0
-                if prediction.confidence >= confidence_threshold_pct:
-                    logger.info(f"✅ Prediction generated: {prediction.direction} @ ${prediction.entry_price:.2f} "
-                              f"(confidence: {prediction.confidence:.1f}%, strategy: {strategy})")
-                else:
-                    logger.info(f"📊 Prediction generated (below threshold): {prediction.direction} @ ${prediction.entry_price:.2f} "
-                              f"(confidence: {prediction.confidence:.1f}% < {confidence_threshold_pct:.1f}%, strategy: {strategy})")
+                # Log prediction generation
+                logger.info(f"✅ Prediction generated: {prediction.direction} @ ${prediction.entry_price:.2f} (strategy: {strategy})")
                 return prediction
             else:
                 logger.debug(f"⏸️ No prediction generated for strategy: {strategy}")
@@ -118,30 +118,28 @@ class PredictionEngine:
         """
         Standard strategy prediction logic (also used as base for other strategies)
         
-        This is the core prediction logic that:
-        1. Determines direction using strategy-specific weights
-        2. Determines entry price using strategy-specific preferences
-        3. Calculates stop loss and take profit from config
+        Uses hybrid approach:
+        1. Generate all potential setups (both LONG and SHORT)
+        2. Score each setup with: entry_quality + direction_support
+        3. Select best overall combination
+        4. Calculate stop loss and take profit from config
         """
-        # First, determine direction using strategy-specific weights
-        direction_result = self._determine_direction(unified_data, strategy)
-        if not direction_result:
-            logger.debug(f"⏸️ No direction determined for {strategy} strategy")
+        # Generate and score all potential setups (both LONG and SHORT)
+        all_setups = self._generate_all_setups(unified_data, strategy, config)
+        if not all_setups:
+            logger.debug(f"⏸️ No valid setups found for {strategy} strategy")
             return None
         
-        direction = direction_result["direction"]
-        base_reasoning = direction_result["reasoning"]
-        base_confidence = direction_result.get("confidence_pct", 50.0)
+        # Select best overall setup (highest combined score)
+        best_setup = max(all_setups, key=lambda x: x.get("total_score", 0.0))
         
-        # Determine best entry price using strategy-specific preferences
-        entry_result = self._determine_entry_price(unified_data, direction, strategy, config)
-        if not entry_result:
-            logger.debug(f"⏸️ No entry price determined for {direction} direction ({strategy} strategy)")
-            return None
+        direction = best_setup["direction"]
+        entry_price = best_setup["entry_price"]
+        entry_score = best_setup["entry_score"]
+        direction_score = best_setup["direction_score"]
+        total_score = best_setup["total_score"]
         
-        entry_price = entry_result["entry_price"]
-        entry_confidence = entry_result["confidence"]
-        entry_reasoning = entry_result["reasoning"]
+        logger.debug(f"📊 Best setup: {direction} @ ${entry_price:.2f} (entry: {entry_score:.1f}, direction: {direction_score:.1f}, total: {total_score:.1f})")
         
         # Calculate stop_loss and take_profit from config
         stop_loss, take_profit = self._calculate_stop_and_target(
@@ -149,17 +147,36 @@ class PredictionEngine:
         )
         
         # Combine reasoning
-        combined_reasoning = f"{base_reasoning}. Entry: {entry_reasoning}"
+        combined_reasoning = f"{best_setup['direction_reasoning']}. Entry: {best_setup['entry_reasoning']}"
         
-        # Final confidence is average of direction and entry confidence
-        final_confidence = (base_confidence + entry_confidence) / 2.0
+        # Create direction_result and entry_result for confidence calculation (backward compatibility)
+        direction_result = {
+            "direction": direction,
+            "reasoning": best_setup["direction_reasoning"],
+            "long_score": best_setup.get("long_score", 0.0),
+            "short_score": best_setup.get("short_score", 0.0)
+        }
+        entry_result = {
+            "entry_price": entry_price,
+            "reasoning": best_setup["entry_reasoning"]
+        }
+        
+        # Calculate confidence for final prediction (separate from scoring system)
+        confidence = self._calculate_prediction_confidence(
+            direction_result,
+            entry_result,
+            stop_loss,
+            take_profit,
+            unified_data,
+            strategy
+        )
         
         return self._create_prediction(
             direction=direction,
             entry_price=entry_price,
             stop_loss=stop_loss,
             take_profit=take_profit,
-            confidence=final_confidence,
+            confidence=confidence,
             reasoning=combined_reasoning,
             strategy=strategy
         )
@@ -203,39 +220,35 @@ class PredictionEngine:
             return None
         
         # Use base prediction logic with scalping strategy
-        prediction = self._predict_standard(unified_data, config, "scalping")
-        
-        # Override entry to current price (scalping preference for speed)
-        if prediction:
-            current_price = unified_data.get("current_price", 0.0)
-            if current_price > 0:
-                prediction.entry_price = current_price
-                prediction.reasoning += ". Current price entry (scalping preference)"
-        
-        return prediction
+        # Note: Scalping still uses limit orders at S/R levels, not market orders
+        return self._predict_standard(unified_data, config, "scalping")
     
     def _validate_scalping_requirements(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> bool:
         """Validate scalping-specific requirements (spread, liquidity, RSI range)"""
-        orderbook_data = unified_data.get("orderbook_analysis", {})
+        orderbook_data = self._require_key(unified_data, "orderbook_analysis", "scalping validation")
+        bid_ask_spread = self._require_key(orderbook_data, "bid_ask_spread", "orderbook_analysis structure")
+        spread_pct = self._require_key(bid_ask_spread, "percentage", "bid_ask_spread structure")
         
-        # Check spread requirement
-        spread_pct = orderbook_data.get("spread_pct", 1.0)
-        spread_threshold = config.get("spread_threshold", 0.0001)
-        if spread_pct > spread_threshold:
-            logger.debug(f"⏸️ Spread too wide for scalping: {spread_pct*100:.4f}% > {spread_threshold*100:.4f}%")
+        # Check spread requirement - spread_pct is in percentage units (e.g., 0.01 = 0.01%), threshold is in decimal (0.0001 = 0.01%)
+        # Convert stored percentage to decimal: 0.01% -> 0.0001
+        spread_decimal = spread_pct / 100.0
+        spread_threshold = config.get("spread_threshold", 0.0001)  # 0.0001 = 0.01% in decimal
+        if spread_decimal > spread_threshold:
+            logger.debug(f"⏸️ Spread too wide for scalping: {spread_pct:.4f}% > {spread_threshold*100:.4f}%")
             return False
         
         # Check liquidity requirement
         require_high_liquidity = config.get("require_high_liquidity", True)
         if require_high_liquidity:
-            liquidity = orderbook_data.get("liquidity_score", 0.0)
-            if liquidity < 0.5:
-                logger.debug(f"⏸️ Insufficient liquidity for scalping: {liquidity:.2f}")
+            liquidity_depth = self._require_key(orderbook_data, "liquidity_depth", "orderbook_analysis structure")
+            liquidity_score = self._require_key(liquidity_depth, "score", "liquidity_depth structure")
+            if liquidity_score < 0.5:
+                logger.debug(f"⏸️ Insufficient liquidity for scalping: {liquidity_score:.2f}")
                 return False
         
         # Check RSI range requirement
-        rsi_data = unified_data.get("rsi", {})
-        rsi_value = self._safe_get(rsi_data, "rsi", 50.0)
+        rsi_data = self._require_key(unified_data, "rsi", "scalping validation")
+        rsi_value = self._require_key(rsi_data, "rsi", "scalping validation")
         rsi_range = config.get("rsi_range", [30, 70])
         if rsi_value < rsi_range[0] or rsi_value > rsi_range[1]:
             logger.debug(f"⏸️ RSI outside scalping range: {rsi_value:.1f} not in [{rsi_range[0]}, {rsi_range[1]}]")
@@ -273,29 +286,681 @@ class PredictionEngine:
     
     def _determine_direction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[Dict[str, Any]]:
         """
-        Determine trade direction (LONG or SHORT) using all available market data
+        Determine trade direction using unified scoring framework
         
-        Strategy-aware direction selection - each strategy weights indicators differently:
-        - Scalping: RSI (35%), Pressure (30%), S/R (15%), Trend (10%)
-        - Range Trading: S/R (40%), RSI (25%), Pressure (15%), Trend (10%)
-        - Breakout: Patterns (30%), Volume (25%), Trend (20%), S/R (15%)
-        - Trend Following: Trend (45%), RSI (20%), S/R (15%), Pressure (10%)
-        - etc.
+        NOTE: This method uses "scores" (long_score, short_score) for direction determination.
+        "Confidence" is ONLY used for final predictions, not for intermediate calculations.
+        
+        Delegates to _score_direction which uses the unified scoring framework.
         
         Args:
             unified_data: Complete market analysis data
             strategy: Current trading strategy
             
         Returns:
-            Dict with "direction" ("LONG" or "SHORT") and "reasoning" string, or None if unclear
+            Dict with "direction" ("LONG" or "SHORT"), "reasoning", "long_score", and "short_score"
+        """
+        return self._score_direction(unified_data, strategy)
+    
+    # ==================================================================================
+    # UNIFIED SCORING FRAMEWORK - Factor Scorers (Reusable)
+    # ==================================================================================
+    
+    def _score_rsi_factor(self, rsi_data: Dict[str, Any]) -> tuple[float, float, list]:
+        """
+        Score RSI factor for direction determination
+        
+        Returns:
+            (rsi_long_score, rsi_short_score, reasons)
+        """
+        rsi_value = self._require_key(rsi_data, "rsi", "RSI factor scoring")
+        rsi_trend = self._require_key(rsi_data, "rsi_trend", "RSI factor scoring")
+        rsi_signal = self._require_key(rsi_data, "rsi_signal", "RSI factor scoring")
+        
+        rsi_long = 0.0
+        rsi_short = 0.0
+        reasons = []
+        
+        if rsi_value < 30:  # Oversold - bullish
+            rsi_long = 100.0
+            reasons.append(f"RSI oversold ({rsi_value:.1f})")
+        elif rsi_value > 70:  # Overbought - bearish
+            rsi_short = 100.0
+            reasons.append(f"RSI overbought ({rsi_value:.1f})")
+        elif rsi_value < 50 and rsi_trend == "BULLISH":  # Below neutral but rising
+            rsi_long = 60.0
+            reasons.append(f"RSI recovering ({rsi_value:.1f}, {rsi_trend})")
+        elif rsi_value > 50 and rsi_trend == "BEARISH":  # Above neutral but falling
+            rsi_short = 60.0
+            reasons.append(f"RSI declining ({rsi_value:.1f}, {rsi_trend})")
+        
+        if rsi_signal == "BULLISH":
+            rsi_long += 40.0
+            reasons.append("RSI bullish signal")
+        elif rsi_signal == "BEARISH":
+            rsi_short += 40.0
+            reasons.append("RSI bearish signal")
+        
+        return rsi_long, rsi_short, reasons
+    
+    def _score_trend_factor(self, trend_data: Dict[str, Any], strategy: str) -> tuple[float, float, list]:
+        """
+        Score trend factor for direction determination using multi-timeframe analysis
+        
+        Returns:
+            (trend_long_score, trend_short_score, reasons)
+        """
+        detailed_trends = self._require_key(trend_data, "detailed_timeframes", "trend factor scoring")
+        timeframe_weights = self._get_strategy_timeframe_weights(strategy)
+        
+        trend_long = 0.0
+        trend_short = 0.0
+        reasons = []
+        
+        # Analyze each timeframe with strategy-specific weights
+        for tf_name, tf_trend in detailed_trends.items():
+            if tf_trend == "UNKNOWN":
+                continue
+            
+            tf_weight = timeframe_weights.get(tf_name, 0.0)
+            if tf_weight == 0.0:
+                continue
+            
+            trend_str = str(tf_trend).upper()
+            is_bullish = "UP" in trend_str or "BULLISH" in trend_str
+            is_bearish = "DOWN" in trend_str or "BEARISH" in trend_str
+            is_strong = "STRONG" in trend_str
+            is_weak = "WEAK" in trend_str
+            
+            if is_bullish:
+                tf_score = 100.0
+                if is_strong:
+                    tf_score = 150.0
+                elif is_weak:
+                    tf_score = 60.0
+                trend_long += tf_score * tf_weight
+            elif is_bearish:
+                tf_score = 100.0
+                if is_strong:
+                    tf_score = 150.0
+                elif is_weak:
+                    tf_score = 60.0
+                trend_short += tf_score * tf_weight
+        
+        # Multi-timeframe convergence bonus
+        bullish_tfs = sum(1 for tf in detailed_trends.values() 
+                         if "UP" in str(tf).upper() or "BULLISH" in str(tf).upper())
+        bearish_tfs = sum(1 for tf in detailed_trends.values() 
+                         if "DOWN" in str(tf).upper() or "BEARISH" in str(tf).upper())
+        total_tfs = len([tf for tf in detailed_trends.values() if str(tf) != "UNKNOWN"])
+        
+        if total_tfs >= 3:
+            if bullish_tfs == total_tfs:
+                trend_long += 50.0
+                reasons.append(f"Perfect trend convergence: all {total_tfs} timeframes bullish")
+            elif bearish_tfs == total_tfs:
+                trend_short += 50.0
+                reasons.append(f"Perfect trend convergence: all {total_tfs} timeframes bearish")
+            elif bullish_tfs >= 3:
+                trend_long += 30.0
+                reasons.append(f"Strong trend alignment: {bullish_tfs}/{total_tfs} timeframes bullish")
+            elif bearish_tfs >= 3:
+                trend_short += 30.0
+                reasons.append(f"Strong trend alignment: {bearish_tfs}/{total_tfs} timeframes bearish")
+        
+        return trend_long, trend_short, reasons
+    
+    def _score_sr_factor(self, sr_data: Dict[str, Any], current_price: float) -> tuple[float, float, list]:
+        """
+        Score Support/Resistance factor for direction determination
+        
+        Returns:
+            (sr_long_score, sr_short_score, reasons)
+        """
+        top_support = self._require_key(sr_data, "top_2_support", "S/R factor scoring")
+        top_resistance = self._require_key(sr_data, "top_2_resistance", "S/R factor scoring")
+        
+        sr_long = 0.0
+        sr_short = 0.0
+        reasons = []
+        
+        if top_support:
+            closest_support = max(top_support, key=lambda x: x["price_level"])
+            support_price = self._require_key(closest_support, "price_level", "S/R factor scoring")
+            support_score = self._require_key(closest_support, "strength_score", "S/R factor scoring")
+            
+            distance_pct = abs(current_price - support_price) / current_price if support_price > 0 else 1.0
+            if distance_pct < 0.01:  # Within 1% of support
+                sr_long = support_score
+                reasons.append(f"Near strong support @ ${support_price:.2f} (score: {support_score:.1f})")
+        
+        if top_resistance:
+            closest_resistance = min(top_resistance, key=lambda x: x["price_level"])
+            resistance_price = self._require_key(closest_resistance, "price_level", "S/R factor scoring")
+            resistance_score = self._require_key(closest_resistance, "strength_score", "S/R factor scoring")
+            
+            distance_pct = abs(current_price - resistance_price) / current_price if resistance_price > 0 else 1.0
+            if distance_pct < 0.01:  # Within 1% of resistance
+                sr_short = resistance_score
+                reasons.append(f"Near strong resistance @ ${resistance_price:.2f} (score: {resistance_score:.1f})")
+        
+        return sr_long, sr_short, reasons
+    
+    def _score_pressure_factor(self, pressure_data: Dict[str, Any]) -> tuple[float, float, list]:
+        """
+        Score market pressure factor for direction determination
+        
+        Returns:
+            (pressure_long_score, pressure_short_score, reasons)
+        """
+        pressure_direction = self._require_key(pressure_data, "direction", "pressure factor scoring")
+        pressure_strength = self._require_key(pressure_data, "strength", "pressure factor scoring")
+        
+        pressure_long = 0.0
+        pressure_short = 0.0
+        reasons = []
+        
+        if pressure_direction in ["BUY", "STRONG_BUY"]:
+            strength_multiplier = 1.5 if "STRONG" in pressure_direction else 1.0
+            pressure_long = 100.0 * strength_multiplier * pressure_strength
+            reasons.append(f"Buy pressure: {pressure_direction} (strength: {pressure_strength:.2f})")
+        elif pressure_direction in ["SELL", "STRONG_SELL"]:
+            strength_multiplier = 1.5 if "STRONG" in pressure_direction else 1.0
+            pressure_short = 100.0 * strength_multiplier * pressure_strength
+            reasons.append(f"Sell pressure: {pressure_direction} (strength: {pressure_strength:.2f})")
+        
+        return pressure_long, pressure_short, reasons
+    
+    def _score_patterns_factor(self, patterns_data: Dict[str, Any]) -> tuple[float, float, list]:
+        """
+        Score patterns factor for direction determination
+        
+        Returns:
+            (patterns_long_score, patterns_short_score, reasons)
+        """
+        patterns_nested = self._require_key(patterns_data, "patterns_nested", "patterns factor scoring")
+        reversal_patterns = self._require_key(patterns_nested, "reversal_patterns", "patterns factor scoring")
+        continuation_patterns = self._require_key(patterns_nested, "continuation_patterns", "patterns factor scoring")
+        
+        patterns_long = 0.0
+        patterns_short = 0.0
+        reasons = []
+        
+        bullish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
+        if bullish_reversals:
+            patterns_long = 100.0
+            reasons.append(f"Bullish reversal pattern detected ({len(bullish_reversals)})")
+        
+        bearish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
+        if bearish_reversals:
+            patterns_short = 100.0
+            reasons.append(f"Bearish reversal pattern detected ({len(bearish_reversals)})")
+        
+        bullish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
+        if bullish_continuations:
+            patterns_long += 50.0
+            reasons.append(f"Bullish continuation pattern ({len(bullish_continuations)})")
+        
+        bearish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
+        if bearish_continuations:
+            patterns_short += 50.0
+            reasons.append(f"Bearish continuation pattern ({len(bearish_continuations)})")
+        
+        return patterns_long, patterns_short, reasons
+    
+    def _score_volume_factor(self, volume_category: str, long_score: float, short_score: float) -> tuple[float, float, list]:
+        """
+        Score volume factor for direction determination (confirmation only)
+        
+        Returns:
+            (volume_long_score, volume_short_score, reasons)
+        """
+        volume_long = 0.0
+        volume_short = 0.0
+        reasons = []
+        
+        if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
+            if long_score > short_score:
+                volume_long = 100.0
+                reasons.append(f"High volume confirms bullish ({volume_category})")
+            elif short_score > long_score:
+                volume_short = 100.0
+                reasons.append(f"High volume confirms bearish ({volume_category})")
+        
+        return volume_long, volume_short, reasons
+    
+    def _score_funding_factor(self, funding_data: Dict[str, Any]) -> tuple[float, float, list]:
+        """
+        Score funding rate factor for direction determination
+        
+        Returns:
+            (funding_long_score, funding_short_score, reasons)
+        """
+        funding_trend = self._require_key(funding_data, "trend", "funding factor scoring")
+        funding_direction = self._require_key(funding_trend, "direction", "funding factor scoring")
+        
+        funding_long = 0.0
+        funding_short = 0.0
+        reasons = []
+        
+        if funding_direction == "INCREASING":  # Increasing funding = bullish sentiment
+            funding_long = 100.0
+            reasons.append("Funding rate increasing (bullish sentiment)")
+        elif funding_direction == "DECREASING":  # Decreasing funding = bearish sentiment
+            funding_short = 100.0
+            reasons.append("Funding rate decreasing (bearish sentiment)")
+        
+        return funding_long, funding_short, reasons
+    
+    # ==================================================================================
+    # UNIFIED SCORING FRAMEWORK - Entry Factor Scorers (Reusable)
+    # ==================================================================================
+    
+    def _score_entry_sr_factor(
+        self,
+        entry_price: float,
+        current_price: float,
+        direction: str,
+        level_data: Dict[str, Any],
+        unified_data: Optional[Dict[str, Any]] = None
+    ) -> tuple[float, list]:
+        """
+        Score S/R level factor for entry setup
+        
+        level_data is ALWAYS provided (all entries are at specific S/R levels for limit orders).
+        
+        Note: Breakout/breakdown entries are removed - limit orders can't fill above resistance
+        (when price is below) or below support (when price is above). Only support/resistance
+        level entries are valid for limit orders.
+        
+        Args:
+            entry_price: Entry price for limit order
+            current_price: Current market price
+            direction: "LONG" or "SHORT"
+            level_data: S/R level data dict (must contain "price_level", "strength_score", "setup_type")
+            unified_data: Optional unified data for additional context
+        
+        Returns:
+            (sr_score, reasons)
+        """
+        level_score = self._require_key(level_data, "strength_score", "entry S/R factor scoring")
+        level_price = self._require_key(level_data, "price_level", "entry S/R factor scoring")
+        setup_type = self._require_key(level_data, "setup_type", "entry S/R factor scoring")
+        
+        score = 0.0
+        reasons = []
+        
+        # Base score from S/R level quality (0-100)
+        score = level_score
+        
+        # Distance from the referenced level
+        distance_pct = abs(entry_price - level_price) / current_price if current_price > 0 else 0.0
+        
+        # For limit orders, entry should be AT or very close to the S/R level (distance ≈ 0)
+        # This ensures the limit order can fill when price reaches the level
+        
+        if setup_type in ["support_level", "resistance_level"]:
+            # For direct S/R level entries: entry should be optimally offset from the level
+            # LONG at support: entry slightly ABOVE support (0.1-0.3%) - catches bounce, avoids breakdown
+            # SHORT at resistance: entry slightly BELOW resistance (0.1-0.3%) - catches rejection, avoids breakout
+            if setup_type == "support_level":
+                # LONG: entry should be 0.1-0.3% ABOVE support (positive distance)
+                if 0.0005 <= distance_pct <= 0.003:  # Optimal range: 0.05% - 0.3% above support
+                    score = min(100.0, score * 1.2)  # 20% bonus for optimal offset
+                    reasons.append(f"Optimal entry above support @ {distance_pct*100:.3f}% (score: {level_score:.1f})")
+                elif distance_pct < 0.0005:  # Too close to support (< 0.05%)
+                    score = min(100.0, score * 0.9)  # Small penalty - might enter on breakdown
+                    reasons.append(f"Entry too close to support ({distance_pct*100:.3f}% above) - risk of breakdown entry")
+                elif distance_pct <= 0.005:  # Still acceptable (0.05% - 0.5%)
+                    score = min(100.0, score * 1.0)  # No bonus/penalty
+                    reasons.append(f"Entry above support @ {distance_pct*100:.3f}% (score: {level_score:.1f})")
+                else:
+                    score = max(0.0, score * 0.8)  # Penalty if too far from support
+                    reasons.append(f"Entry too far from support ({distance_pct*100:.3f}% above)")
+            else:  # resistance_level
+                # SHORT: entry should be 0.1-0.3% BELOW resistance (negative distance becomes positive in abs())
+                # distance_pct = abs(entry_price - level_price) / current_price
+                # For resistance: entry_price < level_price, so distance is positive
+                if 0.0005 <= distance_pct <= 0.003:  # Optimal range: 0.05% - 0.3% below resistance
+                    score = min(100.0, score * 1.2)  # 20% bonus for optimal offset
+                    reasons.append(f"Optimal entry below resistance @ {distance_pct*100:.3f}% (score: {level_score:.1f})")
+                elif distance_pct < 0.0005:  # Too close to resistance (< 0.05%)
+                    score = min(100.0, score * 0.9)  # Small penalty - might enter on breakout
+                    reasons.append(f"Entry too close to resistance ({distance_pct*100:.3f}% below) - risk of breakout entry")
+                elif distance_pct <= 0.005:  # Still acceptable (0.05% - 0.5%)
+                    score = min(100.0, score * 1.0)  # No bonus/penalty
+                    reasons.append(f"Entry below resistance @ {distance_pct*100:.3f}% (score: {level_score:.1f})")
+                else:
+                    score = max(0.0, score * 0.8)  # Penalty if too far from resistance
+                    reasons.append(f"Entry too far from resistance ({distance_pct*100:.3f}% below)")
+        
+        else:
+            # Unknown setup type - use default scoring
+            if distance_pct < 0.01:  # Within 1%
+                reasons.append(f"S/R level reference (score: {level_score:.1f}, distance: {distance_pct*100:.3f}%)")
+            else:
+                score = max(0.0, score * 0.8)  # Penalty
+                reasons.append(f"Far from S/R level (distance: {distance_pct*100:.3f}%)")
+        
+        return score, reasons
+    
+    def _score_entry_rsi_factor(
+        self,
+        entry_price: float,
+        current_price: float,
+        direction: str,
+        rsi_data: Dict[str, Any]
+    ) -> tuple[float, list]:
+        """
+        Score RSI alignment factor for entry setup
+        
+        Returns:
+            (rsi_score, reasons)
+        """
+        rsi_value = self._require_key(rsi_data, "rsi", "entry RSI factor scoring")
+        rsi_trend = self._require_key(rsi_data, "rsi_trend", "entry RSI factor scoring")
+        
+        score = 0.0
+        reasons = []
+        
+        # Entry price relative to current price
+        price_diff_pct = (entry_price - current_price) / current_price if current_price > 0 else 0.0
+        
+        if direction == "LONG":
+            # For LONG: entry below current (buying cheaper) is good, especially if RSI is oversold
+            if rsi_value < 30 and price_diff_pct < 0:  # Oversold + entry below current = very good
+                score = 100.0
+                reasons.append(f"RSI oversold ({rsi_value:.1f}) + entry below current ({price_diff_pct*100:.2f}%)")
+            elif rsi_value < 50 and rsi_trend == "BULLISH" and price_diff_pct <= 0:
+                score = 70.0
+                reasons.append(f"RSI recovering ({rsi_value:.1f}) + entry at/below current")
+            elif price_diff_pct < -0.005:  # Entry 0.5%+ below current
+                score = 50.0
+                reasons.append(f"Entry below current ({price_diff_pct*100:.2f}%)")
+            elif price_diff_pct < 0:
+                score = 30.0
+                reasons.append(f"Entry slightly below current ({price_diff_pct*100:.2f}%)")
+        else:  # SHORT
+            # For SHORT: entry above current (selling higher) is good, especially if RSI is overbought
+            if rsi_value > 70 and price_diff_pct > 0:  # Overbought + entry above current = very good
+                score = 100.0
+                reasons.append(f"RSI overbought ({rsi_value:.1f}) + entry above current ({price_diff_pct*100:.2f}%)")
+            elif rsi_value > 50 and rsi_trend == "BEARISH" and price_diff_pct >= 0:
+                score = 70.0
+                reasons.append(f"RSI declining ({rsi_value:.1f}) + entry at/above current")
+            elif price_diff_pct > 0.005:  # Entry 0.5%+ above current
+                score = 50.0
+                reasons.append(f"Entry above current ({price_diff_pct*100:.2f}%)")
+            elif price_diff_pct > 0:
+                score = 30.0
+                reasons.append(f"Entry slightly above current ({price_diff_pct*100:.2f}%)")
+        
+        return score, reasons
+    
+    def _score_entry_trend_factor(
+        self,
+        entry_price: float,
+        current_price: float,
+        direction: str,
+        trend_data: Dict[str, Any],
+        strategy: str
+    ) -> tuple[float, list]:
+        """
+        Score trend alignment factor for entry setup
+        
+        Returns:
+            (trend_score, reasons)
+        """
+        detailed_trends = self._require_key(trend_data, "detailed_timeframes", "trend factor scoring")
+        timeframe_weights = self._get_strategy_timeframe_weights(strategy)
+        
+        score = 0.0
+        reasons = []
+        
+        # Analyze trend alignment with entry direction
+        bullish_tfs = 0
+        bearish_tfs = 0
+        total_weighted_score = 0.0
+        total_weight = 0.0
+        
+        for tf_name, tf_trend in detailed_trends.items():
+            if tf_trend == "UNKNOWN":
+                continue
+            
+            tf_weight = timeframe_weights.get(tf_name, 0.0)
+            if tf_weight == 0.0:
+                continue
+            
+            trend_str = str(tf_trend).upper()
+            is_bullish = "UP" in trend_str or "BULLISH" in trend_str
+            is_bearish = "DOWN" in trend_str or "BEARISH" in trend_str
+            is_strong = "STRONG" in trend_str
+            
+            if is_bullish:
+                bullish_tfs += 1
+                tf_score = 1.5 if is_strong else 1.0
+                total_weighted_score += tf_score * tf_weight
+                total_weight += tf_weight
+            elif is_bearish:
+                bearish_tfs += 1
+                tf_score = 1.5 if is_strong else 1.0
+                total_weighted_score += tf_score * tf_weight
+                total_weight += tf_weight
+        
+        if total_weight > 0:
+            avg_score = total_weighted_score / total_weight
+            if direction == "LONG" and bullish_tfs > bearish_tfs:
+                score = avg_score * 100.0  # Bullish trend aligns with LONG
+                reasons.append(f"Trend alignment: {bullish_tfs} bullish vs {bearish_tfs} bearish timeframes")
+            elif direction == "SHORT" and bearish_tfs > bullish_tfs:
+                score = avg_score * 100.0  # Bearish trend aligns with SHORT
+                reasons.append(f"Trend alignment: {bearish_tfs} bearish vs {bullish_tfs} bullish timeframes")
+            else:
+                score = avg_score * 50.0  # Partial alignment
+                reasons.append(f"Partial trend alignment: {bullish_tfs} bullish, {bearish_tfs} bearish")
+        
+        return score, reasons
+    
+    def _score_entry_pressure_factor(
+        self,
+        direction: str,
+        pressure_data: Dict[str, Any]
+    ) -> tuple[float, list]:
+        """
+        Score market pressure alignment factor for entry setup
+        
+        Returns:
+            (pressure_score, reasons)
+        """
+        pressure_direction = self._require_key(pressure_data, "direction", "pressure factor scoring")
+        pressure_strength = self._require_key(pressure_data, "strength", "pressure factor scoring")
+        
+        score = 0.0
+        reasons = []
+        
+        if direction == "LONG" and pressure_direction in ["BUY", "STRONG_BUY"]:
+            strength_multiplier = 1.5 if "STRONG" in pressure_direction else 1.0
+            score = 100.0 * strength_multiplier * pressure_strength
+            reasons.append(f"Buy pressure aligns with LONG: {pressure_direction} (strength: {pressure_strength:.2f})")
+        elif direction == "SHORT" and pressure_direction in ["SELL", "STRONG_SELL"]:
+            strength_multiplier = 1.5 if "STRONG" in pressure_direction else 1.0
+            score = 100.0 * strength_multiplier * pressure_strength
+            reasons.append(f"Sell pressure aligns with SHORT: {pressure_direction} (strength: {pressure_strength:.2f})")
+        else:
+            score = 30.0  # Neutral pressure
+            reasons.append(f"Neutral pressure: {pressure_direction}")
+        
+        return score, reasons
+    
+    def _score_entry_patterns_factor(
+        self,
+        direction: str,
+        patterns_data: Dict[str, Any]
+    ) -> tuple[float, list]:
+        """
+        Score pattern alignment factor for entry setup
+        
+        Returns:
+            (patterns_score, reasons)
+        """
+        patterns_nested = self._require_key(patterns_data, "patterns_nested", "patterns factor scoring")
+        reversal_patterns = self._require_key(patterns_nested, "reversal_patterns", "patterns factor scoring")
+        continuation_patterns = self._require_key(patterns_nested, "continuation_patterns", "patterns factor scoring")
+        
+        score = 0.0
+        reasons = []
+        
+        if direction == "LONG":
+            bullish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
+            bullish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
+            
+            if bullish_reversals:
+                score += 100.0
+                reasons.append(f"Bullish reversal pattern aligns with LONG ({len(bullish_reversals)})")
+            if bullish_continuations:
+                score += 50.0
+                reasons.append(f"Bullish continuation pattern ({len(bullish_continuations)})")
+        else:  # SHORT
+            bearish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
+            bearish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
+            
+            if bearish_reversals:
+                score += 100.0
+                reasons.append(f"Bearish reversal pattern aligns with SHORT ({len(bearish_reversals)})")
+            if bearish_continuations:
+                score += 50.0
+                reasons.append(f"Bearish continuation pattern ({len(bearish_continuations)})")
+        
+        return min(100.0, score), reasons
+    
+    def _score_entry_volume_factor(
+        self,
+        volume_category: str
+    ) -> tuple[float, list]:
+        """
+        Score volume confirmation factor for entry setup
+        
+        Returns:
+            (volume_score, reasons)
+        """
+        score = 0.0
+        reasons = []
+        
+        if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
+            score = 100.0
+            reasons.append(f"High volume confirms entry ({volume_category})")
+        elif volume_category in ["NORMAL"]:
+            score = 50.0
+            reasons.append("Normal volume")
+        else:
+            score = 20.0
+            reasons.append(f"Low volume ({volume_category})")
+        
+        return score, reasons
+    
+    def _score_entry_distance_factor(
+        self,
+        entry_price: float,
+        current_price: float,
+        direction: str
+    ) -> tuple[float, list]:
+        """
+        Score distance from current price factor (risk/reward consideration)
+        
+        Returns:
+            (distance_score, reasons)
+        """
+        if current_price <= 0:
+            return 0.0, []
+        
+        distance_pct = abs(entry_price - current_price) / current_price
+        score = 0.0
+        reasons = []
+        
+        # For limit orders: optimal distance balances fill probability and price execution
+        # Too close (< 0.1%): Price might move away before fill
+        # Optimal (0.1% - 0.5%): Good balance, likely to fill if price reaches
+        # Moderate (0.5% - 1%): Reasonable, might take longer to fill
+        # Far (> 1%): Lower probability of fill
+        
+        if 0.001 <= distance_pct < 0.005:  # Between 0.1% and 0.5% - optimal for limit orders
+            score = 100.0
+            reasons.append(f"Optimal distance from current ({distance_pct*100:.3f}%) - good fill probability")
+        elif distance_pct < 0.001:  # Too close (< 0.1%)
+            score = 60.0  # Might miss if price moves quickly
+            reasons.append(f"Very close to current ({distance_pct*100:.3f}%) - might miss")
+        elif distance_pct < 0.01:  # Moderate distance (0.1% - 1%)
+            score = 80.0  # Good balance
+            reasons.append(f"Moderate distance from current ({distance_pct*100:.3f}%)")
+        elif distance_pct < 0.02:  # Far (1% - 2%)
+            score = 50.0  # Lower fill probability
+            reasons.append(f"Far from current ({distance_pct*100:.3f}%) - lower fill probability")
+        else:  # Very far (> 2%)
+            score = 20.0  # Very low fill probability
+            reasons.append(f"Very far from current ({distance_pct*100:.3f}%) - low fill probability")
+        
+        return score, reasons
+    
+    def _score_entry_type_factor(
+        self,
+        setup_type: str,
+        strategy: str
+    ) -> tuple[float, list]:
+        """
+        Score setup type bonus (strategy-aware)
+        
+        Returns:
+            (type_score, reasons)
+        """
+        score = 0.0
+        reasons = []
+        
+        # Strategy-specific preferences (all entries are at S/R levels for limit orders)
+        # Note: Breakout/breakdown entries removed - they don't work with limit orders only
+        if strategy == "breakout":
+            # For breakout strategy with limit orders, we enter at resistance (SHORT) or support (LONG)
+            # when price is approaching the level, anticipating the breakout
+            if setup_type in ["support_level", "resistance_level"]:
+                score = 100.0  # Breakout strategy uses S/R level entries (anticipating breakout)
+                reasons.append(f"S/R level entry for {strategy} (breakout anticipation)")
+            else:
+                score = 60.0
+        elif strategy in ["range_trading", "low_volatility_range"]:
+            if setup_type in ["support_level", "resistance_level"]:
+                score = 100.0  # Range trading prefers S/R level entries
+                reasons.append("S/R level entry preferred for range trading")
+            else:
+                score = 50.0
+        else:  # Standard and other strategies
+            if setup_type in ["support_level", "resistance_level"]:
+                score = 80.0  # S/R levels are generally good for limit orders
+                reasons.append("S/R level entry")
+            else:
+                score = 60.0  # Default for any other types
+                reasons.append(f"{setup_type} entry")
+        
+        return score, reasons
+    
+    # ==================================================================================
+    # PARAMETER SCORERS - Use factor scorers to score specific parameters
+    # ==================================================================================
+    
+    def _score_direction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[Dict[str, Any]]:
+        """
+        Score direction using unified scoring framework
+        
+        Uses factor scorers to calculate long_score and short_score, then determines direction.
+        
+        Returns:
+            Dict with "direction", "reasoning", "long_score", "short_score"
         """
         try:
-            current_price = unified_data.get("current_price", 0.0)
+            # All required data must be present (NO FALLBACKS)
+            current_price = self._require_key(unified_data, "current_price", "direction scoring")
             if current_price <= 0:
-                logger.warning("⚠️ Invalid current price for direction determination")
-                return None
+                raise ValueError(f"Invalid current_price: {current_price}")
             
-            # Get strategy-specific weights
+            # Get strategy-specific weights (config defaults are OK)
             strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
             direction_weights = strategy_config.get("direction_weights", {
                 "rsi": 0.25,
@@ -306,294 +971,94 @@ class PredictionEngine:
                 "volume": 0.05,
                 "funding": 0.05
             })
-            min_score_diff = strategy_config.get("min_score_diff", 10.0)
             
-            # Extract all indicators
-            rsi_data = unified_data.get("rsi", {})
-            trend_data = unified_data.get("trend", {})
-            sr_data = unified_data.get("support_resistance", {})
-            pressure_data = unified_data.get("pressure", {})
-            patterns_data = unified_data.get("patterns", {})
-            funding_data = unified_data.get("funding_analysis", {})
+            # Extract indicators - all required (NO FALLBACKS)
+            rsi_data = self._require_key(unified_data, "rsi", "direction scoring")
+            trend_data = self._require_key(unified_data, "trend", "direction scoring")
+            sr_data = self._require_key(unified_data, "support_resistance", "direction scoring")
+            pressure_data = self._require_key(unified_data, "pressure", "direction scoring")
+            patterns_data = self._require_key(unified_data, "patterns", "direction scoring")
+            funding_data = self._require_key(unified_data, "funding_analysis", "direction scoring")
+            volume_category = self._require_key(unified_data, "volume_category", "direction scoring")
             
-            # Initialize scoring
+            # Initialize scores
             long_score = 0.0
             short_score = 0.0
-            reasons = []
+            all_reasons = []
             
-            # 1. RSI Analysis
+            # Score each factor using unified framework
             rsi_weight = direction_weights.get("rsi", 0.0)
             if rsi_weight > 0:
-                rsi_value = self._safe_get(rsi_data, "rsi", 50.0)
-                rsi_trend = self._safe_get(rsi_data, "rsi_trend", "NEUTRAL")
-                rsi_signal = self._safe_get(rsi_data, "rsi_signal", "NEUTRAL")
-                
-                # Base RSI score (0-100)
-                rsi_long = 0.0
-                rsi_short = 0.0
-                
-                if rsi_value < 30:  # Oversold - bullish
-                    rsi_long = 100.0
-                    reasons.append(f"RSI oversold ({rsi_value:.1f})")
-                elif rsi_value > 70:  # Overbought - bearish
-                    rsi_short = 100.0
-                    reasons.append(f"RSI overbought ({rsi_value:.1f})")
-                elif rsi_value < 50 and rsi_trend == "BULLISH":  # Below neutral but rising
-                    rsi_long = 60.0
-                    reasons.append(f"RSI recovering ({rsi_value:.1f}, {rsi_trend})")
-                elif rsi_value > 50 and rsi_trend == "BEARISH":  # Above neutral but falling
-                    rsi_short = 60.0
-                    reasons.append(f"RSI declining ({rsi_value:.1f}, {rsi_trend})")
-                
-                if rsi_signal == "BULLISH":
-                    rsi_long += 40.0
-                    reasons.append("RSI bullish signal")
-                elif rsi_signal == "BEARISH":
-                    rsi_short += 40.0
-                    reasons.append("RSI bearish signal")
-                
-                # Apply weight
+                rsi_long, rsi_short, reasons = self._score_rsi_factor(rsi_data)
                 long_score += rsi_long * rsi_weight
                 short_score += rsi_short * rsi_weight
+                all_reasons.extend(reasons)
             
-            # 2. Trend Analysis - Strategy-aware timeframe weighting
             trend_weight = direction_weights.get("trend", 0.0)
             if trend_weight > 0:
-                detailed_trends = self._safe_get(trend_data, "detailed_timeframes", {})
-                
-                # Strategy-specific timeframe preferences
-                timeframe_weights = self._get_strategy_timeframe_weights(strategy)
-                
-                # Base trend score (0-100)
-                trend_long = 0.0
-                trend_short = 0.0
-                
-                # Analyze each timeframe with strategy-specific weights
-                for tf_name, tf_trend in detailed_trends.items():
-                    if tf_trend == "UNKNOWN":
-                        continue
-                    
-                    tf_weight = timeframe_weights.get(tf_name, 0.0)
-                    if tf_weight == 0.0:
-                        continue
-                    
-                    # Parse trend string (e.g., "STRONG_UPTREND", "WEAK_DOWNTREND", "SIDEWAYS")
-                    trend_str = str(tf_trend).upper()
-                    
-                    # Determine direction and strength
-                    is_bullish = "UP" in trend_str or "BULLISH" in trend_str
-                    is_bearish = "DOWN" in trend_str or "BEARISH" in trend_str
-                    is_strong = "STRONG" in trend_str
-                    is_weak = "WEAK" in trend_str
-                    
-                    # Calculate score for this timeframe (0-100)
-                    if is_bullish:
-                        tf_score = 100.0
-                        if is_strong:
-                            tf_score = 150.0  # Strong trends get bonus
-                        elif is_weak:
-                            tf_score = 60.0   # Weak trends get reduced score
-                        trend_long += tf_score * tf_weight
-                    elif is_bearish:
-                        tf_score = 100.0
-                        if is_strong:
-                            tf_score = 150.0
-                        elif is_weak:
-                            tf_score = 60.0
-                        trend_short += tf_score * tf_weight
-                
-                # Check for multi-timeframe convergence (all timeframes aligned = stronger signal)
-                bullish_tfs = sum(1 for tf in detailed_trends.values() 
-                                 if "UP" in str(tf).upper() or "BULLISH" in str(tf).upper())
-                bearish_tfs = sum(1 for tf in detailed_trends.values() 
-                                 if "DOWN" in str(tf).upper() or "BEARISH" in str(tf).upper())
-                total_tfs = len([tf for tf in detailed_trends.values() if str(tf) != "UNKNOWN"])
-                
-                # Convergence bonus: all timeframes aligned = very strong signal
-                if total_tfs >= 3:
-                    if bullish_tfs == total_tfs:
-                        trend_long += 50.0  # All timeframes bullish = strong convergence
-                        reasons.append(f"Perfect trend convergence: all {total_tfs} timeframes bullish")
-                    elif bearish_tfs == total_tfs:
-                        trend_short += 50.0
-                        reasons.append(f"Perfect trend convergence: all {total_tfs} timeframes bearish")
-                    elif bullish_tfs >= 3:
-                        trend_long += 30.0
-                        reasons.append(f"Strong trend alignment: {bullish_tfs}/{total_tfs} timeframes bullish")
-                    elif bearish_tfs >= 3:
-                        trend_short += 30.0
-                        reasons.append(f"Strong trend alignment: {bearish_tfs}/{total_tfs} timeframes bearish")
-                
-                # Apply overall trend weight
+                trend_long, trend_short, reasons = self._score_trend_factor(trend_data, strategy)
                 long_score += trend_long * trend_weight
                 short_score += trend_short * trend_weight
+                all_reasons.extend(reasons)
             
-            # 3. Support/Resistance Analysis
             sr_weight = direction_weights.get("support_resistance", 0.0)
             if sr_weight > 0:
-                top_support = self._safe_get(sr_data, "top_2_support", [])
-                top_resistance = self._safe_get(sr_data, "top_2_resistance", [])
-                
-                # Base S/R score (0-100)
-                sr_long = 0.0
-                sr_short = 0.0
-                
-                # Check proximity to support (bullish) or resistance (bearish)
-                if top_support:
-                    closest_support = max(top_support, key=lambda x: self._safe_get(x, "level", x if not isinstance(x, dict) else 0))
-                    support_price = self._safe_get(closest_support, "level", closest_support if not isinstance(closest_support, dict) else 0)
-                    support_score = self._safe_get(closest_support, "score", 50.0)
-                    
-                    distance_pct = abs(current_price - support_price) / current_price if support_price > 0 else 1.0
-                    if distance_pct < 0.01:  # Within 1% of support
-                        sr_long = support_score  # Use S/R score directly (0-100)
-                        reasons.append(f"Near strong support @ ${support_price:.2f} (score: {support_score:.1f})")
-                
-                if top_resistance:
-                    closest_resistance = min(top_resistance, key=lambda x: self._safe_get(x, "level", x if not isinstance(x, dict) else float('inf')))
-                    resistance_price = self._safe_get(closest_resistance, "level", closest_resistance if not isinstance(closest_resistance, dict) else 0)
-                    resistance_score = self._safe_get(closest_resistance, "score", 50.0)
-                    
-                    distance_pct = abs(current_price - resistance_price) / current_price if resistance_price > 0 else 1.0
-                    if distance_pct < 0.01:  # Within 1% of resistance
-                        sr_short = resistance_score  # Use S/R score directly (0-100)
-                        reasons.append(f"Near strong resistance @ ${resistance_price:.2f} (score: {resistance_score:.1f})")
-                
-                # Apply weight
+                sr_long, sr_short, reasons = self._score_sr_factor(sr_data, current_price)
                 long_score += sr_long * sr_weight
                 short_score += sr_short * sr_weight
+                all_reasons.extend(reasons)
             
-            # 4. Market Pressure Analysis
             pressure_weight = direction_weights.get("pressure", 0.0)
             if pressure_weight > 0:
-                pressure_direction = self._safe_get(pressure_data, "direction", "NEUTRAL")
-                pressure_strength = self._safe_get(pressure_data, "strength", 0.0)
-                
-                # Base pressure score (0-100)
-                pressure_long = 0.0
-                pressure_short = 0.0
-                
-                if pressure_direction in ["BUY", "STRONG_BUY"]:
-                    strength_multiplier = 1.5 if "STRONG" in pressure_direction else 1.0
-                    pressure_long = 100.0 * strength_multiplier * pressure_strength
-                    reasons.append(f"Buy pressure: {pressure_direction} (strength: {pressure_strength:.2f})")
-                elif pressure_direction in ["SELL", "STRONG_SELL"]:
-                    strength_multiplier = 1.5 if "STRONG" in pressure_direction else 1.0
-                    pressure_short = 100.0 * strength_multiplier * pressure_strength
-                    reasons.append(f"Sell pressure: {pressure_direction} (strength: {pressure_strength:.2f})")
-                
-                # Apply weight
+                pressure_long, pressure_short, reasons = self._score_pressure_factor(pressure_data)
                 long_score += pressure_long * pressure_weight
                 short_score += pressure_short * pressure_weight
+                all_reasons.extend(reasons)
             
-            # 5. Pattern Analysis
             patterns_weight = direction_weights.get("patterns", 0.0)
             if patterns_weight > 0:
-                patterns_nested = self._safe_get(patterns_data, "patterns_nested", {})
-                reversal_patterns = self._safe_get(patterns_nested, "reversal", [])
-                continuation_patterns = self._safe_get(patterns_nested, "continuation", [])
-                
-                # Base pattern score (0-100)
-                patterns_long = 0.0
-                patterns_short = 0.0
-                
-                # Check for bullish reversal patterns
-                bullish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
-                if bullish_reversals:
-                    patterns_long = 100.0
-                    reasons.append(f"Bullish reversal pattern detected ({len(bullish_reversals)})")
-                
-                # Check for bearish reversal patterns
-                bearish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
-                if bearish_reversals:
-                    patterns_short = 100.0
-                    reasons.append(f"Bearish reversal pattern detected ({len(bearish_reversals)})")
-                
-                # Check for bullish continuation patterns
-                bullish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
-                if bullish_continuations:
-                    patterns_long += 50.0
-                    reasons.append(f"Bullish continuation pattern ({len(bullish_continuations)})")
-                
-                # Check for bearish continuation patterns
-                bearish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
-                if bearish_continuations:
-                    patterns_short += 50.0
-                    reasons.append(f"Bearish continuation pattern ({len(bearish_continuations)})")
-                
-                # Apply weight
+                patterns_long, patterns_short, reasons = self._score_patterns_factor(patterns_data)
                 long_score += patterns_long * patterns_weight
                 short_score += patterns_short * patterns_weight
+                all_reasons.extend(reasons)
             
-            # 6. Volume Confirmation
             volume_weight = direction_weights.get("volume", 0.0)
             if volume_weight > 0:
-                volume_category = unified_data.get("volume_category", "NORMAL")
-                volume_long = 0.0
-                volume_short = 0.0
-                
-                if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-                    # High volume confirms the direction with stronger signal
-                    if long_score > short_score:
-                        volume_long = 100.0
-                        reasons.append(f"High volume confirms bullish ({volume_category})")
-                    elif short_score > long_score:
-                        volume_short = 100.0
-                        reasons.append(f"High volume confirms bearish ({volume_category})")
-                
-                # Apply weight
+                volume_long, volume_short, reasons = self._score_volume_factor(volume_category, long_score, short_score)
                 long_score += volume_long * volume_weight
                 short_score += volume_short * volume_weight
+                all_reasons.extend(reasons)
             
-            # 7. Funding Rate Analysis
             funding_weight = direction_weights.get("funding", 0.0)
             if funding_weight > 0:
-                funding_trend = self._safe_get(funding_data, "trend", {})
-                funding_direction = self._safe_get(funding_trend, "direction", "STABLE")
-                
-                # Base funding score (0-100)
-                funding_long = 0.0
-                funding_short = 0.0
-                
-                if funding_direction == "INCREASING":  # Increasing funding = bullish sentiment
-                    funding_long = 100.0
-                    reasons.append("Funding rate increasing (bullish sentiment)")
-                elif funding_direction == "DECREASING":  # Decreasing funding = bearish sentiment
-                    funding_short = 100.0
-                    reasons.append("Funding rate decreasing (bearish sentiment)")
-                
-                # Apply weight
+                funding_long, funding_short, reasons = self._score_funding_factor(funding_data)
                 long_score += funding_long * funding_weight
                 short_score += funding_short * funding_weight
+                all_reasons.extend(reasons)
             
-            # Determine final direction
+            # Determine direction from scores
             score_diff = abs(long_score - short_score)
-            
-            if score_diff < min_score_diff:
-                logger.debug(f"⏸️ Direction unclear ({strategy}): LONG={long_score:.1f} vs SHORT={short_score:.1f} (diff: {score_diff:.1f} < {min_score_diff:.1f})")
-                return None
+            logger.debug(f"📊 Direction scores ({strategy}): LONG={long_score:.1f}, SHORT={short_score:.1f}, diff={score_diff:.1f}")
             
             if long_score > short_score:
                 direction = "LONG"
-                confidence_pct = min(95.0, 50.0 + (long_score - short_score))
-                reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f}). " + "; ".join(reasons[:5])
-            else:
+                reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f}). " + "; ".join(all_reasons[:5])
+            elif short_score > long_score:
                 direction = "SHORT"
-                confidence_pct = min(95.0, 50.0 + (short_score - long_score))
-                reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f}). " + "; ".join(reasons[:5])
-            
-            logger.debug(f"📊 Direction determined: {direction} (LONG: {long_score:.1f}, SHORT: {short_score:.1f})")
+                reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f}). " + "; ".join(all_reasons[:5])
+            else:
+                direction = "LONG"
+                reasoning = f"Neutral signal (equal scores: {long_score:.1f}). " + "; ".join(all_reasons[:5])
             
             return {
                 "direction": direction,
                 "reasoning": reasoning,
                 "long_score": long_score,
-                "short_score": short_score,
-                "confidence_pct": confidence_pct
+                "short_score": short_score
             }
             
         except Exception as e:
-            logger.error(f"❌ Direction determination failed: {e}")
+            logger.error(f"❌ Direction scoring failed: {e}")
             return None
     
     def _get_strategy_timeframe_weights(self, strategy: str) -> Dict[str, float]:
@@ -671,173 +1136,39 @@ class PredictionEngine:
             "trend_24h": 0.25
         })
     
-    def _determine_entry_price(
-        self, 
-        unified_data: Dict[str, Any], 
-        direction: str,
-        strategy: str,
-        config: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    # ==================================================================================
+    # CONFIDENCE CALCULATION - Separate from scoring system
+    # ==================================================================================
+    
+    def _calculate_prediction_confidence(
+        self,
+        direction_result: Dict[str, Any],
+        entry_result: Dict[str, Any],
+        stop_loss: float,
+        take_profit: float,
+        unified_data: Dict[str, Any],
+        strategy: str
+    ) -> float:
         """
-        Determine best entry price by analyzing multiple setups and choosing highest confidence
+        Calculate confidence for final prediction (separate from scoring system)
         
-        Entry setups analyzed:
-        1. S/R Level Entry: Enter at support (LONG) or resistance (SHORT)
-        2. Current Price Entry: Enter at current price if conditions are good
-        3. Breakout Entry: Enter above resistance (LONG) or below support (SHORT)
-        4. Pullback Entry: Enter on retest of broken level
-        
-        Each setup is scored based on:
-        - S/R level strength and proximity
-        - RSI alignment
-        - Volume confirmation
-        - Pattern confirmation
-        - Pressure alignment
-        - Trend alignment
-        - Strategy-specific requirements
+        NOTE: Not implemented yet - will be implemented after all input parameters are integrated.
+        Currently returns a placeholder value.
         
         Args:
+            direction_result: Result from _score_direction (contains long_score, short_score)
+            entry_result: Result from _determine_entry_price
+            stop_loss: Calculated stop loss price
+            take_profit: Calculated take profit price
             unified_data: Complete market analysis data
-            direction: "LONG" or "SHORT"
             strategy: Current trading strategy
-            config: Strategy configuration
             
         Returns:
-            Dict with "entry_price", "confidence", and "reasoning", or None if no good setup
+            Confidence percentage (0.0 - 100.0)
         """
-        try:
-            current_price = unified_data.get("current_price", 0.0)
-            if current_price <= 0:
-                logger.warning("⚠️ Invalid current price for entry determination")
-                return None
-            
-            # Extract market data
-            sr_data = unified_data.get("support_resistance", {})
-            
-            # Get S/R levels
-            top_support = self._safe_get(sr_data, "top_2_support", [])
-            top_resistance = self._safe_get(sr_data, "top_2_resistance", [])
-            
-            # Generate potential entry setups
-            setups = []
-            
-            if direction == "LONG":
-                # 1. Support Level Entry (enter at support)
-                for support in top_support:
-                    level_price = self._safe_get(support, "level", support if not isinstance(support, dict) else 0)
-                    level_score = self._safe_get(support, "score", 50.0)
-                    
-                    if level_price > 0 and level_price < current_price:
-                        setup = self._score_entry_setup(
-                            entry_price=level_price,
-                            setup_type="support_level",
-                            direction=direction,
-                            unified_data=unified_data,
-                            level_data=support if isinstance(support, dict) else {"level": level_price, "score": level_score},
-                            strategy=strategy,
-                            config=config
-                        )
-                        if setup:
-                            setups.append(setup)
-                
-                # 2. Current Price Entry (if near support or good conditions)
-                setup = self._score_entry_setup(
-                    entry_price=current_price,
-                    setup_type="current_price",
-                    direction=direction,
-                    unified_data=unified_data,
-                    level_data=None,
-                    strategy=strategy,
-                    config=config
-                )
-                if setup:
-                    setups.append(setup)
-                
-                # 3. Breakout Entry (above resistance)
-                for resistance in top_resistance:
-                    level_price = self._safe_get(resistance, "level", resistance if not isinstance(resistance, dict) else 0)
-                    level_score = self._safe_get(resistance, "score", 50.0)
-                    
-                    if level_price > 0 and level_price > current_price:
-                        breakout_price = level_price * 1.001
-                        setup = self._score_entry_setup(
-                            entry_price=breakout_price,
-                            setup_type="breakout",
-                            direction=direction,
-                            unified_data=unified_data,
-                            level_data=resistance if isinstance(resistance, dict) else {"level": level_price, "score": level_score},
-                            strategy=strategy,
-                            config=config
-                        )
-                        if setup:
-                            setups.append(setup)
-            
-            else:  # SHORT
-                # 1. Resistance Level Entry (enter at resistance)
-                for resistance in top_resistance:
-                    level_price = self._safe_get(resistance, "level", resistance if not isinstance(resistance, dict) else 0)
-                    level_score = self._safe_get(resistance, "score", 50.0)
-                    
-                    if level_price > 0 and level_price > current_price:
-                        setup = self._score_entry_setup(
-                            entry_price=level_price,
-                            setup_type="resistance_level",
-                            direction=direction,
-                            unified_data=unified_data,
-                            level_data=resistance if isinstance(resistance, dict) else {"level": level_price, "score": level_score},
-                            strategy=strategy,
-                            config=config
-                        )
-                        if setup:
-                            setups.append(setup)
-                
-                # 2. Current Price Entry (if near resistance or good conditions)
-                setup = self._score_entry_setup(
-                    entry_price=current_price,
-                    setup_type="current_price",
-                    direction=direction,
-                    unified_data=unified_data,
-                    level_data=None,
-                    strategy=strategy,
-                    config=config
-                )
-                if setup:
-                    setups.append(setup)
-                
-                # 3. Breakdown Entry (below support)
-                for support in top_support:
-                    level_price = self._safe_get(support, "level", support if not isinstance(support, dict) else 0)
-                    level_score = self._safe_get(support, "score", 50.0)
-                    
-                    if level_price > 0 and level_price < current_price:
-                        breakdown_price = level_price * 0.999
-                        setup = self._score_entry_setup(
-                            entry_price=breakdown_price,
-                            setup_type="breakdown",
-                            direction=direction,
-                            unified_data=unified_data,
-                            level_data=support if isinstance(support, dict) else {"level": level_price, "score": level_score},
-                            strategy=strategy,
-                            config=config
-                        )
-                        if setup:
-                            setups.append(setup)
-            
-            if not setups:
-                logger.debug(f"⏸️ No valid entry setups found for {direction}")
-                return None
-            
-            # Select setup with highest confidence
-            best_setup = max(setups, key=lambda s: s["confidence"])
-            
-            logger.debug(f"📊 Entry determined: ${best_setup['entry_price']:.2f} "
-                        f"(confidence: {best_setup['confidence']:.1f}%, type: {best_setup['setup_type']})")
-            
-            return best_setup
-            
-        except Exception as e:
-            logger.error(f"❌ Entry price determination failed: {e}")
-            return None
+        # Placeholder: Return fixed value until confidence calculation is implemented
+        # TODO: Implement full confidence calculation after all parameters are integrated
+        return 50.0
     
     def _score_entry_setup(
         self,
@@ -850,211 +1181,422 @@ class PredictionEngine:
         config: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """
-        Score an entry setup and return confidence
+        Score an entry setup using unified scoring framework
         
-        Args:
-            entry_price: Proposed entry price
-            setup_type: Type of setup (support_level, resistance_level, current_price, breakout, breakdown)
-            direction: "LONG" or "SHORT"
-            unified_data: Complete market analysis data
-            level_data: S/R level data if applicable
-            strategy: Current trading strategy
-            config: Strategy configuration
-            
+        Uses factor scorers to calculate a total entry score, then returns setup details.
+        
         Returns:
-            Dict with entry_price, confidence, reasoning, setup_type, or None if invalid
+            Dict with "entry_price", "setup_type", "score", "reasoning", or None if invalid
         """
         try:
-            current_price = unified_data.get("current_price", 0.0)
+            # All required data must be present (NO FALLBACKS)
+            current_price = self._require_key(unified_data, "current_price", "entry scoring")
             if current_price <= 0 or entry_price <= 0:
-                return None
+                raise ValueError(f"Invalid prices: current_price={current_price}, entry_price={entry_price}")
             
-            # Extract indicators
-            rsi_data = unified_data.get("rsi", {})
-            trend_data = unified_data.get("trend", {})
-            pressure_data = unified_data.get("pressure", {})
-            patterns_data = unified_data.get("patterns", {})
+            # Get strategy-specific entry weights (config defaults are OK)
+            strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
+            entry_weights = strategy_config.get("entry_weights", {
+                "support_resistance": 0.30,  # Higher weight for entry (S/R levels matter more)
+                "rsi": 0.20,
+                "trend": 0.15,
+                "pressure": 0.15,
+                "patterns": 0.10,
+                "volume": 0.05,
+                "distance": 0.03,  # Distance from current price
+                "type": 0.02  # Setup type bonus
+            })
             
-            confidence = 0.0
-            reasons = []
+            # Extract indicators - all required (NO FALLBACKS)
+            rsi_data = self._require_key(unified_data, "rsi", "entry scoring")
+            trend_data = self._require_key(unified_data, "trend", "entry scoring")
+            pressure_data = self._require_key(unified_data, "pressure", "entry scoring")
+            patterns_data = self._require_key(unified_data, "patterns", "entry scoring")
+            volume_category = self._require_key(unified_data, "volume_category", "entry scoring")
             
-            # 1. S/R Level Quality (if setup uses S/R level)
-            if level_data and isinstance(level_data, dict):
-                level_score = level_data.get("score", 0)
-                level_price = level_data.get("level", entry_price)
-                
-                # Distance from level
-                distance_pct = abs(entry_price - level_price) / current_price if level_price > 0 else 0.0
-                
-                # Strong level close to entry = high confidence
-                if distance_pct < 0.005:  # Within 0.5% of level
-                    confidence += level_score * 0.40  # 40% weight for level quality
-                    reasons.append(f"Strong S/R level (score: {level_score:.1f})")
-                elif distance_pct < 0.01:  # Within 1% of level
-                    confidence += level_score * 0.30
-                    reasons.append(f"Near S/R level (score: {level_score:.1f})")
-                else:
-                    confidence += level_score * 0.20
-                    reasons.append(f"S/R level reference (score: {level_score:.1f})")
+            # Initialize score
+            total_score = 0.0
+            all_reasons = []
             
-            # 2. RSI Alignment
-            rsi_value = self._safe_get(rsi_data, "rsi", 50.0)
-            if direction == "LONG":
-                if rsi_value < 40:  # Oversold or recovering
-                    confidence += 20.0
-                    reasons.append(f"RSI aligned ({rsi_value:.1f} - oversold)")
-                elif rsi_value < 50:
-                    confidence += 10.0
-                    reasons.append(f"RSI favorable ({rsi_value:.1f})")
-            else:  # SHORT
-                if rsi_value > 60:  # Overbought or declining
-                    confidence += 20.0
-                    reasons.append(f"RSI aligned ({rsi_value:.1f} - overbought)")
-                elif rsi_value > 50:
-                    confidence += 10.0
-                    reasons.append(f"RSI favorable ({rsi_value:.1f})")
+            # Score each factor using unified framework
+            sr_weight = entry_weights.get("support_resistance", 0.0)
+            if sr_weight > 0:
+                # Add setup_type to level_data for context
+                level_data_with_type = {**level_data, "setup_type": setup_type}
+                sr_score, reasons = self._score_entry_sr_factor(entry_price, current_price, direction, level_data_with_type, unified_data)
+                total_score += sr_score * sr_weight
+                all_reasons.extend(reasons)
             
-            # 3. Trend Alignment
-            trend_direction = self._safe_get(trend_data, "direction", "SIDEWAYS")
-            if direction == "LONG" and "UP" in trend_direction.upper():
-                confidence += 15.0
-                reasons.append(f"Trend aligned ({trend_direction})")
-            elif direction == "SHORT" and "DOWN" in trend_direction.upper():
-                confidence += 15.0
-                reasons.append(f"Trend aligned ({trend_direction})")
+            rsi_weight = entry_weights.get("rsi", 0.0)
+            if rsi_weight > 0:
+                rsi_score, reasons = self._score_entry_rsi_factor(entry_price, current_price, direction, rsi_data)
+                total_score += rsi_score * rsi_weight
+                all_reasons.extend(reasons)
             
-            # 4. Pressure Alignment
-            pressure_direction = self._safe_get(pressure_data, "direction", "NEUTRAL")
-            if direction == "LONG" and "BUY" in pressure_direction.upper():
-                confidence += 10.0
-                reasons.append(f"Buy pressure ({pressure_direction})")
-            elif direction == "SHORT" and "SELL" in pressure_direction.upper():
-                confidence += 10.0
-                reasons.append(f"Sell pressure ({pressure_direction})")
+            trend_weight = entry_weights.get("trend", 0.0)
+            if trend_weight > 0:
+                trend_score, reasons = self._score_entry_trend_factor(entry_price, current_price, direction, trend_data, strategy)
+                total_score += trend_score * trend_weight
+                all_reasons.extend(reasons)
             
-            # 5. Volume Confirmation
-            volume_category = unified_data.get("volume_category", "NORMAL")
-            if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-                confidence += 10.0
-                reasons.append(f"High volume ({volume_category})")
+            pressure_weight = entry_weights.get("pressure", 0.0)
+            if pressure_weight > 0:
+                pressure_score, reasons = self._score_entry_pressure_factor(direction, pressure_data)
+                total_score += pressure_score * pressure_weight
+                all_reasons.extend(reasons)
             
-            # 6. Pattern Confirmation
-            patterns_nested = self._safe_get(patterns_data, "patterns_nested", {})
-            reversal_patterns = self._safe_get(patterns_nested, "reversal", [])
+            patterns_weight = entry_weights.get("patterns", 0.0)
+            if patterns_weight > 0:
+                patterns_score, reasons = self._score_entry_patterns_factor(direction, patterns_data)
+                total_score += patterns_score * patterns_weight
+                all_reasons.extend(reasons)
             
-            if direction == "LONG":
-                bullish_patterns = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
-                if bullish_patterns:
-                    confidence += 10.0
-                    reasons.append(f"Bullish pattern ({len(bullish_patterns)})")
-            else:
-                bearish_patterns = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
-                if bearish_patterns:
-                    confidence += 10.0
-                    reasons.append(f"Bearish pattern ({len(bearish_patterns)})")
+            volume_weight = entry_weights.get("volume", 0.0)
+            if volume_weight > 0:
+                volume_score, reasons = self._score_entry_volume_factor(volume_category)
+                total_score += volume_score * volume_weight
+                all_reasons.extend(reasons)
             
-            # 7. Setup Type Bonus
-            if setup_type in ["support_level", "resistance_level"]:
-                confidence += 5.0  # S/R level entries are generally safer
-                reasons.append("S/R level entry")
-            elif setup_type == "current_price":
-                # Current price entry needs strong confirmation
-                if confidence < 50.0:
-                    return None  # Reject weak current price entries
-                reasons.append("Current price entry")
-            elif setup_type in ["breakout", "breakdown"]:
-                # Breakouts need volume confirmation
-                if volume_category not in ["HIGH", "VERY_HIGH", "EXTREME"]:
-                    confidence -= 15.0  # Penalty for low volume breakouts
-                else:
-                    confidence += 5.0
-                reasons.append(f"{setup_type} entry")
+            distance_weight = entry_weights.get("distance", 0.0)
+            if distance_weight > 0:
+                distance_score, reasons = self._score_entry_distance_factor(entry_price, current_price, direction)
+                total_score += distance_score * distance_weight
+                all_reasons.extend(reasons)
             
-            # Strategy-specific adjustments
-            confidence = self._apply_strategy_entry_adjustments(confidence, setup_type, direction, unified_data, strategy, config)
+            type_weight = entry_weights.get("type", 0.0)
+            if type_weight > 0:
+                type_score, reasons = self._score_entry_type_factor(setup_type, strategy)
+                total_score += type_score * type_weight
+                all_reasons.extend(reasons)
             
-            # Cap confidence at 100%
-            confidence = min(100.0, max(0.0, confidence))
-            
-            # Minimum confidence threshold
-            min_confidence = 40.0  # Minimum 40% confidence for any entry
-            if confidence < min_confidence:
-                return None
+            logger.debug(f"📊 Entry setup scored: {setup_type} @ ${entry_price:.2f} = {total_score:.1f}")
             
             return {
                 "entry_price": entry_price,
-                "confidence": confidence,
-                "reasoning": "; ".join(reasons[:5]),
-                "setup_type": setup_type
+                "setup_type": setup_type,
+                "score": total_score,
+                "reasoning": "; ".join(all_reasons[:5]) if all_reasons else f"{setup_type} entry"
             }
             
         except Exception as e:
             logger.error(f"❌ Entry setup scoring failed: {e}")
             return None
     
-    def _apply_strategy_entry_adjustments(
+    def _generate_all_setups(
         self,
-        confidence: float,
-        setup_type: str,
-        direction: str,
         unified_data: Dict[str, Any],
         strategy: str,
         config: Dict[str, Any]
-    ) -> float:
+    ) -> list[Dict[str, Any]]:
         """
-        Apply strategy-specific adjustments to entry confidence
+        Generate and score all potential setups (both LONG and SHORT)
         
-        Different strategies have different entry preferences:
-        - Scalping: Prefers current price entries, needs tight spreads
-        - Range Trading: Prefers S/R level entries, needs range confirmation
-        - Breakout: Prefers breakout entries, needs volume confirmation
-        - Trend Following: Prefers trend-aligned entries, needs strong trend
+        Hybrid approach: evaluates all entry setups for both directions,
+        scores each with entry_quality + direction_support, and returns
+        all valid setups sorted by total score.
+        
+        Returns:
+            List of setup dictionaries with total_score, entry_score, direction_score, etc.
         """
-        adjusted_confidence = confidence
+        try:
+            # All required data must be present (NO FALLBACKS)
+            current_price = self._require_key(unified_data, "current_price", "setup generation")
+            if current_price <= 0:
+                raise ValueError(f"Invalid current_price: {current_price}")
+            
+            # Extract market data - all required (NO FALLBACKS)
+            sr_data = self._require_key(unified_data, "support_resistance", "setup generation")
+            top_support = self._require_key(sr_data, "top_2_support", "setup generation")
+            top_resistance = self._require_key(sr_data, "top_2_resistance", "setup generation")
+            
+            all_setups = []
+            
+            # Calculate direction scores once (for both LONG and SHORT)
+            direction_result = self._score_direction(unified_data, strategy)
+            if not direction_result:
+                logger.debug("⏸️ No direction scores available")
+                return []
+            
+            # For each potential entry setup, evaluate for appropriate direction(s)
+            # All entries must be at specific S/R levels (for limit orders)
+            # IMPORTANT: Limit orders can only fill if entry_price is reachable:
+            #   - LONG: entry_price must be <= current_price (buying at or below current price)
+            #   - SHORT: entry_price must be >= current_price (selling at or above current price)
+            # Breakout/breakdown entries don't make sense with limit orders (would require stop-limit or market orders)
+            
+            # 1. Support Level Entry (LONG - buying at support, limit order)
+            # Entry price should be slightly ABOVE support (0.1-0.3%) to catch the bounce, not wait for breakdown
+            # This improves fill probability and avoids entering on support break
+            for support in top_support:
+                level_price = self._require_key(support, "price_level", "setup generation")
+                if level_price <= 0 or level_price >= current_price:
+                    continue
+                
+                # Calculate entry price: slightly above support (0.15% offset) to catch bounce
+                # Offset: 0.15% above support (optimal balance between fill probability and avoiding breakdown)
+                entry_offset_pct = config.get("entry_offset_above_support", 0.0015)  # 0.15% default
+                entry_price = level_price * (1 + entry_offset_pct)
+                
+                # Ensure entry price is still below current price (limit order must be fillable)
+                if entry_price >= current_price:
+                    entry_price = level_price * (1 + 0.0005)  # Minimum 0.05% offset
+                    if entry_price >= current_price:
+                        continue  # Skip if entry would be at or above current price
+                
+                # Evaluate as LONG setup at support level (limit order below current price = fillable)
+                support_with_type = {**support, "setup_type": "support_level"}
+                setup_long = self._evaluate_complete_setup(
+                    entry_price=entry_price,
+                    setup_type="support_level",
+                    direction="LONG",
+                    unified_data=unified_data,
+                    level_data=support_with_type,
+                    strategy=strategy,
+                    config=config,
+                    direction_result=direction_result
+                )
+                if setup_long:
+                    all_setups.append(setup_long)
+            
+            # 2. Resistance Level Entry (SHORT - selling at resistance, limit order)
+            # Entry price should be slightly BELOW resistance (0.1-0.3%) to catch the rejection, not wait for breakout
+            # This improves fill probability and avoids entering on resistance break
+            for resistance in top_resistance:
+                level_price = self._require_key(resistance, "price_level", "setup generation")
+                if level_price <= 0 or level_price <= current_price:
+                    continue
+                
+                # Calculate entry price: slightly below resistance (0.15% offset) to catch rejection
+                # Offset: 0.15% below resistance (optimal balance between fill probability and avoiding breakout)
+                entry_offset_pct = config.get("entry_offset_below_resistance", 0.0015)  # 0.15% default
+                entry_price = level_price * (1 - entry_offset_pct)
+                
+                # Ensure entry price is still above current price (limit order must be fillable)
+                if entry_price <= current_price:
+                    entry_price = level_price * (1 - 0.0005)  # Minimum 0.05% offset
+                    if entry_price <= current_price:
+                        continue  # Skip if entry would be at or below current price
+                
+                # Evaluate as SHORT setup at resistance level (limit order above current price = fillable)
+                resistance_with_type = {**resistance, "setup_type": "resistance_level"}
+                setup_short = self._evaluate_complete_setup(
+                    entry_price=entry_price,
+                    setup_type="resistance_level",
+                    direction="SHORT",
+                    unified_data=unified_data,
+                    level_data=resistance_with_type,
+                    strategy=strategy,
+                    config=config,
+                    direction_result=direction_result
+                )
+                if setup_short:
+                    all_setups.append(setup_short)
+            
+            # NOTE: Breakout (LONG above resistance) and Breakdown (SHORT below support) entries
+            # are removed because they don't work with limit orders:
+            # - Breakout LONG above resistance: If current price is below resistance, a limit order
+            #   above resistance won't fill until price breaks through AND reaches that level (too late)
+            # - Breakdown SHORT below support: If current price is above support, a limit order
+            #   below support won't fill until price breaks down AND reaches that level (too late)
+            # 
+            # For breakout/breakdown strategies, we would need:
+            # - Stop-limit orders (not currently implemented)
+            # - Market orders (not using limit orders only)
+            # - Or wait for price to be AT the level before entering (would be support/resistance level entry, not breakout)
+            
+            logger.debug(f"📊 Generated {len(all_setups)} potential setups for {strategy}")
+            return all_setups
+            
+        except Exception as e:
+            logger.error(f"❌ Setup generation failed: {e}")
+            return []
+    
+    def _evaluate_complete_setup(
+        self,
+        entry_price: float,
+        setup_type: str,
+        direction: str,
+        unified_data: Dict[str, Any],
+        level_data: Optional[Dict[str, Any]],
+        strategy: str,
+        config: Dict[str, Any],
+        direction_result: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Evaluate a complete setup: entry quality + direction support
         
-        if strategy == "scalping":
-            # Scalping prefers current price entries (faster execution)
-            if setup_type == "current_price":
-                adjusted_confidence += 10.0
-            # Scalping doesn't like breakouts (too slow)
-            elif setup_type in ["breakout", "breakdown"]:
-                adjusted_confidence -= 10.0
+        Combines entry scoring with direction scoring to get total setup score.
         
-        elif strategy == "range_trading":
-            # Range trading strongly prefers S/R level entries
-            if setup_type in ["support_level", "resistance_level"]:
-                adjusted_confidence += 15.0
-            # Range trading doesn't like breakouts (contradicts range strategy)
-            elif setup_type in ["breakout", "breakdown"]:
-                adjusted_confidence -= 20.0
+        Returns:
+            Dict with entry_price, direction, entry_score, direction_score, total_score, etc.
+        """
+        try:
+            if not direction_result:
+                return None
+            
+            # Score entry quality
+            entry_result = self._score_entry_setup(
+                entry_price=entry_price,
+                setup_type=setup_type,
+                direction=direction,
+                unified_data=unified_data,
+                level_data=level_data,
+                strategy=strategy,
+                config=config
+            )
+            
+            if not entry_result:
+                return None
+            
+            entry_score = entry_result.get("score", 0.0)
+            entry_reasoning = entry_result.get("reasoning", "")
+            
+            # Get direction score for this direction
+            long_score = direction_result.get("long_score", 0.0)
+            short_score = direction_result.get("short_score", 0.0)
+            
+            # Generate direction-specific reasoning based on the actual scores
+            # We use the raw scores, not the overall direction result reasoning
+            if direction == "LONG":
+                direction_score = long_score
+                direction_reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f})"
+            else:  # SHORT
+                direction_score = short_score
+                direction_reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f})"
+            
+            # Normalize scores (both are on similar scales, but we can weight them)
+            # Entry quality: 50% weight, Direction support: 50% weight
+            entry_weight = 0.5
+            direction_weight = 0.5
+            
+            # Calculate total score (weighted combination)
+            total_score = (entry_score * entry_weight) + (direction_score * direction_weight)
+            
+            return {
+                "entry_price": entry_price,
+                "direction": direction,
+                "setup_type": setup_type,
+                "entry_score": entry_score,
+                "direction_score": direction_score,
+                "total_score": total_score,
+                "entry_reasoning": entry_reasoning,
+                "direction_reasoning": direction_reasoning,
+                "long_score": long_score,
+                "short_score": short_score
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Complete setup evaluation failed: {e}")
+            return None
+    
+    def _determine_entry_price(
+        self, 
+        unified_data: Dict[str, Any], 
+        direction: str,
+        strategy: str,
+        config: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        DEPRECATED: This method is kept for backward compatibility but is not used.
         
-        elif strategy == "breakout":
-            # Breakout strategy strongly prefers breakout entries
-            if setup_type in ["breakout", "breakdown"]:
-                adjusted_confidence += 20.0
-            # Breakout strategy doesn't like S/R level entries (too conservative)
-            elif setup_type in ["support_level", "resistance_level"]:
-                adjusted_confidence -= 10.0
+        New approach: Use _generate_all_setups() which evaluates all setups (both LONG and SHORT)
+        and selects the best overall combination (hybrid approach).
         
-        elif strategy == "trend_following":
-            # Trend following prefers entries aligned with trend
-            trend_direction = self._safe_get(unified_data.get("trend", {}), "direction", "SIDEWAYS")
-            if direction == "LONG" and "UP" in trend_direction.upper():
-                adjusted_confidence += 10.0
-            elif direction == "SHORT" and "DOWN" in trend_direction.upper():
-                adjusted_confidence += 10.0
-            else:
-                adjusted_confidence -= 15.0  # Penalty for counter-trend entries
+        Entry setups analyzed (all for limit orders at S/R levels):
+        1. S/R Level Entry: Enter at support (LONG) or resistance (SHORT)
+        2. Breakout Entry: Enter above resistance (LONG)
+        3. Breakdown Entry: Enter below support (SHORT)
         
-        elif strategy == "low_volatility_range":
-            # Low vol range strongly prefers S/R level entries
-            if setup_type in ["support_level", "resistance_level"]:
-                adjusted_confidence += 20.0
-            # Doesn't like breakouts in low volatility
-            elif setup_type in ["breakout", "breakdown"]:
-                adjusted_confidence -= 15.0
-        
-        return adjusted_confidence
+        Args:
+            unified_data: Complete market analysis data
+            direction: "LONG" or "SHORT"
+            strategy: Current trading strategy
+            config: Strategy configuration
+            
+        Returns:
+            Dict with "entry_price" and "reasoning", or None if no valid setup
+        """
+        try:
+            current_price = self._require_key(unified_data, "current_price", "entry determination")
+            if current_price <= 0:
+                logger.warning("⚠️ Invalid current price for entry determination")
+                return None
+            
+            # Extract market data
+            sr_data = unified_data.get("support_resistance", {})
+            
+            # Get S/R levels
+            top_support = self._require_key(sr_data, "top_2_support", "setup generation")
+            top_resistance = self._require_key(sr_data, "top_2_resistance", "setup generation")
+            
+            # Generate and score potential entry setups
+            scored_setups = []
+            
+            # All entries must be at specific S/R levels (for limit orders only, no current_price entries)
+            if direction == "LONG":
+                # 1. Support Level Entry (limit order at support)
+                for support in top_support:
+                    level_price = self._require_key(support, "price_level", "setup generation")
+                    if level_price <= 0 or level_price >= current_price:
+                        continue
+                    
+                    support_with_type = {**support, "setup_type": "support_level"}
+                    setup_result = self._score_entry_setup(
+                        entry_price=level_price,
+                        setup_type="support_level",
+                        direction=direction,
+                        unified_data=unified_data,
+                        level_data=support_with_type,
+                        strategy=strategy,
+                        config=config
+                    )
+                    if setup_result:
+                        scored_setups.append(setup_result)
+                
+                # NOTE: Breakout entries removed - limit orders can't fill above resistance
+                # when current price is below resistance (would require stop-limit or market orders)
+            
+            else:  # SHORT
+                # 1. Resistance Level Entry (limit order at resistance)
+                for resistance in top_resistance:
+                    level_price = self._require_key(resistance, "price_level", "setup generation")
+                    if level_price <= 0 or level_price <= current_price:
+                        continue
+                    
+                    resistance_with_type = {**resistance, "setup_type": "resistance_level"}
+                    setup_result = self._score_entry_setup(
+                        entry_price=level_price,
+                        setup_type="resistance_level",
+                        direction=direction,
+                        unified_data=unified_data,
+                        level_data=resistance_with_type,
+                        strategy=strategy,
+                        config=config
+                    )
+                    if setup_result:
+                        scored_setups.append(setup_result)
+                
+                # NOTE: Breakdown entries removed - limit orders can't fill below support
+                # when current price is above support (would require stop-limit or market orders)
+            
+            if not scored_setups:
+                logger.debug(f"⏸️ No valid entry setups found for {direction}")
+                return None
+            
+            # Sort by score (highest first) and select best setup
+            scored_setups.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+            best_setup = scored_setups[0]
+            
+            logger.debug(f"📊 Entry determined: ${best_setup['entry_price']:.2f} (type: {best_setup['setup_type']}, score: {best_setup.get('score', 0):.1f})")
+            
+            return {
+                "entry_price": best_setup["entry_price"],
+                "reasoning": best_setup["reasoning"]
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Entry price determination failed: {e}")
+            return None
     
     def _calculate_stop_and_target(
         self,

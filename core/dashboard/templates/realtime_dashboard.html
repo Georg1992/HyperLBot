@@ -1882,23 +1882,27 @@
                 const directionBg = isLong ? 'rgba(0,255,136,0.1)' : 'rgba(255,68,68,0.1)';
                 const directionBorder = isLong ? 'rgba(0,255,136,0.3)' : 'rgba(255,68,68,0.3)';
                 
-                // Confidence color
+                // Confidence is 0-100 percentage (backend always returns this format)
                 const confidence = prediction.confidence || 0;
                 let confidenceColor = '#888';
                 let confidenceStatus = 'Low';
-                if (confidence >= 0.75) {
+                if (confidence >= 75) {
                     confidenceColor = '#00FF88';
                     confidenceStatus = 'READY TO EXECUTE';
-                } else if (confidence >= 0.65) {
+                } else if (confidence >= 65) {
                     confidenceColor = '#FFD700';
                     confidenceStatus = 'Building';
-                } else if (confidence >= 0.60) {
+                } else if (confidence >= 60) {
                     confidenceColor = '#FFA500';
                     confidenceStatus = 'Tracking';
+                } else if (confidence >= 50) {
+                    confidenceColor = '#FFA500';
+                    confidenceStatus = 'Monitoring';
                 } else {
                     confidenceColor = '#888';
                     confidenceStatus = 'Low';
                 }
+                const confidenceDisplay = confidence.toFixed(1);
                 
                 // Build reasoning list
                 let reasoningHTML = '';
@@ -1930,66 +1934,135 @@
                     }
                 }
                 
-                // Update display
+                // Calculate risk/reward metrics
+                const entryPrice = prediction.entry_price || 0;
+                const stopLoss = prediction.stop_loss || 0;
+                const takeProfit = prediction.take_profit || 0;
+                let riskPct = 0;
+                let rewardPct = 0;
+                let riskRewardRatio = 0;
+                
+                if (entryPrice > 0) {
+                    if (isLong) {
+                        riskPct = stopLoss > 0 ? ((entryPrice - stopLoss) / entryPrice) * 100 : 0;
+                        rewardPct = takeProfit > 0 ? ((takeProfit - entryPrice) / entryPrice) * 100 : 0;
+                    } else {
+                        riskPct = stopLoss > 0 ? ((stopLoss - entryPrice) / entryPrice) * 100 : 0;
+                        rewardPct = takeProfit > 0 ? ((entryPrice - takeProfit) / entryPrice) * 100 : 0;
+                    }
+                    riskRewardRatio = riskPct > 0 ? (rewardPct / riskPct) : 0;
+                }
+                
+                // Update display with improved layout
                 activePrediction.innerHTML = `
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <!-- Direction -->
-                        <div style="background: ${directionBg}; border: 2px solid ${directionBorder}; border-radius: 10px; padding: 15px; text-align: center;">
-                            <div style="font-size: 32px; margin-bottom: 5px;">${directionIcon}</div>
-                            <div style="font-size: 20px; font-weight: bold; color: ${directionColor}; margin-bottom: 5px;">${prediction.direction}</div>
-                            <div style="font-size: 11px; color: #888;">Direction</div>
+                    <!-- Header: Direction & Confidence (Prominent) -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-bottom: 20px;">
+                        <!-- Direction (Larger, Prominent) -->
+                        <div style="background: ${directionBg}; border: 2px solid ${directionBorder}; border-radius: 12px; padding: 20px; display: flex; align-items: center; gap: 15px;">
+                            <div style="font-size: 42px;">${directionIcon}</div>
+                            <div style="flex: 1;">
+                                <div style="font-size: 11px; color: #888; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Trade Direction</div>
+                                <div style="font-size: 28px; font-weight: bold; color: ${directionColor}; margin-bottom: 5px;">${prediction.direction}</div>
+                                <div style="font-size: 11px; color: #aaa;">Strategy: <span style="color: ${directionColor};">${prediction.strategy || 'standard'}</span></div>
+                            </div>
                         </div>
                         
-                        <!-- Confidence -->
-                        <div style="background: rgba(255,255,255,0.05); border: 2px solid ${confidenceColor}; border-radius: 10px; padding: 15px; text-align: center;">
-                            <div style="font-size: 28px; font-weight: bold; color: ${confidenceColor}; margin-bottom: 5px;">${(confidence * 100).toFixed(1)}%</div>
-                            <div style="font-size: 12px; color: ${confidenceColor}; margin-bottom: 3px;">${confidenceStatus}</div>
-                            <div style="font-size: 11px; color: #888;">Confidence</div>
+                        <!-- Confidence (Right Side) -->
+                        <div style="background: rgba(0,0,0,0.4); border: 2px solid ${confidenceColor}; border-radius: 12px; padding: 20px; text-align: center; display: flex; flex-direction: column; justify-content: center;">
+                            <div style="font-size: 11px; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Confidence</div>
+                            <div style="font-size: 36px; font-weight: bold; color: ${confidenceColor}; margin-bottom: 5px; line-height: 1;">${confidenceDisplay}%</div>
+                            <div style="font-size: 11px; color: ${confidenceColor}; font-weight: 600; margin-top: 5px;">${confidenceStatus}</div>
                         </div>
                     </div>
                     
-                    <!-- Entry & Targets -->
-                    <div style="margin-top: 15px; display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px;">
-                        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
-                            <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Entry Price</div>
-                            <div style="font-size: 14px; font-weight: bold; color: #FFD700;">$${prediction.entry_price ? prediction.entry_price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
-                        </div>
-                        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
-                            <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Stop Loss</div>
-                            <div style="font-size: 14px; font-weight: bold; color: #FF4444;">$${prediction.stop_loss ? prediction.stop_loss.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
-                        </div>
-                        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
-                            <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Take Profit</div>
-                            <div style="font-size: 14px; font-weight: bold; color: #00FF88;">$${prediction.take_profit ? prediction.take_profit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
-                        </div>
-                        <div style="background: rgba(255,255,255,0.03); border-radius: 8px; padding: 12px; text-align: center;">
-                            <div style="font-size: 10px; color: #888; margin-bottom: 5px;">Status</div>
-                            <div style="font-size: 14px; font-weight: bold; color: ${prediction.status === 'READY' ? '#00FF88' : prediction.status === 'PENDING' ? '#FFC107' : prediction.status === 'EXECUTED' ? '#2196F3' : '#888'};">
-                                ${prediction.status || 'N/A'}
+                    <!-- Trade Parameters Section -->
+                    <div style="margin-bottom: 20px;">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Trade Parameters</div>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                            <!-- Entry Price -->
+                            <div style="background: linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(255,215,0,0.05) 100%); border: 1px solid rgba(255,215,0,0.3); border-radius: 10px; padding: 15px; text-align: center;">
+                                <div style="font-size: 10px; color: #FFD700; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">Entry Price</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #FFD700; margin-bottom: 4px;">$${entryPrice ? entryPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
+                                <div style="font-size: 9px; color: #666;">Market Entry</div>
+                            </div>
+                            
+                            <!-- Stop Loss -->
+                            <div style="background: linear-gradient(135deg, rgba(255,68,68,0.1) 0%, rgba(255,68,68,0.05) 100%); border: 1px solid rgba(255,68,68,0.3); border-radius: 10px; padding: 15px; text-align: center;">
+                                <div style="font-size: 10px; color: #FF4444; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">Stop Loss</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #FF4444; margin-bottom: 4px;">$${stopLoss ? stopLoss.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
+                                <div style="font-size: 9px; color: #666;">Risk: ${riskPct.toFixed(2)}%</div>
+                            </div>
+                            
+                            <!-- Take Profit -->
+                            <div style="background: linear-gradient(135deg, rgba(0,255,136,0.1) 0%, rgba(0,255,136,0.05) 100%); border: 1px solid rgba(0,255,136,0.3); border-radius: 10px; padding: 15px; text-align: center;">
+                                <div style="font-size: 10px; color: #00FF88; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">Take Profit</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #00FF88; margin-bottom: 4px;">$${takeProfit ? takeProfit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
+                                <div style="font-size: 9px; color: #666;">Reward: ${rewardPct.toFixed(2)}%</div>
+                            </div>
+                            
+                            <!-- Risk/Reward Ratio -->
+                            <div style="background: linear-gradient(135deg, rgba(156,39,176,0.1) 0%, rgba(156,39,176,0.05) 100%); border: 1px solid rgba(156,39,176,0.3); border-radius: 10px; padding: 15px; text-align: center;">
+                                <div style="font-size: 10px; color: #9C27B0; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">Risk/Reward</div>
+                                <div style="font-size: 16px; font-weight: bold; color: ${riskRewardRatio >= 2 ? '#00FF88' : riskRewardRatio >= 1 ? '#FFD700' : '#FF4444'}; margin-bottom: 4px;">${riskRewardRatio.toFixed(2)}:1</div>
+                                <div style="font-size: 9px; color: #666;">${riskRewardRatio >= 2 ? 'Excellent' : riskRewardRatio >= 1 ? 'Good' : 'Low'}</div>
                             </div>
                         </div>
                     </div>
                     
-                    <!-- Reasoning -->
+                    <!-- Status & Meta Info Row -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 20px;">
+                        <!-- Status -->
+                        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 6px; text-transform: uppercase;">Status</div>
+                            <div style="font-size: 14px; font-weight: bold; color: ${prediction.status === 'READY' ? '#00FF88' : prediction.status === 'PENDING' ? '#FFC107' : prediction.status === 'EXECUTED' ? '#2196F3' : '#888'};">
+                                ${prediction.status || 'N/A'}
+                            </div>
+                        </div>
+                        
+                        <!-- Age -->
+                        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 6px; text-transform: uppercase;">Age</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #aaa;">
+                                ${prediction.age_seconds ? prediction.age_seconds.toFixed(0) + 's' : 'N/A'}
+                            </div>
+                        </div>
+                        
+                        <!-- Timestamp (if available) -->
+                        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 6px; text-transform: uppercase;">Generated</div>
+                            <div style="font-size: 12px; font-weight: bold; color: #aaa;">
+                                ${prediction.timestamp ? new Date(prediction.timestamp * 1000).toLocaleTimeString() : 'N/A'}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Analysis & Reasoning -->
                     ${reasoningHTML ? `
-                    <div style="margin-top: 15px; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px; max-height: 150px; overflow-y: auto;">
-                        <div style="font-size: 11px; color: #888; margin-bottom: 8px; font-weight: bold;">Analysis:</div>
-                        ${reasoningHTML}
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Analysis & Reasoning</div>
+                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; max-height: 180px; overflow-y: auto;">
+                            ${reasoningHTML}
+                        </div>
                     </div>
                     ` : ''}
                     
-                    <!-- Confidence Boosts -->
+                    <!-- Confidence Factors (if available) -->
                     ${boostsHTML ? `
-                    <div style="margin-top: 10px; background: rgba(0,0,0,0.3); border-radius: 8px; padding: 12px; max-height: 120px; overflow-y: auto;">
-                        ${boostsHTML}
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Confidence Factors</div>
+                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; max-height: 140px; overflow-y: auto;">
+                            ${boostsHTML}
+                        </div>
                     </div>
                     ` : ''}
                     
-                    <!-- Score & Age -->
-                    <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 10px; color: #666;">
-                        <div>Score: ${prediction.score ? prediction.score.toFixed(3) : 'N/A'}</div>
-                        <div>Age: ${prediction.age_seconds ? prediction.age_seconds.toFixed(0) + 's' : 'N/A'}</div>
-                        <div>Strategy: ${prediction.strategy || 'standard'}</div>
+                    <!-- Footer: Additional Meta Info -->
+                    <div style="padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #666;">
+                        <div style="display: flex; gap: 15px;">
+                            <div>Score: <span style="color: #aaa;">${prediction.score ? prediction.score.toFixed(3) : 'N/A'}</span></div>
+                            <div>Strategy: <span style="color: ${directionColor};">${prediction.strategy || 'standard'}</span></div>
+                        </div>
+                        <div style="color: #555;">Last Updated: ${new Date().toLocaleTimeString()}</div>
                     </div>
                 `;
                 
@@ -3603,7 +3676,7 @@
                         </div>` : ''}
                         <div class="trade-detail">
                             <span>Confidence:</span>
-                            <span>${trade.confidence ? (trade.confidence * 100).toFixed(1) + '%' : 'N/A'}</span>
+                            <span>${trade.confidence ? trade.confidence.toFixed(1) + '%' : 'N/A'}</span>
                         </div>
                         ${trade.expected_value ? `<div class="trade-detail">
                             <span>EV:</span>

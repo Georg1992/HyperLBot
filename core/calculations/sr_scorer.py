@@ -787,8 +787,8 @@ class SRScorer:
                         mtf_count=1,
                         mtf_confidence=0.7,  # Default confidence for standalone HTF levels
                         merged_from=htf_level.merged_from,
-                        score=htf_level.score if hasattr(htf_level, 'score') else 0.0,
-                        score_breakdown=htf_level.score_breakdown if hasattr(htf_level, 'score_breakdown') else {}
+                        score=htf_level.score if htf_level.score is not None else 0.0,
+                        score_breakdown=htf_level.score_breakdown or {}
                     )
                     aligned_levels.append(standalone_level)
             

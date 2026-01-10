@@ -77,7 +77,7 @@ class SRDataProvider:
         """
         try:
             # Access candle storage directly for smart price + time range query
-            if hasattr(self._historical_service, '_candle_storage') and self._historical_service._candle_storage:
+            if self._historical_service._candle_storage:
                 candles = self._historical_service._candle_storage.get_candles_by_price_range(
                     min_price, max_price, max_candles, min_timestamp
                 )

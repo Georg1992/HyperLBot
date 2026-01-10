@@ -17,15 +17,16 @@ class SessionOrchestrator:
         self.session_manager = None
         self.strategy_manager = None
         self.prediction_engine = None
+        self._last_price = None
+        self._last_5m_boundary = None
+        self._last_orderbook = None
+        self._last_update_times = {}
 
         logger.info("🎯 SessionOrchestrator initialized with NO FALLBACKS policy")
 
     def _ensure_strategy_manager_initialized(self, system_initializer):
         """Ensure Strategy Manager is initialized"""
         if self.strategy_manager is None:
-            if not hasattr(system_initializer, "get_singleton_system"):
-                raise Exception("System initializer does not have get_singleton_system method")
-            
             self.strategy_manager = system_initializer.get_singleton_system("strategy_manager")
             if not self.strategy_manager:
                 raise Exception("Strategy Manager not available from system initializer")
@@ -141,8 +142,7 @@ class SessionOrchestrator:
             
             # Track last 5-minute candle boundary for pattern detection optimization
             from core.utils.time_utils import TimeUtils
-            last_5m_boundary = None
-            if not hasattr(self, '_last_5m_boundary'):
+            if self._last_5m_boundary is None:
                 current_5m_start = TimeUtils.get_5m_candle_start_time()
                 self._last_5m_boundary = current_5m_start
 
@@ -306,9 +306,8 @@ class SessionOrchestrator:
         price_change_threshold = 0.001  # 0.1%
         
         # Track price changes
-        if not hasattr(self, '_last_price'):
+        if self._last_price is None:
             self._last_price = current_price
-            self._last_update_times = {}
             # Initialize 5-minute boundary tracking
             from core.utils.time_utils import TimeUtils
             self._last_5m_boundary = TimeUtils.get_5m_candle_start_time()
@@ -322,7 +321,7 @@ class SessionOrchestrator:
         from core.utils.time_utils import TimeUtils
         current_5m_start = TimeUtils.get_5m_candle_start_time()
         new_candle_closed = False
-        if hasattr(self, '_last_5m_boundary') and self._last_5m_boundary is not None:
+        if self._last_5m_boundary is not None:
             if current_5m_start != self._last_5m_boundary:
                 new_candle_closed = True
                 logger.info(f"🕐 New 5-minute candle closed - pattern detection will be triggered")
@@ -376,7 +375,7 @@ class SessionOrchestrator:
     
     def _has_orderbook_changed(self, orderbook_data: Dict[str, Any]) -> bool:
         """Check if orderbook data has changed significantly"""
-        if not hasattr(self, '_last_orderbook'):
+        if self._last_orderbook is None:
             self._last_orderbook = orderbook_data
             return True
         
@@ -561,7 +560,7 @@ class SessionOrchestrator:
                     logger.info(f"   📊 Market conditions: volatility={unified_data.get('volatility_category', 'UNKNOWN')}, trend={unified_data.get('trend', {}).get('direction', 'UNKNOWN')}")
                     
                     # Update session manager with new strategy
-                    if self.session_manager and hasattr(self.session_manager, 'current_session_data'):
+                    if self.session_manager and self.session_manager.current_session_data:
                         self.session_manager.current_session_data["strategy"] = new_strategy
                         logger.debug(f"📊 Session manager strategy updated to: {new_strategy}")
                     
