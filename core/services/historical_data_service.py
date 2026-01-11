@@ -69,9 +69,7 @@ class HistoricalDataService:
             cache_key = f"historical_candles_{symbol}_{timeframe}_{count}"
             cached_data = self._cache.get(cache_key)
             if cached_data:
-                # Only log cache hits for important timeframes to reduce noise
-                if timeframe in ['1h', '1d']:  # Only log longer timeframes
-                    # Removed excessive debug logging for cache usage
+                # Removed excessive debug logging for cache usage
                 return cached_data
             
             # Database is the ONLY source - no API fallbacks

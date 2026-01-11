@@ -108,9 +108,7 @@ class CentralizedCache:
                 # Track hit and access time
                 self._hit_count += 1
                 self._access_times[key] = time.time()
-                # Only log cache hits for important keys to reduce noise
-                if any(important_key in key for important_key in ['support_resistance', 'pattern_recognition', 'whale_analytics']):
-                    # Removed excessive debug logging for cache hits
+                # Removed excessive debug logging for cache hits
                 return self._cache[key]
                 
         except Exception as e:

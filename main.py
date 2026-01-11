@@ -125,10 +125,39 @@ def main():
 
 def check_and_install_dependencies():
     """Check and automatically install missing dependencies"""
+    # Module name -> Package name mapping (for pip install)
+    # Key: import name, Value: pip package name
+    module_to_package = {
+        'flask': 'flask',
+        'flask_socketio': 'flask-socketio',
+        'yfinance': 'yfinance',
+        'requests': 'requests',
+        'pandas': 'pandas',
+        'numpy': 'numpy',
+        'loguru': 'loguru',
+        'dotenv': 'python-dotenv',  # python-dotenv imports as 'dotenv'
+        'httpx': 'httpx',
+        'aiohttp': 'aiohttp',
+        'eth_account': 'eth_account',  # Required for Hyperliquid API
+        'websockets': 'websockets',  # Required for WebSocket connections
+        'feedparser': 'feedparser',  # Required for RSS news feed
+        'vaderSentiment': 'vaderSentiment',  # Required for sentiment analysis
+    }
+    
+    # Required modules (using import names)
     required_modules = [
         'flask', 'flask_socketio', 'yfinance', 'requests', 'pandas', 
-        'numpy', 'loguru', 'python-dotenv', 'httpx', 'aiohttp'
+        'numpy', 'loguru', 'dotenv', 'httpx', 'aiohttp',
+        'eth_account', 'websockets', 'feedparser', 'vaderSentiment'
     ]
+    
+    # Conditionally add ML dependencies if ML training is enabled
+    # Check environment variable or config (default: disabled)
+    ml_training_enabled = os.getenv("ML_TRAINING_ENABLED", "false").lower() == "true"
+    if ml_training_enabled:
+        required_modules.append('sklearn')  # scikit-learn imports as 'sklearn'
+        module_to_package['sklearn'] = 'scikit-learn'
+        logger.info("🤖 ML training enabled - scikit-learn will be checked")
     
     missing_modules = []
     
@@ -144,13 +173,17 @@ def check_and_install_dependencies():
         logger.info(f"Installing {len(missing_modules)} missing dependencies...")
         
         for module in missing_modules:
+            # Get package name from mapping (default to module name if not found)
+            package_name = module_to_package.get(module, module)
+            
             try:
                 subprocess.check_call([
-                    sys.executable, "-m", "pip", "install", module, 
+                    sys.executable, "-m", "pip", "install", package_name, 
                     "--break-system-packages", "--quiet"
                 ])
+                logger.debug(f"✅ Installed {package_name}")
             except subprocess.CalledProcessError:
-                logger.error(f"Failed to install {module}")
+                logger.error(f"Failed to install {package_name}")
                 return False
         
         logger.info("Dependencies installed successfully!")

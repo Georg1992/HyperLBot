@@ -503,8 +503,6 @@ class SessionOrchestrator:
                         analysis_result = getter()
                         # MarketDataService already stores the result via its get_* methods
                         # Removed excessive debug logging
-                    else:
-                        # Removed excessive debug logging
 
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to update {module_name} via MarketDataService: {e}")

@@ -118,8 +118,6 @@ class DashboardService:
                 # Log if we're getting empty data
                 if len(market_dict) == 0:
                     logger.warning(f"⚠️ update_market_data received EMPTY data! Keys in market_data: {list(market_data.keys())[:20]}")
-                else:
-                    # Removed excessive debug logging
                 
                 # Update nested market section with filtered data
                 self._data["market"].update(market_dict)

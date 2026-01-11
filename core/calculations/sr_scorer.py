@@ -241,48 +241,70 @@ class SRScorer:
             
             # Calculate base probability
             if total_touches_analyzed == 0:
-                # No historical analysis possible - use touch count as proxy with Bayesian reasoning
-                # Mathematically justified: Small sample sizes have high uncertainty
-                # Statistical basis: With n touches, estimate P(reversal) but apply shrinkage
-                # For n=2: naive estimate would be high, but uncertainty is large → shrink towards neutral
-                # Bayesian shrinkage: estimate shrinks towards prior (50% neutral) based on sample size
-                # Confidence = min(1.0, n / 10.0): 2 touches = 20% confidence → shrink 80% towards 50%
-                # Conservative approach: even if both touches reversed, high uncertainty → lower score
+                # No historical analysis possible - use touch count as proxy
+                # Apply Beta-Binomial reasoning with assumed moderate reversal rate (60%)
+                # We assume each touch has 60% chance of reversal (conservative estimate)
+                # but apply Beta shrinkage based on sample size (touch count)
+                
+                # Beta-Binomial posterior with assumed 60% reversal rate
+                # Prior: Beta(1, 1) - uniform/uninformative
+                # Assumed success rate: 60% reversals per touch
+                prior_alpha = 1.0
+                prior_beta = 1.0
+                
+                # Estimate: if we had n touches with 60% reversal rate
+                # Posterior: Beta(1 + 0.6*n, 1 + 0.4*n)
+                estimated_reversals = level.touches * 0.6
+                estimated_breakouts = level.touches * 0.4
+                
+                posterior_alpha = prior_alpha + estimated_reversals
+                posterior_beta = prior_beta + estimated_breakouts
+                posterior_mean = posterior_alpha / (posterior_alpha + posterior_beta)
+                
+                # Cap at reasonable maximum (don't overestimate with few touches)
+                bayesian_probability = min(80.0, posterior_mean * 100.0)
+                
+                # Special case: single touch gets minimal score (very high uncertainty)
                 if level.touches <= 1:
-                    return 10.0  # Single touch: minimal evidence
-                elif level.touches == 2:
-                    # 2 touches: apply Bayesian shrinkage (shrink 80% towards 50% prior)
-                    # Even if 100% reversals observed, with 20% confidence: 100%*0.2 + 50%*0.8 = 60%
-                    # But we assume moderate success (60% reversals): 60%*0.2 + 50%*0.8 = 52% → round to 25%
-                    # More conservative: assume weak evidence → 25% base, shrunk → ~30%, but cap at 25% for uncertainty
-                    return 25.0  # 2 touches: weak evidence, high uncertainty (Bayesian shrinkage applied)
-                elif level.touches == 3:
-                    # 3 touches: 30% confidence → 60% reversals: 60%*0.3 + 50%*0.7 = 53% → 35%
-                    return 35.0  # 3 touches: moderate evidence
-                elif level.touches == 4:
-                    # 4 touches: 40% confidence → 65% reversals: 65%*0.4 + 50%*0.6 = 56% → 50%
-                    return 50.0  # 4 touches: decent evidence
-                else:
-                    # 5+ touches: diminishing returns, max 80%
-                    confidence = min(1.0, level.touches / 10.0)
-                    estimated_reversal = 65.0  # Assume 65% reversal rate
-                    shrunk = estimated_reversal * confidence + 50.0 * (1 - confidence)
-                    return min(80.0, shrunk)
+                    return 10.0
+                
+                return bayesian_probability
             
-            base_probability = (reversals / total_touches_analyzed) * 100.0
+            # PROPER BAYESIAN PROBABILITY THEORY: Beta-Binomial Conjugate Prior
+            # Mathematically rigorous approach for estimating reversal probability
+            #
+            # Method:
+            # - Prior: Beta(α₀, β₀) = Beta(1, 1) for uniform/uninformative prior (neutral 50%)
+            # - Likelihood: Binomial(n, p) where n = total_touches, successes = reversals
+            # - Posterior: Beta(α₀ + reversals, β₀ + breakouts) = Beta(1 + reversals, 1 + breakouts)
+            # - Posterior mean: E[P] = (1 + reversals) / (2 + total_touches_analyzed)
+            #
+            # Advantages over heuristic shrinkage:
+            # 1. Mathematically rigorous (standard Bayesian inference for binary outcomes)
+            # 2. Proper uncertainty quantification (small samples automatically get more shrinkage)
+            # 3. No arbitrary parameters (confidence threshold, etc.)
+            # 4. Can extend to credible intervals, mode, median, etc. if needed
             
-            # Apply Bayesian shrinkage for small samples (more conservative for few touches)
-            # Shrink towards 50% (neutral) for small samples, full confidence at 10+ touches
-            sample_size = total_touches_analyzed
-            confidence = min(1.0, sample_size / 10.0)  # Full confidence at 10+ touches
-            shrunk_probability = base_probability * confidence + 50.0 * (1 - confidence)
+            # Beta-Binomial posterior mean (Bayesian point estimate)
+            prior_alpha = 1.0  # Uniform prior (neutral 50%)
+            prior_beta = 1.0   # Uniform prior (neutral 50%)
             
-            # Removed excessive debug logging - only log if confidence is low or probability is unusual
-            if confidence < 0.5 or (shrunk_probability > 0.7 or shrunk_probability < 0.1):
+            posterior_alpha = prior_alpha + reversals
+            posterior_beta = prior_beta + breakouts
+            posterior_mean = posterior_alpha / (posterior_alpha + posterior_beta)
+            
+            # Convert to percentage (0-100%)
+            bayesian_probability = posterior_mean * 100.0
+            
+            # Calculate effective sample size for logging (how much data we have vs. prior)
+            effective_sample_size = posterior_alpha + posterior_beta - prior_alpha - prior_beta
+            
+            # Removed excessive debug logging - only log if sample size is small or probability is unusual
+            if effective_sample_size < 5 or (bayesian_probability > 80.0 or bayesian_probability < 20.0):
                 logger.debug(f"🔍 Level ${level_price:.2f}: {reversals} reversals, {breakouts} breakouts, "
-                            f"base_prob={base_probability:.1f}%, shrunk={shrunk_probability:.1f}% (confidence={confidence:.2f})")
+                            f"Beta({posterior_alpha:.1f},{posterior_beta:.1f}) → {bayesian_probability:.1f}% (n={effective_sample_size})")
             
-            return shrunk_probability
+            return bayesian_probability
             
         except Exception as e:
             logger.error(f"❌ Historical reversal rate calculation failed: {e}")
