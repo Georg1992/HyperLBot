@@ -106,12 +106,31 @@ class DashboardService:
                 if candle_data:
                     market_data["candleData"] = candle_data
                 
-                # Update nested market section
-                self._data["market"].update(market_data)
+                # Filter out non-market data keys before updating market section
+                # unified_data contains session_data, trading_data, ml_data, etc. which shouldn't be in market dict
+                non_market_keys = {
+                    "session_data", "trading_data", "ml_data", "raw_data_access"
+                }
+                
+                # Extract only market-related data (exclude non-market keys)
+                market_dict = {k: v for k, v in market_data.items() if k not in non_market_keys}
+                
+                # Log if we're getting empty data
+                if len(market_dict) == 0:
+                    logger.warning(f"⚠️ update_market_data received EMPTY data! Keys in market_data: {list(market_data.keys())[:20]}")
+                else:
+                    # Removed excessive debug logging
+                
+                # Update nested market section with filtered data
+                self._data["market"].update(market_dict)
                 
                 # Surface prediction to top-level for UI consumption (always set, even None)
                 pred_obj = market_data.get("prediction")
                 self._data["prediction"] = pred_obj
+                
+                # Surface ML performance to top-level for UI consumption (always set, even if empty)
+                ml_perf = market_data.get("ml_performance", {})
+                self._data["ml_performance"] = ml_perf
                 
                 # Log prediction status for debugging
                 if pred_obj:
@@ -137,8 +156,7 @@ class DashboardService:
             # Get current price for chart data preparation
             current_price = market_data.get("current_price", 0.0)
             if not current_price or current_price <= 0:
-                logger.warning("⚠️ No valid current price for chart data preparation")
-                return None
+                raise ValueError("No valid current price for chart data preparation - NO FALLBACKS")
             
             # Call historical_data_service.prepare_chart_data() to get actual candles
             # This handles UTC-based 5-minute boundaries and proper candle display
@@ -146,19 +164,16 @@ class DashboardService:
             historical_service = get_global_historical_data_service()
             
             # prepare_chart_data returns complete chart data with historical candles, ongoing candle, and pattern analysis
+            # NO FALLBACKS - prepare_chart_data raises on error
             candle_data = historical_service.prepare_chart_data(current_price, patterns)
-            
-            if not candle_data:
-                logger.warning("⚠️ Failed to prepare chart data from historical service")
-                return None
-            
             return candle_data
             
         except Exception as e:
             logger.error(f"❌ Failed to prepare candle data: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            return None
+            # Re-raise to fail fast - NO FALLBACKS
+            raise
     
     def _trigger_websocket_emission(self):
         """Trigger WebSocket emission to update dashboard"""
@@ -175,7 +190,7 @@ class DashboardService:
             with self._lock:
                 self._data["session"] = session_data.copy()
                 self._save_data()
-                logger.debug(f"📊 Session data updated: {session_data.get('session_id', 'N/A')}")
+                # Removed excessive debug logging
         except Exception as e:
             logger.error(f"❌ Could not update session data: {e}")
     

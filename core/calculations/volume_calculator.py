@@ -43,13 +43,16 @@ class VolumeCalculator(BaseCalculator):
     
     def get_latest_analysis(self, hyperliquid_websocket=None) -> Dict[str, Any]:
         """
-        Get latest volume analysis with websocket access
+        Get latest volume analysis with websocket access - NO FALLBACKS
         
         Args:
             hyperliquid_websocket: HyperliquidWebSocket instance (optional)
         
         Returns:
             Volume analysis dictionary
+        
+        Raises:
+            ValueError: If websocket is not available or calculation fails
         """
         try:
             # Use provided websocket or get from system initializer
@@ -59,17 +62,16 @@ class VolumeCalculator(BaseCalculator):
                 market_data_service = system_initializer.singleton_systems.get("market_data_service")
                 
                 if not market_data_service or not market_data_service.hyperliquid_websocket:
-                    logger.warning("⚠️ Hyperliquid WebSocket not available for volume calculation")
-                    return self._create_error_result("Hyperliquid WebSocket not available")
+                    raise ValueError("Hyperliquid WebSocket not available for volume calculation - NO FALLBACKS")
                 
                 hyperliquid_websocket = market_data_service.hyperliquid_websocket
             
-            # Use the websocket for volume calculation
+            # Use the websocket for volume calculation - NO FALLBACKS
             return self.calculate_hyperliquid_5m_volume(hyperliquid_websocket)
             
         except Exception as e:
             logger.error(f"❌ Failed to get latest volume analysis: {e}")
-            return self._create_error_result(str(e))
+            raise
     
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
         """Create error result with volume-specific structure"""
@@ -101,13 +103,12 @@ class VolumeCalculator(BaseCalculator):
             if not hyperliquid_websocket:
                 raise ValueError("Hyperliquid WebSocket not available")
             
-            # 1. Fetch volume data via data provider
+            # 1. Fetch volume data via data provider - NO FALLBACKS
             volume_data = self._data_provider.fetch_hyperliquid_volume_data(hyperliquid_websocket)
             raw_trades = volume_data.get("raw_trades", [])
             
             if not raw_trades:
-                logger.warning("⚠️ No raw trades available for volume calculation")
-                return self._create_error_result("No raw trades available")
+                raise ValueError("No raw trades available for volume calculation - NO FALLBACKS")
             
             # 2. Calculate 5m volume via data provider
             current_time = time.time()
@@ -171,7 +172,7 @@ class VolumeCalculator(BaseCalculator):
             
         except Exception as e:
             logger.error(f"❌ Hyperliquid 5m volume calculation failed: {e}")
-            return self._create_error_result(str(e))
+            raise  # NO FALLBACKS - calculation failure should raise, not return error dict
     
     
     def invalidate_cache(self):

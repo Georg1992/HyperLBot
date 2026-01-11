@@ -318,13 +318,18 @@ def run_paper_trading():
             start_dashboard()
             
             # Set active session orchestrator for shutdown handling
+            global active_session_orchestrator
             active_session_orchestrator = session_orchestrator
             
             # Run paper trading session directly (no facade needed)
-            session_orchestrator.run_paper_trading_session(
-                config.DEFAULT_CHECK_INTERVAL,
-                market_data_service, dashboard_service, "standard"
-            )
+            try:
+                session_orchestrator.run_paper_trading_session(
+                    config.DEFAULT_CHECK_INTERVAL,
+                    market_data_service, dashboard_service, "standard"
+                )
+            except KeyboardInterrupt:
+                logger.info("🛑 KeyboardInterrupt received - shutting down...")
+                raise
             
         except Exception as e:
             logger.error(f"Error in paper trading: {e}")

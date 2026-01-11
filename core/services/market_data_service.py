@@ -52,7 +52,7 @@ class MarketDataService:
         """Register an analysis module for data coordination"""
         self._analysis_modules[module_name] = module_instance
         
-        logger.debug(f"📊 Registered analysis module: {module_name}")
+        # Removed excessive debug logging for module registration
     
     def _is_data_valid(self, data_type: str) -> bool:
         """Check if processed data is still valid based on schedule"""
@@ -138,8 +138,11 @@ class MarketDataService:
             raise
     
     def _map_trend_data(self, raw_trend_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Map trend calculator output to unified format"""
+        """Map trend calculator output to unified format - NO FALLBACKS"""
         try:
+            if not raw_trend_data or not isinstance(raw_trend_data, dict):
+                raise ValueError(f"Invalid raw_trend_data: expected dict, got {type(raw_trend_data)} - NO FALLBACKS")
+            
             # Extract all timeframe trends
             trend_15m = raw_trend_data.get("trend_15m", "UNKNOWN")
             trend_1h = raw_trend_data.get("trend_1h", "UNKNOWN")
@@ -348,7 +351,7 @@ class MarketDataService:
     def get_unified_analysis_data(self, strategy: str = "standard") -> Dict[str, Any]:
         """Get comprehensive real-time market data structure with all components"""
         try:
-            logger.info("📊 Coordinating unified analysis data...")
+            logger.debug("📊 Coordinating unified analysis data...")
             
             # Get current price (single source of truth)
             current_price = self.get_current_price()
@@ -423,7 +426,7 @@ class MarketDataService:
                     except Exception as e:
                         logger.warning(f"⚠️ Failed to get {module_name} analysis: {e}")
             
-            logger.info("📊 Unified analysis data coordinated")
+            logger.debug(f"📊 Unified analysis data coordinated: {len(unified_data)} keys")
             return unified_data
             
         except Exception as e:
@@ -458,16 +461,14 @@ class MarketDataService:
                 from core.services.centralized_cache import get_global_centralized_cache
                 cache = get_global_centralized_cache()
                 
-                # Check cache first
+                # Check cache first - use cache if valid (pattern expiration is handled in analysis, not cache invalidation)
                 cache_key = "pattern_recognition_analysis"
                 cached_data = cache.get(cache_key)
                 
-                # Validate cached data - if it's empty or has no patterns, force fresh analysis
                 if cached_data:
-                    # Check if cached data is valid (has patterns or proper structure)
+                    # Cache hit - use cached data (patterns expiration is handled by pattern engine, not cache)
                     patterns_count = 0
                     if isinstance(cached_data, dict):
-                        # Check both flat and nested patterns
                         flat_patterns = cached_data.get("patterns", [])
                         nested_patterns = cached_data.get("patterns_nested", {})
                         if isinstance(flat_patterns, list):
@@ -476,15 +477,8 @@ class MarketDataService:
                             for category, pattern_list in nested_patterns.items():
                                 if isinstance(pattern_list, list):
                                     patterns_count += len(pattern_list)
-                    
-                    # Only use cached data if it has actual patterns
-                    if patterns_count > 0:
-                        logger.debug(f"🗄️ Using cached pattern analysis ({patterns_count} patterns)")
-                        return cached_data
-                    else:
-                        # Cached data is empty/invalid - force fresh analysis
-                        logger.info(f"🔄 Cached pattern data is empty ({patterns_count} patterns) - forcing fresh analysis")
-                        cache.invalidate(key=cache_key)
+                    logger.debug(f"🗄️ Using cached pattern analysis ({patterns_count} patterns)")
+                    return cached_data
                 
                 # Cache miss or invalid - perform fresh analysis
                 logger.info("📊 Performing fresh pattern analysis...")
@@ -635,7 +629,7 @@ class MarketDataService:
             return bids, asks
         except Exception as e:
             logger.error(f"❌ Failed to extract bids/asks: {e}")
-            return [], []
+            raise ValueError(f"Failed to extract bids/asks from orderbook data: {e}")
     
     def get_real_time_market_data(self, strategy: str = "standard") -> Dict[str, Any]:
         """
@@ -713,20 +707,10 @@ class MarketDataService:
                     "timestamp": time.time()
                 }),
                 
-                "support_resistance": {
-                    "status": market_data.get("support_resistance", {}).get("status", "ok"),
-                    "levels": market_data.get("support_resistance", {}).get("levels", []),
-                    "metadata": market_data.get("support_resistance", {}).get("metadata", {}),
-                    "top_2_support": market_data.get("support_resistance", {}).get("top_2_support", []),
-                    "top_2_resistance": market_data.get("support_resistance", {}).get("top_2_resistance", []),
-                    "key_levels": market_data.get("support_resistance", {}).get("levels", []),
-                    "strongest_support": market_data.get("support_resistance", {}).get("metadata", {}).get("strongest_support", 0),
-                    "strongest_resistance": market_data.get("support_resistance", {}).get("metadata", {}).get("strongest_resistance", 0),
-                    "support_score": market_data.get("support_resistance", {}).get("metadata", {}).get("support_score", 0),
-                    "resistance_score": market_data.get("support_resistance", {}).get("metadata", {}).get("resistance_score", 0),
-                    "levels_count": market_data.get("support_resistance", {}).get("metadata", {}).get("total_levels", 0),
-                    "timestamp": market_data.get("support_resistance", {}).get("metadata", {}).get("timestamp", time.time())
-                },
+                "support_resistance": self._prepare_sr_data_for_dashboard(
+                    market_data.get("support_resistance", {}),
+                    market_data.get("current_price", 0.0)
+                ),
                 
                 "patterns": market_data.get("patterns", {
                     "active_patterns": [],
@@ -789,7 +773,7 @@ class MarketDataService:
             
         except Exception as e:
             logger.error(f"❌ Failed to get dashboard data: {e}")
-            return {}
+            raise
     
     # ==================================================================================
     # DATA STATUS AND MONITORING - Track processed data status
@@ -808,7 +792,7 @@ class MarketDataService:
             }
         except Exception as e:
             logger.error(f"❌ Failed to get data status: {e}")
-            return {}
+            raise
     
     def invalidate_processed_data(self, data_type: str = None):
         """Invalidate processed data - specific type or all"""
@@ -849,7 +833,7 @@ class MarketDataService:
             }
         except Exception as e:
             logger.error(f"❌ Failed to get analysis module status: {e}")
-            return {}
+            raise
     
     def get_data_update_status(self) -> Dict[str, Any]:
         """Get current data update status for processed data coordination"""
@@ -961,15 +945,74 @@ class MarketDataService:
             # Don't log errors here to avoid spam
             pass
     
+    def _prepare_sr_data_for_dashboard(self, sr_data: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """
+        Prepare S/R data for dashboard with pre-filtered levels
+        
+        Uses SRLevelFilter to provide filtered levels for display, reducing frontend filtering logic.
+        
+        Args:
+            sr_data: Raw S/R data from calculator
+            current_price: Current market price
+            
+        Returns:
+            Formatted S/R data with filtered levels for dashboard
+        """
+        try:
+            from core.calculations.sr_level_filter import SRLevelFilter
+            
+            all_levels = sr_data.get("levels", [])
+            metadata = sr_data.get("metadata", {})
+            
+            # Filter levels for dashboard display (top 2)
+            level_filter = SRLevelFilter()
+            filtered_levels = level_filter.filter_for_display(
+                all_levels=all_levels,
+                current_price=current_price,
+                max_levels=2
+            )
+            
+            return {
+                "status": sr_data.get("status", "ok"),
+                "levels": all_levels,  # Still provide all levels for flexibility
+                "key_levels": all_levels,  # Alias for backward compatibility
+                "top_2_support": filtered_levels["support"],  # Pre-filtered for dashboard
+                "top_2_resistance": filtered_levels["resistance"],  # Pre-filtered for dashboard
+                "metadata": metadata,
+                "strongest_support": metadata.get("strongest_support", 0),
+                "strongest_resistance": metadata.get("strongest_resistance", 0),
+                "support_score": metadata.get("support_score", 0),
+                "resistance_score": metadata.get("resistance_score", 0),
+                "levels_count": metadata.get("total_levels", 0),
+                "timestamp": metadata.get("timestamp", time.time())
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to prepare S/R data for dashboard: {e}")
+            # Return safe fallback
+            return {
+                "status": "error",
+                "levels": [],
+                "key_levels": [],
+                "top_2_support": [],
+                "top_2_resistance": [],
+                "metadata": {},
+                "strongest_support": 0,
+                "strongest_resistance": 0,
+                "support_score": 0,
+                "resistance_score": 0,
+                "levels_count": 0,
+                "timestamp": time.time()
+            }
+    
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data from API"""
         try:
-            if self.hyperliquid_api:
-                return self.hyperliquid_api.get_market_data("BTC")
-            return {}
+            if not self.hyperliquid_api:
+                raise ValueError("Hyperliquid API not available - NO FALLBACKS")
+            return self.hyperliquid_api.get_market_data("BTC")
         except Exception as e:
             logger.error(f"❌ Failed to get market data: {e}")
-            return {}
+            raise
     
 # Factory function for dependency injection
 def create_market_data_service(hyperliquid_api, hyperliquid_websocket, binance_api=None, binance_websocket=None) -> MarketDataService:

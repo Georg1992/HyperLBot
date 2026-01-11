@@ -71,7 +71,7 @@ class HistoricalDataService:
             if cached_data:
                 # Only log cache hits for important timeframes to reduce noise
                 if timeframe in ['1h', '1d']:  # Only log longer timeframes
-                    logger.debug(f"📊 Using cached {timeframe} candles for {symbol}")
+                    # Removed excessive debug logging for cache usage
                 return cached_data
             
             # Database is the ONLY source - no API fallbacks
@@ -87,7 +87,7 @@ class HistoricalDataService:
                 if not candles or len(candles) < count:
                     raise ValueError(f"❌ Insufficient 5m candles in database: requested {count}, got {len(candles) if candles else 0}")
                 
-                logger.debug(f"💾 Retrieved {len(candles)} 5m candles from database")
+                # Removed excessive debug logging for database retrievals
                 # Cache the result
                 self._cache.set(cache_key, candles)
                 return candles
@@ -114,7 +114,7 @@ class HistoricalDataService:
                     raise ValueError(f"❌ Insufficient 5m candles in database for 1h aggregation: requested {candles_5m_count}, got {len(candles_5m) if candles_5m else 0}")
                 
                 candles_1h = self._aggregate_5m_to_1h(candles_5m, count)
-                logger.debug(f"💾 Aggregated {len(candles_1h)} 1h candles from {len(candles_5m)} 5m candles in database")
+                # Removed excessive debug logging for aggregations
                 # Cache the result
                 self._cache.set(cache_key, candles_1h)
                 return candles_1h
@@ -127,7 +127,7 @@ class HistoricalDataService:
                     raise ValueError(f"❌ Insufficient 5m candles in database for 1d aggregation: requested {candles_5m_count}, got {len(candles_5m) if candles_5m else 0}")
                 
                 candles_1d = self._aggregate_5m_to_1d(candles_5m, count)
-                logger.debug(f"💾 Aggregated {len(candles_1d)} 1d candles from {len(candles_5m)} 5m candles in database")
+                # Removed excessive debug logging for aggregations
                 # Cache the result
                 self._cache.set(cache_key, candles_1d)
                 return candles_1d
@@ -199,13 +199,10 @@ class HistoricalDataService:
             
             # NO FALLBACKS - Must have candles
             if not chart_candles_5m or len(chart_candles_5m) == 0:
-                logger.error("❌ NO CANDLES AVAILABLE - NO FALLBACKS")
-                return {}
+                raise ValueError("NO CANDLES AVAILABLE - NO FALLBACKS: Database must be populated with historical candles")
             
             # Get real-time volume from the last candle if available
-            real_time_volume = 0.0
-            if chart_candles_5m and len(chart_candles_5m) > 0:
-                real_time_volume = chart_candles_5m[-1].get("volume", 0.0)
+            real_time_volume = chart_candles_5m[-1].get("volume", 0.0)
             
             # Determine which candles to display
             # We need exactly 19 completed candles + 1 ongoing = 20 total
@@ -257,7 +254,7 @@ class HistoricalDataService:
             
         except Exception as e:
             logger.error(f"❌ Chart data preparation failed: {e}")
-            return {}
+            raise
     
     def _map_pattern_indices_to_display_candles(self, patterns: Dict[str, Any], display_candles: List[Dict[str, Any]]) -> Dict[str, Any]:
         """

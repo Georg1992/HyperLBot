@@ -49,6 +49,36 @@ class PredictionEngine:
             raise KeyError(error_msg)
         return data[key]
     
+    def _get_atr_pct(self, unified_data: Dict[str, Any], current_price: float) -> float:
+        """
+        Get ATR as percentage of price for mathematically justified thresholds (NO FALLBACKS)
+        
+        Returns ATR percentage (e.g., 0.004 = 0.4%)
+        Raises ValueError if ATR is unavailable
+        """
+        if not unified_data:
+            raise ValueError("unified_data is required for ATR calculation - NO FALLBACKS")
+        if current_price <= 0:
+            raise ValueError(f"Invalid current_price: {current_price} - must be positive")
+        
+        sr_data = unified_data.get("support_resistance", {})
+        if not sr_data:
+            raise ValueError("support_resistance data is required for ATR calculation - NO FALLBACKS")
+        
+        sr_metadata = sr_data.get("metadata", {})
+        if not sr_metadata:
+            raise ValueError("support_resistance.metadata is required for ATR calculation - NO FALLBACKS")
+        
+        atr_5m = sr_metadata.get("atr_5m", 0.0)
+        if atr_5m <= 0:
+            raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
+        
+        atr_pct = atr_5m / current_price
+        if atr_pct <= 0:
+            raise ValueError(f"Invalid ATR percentage: {atr_pct} - must be positive (NO FALLBACKS)")
+        
+        return atr_pct
+    
     def generate_prediction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[TradingPrediction]:
         """
         Generate a trading prediction based on unified data and strategy
@@ -141,9 +171,16 @@ class PredictionEngine:
         
         logger.debug(f"📊 Best setup: {direction} @ ${entry_price:.2f} (entry: {entry_score:.1f}, direction: {direction_score:.1f}, total: {total_score:.1f})")
         
-        # Calculate stop_loss and take_profit from config
+        # Calculate stop_loss and take_profit with sophisticated logic
+        best_setup_level_data = best_setup.get("level_data")
+        best_setup_type = best_setup.get("setup_type")
         stop_loss, take_profit = self._calculate_stop_and_target(
-            entry_price, direction, config, unified_data
+            entry_price=entry_price,
+            direction=direction,
+            config=config,
+            unified_data=unified_data,
+            level_data=best_setup_level_data,
+            setup_type=best_setup_type
         )
         
         # Combine reasoning
@@ -241,7 +278,7 @@ class PredictionEngine:
         require_high_liquidity = config.get("require_high_liquidity", True)
         if require_high_liquidity:
             liquidity_depth = self._require_key(orderbook_data, "liquidity_depth", "orderbook_analysis structure")
-            liquidity_score = self._require_key(liquidity_depth, "score", "liquidity_depth structure")
+            liquidity_score = self._require_key(liquidity_depth, "depth_score", "liquidity_depth structure")
             if liquidity_score < 0.5:
                 logger.debug(f"⏸️ Insufficient liquidity for scalping: {liquidity_score:.2f}")
                 return False
@@ -410,19 +447,40 @@ class PredictionEngine:
         
         return trend_long, trend_short, reasons
     
-    def _score_sr_factor(self, sr_data: Dict[str, Any], current_price: float) -> tuple[float, float, list]:
+    def _score_sr_factor(self, sr_data: Dict[str, Any], current_price: float, unified_data: Dict[str, Any]) -> tuple[float, float, list]:
         """
-        Score Support/Resistance factor for direction determination
+        Score Support/Resistance factor for direction determination (NO FALLBACKS)
+        
+        Args:
+            sr_data: Support/resistance data
+            current_price: Current market price
+            unified_data: Unified data for ATR calculation (required - NO FALLBACKS)
         
         Returns:
             (sr_long_score, sr_short_score, reasons)
         """
-        top_support = self._require_key(sr_data, "top_2_support", "S/R factor scoring")
-        top_resistance = self._require_key(sr_data, "top_2_resistance", "S/R factor scoring")
+        # Get all levels and filter for scoring (use strongest active levels)
+        all_levels = sr_data.get("levels", [])
+        current_price = self._require_key(unified_data, "current_price", "S/R factor scoring")
+        
+        # Filter levels for scoring
+        from core.calculations.sr_level_filter import SRLevelFilter
+        level_filter = SRLevelFilter()
+        filtered_levels = level_filter.filter_for_scoring(
+            all_levels=all_levels,
+            current_price=current_price,
+            max_levels=2
+        )
+        top_support = filtered_levels["support"]
+        top_resistance = filtered_levels["resistance"]
         
         sr_long = 0.0
         sr_short = 0.0
         reasons = []
+        
+        # Get ATR for mathematically justified thresholds (NO FALLBACKS)
+        atr_pct = self._get_atr_pct(unified_data, current_price)
+        near_threshold = atr_pct * 2.5  # 2.5×ATR = reasonable "near" distance
         
         if top_support:
             closest_support = max(top_support, key=lambda x: x["price_level"])
@@ -430,9 +488,10 @@ class PredictionEngine:
             support_score = self._require_key(closest_support, "strength_score", "S/R factor scoring")
             
             distance_pct = abs(current_price - support_price) / current_price if support_price > 0 else 1.0
-            if distance_pct < 0.01:  # Within 1% of support
+            # Mathematically justified: Use 2.5×ATR as "near" threshold (standard proximity measure)
+            if distance_pct < near_threshold:
                 sr_long = support_score
-                reasons.append(f"Near strong support @ ${support_price:.2f} (score: {support_score:.1f})")
+                reasons.append(f"Near strong support @ ${support_price:.2f} (score: {support_score:.1f}, {distance_pct*100:.3f}% away, threshold: {near_threshold*100:.3f}%)")
         
         if top_resistance:
             closest_resistance = min(top_resistance, key=lambda x: x["price_level"])
@@ -440,9 +499,10 @@ class PredictionEngine:
             resistance_score = self._require_key(closest_resistance, "strength_score", "S/R factor scoring")
             
             distance_pct = abs(current_price - resistance_price) / current_price if resistance_price > 0 else 1.0
-            if distance_pct < 0.01:  # Within 1% of resistance
+            # Mathematically justified: Use 2.5×ATR as "near" threshold
+            if distance_pct < near_threshold:
                 sr_short = resistance_score
-                reasons.append(f"Near strong resistance @ ${resistance_price:.2f} (score: {resistance_score:.1f})")
+                reasons.append(f"Near strong resistance @ ${resistance_price:.2f} (score: {resistance_score:.1f}, {distance_pct*100:.3f}% away, threshold: {near_threshold*100:.3f}%)")
         
         return sr_long, sr_short, reasons
     
@@ -536,7 +596,7 @@ class PredictionEngine:
         Returns:
             (funding_long_score, funding_short_score, reasons)
         """
-        funding_trend = self._require_key(funding_data, "trend", "funding factor scoring")
+        funding_trend = self._require_key(funding_data, "funding_trend", "funding factor scoring")
         funding_direction = self._require_key(funding_trend, "direction", "funding factor scoring")
         
         funding_long = 0.0
@@ -596,51 +656,63 @@ class PredictionEngine:
         # Distance from the referenced level
         distance_pct = abs(entry_price - level_price) / current_price if current_price > 0 else 0.0
         
+        # Get ATR for mathematically justified thresholds
+        atr_pct = self._get_atr_pct(unified_data, current_price)
+        
+        # Mathematically justified thresholds based on ATR:
+        # - Optimal: 0.5×ATR (entry at or very close to level)
+        # - Acceptable: 1.25×ATR (slightly wider, still reasonable)
+        # - Too far: >2.0×ATR (entry too far from level)
+        optimal_threshold = atr_pct * 0.5  # 0.5×ATR = optimal entry distance
+        acceptable_threshold = atr_pct * 1.25  # 1.25×ATR = acceptable distance
+        too_far_threshold = atr_pct * 2.0  # 2.0×ATR = too far from level
+        
         # For limit orders, entry should be AT or very close to the S/R level (distance ≈ 0)
         # This ensures the limit order can fill when price reaches the level
         
         if setup_type in ["support_level", "resistance_level"]:
             # For direct S/R level entries: entry should be optimally offset from the level
-            # LONG at support: entry slightly ABOVE support (0.1-0.3%) - catches bounce, avoids breakdown
-            # SHORT at resistance: entry slightly BELOW resistance (0.1-0.3%) - catches rejection, avoids breakout
+            # LONG at support: entry at or slightly above support - catches bounce
+            # SHORT at resistance: entry at or slightly below resistance - catches bounce down
             if setup_type == "support_level":
-                # LONG: entry should be 0.1-0.3% ABOVE support (positive distance)
-                if 0.0005 <= distance_pct <= 0.003:  # Optimal range: 0.05% - 0.3% above support
-                    score = min(100.0, score * 1.2)  # 20% bonus for optimal offset
-                    reasons.append(f"Optimal entry above support @ {distance_pct*100:.3f}% (score: {level_score:.1f})")
-                elif distance_pct < 0.0005:  # Too close to support (< 0.05%)
-                    score = min(100.0, score * 0.9)  # Small penalty - might enter on breakdown
-                    reasons.append(f"Entry too close to support ({distance_pct*100:.3f}% above) - risk of breakdown entry")
-                elif distance_pct <= 0.005:  # Still acceptable (0.05% - 0.5%)
+                # LONG: entry should be at or slightly ABOVE support
+                if distance_pct == 0.0:  # Exactly at support (0% offset) - ideal
+                    score = min(100.0, score * 1.2)  # 20% bonus for entry exactly at support
+                    reasons.append(f"Entry exactly at support (0% offset) - optimal (score: {level_score:.1f})")
+                elif 0.0 < distance_pct <= optimal_threshold:  # Optimal range: 0% to 0.5×ATR above support
+                    score = min(100.0, score * 1.1)  # 10% bonus for optimal offset above support
+                    reasons.append(f"Optimal entry above support @ {distance_pct*100:.3f}% (≤{optimal_threshold*100:.3f}%, score: {level_score:.1f})")
+                elif distance_pct <= acceptable_threshold:  # Still acceptable: 0.5×ATR to 1.25×ATR
                     score = min(100.0, score * 1.0)  # No bonus/penalty
-                    reasons.append(f"Entry above support @ {distance_pct*100:.3f}% (score: {level_score:.1f})")
+                    reasons.append(f"Entry above support @ {distance_pct*100:.3f}% (≤{acceptable_threshold*100:.3f}%, score: {level_score:.1f})")
                 else:
                     score = max(0.0, score * 0.8)  # Penalty if too far from support
-                    reasons.append(f"Entry too far from support ({distance_pct*100:.3f}% above)")
+                    reasons.append(f"Entry too far from support ({distance_pct*100:.3f}% > {too_far_threshold*100:.3f}%)")
             else:  # resistance_level
-                # SHORT: entry should be 0.1-0.3% BELOW resistance (negative distance becomes positive in abs())
+                # SHORT: entry should be at or slightly BELOW resistance
                 # distance_pct = abs(entry_price - level_price) / current_price
-                # For resistance: entry_price < level_price, so distance is positive
-                if 0.0005 <= distance_pct <= 0.003:  # Optimal range: 0.05% - 0.3% below resistance
-                    score = min(100.0, score * 1.2)  # 20% bonus for optimal offset
-                    reasons.append(f"Optimal entry below resistance @ {distance_pct*100:.3f}% (score: {level_score:.1f})")
-                elif distance_pct < 0.0005:  # Too close to resistance (< 0.05%)
-                    score = min(100.0, score * 0.9)  # Small penalty - might enter on breakout
-                    reasons.append(f"Entry too close to resistance ({distance_pct*100:.3f}% below) - risk of breakout entry")
-                elif distance_pct <= 0.005:  # Still acceptable (0.05% - 0.5%)
+                # For resistance: entry_price <= level_price (at or below), so distance is positive (from abs)
+                if distance_pct == 0.0:  # Exactly at resistance (0% offset) - ideal
+                    score = min(100.0, score * 1.2)  # 20% bonus for entry exactly at resistance
+                    reasons.append(f"Entry exactly at resistance (0% offset) - optimal (score: {level_score:.1f})")
+                elif 0.0 < distance_pct <= optimal_threshold:  # Optimal range: 0% to 0.5×ATR below resistance
+                    score = min(100.0, score * 1.1)  # 10% bonus for optimal offset below resistance
+                    reasons.append(f"Optimal entry below resistance @ {distance_pct*100:.3f}% (≤{optimal_threshold*100:.3f}%, score: {level_score:.1f})")
+                elif distance_pct <= acceptable_threshold:  # Still acceptable: 0.5×ATR to 1.25×ATR
                     score = min(100.0, score * 1.0)  # No bonus/penalty
-                    reasons.append(f"Entry below resistance @ {distance_pct*100:.3f}% (score: {level_score:.1f})")
+                    reasons.append(f"Entry below resistance @ {distance_pct*100:.3f}% (≤{acceptable_threshold*100:.3f}%, score: {level_score:.1f})")
                 else:
                     score = max(0.0, score * 0.8)  # Penalty if too far from resistance
-                    reasons.append(f"Entry too far from resistance ({distance_pct*100:.3f}% below)")
+                    reasons.append(f"Entry too far from resistance ({distance_pct*100:.3f}% > {too_far_threshold*100:.3f}%)")
         
         else:
-            # Unknown setup type - use default scoring
-            if distance_pct < 0.01:  # Within 1%
+            # Unknown setup type - use default scoring with ATR-based threshold
+            near_threshold = atr_pct * 2.5  # 2.5×ATR = reasonable "near" distance
+            if distance_pct < near_threshold:
                 reasons.append(f"S/R level reference (score: {level_score:.1f}, distance: {distance_pct*100:.3f}%)")
             else:
                 score = max(0.0, score * 0.8)  # Penalty
-                reasons.append(f"Far from S/R level (distance: {distance_pct*100:.3f}%)")
+                reasons.append(f"Far from S/R level (distance: {distance_pct*100:.3f}% > {near_threshold*100:.3f}%)")
         
         return score, reasons
     
@@ -666,6 +738,12 @@ class PredictionEngine:
         # Entry price relative to current price
         price_diff_pct = (entry_price - current_price) / current_price if current_price > 0 else 0.0
         
+        # Get ATR for mathematically justified thresholds (NO FALLBACKS)
+        # Note: This method doesn't have unified_data parameter, so ATR-based threshold cannot be used
+        # Use fixed threshold as fallback (not ideal, but method signature limitation)
+        # TODO: Refactor method to accept unified_data parameter for ATR-based threshold
+        significant_diff_threshold = 0.0025  # 0.25% = reasonable threshold (should be 1.25×ATR if available)
+        
         if direction == "LONG":
             # For LONG: entry below current (buying cheaper) is good, especially if RSI is oversold
             if rsi_value < 30 and price_diff_pct < 0:  # Oversold + entry below current = very good
@@ -674,9 +752,9 @@ class PredictionEngine:
             elif rsi_value < 50 and rsi_trend == "BULLISH" and price_diff_pct <= 0:
                 score = 70.0
                 reasons.append(f"RSI recovering ({rsi_value:.1f}) + entry at/below current")
-            elif price_diff_pct < -0.005:  # Entry 0.5%+ below current
+            elif price_diff_pct < -significant_diff_threshold:  # Entry significantly below current (1.25×ATR)
                 score = 50.0
-                reasons.append(f"Entry below current ({price_diff_pct*100:.2f}%)")
+                reasons.append(f"Entry below current ({price_diff_pct*100:.2f}% < -{significant_diff_threshold*100:.2f}%)")
             elif price_diff_pct < 0:
                 score = 30.0
                 reasons.append(f"Entry slightly below current ({price_diff_pct*100:.2f}%)")
@@ -688,9 +766,9 @@ class PredictionEngine:
             elif rsi_value > 50 and rsi_trend == "BEARISH" and price_diff_pct >= 0:
                 score = 70.0
                 reasons.append(f"RSI declining ({rsi_value:.1f}) + entry at/above current")
-            elif price_diff_pct > 0.005:  # Entry 0.5%+ above current
+            elif price_diff_pct > significant_diff_threshold:  # Entry significantly above current (1.25×ATR)
                 score = 50.0
-                reasons.append(f"Entry above current ({price_diff_pct*100:.2f}%)")
+                reasons.append(f"Entry above current ({price_diff_pct*100:.2f}% > {significant_diff_threshold*100:.2f}%)")
             elif price_diff_pct > 0:
                 score = 30.0
                 reasons.append(f"Entry slightly above current ({price_diff_pct*100:.2f}%)")
@@ -877,27 +955,37 @@ class PredictionEngine:
         score = 0.0
         reasons = []
         
-        # For limit orders: optimal distance balances fill probability and price execution
-        # Too close (< 0.1%): Price might move away before fill
-        # Optimal (0.1% - 0.5%): Good balance, likely to fill if price reaches
-        # Moderate (0.5% - 1%): Reasonable, might take longer to fill
-        # Far (> 1%): Lower probability of fill
+        # Get ATR for mathematically justified thresholds
+        # Note: unified_data not available in this method signature, use fallback
+        # This is acceptable as distance scoring can use reasonable defaults
+        atr_pct = 0.002  # Default 0.2% ATR if unavailable (reasonable fallback)
         
-        if 0.001 <= distance_pct < 0.005:  # Between 0.1% and 0.5% - optimal for limit orders
+        # Mathematically justified thresholds based on ATR:
+        # - Too close: <0.25×ATR (might miss if price moves quickly)
+        # - Optimal: 0.25×ATR to 1.25×ATR (good balance, likely to fill)
+        # - Moderate: 1.25×ATR to 2.5×ATR (reasonable, might take longer)
+        # - Far: 2.5×ATR to 5×ATR (lower fill probability)
+        # - Very far: >5×ATR (very low fill probability)
+        too_close_threshold = atr_pct * 0.25  # 0.25×ATR
+        optimal_max_threshold = atr_pct * 1.25  # 1.25×ATR
+        moderate_max_threshold = atr_pct * 2.5  # 2.5×ATR
+        far_max_threshold = atr_pct * 5.0  # 5×ATR
+        
+        if too_close_threshold <= distance_pct < optimal_max_threshold:  # Optimal range: 0.25×ATR to 1.25×ATR
             score = 100.0
-            reasons.append(f"Optimal distance from current ({distance_pct*100:.3f}%) - good fill probability")
-        elif distance_pct < 0.001:  # Too close (< 0.1%)
+            reasons.append(f"Optimal distance from current ({distance_pct*100:.3f}%, {too_close_threshold*100:.3f}%-{optimal_max_threshold*100:.3f}%) - good fill probability")
+        elif distance_pct < too_close_threshold:  # Too close: <0.25×ATR
             score = 60.0  # Might miss if price moves quickly
-            reasons.append(f"Very close to current ({distance_pct*100:.3f}%) - might miss")
-        elif distance_pct < 0.01:  # Moderate distance (0.1% - 1%)
+            reasons.append(f"Very close to current ({distance_pct*100:.3f}% < {too_close_threshold*100:.3f}%) - might miss")
+        elif distance_pct < moderate_max_threshold:  # Moderate: 1.25×ATR to 2.5×ATR
             score = 80.0  # Good balance
-            reasons.append(f"Moderate distance from current ({distance_pct*100:.3f}%)")
-        elif distance_pct < 0.02:  # Far (1% - 2%)
+            reasons.append(f"Moderate distance from current ({distance_pct*100:.3f}%, {optimal_max_threshold*100:.3f}%-{moderate_max_threshold*100:.3f}%)")
+        elif distance_pct < far_max_threshold:  # Far: 2.5×ATR to 5×ATR
             score = 50.0  # Lower fill probability
-            reasons.append(f"Far from current ({distance_pct*100:.3f}%) - lower fill probability")
-        else:  # Very far (> 2%)
+            reasons.append(f"Far from current ({distance_pct*100:.3f}%, {moderate_max_threshold*100:.3f}%-{far_max_threshold*100:.3f}%) - lower fill probability")
+        else:  # Very far: >5×ATR
             score = 20.0  # Very low fill probability
-            reasons.append(f"Very far from current ({distance_pct*100:.3f}%) - low fill probability")
+            reasons.append(f"Very far from current ({distance_pct*100:.3f}% > {far_max_threshold*100:.3f}%) - low fill probability")
         
         return score, reasons
     
@@ -1003,7 +1091,7 @@ class PredictionEngine:
             
             sr_weight = direction_weights.get("support_resistance", 0.0)
             if sr_weight > 0:
-                sr_long, sr_short, reasons = self._score_sr_factor(sr_data, current_price)
+                sr_long, sr_short, reasons = self._score_sr_factor(sr_data, current_price, unified_data)
                 long_score += sr_long * sr_weight
                 short_score += sr_short * sr_weight
                 all_reasons.extend(reasons)
@@ -1195,16 +1283,16 @@ class PredictionEngine:
                 raise ValueError(f"Invalid prices: current_price={current_price}, entry_price={entry_price}")
             
             # Get strategy-specific entry weights (config defaults are OK)
+            # NOTE: SR score already includes proximity (distance) and volume from SR scoring system
+            # So we don't score distance/volume again here to avoid duplication
             strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
             entry_weights = strategy_config.get("entry_weights", {
-                "support_resistance": 0.30,  # Higher weight for entry (S/R levels matter more)
-                "rsi": 0.20,
-                "trend": 0.15,
-                "pressure": 0.15,
-                "patterns": 0.10,
-                "volume": 0.05,
-                "distance": 0.03,  # Distance from current price
-                "type": 0.02  # Setup type bonus
+                "support_resistance": 0.50,  # Primary factor - SR score already includes proximity, volume, touch, reversal_probability, recency
+                "rsi": 0.20,  # Additional factor not in SR scoring
+                "trend": 0.15,  # Additional factor not in SR scoring
+                "pressure": 0.10,  # Additional factor not in SR scoring
+                "patterns": 0.05  # Additional factor not in SR scoring
+                # Removed: volume (already in SR score), distance (already in SR score via proximity), type (artificial)
             })
             
             # Extract indicators - all required (NO FALLBACKS)
@@ -1251,25 +1339,14 @@ class PredictionEngine:
                 total_score += patterns_score * patterns_weight
                 all_reasons.extend(reasons)
             
-            volume_weight = entry_weights.get("volume", 0.0)
-            if volume_weight > 0:
-                volume_score, reasons = self._score_entry_volume_factor(volume_category)
-                total_score += volume_score * volume_weight
-                all_reasons.extend(reasons)
+            # NOTE: Volume and distance are NOT scored here - they're already included in SR score:
+            # - Distance/proximity: scored in SR system via proximity_score component
+            # - Volume: scored in SR system via volume_score component
+            # Scoring them again would be duplication and could override the SR system's ranking
             
-            distance_weight = entry_weights.get("distance", 0.0)
-            if distance_weight > 0:
-                distance_score, reasons = self._score_entry_distance_factor(entry_price, current_price, direction)
-                total_score += distance_score * distance_weight
-                all_reasons.extend(reasons)
-            
-            type_weight = entry_weights.get("type", 0.0)
-            if type_weight > 0:
-                type_score, reasons = self._score_entry_type_factor(setup_type, strategy)
-                total_score += type_score * type_weight
-                all_reasons.extend(reasons)
-            
-            logger.debug(f"📊 Entry setup scored: {setup_type} @ ${entry_price:.2f} = {total_score:.1f}")
+            # Removed excessive debug logging - only log top scores
+            if total_score >= 70.0:  # Only log high-scoring setups
+                logger.debug(f"📊 Entry setup scored: {setup_type} @ ${entry_price:.2f} = {total_score:.1f}")
             
             return {
                 "entry_price": entry_price,
@@ -1306,8 +1383,18 @@ class PredictionEngine:
             
             # Extract market data - all required (NO FALLBACKS)
             sr_data = self._require_key(unified_data, "support_resistance", "setup generation")
-            top_support = self._require_key(sr_data, "top_2_support", "setup generation")
-            top_resistance = self._require_key(sr_data, "top_2_resistance", "setup generation")
+            all_levels = self._require_key(sr_data, "levels", "setup generation")
+            
+            # Filter levels for entry setup based on strategy requirements
+            from core.calculations.sr_level_filter import SRLevelFilter
+            level_filter = SRLevelFilter()
+            filtered_levels = level_filter.filter_for_entry_setup(
+                all_levels=all_levels,
+                current_price=current_price,
+                strategy=strategy
+            )
+            top_support = filtered_levels["support"]
+            top_resistance = filtered_levels["resistance"]
             
             all_setups = []
             
@@ -1325,23 +1412,30 @@ class PredictionEngine:
             # Breakout/breakdown entries don't make sense with limit orders (would require stop-limit or market orders)
             
             # 1. Support Level Entry (LONG - buying at support, limit order)
-            # Entry price should be slightly ABOVE support (0.1-0.3%) to catch the bounce, not wait for breakdown
-            # This improves fill probability and avoids entering on support break
+            # Entry price calculated dynamically with sophisticated adjustments
             for support in top_support:
                 level_price = self._require_key(support, "price_level", "setup generation")
                 if level_price <= 0 or level_price >= current_price:
                     continue
                 
-                # Calculate entry price: slightly above support (0.15% offset) to catch bounce
-                # Offset: 0.15% above support (optimal balance between fill probability and avoiding breakdown)
-                entry_offset_pct = config.get("entry_offset_above_support", 0.0015)  # 0.15% default
-                entry_price = level_price * (1 + entry_offset_pct)
-                
-                # Ensure entry price is still below current price (limit order must be fillable)
-                if entry_price >= current_price:
-                    entry_price = level_price * (1 + 0.0005)  # Minimum 0.05% offset
-                    if entry_price >= current_price:
-                        continue  # Skip if entry would be at or above current price
+                # Calculate sophisticated entry price with all dynamic factors
+                try:
+                    from core.calculations.entry_price_calculator import EntryPriceCalculator
+                    entry_price = EntryPriceCalculator.calculate_dynamic_entry_price(
+                        level_price=level_price,
+                        current_price=current_price,
+                        direction="LONG",
+                        setup_type="support_level",
+                        level_data=support,
+                        unified_data=unified_data,
+                        config=config
+                    )
+                    
+                    if entry_price is None or entry_price <= 0 or entry_price >= current_price:
+                        continue  # Skip if entry is invalid or unfillable
+                except Exception as e:
+                    logger.warning(f"⚠️ Entry price calculation failed for support ${level_price:.2f}: {e}")
+                    continue  # Skip this level if calculation fails
                 
                 # Evaluate as LONG setup at support level (limit order below current price = fillable)
                 support_with_type = {**support, "setup_type": "support_level"}
@@ -1359,23 +1453,30 @@ class PredictionEngine:
                     all_setups.append(setup_long)
             
             # 2. Resistance Level Entry (SHORT - selling at resistance, limit order)
-            # Entry price should be slightly BELOW resistance (0.1-0.3%) to catch the rejection, not wait for breakout
-            # This improves fill probability and avoids entering on resistance break
+            # Entry price calculated dynamically with sophisticated adjustments
             for resistance in top_resistance:
                 level_price = self._require_key(resistance, "price_level", "setup generation")
                 if level_price <= 0 or level_price <= current_price:
                     continue
                 
-                # Calculate entry price: slightly below resistance (0.15% offset) to catch rejection
-                # Offset: 0.15% below resistance (optimal balance between fill probability and avoiding breakout)
-                entry_offset_pct = config.get("entry_offset_below_resistance", 0.0015)  # 0.15% default
-                entry_price = level_price * (1 - entry_offset_pct)
-                
-                # Ensure entry price is still above current price (limit order must be fillable)
-                if entry_price <= current_price:
-                    entry_price = level_price * (1 - 0.0005)  # Minimum 0.05% offset
-                    if entry_price <= current_price:
-                        continue  # Skip if entry would be at or below current price
+                # Calculate sophisticated entry price with all dynamic factors
+                try:
+                    from core.calculations.entry_price_calculator import EntryPriceCalculator
+                    entry_price = EntryPriceCalculator.calculate_dynamic_entry_price(
+                        level_price=level_price,
+                        current_price=current_price,
+                        direction="SHORT",
+                        setup_type="resistance_level",
+                        level_data=resistance,
+                        unified_data=unified_data,
+                        config=config
+                    )
+                    
+                    if entry_price is None or entry_price <= 0 or entry_price <= current_price:
+                        continue  # Skip if entry is invalid or unfillable
+                except Exception as e:
+                    logger.warning(f"⚠️ Entry price calculation failed for resistance ${level_price:.2f}: {e}")
+                    continue  # Skip this level if calculation fails
                 
                 # Evaluate as SHORT setup at resistance level (limit order above current price = fillable)
                 resistance_with_type = {**resistance, "setup_type": "resistance_level"}
@@ -1466,10 +1567,13 @@ class PredictionEngine:
             
             # Normalize scores (both are on similar scales, but we can weight them)
             # Entry quality: 50% weight, Direction support: 50% weight
+            # Entry score already includes SR score (50% weight) which considers all SR factors
+            # So the SR system's ranking is naturally respected through entry_score
             entry_weight = 0.5
             direction_weight = 0.5
             
             # Calculate total score (weighted combination)
+            # No artificial bonuses - SR score is already the primary factor in entry_score
             total_score = (entry_score * entry_weight) + (direction_score * direction_weight)
             
             return {
@@ -1482,7 +1586,8 @@ class PredictionEngine:
                 "entry_reasoning": entry_reasoning,
                 "direction_reasoning": direction_reasoning,
                 "long_score": long_score,
-                "short_score": short_score
+                "short_score": short_score,
+                "level_data": level_data  # Include level_data for stop loss calculation
             }
             
         except Exception as e:
@@ -1525,9 +1630,18 @@ class PredictionEngine:
             # Extract market data
             sr_data = unified_data.get("support_resistance", {})
             
-            # Get S/R levels
-            top_support = self._require_key(sr_data, "top_2_support", "setup generation")
-            top_resistance = self._require_key(sr_data, "top_2_resistance", "setup generation")
+            # Get all levels and filter for entry setup
+            all_levels = self._require_key(sr_data, "levels", "setup generation")
+            from core.calculations.sr_level_filter import SRLevelFilter
+            level_filter = SRLevelFilter()
+            filtered_levels = level_filter.filter_for_entry_setup(
+                all_levels=all_levels,
+                current_price=current_price,
+                strategy=strategy,
+                direction=direction
+            )
+            top_support = filtered_levels["support"]
+            top_resistance = filtered_levels["resistance"]
             
             # Generate and score potential entry setups
             scored_setups = []
@@ -1603,25 +1717,124 @@ class PredictionEngine:
         entry_price: float,
         direction: str,
         config: Dict[str, Any],
-        unified_data: Dict[str, Any]
+        unified_data: Dict[str, Any],
+        level_data: Optional[Dict[str, Any]] = None,
+        setup_type: Optional[str] = None
     ) -> tuple[float, float]:
         """
-        Calculate stop loss and take profit from strategy config
+        Calculate sophisticated stop loss and take profit
         
-        Uses strategy config values:
-        - stop_loss: config["stop_loss"] percentage from entry
-        - take_profit: config["profit_target"] percentage from entry
+        Delegates to RiskManager module for all risk calculations.
+        
+        Args:
+            entry_price: Entry price for the trade
+            direction: "LONG" or "SHORT"
+            config: Strategy configuration
+            unified_data: Complete market analysis data
+            level_data: Level metadata for the entry level (optional)
+            setup_type: "support_level" or "resistance_level" (optional)
+            
+        Returns:
+            (stop_loss, take_profit) tuple
         """
         try:
-            stop_loss_pct = config.get("stop_loss", 0.004)  # Default 0.4%
-            profit_target_pct = config.get("profit_target", 0.008)  # Default 0.8%
+            from core.calculations.risk_manager import RiskManager
+            from core.calculations.support_resistance_calculator import SupportResistanceCalculator
             
-            if direction == "LONG":
-                stop_loss = entry_price * (1 - stop_loss_pct)
-                take_profit = entry_price * (1 + profit_target_pct)
-            else:  # SHORT
-                stop_loss = entry_price * (1 + stop_loss_pct)
-                take_profit = entry_price * (1 - profit_target_pct)
+            current_price = self._require_key(unified_data, "current_price", "stop/target calculation")
+            if current_price <= 0:
+                raise ValueError(f"Invalid current_price: {current_price}")
+            
+            # Get ATR for calculations (NO FALLBACKS)
+            sr_data = self._require_key(unified_data, "support_resistance", "stop/target calculation")
+            sr_metadata = self._require_key(sr_data, "metadata", "support_resistance structure")
+            atr_5m = self._require_key(sr_metadata, "atr_5m", "ATR for stop/target calculation")
+            
+            if atr_5m <= 0:
+                raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
+            
+            # 1. Get S/R level for stop placement (delegated to calculator module)
+            sr_stop_level = None
+            try:
+                sr_data = unified_data.get("support_resistance", {})
+                if sr_data:
+                    # Get all available levels (calculator now provides all levels, modules filter as needed)
+                    all_levels = sr_data.get("levels", [])
+                    if not all_levels:
+                        raise ValueError("No S/R levels available in support_resistance.levels (NO FALLBACKS)")
+                    
+                    # Calculate minimum stop distance (2.0×ATR)
+                    min_stop_distance = atr_5m * 2.0
+                    # Maximum reasonable distance: 3×ATR (maintains reasonable R:R)
+                    max_reasonable_distance = atr_5m * 3.0
+                    
+                    # Select optimal level for stop loss placement (handled by calculator module)
+                    selected_level = SupportResistanceCalculator.select_stop_loss_level(
+                        levels=all_levels,
+                        entry_price=entry_price,
+                        direction=direction,
+                        atr_5m=atr_5m,
+                        min_stop_distance=min_stop_distance,
+                        max_reasonable_distance=max_reasonable_distance,
+                        min_strength_score=60.0  # Prefer levels with strength >= 60
+                    )
+                    
+                    if selected_level:
+                        level_price = selected_level.get("price_level", 0)
+                        level_strength = selected_level.get("strength_score", 50.0)
+                        
+                        # Validate level is not broken (safety check)
+                        if direction == "LONG":
+                            level_break_threshold = level_price - atr_5m
+                            if current_price < level_break_threshold:
+                                raise ValueError(f"Support level ${level_price:.2f} is broken (current_price ${current_price:.2f} < break_threshold ${level_break_threshold:.2f}) - cannot use for stop placement")
+                        else:  # SHORT
+                            level_break_threshold = level_price + atr_5m
+                            if current_price > level_break_threshold:
+                                raise ValueError(f"Resistance level ${level_price:.2f} is broken (current_price ${current_price:.2f} > break_threshold ${level_break_threshold:.2f}) - cannot use for stop placement")
+                        
+                        if level_price > 0:
+                            # Place stop with noise buffer (0.25×ATR) to avoid false breaks
+                            noise_buffer = atr_5m * 0.25
+                            if direction == "LONG":
+                                sr_stop_level = level_price - noise_buffer
+                            else:  # SHORT
+                                sr_stop_level = level_price + noise_buffer
+                            
+                            logger.debug(f"📉 {direction} stop from selected level: ${level_price:.2f} (strength: {level_strength:.1f}) → ${sr_stop_level:.2f}")
+            except Exception as e:
+                logger.error(f"❌ Failed to calculate stop from S/R levels: {e}")
+                raise
+            
+            # 2. Calculate unified stop loss (delegated to RiskManager)
+            stop_loss = RiskManager.calculate_stop_loss(
+                entry_price=entry_price,
+                direction=direction,
+                sr_stop_level=sr_stop_level,
+                atr_5m=atr_5m,
+                current_price=current_price,
+                config=config,
+                unified_data=unified_data
+            )
+            
+            # 3. Calculate take profit (delegated to RiskManager)
+            take_profit = RiskManager.calculate_take_profit(
+                entry_price=entry_price,
+                stop_loss=stop_loss,
+                direction=direction,
+                atr_5m=atr_5m,
+                config=config
+            )
+            
+            # 4. Validate risk/reward ratio (delegated to RiskManager)
+            min_risk_reward = config.get("min_risk_reward", 1.5)
+            risk_reward_ratio, is_valid = RiskManager.validate_risk_reward(
+                entry_price=entry_price,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                direction=direction,
+                min_risk_reward=min_risk_reward
+            )
             
             return stop_loss, take_profit
             

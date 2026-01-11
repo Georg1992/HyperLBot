@@ -309,7 +309,8 @@ class EventDrivenTradingDashboard:
             # Extract AI system status and ML performance from market data
             market_data_dict = dashboard_data.get("market", {})
             ai_system_status = market_data_dict.get("ai_system_status", {})
-            ml_performance = market_data_dict.get("ml_performance", {})
+            # Check both top-level and market dict for ml_performance
+            ml_performance = dashboard_data.get("ml_performance") or market_data_dict.get("ml_performance", {})
             
             # Get prediction - CHECK MULTIPLE SOURCES (top-level, market.prediction, market.predictions list)
             prediction = None
@@ -407,13 +408,14 @@ class EventDrivenTradingDashboard:
             # Get pattern data from MarketDataService to include in chart
             pattern_data = market_data_service.get_pattern_analysis() if market_data_service else {}
             
+            # NO FALLBACKS - prepare_chart_data raises on error
             chart_data = historical_service.prepare_chart_data(current_price, pattern_data)
-            
             return chart_data
             
         except Exception as e:
             logger.error(f"❌ Failed to get chart data: {e}")
-            return {}
+            # Re-raise to fail fast - NO FALLBACKS
+            raise
     
     def _get_error_data(self, error_message: str) -> Dict[str, Any]:
         """Get error data structure for dashboard"""

@@ -221,10 +221,20 @@ class StrategyManager:
         except (ValueError, TypeError):
             rsi_momentum = 0.0
         
-        # S/R data - ensure numeric types are floats
+        # S/R data - filter levels for strategy selection
         sr_levels = self._safe_get(sr_data, "levels", [])
-        top_support = self._safe_get(sr_data, "top_2_support", [])
-        top_resistance = self._safe_get(sr_data, "top_2_resistance", [])
+        current_price = self._safe_get(market_data, "current_price", 0.0)
+        
+        # Filter levels for strategy selection
+        from core.calculations.sr_level_filter import SRLevelFilter
+        level_filter = SRLevelFilter()
+        filtered_levels = level_filter.filter_for_strategy_selection(
+            all_levels=sr_levels,
+            current_price=current_price,
+            max_levels=2
+        )
+        top_support = filtered_levels["support"]
+        top_resistance = filtered_levels["resistance"]
         
         strongest_support_raw = self._safe_get(sr_data, "strongest_support", 0.0)
         try:
@@ -1055,11 +1065,13 @@ class StrategyManager:
         """Notify SessionManager of strategy change for dashboard update"""
         try:
             # Import here to avoid circular imports
-            from core.session.session_manager import session_manager
+            from core.session.session_manager import get_global_session_manager
+            
+            session_manager_instance = get_global_session_manager()
             
             # Update session data with new strategy
-            if session_manager.current_session_data:
-                session_manager.current_session_data["strategy"] = new_strategy
+            if session_manager_instance.current_session_data:
+                session_manager_instance.current_session_data["strategy"] = new_strategy
                 
                 # Sync updated session data to dashboard
                 # Get dashboard service and update
@@ -1067,7 +1079,7 @@ class StrategyManager:
                 system_initializer = get_system_initializer()
                 dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
                 if dashboard_service:
-                    dashboard_service.update_session_data(session_manager.current_session_data)
+                    dashboard_service.update_session_data(session_manager_instance.current_session_data)
                     logger.info(f"🔄 Strategy switched to: {new_strategy}")
                 
                 logger.info(f"📊 Dashboard notified of strategy change: {new_strategy}")

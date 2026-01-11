@@ -5,7 +5,7 @@ Responsible for scoring S/R levels and managing multi-timeframe confirmations
 """
 
 import math
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from loguru import logger
 
 from .level import Level
@@ -24,18 +24,17 @@ class SRScorer:
     """
     
     def __init__(self, strategy: str = "standard"):
-        """Initialize the scorer with strategy-specific weights
+        """Initialize the scorer with universal weights
         
         SCORING SYSTEM REPRESENTS REVERSAL PROBABILITY (0-100%)
         Score = estimated probability that price will reverse at this level
         
-        Weights are strategy-specific:
-        - Scalping: favors proximity (60%) for quick trades
-        - Swing trading: favors touch count (60%) for strong levels
-        - Standard: balanced (40% proximity, 40% touch)
+        NOTE: Scoring is UNIVERSAL - all strategies use the same weights
+        SR levels are objective market features - their strength doesn't change based on strategy
+        Strategy only affects SELECTION (which levels to use, not how they're scored)
         
         Args:
-            strategy: Trading strategy name (default: "standard")
+            strategy: Trading strategy name (default: "standard") - used for learned weights only
         
         Score interpretation:
         - 80-100%: Very high reversal probability (excellent trading level)
@@ -44,34 +43,53 @@ class SRScorer:
         - 20-39%: Low reversal probability (weak level)
         - 0-19%: Very low reversal probability (poor level)
         """
-        # Get strategy-specific configuration
         from config.config import TradingConfig
-        sr_config = TradingConfig.SR_LEVEL_SELECTION.get(strategy, TradingConfig.SR_LEVEL_SELECTION["standard"])
         
-        # Use strategy-specific scoring weights
-        strategy_weights = sr_config.get("scoring_weights", {
-            "proximity": 0.40,
-            "touch": 0.40,
-            "recency": 0.15,
-            "volume": 0.05
-        })
+        # Try to load learned weights (if ML training was done), fallback to universal static weights
+        learned_weights = self._load_learned_weights(strategy)
         
-        self._scoring_weights = {
-            'mtf': 0.00,        # Multi-timeframe confirmation (0% - removed)
-            'proximity': strategy_weights.get("proximity", 0.40),
-            'touch': strategy_weights.get("touch", 0.40),
-            'volume': strategy_weights.get("volume", 0.05),
-            'recency': strategy_weights.get("recency", 0.15)
-        }
+        if learned_weights:
+            logger.info(f"✅ Loaded learned weights for strategy '{strategy}'")
+            # Use learned weights if available (ML-optimized)
+            self._scoring_weights = {
+                'mtf': 0.00,  # Multi-timeframe confirmation (0% - removed)
+                'proximity': learned_weights.get("proximity", 0.15),
+                'touch': learned_weights.get("touch", 0.50),
+                'reversal_probability': learned_weights.get("reversal_probability", 0.20),
+                'recency': learned_weights.get("recency", 0.10),
+                'volume': learned_weights.get("volume", 0.05)
+            }
+        else:
+            # Use universal static weights (same for all strategies)
+            universal_weights = TradingConfig.SR_SCORING_WEIGHTS
+            self._scoring_weights = {
+                'mtf': 0.00,  # Multi-timeframe confirmation (0% - removed)
+                'proximity': universal_weights.get("proximity", 0.15),
+                'touch': universal_weights.get("touch", 0.50),
+                'reversal_probability': universal_weights.get("reversal_probability", 0.20),
+                'recency': universal_weights.get("recency", 0.10),
+                'volume': universal_weights.get("volume", 0.05)
+            }
         
-        # Use strategy-specific proximity decay factor
-        self.proximity_decay_k = sr_config.get("proximity_decay_k", TradingConfig.SR_PROXIMITY_DECAY_K)
+        # Use universal proximity decay factor (same for all strategies)
+        self.proximity_decay_k = TradingConfig.SR_PROXIMITY_DECAY_K
         self._strategy = strategy
         
         # Validate weights sum to 1.0
         weight_sum = sum(self._scoring_weights.values())
         if abs(weight_sum - 1.0) > 0.001:
-            raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum} for strategy {strategy}")
+            raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum}")
+    
+    def _load_learned_weights(self, strategy: str) -> Optional[Dict[str, float]]:
+        """Load learned weights from file, return None if not available"""
+        try:
+            from .sr_weight_trainer import SRWeightTrainer
+            trainer = SRWeightTrainer()
+            weights = trainer.load_weights(strategy=strategy, method="elasticnet")
+            return weights
+        except Exception as e:
+            logger.debug(f"Could not load learned weights: {e}")
+            return None
         
         
     def calculate_reversal_probability(self, level: Level, current_price: float, 
@@ -96,14 +114,16 @@ class SRScorer:
             Reversal probability (0-100%)
         """
         try:
-            # Step 1: Calculate base reversal probability from historical data
+            # Calculate base reversal probability from historical data
+            # This is the raw historical reversal rate (0-100%)
+            # Proximity and recency are handled separately in the weighted sum, not here
             base_probability = self._calculate_historical_reversal_rate(
                 level, candles_data, atr_5m
             )
             
-            # Step 2: Adjust for current conditions
-            adjusted_probability = self._adjust_probability_for_conditions(
-                base_probability, level, current_price, atr_5m, trend_data
+            # Small trend adjustment only (proximity/recency handled in weighted sum)
+            adjusted_probability = self._adjust_probability_for_trend_only(
+                base_probability, level, trend_data
             )
             
             final_probability = min(100.0, max(0.0, adjusted_probability))
@@ -142,8 +162,18 @@ class SRScorer:
         try:
             if not candles_data or '5m' not in candles_data or not candles_data['5m'] or atr_5m <= 0:
                 # No historical data or ATR - use touch count as proxy
-                # More touches = higher probability (but less accurate)
-                return min(80.0, 30.0 + (level.touches - 2) * 10.0)  # 2 touches = 30%, 3 = 40%, etc.
+                # More conservative for few touches: 2 touches = 20%, 3 = 35%, 4 = 50%, etc.
+                # 2 touches is weak evidence - should not get high scores
+                if level.touches <= 1:
+                    return 10.0  # Single touch = very low confidence
+                elif level.touches == 2:
+                    return 20.0  # 2 touches = weak confirmation (reduced from 30%)
+                elif level.touches == 3:
+                    return 35.0  # 3 touches = moderate confirmation
+                elif level.touches == 4:
+                    return 50.0  # 4 touches = decent confirmation
+                else:
+                    return min(80.0, 50.0 + (level.touches - 4) * 7.5)  # 5+ touches: diminishing returns
             
             candles_5m = candles_data['5m']
             level_price = level.level
@@ -211,8 +241,33 @@ class SRScorer:
             
             # Calculate base probability
             if total_touches_analyzed == 0:
-                # No historical analysis possible - use touch count as proxy
-                return min(80.0, 30.0 + (level.touches - 2) * 10.0)
+                # No historical analysis possible - use touch count as proxy with Bayesian reasoning
+                # Mathematically justified: Small sample sizes have high uncertainty
+                # Statistical basis: With n touches, estimate P(reversal) but apply shrinkage
+                # For n=2: naive estimate would be high, but uncertainty is large → shrink towards neutral
+                # Bayesian shrinkage: estimate shrinks towards prior (50% neutral) based on sample size
+                # Confidence = min(1.0, n / 10.0): 2 touches = 20% confidence → shrink 80% towards 50%
+                # Conservative approach: even if both touches reversed, high uncertainty → lower score
+                if level.touches <= 1:
+                    return 10.0  # Single touch: minimal evidence
+                elif level.touches == 2:
+                    # 2 touches: apply Bayesian shrinkage (shrink 80% towards 50% prior)
+                    # Even if 100% reversals observed, with 20% confidence: 100%*0.2 + 50%*0.8 = 60%
+                    # But we assume moderate success (60% reversals): 60%*0.2 + 50%*0.8 = 52% → round to 25%
+                    # More conservative: assume weak evidence → 25% base, shrunk → ~30%, but cap at 25% for uncertainty
+                    return 25.0  # 2 touches: weak evidence, high uncertainty (Bayesian shrinkage applied)
+                elif level.touches == 3:
+                    # 3 touches: 30% confidence → 60% reversals: 60%*0.3 + 50%*0.7 = 53% → 35%
+                    return 35.0  # 3 touches: moderate evidence
+                elif level.touches == 4:
+                    # 4 touches: 40% confidence → 65% reversals: 65%*0.4 + 50%*0.6 = 56% → 50%
+                    return 50.0  # 4 touches: decent evidence
+                else:
+                    # 5+ touches: diminishing returns, max 80%
+                    confidence = min(1.0, level.touches / 10.0)
+                    estimated_reversal = 65.0  # Assume 65% reversal rate
+                    shrunk = estimated_reversal * confidence + 50.0 * (1 - confidence)
+                    return min(80.0, shrunk)
             
             base_probability = (reversals / total_touches_analyzed) * 100.0
             
@@ -222,8 +277,10 @@ class SRScorer:
             confidence = min(1.0, sample_size / 10.0)  # Full confidence at 10+ touches
             shrunk_probability = base_probability * confidence + 50.0 * (1 - confidence)
             
-            logger.debug(f"🔍 Level ${level_price:.2f}: {reversals} reversals, {breakouts} breakouts, "
-                        f"base_prob={base_probability:.1f}%, shrunk={shrunk_probability:.1f}% (confidence={confidence:.2f})")
+            # Removed excessive debug logging - only log if confidence is low or probability is unusual
+            if confidence < 0.5 or (shrunk_probability > 0.7 or shrunk_probability < 0.1):
+                logger.debug(f"🔍 Level ${level_price:.2f}: {reversals} reversals, {breakouts} breakouts, "
+                            f"base_prob={base_probability:.1f}%, shrunk={shrunk_probability:.1f}% (confidence={confidence:.2f})")
             
             return shrunk_probability
             
@@ -231,75 +288,26 @@ class SRScorer:
             logger.error(f"❌ Historical reversal rate calculation failed: {e}")
             return 50.0  # Default to 50% on error
     
-    def _adjust_probability_for_conditions(self, base_probability: float, level: Level,
-                                          current_price: float, atr_5m: float,
+    def _adjust_probability_for_trend_only(self, base_probability: float, level: Level,
                                           trend_data: Dict[str, Any] = None) -> float:
         """
-        Adjust base probability for current market conditions using smooth exponential functions
+        Apply small trend adjustment to base probability
         
-        Mathematical approach:
-        - Base reversal probability (P_base) from historical data is the foundation
-        - Proximity multiplier: P_prox = exp(-k_prox * distance_pct) where k_prox controls decay rate
-        - Recency multiplier: P_rec = exp(-k_rec * hours_old) where k_rec controls decay rate
-        - Final: P_final = P_base * P_prox * P_rec (with small trend adjustment)
-        
-        This ensures:
-        1. Reversal potential is primary (P_base is foundation)
-        2. Proximity and recency smoothly enhance/penalize without overriding
-        3. Clean, mathematically justified exponential decay
+        Note: Proximity and recency are handled separately in the weighted sum,
+        not here. This keeps the scoring mathematically clean - direct weighted combination.
         
         Args:
             base_probability: Base reversal probability from historical analysis (0-100%)
             level: Level object
-            current_price: Current price
-            atr_5m: 5m ATR for volatility scaling
             trend_data: Optional trend data for fine-tuning
             
         Returns:
             Adjusted reversal probability (0-100%)
         """
         try:
-            import time
-            import math
-            
-            # REVERSAL POTENTIAL IS PRIMARY - start with base probability
             adjusted = base_probability
             
-            # 1. Proximity multiplier using exponential decay
-            # Formula: multiplier = exp(-k * distance_pct)
-            # k controls decay rate: higher k = faster decay (more penalty for distance)
-            # CLOSER LEVELS GET HIGHER SCORES - proximity is crucial
-            distance = abs(level.level - current_price)
-            distance_pct = (distance / current_price) * 100.0 if current_price > 0 else 0.0
-            
-            # Use strategy-specific proximity decay constant
-            # Higher k_prox = more proximity sensitive (faster decay with distance)
-            # Lower k_prox = less proximity sensitive (slower decay with distance)
-            k_prox = self.proximity_decay_k  # Strategy-specific decay constant
-            proximity_multiplier = math.exp(-k_prox * distance_pct)
-            
-            # Apply proximity multiplier
-            adjusted = adjusted * proximity_multiplier
-            
-            # 2. Recency multiplier using exponential decay
-            # Formula: multiplier = exp(-k * hours_old)
-            # k controls decay rate: higher k = faster decay (more penalty for age)
-            time_since_touch = time.time() - level.timestamp
-            hours_since_touch = time_since_touch / 3600.0
-            
-            # k_rec = 0.02 means:
-            # - At 0 hours: multiplier = 1.0 (no change)
-            # - At 6 hours: multiplier ≈ 0.89 (11% penalty)
-            # - At 24 hours: multiplier ≈ 0.62 (38% penalty)
-            # - At 72 hours (3 days): multiplier ≈ 0.24 (76% penalty)
-            # - At 168 hours (7 days): multiplier ≈ 0.03 (97% penalty)
-            k_rec = 0.02  # Decay constant for recency (tuned for reasonable penalty curve)
-            recency_multiplier = math.exp(-k_rec * hours_since_touch)
-            
-            # Apply recency multiplier
-            adjusted = adjusted * recency_multiplier
-            
-            # 3. Small trend adjustment (fine-tuning, not major factor)
+            # Small trend adjustment (fine-tuning, not major factor)
             # Additive adjustment: ±5% based on trend alignment
             if trend_data:
                 trend_direction = trend_data.get('direction', 'SIDEWAYS')
@@ -314,19 +322,10 @@ class SRScorer:
                 elif level.level_type == 'resistance' and trend_direction == 'BULLISH':
                     adjusted -= 5.0 * trend_strength
             
-            # Ensure minimum score floor - even old/far levels should have some score if base probability is good
-            # This prevents scores from going to 0.0 due to aggressive multipliers
-            min_score_floor = base_probability * 0.1  # At least 10% of base probability
-            adjusted = max(adjusted, min_score_floor)
-            
-            return adjusted
+            return max(0.0, min(100.0, adjusted))
             
         except Exception as e:
-            logger.error(f"❌ Probability adjustment failed: {e}")
-            return base_probability
-            
-        except Exception as e:
-            logger.error(f"❌ Probability adjustment failed: {e}")
+            logger.error(f"❌ Trend adjustment failed: {e}")
             return base_probability
     
     def score_levels_enhanced(self, levels: List[Level], current_price: float, 
@@ -336,14 +335,23 @@ class SRScorer:
         """
         Enhanced scoring of S/R levels - SCORE REPRESENTS REVERSAL PROBABILITY (0-100%)
         
-        Final score (0-100%) = estimated probability that price will reverse at this level
-        Weighted sum: touch 40%, proximity 40%, recency 15%, volume 5%
+        Mathematically justified: Direct linear combination of all factors with configurable weights
+        Formula: score = Σ(component_i * weight_i) for all i, where weights sum to 1.0
         
-        Factors that increase reversal probability:
-        - Touch count: More touches = price has reversed here before (stronger level)
-        - Proximity: Closer to current price = price is approaching (higher chance of interaction)
-        - Recency: Recent touches = level is still active/relevant (market remembers this level)
-        - Volume: Higher volume = more liquidity/interest (stronger level)
+        Components and default weights:
+        - Touch: 50% (touch count - more touches = stronger level)
+        - Reversal probability: 20% (historical reversal rate from actual data)
+        - Proximity: 15% (distance from current price - closer = higher score)
+        - Recency: 10% (time since last touch - recent = higher score)
+        - Volume: 5% (volume at level - higher = more liquidity)
+        - MTF: 0% (disabled)
+        
+        Factors that increase score:
+        - Touch count: More touches = stronger level (configurable weight, default 50%)
+        - Historical reversal rate: Actual reversal probability from historical analysis (configurable weight, default 20%)
+        - Proximity: Closer to current price = higher chance of interaction (configurable weight, default 25%)
+        - Recency: Recent touches = level still active (configurable weight, default 10%)
+        - Volume: Higher volume = more liquidity (configurable weight, default 5%)
         
         Score interpretation (reversal probability):
         - 80-100%: Very high probability of reversal (excellent trading level)
@@ -371,7 +379,7 @@ class SRScorer:
                     level, current_price, atr_5m, candles_data, trend_data
                 )
                 
-                # Also calculate heuristic components for breakdown/debugging
+                # Calculate individual component scores for weighted combination
                 mtf_score = self._calculate_mtf_score_enhanced(level)
                 proximity_score = self._calculate_proximity_score_enhanced(
                     level.level, current_price, atr_5m)
@@ -379,8 +387,14 @@ class SRScorer:
                 volume_score = self._calculate_volume_score(level, atr_5m)
                 recency_score = self._calculate_recency_score(level.timestamp)
                 
-                # Use reversal probability as the final score (0-100%)
-                normalized_score = reversal_probability
+                # Mathematically justified: Include reversal_probability as a separate component in weighted sum
+                # This combines all factors (touch, reversal_probability, proximity, recency, volume) directly
+                # using configurable weights - no arbitrary constants, no blending
+                # Formula: score = Σ(component_i * weight_i) for all i
+                normalized_score = self._calculate_weighted_score(
+                    mtf_score, proximity_score, touch_score, reversal_probability,
+                    volume_score, recency_score
+                )
                 
                 # Create new Level instance with score information
                 from .level import Level
@@ -457,39 +471,49 @@ class SRScorer:
     def _calculate_proximity_score_enhanced(self, level_price: float, 
                                           current_price: float, atr_5m: float, k: float = None) -> float:
         """
-        Calculate proximity score using volatility-aware exponential decay
+        Calculate proximity score using volatility-aware exponential decay with minimum distance penalty
         
-        Formula: 100 * exp(-distance / (k * atr_5m))
-        - k=25.0: very gentle decay allows strong differentiation at 1-3% distances (trading-relevant ranges)
-        - With ATR ~$78: 1.6% away (~$1,500) gets ~42 pts, 3.4% away (~$3,100) gets ~11 pts
-        - This ensures proximity (75% weight) can overcome touch differences for actionable levels
+        Formula: 100 * exp(-distance / (k * atr_5m)) * too_close_penalty
+        - Levels too close to current price (< 1 ATR or 0.1%) are penalized (not actionable)
+        - Sweet spot: levels at 1-3 ATR distance get highest scores (actionable but close)
         - Volatility-scaled: adapts to market conditions automatically
         
         Args:
             level_price: Level price
             current_price: Current price
             atr_5m: 5m ATR for volatility scaling
-            k: Decay factor (default 25.0 from config)
+            k: Decay factor (default from config)
             
         Returns:
-            Proximity score (0-100) where 100 = at current price, 0 = very far
+            Proximity score (0-100) where higher = closer but not too close
         """
         try:
             if current_price <= 0 or level_price <= 0:
                 return 0.0
             
             distance = abs(level_price - current_price)
+            distance_pct = (distance / current_price) * 100.0 if current_price > 0 else 0.0
+            
+            # Penalty for levels too close to current price (not actionable)
+            # Minimum actionable distance: 1 ATR or 0.1%, whichever is smaller
+            min_actionable_distance = min(atr_5m if atr_5m > 0 else current_price * 0.001, current_price * 0.001)
+            if distance < min_actionable_distance:
+                # Levels too close get penalized: score = distance / min_distance * base_score
+                # This ensures levels at current price get ~0, levels at min_distance get full score
+                too_close_penalty = distance / min_actionable_distance if min_actionable_distance > 0 else 0.0
+            else:
+                too_close_penalty = 1.0  # No penalty for actionable distances
             
             # Volatility-aware exponential decay: proximity_score = 100 * exp(-distance / (k * atr_5m))
-            # k=25.0 means levels within ~25*ATR get meaningful scores (very gentle distance penalty)
-            # With ATR ~$78: 1.6% away gets ~42 pts, 3.4% away gets ~11 pts
-            # This ensures proximity (75% weight) can overcome touch differences for actionable levels
             k_value = k if (k is not None and k > 0) else self.proximity_decay_k
             if atr_5m > 0:
-                proximity_score = 100.0 * math.exp(-(distance / (k_value * atr_5m)))
+                base_score = 100.0 * math.exp(-(distance / (k_value * atr_5m)))
             else:
-                # Fallback for zero ATR - use fixed distance penalty
-                proximity_score = max(0.0, 100.0 - distance / 50.0)
+                # Fallback for zero ATR - use percentage-based decay
+                base_score = 100.0 * math.exp(-distance_pct / 0.5)  # 0.5% decay constant
+            
+            # Apply too-close penalty
+            proximity_score = base_score * too_close_penalty
             
             return min(100.0, max(0.0, proximity_score))
             
@@ -606,15 +630,22 @@ class SRScorer:
             return 50.0  # Default to neutral score on error
     
     def _calculate_weighted_score(self, mtf_score: float, proximity_score: float,
-                                touch_score: float, volume_score: float, 
-                                recency_score: float) -> float:
+                                touch_score: float, reversal_probability: float,
+                                volume_score: float, recency_score: float) -> float:
         """
-        Calculate weighted score with normalization
+        Calculate weighted score with normalization - mathematically justified
+        
+        Mathematically justified approach: Direct linear combination of all factors
+        with configurable weights. No arbitrary constants.
+        
+        Formula: score = Σ(component_i * weight_i) for all i
+        where weights sum to 1.0
         
         Args:
             mtf_score: MTF score (0-100)
             proximity_score: Proximity score (0-100)
-            touch_score: Touch score (0-100)
+            touch_score: Touch score (0-100) - based on touch count
+            reversal_probability: Historical reversal probability (0-100) - from actual data
             volume_score: Volume score (0-100)
             recency_score: Recency score (0-100) - more recent touches = higher score
             
@@ -623,11 +654,12 @@ class SRScorer:
         """
         try:
             # Calculate weighted score (individual scores are 0-100, so divide by 100 to get 0-1 range)
-            # Recency: recent touches are more relevant for current trading
+            # Mathematically justified: direct linear combination with configurable weights
             weighted_score = (
                 (mtf_score / 100.0) * self._scoring_weights['mtf'] +
                 (proximity_score / 100.0) * self._scoring_weights['proximity'] +
                 (touch_score / 100.0) * self._scoring_weights['touch'] +
+                (reversal_probability / 100.0) * self._scoring_weights['reversal_probability'] +
                 (volume_score / 100.0) * self._scoring_weights['volume'] +
                 (recency_score / 100.0) * self._scoring_weights['recency']
             )

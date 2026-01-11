@@ -39,15 +39,11 @@ class SupportResistanceCalculator(BaseCalculator):
             state_manager: SRState instance (injected dependency)
             strategy: Trading strategy name (default: "standard")
         """
-        # Initialize base class
-        super().__init__(symbol)
+        # Initialize base class with cache dependency
+        super().__init__(symbol, cache)
         
         # Store strategy for level selection
         self._strategy = strategy
-        
-        # Inject centralized cache dependency first
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = cache or get_global_centralized_cache()
         
         # Dependency injection with defaults
         if data_provider is None:
@@ -71,35 +67,34 @@ class SupportResistanceCalculator(BaseCalculator):
     
     def _calculate_adaptive_tolerance(self, atr_14: float, current_price: float) -> float:
         """
-        Calculate adaptive cluster tolerance using price percentage only
+        Calculate adaptive cluster tolerance using ATR (mathematically justified, NO FALLBACKS)
         
-        Scientific justification:
-        - Price percentage (0.1%) ensures consistent behavior across all price ranges
-        - ATR varies with volatility, but percentage scales naturally with price
-        - 0.1% represents ~1 standard deviation of typical intraday noise for BTC
-        - This threshold separates meaningful S/R levels from market microstructure noise
-        - Percentage-based approach is scale-invariant and scientifically sound
+        Mathematical justification:
+        - Base tolerance = 0.25 × ATR (25% of ATR for clustering)
+        - This ensures tolerance scales with actual market volatility
+        - ATR-based approach adapts to different volatility regimes
         
         Args:
-            atr_14: 14-period ATR (for reference/logging only, not used in calculation)
-            current_price: Current price
+            atr_14: 14-period ATR (required - must be positive)
+            current_price: Current price (required - must be positive)
             
         Returns:
-            Adaptive tolerance value as percentage of price
+            Adaptive tolerance value in price units
+            
+        Raises:
+            ValueError: If ATR or current_price is invalid
         """
-        try:
-            # Scientific threshold: 0.1% of price
-            # This represents the minimum meaningful price movement for S/R level distinction
-            # Based on empirical analysis: levels closer than this are statistically indistinguishable
-            tolerance_pct = 0.001  # 0.1% - scientifically justified threshold
-            adaptive_tolerance = current_price * tolerance_pct
-            
-            
-            return adaptive_tolerance
-            
-        except Exception as e:
-            logger.error(f"❌ Adaptive tolerance calculation failed: {e}")
-            return current_price * 0.001  # Fallback to 0.1% of price
+        if atr_14 <= 0:
+            raise ValueError(f"Invalid atr_14: {atr_14} - must be positive (NO FALLBACKS)")
+        if current_price <= 0:
+            raise ValueError(f"Invalid current_price: {current_price} - must be positive (NO FALLBACKS)")
+        
+        # Mathematically justified: 0.25 × ATR for clustering tolerance
+        # This ensures levels within 25% of ATR are considered the same cluster
+        atr_tolerance_multiplier = 0.25
+        adaptive_tolerance = atr_14 * atr_tolerance_multiplier
+        
+        return adaptive_tolerance
     
     def _deduplicate_scored_levels(self, scored_levels: List, tolerance: float) -> List:
         """
@@ -334,24 +329,26 @@ class SupportResistanceCalculator(BaseCalculator):
     
     def get_latest_analysis(self, current_price: float = None) -> Dict[str, Any]:
         """
-        Get latest S/R analysis using the refactored modular system
+        Get latest S/R analysis using the refactored modular system - NO FALLBACKS
         
         Args:
-            current_price: Current price for analysis
+            current_price: Current price for analysis (required)
             
         Returns:
             S/R analysis dictionary
+        
+        Raises:
+            ValueError: If current_price is None or calculation fails
         """
         try:
             if current_price is None:
-                logger.warning("⚠️ No current price provided for S/R analysis")
-                return self._create_error_result("No current price provided")
+                raise ValueError("Current price is required for S/R analysis - NO FALLBACKS")
             
             return self.calculate_multi_timeframe_levels(current_price)
                 
         except Exception as e:
             logger.error(f"❌ Failed to get latest S/R analysis: {e}")
-            return self._create_error_result(str(e))
+            raise
     
     def calculate_multi_timeframe_levels(self, current_price: float, strategy: str = None) -> Dict[str, Any]:
         """
@@ -382,7 +379,7 @@ class SupportResistanceCalculator(BaseCalculator):
             last_update = self._last_module_updates.get('support_resistance', 0)
             if current_time - last_update < self._min_recalculation_interval:
                 cached_result = self._get_cached_analysis(current_price, current_time, strategy=active_strategy)
-                if cached_result.get("status") == "ok":
+                if cached_result is not None and cached_result.get("status") == "ok":
                     return cached_result
             
             self._state.reset_session_state()
@@ -404,8 +401,7 @@ class SupportResistanceCalculator(BaseCalculator):
             
             scored_levels = []
             candles_data = {'5m': [], '15m': [], '1h': [], '1d': []}
-            from core.services.historical_data_service import get_global_historical_data_service
-            historical_service = get_global_historical_data_service()
+            # Use data provider for all data access (separation of concerns)
             
             # Progressive expansion: Start with 1 month, expand if not enough levels
             for days, label in lookback_ranges:
@@ -438,9 +434,10 @@ class SupportResistanceCalculator(BaseCalculator):
                     logger.debug(f"🔍 Added {len(new_5m_candles)} 5m candles from {label} (total: {len(candles_data['5m'])})")
                 
                 # Fetch other timeframes for MTF alignment (no price filtering - just for swing detection)
-                candles_data['15m'] = historical_service.get_historical_candles("BTC", "15m", min(1000, days * 2)) or []
-                candles_data['1h'] = historical_service.get_historical_candles("BTC", "1h", min(500, days)) or []
-                candles_data['1d'] = historical_service.get_historical_candles("BTC", "1d", min(500, days)) or []
+                # Use data provider for all data access (separation of concerns)
+                candles_data['15m'] = self._data_provider._fetch_candles_with_validation("15m", min(1000, days * 2))
+                candles_data['1h'] = self._data_provider._fetch_candles_with_validation("1h", min(500, days))
+                candles_data['1d'] = self._data_provider._fetch_candles_with_validation("1d", min(500, days))
                 
                 # Process candles → levels (single unified pipeline)
                 processed_levels = self._process_candles_to_levels(
@@ -454,7 +451,11 @@ class SupportResistanceCalculator(BaseCalculator):
                 scored_levels.extend(new_levels)
                 
                 # Re-deduplicate and re-sort by score
-                final_dedup_tolerance = current_price * 0.0005
+                # Mathematically justified: Use 0.125 × ATR for final deduplication (tighter than clustering)
+                atr_14 = self._data_provider.calculate_atr(candles_data.get('5m', []), 14)
+                if atr_14 <= 0:
+                    raise ValueError(f"Invalid atr_14: {atr_14} - must be positive for deduplication (NO FALLBACKS)")
+                final_dedup_tolerance = atr_14 * 0.125  # 0.125×ATR for final deduplication
                 scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
                 scored_levels.sort(key=lambda x: x.score or 0, reverse=True)
             
@@ -464,9 +465,10 @@ class SupportResistanceCalculator(BaseCalculator):
                                                    current_time, strategy=active_strategy)
             
             # Log final results
-            top_2_support = result.get('top_2_support', [])
-            top_2_resistance = result.get('top_2_resistance', [])
-            logger.info(f"📊 FINAL: {len(top_2_support)} support, {len(top_2_resistance)} resistance levels")
+            all_levels = result.get('levels', [])
+            active_support_count = len([l for l in all_levels if l.get("type") == "support" and l.get("status") == "active"])
+            active_resistance_count = len([l for l in all_levels if l.get("type") == "resistance" and l.get("status") == "active"])
+            logger.info(f"📊 FINAL: {len(all_levels)} total levels ({active_support_count} active support, {active_resistance_count} active resistance)")
             
             self._state.update_calculation_state(current_price, current_time)
             self._last_module_updates['support_resistance'] = current_time
@@ -475,7 +477,7 @@ class SupportResistanceCalculator(BaseCalculator):
             
         except Exception as e:
             logger.error(f"❌ S/R calculation failed: {e}")
-            return self._create_error_result(str(e))
+            raise  # NO FALLBACKS - calculation failure should raise, not return error dict
     
     def _process_candles_to_levels(self, candles_data: Dict[str, List[Dict]], current_price: float,
                                    current_time: float, long_liquidation: float, short_liquidation: float) -> List:
@@ -555,7 +557,16 @@ class SupportResistanceCalculator(BaseCalculator):
             )
             
             # 8. Deduplicate
-            final_dedup_tolerance = current_price * 0.0005
+            # Mathematically justified: Use 1.5 × ATR for final deduplication
+            # Rationale:
+            # - Clustering uses 0.25×ATR (tight, creates initial clusters)
+            # - MTF alignment uses 0.5×ATR (looser, aligns across timeframes)
+            # - Final deduplication uses 1.5×ATR (loosest, merges nearby clusters)
+            # This ensures levels within ~1.5×ATR are merged (typically ~0.15% of price)
+            # Example: At $90k with ATR=$90, tolerance=$135 merges levels ~0.15% apart
+            if atr_14 <= 0:
+                raise ValueError(f"Invalid atr_14: {atr_14} - must be positive for deduplication (NO FALLBACKS)")
+            final_dedup_tolerance = atr_14 * 1.5  # 1.5×ATR for final deduplication (progressive: cluster 0.25×, MTF 0.5×, dedup 1.5×)
             scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
             
             return scored_levels
@@ -565,20 +576,24 @@ class SupportResistanceCalculator(BaseCalculator):
             return []
     
     def _get_trend_data(self) -> Dict[str, Any]:
-        """Get trend data for probability adjustment"""
+        """Get trend data for probability adjustment - NO FALLBACKS"""
         try:
             from core.services.market_data_service import get_global_market_data_service
             market_service = get_global_market_data_service()
-            if market_service:
-                trend_analysis = market_service.get_trend_analysis("standard")
-                if trend_analysis and isinstance(trend_analysis, dict):
-                    return {
-                        'direction': trend_analysis.get('direction', 'SIDEWAYS'),
-                        'strength': trend_analysis.get('strength', 0.0)
-                    }
-        except Exception:
-            pass
-        return None
+            if not market_service:
+                raise ValueError("MarketDataService not available - NO FALLBACKS")
+            
+            trend_analysis = market_service.get_trend_analysis("standard")
+            if not trend_analysis or not isinstance(trend_analysis, dict):
+                raise ValueError("Invalid trend analysis data - NO FALLBACKS")
+            
+            return {
+                'direction': trend_analysis.get('direction', 'SIDEWAYS'),
+                'strength': trend_analysis.get('strength', 0.0)
+            }
+        except Exception as e:
+            logger.error(f"❌ Failed to get trend data: {e}")
+            raise  # NO FALLBACKS - trend data is required for proper scoring
     
     def _get_cache_key(self, current_price: float, current_time: float, strategy: str = None) -> str:
         """
@@ -629,12 +644,13 @@ class SupportResistanceCalculator(BaseCalculator):
             cached_data = self._cache.get(cache_key)
             if cached_data:
                 return cached_data
-            # No valid cache, return error result
-            return self._create_error_result("No cached analysis available")
+            # No valid cache - this is normal, not an error (just means we need to calculate fresh)
+            # Return None to indicate cache miss, not an error result
+            return None
             
         except Exception as e:
             logger.error(f"❌ Cache retrieval failed: {e}")
-            return self._create_error_result(str(e))
+            raise  # NO FALLBACKS - cache retrieval failure should raise, not return error dict
     
     def _search_database_for_additional_touches(self, clustered_levels: List, levels_with_1_touch: List, 
                                                 current_candles: List[Dict], cluster_tolerance: float, 
@@ -669,12 +685,9 @@ class SupportResistanceCalculator(BaseCalculator):
             lookback_timestamp = oldest_timestamp - (lookback_days * 24 * 3600)
             
             # Fetch additional candles from database (older than what we already have)
-            from core.services.historical_data_service import get_global_historical_data_service
-            historical_service = get_global_historical_data_service()
-            
-            # Get candles from database by range (older than our current dataset)
-            if historical_service._candle_storage:
-                additional_candles = historical_service._candle_storage.get_candles_by_range(
+            # Use data provider for all data access (separation of concerns)
+            if self._data_provider._historical_service._candle_storage:
+                additional_candles = self._data_provider._historical_service._candle_storage.get_candles_by_range(
                     lookback_timestamp, oldest_timestamp - 300  # Exclude the last 5 minutes to avoid overlap
                 )
                 
@@ -712,7 +725,9 @@ class SupportResistanceCalculator(BaseCalculator):
                         if matching_swings:
                             # Found additional touches! Update the level
                             total_touches = level.touches + len(matching_swings)
-                            logger.info(f"✅ Found {len(matching_swings)} additional touch(es) for {level.level_type} ${level.level:.2f} (now {total_touches}x touches)")
+                            # Only log significant touch increases (5+ touches or doubling)
+                            if total_touches >= 5 or total_touches >= level.touches * 2:
+                                logger.debug(f"✅ Found {len(matching_swings)} additional touch(es) for {level.level_type} ${level.level:.2f} (now {total_touches}x touches)")
                             
                             # Create updated level with new touch count
                             updated_level = Level(
@@ -803,288 +818,30 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # Sort by strength score - SCORING SYSTEM IS THE ONLY FACTOR (touch 50%, proximity 45%, volume 5%)
             # Highest score wins - proximity penalty (distance), touch rewards, volume confirmation
+            # Sort all levels by strength score (universal scoring)
             key_levels.sort(key=lambda x: x["strength_score"], reverse=True)
             
-            # SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING BY SCORE THRESHOLD
-            # Ensure we have ACTIVE levels for both support and resistance
-            # Strategy: Filter for active levels only (broken levels are excluded), scoring system determines best
-            # NO HARD FILTERS - scoring system naturally filters by penalizing distance
-            active_support_candidates = [level for level in key_levels 
-                                        if level.get("type") == "support" and 
-                                        level["price_level"] < current_price and 
-                                        level.get("status") == "active"]
-            active_resistance_candidates = [level for level in key_levels 
-                                           if level.get("type") == "resistance" and 
-                                           level["price_level"] > current_price and 
-                                           level.get("status") == "active"]
+            # Calculate strongest support and resistance for metadata (use filter module)
+            from .sr_level_filter import SRLevelFilter
+            level_filter = SRLevelFilter(self.symbol)
+            filtered_levels = level_filter.filter_for_display(
+                all_levels=key_levels,
+                current_price=current_price,
+                max_levels=1  # Only need strongest (top 1)
+            )
             
-            # Sort each by score
-            active_support_candidates.sort(key=lambda x: x["strength_score"], reverse=True)
-            active_resistance_candidates.sort(key=lambda x: x["strength_score"], reverse=True)
-            
-            # Get strategy-specific configuration
-            from config.config import TradingConfig
-            strategy_config = TradingConfig.SR_LEVEL_SELECTION.get(strategy or "standard", TradingConfig.SR_LEVEL_SELECTION["standard"])
-            max_levels_per_side = strategy_config["max_levels_per_side"]
-            min_level_distance_pct = strategy_config["min_level_distance_pct"]
-            
-            # Take strategy-specific number of levels (or all if less) - these are already active
-            top_support = active_support_candidates[:max_levels_per_side]
-            top_resistance = active_resistance_candidates[:max_levels_per_side]
-            
-            # DIAGNOSTICS: If no active support found, log why
-            if not active_support_candidates:
-                all_support = [level for level in key_levels 
-                             if level.get("type") == "support" and 
-                             level["price_level"] < current_price]
-                logger.warning(f"⚠️ NO ACTIVE SUPPORT FOUND - Investigating:")
-                logger.warning(f"   Total support levels below ${current_price:.2f}: {len(all_support)}")
-                if all_support:
-                    for level in sorted(all_support, key=lambda x: x["strength_score"], reverse=True)[:5]:
-                        level_price = level["price_level"]
-                        status = level.get("status", "unknown")
-                        score = level.get("strength_score", 0)
-                        touches = level.get("touches", 0)
-                        # Calculate why it's inactive
-                        break_threshold = level_price - atr_14
-                        is_broken = current_price < break_threshold
-                        logger.warning(f"   Support ${level_price:.2f}: status={status}, score={score:.1f}, touches={touches}x, "
-                                     f"break_threshold=${break_threshold:.2f}, is_broken={is_broken}, "
-                                     f"ATR_14=${atr_14:.2f}, current_price=${current_price:.2f}")
-                else:
-                    logger.warning(f"   No support levels found below current price at all!")
-            
-            # Combine and add remaining top-scored levels to fill up to 10 total
-            # SCORING SYSTEM IS THE ONLY FACTOR - highest scores win
-            final_key_levels = top_support + top_resistance
-            remaining_slots = 10 - len(final_key_levels)
-            if remaining_slots > 0:
-                # Add remaining top-scored levels (excluding already selected ones)
-                already_selected = {level["price_level"] for level in final_key_levels}
-                for level in key_levels:  # Use original key_levels (all levels sorted by score)
-                    if level["price_level"] not in already_selected and len(final_key_levels) < 10:
-                        final_key_levels.append(level)
-            
-            # Re-sort by score to maintain order - SCORING SYSTEM IS THE ONLY FACTOR
-            final_key_levels.sort(key=lambda x: x["strength_score"], reverse=True)
-            key_levels = final_key_levels
-            
-            # Final lists - these should have at least 2 of each if available (already filtered for active)
-            support_levels = top_support  # Already filtered for active support
-            resistance_levels = top_resistance  # Already filtered for active resistance
-            
-            # Support and resistance levels filtered - no verbose logging needed
-            if not resistance_levels:
-                # Check if we have any levels above current price (even if inactive)
-                levels_above = [level for level in key_levels if level["price_level"] > current_price]
-                if levels_above:
-                    inactive_above = [level for level in levels_above if level.get("status") == "inactive"]
-                    logger.warning(f"⚠️ No active resistance found above ${current_price:.2f}. "
-                                 f"Found {len(levels_above)} levels above price ({len(inactive_above)} inactive). "
-                                 f"Top level: ${max(levels_above, key=lambda x: x['price_level'])['price_level']:.2f}")
-                else:
-                    logger.warning(f"⚠️ No resistance levels found above ${current_price:.2f}. "
-                                 f"Total levels: {len(key_levels)}, "
-                                 f"Levels above price: 0")
-            
-            # Shared helper function to get strongest level by score
-            def _get_strongest_level(levels: List[Dict]) -> tuple:
-                """
-                Get strongest level price and score
-                SCORING SYSTEM IS THE ONLY FACTOR - highest score wins (touch 50%, proximity 45%, volume 5%)
-                
-                Args:
-                    levels: List of level dictionaries
-                
-                Returns:
-                    Tuple of (price, score)
-                """
-                if not levels:
-                    return 0.0, 0.0
-                strongest = max(levels, key=lambda x: x["strength_score"])
-                return strongest["price_level"], strongest["strength_score"]
-            
-            # Get best and secondary levels - objective selection by score
-            # SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING
-            # - Score: touch (50%), proximity (45%), volume (5%)
-            # - Proximity: exponential decay penalty for distance (closer = higher score)
-            # - Touch: more touches = higher score
-            # - Highest score = objectively best level for trading at the moment
-            
-            def _get_trading_levels(levels: List[Dict], current_price: float, is_support: bool) -> tuple:
-                """
-                Get best and secondary levels - objective selection by score
-                
-                SCORING SYSTEM IS THE ONLY FACTOR - NO FILTERING
-                - Score: touch (50%), proximity (45%), volume (5%)
-                - Proximity: exponential decay penalty for distance (closer = higher score)
-                - Touch: more touches = higher score
-                - Highest score = objectively best level for trading at the moment
-                
-                Args:
-                    levels: List of level dictionaries
-                    current_price: Current price
-                    is_support: True for support, False for resistance
-                
-                Returns:
-                    Tuple of (best_level, secondary_level) as (price, score) tuples
-                """
-                if not levels:
-                    return (0.0, 0.0), (0.0, 0.0)
-                
-                # Sort by score (highest first) - SCORING SYSTEM IS THE ONLY FACTOR
-                # Highest score wins - proximity penalty (distance), touch rewards, volume confirmation
-                sorted_levels = sorted(levels, key=lambda x: x["strength_score"], reverse=True)
-                
-                # Best level: highest score
-                best = sorted_levels[0]
-                best_level = (best["price_level"], best["strength_score"])
-                
-                # Secondary level: second highest score, must be at least 0.1% away from best
-                if len(sorted_levels) > 1:
-                    for candidate in sorted_levels[1:]:
-                        if abs(candidate["price_level"] - best_level[0]) > current_price * 0.001:
-                            secondary_level = (candidate["price_level"], candidate["strength_score"])
-                            break
-                    else:
-                        # All levels too close to best, use second by score anyway
-                        secondary_level = (sorted_levels[1]["price_level"], sorted_levels[1]["strength_score"])
-                else:
-                    secondary_level = (0.0, 0.0)
-                
-                return best_level, secondary_level
-            
-            # Get best and secondary levels for support and resistance
-            (best_support, best_support_score), (secondary_support, secondary_support_score) = \
-                _get_trading_levels(support_levels, current_price, is_support=True)
-            (best_resistance, best_resistance_score), (secondary_resistance, secondary_resistance_score) = \
-                _get_trading_levels(resistance_levels, current_price, is_support=False)
-            
-            # Log if we couldn't find enough levels (this is normal when fewer levels are available)
-            # Only warn if we expected more levels but found fewer, and only at debug level
-            if (best_support == 0.0 or secondary_support == 0.0) and len(support_levels) > 0:
-                if len(support_levels) >= 2:
-                    # Multiple levels available but couldn't select 2 - this is a real issue
-                    sorted_support = sorted(support_levels, key=lambda x: x["strength_score"], reverse=True)
-                    support_str = ", ".join([f"${level['price_level']:.2f}({level['strength_score']:.1f})" for level in sorted_support[:5]])
-                    logger.debug(f"⚠️ Could not find 2 support levels from {len(support_levels)} available. "
-                               f"Best: ${best_support:.2f}, Secondary: ${secondary_support:.2f}. Available: {support_str}")
-                else:
-                    # Only 1 level available - this is normal, just debug log
-                    logger.debug(f"📊 Only {len(support_levels)} support level(s) available (requested {max_levels_per_side})")
-            if (best_resistance == 0.0 or secondary_resistance == 0.0) and len(resistance_levels) > 0:
-                if len(resistance_levels) >= 2:
-                    # Multiple levels available but couldn't select 2 - this is a real issue
-                    sorted_resistance = sorted(resistance_levels, key=lambda x: x["strength_score"], reverse=True)
-                    resistance_str = ", ".join([f"${level['price_level']:.2f}({level['strength_score']:.1f})" for level in sorted_resistance[:5]])
-                    logger.debug(f"⚠️ Could not find 2 resistance levels from {len(resistance_levels)} available. "
-                               f"Best: ${best_resistance:.2f}, Secondary: ${secondary_resistance:.2f}. Available: {resistance_str}")
-                else:
-                    # Only 1 level available - this is normal, just debug log
-                    logger.debug(f"📊 Only {len(resistance_levels)} resistance level(s) found above ${current_price:.2f} (requested {max_levels_per_side})")
-            
-            # For backward compatibility, strongest = best
-            strongest_support, support_score = best_support, best_support_score
-            strongest_resistance, resistance_score = best_resistance, best_resistance_score
-            
-            # Log warnings if no levels found
-            if strongest_support == 0:
-                logger.warning(f"⚠️ No valid support found below ${current_price:.2f}")
-            
-            if strongest_resistance == 0:
-                logger.warning(f"⚠️ No valid resistance found above ${current_price:.2f}")
+            # Get strongest levels for metadata (highest score)
+            strongest_support = filtered_levels["support"][0]["price_level"] if filtered_levels["support"] else 0.0
+            support_score = filtered_levels["support"][0]["strength_score"] if filtered_levels["support"] else 0.0
+            strongest_resistance = filtered_levels["resistance"][0]["price_level"] if filtered_levels["resistance"] else 0.0
+            resistance_score = filtered_levels["resistance"][0]["strength_score"] if filtered_levels["resistance"] else 0.0
             
             # Get state summary for metadata
             state_summary = self._state.get_state_summary()
             
-            # Build strategy-specific support and resistance lists
-            # If we don't have enough after filtering, look back at all scored levels to find additional levels
-            top_support_list = []
-            if best_support > 0:
-                best_support_obj = next((level for level in support_levels if abs(level["price_level"] - best_support) < 1), None)
-                if best_support_obj:
-                    top_support_list.append(best_support_obj)
-            
-            # Add secondary support if available and meets distance requirement
-            if secondary_support > 0 and abs(secondary_support - best_support) > current_price * min_level_distance_pct:
-                secondary_support_obj = next((level for level in support_levels if abs(level["price_level"] - secondary_support) < 1), None)
-                if secondary_support_obj:
-                    top_support_list.append(secondary_support_obj)
-            
-            # Add additional support levels up to max_levels_per_side
-            if len(top_support_list) < max_levels_per_side:
-                # Try to find additional levels from all scored levels
-                all_support = [level for level in scored_levels 
-                              if level.level_type == 'support' and
-                              level.level < current_price and 
-                              self._state.check_level_status(level, current_price, atr_14) == "active"]
-                if len(all_support) > len(top_support_list):
-                    # Sort by score and add levels that meet distance requirement
-                    sorted_all_support = sorted(all_support, key=lambda x: x.score, reverse=True)
-                    for candidate in sorted_all_support:
-                        if len(top_support_list) >= max_levels_per_side:
-                            break
-                        # Check if already added
-                        if any(abs(candidate.level - level["price_level"]) < 1 for level in top_support_list):
-                            continue
-                        # Check distance from all existing levels
-                        too_close = any(abs(candidate.level - level["price_level"]) <= current_price * min_level_distance_pct 
-                                       for level in top_support_list)
-                        if not too_close:
-                            candidate_dict = {
-                                "price_level": candidate.level,
-                                "strength_score": candidate.score,
-                                "touches": candidate.touches,
-                                "status": "active",
-                                "type": "support"
-                            }
-                            top_support_list.append(candidate_dict)
-            
-            top_resistance_list = []
-            # Add best resistance
-            if best_resistance > 0:
-                best_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - best_resistance) < 1), None)
-                if best_resistance_obj:
-                    top_resistance_list.append(best_resistance_obj)
-            
-            # Add secondary resistance if available and meets distance requirement
-            if secondary_resistance > 0 and abs(secondary_resistance - best_resistance) > current_price * min_level_distance_pct:
-                secondary_resistance_obj = next((level for level in resistance_levels if abs(level["price_level"] - secondary_resistance) < 1), None)
-                if secondary_resistance_obj:
-                    top_resistance_list.append(secondary_resistance_obj)
-            
-            # Add additional resistance levels up to max_levels_per_side
-            if len(top_resistance_list) < max_levels_per_side:
-                # Try to find additional levels from all scored levels
-                all_resistance = [level for level in scored_levels 
-                                if level.level_type == 'resistance' and
-                                level.level > current_price and 
-                                self._state.check_level_status(level, current_price, atr_14) == "active"]
-                if len(all_resistance) > len(top_resistance_list):
-                    # Sort by score and add levels that meet distance requirement
-                    sorted_all_resistance = sorted(all_resistance, key=lambda x: x.score, reverse=True)
-                    for candidate in sorted_all_resistance:
-                        if len(top_resistance_list) >= max_levels_per_side:
-                            break
-                        # Check if already added
-                        if any(abs(candidate.level - level["price_level"]) < 1 for level in top_resistance_list):
-                            continue
-                        # Check distance from all existing levels
-                        too_close = any(abs(candidate.level - level["price_level"]) <= current_price * min_level_distance_pct 
-                                       for level in top_resistance_list)
-                        if not too_close:
-                            candidate_dict = {
-                                "price_level": candidate.level,
-                                "strength_score": candidate.score,
-                                "touches": candidate.touches,
-                                "status": "active",
-                                "type": "resistance"
-                            }
-                            top_resistance_list.append(candidate_dict)
-            
             result = {
                 "status": "ok",
-                "levels": key_levels,  # All swing-based S/R levels
+                "levels": key_levels,  # All swing-based S/R levels (modules filter as needed)
                 "metadata": {
                     "timestamp": current_time,
                     "symbol": self.symbol,
@@ -1103,10 +860,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     "support_score": support_score,
                     "resistance_score": resistance_score
                 },
-                # Strategy-specific support and resistance levels
-                "top_2_support": top_support_list[:max_levels_per_side],  # Strategy-specific count
-                "top_2_resistance": top_resistance_list[:max_levels_per_side],  # Strategy-specific count
-                # Add root-level fields for dashboard compatibility
+                # Root-level fields for dashboard compatibility (metadata only, not filtered levels)
                 "strongest_support": strongest_support,
                 "strongest_resistance": strongest_resistance,
                 "support_score": support_score,
@@ -1126,7 +880,7 @@ class SupportResistanceCalculator(BaseCalculator):
             
         except Exception as e:
             logger.error(f"❌ Result formatting failed: {e}")
-            return self._create_error_result(str(e))
+            raise  # NO FALLBACKS - formatting failure should raise, not return error dict
     
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
         """
@@ -1161,6 +915,98 @@ class SupportResistanceCalculator(BaseCalculator):
                 "resistance_score": 0.0
             }
         }
+    
+    @staticmethod
+    def select_stop_loss_level(
+        levels: List[Dict[str, Any]],
+        entry_price: float,
+        direction: str,
+        atr_5m: float,
+        min_stop_distance: float,
+        max_reasonable_distance: float = None,
+        min_strength_score: float = 60.0
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Select the optimal S/R level for stop loss placement based on profitability considerations.
+        
+        Selection logic (prioritizes profitability):
+        1. Prefer strong levels (strength_score >= min_strength_score) within max_reasonable_distance
+        2. If no strong level within range, use closest level that meets minimum distance
+        3. Ensures stop is not too tight (avoids false breaks) and not too wide (maintains R:R)
+        
+        Args:
+            levels: List of S/R level dictionaries with keys: price_level, strength_score, status, type
+            entry_price: Entry price
+            direction: "LONG" or "SHORT"
+            atr_5m: 5-minute ATR for distance calculations
+            min_stop_distance: Minimum stop distance from entry (e.g., 2.0×ATR)
+            max_reasonable_distance: Maximum reasonable distance (default: 3.0×ATR)
+            min_strength_score: Minimum strength score to consider "strong" (default: 60.0)
+            
+        Returns:
+            Selected level dictionary or None if no valid level found
+        """
+        if not levels:
+            return None
+        
+        # Default max reasonable distance: 3×ATR (maintains reasonable R:R)
+        if max_reasonable_distance is None:
+            max_reasonable_distance = atr_5m * 3.0
+        
+        # Filter for active levels in the correct direction
+        if direction == "LONG":
+            # For LONG: need supports BELOW entry
+            candidate_levels = [
+                level for level in levels
+                if level.get("type") == "support"
+                and level.get("price_level", 0) < entry_price
+                and level.get("status") == "active"
+            ]
+            # Calculate distance from entry (for LONG, distance = entry - level_price)
+            def calc_distance(level):
+                return entry_price - level.get("price_level", 0)
+        else:  # SHORT
+            # For SHORT: need resistances ABOVE entry
+            candidate_levels = [
+                level for level in levels
+                if level.get("type") == "resistance"
+                and level.get("price_level", 0) > entry_price
+                and level.get("status") == "active"
+            ]
+            # Calculate distance from entry (for SHORT, distance = level_price - entry)
+            def calc_distance(level):
+                return level.get("price_level", 0) - entry_price
+        
+        if not candidate_levels:
+            return None
+        
+        # Filter for levels that meet minimum distance requirement
+        valid_levels = [
+            level for level in candidate_levels
+            if calc_distance(level) >= min_stop_distance
+        ]
+        
+        if not valid_levels:
+            return None
+        
+        # Strategy 1: Prefer strong levels within reasonable distance
+        strong_levels_within_range = [
+            level for level in valid_levels
+            if level.get("strength_score", 0) >= min_strength_score
+            and calc_distance(level) <= max_reasonable_distance
+        ]
+        
+        if strong_levels_within_range:
+            # Use strongest among those within reasonable distance
+            selected = max(strong_levels_within_range, key=lambda x: x.get("strength_score", 0))
+            logger.debug(f"✅ Selected strong {direction} stop level: ${selected.get('price_level', 0):.2f} (strength: {selected.get('strength_score', 0):.1f}, distance: {calc_distance(selected):.2f})")
+            return selected
+        
+        # Strategy 2: No strong level within range - use closest that meets minimum
+        # This maintains R:R while still providing protection
+        selected = min(valid_levels, key=lambda x: calc_distance(x))
+        logger.debug(f"✅ Selected closest {direction} stop level: ${selected.get('price_level', 0):.2f} (strength: {selected.get('strength_score', 0):.1f}, distance: {calc_distance(selected):.2f})")
+        return selected
 
 
 # Legacy singleton pattern removed - use dependency injection instead

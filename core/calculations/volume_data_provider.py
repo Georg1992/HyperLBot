@@ -22,16 +22,16 @@ class VolumeDataProvider:
         return []
     
     def fetch_hyperliquid_volume_data(self, websocket) -> Dict[str, Any]:
-        """Fetch volume data from Hyperliquid WebSocket"""
+        """Fetch volume data from Hyperliquid WebSocket - NO FALLBACKS"""
         if not websocket:
-            return {"raw_trades": []}
+            raise ValueError("Hyperliquid WebSocket not available for volume data - NO FALLBACKS")
         
         try:
             raw_trades = websocket.get_raw_trades()
             return {"raw_trades": raw_trades}
         except Exception as e:
             logger.error(f"❌ Failed to fetch volume data: {e}")
-            return {"raw_trades": []}
+            raise
     
     def calculate_5m_volume(self, raw_trades: List[Dict], current_time: float) -> Dict[str, Any]:
         """
@@ -55,15 +55,15 @@ class VolumeDataProvider:
             total_volume = sum(trade.get('size', 0) for trade in recent_trades)
             
             return {
-                "current_5m_volume": total_volume,
-                "trade_count": len(recent_trades),
+                "current_5m_volume": total_volume,  # Can be 0.0 if no trades (valid result)
+                "trade_count": len(recent_trades),  # Can be 0 if no trades (valid result)
                 "reset_time": candle_start_timestamp,  # Exact candle boundary timestamp
                 "time_window": "5m",
                 "candle_start": candle_start_timestamp  # For debugging/verification
             }
         except Exception as e:
             logger.error(f"❌ Failed to calculate 5m volume: {e}")
-            return {"current_5m_volume": 0.0, "trade_count": 0}
+            raise  # NO FALLBACKS - calculation failure should raise, not return 0.0
     
     def get_volume_history(self, count: int = 10) -> List[Dict[str, Any]]:
         """

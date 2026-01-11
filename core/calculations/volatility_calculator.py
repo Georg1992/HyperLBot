@@ -48,25 +48,27 @@ class VolatilityCalculator(BaseCalculator):
     
     def get_latest_analysis(self) -> Dict[str, Any]:
         """
-        Get latest volatility analysis using the refactored modular system
+        Get latest volatility analysis using the refactored modular system - NO FALLBACKS
         
         Returns:
             Volatility analysis dictionary
+        
+        Raises:
+            ValueError: If candle data is not available or insufficient
         """
         try:
-            # Fetch candle data via data provider
+            # Fetch candle data via data provider - NO FALLBACKS
             candles = self._data_provider.fetch_candle_data("5m", 30)
             
             if not candles or len(candles) < 1:
-                logger.warning("⚠️ No candle data available for volatility analysis")
-                return self._create_error_result("No candle data available")
+                raise ValueError("No candle data available for volatility analysis - NO FALLBACKS")
             
-            # Calculate volatility using modular components
+            # Calculate volatility using modular components - NO FALLBACKS
             return self.calculate_candle_volatility(candles, "5m", "standard")
             
         except Exception as e:
             logger.error(f"❌ Failed to get latest volatility analysis: {e}")
-            return self._create_error_result(str(e))
+            raise
     
     def calculate_candle_volatility(self, candles: List[Dict], timeframe: str = "5m", strategy: str = "standard") -> Dict[str, Any]:
         """
@@ -82,10 +84,9 @@ class VolatilityCalculator(BaseCalculator):
         """
         try:
             if len(candles) < 1:
-                logger.warning(f"⚠️ Not enough candles for volatility calculation: {len(candles)} < 1")
-                return self._create_error_result(f"Insufficient candles: {len(candles)} < 1")
+                raise ValueError(f"Insufficient candles for volatility calculation: {len(candles)} < 1 - NO FALLBACKS")
             
-            # 1. Get basic volatility from data provider
+            # 1. Get basic volatility from data provider - NO FALLBACKS
             basic_vol_data = self._data_provider.calculate_basic_volatility(candles, 15)
             
             # 2. Calculate weighted volatility from analyzer
@@ -148,7 +149,7 @@ class VolatilityCalculator(BaseCalculator):
             
         except Exception as e:
             logger.error(f"❌ Volatility calculation failed: {e}")
-            return self._create_error_result(str(e))
+            raise  # NO FALLBACKS - calculation failure should raise, not return error dict
     
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
         """Create volatility-specific error result"""

@@ -42,117 +42,72 @@ class TradingConfig:
     MIN_PROFIT_TARGET = float(os.getenv("MIN_PROFIT_TARGET", "0.002"))  # 0.2% (lower for 40x)
     MAX_STOP_LOSS = float(os.getenv("MAX_STOP_LOSS", "0.008"))  # 0.8% (tighter for 40x)
     
-    # Support/Resistance Scoring
-    SR_PROXIMITY_DECAY_K = float(os.getenv("SR_PROXIMITY_DECAY_K", "25.0"))  # k in exp(-distance/(k*ATR))
-    # k=25.0: very gentle decay allows strong differentiation at 1-3% distances (trading-relevant ranges)
-    # With ATR ~$78: 1.6% away (~$1,500) gets ~42 pts, 3.4% away (~$3,100) gets ~11 pts
-    # This ensures proximity (75% weight) can overcome touch differences for actionable levels
+    # Universal Support/Resistance Scoring Configuration
+    # All strategies use the same scoring weights - SR levels are objective market features
+    # Strategy only affects SELECTION (max_levels_per_side, max_distance_pct, min_level_distance_pct)
+    SR_SCORING_WEIGHTS = {
+        "proximity": 0.15,  # Distance from current price - closer = higher score (part of reversal probability)
+        "touch": 0.50,      # Touch count - more touches = stronger level (primary factor)
+        "reversal_probability": 0.20,  # Historical reversal rate from actual data (secondary factor)
+        "recency": 0.10,    # Time since last touch - recent = higher score
+        "volume": 0.05      # Volume at level - higher = more liquidity
+    }
+    SR_PROXIMITY_DECAY_K = float(os.getenv("SR_PROXIMITY_DECAY_K", "0.15"))  # k in exp(-distance/(k*ATR)) - universal decay factor
     
     # Strategy-Based Support/Resistance Level Selection
     # Each strategy has different needs for S/R level selection:
     # - max_levels_per_side: How many levels to return (scalping=1, swing=3-5, standard=2)
-    # - scoring_weights: How to weight factors (scalping=favors proximity, swing=favors touch count)
-    # - proximity_decay_k: Distance sensitivity (higher=more proximity sensitive)
     # - min_level_distance_pct: Minimum distance between levels (0.1% = $100 at $100k)
+    # - max_distance_pct: Maximum distance from current price (based on expected price movement in strategy timeframe)
+    #   Justification: Scalping (5-15min) expects ~0.3% movement, Swing (1-7 days) expects ~5% movement
+    # 
+    # NOTE: SR scoring is UNIVERSAL - all levels scored the same way (touch, reversal_probability, recency, volume, proximity)
+    # Strategy only affects SELECTION (how many levels, max distance, min distance between levels)
     SR_LEVEL_SELECTION = {
         "scalping": {
             "max_levels_per_side": 1,  # Only need closest level for quick trades
-            "scoring_weights": {
-                "proximity": 0.60,  # Proximity is critical (60%)
-                "touch": 0.30,      # Touch count matters but less (30%)
-                "recency": 0.08,    # Recent touches important (8%)
-                "volume": 0.02      # Volume less critical (2%)
-            },
-            "proximity_decay_k": 0.15,  # Higher = more proximity sensitive
-            "min_level_distance_pct": 0.0005  # 0.05% minimum distance
+            "min_level_distance_pct": 0.0005,  # 0.05% minimum distance between levels
+            "max_distance_pct": 0.005  # 0.5% max distance - justified: scalping timeframe (5-15min) expects ~0.3% price movement
         },
         "swing_trading": {
             "max_levels_per_side": 3,  # Need multiple levels for swing targets
-            "scoring_weights": {
-                "proximity": 0.20,  # Proximity less important (20%)
-                "touch": 0.60,      # Touch count is primary (60%)
-                "recency": 0.15,    # Recency matters (15%)
-                "volume": 0.05      # Volume confirmation (5%)
-            },
-            "proximity_decay_k": 0.05,  # Lower = less proximity sensitive
-            "min_level_distance_pct": 0.002  # 0.2% minimum distance
+            "min_level_distance_pct": 0.002,  # 0.2% minimum distance between levels
+            "max_distance_pct": 0.05  # 5% max distance - justified: swing timeframe (1-7 days) expects ~5% price movement
         },
         "trend_following": {
             "max_levels_per_side": 2,  # Need support/resistance for trend confirmation
-            "scoring_weights": {
-                "proximity": 0.30,  # Moderate proximity (30%)
-                "touch": 0.50,      # Touch count is important (50%)
-                "recency": 0.15,    # Recent touches matter (15%)
-                "volume": 0.05      # Volume confirmation (5%)
-            },
-            "proximity_decay_k": 0.08,  # Moderate proximity sensitivity
-            "min_level_distance_pct": 0.0015  # 0.15% minimum distance
+            "min_level_distance_pct": 0.0015,  # 0.15% minimum distance between levels
+            "max_distance_pct": 0.03  # 3% max distance - justified: trend following timeframe (hours-days) expects ~3% movement
         },
         "breakout": {
             "max_levels_per_side": 2,  # Need levels to break through
-            "scoring_weights": {
-                "proximity": 0.35,  # Proximity important for breakout targets (35%)
-                "touch": 0.45,      # Touch count critical (45%)
-                "recency": 0.15,    # Recent touches matter (15%)
-                "volume": 0.05      # Volume confirmation (5%)
-            },
-            "proximity_decay_k": 0.10,  # Moderate-high proximity sensitivity
-            "min_level_distance_pct": 0.001  # 0.1% minimum distance
+            "min_level_distance_pct": 0.001,  # 0.1% minimum distance between levels
+            "max_distance_pct": 0.02  # 2% max distance - justified: breakout timeframe (hours) expects ~2% movement
         },
         "range_trading": {
             "max_levels_per_side": 2,  # Need range boundaries
-            "scoring_weights": {
-                "proximity": 0.40,  # Proximity important for range boundaries (40%)
-                "touch": 0.40,      # Touch count equally important (40%)
-                "recency": 0.15,    # Recent touches matter (15%)
-                "volume": 0.05      # Volume confirmation (5%)
-            },
-            "proximity_decay_k": 0.10,  # Moderate proximity sensitivity
-            "min_level_distance_pct": 0.001  # 0.1% minimum distance
+            "min_level_distance_pct": 0.001,  # 0.1% minimum distance between levels
+            "max_distance_pct": 0.02  # 2% max distance - justified: range trading timeframe (hours) expects ~2% movement
         },
         "low_volatility_range": {
             "max_levels_per_side": 2,  # Need tight range boundaries
-            "scoring_weights": {
-                "proximity": 0.45,  # Proximity very important in tight ranges (45%)
-                "touch": 0.35,      # Touch count important (35%)
-                "recency": 0.15,    # Recent touches matter (15%)
-                "volume": 0.05      # Volume confirmation (5%)
-            },
-            "proximity_decay_k": 0.12,  # Higher proximity sensitivity for tight ranges
-            "min_level_distance_pct": 0.0008  # 0.08% minimum distance (tighter)
+            "min_level_distance_pct": 0.0008,  # 0.08% minimum distance between levels (tighter)
+            "max_distance_pct": 0.01  # 1% max distance - justified: low volatility range timeframe (hours) expects ~1% movement
         },
         "high_volatility": {
             "max_levels_per_side": 2,  # Need strong levels for volatile markets
-            "scoring_weights": {
-                "proximity": 0.30,  # Proximity less important in volatile markets (30%)
-                "touch": 0.50,      # Touch count critical for strength (50%)
-                "recency": 0.15,    # Recent touches matter (15%)
-                "volume": 0.05      # Volume confirmation (5%)
-            },
-            "proximity_decay_k": 0.08,  # Moderate proximity sensitivity
-            "min_level_distance_pct": 0.002  # 0.2% minimum distance
+            "min_level_distance_pct": 0.002,  # 0.2% minimum distance between levels
+            "max_distance_pct": 0.08  # 8% max distance - justified: high volatility timeframe (hours-days) expects ~8% movement
         },
         "spike_hunting": {
             "max_levels_per_side": 1,  # Only need strongest level for spike targets
-            "scoring_weights": {
-                "proximity": 0.25,  # Proximity less important (25%)
-                "touch": 0.60,      # Touch count is critical for spike resistance (60%)
-                "recency": 0.10,    # Recency less important (10%)
-                "volume": 0.05      # Volume confirmation (5%)
-            },
-            "proximity_decay_k": 0.06,  # Lower proximity sensitivity
-            "min_level_distance_pct": 0.003  # 0.3% minimum distance
+            "min_level_distance_pct": 0.003,  # 0.3% minimum distance between levels
+            "max_distance_pct": 0.10  # 10% max distance - justified: spike hunting timeframe (days) expects ~10% movement
         },
         "standard": {  # Default behavior (current implementation)
             "max_levels_per_side": 2,
-            "scoring_weights": {
-                "proximity": 0.40,  # Current default (40%)
-                "touch": 0.40,      # Current default (40%)
-                "recency": 0.15,    # Current default (15%)
-                "volume": 0.05      # Current default (5%)
-            },
-            "proximity_decay_k": 0.10,  # Current default
-            "min_level_distance_pct": 0.001  # Current default (0.1%)
+            "min_level_distance_pct": 0.001,  # 0.1% minimum distance between levels
+            "max_distance_pct": 0.03  # 3% max distance - justified: standard timeframe (hours-days) expects ~3% movement
         }
     }
     
@@ -164,8 +119,8 @@ class TradingConfig:
         "confidence_threshold": 0.65,  # 65% confidence minimum (USER SPECIFIED)
         "min_interval": 30,  # seconds between trades
         "max_leverage": 40,
-        "profit_target": 0.008,  # 0.8% profit target
-        "stop_loss": 0.004,  # 0.4% stop loss
+        "profit_target": 0.012,  # 1.2% profit target
+        "stop_loss": 0.008,  # 0.8% stop loss (adjusted for 40x leverage - too tight stops get hit by normal volatility)
         "position_size": 0.1,  # 10% of balance
         "direction_weights": {
             "rsi": 0.25,
@@ -184,8 +139,8 @@ class TradingConfig:
         "confidence_threshold": 0.52,  # 52% confidence minimum (USER SPECIFIED)
         "min_interval": 60,  # 1 minute between trades
         "max_leverage": 40,
-        "profit_target": 0.005,  # 0.5% profit target
-        "stop_loss": 0.0025,  # 0.25% stop loss
+        "profit_target": 0.007,  # 0.7% profit target
+        "stop_loss": 0.005,  # 0.5% stop loss (adjusted for 40x leverage)
         "position_size": 0.15,  # 15% of balance
         "range_detection_periods": 15,  # Look back 15 candles for range
         "range_tolerance": 0.0008,  # 0.08% tolerance for range boundaries
@@ -209,8 +164,8 @@ class TradingConfig:
         "confidence_threshold": 0.58,  # 58% confidence minimum for extreme volatility
         "min_interval": 45,  # 45 seconds between trades
         "max_leverage": 40,
-        "profit_target": 0.012,  # 1.2% profit target (higher for breakouts)
-        "stop_loss": 0.006,  # 0.6% stop loss (tighter for extreme volatility)
+        "profit_target": 0.018,  # 1.8% profit target (higher for breakouts)
+        "stop_loss": 0.012,  # 1.2% stop loss (adjusted for 40x leverage and extreme volatility)
         "position_size": 0.12,  # 12% of balance
         "volatility_threshold": ["high", "extreme"],  # Only for high/extreme volatility
         "trend_required": True,  # Breakouts need trend confirmation
@@ -234,8 +189,8 @@ class TradingConfig:
         "confidence_threshold": 0.50,  # 50% confidence minimum (CORRECTED - minimum for execution)
         "min_interval": 30,  # 30 seconds between trades (frequent)
         "max_leverage": 40,  # Increased leverage for high-leverage trading
-        "profit_target": 0.003,  # 0.3% profit target (small moves)
-        "stop_loss": 0.0015,  # 0.15% stop loss (tight stops)
+        "profit_target": 0.005,  # 0.5% profit target (small moves)
+        "stop_loss": 0.004,  # 0.4% stop loss (adjusted for 40x leverage - even low vol needs wider stops)
         "position_size": 0.25,  # 25% of balance (larger size for small moves)
         "range_detection_periods": 20,  # Look back 20 candles for range
         "range_tolerance": 0.0005,  # 0.05% tolerance for range boundaries
@@ -261,8 +216,8 @@ class TradingConfig:
         "confidence_threshold": 0.55,  # 55% confidence minimum (CORRECTED)
         "min_interval": 60,
         "max_leverage": 40,  # FIXED: Match global limit
-        "profit_target": 0.015,  # 1.5% profit target (adjusted for 40x)
-        "stop_loss": 0.008,  # 0.8% stop loss (adjusted for 40x)
+        "profit_target": 0.020,  # 2.0% profit target (adjusted for 40x)
+        "stop_loss": 0.013,  # 1.3% stop loss (adjusted for 40x leverage and high volatility)
         "position_size": 0.10,  # 10% of balance (adjusted for 40x)
         "direction_weights": {
             "trend": 0.30,  # High weight - Follow the trend in volatile markets
@@ -281,8 +236,8 @@ class TradingConfig:
         "confidence_threshold": 0.70,  # 70% confidence minimum (CORRECTED - high risk strategy)
         "min_interval": 1800,  # 30 minutes between trades
         "max_leverage": 40,
-        "profit_target": 0.020,  # 2.0% profit target (safer for 40x)
-        "stop_loss": 0.010,  # 1.0% stop loss (safer for 40x)
+        "profit_target": 0.025,  # 2.5% profit target (adjusted for 40x)
+        "stop_loss": 0.015,  # 1.5% stop loss (adjusted for 40x leverage and extreme volatility)
         "position_size": 0.15,  # 15% of balance (SAFER: 15% x 40x = 600% exposure)
         "volume_spike_required": True,
         "min_spike_severity": "HIGH",
@@ -304,8 +259,8 @@ class TradingConfig:
         "confidence_threshold": 0.60,  # 60% confidence minimum (CORRECTED)
         "min_interval": 120,  # 2 minutes between trades
         "max_leverage": 35,
-        "profit_target": 0.012,  # 1.2% profit target
-        "stop_loss": 0.006,  # 0.6% stop loss
+        "profit_target": 0.018,  # 1.8% profit target
+        "stop_loss": 0.010,  # 1.0% stop loss (adjusted for 40x leverage)
         "position_size": 0.15,  # 15% of balance
         "trend_confirmation_required": True,
         "min_trend_strength": "STRONG",
@@ -328,8 +283,8 @@ class TradingConfig:
         "confidence_threshold": 0.50,  # 50% confidence minimum (CORRECTED - minimum for execution)
         "min_interval": 30,  # 30 seconds between trades (SAFER: avoid rate limits)
         "max_leverage": 40,  # FIXED: Match global limit
-        "profit_target": 0.003,  # 0.3% profit target (adjusted for 40x)
-        "stop_loss": 0.002,  # 0.2% stop loss (adjusted for 40x)
+        "profit_target": 0.006,  # 0.6% profit target (adjusted for 40x)
+        "stop_loss": 0.005,  # 0.5% stop loss (adjusted for 40x leverage - scalping still needs wider stops)
         "position_size": 0.20,  # 20% of balance (SAFER: 20% x 40x = 800% exposure)
         "require_high_liquidity": True,  # Need tight spreads
         "require_low_slippage": True,  # Minimize execution costs

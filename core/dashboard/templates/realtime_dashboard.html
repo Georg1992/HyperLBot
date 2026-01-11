@@ -1096,11 +1096,17 @@
                             srElement.className = 'data-value negative';
                             console.log('📊 S/R error:', market.support_resistance.message);
                         } else {
-                            // Use top 2 support and resistance levels if available, otherwise fallback to filtering
-                            const supportLevels = market.support_resistance.top_2_support || 
-                                                market.support_resistance.key_levels.filter(level => level.type === 'support').slice(0, 2);
-                            const resistanceLevels = market.support_resistance.top_2_resistance || 
-                                                  market.support_resistance.key_levels.filter(level => level.type === 'resistance').slice(0, 2);
+                            // Filter levels for display (top 2 active levels)
+                            const allLevels = market.support_resistance.levels || market.support_resistance.key_levels || [];
+                            const currentPrice = market.current_price || 0;
+                            const supportLevels = allLevels
+                                .filter(level => level.type === 'support' && level.price_level < currentPrice && level.status === 'active')
+                                .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
+                                .slice(0, 2);
+                            const resistanceLevels = allLevels
+                                .filter(level => level.type === 'resistance' && level.price_level > currentPrice && level.status === 'active')
+                                .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
+                                .slice(0, 2);
                             
                             let srText = '';
                             if (supportLevels.length > 0) {
@@ -1420,9 +1426,16 @@
                     let levelsText = '';
                     const currentPrice = market.current_price || 0;
                     
-                    // Show exactly 2 support and 2 resistance levels (no summary, only detailed list)
-                    const topSupport = market.support_resistance.top_2_support || [];
-                    const topResistance = market.support_resistance.top_2_resistance || [];
+                    // Filter levels for display (top 2 active levels)
+                    const allLevels = market.support_resistance.levels || market.support_resistance.key_levels || [];
+                    const topSupport = allLevels
+                        .filter(level => level.type === 'support' && level.price_level < currentPrice && level.status === 'active')
+                        .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
+                        .slice(0, 2);
+                    const topResistance = allLevels
+                        .filter(level => level.type === 'resistance' && level.price_level > currentPrice && level.status === 'active')
+                        .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
+                        .slice(0, 2);
                     
                     // Helper function to format a level
                     const formatLevel = (level, isSupport, isBest) => {
@@ -2483,6 +2496,29 @@
                 const adjustedMaxPrice = maxPrice + padding;
                 const adjustedPriceRange = adjustedMaxPrice - adjustedMinPrice;
                 
+                // Draw horizontal grid lines (price axis dividers like on a ruler)
+                // Minor horizontal lines - subtle
+                ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+                ctx.lineWidth = 0.5;
+                for (let i = 0; i <= 10; i++) {
+                    const y = (height / 10) * i;
+                    ctx.beginPath();
+                    ctx.moveTo(chartStartX, y);
+                    ctx.lineTo(chartWidth, y); // Draw only in chart area, not in price label area
+                    ctx.stroke();
+                }
+                
+                // Major horizontal lines (every 2nd line for better visibility)
+                ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+                ctx.lineWidth = 1;
+                for (let i = 0; i <= 10; i += 2) {
+                    const y = (height / 10) * i;
+                    ctx.beginPath();
+                    ctx.moveTo(chartStartX, y);
+                    ctx.lineTo(chartWidth, y); // Draw only in chart area, not in price label area
+                    ctx.stroke();
+                }
+                
                 // Draw price labels on the right with high contrast
                 ctx.fillStyle = '#FFFFFF';  // Pure white for maximum contrast
                 ctx.font = 'bold 16px "Segoe UI", Arial, sans-serif';
@@ -2687,8 +2723,17 @@
                 if (candleData && window.dashboard && window.dashboard.currentMarketData) {
                     const srData = window.dashboard.currentMarketData.support_resistance;
                     if (srData && srData.status === 'ok') {
-                        const topSupport = srData.top_2_support || [];
-                        const topResistance = srData.top_2_resistance || [];
+                        // Filter levels for chart display (top 2 active levels)
+                        const allLevels = srData.levels || srData.key_levels || [];
+                        const currentPrice = window.dashboard.currentMarketData.current_price || 0;
+                        const topSupport = allLevels
+                            .filter(level => level.type === 'support' && level.price_level < currentPrice && level.status === 'active')
+                            .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
+                            .slice(0, 2);
+                        const topResistance = allLevels
+                            .filter(level => level.type === 'resistance' && level.price_level > currentPrice && level.status === 'active')
+                            .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
+                            .slice(0, 2);
                         
                         // Draw support levels (green lines)
                         topSupport.forEach((level, index) => {

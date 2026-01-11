@@ -21,3 +21,6 @@ flask-socketio>=5.3.6
 # RSS News & Sentiment Analysis
 feedparser>=6.0.11
 vaderSentiment>=3.3.2
+
+# Machine Learning (for SR weight training)
+scikit-learn>=1.3.0

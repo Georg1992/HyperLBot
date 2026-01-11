@@ -49,47 +49,46 @@ class PressureCalculator:
     
     def get_latest_analysis(self) -> Dict[str, Any]:
         """
-        Get latest pressure analysis using the refactored modular system
+        Get latest pressure analysis using the refactored modular system - NO FALLBACKS
         
         Returns:
             Pressure analysis dictionary
+        
+        Raises:
+            ValueError: If orderbook data is not available or invalid
         """
         try:
-            # Get orderbook data from HyperliquidAPI
+            # Get orderbook data from HyperliquidAPI - NO FALLBACKS
             from core.api.hyperliquid_api import get_hyperliquid_api
             api = get_hyperliquid_api()
             
             if not api:
-                logger.warning("⚠️ HyperliquidAPI not available for pressure calculation")
-                return self._create_error_result("HyperliquidAPI not available")
+                raise ValueError("HyperliquidAPI not available for pressure calculation - NO FALLBACKS")
             
-            # Get orderbook data
+            # Get orderbook data - NO FALLBACKS
             orderbook_data = api.get_orderbook(self.symbol)
             
             if not orderbook_data or 'levels' not in orderbook_data:
-                logger.warning("⚠️ No orderbook data available for pressure calculation")
-                return self._create_error_result("No orderbook data available")
+                raise ValueError("No orderbook data available for pressure calculation - NO FALLBACKS")
             
             # Extract bids and asks from orderbook
             # Hyperliquid orderbook format: levels is a list of [bids, asks]
             levels = orderbook_data.get('levels', [])
-            if len(levels) >= 2:
-                bids = levels[0]  # First element is bids
-                asks = levels[1]  # Second element is asks
-            else:
-                logger.warning("⚠️ Invalid orderbook structure - expected [bids, asks]")
-                return self._create_error_result("Invalid orderbook structure")
+            if len(levels) < 2:
+                raise ValueError("Invalid orderbook structure - expected [bids, asks] - NO FALLBACKS")
+            
+            bids = levels[0]  # First element is bids
+            asks = levels[1]  # Second element is asks
             
             if not bids or not asks:
-                logger.warning("⚠️ Insufficient orderbook data for pressure calculation")
-                return self._create_error_result("Insufficient orderbook data")
+                raise ValueError("Insufficient orderbook data for pressure calculation - NO FALLBACKS")
             
-            # Calculate pressure using the modular system
+            # Calculate pressure using the modular system - NO FALLBACKS
             return self.calculate_orderbook_pressure(bids, asks)
             
         except Exception as e:
             logger.error(f"❌ Failed to get latest pressure analysis: {e}")
-            return self._create_error_result(str(e))
+            raise
     
     def calculate_orderbook_pressure(self, bids: List[Dict], asks: List[Dict]) -> Dict[str, Any]:
         """
@@ -104,15 +103,13 @@ class PressureCalculator:
         """
         try:
             if not bids or not asks:
-                logger.error("❌ No orderbook data available for pressure calculation")
-                return self._create_error_result("No orderbook data available")
+                raise ValueError("No orderbook data available for pressure calculation - NO FALLBACKS")
             
-            # 1. Calculate depth metrics via data provider
+            # 1. Calculate depth metrics via data provider - NO FALLBACKS
             depth_metrics = self._data_provider.calculate_depth_metrics(bids, asks)
             
             if depth_metrics.get("total_depth_5", 0.0) == 0:
-                logger.error("❌ No orderbook depth available for pressure calculation")
-                return self._create_error_result("No orderbook depth available")
+                raise ValueError("No orderbook depth available for pressure calculation - NO FALLBACKS")
             
             # 2. Calculate pressure ratios via data provider
             pressure_ratios = self._data_provider.calculate_pressure_ratios(depth_metrics)
@@ -171,7 +168,7 @@ class PressureCalculator:
             
         except Exception as e:
             logger.error(f"❌ Orderbook pressure calculation failed: {e}")
-            return self._create_error_result(str(e))
+            raise  # NO FALLBACKS - calculation failure should raise, not return error dict
     
     def _create_error_result(self, error_message: str) -> Dict[str, Any]:
         """Create a consistent error result dictionary"""

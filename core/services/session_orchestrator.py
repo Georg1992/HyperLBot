@@ -4,8 +4,15 @@ Session Orchestrator - Centralized session management with NO FALLBACKS policy
 """
 
 import time
+from datetime import datetime
 from typing import Dict, Any, Optional, List
 from loguru import logger
+
+# Centralized imports to reduce lazy imports and improve code clarity
+# These are safe to import at module level (no circular dependencies)
+from core.utils.time_utils import TimeUtils
+from core.services.centralized_cache import get_global_centralized_cache
+from core.services.historical_data_service import get_global_historical_data_service
 
 
 class SessionOrchestrator:
@@ -140,8 +147,11 @@ class SessionOrchestrator:
             # Track last candle storage update (initialize to current time to avoid false warnings on first run)
             last_candle_update_time = time.time()
             
+            # Track last training check (check every hour)
+            last_training_check_time = time.time()
+            training_check_interval = 3600  # 1 hour
+            
             # Track last 5-minute candle boundary for pattern detection optimization
-            from core.utils.time_utils import TimeUtils
             if self._last_5m_boundary is None:
                 current_5m_start = TimeUtils.get_5m_candle_start_time()
                 self._last_5m_boundary = current_5m_start
@@ -156,20 +166,17 @@ class SessionOrchestrator:
                     new_candle_closed = False
                     if self._last_5m_boundary is not None and current_5m_start != self._last_5m_boundary:
                         new_candle_closed = True
-                        from datetime import datetime
                         boundary_utc = datetime.utcfromtimestamp(current_5m_start)
                         logger.info(f"🕐 New 5-minute candle boundary detected: {boundary_utc.strftime('%H:%M:%S')} UTC - updating database and invalidating caches")
                         
                         # Update candle storage IMMEDIATELY when boundary changes (exact 5-minute intervals: 00, 05, 10, 15, etc.)
                         try:
-                            from core.services.historical_data_service import get_global_historical_data_service
                             historical_service = get_global_historical_data_service()
                             if historical_service._candle_storage:
                                 historical_service._candle_storage.update_with_latest_candle()
                                 logger.info(f"✅ Candle storage updated at exact 5-minute boundary")
                                 
                                 # Invalidate chart cache to force dashboard refresh with new candle
-                                from core.services.centralized_cache import get_global_centralized_cache
                                 cache = get_global_centralized_cache()
                                 cache.invalidate(pattern="historical_candles")
                                 cache.invalidate(pattern="candles_5m")
@@ -178,7 +185,6 @@ class SessionOrchestrator:
                             logger.error(f"❌ Failed to update candle storage at boundary: {e}")
                         
                         # Invalidate pattern cache when new candle closes
-                        from core.services.centralized_cache import get_global_centralized_cache
                         cache = get_global_centralized_cache()
                         cache.invalidate(pattern="pattern_recognition")
                         cache.invalidate(pattern="patterns")
@@ -186,7 +192,6 @@ class SessionOrchestrator:
                         # Recalculate RSI baseline at exact candle boundary (same time as candles reset)
                         try:
                             # Fetch fresh 5m candles for RSI baseline recalculation
-                            from core.services.historical_data_service import get_global_historical_data_service
                             historical_service = get_global_historical_data_service()
                             candles_5m = historical_service.get_5m_candles("BTC", 30)  # Need at least 15 for RSI(14)
                             
@@ -206,7 +211,6 @@ class SessionOrchestrator:
                     elif last_candle_update_time > 0.0 and current_time - last_candle_update_time >= 310:  # 5 minutes 10 seconds (slightly longer than 5 min)
                         try:
                             logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
-                            from core.services.historical_data_service import get_global_historical_data_service
                             historical_service = get_global_historical_data_service()
                             if historical_service._candle_storage:
                                 historical_service._candle_storage.update_with_latest_candle()
@@ -261,6 +265,8 @@ class SessionOrchestrator:
                         logger.error(f"❌ Prediction generation failed: {e}")
                         unified_data["prediction"] = None
                     
+                    # ML training DISABLED - removed periodic check
+                    
                     # Update dashboard with unified market data (includes prediction)
                     self._update_dashboard_with_unified_data(
                         unified_data, dashboard_service
@@ -309,7 +315,6 @@ class SessionOrchestrator:
         if self._last_price is None:
             self._last_price = current_price
             # Initialize 5-minute boundary tracking
-            from core.utils.time_utils import TimeUtils
             self._last_5m_boundary = TimeUtils.get_5m_candle_start_time()
             # Force update all modules on first run (excluding those handled by MarketDataService)
             return [m for m in analysis_modules.keys() if m not in modules_handled_by_market_data_service]
@@ -318,7 +323,6 @@ class SessionOrchestrator:
         self._last_price = current_price
         
         # Check for new 5-minute candle close (for pattern detection optimization)
-        from core.utils.time_utils import TimeUtils
         current_5m_start = TimeUtils.get_5m_candle_start_time()
         new_candle_closed = False
         if self._last_5m_boundary is not None:
@@ -326,7 +330,6 @@ class SessionOrchestrator:
                 new_candle_closed = True
                 logger.info(f"🕐 New 5-minute candle closed - pattern detection will be triggered")
                 # Invalidate pattern cache when new candle closes
-                from core.services.centralized_cache import get_global_centralized_cache
                 cache = get_global_centralized_cache()
                 cache.invalidate(pattern="pattern_recognition")
                 cache.invalidate(pattern="patterns")
@@ -345,7 +348,6 @@ class SessionOrchestrator:
             # Check time interval using CentralizedCache intervals
             last_update = self._last_update_times.get(module_name, 0)
             # Get interval from CentralizedCache singleton
-            from core.services.centralized_cache import get_global_centralized_cache
             cache = get_global_centralized_cache()
             interval = cache._get_ttl_policy(module_name)  # Get TTL policy for module
             
@@ -412,6 +414,12 @@ class SessionOrchestrator:
 
             # Get comprehensive analysis data from MarketDataService (includes prediction data)
             analysis_data = market_data_service.get_dashboard_data(strategy)
+            
+            # Log if analysis_data is empty
+            if not analysis_data or len(analysis_data) == 0:
+                logger.error(f"❌ analysis_data is EMPTY from get_dashboard_data!")
+            else:
+                logger.debug(f"📊 Got {len(analysis_data)} keys from get_dashboard_data: {list(analysis_data.keys())[:10]}...")
 
             # Remove non-serializable objects for dashboard compatibility
             if "raw_data_access" in analysis_data:
@@ -423,6 +431,9 @@ class SessionOrchestrator:
             # Get trading data
             trading_data = self._get_trading_data()
 
+            # ML training DISABLED
+            ml_performance_data = {}
+            
             # Prepare unified data with analysis data
             unified_data = {
                 "timestamp": time.time(),
@@ -432,6 +443,7 @@ class SessionOrchestrator:
                 "session_data": session_data,
                 "trading_data": trading_data,
                 "ml_data": {},
+                "ml_performance": ml_performance_data,
                 # Include all analysis data
                 **analysis_data,
             }
@@ -440,7 +452,7 @@ class SessionOrchestrator:
 
         except Exception as e:
             logger.error(f"❌ Unified market data preparation failed: {e}")
-            return {}
+            raise
 
     def _trigger_analysis_modules(
         self, market_data_service, current_price: float, orderbook_data: Dict[str, Any]
@@ -454,7 +466,7 @@ class SessionOrchestrator:
         try:
             # Get analysis modules from MarketDataService to determine what needs updating
             analysis_modules = getattr(market_data_service, "_analysis_modules", {})
-            logger.debug(f"📊 Found {len(analysis_modules)} analysis modules: {list(analysis_modules.keys())}")
+            # Removed excessive debug logging
 
             # Check which modules actually need updates
             modules_to_update = self._get_modules_needing_update(
@@ -462,10 +474,10 @@ class SessionOrchestrator:
             )
             
             if not modules_to_update:
-                logger.debug("📊 No modules need updates - skipping analysis")
+                # Removed excessive debug logging
                 return
 
-            logger.debug(f"📊 Updating {len(modules_to_update)} modules: {modules_to_update}")
+            # Removed excessive debug logging
 
             # Map module names to MarketDataService get methods
             module_to_getter = {
@@ -483,16 +495,16 @@ class SessionOrchestrator:
             # Update modules via MarketDataService (SRP: MarketDataService coordinates all module access)
             for module_name in modules_to_update:
                 try:
-                    logger.debug(f"📊 Processing module: {module_name}")
+                    # Removed excessive debug logging
                     
                     # Get analysis via MarketDataService (single source of truth)
                     getter = module_to_getter.get(module_name)
                     if getter:
                         analysis_result = getter()
                         # MarketDataService already stores the result via its get_* methods
-                        logger.debug(f"📊 {module_name} data retrieved via MarketDataService")
+                        # Removed excessive debug logging
                     else:
-                        logger.debug(f"📊 Module {module_name} not in getter map - may be handled differently")
+                        # Removed excessive debug logging
 
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to update {module_name} via MarketDataService: {e}")
@@ -504,35 +516,28 @@ class SessionOrchestrator:
     def _get_session_data(self) -> Dict[str, Any]:
         """Get session data"""
         try:
-            if self.session_manager:
-                session_data = self.session_manager.current_session_data
-                return {
-                    "session_id": session_data.get("session_id", "unknown"),
-                    "start_time": session_data.get("start_time", 0.0),
-                    "current_balance": session_data.get("current_balance", 0.0),
-                    "session_start_time": session_data.get("start_time", 0.0),
-                    "session_time": session_data.get("session_time", "0s"),
-                    "status": session_data.get("status", "INACTIVE"),
-                    "strategy": session_data.get("strategy", "standard"),
-                }
-            else:
-                return {
-                    "session_id": "unknown",
-                    "start_time": 0.0,
-                    "current_balance": 0.0,
-                    "session_start_time": 0.0,
-                    "session_time": "0s",
-                    "status": "INACTIVE",
-                    "strategy": "standard",
-                }
+            if not self.session_manager:
+                raise ValueError("Session manager not available - NO FALLBACKS")
+            
+            session_data = self.session_manager.current_session_data
+            return {
+                "session_id": session_data.get("session_id", "unknown"),
+                "start_time": session_data.get("start_time", 0.0),
+                "current_balance": session_data.get("current_balance", 0.0),
+                "session_start_time": session_data.get("start_time", 0.0),
+                "session_time": session_data.get("session_time", "0s"),
+                "status": session_data.get("status", "INACTIVE"),
+                "strategy": session_data.get("strategy", "standard"),
+            }
         except Exception as e:
             logger.error(f"❌ Failed to get session data: {e}")
-            return {}
+            raise
 
     def _get_trading_data(self) -> Dict[str, Any]:
         """Get trading data"""
         try:
             # Trading data would come from trading execution
+            # Currently empty as trading execution is not yet implemented
             return {
                 "open_positions": [],
                 "pending_orders": [],
@@ -540,7 +545,7 @@ class SessionOrchestrator:
             }
         except Exception as e:
             logger.error(f"❌ Failed to get trading data: {e}")
-            return {}
+            raise
 
     def _detect_and_update_strategy(
         self, unified_data: Dict[str, Any], dashboard_service
