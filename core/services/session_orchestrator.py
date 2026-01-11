@@ -445,8 +445,16 @@ class SessionOrchestrator:
             # Get trading data
             trading_data = self._get_trading_data()
 
-            # ML training DISABLED
+            # Get ML training status for dashboard
             ml_performance_data = {}
+            try:
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                training_manager = system_initializer.singleton_systems.get("sr_weight_training_manager")
+                if training_manager:
+                    ml_performance_data = training_manager.get_dashboard_data()
+            except Exception as e:
+                logger.debug(f"Could not get ML training data: {e}")
             
             # Prepare unified data with analysis data
             unified_data = {
