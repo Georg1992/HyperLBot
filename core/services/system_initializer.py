@@ -204,16 +204,16 @@ class SystemInitializer:
             self.singleton_systems["trading_logger"] = trading_logger
             logger.info("📝 Trading logger initialized")
             
-            # ML training DISABLED - causing blocking issues
-            # try:
-            #     from core.services.sr_weight_training_manager import get_global_training_manager
-            #     training_manager = get_global_training_manager(strategy="standard")
-            #     self.singleton_systems["sr_weight_training_manager"] = training_manager
-            #     logger.info("🤖 SR weight training manager initialized")
-            #     training_manager.check_and_train_if_needed(force=False)
-            # except Exception as e:
-            #     logger.warning(f"⚠️ SR weight training manager not available: {e}")
-            logger.info("🤖 ML training DISABLED")
+            # Enable ML training manager (initialization only, no training on startup)
+            try:
+                from core.services.sr_weight_training_manager import get_global_training_manager
+                training_manager = get_global_training_manager(strategy="standard")
+                self.singleton_systems["sr_weight_training_manager"] = training_manager
+                logger.info("🤖 SR weight training manager initialized")
+                # DON'T call check_and_train_if_needed() here - let it happen in main loop
+                # This ensures system starts fast, training happens later if needed
+            except Exception as e:
+                logger.warning(f"⚠️ SR weight training manager not available: {e}")
             
             # Register analysis modules with MarketDataService
             self._register_analysis_modules(market_data_service)

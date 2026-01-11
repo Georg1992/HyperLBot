@@ -265,7 +265,21 @@ class SessionOrchestrator:
                         logger.error(f"❌ Prediction generation failed: {e}")
                         unified_data["prediction"] = None
                     
-                    # ML training DISABLED - removed periodic check
+                    # ML training periodic check (non-blocking, throttled to avoid spam)
+                    current_time = time.time()
+                    if current_time - last_training_check_time >= training_check_interval:
+                        last_training_check_time = current_time
+                        
+                        # Get training manager from singleton systems (if available)
+                        try:
+                            from core.services.system_initializer import get_system_initializer
+                            system_initializer = get_system_initializer()
+                            training_manager = system_initializer.singleton_systems.get("sr_weight_training_manager")
+                            if training_manager:
+                                # This is non-blocking - just starts background thread if needed
+                                training_manager.check_and_train_if_needed(force=False)
+                        except Exception as e:
+                            logger.debug(f"Could not check ML training: {e}")
                     
                     # Update dashboard with unified market data (includes prediction)
                     self._update_dashboard_with_unified_data(
