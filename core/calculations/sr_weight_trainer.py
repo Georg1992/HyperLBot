@@ -114,7 +114,8 @@ class SRWeightTrainer:
                 
                 features = self._extract_features(
                     level_price, level_type, touches, last_touch_time, 
-                    volume_at_level, current_price, current_time, atr
+                    volume_at_level, current_price, current_time, atr,
+                    candles_df, i  # Pass candles and index for historical reversal calculation
                 )
                 
                 target = self._calculate_reversal_magnitude(
@@ -204,11 +205,16 @@ class SRWeightTrainer:
     
     def _extract_features(self, level_price: float, level_type: str, touches: int,
                          last_touch_time: float, volume_at_level: float,
-                         current_price: float, current_time: float, atr: float) -> np.ndarray:
+                         current_price: float, current_time: float, atr: float,
+                         candles_df: np.ndarray = None, idx: int = None) -> np.ndarray:
         """Extract normalized features"""
         touch_count = min(100.0, (touches / 10.0) * 100.0)
         
-        reversal_probability = min(100.0, (touches / 5.0) * 100.0)
+        # Calculate REAL reversal probability from historical data (not heuristic)
+        # This avoids redundancy with touch_count
+        reversal_probability = self._calculate_historical_reversal_rate(
+            level_price, level_type, touches, candles_df, idx, atr
+        )
         
         distance = abs(level_price - current_price)
         proximity_atr = distance / atr if atr > 0 else 10.0
@@ -220,6 +226,95 @@ class SRWeightTrainer:
         volume_at_touch = min(100.0, (volume_at_level / 1000.0) * 100.0)
         
         return np.array([touch_count, reversal_probability, proximity_atr, recency, volume_at_touch])
+    
+    def _calculate_historical_reversal_rate(
+        self, level_price: float, level_type: str, touches: int,
+        candles_df: np.ndarray, idx: int, atr: float
+    ) -> float:
+        """
+        Calculate actual historical reversal rate (not heuristic)
+        Uses same Bayesian approach as sr_scorer.py
+        """
+        if candles_df is None or idx is None or len(candles_df) < 20:
+            # Fallback: use Bayesian estimate based on touches only
+            prior_alpha = 1.0
+            prior_beta = 1.0
+            estimated_reversals = touches * 0.6  # Assume 60% reversal rate
+            estimated_breakouts = touches * 0.4
+            posterior_alpha = prior_alpha + estimated_reversals
+            posterior_beta = prior_beta + estimated_breakouts
+            return (posterior_alpha / (posterior_alpha + posterior_beta)) * 100.0
+        
+        # Analyze historical touches to calculate actual reversal rate
+        reversals = 0
+        breakouts = 0
+        total_touches_analyzed = 0
+        tolerance = atr * 0.5
+        
+        # Look back through candles to find touches
+        for i in range(max(0, idx - 200), idx):
+            candle = candles_df[i]
+            candle_low = candle['low']
+            candle_high = candle['high']
+            
+            # Check if level was touched
+            touched = False
+            if level_type == 'support':
+                if candle_low <= level_price <= candle_high or \
+                   (candle_low <= level_price + tolerance and candle_high >= level_price - tolerance):
+                    touched = True
+            else:  # resistance
+                if candle_low <= level_price <= candle_high or \
+                   (candle_low <= level_price + tolerance and candle_high >= level_price - tolerance):
+                    touched = True
+            
+            if not touched:
+                continue
+            
+            total_touches_analyzed += 1
+            
+            # Analyze what happened after touch (next 10 candles)
+            lookahead = min(10, len(candles_df) - i - 1)
+            if lookahead < 2:
+                continue
+            
+            # Check if price broke through or reversed
+            if level_type == 'support':
+                breakout_threshold = level_price - atr
+                end_idx = min(i+1+lookahead, len(candles_df))
+                if i+1 < end_idx:
+                    min_price_after = min(candles_df[j]['low'] for j in range(i+1, end_idx))
+                    if min_price_after < breakout_threshold:
+                        breakouts += 1
+                    else:
+                        reversals += 1
+            else:  # resistance
+                breakout_threshold = level_price + atr
+                end_idx = min(i+1+lookahead, len(candles_df))
+                if i+1 < end_idx:
+                    max_price_after = max(candles_df[j]['high'] for j in range(i+1, end_idx))
+                    if max_price_after > breakout_threshold:
+                        breakouts += 1
+                    else:
+                        reversals += 1
+        
+        # Bayesian probability (Beta-Binomial)
+        if total_touches_analyzed == 0:
+            # No historical data - use Bayesian estimate
+            prior_alpha = 1.0
+            prior_beta = 1.0
+            estimated_reversals = touches * 0.6
+            estimated_breakouts = touches * 0.4
+            posterior_alpha = prior_alpha + estimated_reversals
+            posterior_beta = prior_beta + estimated_breakouts
+            return min(80.0, (posterior_alpha / (posterior_alpha + posterior_beta)) * 100.0)
+        
+        # Use actual historical data
+        prior_alpha = 1.0
+        prior_beta = 1.0
+        posterior_alpha = prior_alpha + reversals
+        posterior_beta = prior_beta + breakouts
+        return (posterior_alpha / (posterior_alpha + posterior_beta)) * 100.0
     
     def _calculate_reversal_magnitude(self, candles: np.ndarray, idx: int, level_price: float,
                                      level_type: str, atr: float, lookahead: int) -> Optional[float]:

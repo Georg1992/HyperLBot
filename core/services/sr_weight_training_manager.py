@@ -29,16 +29,16 @@ class SRWeightTrainingManager:
     Manages automatic SR weight training and status tracking
     """
     
-    def __init__(self, retrain_interval_days: int = 7, strategy: str = "standard"):
+    def __init__(self, retrain_interval_days: int = 7):
         """
         Initialize training manager
         
         Args:
             retrain_interval_days: Days between retraining (default: 7)
-            strategy: Strategy name (default: "standard")
+        
+        Note: Weights are universal (same for all strategies) - strategy parameter removed
         """
         self.retrain_interval_days = retrain_interval_days
-        self.strategy = strategy
         
         if not TRAINING_AVAILABLE:
             logger.warning("⚠️ SR weight training not available - scikit-learn required")
@@ -68,11 +68,11 @@ class SRWeightTrainingManager:
             if not self.trainer:
                 return
             
-            weights = self.trainer.load_weights(strategy=self.strategy, method="elasticnet")
+            weights = self.trainer.load_weights(method="elasticnet")  # Universal weights - no strategy parameter
             if weights:
                 weights_file = os.path.join(
                     self.trainer.weights_dir,
-                    f"{self.strategy}_elasticnet_weights.json"
+                    "elasticnet_weights.json"  # Universal filename - same for all strategies
                 )
                 if os.path.exists(weights_file):
                     file_time = os.path.getmtime(weights_file)
@@ -195,7 +195,7 @@ class SRWeightTrainingManager:
             total = sum(averaged_weights.values())
             normalized_weights = {key: val / total for key, val in averaged_weights.items()}
             
-            self.trainer.save_weights(normalized_weights, strategy=self.strategy, method="elasticnet")
+            self.trainer.save_weights(normalized_weights, method="elasticnet")  # Universal weights - no strategy parameter
             
             self._status["status"] = "completed"
             self._status["training_progress"] = 100
@@ -264,9 +264,9 @@ class SRWeightTrainingManager:
 # Global instance
 _global_training_manager = None
 
-def get_global_training_manager(strategy: str = "standard") -> Optional[SRWeightTrainingManager]:
-    """Get global training manager instance"""
+def get_global_training_manager() -> Optional[SRWeightTrainingManager]:
+    """Get global training manager instance (universal weights - no strategy parameter)"""
     global _global_training_manager
     if _global_training_manager is None:
-        _global_training_manager = SRWeightTrainingManager(strategy=strategy)
+        _global_training_manager = SRWeightTrainingManager(retrain_interval_days=7)  # Universal weights
     return _global_training_manager

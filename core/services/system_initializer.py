@@ -389,6 +389,10 @@ class SystemInitializer:
             market_data_service.register_analysis_module("orderbook", create_orderbook_analyzer())
             market_data_service.register_analysis_module("cross_asset_correlation_analyzer", create_cross_asset_correlation_analyzer())
             
+            # Register consolidation tracker
+            from core.analysis.real_time.consolidation_tracker import ConsolidationTracker
+            market_data_service.register_analysis_module("consolidation", ConsolidationTracker("BTC"))
+            
             logger.info("📊 Analysis modules registered with MarketDataService using new factory functions")
             
         except Exception as e:

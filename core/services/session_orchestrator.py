@@ -28,6 +28,25 @@ class SessionOrchestrator:
         self._last_5m_boundary = None
         self._last_orderbook = None
         self._last_update_times = {}
+        
+        # Initialize reactive execution engine (for momentum breakouts with market orders)
+        # Pass API manager to enable trade execution calls
+        try:
+            from core.execution.reactive_engine import ReactiveEngine
+            # Get API manager from system initializer if available
+            api_manager = None
+            try:
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                api_manager = system_initializer.get_singleton_system("api_manager")
+            except Exception:
+                pass  # API manager not required for initialization
+            
+            self._reactive_engine = ReactiveEngine(api_manager=api_manager)
+            logger.info("⚡ Reactive execution engine initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Reactive engine not available: {e}")
+            self._reactive_engine = None
 
         logger.info("🎯 SessionOrchestrator initialized with NO FALLBACKS policy")
 
@@ -264,6 +283,20 @@ class SessionOrchestrator:
                     # ML training DISABLED - SQLite file-level locking causes blocking
                     # Training makes heavy database queries that block other operations
                     
+                    # Process momentum signals with reactive engine (market orders)
+                    # Pass current_strategy to ensure consistency with prediction engine
+                    if hasattr(self, '_reactive_engine') and self._reactive_engine:
+                        try:
+                            momentum_result = self._reactive_engine.process_market_data(
+                                unified_data=unified_data,
+                                current_price=current_price,
+                                current_strategy=current_strategy  # Use detected strategy for consistency
+                            )
+                            if momentum_result:
+                                logger.info(f"⚡ Momentum trade executed: {momentum_result.get('direction')} @ ${momentum_result.get('entry_price'):.2f}")
+                        except Exception as e:
+                            logger.warning(f"⚠️ Reactive engine check failed: {e}")  # Changed from debug to warning
+                    
                     # Update dashboard with unified market data (includes prediction)
                     self._update_dashboard_with_unified_data(
                         unified_data, dashboard_service
@@ -444,6 +477,23 @@ class SessionOrchestrator:
             except Exception as e:
                 logger.debug(f"Could not get ML weights info: {e}")
 
+            # Get consolidation analysis (requires unified_data, so call after analysis_data)
+            consolidation_data = {}
+            try:
+                # Create temporary unified_data for consolidation analysis
+                temp_unified = {
+                    "timestamp": time.time(),
+                    "current_price": current_price,
+                    "strategy": strategy,
+                    **analysis_data
+                }
+                consolidation_data = market_data_service.get_consolidation_analysis(
+                    unified_data=temp_unified,
+                    current_price=current_price
+                )
+            except Exception as e:
+                logger.debug(f"Could not get consolidation analysis: {e}")
+            
             # Prepare unified data with analysis data
             unified_data = {
                 "timestamp": time.time(),
@@ -453,6 +503,7 @@ class SessionOrchestrator:
                 "session_data": session_data,
                 "trading_data": trading_data,
                 "ml_performance": ml_weights_info,  # ML weights file info (training done separately)
+                "consolidation": consolidation_data,  # Consolidation tracking data
                 # Include all analysis data
                 **analysis_data,
             }

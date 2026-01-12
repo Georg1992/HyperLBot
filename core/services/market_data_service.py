@@ -344,6 +344,60 @@ class MarketDataService:
             logger.error(f"❌ Failed to get cross asset analysis: {e}")
             raise
     
+    def get_consolidation_analysis(self, unified_data: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """Get consolidation analysis from ConsolidationTracker"""
+        try:
+            if "consolidation" not in self._analysis_modules:
+                return {"active": False, "status": "Consolidation tracker not available"}
+            
+            consolidation_tracker = self._analysis_modules["consolidation"]
+            current_time = time.time()
+            
+            # Detect consolidation and breakout
+            consolidation = consolidation_tracker.detect_consolidation(
+                unified_data=unified_data,
+                current_price=current_price,
+                current_time=current_time
+            )
+            
+            breakout = consolidation_tracker.detect_breakout(
+                unified_data=unified_data,
+                current_price=current_price,
+                current_time=current_time
+            )
+            
+            # Get consolidation info
+            consolidation_info = consolidation_tracker.get_consolidation_info()
+            
+            result = {
+                "consolidation": consolidation_info,
+                "breakout": None,
+                "timestamp": current_time
+            }
+            
+            if breakout:
+                result["breakout"] = {
+                    "direction": breakout.direction,
+                    "confidence": breakout.confidence,
+                    "entry_price": breakout.entry_price,
+                    "stop_loss": breakout.stop_loss,
+                    "take_profit": breakout.take_profit,
+                    "range_upper": breakout.range_upper,
+                    "range_lower": breakout.range_lower,
+                    "range_width": breakout.range_width,
+                    "duration_minutes": breakout.duration_minutes,
+                    "reasoning": breakout.reasoning,
+                    "detected_at": breakout.detected_at
+                }
+            
+            # Store result for future use
+            self.update_analysis_data("consolidation", result)
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get consolidation analysis: {e}")
+            return {"active": False, "status": f"Error: {e}"}
+    
     # ==================================================================================
     # UNIFIED PROCESSED DATA PACKAGES - Pre-processed data for consumers
     # ==================================================================================
