@@ -277,7 +277,7 @@ class EventDrivenTradingDashboard:
         try:
             data = self._get_dashboard_data()
             self._emit_data_update(data)
-            logger.debug("📡 Force data update emitted")
+            # Removed excessive debug log for force data update
         except Exception as e:
             logger.error(f"❌ Failed to force data update: {e}")
     

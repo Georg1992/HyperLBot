@@ -204,16 +204,10 @@ class SystemInitializer:
             self.singleton_systems["trading_logger"] = trading_logger
             logger.info("📝 Trading logger initialized")
             
-            # Enable ML training manager (initialization only, no training on startup)
-            try:
-                from core.services.sr_weight_training_manager import get_global_training_manager
-                training_manager = get_global_training_manager(strategy="standard")
-                self.singleton_systems["sr_weight_training_manager"] = training_manager
-                logger.info("🤖 SR weight training manager initialized")
-                # DON'T call check_and_train_if_needed() here - let it happen in main loop
-                # This ensures system starts fast, training happens later if needed
-            except Exception as e:
-                logger.warning(f"⚠️ SR weight training manager not available: {e}")
+            # ML training DISABLED - SQLite file-level locking causes blocking
+            # Training makes heavy database queries that block other operations
+            # Even in background thread, SQLite file-level locking blocks main thread
+            logger.debug("🤖 ML training disabled - causes database blocking")
             
             # Register analysis modules with MarketDataService
             self._register_analysis_modules(market_data_service)

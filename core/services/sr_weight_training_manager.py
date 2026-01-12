@@ -249,6 +249,7 @@ class SRWeightTrainingManager:
             "analysis_type": "SR Weight Learning",
             "analysis_type_detail": "ElasticNet Regression",
             "training_data_points": status.get("total_windows", 0),
+            "training_progress": status.get("training_progress", 0),  # 0-100 percentage
             "accuracy": None,
             "confidence_correlation": None,
             "retrain_status": status_text,

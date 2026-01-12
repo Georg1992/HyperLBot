@@ -147,10 +147,6 @@ class SessionOrchestrator:
             # Track last candle storage update (initialize to current time to avoid false warnings on first run)
             last_candle_update_time = time.time()
             
-            # Track last training check (check every hour)
-            last_training_check_time = time.time()
-            training_check_interval = 3600  # 1 hour
-            
             # Track last 5-minute candle boundary for pattern detection optimization
             if self._last_5m_boundary is None:
                 current_5m_start = TimeUtils.get_5m_candle_start_time()
@@ -265,21 +261,8 @@ class SessionOrchestrator:
                         logger.error(f"❌ Prediction generation failed: {e}")
                         unified_data["prediction"] = None
                     
-                    # ML training periodic check (non-blocking, throttled to avoid spam)
-                    current_time = time.time()
-                    if current_time - last_training_check_time >= training_check_interval:
-                        last_training_check_time = current_time
-                        
-                        # Get training manager from singleton systems (if available)
-                        try:
-                            from core.services.system_initializer import get_system_initializer
-                            system_initializer = get_system_initializer()
-                            training_manager = system_initializer.singleton_systems.get("sr_weight_training_manager")
-                            if training_manager:
-                                # This is non-blocking - just starts background thread if needed
-                                training_manager.check_and_train_if_needed(force=False)
-                        except Exception as e:
-                            logger.debug(f"Could not check ML training: {e}")
+                    # ML training DISABLED - SQLite file-level locking causes blocking
+                    # Training makes heavy database queries that block other operations
                     
                     # Update dashboard with unified market data (includes prediction)
                     self._update_dashboard_with_unified_data(
@@ -444,18 +427,23 @@ class SessionOrchestrator:
 
             # Get trading data
             trading_data = self._get_trading_data()
-
-            # Get ML training status for dashboard
-            ml_performance_data = {}
-            try:
-                from core.services.system_initializer import get_system_initializer
-                system_initializer = get_system_initializer()
-                training_manager = system_initializer.singleton_systems.get("sr_weight_training_manager")
-                if training_manager:
-                    ml_performance_data = training_manager.get_dashboard_data()
-            except Exception as e:
-                logger.debug(f"Could not get ML training data: {e}")
             
+            # Get ML weights info (weights file status - training is done separately)
+            ml_weights_info = {}
+            try:
+                from core.calculations.sr_weight_info import get_weights_info
+                weights_info = get_weights_info()
+                ml_weights_info = {
+                    "weights_status": "Trained" if weights_info["exists"] else "Static",
+                    "weights_file": "elasticnet_weights.json" if weights_info["exists"] else "Not found",
+                    "weights_age_days": round(weights_info["age_days"], 1) if weights_info["age_days"] is not None else None,
+                    "method": weights_info["method"],
+                    "weights": weights_info["weights"],
+                    "training_needed": weights_info.get("training_needed", "needed")
+                }
+            except Exception as e:
+                logger.debug(f"Could not get ML weights info: {e}")
+
             # Prepare unified data with analysis data
             unified_data = {
                 "timestamp": time.time(),
@@ -464,8 +452,7 @@ class SessionOrchestrator:
                 "orderbook_data": orderbook_data,  # Level 2 orderbook with bids/asks
                 "session_data": session_data,
                 "trading_data": trading_data,
-                "ml_data": {},
-                "ml_performance": ml_performance_data,
+                "ml_performance": ml_weights_info,  # ML weights file info (training done separately)
                 # Include all analysis data
                 **analysis_data,
             }

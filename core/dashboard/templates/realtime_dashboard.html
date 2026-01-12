@@ -699,37 +699,35 @@
                                 
                     
 
-                    <!-- ML Performance Section -->
+                    <!-- ML Weights Section -->
                     <div style="margin-top: 20px; padding: 20px; background: rgba(255,255,255,0.05); border-radius: 10px; border: 1px solid rgba(255,255,255,0.1);">
-                        <h3 style="color: #FFD700; margin-bottom: 15px; font-size: 16px;">🤖 ML Performance</h3>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                            <h3 style="color: #FFD700; margin: 0; font-size: 16px;">🤖 SR Weights (ML)</h3>
+                            <span class="data-value" id="ml-training-indicator" style="padding: 4px 12px; border-radius: 5px; font-size: 12px; font-weight: bold;">Loading...</span>
+                        </div>
+                        <div style="margin-bottom: 10px; font-size: 12px; color: #888;">
+                            Training is done separately: <code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 3px;">python scripts/train_sr_weights.py</code>
+                        </div>
                         <div id="ml-performance-overview" style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                                    <div class="data-item">
-                                <span class="data-label">🤖 ML Analysis:</span>
-                                <span class="data-value" id="ml-analysis-type">Loading...</span>
-                                    </div>
-                                    <div class="data-item">
-                                <span class="data-label">Analysis Type:</span>
-                                <span class="data-value" id="ml-analysis-type-detail">Loading...</span>
-                                    </div>
-                                    <div class="data-item">
-                                <span class="data-label">Training Data:</span>
-                                <span class="data-value" id="ml-training-data">Loading...</span>
-                                    </div>
                             <div class="data-item">
-                                <span class="data-label">Accuracy:</span>
-                                <span class="data-value" id="ml-accuracy">Loading...</span>
-                                </div>
-                            <div class="data-item">
-                                <span class="data-label">Win Rate Correlation:</span>
-                                <span class="data-value" id="ml-confidence-correlation">Loading...</span>
+                                <span class="data-label">Weights Status:</span>
+                                <span class="data-value" id="ml-weights-status">Loading...</span>
                             </div>
-                                <div class="data-item">
-                                <span class="data-label">Retrain Status:</span>
-                                <span class="data-value" id="ml-retrain-status">Loading...</span>
-                                </div>
                             <div class="data-item">
-                                <span class="data-label">Learning Status:</span>
-                                <span class="data-value" id="ml-learning-status">Loading...</span>
+                                <span class="data-label">Weights File:</span>
+                                <span class="data-value" id="ml-weights-file">Loading...</span>
+                            </div>
+                            <div class="data-item">
+                                <span class="data-label">Weights Age:</span>
+                                <span class="data-value" id="ml-weights-age">Loading...</span>
+                            </div>
+                            <div class="data-item">
+                                <span class="data-label">Method:</span>
+                                <span class="data-value" id="ml-method">Loading...</span>
+                            </div>
+                            <div class="data-item" style="grid-column: 1 / -1;">
+                                <span class="data-label">Weights:</span>
+                                <span class="data-value" id="ml-weights-values" style="font-size: 11px; font-family: monospace;">Loading...</span>
                             </div>
                         </div>
                     </div>
@@ -2173,55 +2171,79 @@
             
 
             updateMLPerformance(mlData) {
-                console.log('🤖 Updating ML performance data:', mlData);
+                console.log('🤖 Updating ML weights info:', mlData);
                 
-                // Update ML Analysis
-                if (mlData.analysis_type) {
-                    document.getElementById('ml-analysis-type').textContent = mlData.analysis_type;
+                // Update Training Indicator (top right)
+                const indicatorElement = document.getElementById('ml-training-indicator');
+                const trainingNeeded = mlData.training_needed || 'needed';
+                if (trainingNeeded === 'up_to_date') {
+                    indicatorElement.textContent = '✓ Up to date';
+                    indicatorElement.style.background = 'rgba(0, 255, 136, 0.2)';
+                    indicatorElement.style.color = '#00FF88';
+                    indicatorElement.style.border = '1px solid rgba(0, 255, 136, 0.3)';
+                } else if (trainingNeeded === 'recommended') {
+                    indicatorElement.textContent = '⚠ Retrain recommended';
+                    indicatorElement.style.background = 'rgba(255, 165, 0, 0.2)';
+                    indicatorElement.style.color = '#FFA500';
+                    indicatorElement.style.border = '1px solid rgba(255, 165, 0, 0.3)';
                 } else {
-                    document.getElementById('ml-analysis-type').textContent = 'N/A';
+                    indicatorElement.textContent = '⚠ Training needed';
+                    indicatorElement.style.background = 'rgba(255, 68, 68, 0.2)';
+                    indicatorElement.style.color = '#FF4444';
+                    indicatorElement.style.border = '1px solid rgba(255, 68, 68, 0.3)';
                 }
                 
-                // Update Analysis Type
-                if (mlData.analysis_type_detail) {
-                    document.getElementById('ml-analysis-type-detail').textContent = mlData.analysis_type_detail;
+                // Update Weights Status
+                const statusElement = document.getElementById('ml-weights-status');
+                if (mlData.weights_status) {
+                    statusElement.textContent = mlData.weights_status;
+                    statusElement.className = mlData.weights_status === 'Trained' ? 'data-value trend-up' : 'data-value';
                 } else {
-                    document.getElementById('ml-analysis-type-detail').textContent = 'Standard';
+                    statusElement.textContent = 'Unknown';
+                    statusElement.className = 'data-value';
                 }
                 
-                // Update Training Data
-                if (mlData.training_data_points) {
-                    document.getElementById('ml-training-data').textContent = `${mlData.training_data_points} points`;
+                // Update Weights File
+                if (mlData.weights_file) {
+                    document.getElementById('ml-weights-file').textContent = mlData.weights_file;
                 } else {
-                    document.getElementById('ml-training-data').textContent = 'Loading...';
+                    document.getElementById('ml-weights-file').textContent = 'Not found';
                 }
                 
-                // Update Accuracy
-                if (mlData.accuracy !== undefined) {
-                    document.getElementById('ml-accuracy').textContent = `${(mlData.accuracy * 100).toFixed(1)}%`;
+                // Update Weights Age
+                const ageElement = document.getElementById('ml-weights-age');
+                if (mlData.weights_age_days !== null && mlData.weights_age_days !== undefined) {
+                    ageElement.textContent = `${mlData.weights_age_days} days`;
+                    // Color based on age: green if < 30 days, yellow if < 90 days, red if older
+                    if (mlData.weights_age_days < 30) {
+                        ageElement.className = 'data-value trend-up';
+                    } else if (mlData.weights_age_days < 90) {
+                        ageElement.className = 'data-value';
+                        ageElement.style.color = '#FFA500';
+                    } else {
+                        ageElement.className = 'data-value trend-down';
+                    }
                 } else {
-                    document.getElementById('ml-accuracy').textContent = 'Loading...';
+                    ageElement.textContent = 'N/A';
+                    ageElement.className = 'data-value';
                 }
                 
-                // Update Confidence Correlation
-                if (mlData.confidence_correlation !== undefined) {
-                    document.getElementById('ml-confidence-correlation').textContent = mlData.confidence_correlation.toFixed(3);
+                // Update Method
+                if (mlData.method) {
+                    document.getElementById('ml-method').textContent = mlData.method;
                 } else {
-                    document.getElementById('ml-confidence-correlation').textContent = 'Loading...';
+                    document.getElementById('ml-method').textContent = 'Unknown';
                 }
                 
-                // Update Retrain Status
-                if (mlData.retrain_status) {
-                    document.getElementById('ml-retrain-status').textContent = mlData.retrain_status;
+                // Update Weights Values
+                const weightsElement = document.getElementById('ml-weights-values');
+                if (mlData.weights && typeof mlData.weights === 'object') {
+                    const weightsStr = Object.entries(mlData.weights)
+                        .map(([key, value]) => `${key}: ${(value * 100).toFixed(1)}%`)
+                        .join(', ');
+                    weightsElement.textContent = weightsStr || 'N/A';
                 } else {
-                    document.getElementById('ml-retrain-status').textContent = 'Auto';
-                }
-                
-                // Update Learning Status
-                if (mlData.learning_status) {
-                    document.getElementById('ml-learning-status').textContent = mlData.learning_status;
-                } else {
-                    document.getElementById('ml-learning-status').textContent = 'Active';
+                    weightsElement.textContent = 'Using static weights';
                 }
             }
             

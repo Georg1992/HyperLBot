@@ -49,7 +49,7 @@ class SRScorer:
         learned_weights = self._load_learned_weights(strategy)
         
         if learned_weights:
-            logger.info(f"✅ Loaded learned weights for strategy '{strategy}'")
+            logger.info("✅ Loaded universal learned weights (used by all strategies)")
             # Use learned weights if available (ML-optimized)
             self._scoring_weights = {
                 'mtf': 0.00,  # Multi-timeframe confirmation (0% - removed)
@@ -81,11 +81,12 @@ class SRScorer:
             raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum}")
     
     def _load_learned_weights(self, strategy: str) -> Optional[Dict[str, float]]:
-        """Load learned weights from file, return None if not available"""
+        """Load universal learned weights from file (same for all strategies), return None if not available"""
         try:
             from .sr_weight_trainer import SRWeightTrainer
             trainer = SRWeightTrainer()
-            weights = trainer.load_weights(strategy=strategy, method="elasticnet")
+            # Universal weights - strategy parameter ignored (kept for backward compatibility)
+            weights = trainer.load_weights(method="elasticnet")
             return weights
         except Exception as e:
             logger.debug(f"Could not load learned weights: {e}")

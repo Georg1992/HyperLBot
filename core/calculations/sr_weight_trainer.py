@@ -404,18 +404,17 @@ class SRWeightTrainer:
         finally:
             conn.close()
     
-    def save_weights(self, weights: Dict[str, float], strategy: str = "standard", 
-                    method: str = "elasticnet"):
-        """Save weights to JSON file"""
-        filename = f"{strategy}_{method}_weights.json"
+    def save_weights(self, weights: Dict[str, float], method: str = "elasticnet"):
+        """Save weights to JSON file (universal weights - same for all strategies)"""
+        filename = f"{method}_weights.json"
         filepath = os.path.join(self.weights_dir, filename)
         
         data = {
             'weights': weights,
-            'strategy': strategy,
             'method': method,
             'timestamp': time.time(),
-            'feature_names': self.FEATURE_NAMES
+            'feature_names': self.FEATURE_NAMES,
+            'note': 'Universal weights - same for all strategies'
         }
         
         with open(filepath, 'w') as f:
@@ -423,9 +422,9 @@ class SRWeightTrainer:
         
         logger.info(f"Saved weights to {filepath}")
     
-    def load_weights(self, strategy: str = "standard", method: str = "elasticnet") -> Optional[Dict[str, float]]:
-        """Load weights from JSON file"""
-        filename = f"{strategy}_{method}_weights.json"
+    def load_weights(self, method: str = "elasticnet") -> Optional[Dict[str, float]]:
+        """Load weights from JSON file (universal weights - same for all strategies)"""
+        filename = f"{method}_weights.json"
         filepath = os.path.join(self.weights_dir, filename)
         
         if not os.path.exists(filepath):
@@ -451,20 +450,19 @@ class SRWeightTrainer:
             return None
 
 
-def train_sr_weights(strategy: str = "standard", use_xgboost: bool = False):
+def train_sr_weights(use_xgboost: bool = False):
     """
-    Main training function
+    Main training function - trains universal weights (same for all strategies)
     
     Args:
-        strategy: Strategy name
         use_xgboost: Also train XGBoost + SHAP (optional)
     """
     trainer = SRWeightTrainer()
     
     try:
-        logger.info("Starting walk-forward training...")
+        logger.info("Starting walk-forward training for universal SR weights...")
         weights = trainer.walk_forward_train(train_months=12, test_months=1, stride_months=1)
-        trainer.save_weights(weights, strategy=strategy, method="elasticnet")
+        trainer.save_weights(weights, method="elasticnet")
         
         if use_xgboost and XGBOOST_AVAILABLE:
             logger.info("Training XGBoost + SHAP...")
@@ -477,8 +475,8 @@ def train_sr_weights(strategy: str = "standard", use_xgboost: bool = False):
             features, targets = trainer.extract_features_and_targets(min_ts, max_ts)
             if len(features) > 100:
                 shap_weights, model_weights = trainer.train_xgboost_shap(features, targets)
-                trainer.save_weights(shap_weights, strategy=strategy, method="xgboost_shap")
-                trainer.save_weights(model_weights, strategy=strategy, method="xgboost_model")
+                trainer.save_weights(shap_weights, method="xgboost_shap")
+                trainer.save_weights(model_weights, method="xgboost_model")
         
     except Exception as e:
         logger.error(f"Training failed: {e}")

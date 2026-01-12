@@ -477,7 +477,7 @@ class MarketDataService:
                             for category, pattern_list in nested_patterns.items():
                                 if isinstance(pattern_list, list):
                                     patterns_count += len(pattern_list)
-                    logger.debug(f"🗄️ Using cached pattern analysis ({patterns_count} patterns)")
+                    # Removed excessive debug log for cached pattern analysis
                     return cached_data
                 
                 # Cache miss or invalid - perform fresh analysis
@@ -937,7 +937,7 @@ class MarketDataService:
                     dashboard = EventDrivenTradingDashboard.get_global_instance()
                     if dashboard:
                         dashboard.force_data_update()
-                        logger.debug("📡 Instant RSI dashboard update triggered")
+                        # Removed excessive debug log for instant RSI update trigger
                 except Exception as e:
                     # Dashboard might not be initialized yet - that's okay
                     pass
