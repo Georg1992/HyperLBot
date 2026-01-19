@@ -244,8 +244,10 @@ class SessionOrchestrator:
                     orderbook_data = market_data_service.get_market_data()
 
                     # Prepare unified market data (triggers all analysis modules)
+                    # CRITICAL: Analysis is strategy-independent to avoid circular dependency
+                    # We pass None for strategy to force strategy-agnostic analysis
                     unified_data = self._prepare_unified_market_data(
-                        orderbook_data, current_price, market_data_service, strategy
+                        orderbook_data, current_price, market_data_service, strategy_for_analysis=None
                     )
 
                     # Detect and update strategy AFTER all analysis modules are complete
@@ -254,9 +256,9 @@ class SessionOrchestrator:
                         unified_data, dashboard_service
                     )
                     
-                    # Update unified data with new strategy if it changed
+                    # Update unified data with detected strategy
+                    unified_data["strategy"] = current_strategy
                     if current_strategy != strategy:
-                        unified_data["strategy"] = current_strategy
                         logger.info(f"🔄 Strategy updated in unified data: {strategy} → {current_strategy}")
 
                     # Generate prediction
@@ -429,9 +431,20 @@ class SessionOrchestrator:
         orderbook_data: Dict[str, Any],
         current_price: float,
         market_data_service,
-        strategy: str,
+        strategy_for_analysis: str = None,
     ) -> Dict[str, Any]:
-        """Prepare unified market data for analysis"""
+        """
+        Prepare unified market data for analysis
+        
+        CRITICAL: Analysis is strategy-independent to avoid circular dependency.
+        Strategy is determined AFTER analysis is complete, then used for prediction.
+        
+        Args:
+            orderbook_data: Orderbook data
+            current_price: Current market price
+            market_data_service: Market data service instance
+            strategy_for_analysis: DEPRECATED - kept for backward compatibility, always uses "standard"
+        """
         try:
             # Trigger analysis modules to calculate and send data to MarketDataService
             self._trigger_analysis_modules(
@@ -442,8 +455,10 @@ class SessionOrchestrator:
             # This prevents strategy selection from using stale data
             time.sleep(0.1)  # 100ms delay for analysis completion
 
-            # Get comprehensive analysis data from MarketDataService (includes prediction data)
-            analysis_data = market_data_service.get_dashboard_data(strategy)
+            # Get comprehensive analysis data from MarketDataService
+            # CRITICAL: Use "standard" strategy for analysis to avoid circular dependency
+            # The actual strategy will be determined AFTER analysis is complete
+            analysis_data = market_data_service.get_dashboard_data(strategy="standard")
             
             # Log if analysis_data is empty
             if not analysis_data or len(analysis_data) == 0:
@@ -481,10 +496,11 @@ class SessionOrchestrator:
             consolidation_data = {}
             try:
                 # Create temporary unified_data for consolidation analysis
+                # Strategy is None at this point (determined after analysis)
                 temp_unified = {
                     "timestamp": time.time(),
                     "current_price": current_price,
-                    "strategy": strategy,
+                    "strategy": None,
                     **analysis_data
                 }
                 consolidation_data = market_data_service.get_consolidation_analysis(
@@ -495,10 +511,11 @@ class SessionOrchestrator:
                 logger.debug(f"Could not get consolidation analysis: {e}")
             
             # Prepare unified data with analysis data
+            # Strategy is None initially - will be set by strategy detection
             unified_data = {
                 "timestamp": time.time(),
                 "current_price": current_price,
-                "strategy": strategy,
+                "strategy": None,  # Determined after analysis
                 "orderbook_data": orderbook_data,  # Level 2 orderbook with bids/asks
                 "session_data": session_data,
                 "trading_data": trading_data,
@@ -539,12 +556,12 @@ class SessionOrchestrator:
 
             # Removed excessive debug logging
 
-            # Map module names to MarketDataService get methods
+            # Map module names to MarketDataService get methods (all strategy-independent)
             module_to_getter = {
                 "rsi_calculator": lambda: market_data_service.get_rsi_analysis(),
-                "volatility": lambda: market_data_service.get_volatility_analysis("standard"),
-                "trend": lambda: market_data_service.get_trend_analysis("standard"),
-                "support_resistance": lambda: market_data_service.get_support_resistance_analysis("standard"),
+                "volatility": lambda: market_data_service.get_volatility_analysis(),
+                "trend": lambda: market_data_service.get_trend_analysis(),
+                "support_resistance": lambda: market_data_service.get_support_resistance_analysis(),
                 "volume": lambda: market_data_service.get_volume_analysis(),
                 "pressure": lambda: market_data_service.get_pressure_analysis(),
                 "pattern_recognition": lambda: market_data_service.get_pattern_analysis(),

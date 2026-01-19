@@ -42,16 +42,17 @@ class TradingConfig:
     MIN_PROFIT_TARGET = float(os.getenv("MIN_PROFIT_TARGET", "0.002"))  # 0.2% (lower for 40x)
     MAX_STOP_LOSS = float(os.getenv("MAX_STOP_LOSS", "0.008"))  # 0.8% (tighter for 40x)
     
-    # Universal Support/Resistance Scoring Configuration
-    # All strategies use the same scoring weights - SR levels are objective market features
-    # Strategy only affects SELECTION (max_levels_per_side, max_distance_pct, min_level_distance_pct)
-    SR_SCORING_WEIGHTS = {
-        "proximity": 0.15,  # Distance from current price - closer = higher score (part of reversal probability)
-        "touch": 0.50,      # Touch count - more touches = stronger level (primary factor)
-        "reversal_probability": 0.20,  # Historical reversal rate from actual data (secondary factor)
-        "recency": 0.10,    # Time since last touch - recent = higher score
-        "volume": 0.05      # Volume at level - higher = more liquidity
+    # Universal Support/Resistance Power Configuration
+    # Power = pure level strength (inherent quality, not contextual)
+    # Only includes: touch count, volume, reversal_probability
+    # Contextual factors (proximity, recency) are used in direction/entry calculations, not level power
+    SR_POWER_WEIGHTS = {
+        "touch": 0.60,      # Touch count - more touches = stronger level (primary factor)
+        "reversal_probability": 0.30,  # Historical reversal rate from actual data (secondary factor)
+        "volume": 0.10      # Volume at level - higher = more liquidity
     }
+    # Backward compatibility alias
+    SR_SCORING_WEIGHTS = SR_POWER_WEIGHTS
     SR_PROXIMITY_DECAY_K = float(os.getenv("SR_PROXIMITY_DECAY_K", "0.15"))  # k in exp(-distance/(k*ATR)) - universal decay factor
     
     # Strategy-Based Support/Resistance Level Selection
@@ -111,8 +112,122 @@ class TradingConfig:
         }
     }
     
+    # S/R LEVEL SCORING WEIGHTS (Strategy-Aware)
+    # How to prioritize different factors when scoring S/R levels
+    SR_LEVEL_SCORING_WEIGHTS = {
+        "low_volatility_range": {
+            "power": 0.15,        # Low - strength less important in tight ranges
+            "proximity": 0.45,    # HIGH - need closest levels for precise entries
+            "recency": 0.25,      # High - recent boundaries are active
+            "mtf": 0.10,          # Medium - confirmation helpful
+            "touches": 0.03,      # Low - less important
+            "cluster": 0.02       # Low - less important
+        },
+        "range_trading": {
+            "power": 0.20,        # Moderate
+            "proximity": 0.40,    # High - need nearby boundaries
+            "recency": 0.20,      # High - active ranges
+            "mtf": 0.12,          # Medium
+            "touches": 0.05,      # Low
+            "cluster": 0.03       # Low
+        },
+        "spike_hunting": {
+            "power": 0.60,        # VERY HIGH - only strongest levels
+            "proximity": 0.05,    # Very low - distance doesn't matter
+            "recency": 0.05,      # Very low - old strong levels still relevant
+            "mtf": 0.20,          # High - confirmation critical
+            "touches": 0.07,      # Medium - well-tested important
+            "cluster": 0.03       # Low
+        },
+        "breakout": {
+            "power": 0.35,        # High - need strong levels to break
+            "proximity": 0.30,    # High - need nearby targets
+            "recency": 0.15,      # Medium
+            "mtf": 0.12,          # Medium
+            "touches": 0.05,      # Low
+            "cluster": 0.03       # Low
+        },
+        "trend_following": {
+            "power": 0.35,        # High
+            "proximity": 0.25,    # Medium
+            "recency": 0.15,      # Medium
+            "mtf": 0.15,          # Medium
+            "touches": 0.06,      # Medium
+            "cluster": 0.04       # Low
+        },
+        "high_volatility": {
+            "power": 0.40,        # High - need strong levels in volatility
+            "proximity": 0.20,    # Medium
+            "recency": 0.15,      # Medium
+            "mtf": 0.15,          # Medium
+            "touches": 0.06,      # Medium
+            "cluster": 0.04       # Low
+        },
+        "scalping": {
+            "power": 0.25,        # Medium
+            "proximity": 0.35,    # High - need close quick entries
+            "recency": 0.25,      # High - very recent activity
+            "mtf": 0.08,          # Low - less relevant for scalping
+            "touches": 0.04,      # Low
+            "cluster": 0.03       # Low
+        },
+        "standard": {
+            "power": 0.30,        # Balanced
+            "proximity": 0.25,    # Balanced
+            "recency": 0.20,      # Balanced
+            "mtf": 0.15,          # Balanced
+            "touches": 0.05,      # Balanced
+            "cluster": 0.05       # Balanced
+        }
+    }
+    
     # Strategy Configurations
     STRATEGY_CONFIGS = {
+    # COMPREHENSIVE ANALYSIS MODE - Strategy-independent market analysis
+    # Used during analysis phase to find ALL significant levels
+    # NOT a tradeable strategy - purely for objective market structure detection
+    "comprehensive_analysis": {
+        "min_range_percentage": 0.001,  # Very permissive
+        "volatility_threshold": "any",
+        "confidence_threshold": 0.0,  # No confidence filtering during analysis
+        "min_interval": 0,
+        "max_leverage": 40,
+        "profit_target": 0.015,  # Not used (analysis only)
+        "stop_loss": 0.010,  # Not used (analysis only)
+        "position_size": 0.0,  # Not used (analysis only)
+        "direction_weights": {  # Not used (analysis only)
+            "rsi": 0.20,
+            "trend": 0.20,
+            "support_resistance": 0.20,
+            "pressure": 0.15,
+            "patterns": 0.15,
+            "volume": 0.05,
+            "funding": 0.05
+        },
+        "min_score_diff": 0.0,  # No filtering during analysis
+        # Comprehensive proximity/recency - accept all levels
+        "proximity_config": {
+            "close_atr": 10.0,      # Very permissive
+            "medium_atr": 20.0,
+            "far_atr": 30.0
+        },
+        "recency_config": {
+            "very_recent_hours": 168.0,   # 1 week
+            "recent_hours": 720.0,        # 1 month
+            "old_hours": 8760.0           # 1 year (very permissive)
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 5.0,      # Not used (analysis only)
+            "acceptable_atr": 10.0,
+            "too_far_atr": 20.0
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.33,    # Equal weights (analysis only)
+            "entry_quality": 0.33,
+            "fill_probability": 0.34
+        },
+        "description": "Comprehensive market analysis mode - finds ALL significant levels"
+    },
     "standard": {
         "min_range_percentage": 0.002,  # 0.2% minimum range
         "volatility_threshold": "medium",
@@ -131,7 +246,28 @@ class TradingConfig:
             "volume": 0.05,
             "funding": 0.05
         },
-        "min_score_diff": 10.0  # Minimum score difference to make direction decision
+        "min_score_diff": 10.0,  # Minimum score difference to make direction decision
+        # Proximity/Recency configuration for contextual factors
+        "proximity_config": {
+            "close_atr": 2.0,      # Full weight within 2xATR
+            "medium_atr": 4.0,     # Reduced weight at 4xATR
+            "far_atr": 6.0         # Further reduction at 6xATR
+        },
+        "recency_config": {
+            "very_recent_hours": 24.0,   # Full weight < 24h
+            "recent_hours": 72.0,        # Reduced weight < 72h (3 days)
+            "old_hours": 168.0           # Further reduction < 168h (1 week)
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 0.5,      # Optimal entry distance
+            "acceptable_atr": 1.25,  # Acceptable entry distance
+            "too_far_atr": 2.0       # Too far from level
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.30,    # Prefer stronger levels (moderate)
+            "entry_quality": 0.40,     # Proximity to level (balanced)
+            "fill_probability": 0.30   # Distance from current (moderate)
+        }
     },
     "range_trading": {
         "min_range_percentage": 0.001,  # 0.1% minimum range
@@ -158,7 +294,27 @@ class TradingConfig:
             "volume": 0.05,  # Low weight - Volume confirmation
             "funding": 0.00  # No weight - Funding irrelevant
         },
-        "min_score_diff": 12.0  # Higher threshold for range trading (need clear signals)
+        "min_score_diff": 12.0,  # Higher threshold for range trading (need clear signals)
+        "proximity_config": {
+            "close_atr": 1.5,      # Tighter for range trading (recent boundaries matter)
+            "medium_atr": 3.0,
+            "far_atr": 5.0
+        },
+        "recency_config": {
+            "very_recent_hours": 12.0,   # Range boundaries must be recent
+            "recent_hours": 48.0,
+            "old_hours": 120.0
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 0.3,      # Tighter for range trading
+            "acceptable_atr": 0.8,
+            "too_far_atr": 1.5
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.25,    # Moderate strength preference
+            "entry_quality": 0.45,     # High precision (tight range)
+            "fill_probability": 0.30   # Moderate fill priority
+        }
     },
     "breakout": {
         "confidence_threshold": 0.58,  # 58% confidence minimum for extreme volatility
@@ -181,7 +337,27 @@ class TradingConfig:
             "rsi": 0.05,  # Low weight - RSI less relevant for breakouts
             "funding": 0.00  # No weight - Funding irrelevant
         },
-        "min_score_diff": 10.0
+        "min_score_diff": 10.0,
+        "proximity_config": {
+            "close_atr": 4.0,      # Wider tolerance for breakouts (can break from distance)
+            "medium_atr": 8.0,
+            "far_atr": 12.0
+        },
+        "recency_config": {
+            "very_recent_hours": 48.0,   # Older levels can still break
+            "recent_hours": 168.0,
+            "old_hours": 336.0
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 1.0,      # Wider for breakouts
+            "acceptable_atr": 2.5,
+            "too_far_atr": 4.0
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.40,    # High strength (strong breakout levels)
+            "entry_quality": 0.25,     # Lower precision (momentum-driven)
+            "fill_probability": 0.35   # High fill (need to catch move)
+        }
     },
     "low_volatility_range": {
         "min_range_percentage": 0.0003,  # 0.03% minimum range (very tight)
@@ -208,7 +384,27 @@ class TradingConfig:
             "volume": 0.02,  # Very low weight
             "funding": 0.00  # No weight
         },
-        "min_score_diff": 10.0
+        "min_score_diff": 10.0,
+        "proximity_config": {
+            "close_atr": 1.0,      # Very tight for low volatility ranges
+            "medium_atr": 2.0,
+            "far_atr": 3.5
+        },
+        "recency_config": {
+            "very_recent_hours": 6.0,    # Very recent boundaries only
+            "recent_hours": 24.0,
+            "old_hours": 72.0
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 0.2,      # Very tight for low volatility
+            "acceptable_atr": 0.6,
+            "too_far_atr": 1.2
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.25,    # Moderate strength
+            "entry_quality": 0.50,     # Highest precision (tight ranges)
+            "fill_probability": 0.25   # Lower fill priority (patient)
+        }
     },
     "high_volatility": {
         "min_range_percentage": 0.005,  # 0.5% minimum range
@@ -228,7 +424,27 @@ class TradingConfig:
             "patterns": 0.05,  # Low weight
             "funding": 0.00  # No weight
         },
-        "min_score_diff": 12.0
+        "min_score_diff": 12.0,
+        "proximity_config": {
+            "close_atr": 3.0,      # Wider for high volatility
+            "medium_atr": 6.0,
+            "far_atr": 10.0
+        },
+        "recency_config": {
+            "very_recent_hours": 36.0,   # Moderate recency
+            "recent_hours": 96.0,
+            "old_hours": 240.0
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 0.8,      # Wider for high volatility
+            "acceptable_atr": 2.0,
+            "too_far_atr": 3.5
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.40,    # High strength (need strong levels in volatility)
+            "entry_quality": 0.25,     # Lower precision (fast-moving)
+            "fill_probability": 0.35   # High fill (catch volatile moves)
+        }
     },
     "spike_hunting": {
         "min_range_percentage": 0.008,  # 0.8% minimum range
@@ -251,7 +467,27 @@ class TradingConfig:
             "support_resistance": 0.00,  # No weight - S/R irrelevant for spikes
             "funding": 0.00  # No weight
         },
-        "min_score_diff": 20.0  # Very high threshold - need extreme signals
+        "min_score_diff": 20.0,  # Very high threshold - need extreme signals
+        "proximity_config": {
+            "close_atr": 5.0,      # Very wide for spike hunting
+            "medium_atr": 10.0,
+            "far_atr": 15.0
+        },
+        "recency_config": {
+            "very_recent_hours": 72.0,   # Older levels can spike
+            "recent_hours": 240.0,
+            "old_hours": 720.0
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 1.5,      # Wide for spikes
+            "acceptable_atr": 3.5,
+            "too_far_atr": 6.0
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.50,    # Highest strength (only strongest levels)
+            "entry_quality": 0.30,     # Moderate precision
+            "fill_probability": 0.20   # Lowest fill priority (very patient)
+        }
     },
     "trend_following": {
         "min_range_percentage": 0.003,  # 0.3% minimum range
@@ -275,7 +511,27 @@ class TradingConfig:
             "volume": 0.05,  # Low weight - Volume confirmation
             "funding": 0.00  # No weight - Funding irrelevant
         },
-        "min_score_diff": 15.0  # Higher threshold - need strong trend confirmation
+        "min_score_diff": 15.0,  # Higher threshold - need strong trend confirmation
+        "proximity_config": {
+            "close_atr": 3.0,      # Moderate for trend following
+            "medium_atr": 6.0,
+            "far_atr": 9.0
+        },
+        "recency_config": {
+            "very_recent_hours": 48.0,   # Trend levels can be older
+            "recent_hours": 168.0,
+            "old_hours": 336.0
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 0.7,      # Moderate for trend following
+            "acceptable_atr": 1.8,
+            "too_far_atr": 3.0
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.40,    # High strength (trend + strong level)
+            "entry_quality": 0.35,     # Good precision
+            "fill_probability": 0.25   # Lower fill (patient with trend)
+        }
     },
     "scalping": {
         "min_range_percentage": 0.0005,  # 0.05% minimum range (very tight)
@@ -302,7 +558,27 @@ class TradingConfig:
             "volume": 0.05,  # Low weight - Volume confirmation
             "funding": 0.00  # No weight - Funding irrelevant for scalping
         },
-        "min_score_diff": 8.0  # Lower threshold for faster decisions
+        "min_score_diff": 8.0,  # Lower threshold for faster decisions
+        "proximity_config": {
+            "close_atr": 1.0,      # Very tight for scalping (must be immediate)
+            "medium_atr": 2.0,
+            "far_atr": 3.0
+        },
+        "recency_config": {
+            "very_recent_hours": 2.0,    # Very recent only for scalping
+            "recent_hours": 12.0,
+            "old_hours": 48.0
+        },
+        "entry_proximity_config": {
+            "optimal_atr": 0.2,      # Very tight for scalping
+            "acceptable_atr": 0.5,
+            "too_far_atr": 1.0
+        },
+        "entry_candidate_weights": {
+            "level_strength": 0.20,    # Lowest strength (speed over quality)
+            "entry_quality": 0.30,     # Lower precision (fast fills)
+            "fill_probability": 0.50   # Highest fill (immediate execution)
+        }
     },
     }
     

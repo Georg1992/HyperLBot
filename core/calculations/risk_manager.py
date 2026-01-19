@@ -26,7 +26,8 @@ class RiskManager:
         atr_5m: float,
         current_price: float,
         config: Dict[str, Any],
-        unified_data: Dict[str, Any]
+        unified_data: Dict[str, Any],
+        leverage: int = 40
     ) -> float:
         """
         Calculate unified stop loss considering both S/R structure and risk management
@@ -34,7 +35,8 @@ class RiskManager:
         Unified formula that considers both S/R structure AND risk management simultaneously:
         - S/R constraint: stop must be below support (LONG) or above resistance (SHORT)
         - Risk constraint: stop must be at least min_distance from entry
-        - Final stop = position that satisfies BOTH constraints (more conservative)
+        - Liquidation constraint: stop must trigger BEFORE liquidation (with buffer)
+        - Final stop = position that satisfies ALL constraints (most conservative)
         
         Args:
             entry_price: Entry price for the trade
@@ -44,6 +46,7 @@ class RiskManager:
             current_price: Current market price
             config: Strategy configuration
             unified_data: Complete market analysis data
+            leverage: Leverage multiplier (default 40x)
             
         Returns:
             Calculated stop loss price
@@ -130,6 +133,42 @@ class RiskManager:
                 raise ValueError(f"Unified stop ${stop_loss:.2f} violates S/R constraint (min: ${stop_loss_sr_constraint:.2f} above resistance) (NO FALLBACKS)")
             
             logger.debug(f"✅ Unified SHORT stop: ${stop_loss:.2f} (S/R constraint: ${stop_loss_sr_constraint:.2f}, Risk constraint: ${stop_loss_risk_constraint:.2f}, Distance: {stop_loss - entry_price:.2f})")
+        
+        # CRITICAL: Cap stop loss at liquidation price with safety buffer
+        # Ensures stop triggers BEFORE liquidation for leveraged positions
+        from core.calculations.liquidation_calculator import LiquidationCalculator
+        liq_calc = LiquidationCalculator(leverage=leverage)
+        liquidation_price = liq_calc.calculate_liquidation_price(entry_price, direction)
+        
+        # Safety buffer: 0.5% before liquidation (ensures stop triggers first)
+        safety_buffer_pct = 0.005  # 0.5%
+        
+        if direction == "LONG":
+            # For LONG: liquidation is below entry, stop must be above liquidation
+            # Max stop = liquidation + buffer (closer to entry, safer)
+            max_stop_from_liquidation = liquidation_price * (1.0 + safety_buffer_pct)
+            
+            if stop_loss < max_stop_from_liquidation:
+                logger.warning(f"⚠️ Stop loss ${stop_loss:.2f} exceeds liquidation price ${liquidation_price:.2f}! Capping at ${max_stop_from_liquidation:.2f} (liq + {safety_buffer_pct*100}% buffer)")
+                stop_loss = max_stop_from_liquidation
+                
+                # Validate capped stop is still below entry
+                if stop_loss >= entry_price:
+                    raise ValueError(f"Liquidation constraint makes trade impossible: max_stop ${stop_loss:.2f} >= entry ${entry_price:.2f} (liquidation too close to entry) (NO FALLBACKS)")
+        else:  # SHORT
+            # For SHORT: liquidation is above entry, stop must be below liquidation
+            # Max stop = liquidation - buffer (closer to entry, safer)
+            max_stop_from_liquidation = liquidation_price * (1.0 - safety_buffer_pct)
+            
+            if stop_loss > max_stop_from_liquidation:
+                logger.warning(f"⚠️ Stop loss ${stop_loss:.2f} exceeds liquidation price ${liquidation_price:.2f}! Capping at ${max_stop_from_liquidation:.2f} (liq - {safety_buffer_pct*100}% buffer)")
+                stop_loss = max_stop_from_liquidation
+                
+                # Validate capped stop is still above entry
+                if stop_loss <= entry_price:
+                    raise ValueError(f"Liquidation constraint makes trade impossible: max_stop ${stop_loss:.2f} <= entry ${entry_price:.2f} (liquidation too close to entry) (NO FALLBACKS)")
+        
+        logger.debug(f"🛡️ Liquidation check: liq=${liquidation_price:.2f}, final_stop=${stop_loss:.2f}")
         
         return stop_loss
     

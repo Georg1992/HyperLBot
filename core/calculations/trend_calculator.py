@@ -15,8 +15,13 @@ class TrendCalculator:
     def __init__(self):
         logger.info("📈 Trend Calculator initialized - Simple working logic")
     
-    def get_latest_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get latest trend analysis for MarketDataService coordination - NO FALLBACKS"""
+    def get_latest_analysis(self) -> Dict[str, Any]:
+        """
+        Get latest trend analysis for MarketDataService coordination - NO FALLBACKS
+        
+        Strategy-independent: Returns objective trend analysis for all timeframes.
+        No strategy-specific filtering or bias.
+        """
         try:
             # Get candles from HistoricalDataService - NO FALLBACKS
             from core.services.historical_data_service import create_historical_data_service

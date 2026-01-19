@@ -29,7 +29,14 @@ class LiquidationCalculator:
             leverage: Leverage multiplier (default from TradingConfig)
         """
         self.leverage = leverage or TradingConfig.LEVERAGE
-        self.maintenance_margin_rate = 1.0 / self.leverage  # For 40x: 0.025 (2.5%)
+        # Hyperliquid actual maintenance margin rate (observed from real positions)
+        # For 40x: theoretical is 2.5%, but actual is ~1.226% due to margin tiers and position sizing
+        # Using observed rate: entry $92,062 -> liq $93,191 = 1.226% multiplier
+        # This is more accurate than theoretical 2.5%
+        if self.leverage == 40:
+            self.maintenance_margin_rate = 0.01226  # Actual observed rate for 40x
+        else:
+            self.maintenance_margin_rate = 1.0 / self.leverage  # Theoretical for other leverages
         
     def calculate_liquidation_price(self, entry_price: float, side: str = "LONG") -> float:
         """

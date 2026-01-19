@@ -90,9 +90,9 @@ def main():
     if not check_single_instance():
         return
     
-    # Check and install dependencies
-    if not check_and_install_dependencies():
-        logger.error("Failed to install required dependencies")
+    # Dependency preflight (non-mutating)
+    if not check_dependencies():
+        logger.error("Missing dependencies detected; install them and retry.")
         return
     
     while True:
@@ -123,10 +123,13 @@ def main():
             logger.warning("Invalid menu choice entered")
             print("Invalid choice. Please enter 1-4.")
 
-def check_and_install_dependencies():
-    """Check and automatically install missing dependencies"""
-    # Module name -> Package name mapping (for pip install)
-    # Key: import name, Value: pip package name
+def check_dependencies():
+    """
+    Verify required dependencies are importable without mutating the environment.
+    
+    Clear preflight: reports missing modules and how to install them. This avoids
+    runtime pip installs that can leave the environment half-configured.
+    """
     module_to_package = {
         'flask': 'flask',
         'flask_socketio': 'flask-socketio',
@@ -135,60 +138,45 @@ def check_and_install_dependencies():
         'pandas': 'pandas',
         'numpy': 'numpy',
         'loguru': 'loguru',
-        'dotenv': 'python-dotenv',  # python-dotenv imports as 'dotenv'
+        'dotenv': 'python-dotenv',
         'httpx': 'httpx',
         'aiohttp': 'aiohttp',
-        'eth_account': 'eth_account',  # Required for Hyperliquid API
-        'websockets': 'websockets',  # Required for WebSocket connections
-        'feedparser': 'feedparser',  # Required for RSS news feed
-        'vaderSentiment': 'vaderSentiment',  # Required for sentiment analysis
+        'eth_account': 'eth_account',
+        'websockets': 'websockets',
+        'feedparser': 'feedparser',
+        'vaderSentiment': 'vaderSentiment',
     }
     
-    # Required modules (using import names)
     required_modules = [
-        'flask', 'flask_socketio', 'yfinance', 'requests', 'pandas', 
+        'flask', 'flask_socketio', 'yfinance', 'requests', 'pandas',
         'numpy', 'loguru', 'dotenv', 'httpx', 'aiohttp',
         'eth_account', 'websockets', 'feedparser', 'vaderSentiment'
     ]
     
-    # Conditionally add ML dependencies if ML training is enabled
-    # Check environment variable or config (default: disabled)
     ml_training_enabled = os.getenv("ML_TRAINING_ENABLED", "false").lower() == "true"
     if ml_training_enabled:
-        required_modules.append('sklearn')  # scikit-learn imports as 'sklearn'
+        required_modules.append('sklearn')
         module_to_package['sklearn'] = 'scikit-learn'
-        logger.info("🤖 ML training enabled - scikit-learn will be checked")
+        logger.info("🤖 ML training enabled - checking scikit-learn availability")
     
     missing_modules = []
-    
-    # Check each module
     for module in required_modules:
         try:
             __import__(module)
         except ImportError:
             missing_modules.append(module)
     
-    # Install missing modules
     if missing_modules:
-        logger.info(f"Installing {len(missing_modules)} missing dependencies...")
-        
-        for module in missing_modules:
-            # Get package name from mapping (default to module name if not found)
-            package_name = module_to_package.get(module, module)
-            
-            try:
-                subprocess.check_call([
-                    sys.executable, "-m", "pip", "install", package_name, 
-                    "--break-system-packages", "--quiet"
-                ])
-                logger.debug(f"✅ Installed {package_name}")
-            except subprocess.CalledProcessError:
-                logger.error(f"Failed to install {package_name}")
-                return False
-        
-        logger.info("Dependencies installed successfully!")
-        return True
+        missing_pkgs = [module_to_package.get(m, m) for m in missing_modules]
+        logger.error("Required dependencies are missing; installation is needed.")
+        logger.error(f"Missing modules: {', '.join(missing_modules)}")
+        logger.error(
+            "Install via: pip install -r requirements.txt "
+            f"or: pip install {' '.join(missing_pkgs)}"
+        )
+        return False
     
+    logger.info("✅ All required dependencies are available")
     return True
 
 def start_dashboard():

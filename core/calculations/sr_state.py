@@ -196,7 +196,7 @@ class SRState:
                 'breakout_price': current_price,
                 'timestamp': time.time(),
                 'original_touches': level.touches,
-                'original_score': level.score
+                'original_score': level.power or 0.0
             }
             
             self._broken_levels.append(broken_level)

@@ -138,12 +138,10 @@
             color: #fff;
         }
         
-        /* Enhanced visibility for support/resistance levels */
-        #support-resistance-levels {
-            font-size: 15px !important;
+        /* 2-column layout for S/R levels */
+        #support-levels-list, #resistance-levels-list {
+            font-size: 13px !important;
             line-height: 1.6 !important;
-            letter-spacing: 0.3px !important;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3) !important;
         }
         
         .data-value.extremely-high {
@@ -486,16 +484,16 @@
                     <h3 style="color: #FFD700; margin-bottom: 15px;">🔍 Market Conditions</h3>
                     <div id="overview-conditions">
                         <div class="data-item">
-                            <span class="data-label">Status:</span>
+                            <span class="data-label">Status (7-day):</span>
                             <span class="data-value" id="overview-conditions-status" style="font-weight: bold;">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Quality:</span>
-                            <span class="data-value" id="overview-conditions-condition">Loading...</span>
+                            <span class="data-label">Quality (real-time):</span>
+                            <span class="data-value" id="overview-conditions-condition" title="Real-time trading condition quality based on current market factors">Loading...</span>
                         </div>
                         <div class="data-item">
-                            <span class="data-label">Risk:</span>
-                            <span class="data-value" id="overview-conditions-risk">Loading...</span>
+                            <span class="data-label">Risk (real-time):</span>
+                            <span class="data-value" id="overview-conditions-risk" title="Real-time risk level based on current market conditions">Loading...</span>
                         </div>
                         <div class="data-item">
                             <span class="data-label">Fear & Greed:</span>
@@ -628,9 +626,18 @@
                             <span class="data-label">Pressure:</span>
                             <span class="data-value" id="market-pressure">Loading...</span>
                         </div>
-                        <div class="data-item">
+                        <div class="data-item" style="grid-column: 1 / -1;">
                             <span class="data-label">🎯 Key Levels:</span>
-                            <span class="data-value" id="support-resistance-levels">Loading...</span>
+                            <div id="support-resistance-levels" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+                                <div>
+                                    <div style="font-size: 12px; color: #4CAF50; font-weight: bold; margin-bottom: 8px;">Supports</div>
+                                    <div id="support-levels-list" style="font-size: 13px; line-height: 1.8;">Loading...</div>
+                                </div>
+                                <div>
+                                    <div style="font-size: 12px; color: #f44336; font-weight: bold; margin-bottom: 8px;">Resistances</div>
+                                    <div id="resistance-levels-list" style="font-size: 13px; line-height: 1.8;">Loading...</div>
+                                </div>
+                            </div>
                         </div>
                         <div class="data-item">
                             <span class="data-label">📊 Patterns:</span>
@@ -1084,43 +1091,8 @@
                 
                 
                 
-                // Update Support/Resistance with top 2 levels
-                if (market.support_resistance) {
-                    const srElement = document.getElementById('support-resistance-levels');
-                    if (srElement) {
-                        // Check if S/R data is in error state
-                        if (market.support_resistance.status === 'error') {
-                            srElement.textContent = `ERROR - ${market.support_resistance.message}`;
-                            srElement.className = 'data-value negative';
-                            console.log('📊 S/R error:', market.support_resistance.message);
-                        } else {
-                            // Filter levels for display (top 2 active levels)
-                            const allLevels = market.support_resistance.levels || market.support_resistance.key_levels || [];
-                            const currentPrice = market.current_price || 0;
-                            const supportLevels = allLevels
-                                .filter(level => level.type === 'support' && level.price_level < currentPrice && level.status === 'active')
-                                .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
-                                .slice(0, 2);
-                            const resistanceLevels = allLevels
-                                .filter(level => level.type === 'resistance' && level.price_level > currentPrice && level.status === 'active')
-                                .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
-                                .slice(0, 2);
-                            
-                            let srText = '';
-                            if (supportLevels.length > 0) {
-                                srText += `Support: $${supportLevels.map(s => (s.price_level || s.level || 0).toFixed(0)).join(', ')}`;
-                            }
-                            if (resistanceLevels.length > 0) {
-                                if (srText) srText += ' | ';
-                                srText += `Resistance: $${resistanceLevels.map(r => (r.price_level || r.level || 0).toFixed(0)).join(', ')}`;
-                            }
-                            
-                            srElement.textContent = srText || 'No levels detected';
-                            srElement.className = 'data-value';
-                            console.log('📊 S/R updated:', srText);
-                        }
-                    }
-                }
+                // Update Support/Resistance with 2-column layout (handled in updateMarketData below)
+                // This section is now handled by the main updateMarketData function which uses the 2-column layout
                 
                 // Update Pressure
                 if (market.pressure && typeof market.pressure === 'object') {
@@ -1415,80 +1387,80 @@
                 
                 
                 // Update Support/Resistance Levels
-                const srElement = document.getElementById('support-resistance-levels');
+                const supportElement = document.getElementById('support-levels-list');
+                const resistanceElement = document.getElementById('resistance-levels-list');
                 if (market.support_resistance) {
-                    const levels = market.support_resistance.key_levels || [];
-                    const strongestSupport = market.support_resistance.strongest_support;
-                    const strongestResistance = market.support_resistance.strongest_resistance;
-                    
-                    let levelsText = '';
                     const currentPrice = market.current_price || 0;
                     
-                    // Filter levels for display (top 2 active levels)
+                    // Filter levels for display (top 2-3 active levels per type)
                     const allLevels = market.support_resistance.levels || market.support_resistance.key_levels || [];
                     const topSupport = allLevels
                         .filter(level => level.type === 'support' && level.price_level < currentPrice && level.status === 'active')
-                        .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
-                        .slice(0, 2);
+                        .sort((a, b) => ((b.power || b.strength_score || 0) - (a.power || a.strength_score || 0)))
+                        .slice(0, 3);  // Show up to 3 supports
                     const topResistance = allLevels
                         .filter(level => level.type === 'resistance' && level.price_level > currentPrice && level.status === 'active')
-                        .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
-                        .slice(0, 2);
+                        .sort((a, b) => ((b.power || b.strength_score || 0) - (a.power || a.strength_score || 0)))
+                        .slice(0, 3);  // Show up to 3 resistances
                     
-                    // Helper function to format a level
-                    const formatLevel = (level, isSupport, isBest) => {
-                        const score = level.strength_score ? level.strength_score.toFixed(1) : '0.0';
+                    // Helper function to format a level with power
+                    const formatLevel = (level, index, isSupport = true) => {
+                        const power = level.power || level.strength_score || 0;  // Use power, fallback to strength_score
+                        const powerText = power.toFixed(1);
                         const touches = level.touches || 0;
-                        const timeframe = '5m';
-                        const relevance = level.status || 'active';
-                        
-                        // Add strength indicator based on score
-                        let strengthIndicator = '';
-                        if (level.strength_score > 100) strengthIndicator = ' 💪';
-                        else if (level.strength_score > 50) strengthIndicator = ' 🔥';
-                        else if (level.strength_score > 20) strengthIndicator = ' ⚡';
-                        
-                        // Highlight best level with bold and "BEST" label - INCREASED FONT SIZES FOR VISIBILITY
-                        const bestLabel = isBest ? `<span style="font-weight: bold; color: ${isSupport ? '#4ade80' : '#f87171'}; font-size: 13px; text-shadow: 0 0 3px ${isSupport ? '#4ade80' : '#f87171'};80;">★ BEST</span> ` : '';
-                        const levelStyle = isBest ? 'font-weight: bold; font-size: 16px; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,0.5);' : 'font-size: 15px; color: #e0e0e0; font-weight: 500;';
-                        const icon = isSupport ? '🟢' : '🔴';
                         const priceText = `$${Math.round(level.price_level).toLocaleString()}`;
-                        const detailsText = `(${touches}x, score:${score})`;
                         
-                        return `<span style="${levelStyle}">${bestLabel}${icon} <span style="font-size: 16px; font-weight: 600;">${priceText}</span> <span style="font-size: 14px; color: #bbb;">${detailsText}</span>${strengthIndicator} <span style="font-size: 11px; color: #999;">${timeframe} • ${relevance}</span></span><br>`;
+                        // Style: first level (strongest) gets bold, others normal
+                        const isFirst = index === 0;
+                        const levelStyle = isFirst 
+                            ? 'font-weight: bold; font-size: 14px; color: #fff;' 
+                            : 'font-size: 13px; color: #ccc;';
+                        
+                        // Color coding: green for supports, red for resistances
+                        const color = isFirst ? (isSupport ? '#4CAF50' : '#f44336') : '#888';
+                        
+                        return `<div style="${levelStyle} margin-bottom: 6px;">
+                            <span style="color: ${color}; margin-right: 6px;">${isFirst ? '●' : '○'}</span>
+                            <span style="font-weight: 600;">${priceText}</span>
+                            <span style="font-size: 11px; color: #999; margin-left: 8px;">(${touches}x, power: ${powerText})</span>
+                        </div>`;
                     };
                     
-                    // Group 1: Best levels (best support + best resistance)
+                    // Format supports column
+                    let supportText = '';
                     if (topSupport.length > 0) {
-                        levelsText += formatLevel(topSupport[0], true, true);
+                        topSupport.forEach((level, index) => {
+                            supportText += formatLevel(level, index, true);  // true = isSupport
+                        });
+                    } else {
+                        supportText = '<div style="font-size: 12px; color: #666; font-style: italic;">No supports</div>';
                     }
+                    
+                    // Format resistances column
+                    let resistanceText = '';
                     if (topResistance.length > 0) {
-                        levelsText += formatLevel(topResistance[0], false, true);
+                        topResistance.forEach((level, index) => {
+                            resistanceText += formatLevel(level, index, false);  // false = isResistance
+                        });
+                    } else {
+                        resistanceText = '<div style="font-size: 12px; color: #666; font-style: italic;">No resistances</div>';
                     }
                     
-                    // Add separator between best and secondary if both exist
-                    if ((topSupport.length > 1 || topResistance.length > 1) && (topSupport.length > 0 && topResistance.length > 0)) {
-                        levelsText += `<span style="font-size: 11px; color: #666; display: block; margin: 6px 0;">━━━━━━━━━━━━━━━━━━━━</span>`;
+                    if (supportElement) {
+                        supportElement.innerHTML = supportText;
                     }
-                    
-                    // Group 2: Secondary levels (secondary support + secondary resistance)
-                    if (topSupport.length > 1) {
-                        levelsText += formatLevel(topSupport[1], true, false);
+                    if (resistanceElement) {
+                        resistanceElement.innerHTML = resistanceText;
                     }
-                    if (topResistance.length > 1) {
-                        levelsText += formatLevel(topResistance[1], false, false);
-                    }
-                        
-                        // Add timeframe info - INCREASED FONT SIZE
-                    const timeframe = '5m'; // S/R analysis uses 5m as primary timeframe
-                    const candlesAnalyzed = market.support_resistance.metadata?.total_levels || 0;
-                        levelsText += `<span style="font-size: 12px; color: #777; margin-top: 4px; display: block;">From ${candlesAnalyzed} ${timeframe} candles</span>`;
-                    
-                    srElement.innerHTML = levelsText;
-                    srElement.className = 'data-value trend-positive';
                 } else {
-                    srElement.textContent = 'No key levels detected';
-                    srElement.className = 'data-value trend-neutral';
+                    if (supportElement) {
+                        supportElement.textContent = 'No data';
+                        supportElement.style.color = '#666';
+                    }
+                    if (resistanceElement) {
+                        resistanceElement.textContent = 'No data';
+                        resistanceElement.style.color = '#666';
+                    }
                 }
                 
                 
@@ -1618,8 +1590,10 @@
                         statusColor = '#FF9800';
                     }
                     
+                    // Add tooltip or additional info about 7-day period
                     overviewStatusElement.textContent = statusText;
                     overviewStatusElement.style.color = statusColor;
+                    overviewStatusElement.title = '7-day market trend analysis (based on daily candles)';
                     
                     // Overview Quality (same as condition)
                     const overviewConditionElement = document.getElementById('overview-conditions-condition');
@@ -2750,11 +2724,11 @@
                         const currentPrice = window.dashboard.currentMarketData.current_price || 0;
                         const topSupport = allLevels
                             .filter(level => level.type === 'support' && level.price_level < currentPrice && level.status === 'active')
-                            .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
+                            .sort((a, b) => ((b.power || b.strength_score || 0) - (a.power || a.strength_score || 0)))
                             .slice(0, 2);
                         const topResistance = allLevels
                             .filter(level => level.type === 'resistance' && level.price_level > currentPrice && level.status === 'active')
-                            .sort((a, b) => (b.strength_score || 0) - (a.strength_score || 0))
+                            .sort((a, b) => ((b.power || b.strength_score || 0) - (a.power || a.strength_score || 0)))
                             .slice(0, 2);
                         
                         // Draw support levels (green lines)

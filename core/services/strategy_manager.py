@@ -226,6 +226,7 @@ class StrategyManager:
         current_price = self._safe_get(market_data, "current_price", 0.0)
         
         # Filter levels for strategy selection
+        # During strategy selection - no active strategy yet, uses default "standard" weights
         from core.calculations.sr_level_filter import SRLevelFilter
         level_filter = SRLevelFilter()
         filtered_levels = level_filter.filter_for_strategy_selection(

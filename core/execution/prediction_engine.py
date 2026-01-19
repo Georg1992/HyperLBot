@@ -148,9 +148,11 @@ class PredictionEngine:
         """
         Standard strategy prediction logic (also used as base for other strategies)
         
-        Uses hybrid approach:
+        Uses hybrid approach with contextual direction scoring:
         1. Generate all potential setups (both LONG and SHORT)
-        2. Score each setup with: entry_quality + direction_support
+        2. Score each setup with: entry_quality + contextual_direction_support
+           - Entry quality: SR strength, proximity, reversal probability, etc.
+           - Contextual direction: considers entry proximity, level strength, and alignment
         3. Select best overall combination
         4. Calculate stop loss and take profit from config
         """
@@ -172,9 +174,10 @@ class PredictionEngine:
         logger.debug(f"📊 Best setup: {direction} @ ${entry_price:.2f} (entry: {entry_score:.1f}, direction: {direction_score:.1f}, total: {total_score:.1f})")
         
         # Calculate stop_loss and take_profit with sophisticated logic
+        # This already calculates R:R ratio internally, so we capture it
         best_setup_level_data = best_setup.get("level_data")
         best_setup_type = best_setup.get("setup_type")
-        stop_loss, take_profit = self._calculate_stop_and_target(
+        stop_loss, take_profit, rr_ratio, stop_loss_pct, take_profit_pct = self._calculate_stop_and_target(
             entry_price=entry_price,
             direction=direction,
             config=config,
@@ -186,26 +189,16 @@ class PredictionEngine:
         # Combine reasoning
         combined_reasoning = f"{best_setup['direction_reasoning']}. Entry: {best_setup['entry_reasoning']}"
         
-        # Create direction_result and entry_result for confidence calculation (backward compatibility)
-        direction_result = {
-            "direction": direction,
-            "reasoning": best_setup["direction_reasoning"],
-            "long_score": best_setup.get("long_score", 0.0),
-            "short_score": best_setup.get("short_score", 0.0)
-        }
-        entry_result = {
-            "entry_price": entry_price,
-            "reasoning": best_setup["entry_reasoning"]
-        }
-        
-        # Calculate confidence for final prediction (separate from scoring system)
+        # Pass full setup data to confidence calculation (includes all breakdowns and metrics)
         confidence = self._calculate_prediction_confidence(
-            direction_result,
-            entry_result,
-            stop_loss,
-            take_profit,
-            unified_data,
-            strategy
+            setup_data=best_setup,  # Full setup data with all breakdowns
+            stop_loss=stop_loss,
+            take_profit=take_profit,
+            rr_ratio=rr_ratio,
+            stop_loss_pct=stop_loss_pct,
+            take_profit_pct=take_profit_pct,
+            unified_data=unified_data,
+            strategy=strategy
         )
         
         return self._create_prediction(
@@ -323,7 +316,11 @@ class PredictionEngine:
     
     def _determine_direction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[Dict[str, Any]]:
         """
-        Determine trade direction using unified scoring framework
+        Determine trade direction using unified scoring framework (global - no entry context)
+        
+        NOTE: This method returns GLOBAL direction scores (not contextual).
+        For entry-specific direction scoring, use _score_direction_for_entry instead.
+        This method is kept for backward compatibility and general direction analysis.
         
         NOTE: This method uses "scores" (long_score, short_score) for direction determination.
         "Confidence" is ONLY used for final predictions, not for intermediate calculations.
@@ -451,6 +448,9 @@ class PredictionEngine:
         """
         Score Support/Resistance factor for direction determination (NO FALLBACKS)
         
+        This is called during direction scoring BEFORE strategy selection,
+        so it uses default "standard" weights (no strategy parameter).
+        
         Args:
             sr_data: Support/resistance data
             current_price: Current market price
@@ -463,7 +463,7 @@ class PredictionEngine:
         all_levels = sr_data.get("levels", [])
         current_price = self._require_key(unified_data, "current_price", "S/R factor scoring")
         
-        # Filter levels for scoring
+        # Filter levels for scoring (direction scoring = pre-strategy, uses default "standard")
         from core.calculations.sr_level_filter import SRLevelFilter
         level_filter = SRLevelFilter()
         filtered_levels = level_filter.filter_for_scoring(
@@ -485,24 +485,29 @@ class PredictionEngine:
         if top_support:
             closest_support = max(top_support, key=lambda x: x["price_level"])
             support_price = self._require_key(closest_support, "price_level", "S/R factor scoring")
-            support_score = self._require_key(closest_support, "strength_score", "S/R factor scoring")
+            from core.utils.level_utils import get_level_power
+            support_power = get_level_power(closest_support, default=50.0)
             
-            distance_pct = abs(current_price - support_price) / current_price if support_price > 0 else 1.0
+            from core.utils.distance_utils import calculate_distance_pct
+            distance_pct = calculate_distance_pct(current_price, support_price, current_price)
             # Mathematically justified: Use 2.5×ATR as "near" threshold (standard proximity measure)
             if distance_pct < near_threshold:
-                sr_long = support_score
-                reasons.append(f"Near strong support @ ${support_price:.2f} (score: {support_score:.1f}, {distance_pct*100:.3f}% away, threshold: {near_threshold*100:.3f}%)")
+                # Use power directly - it already includes reversal_probability (30% weight in power calculation)
+                sr_long = support_power
+                reasons.append(f"Near strong support @ ${support_price:.2f} (power: {support_power:.1f}, {distance_pct*100:.3f}% away)")
         
         if top_resistance:
             closest_resistance = min(top_resistance, key=lambda x: x["price_level"])
             resistance_price = self._require_key(closest_resistance, "price_level", "S/R factor scoring")
-            resistance_score = self._require_key(closest_resistance, "strength_score", "S/R factor scoring")
+            resistance_power = closest_resistance.get("power") or closest_resistance.get("strength_score", 50.0)  # Use power, fallback to strength_score
             
-            distance_pct = abs(current_price - resistance_price) / current_price if resistance_price > 0 else 1.0
+            from core.utils.distance_utils import calculate_distance_pct
+            distance_pct = calculate_distance_pct(current_price, resistance_price, current_price)
             # Mathematically justified: Use 2.5×ATR as "near" threshold
             if distance_pct < near_threshold:
-                sr_short = resistance_score
-                reasons.append(f"Near strong resistance @ ${resistance_price:.2f} (score: {resistance_score:.1f}, {distance_pct*100:.3f}% away, threshold: {near_threshold*100:.3f}%)")
+                # Use power directly - it already includes reversal_probability (30% weight in power calculation)
+                sr_short = resistance_power
+                reasons.append(f"Near strong resistance @ ${resistance_price:.2f} (power: {resistance_power:.1f}, {distance_pct*100:.3f}% away)")
         
         return sr_long, sr_short, reasons
     
@@ -622,7 +627,8 @@ class PredictionEngine:
         current_price: float,
         direction: str,
         level_data: Dict[str, Any],
-        unified_data: Optional[Dict[str, Any]] = None
+        unified_data: Optional[Dict[str, Any]] = None,
+        strategy: str = "standard"
     ) -> tuple[float, list]:
         """
         Score S/R level factor for entry setup
@@ -637,35 +643,44 @@ class PredictionEngine:
             entry_price: Entry price for limit order
             current_price: Current market price
             direction: "LONG" or "SHORT"
-            level_data: S/R level data dict (must contain "price_level", "strength_score", "setup_type")
+            level_data: S/R level data dict (must contain "price_level", "power", "setup_type")
             unified_data: Optional unified data for additional context
         
         Returns:
             (sr_score, reasons)
         """
-        level_score = self._require_key(level_data, "strength_score", "entry S/R factor scoring")
+        level_power = level_data.get("power") or level_data.get("strength_score", 50.0)  # Use power, fallback for compatibility
         level_price = self._require_key(level_data, "price_level", "entry S/R factor scoring")
         setup_type = self._require_key(level_data, "setup_type", "entry S/R factor scoring")
         
         score = 0.0
         reasons = []
         
-        # Base score from S/R level quality (0-100)
-        score = level_score
+        # Base score from S/R level power (0-100) - pure strength, no proximity/recency
+        score = level_power
         
-        # Distance from the referenced level
-        distance_pct = abs(entry_price - level_price) / current_price if current_price > 0 else 0.0
+        # Distance from the referenced level - using unified utility
+        from core.utils.distance_utils import calculate_distance_pct
+        distance_pct = calculate_distance_pct(entry_price, level_price, current_price)
         
         # Get ATR for mathematically justified thresholds
         atr_pct = self._get_atr_pct(unified_data, current_price)
         
-        # Mathematically justified thresholds based on ATR:
-        # - Optimal: 0.5×ATR (entry at or very close to level)
-        # - Acceptable: 1.25×ATR (slightly wider, still reasonable)
-        # - Too far: >2.0×ATR (entry too far from level)
-        optimal_threshold = atr_pct * 0.5  # 0.5×ATR = optimal entry distance
-        acceptable_threshold = atr_pct * 1.25  # 1.25×ATR = acceptable distance
-        too_far_threshold = atr_pct * 2.0  # 2.0×ATR = too far from level
+        # Get strategy-specific entry proximity configuration
+        strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
+        entry_proximity_config = strategy_config.get("entry_proximity_config", {
+            "optimal_atr": 0.5,
+            "acceptable_atr": 1.25,
+            "too_far_atr": 2.0
+        })
+        optimal_atr = entry_proximity_config.get("optimal_atr", 0.5)
+        acceptable_atr = entry_proximity_config.get("acceptable_atr", 1.25)
+        too_far_atr = entry_proximity_config.get("too_far_atr", 2.0)
+        
+        # Strategy-specific thresholds based on ATR:
+        optimal_threshold = atr_pct * optimal_atr
+        acceptable_threshold = atr_pct * acceptable_atr
+        too_far_threshold = atr_pct * too_far_atr
         
         # For limit orders, entry should be AT or very close to the S/R level (distance ≈ 0)
         # This ensures the limit order can fill when price reaches the level
@@ -678,13 +693,13 @@ class PredictionEngine:
                 # LONG: entry should be at or slightly ABOVE support
                 if distance_pct == 0.0:  # Exactly at support (0% offset) - ideal
                     score = min(100.0, score * 1.2)  # 20% bonus for entry exactly at support
-                    reasons.append(f"Entry exactly at support (0% offset) - optimal (score: {level_score:.1f})")
+                    reasons.append(f"Entry exactly at support (0% offset) - optimal (power: {level_power:.1f})")
                 elif 0.0 < distance_pct <= optimal_threshold:  # Optimal range: 0% to 0.5×ATR above support
                     score = min(100.0, score * 1.1)  # 10% bonus for optimal offset above support
-                    reasons.append(f"Optimal entry above support @ {distance_pct*100:.3f}% (≤{optimal_threshold*100:.3f}%, score: {level_score:.1f})")
+                    reasons.append(f"Optimal entry above support @ {distance_pct*100:.3f}% (≤{optimal_threshold*100:.3f}%, power: {level_power:.1f})")
                 elif distance_pct <= acceptable_threshold:  # Still acceptable: 0.5×ATR to 1.25×ATR
                     score = min(100.0, score * 1.0)  # No bonus/penalty
-                    reasons.append(f"Entry above support @ {distance_pct*100:.3f}% (≤{acceptable_threshold*100:.3f}%, score: {level_score:.1f})")
+                    reasons.append(f"Entry above support @ {distance_pct*100:.3f}% (≤{acceptable_threshold*100:.3f}%, power: {level_power:.1f})")
                 else:
                     score = max(0.0, score * 0.8)  # Penalty if too far from support
                     reasons.append(f"Entry too far from support ({distance_pct*100:.3f}% > {too_far_threshold*100:.3f}%)")
@@ -694,13 +709,13 @@ class PredictionEngine:
                 # For resistance: entry_price <= level_price (at or below), so distance is positive (from abs)
                 if distance_pct == 0.0:  # Exactly at resistance (0% offset) - ideal
                     score = min(100.0, score * 1.2)  # 20% bonus for entry exactly at resistance
-                    reasons.append(f"Entry exactly at resistance (0% offset) - optimal (score: {level_score:.1f})")
+                    reasons.append(f"Entry exactly at resistance (0% offset) - optimal (power: {level_power:.1f})")
                 elif 0.0 < distance_pct <= optimal_threshold:  # Optimal range: 0% to 0.5×ATR below resistance
                     score = min(100.0, score * 1.1)  # 10% bonus for optimal offset below resistance
-                    reasons.append(f"Optimal entry below resistance @ {distance_pct*100:.3f}% (≤{optimal_threshold*100:.3f}%, score: {level_score:.1f})")
+                    reasons.append(f"Optimal entry below resistance @ {distance_pct*100:.3f}% (≤{optimal_threshold*100:.3f}%, power: {level_power:.1f})")
                 elif distance_pct <= acceptable_threshold:  # Still acceptable: 0.5×ATR to 1.25×ATR
                     score = min(100.0, score * 1.0)  # No bonus/penalty
-                    reasons.append(f"Entry below resistance @ {distance_pct*100:.3f}% (≤{acceptable_threshold*100:.3f}%, score: {level_score:.1f})")
+                    reasons.append(f"Entry below resistance @ {distance_pct*100:.3f}% (≤{acceptable_threshold*100:.3f}%, power: {level_power:.1f})")
                 else:
                     score = max(0.0, score * 0.8)  # Penalty if too far from resistance
                     reasons.append(f"Entry too far from resistance ({distance_pct*100:.3f}% > {too_far_threshold*100:.3f}%)")
@@ -709,7 +724,7 @@ class PredictionEngine:
             # Unknown setup type - use default scoring with ATR-based threshold
             near_threshold = atr_pct * 2.5  # 2.5×ATR = reasonable "near" distance
             if distance_pct < near_threshold:
-                reasons.append(f"S/R level reference (score: {level_score:.1f}, distance: {distance_pct*100:.3f}%)")
+                reasons.append(f"S/R level reference (power: {level_power:.1f}, distance: {distance_pct*100:.3f}%)")
             else:
                 score = max(0.0, score * 0.8)  # Penalty
                 reasons.append(f"Far from S/R level (distance: {distance_pct*100:.3f}% > {near_threshold*100:.3f}%)")
@@ -1035,9 +1050,10 @@ class PredictionEngine:
     
     def _score_direction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[Dict[str, Any]]:
         """
-        Score direction using unified scoring framework
+        Score direction using unified scoring framework (global - no entry context)
         
         Uses factor scorers to calculate long_score and short_score, then determines direction.
+        This is the base method - use _score_direction_for_entry for entry-specific scoring.
         
         Returns:
             Dict with "direction", "reasoning", "long_score", "short_score"
@@ -1149,6 +1165,195 @@ class PredictionEngine:
             logger.error(f"❌ Direction scoring failed: {e}")
             return None
     
+    def _score_direction_for_entry(
+        self,
+        unified_data: Dict[str, Any],
+        strategy: str,
+        entry_price: float,
+        entry_direction: str,
+        level_data: Optional[Dict[str, Any]] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Score direction with entry-specific context (contextual direction scoring)
+        
+        Considers:
+        1. Base direction signals (trend, RSI, pressure, etc.)
+        2. Entry level proximity (direction signals weighted by distance to entry)
+        3. Entry level strength (stronger levels align better with direction)
+        4. Alignment check (how well this specific entry level aligns with direction signals)
+        
+        Args:
+            unified_data: Complete market analysis data
+            strategy: Trading strategy name
+            entry_price: Entry price for this setup
+            entry_direction: "LONG" or "SHORT" - the direction of this entry
+            level_data: Optional S/R level data for this entry
+            
+        Returns:
+            Dict with "direction", "reasoning", "long_score", "short_score" (contextualized)
+        """
+        try:
+            # Get base direction scores (global market conditions)
+            base_direction_result = self._score_direction(unified_data, strategy)
+            if not base_direction_result:
+                return None
+            
+            base_long_score = base_direction_result.get("long_score", 0.0)
+            base_short_score = base_direction_result.get("short_score", 0.0)
+            
+            # Initialize contextual scores (start with base scores)
+            contextual_long_score = base_long_score
+            contextual_short_score = base_short_score
+            
+            current_price = self._require_key(unified_data, "current_price", "contextual direction scoring")
+            if current_price <= 0 or entry_price <= 0:
+                raise ValueError(f"Invalid prices: current_price={current_price}, entry_price={entry_price}")
+            
+            # Calculate entry level context factors
+            proximity_factor = 1.0  # Default: no proximity adjustment
+            recency_factor = 1.0    # Default: no recency adjustment
+            strength_factor = 1.0   # Default: no strength adjustment
+            alignment_factor = 1.0  # Default: no alignment adjustment
+            distance_atr = 0.0
+            level_strength = 0.0
+            
+            if level_data:
+                level_price = level_data.get("price_level", 0)
+                from core.utils.level_utils import get_level_power
+                level_power = get_level_power(level_data, default=50.0)
+                last_touch_timestamp = level_data.get("last_touch_timestamp", 0)
+                
+                # 1. PROXIMITY FACTOR: Direction signals more relevant when entry is closer to current price
+                # Closer entries = direction signals are more immediately relevant
+                # Further entries = direction signals may change before price reaches entry
+                try:
+                    atr_pct = self._get_atr_pct(unified_data, current_price)
+                    from core.calculations.proximity_calculator import ProximityCalculator
+                    from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr as calc_dist_atr
+                    
+                    proximity_factor = ProximityCalculator.calculate_proximity_factor(
+                        entry_price=entry_price,
+                        reference_price=current_price,
+                        atr_pct=atr_pct,
+                        strategy=strategy,
+                        context="direction"
+                    )
+                    
+                    # Calculate distance in ATR units for reasoning
+                    distance_pct_val = calculate_distance_pct(entry_price, current_price, current_price)
+                    distance_atr = calc_dist_atr(distance_pct_val, atr_pct)
+                except Exception:
+                    proximity_factor = 1.0  # Default if calculation fails
+                    distance_atr = 0.0
+                
+                # 2. RECENCY FACTOR: More recent touches = level still active and relevant
+                # Recent levels are more likely to still be valid support/resistance
+                from core.calculations.recency_calculator import RecencyCalculator
+                recency_factor = RecencyCalculator.calculate_recency_factor(
+                    last_touch_timestamp=last_touch_timestamp,
+                    strategy=strategy
+                )
+                
+                # 3. POWER FACTOR: Stronger entry levels align better with direction signals
+                # Strong support + strong LONG signals = better than weak support + strong LONG signals
+                # Normalize power (0-100) to factor (0.7-1.3)
+                power_normalized = level_power / 100.0  # 0.0 to 1.0
+                strength_factor = 0.7 + (power_normalized * 0.6)  # Range: 0.7 to 1.3
+                level_strength = level_power
+                
+                # 4. ALIGNMENT FACTOR: Check how well this specific entry level aligns with direction signals
+                # For LONG at support: if LONG signals are strong, alignment is good
+                # For SHORT at resistance: if SHORT signals are strong, alignment is good
+                # For LONG at support: if SHORT signals are strong, alignment is poor (conflict)
+                setup_type = level_data.get("setup_type", "")
+                
+                if entry_direction == "LONG" and setup_type == "support_level":
+                    # LONG at support: good alignment if LONG signals > SHORT signals
+                    direction_diff = base_long_score - base_short_score
+                    if direction_diff > 20.0:  # Strong LONG preference
+                        alignment_factor = 1.2  # Boost for good alignment
+                    elif direction_diff > 10.0:  # Moderate LONG preference
+                        alignment_factor = 1.1
+                    elif direction_diff < -20.0:  # Strong SHORT preference (conflict)
+                        alignment_factor = 0.6  # Penalize conflict
+                    elif direction_diff < -10.0:  # Moderate SHORT preference (conflict)
+                        alignment_factor = 0.75
+                    else:  # Neutral
+                        alignment_factor = 1.0
+                
+                elif entry_direction == "SHORT" and setup_type == "resistance_level":
+                    # SHORT at resistance: good alignment if SHORT signals > LONG signals
+                    direction_diff = base_short_score - base_long_score
+                    if direction_diff > 20.0:  # Strong SHORT preference
+                        alignment_factor = 1.2  # Boost for good alignment
+                    elif direction_diff > 10.0:  # Moderate SHORT preference
+                        alignment_factor = 1.1
+                    elif direction_diff < -20.0:  # Strong LONG preference (conflict)
+                        alignment_factor = 0.6  # Penalize conflict
+                    elif direction_diff < -10.0:  # Moderate LONG preference (conflict)
+                        alignment_factor = 0.75
+                    else:  # Neutral
+                        alignment_factor = 1.0
+                else:
+                    # Other setups: neutral alignment
+                    alignment_factor = 1.0
+            
+            # Apply contextual factors to direction scores (proximity, recency, power, alignment)
+            # Only apply to the entry direction (the direction we're considering for this entry)
+            if entry_direction == "LONG":
+                # Apply factors to LONG score (the direction of this entry)
+                contextual_long_score = base_long_score * proximity_factor * recency_factor * strength_factor * alignment_factor
+                # Keep SHORT score as base (for comparison, but not the entry direction)
+                contextual_short_score = base_short_score
+            else:  # SHORT
+                # Apply factors to SHORT score (the direction of this entry)
+                contextual_short_score = base_short_score * proximity_factor * recency_factor * strength_factor * alignment_factor
+                # Keep LONG score as base (for comparison, but not the entry direction)
+                contextual_long_score = base_long_score
+            
+            # Generate contextual reasoning
+            reasoning_parts = []
+            if proximity_factor < 1.0:
+                reasoning_parts.append(f"proximity-adjusted (distance: {distance_atr:.1f}×ATR)")
+            if strength_factor > 1.0:
+                reasoning_parts.append(f"strength-boosted (level: {level_strength:.1f})")
+            elif strength_factor < 1.0:
+                reasoning_parts.append(f"strength-penalized (level: {level_strength:.1f})")
+            if alignment_factor > 1.0:
+                reasoning_parts.append("aligned")
+            elif alignment_factor < 1.0:
+                reasoning_parts.append("conflict-penalized")
+            
+            base_reasoning = base_direction_result.get("reasoning", "")
+            if reasoning_parts:
+                contextual_reasoning = f"{base_reasoning} [{', '.join(reasoning_parts)}]"
+            else:
+                contextual_reasoning = base_reasoning
+            
+            # Determine direction from contextual scores
+            if contextual_long_score > contextual_short_score:
+                direction = "LONG"
+            elif contextual_short_score > contextual_long_score:
+                direction = "SHORT"
+            else:
+                direction = entry_direction  # Use entry direction as tiebreaker
+            
+            return {
+                "direction": direction,
+                "reasoning": contextual_reasoning,
+                "long_score": contextual_long_score,
+                "short_score": contextual_short_score,
+                "base_long_score": base_long_score,
+                "base_short_score": base_short_score,
+                "proximity_factor": proximity_factor,
+                "strength_factor": strength_factor,
+                "alignment_factor": alignment_factor
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Contextual direction scoring failed: {e}")
+            return None
+    
     def _get_strategy_timeframe_weights(self, strategy: str) -> Dict[str, float]:
         """
         Get strategy-specific timeframe weights
@@ -1230,10 +1435,12 @@ class PredictionEngine:
     
     def _calculate_prediction_confidence(
         self,
-        direction_result: Dict[str, Any],
-        entry_result: Dict[str, Any],
+        setup_data: Dict[str, Any],
         stop_loss: float,
         take_profit: float,
+        rr_ratio: float,
+        stop_loss_pct: float,
+        take_profit_pct: float,
         unified_data: Dict[str, Any],
         strategy: str
     ) -> float:
@@ -1244,18 +1451,33 @@ class PredictionEngine:
         Currently returns a placeholder value.
         
         Args:
-            direction_result: Result from _score_direction (contains long_score, short_score)
-            entry_result: Result from _determine_entry_price
+            setup_data: Complete setup data dict containing:
+                - entry_price, entry_score, direction_score, total_score
+                - entry_breakdown: {power, proximity_factor, recency_factor, distance_atr, hours_since_touch, setup_type}
+                - direction_breakdown: {base_long_score, base_short_score, proximity_factor, strength_factor, 
+                                        alignment_factor, recency_factor, score_diff, final_long_score, final_short_score}
+                - long_score, short_score, score_diff
+                - level_data: {power, last_touch_timestamp, etc.}
+                - setup_type, direction
             stop_loss: Calculated stop loss price
             take_profit: Calculated take profit price
-            unified_data: Complete market analysis data
+            rr_ratio: Risk/Reward ratio (reward_distance / risk_distance)
+            stop_loss_pct: Stop loss as percentage of entry price
+            take_profit_pct: Take profit as percentage of entry price
+            unified_data: Complete market analysis data (contains volatility, trend, market conditions, etc.)
             strategy: Current trading strategy
             
         Returns:
             Confidence percentage (0.0 - 100.0)
         """
         # Placeholder: Return fixed value until confidence calculation is implemented
-        # TODO: Implement full confidence calculation after all parameters are integrated
+        # TODO: Implement full confidence calculation using:
+        #   - Entry quality: setup_data["entry_breakdown"] (power, proximity, recency)
+        #   - Direction strength: setup_data["direction_breakdown"] (scores, factors, score_diff)
+        #   - Setup alignment: alignment_factor from direction_breakdown
+        #   - Risk/Reward: rr_ratio, stop_loss_pct, take_profit_pct
+        #   - Market conditions: unified_data (volatility, trend, market_conditions, volume_category)
+        #   - Strategy-specific factors: strategy config
         return 50.0
     
     def _score_entry_setup(
@@ -1283,16 +1505,17 @@ class PredictionEngine:
                 raise ValueError(f"Invalid prices: current_price={current_price}, entry_price={entry_price}")
             
             # Get strategy-specific entry weights (config defaults are OK)
-            # NOTE: SR score already includes proximity (distance) and volume from SR scoring system
-            # So we don't score distance/volume again here to avoid duplication
+            # NOTE: SR power includes touch, reversal_probability, and volume (inherent strength)
+            # Proximity and recency are handled separately in entry scoring (contextual factors)
             strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
             entry_weights = strategy_config.get("entry_weights", {
-                "support_resistance": 0.50,  # Primary factor - SR score already includes proximity, volume, touch, reversal_probability, recency
-                "rsi": 0.20,  # Additional factor not in SR scoring
-                "trend": 0.15,  # Additional factor not in SR scoring
-                "pressure": 0.10,  # Additional factor not in SR scoring
-                "patterns": 0.05  # Additional factor not in SR scoring
-                # Removed: volume (already in SR score), distance (already in SR score via proximity), type (artificial)
+                "support_resistance": 0.50,  # Primary factor - SR power (touch 60%, reversal_prob 30%, volume 10%)
+                "rsi": 0.20,  # Additional factor not in SR power
+                "trend": 0.15,  # Additional factor not in SR power
+                "pressure": 0.10,  # Additional factor not in SR power
+                "patterns": 0.05  # Additional factor not in SR power
+                # Note: Proximity (distance) is scored separately in _score_entry_sr_factor based on entry offset
+                # Note: Recency is handled in direction scoring, not entry scoring
             })
             
             # Extract indicators - all required (NO FALLBACKS)
@@ -1311,7 +1534,7 @@ class PredictionEngine:
             if sr_weight > 0:
                 # Add setup_type to level_data for context
                 level_data_with_type = {**level_data, "setup_type": setup_type}
-                sr_score, reasons = self._score_entry_sr_factor(entry_price, current_price, direction, level_data_with_type, unified_data)
+                sr_score, reasons = self._score_entry_sr_factor(entry_price, current_price, direction, level_data_with_type, unified_data, strategy)
                 total_score += sr_score * sr_weight
                 all_reasons.extend(reasons)
             
@@ -1339,10 +1562,10 @@ class PredictionEngine:
                 total_score += patterns_score * patterns_weight
                 all_reasons.extend(reasons)
             
-            # NOTE: Volume and distance are NOT scored here - they're already included in SR score:
-            # - Distance/proximity: scored in SR system via proximity_score component
-            # - Volume: scored in SR system via volume_score component
-            # Scoring them again would be duplication and could override the SR system's ranking
+            # NOTE: 
+            # - Volume: included in SR power (10% weight)
+            # - Distance/proximity: scored separately in _score_entry_sr_factor based on entry offset from level
+            # - Recency: handled in direction scoring, not entry scoring
             
             # Removed excessive debug logging - only log top scores
             if total_score >= 70.0:  # Only log high-scoring setups
@@ -1398,11 +1621,9 @@ class PredictionEngine:
             
             all_setups = []
             
-            # Calculate direction scores once (for both LONG and SHORT)
-            direction_result = self._score_direction(unified_data, strategy)
-            if not direction_result:
-                logger.debug("⏸️ No direction scores available")
-                return []
+            # Contextual direction scoring: direction scores are calculated per entry level
+            # This considers entry proximity, strength, and alignment with direction signals
+            # No global direction scoring - each entry gets its own contextual direction score
             
             # For each potential entry setup, evaluate for appropriate direction(s)
             # All entries must be at specific S/R levels (for limit orders)
@@ -1412,33 +1633,39 @@ class PredictionEngine:
             # Breakout/breakdown entries don't make sense with limit orders (would require stop-limit or market orders)
             
             # 1. Support Level Entry (LONG - buying at support, limit order)
-            # Entry price calculated dynamically with sophisticated adjustments
+            # Entry price determined by optimizing entry scoring factors (power, proximity, recency)
             for support in top_support:
                 level_price = self._require_key(support, "price_level", "setup generation")
                 if level_price <= 0 or level_price >= current_price:
                     continue
                 
-                # Calculate sophisticated entry price with all dynamic factors
+                # Determine optimal entry price based on entry scoring factors
+                # Generate candidate entry prices and select the one with best entry score
                 try:
-                    from core.calculations.entry_price_calculator import EntryPriceCalculator
-                    entry_price = EntryPriceCalculator.calculate_dynamic_entry_price(
+                    entry_data = self._determine_optimal_entry_price(
                         level_price=level_price,
                         current_price=current_price,
                         direction="LONG",
                         setup_type="support_level",
                         level_data=support,
                         unified_data=unified_data,
+                        strategy=strategy,
                         config=config
                     )
                     
+                    if entry_data is None:
+                        continue  # Skip if entry determination failed
+                    
+                    entry_price = entry_data.get("entry_price")
                     if entry_price is None or entry_price <= 0 or entry_price >= current_price:
                         continue  # Skip if entry is invalid or unfillable
                 except Exception as e:
-                    logger.warning(f"⚠️ Entry price calculation failed for support ${level_price:.2f}: {e}")
-                    continue  # Skip this level if calculation fails
+                    logger.warning(f"⚠️ Entry price determination failed for support ${level_price:.2f}: {e}")
+                    continue  # Skip this level if determination fails
                 
                 # Evaluate as LONG setup at support level (limit order below current price = fillable)
                 support_with_type = {**support, "setup_type": "support_level"}
+                # Pass entry_data to preserve entry_score and breakdown
                 setup_long = self._evaluate_complete_setup(
                     entry_price=entry_price,
                     setup_type="support_level",
@@ -1447,39 +1674,46 @@ class PredictionEngine:
                     level_data=support_with_type,
                     strategy=strategy,
                     config=config,
-                    direction_result=direction_result
+                    direction_result=None,  # Will be calculated contextually inside _evaluate_complete_setup
+                    entry_data=entry_data  # Pass entry data to avoid recalculation
                 )
                 if setup_long:
                     all_setups.append(setup_long)
             
             # 2. Resistance Level Entry (SHORT - selling at resistance, limit order)
-            # Entry price calculated dynamically with sophisticated adjustments
+            # Entry price determined by optimizing entry scoring factors (power, proximity, recency)
             for resistance in top_resistance:
                 level_price = self._require_key(resistance, "price_level", "setup generation")
                 if level_price <= 0 or level_price <= current_price:
                     continue
                 
-                # Calculate sophisticated entry price with all dynamic factors
+                # Determine optimal entry price based on entry scoring factors
+                # Generate candidate entry prices and select the one with best entry score
                 try:
-                    from core.calculations.entry_price_calculator import EntryPriceCalculator
-                    entry_price = EntryPriceCalculator.calculate_dynamic_entry_price(
+                    entry_data = self._determine_optimal_entry_price(
                         level_price=level_price,
                         current_price=current_price,
                         direction="SHORT",
                         setup_type="resistance_level",
                         level_data=resistance,
                         unified_data=unified_data,
+                        strategy=strategy,
                         config=config
                     )
                     
+                    if entry_data is None:
+                        continue  # Skip if entry determination failed
+                    
+                    entry_price = entry_data.get("entry_price")
                     if entry_price is None or entry_price <= 0 or entry_price <= current_price:
                         continue  # Skip if entry is invalid or unfillable
                 except Exception as e:
-                    logger.warning(f"⚠️ Entry price calculation failed for resistance ${level_price:.2f}: {e}")
-                    continue  # Skip this level if calculation fails
+                    logger.warning(f"⚠️ Entry price determination failed for resistance ${level_price:.2f}: {e}")
+                    continue  # Skip this level if determination fails
                 
                 # Evaluate as SHORT setup at resistance level (limit order above current price = fillable)
                 resistance_with_type = {**resistance, "setup_type": "resistance_level"}
+                # Pass entry_data to preserve entry_score and breakdown
                 setup_short = self._evaluate_complete_setup(
                     entry_price=entry_price,
                     setup_type="resistance_level",
@@ -1488,7 +1722,8 @@ class PredictionEngine:
                     level_data=resistance_with_type,
                     strategy=strategy,
                     config=config,
-                    direction_result=direction_result
+                    direction_result=None,  # Will be calculated contextually inside _evaluate_complete_setup
+                    entry_data=entry_data  # Pass entry data to avoid recalculation
                 )
                 if setup_short:
                     all_setups.append(setup_short)
@@ -1512,6 +1747,171 @@ class PredictionEngine:
             logger.error(f"❌ Setup generation failed: {e}")
             return []
     
+    def _determine_optimal_entry_price(
+        self,
+        level_price: float,
+        current_price: float,
+        direction: str,
+        setup_type: str,
+        level_data: Dict[str, Any],
+        unified_data: Dict[str, Any],
+        strategy: str,
+        config: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Determine optimal entry price by optimizing entry scoring factors
+        
+        Uses the same factors as entry scoring (power, proximity, recency) to find
+        the entry price that maximizes entry score, rather than calculating independently.
+        
+        Args:
+            level_price: S/R level price
+            current_price: Current market price
+            direction: "LONG" or "SHORT"
+            setup_type: "support_level" or "resistance_level"
+            level_data: Level metadata (power, last_touch_timestamp, etc.)
+            unified_data: Complete market analysis data
+            strategy: Trading strategy
+            config: Strategy configuration
+            
+        Returns:
+            Dict with "entry_price", "entry_score", "entry_breakdown" or None if invalid
+        """
+        try:
+            # Get ATR for distance calculations
+            atr_pct = self._get_atr_pct(unified_data, current_price)
+            sr_data = unified_data.get("support_resistance", {})
+            sr_metadata = sr_data.get("metadata", {})
+            atr_5m = sr_metadata.get("atr_5m", 0.0)
+            if atr_5m <= 0:
+                raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
+            
+            # Get strategy-specific entry proximity configuration
+            strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
+            entry_proximity_config = strategy_config.get("entry_proximity_config", {
+                "optimal_atr": 0.5,
+                "acceptable_atr": 1.25,
+                "too_far_atr": 2.0
+            })
+            optimal_atr = entry_proximity_config.get("optimal_atr", 0.5)
+            
+            # Generate candidate entry prices around the level
+            # Start at level (optimal for entry scoring), then consider small offsets for spread/slippage
+            candidates = []
+            
+            # Candidate 1: Exactly at level (best for entry scoring)
+            candidates.append(level_price)
+            
+            # Candidate 2-4: Small offsets within optimal range (for spread/slippage)
+            optimal_offset_distance = atr_5m * optimal_atr
+            if setup_type == "support_level":  # LONG
+                # Slightly above support (catches bounce, accounts for spread)
+                candidates.append(level_price + (optimal_offset_distance * 0.3))
+                candidates.append(level_price + (optimal_offset_distance * 0.6))
+                candidates.append(level_price + (optimal_offset_distance * 1.0))
+            else:  # resistance_level - SHORT
+                # Slightly below resistance (catches bounce down, accounts for spread)
+                candidates.append(level_price - (optimal_offset_distance * 0.3))
+                candidates.append(level_price - (optimal_offset_distance * 0.6))
+                candidates.append(level_price - (optimal_offset_distance * 1.0))
+            
+            # Score each candidate using entry scoring factors
+            best_entry_price = None
+            best_score = -1.0
+            best_breakdown = None
+            
+            level_data_with_type = {**level_data, "setup_type": setup_type}
+            level_power = level_data.get("power") or level_data.get("strength_score", 50.0)
+            
+            # Calculate recency factor once (same for all candidates) - using unified calculator
+            last_touch_timestamp = level_data.get("last_touch_timestamp", 0)
+            from core.calculations.recency_calculator import RecencyCalculator
+            recency_factor = RecencyCalculator.calculate_entry_recency_factor(
+                last_touch_timestamp=last_touch_timestamp,
+                strategy=strategy
+            )
+            
+            # Get strategy-specific candidate weights
+            candidate_weights = strategy_config.get("entry_candidate_weights", {
+                "level_strength": 0.30,
+                "entry_quality": 0.40,
+                "fill_probability": 0.30
+            })
+            
+            for candidate_price in candidates:
+                # Validate candidate
+                if candidate_price <= 0:
+                    continue
+                if setup_type == "support_level" and candidate_price >= current_price:
+                    continue  # LONG entry must be below current price
+                if setup_type == "resistance_level" and candidate_price <= current_price:
+                    continue  # SHORT entry must be above current price
+                
+                # 1. LEVEL STRENGTH SCORE (inherent level quality)
+                strength_score = level_power  # 0-100
+                
+                # 2. ENTRY QUALITY SCORE (proximity to S/R level)
+                sr_score, _ = self._score_entry_sr_factor(
+                    entry_price=candidate_price,
+                    current_price=current_price,
+                    direction=direction,
+                    level_data=level_data_with_type,
+                    unified_data=unified_data,
+                    strategy=strategy
+                )
+                entry_quality_score = sr_score  # 0-100
+                
+                # 3. FILL PROBABILITY SCORE (proximity to current price)
+                from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
+                distance_to_current_pct = calculate_distance_pct(candidate_price, current_price, current_price)
+                distance_to_current_atr = calculate_distance_atr(distance_to_current_pct, atr_pct)
+                # Convert distance to probability (closer = higher probability)
+                # 0 ATR = 100%, 3 ATR = 40%, 6+ ATR = 10%
+                fill_probability_score = max(10, 100 - (distance_to_current_atr / 6.0) * 90)
+                
+                # STRATEGY-AWARE COMBINED SCORE
+                combined_score = (
+                    strength_score * candidate_weights["level_strength"] +
+                    entry_quality_score * candidate_weights["entry_quality"] +
+                    fill_probability_score * candidate_weights["fill_probability"]
+                ) * recency_factor
+                
+                if combined_score > best_score:
+                    best_score = combined_score
+                    best_entry_price = candidate_price
+                    
+                    # Calculate distance metrics for breakdown
+                    from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
+                    distance_pct = calculate_distance_pct(candidate_price, level_price, current_price)
+                    distance_atr = calculate_distance_atr(distance_pct, atr_pct)
+                    hours_since_touch = (time.time() - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else 0.0
+                    
+                    # Store breakdown for best candidate
+                    best_breakdown = {
+                        "strength_score": strength_score,
+                        "entry_quality_score": entry_quality_score,
+                        "fill_probability_score": fill_probability_score,
+                        "recency_factor": recency_factor,
+                        "strategy_weights": candidate_weights,
+                        "distance_atr": distance_atr,
+                        "distance_pct": distance_pct,
+                        "hours_since_touch": hours_since_touch,
+                        "setup_type": setup_type
+                    }
+            
+            if best_entry_price is None:
+                return None
+            
+            return {
+                "entry_price": best_entry_price,
+                "entry_score": best_score,
+                "entry_breakdown": best_breakdown
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Optimal entry price determination failed: {e}")
+            return None
+    
     def _evaluate_complete_setup(
         self,
         entry_price: float,
@@ -1521,49 +1921,109 @@ class PredictionEngine:
         level_data: Optional[Dict[str, Any]],
         strategy: str,
         config: Dict[str, Any],
-        direction_result: Optional[Dict[str, Any]]
+        direction_result: Optional[Dict[str, Any]] = None,
+        entry_data: Optional[Dict[str, Any]] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Evaluate a complete setup: entry quality + direction support
+        Evaluate a complete setup: entry quality + contextual direction support
         
-        Combines entry scoring with direction scoring to get total setup score.
+        Combines entry scoring with contextual direction scoring to get total setup score.
+        Direction scoring is now contextual - considers entry proximity, strength, and alignment.
+        
+        Args:
+            direction_result: Optional pre-calculated direction result (for backward compatibility).
+                            If None, will calculate contextual direction score for this entry.
         
         Returns:
             Dict with entry_price, direction, entry_score, direction_score, total_score, etc.
         """
         try:
+            # Calculate contextual direction score for this specific entry
+            # This considers entry proximity, level strength, and alignment with direction signals
+            if direction_result is None:
+                direction_result = self._score_direction_for_entry(
+                    unified_data=unified_data,
+                    strategy=strategy,
+                    entry_price=entry_price,
+                    entry_direction=direction,
+                    level_data=level_data
+                )
+            
             if not direction_result:
                 return None
             
-            # Score entry quality
-            entry_result = self._score_entry_setup(
-                entry_price=entry_price,
-                setup_type=setup_type,
-                direction=direction,
-                unified_data=unified_data,
-                level_data=level_data,
-                strategy=strategy,
-                config=config
-            )
+            # Use entry_score from entry_data if available (avoid recalculation)
+            # Otherwise calculate it
+            if entry_data and "entry_score" in entry_data:
+                entry_score = entry_data.get("entry_score", 0.0)
+                entry_breakdown = entry_data.get("entry_breakdown", {})
+                # Still need reasoning, so calculate entry_result but use cached score
+                entry_result = self._score_entry_setup(
+                    entry_price=entry_price,
+                    setup_type=setup_type,
+                    direction=direction,
+                    unified_data=unified_data,
+                    level_data=level_data,
+                    strategy=strategy,
+                    config=config
+                )
+                entry_reasoning = entry_result.get("reasoning", "") if entry_result else ""
+            else:
+                # Score entry quality (fallback if entry_data not provided)
+                entry_result = self._score_entry_setup(
+                    entry_price=entry_price,
+                    setup_type=setup_type,
+                    direction=direction,
+                    unified_data=unified_data,
+                    level_data=level_data,
+                    strategy=strategy,
+                    config=config
+                )
+                
+                if not entry_result:
+                    return None
+                
+                entry_score = entry_result.get("score", 0.0)
+                entry_reasoning = entry_result.get("reasoning", "")
+                # Create entry_breakdown from level_data if not provided
+                level_power = level_data.get("power") if level_data else 50.0
+                entry_breakdown = {
+                    "power": level_power,
+                    "proximity_factor": 1.0,  # Default, would need calculation
+                    "recency_factor": 1.0,   # Default, would need calculation
+                    "setup_type": setup_type
+                }
             
-            if not entry_result:
-                return None
-            
-            entry_score = entry_result.get("score", 0.0)
-            entry_reasoning = entry_result.get("reasoning", "")
-            
-            # Get direction score for this direction
+            # Get contextual direction score for this direction
             long_score = direction_result.get("long_score", 0.0)
             short_score = direction_result.get("short_score", 0.0)
+            base_long_score = direction_result.get("base_long_score", long_score)
+            base_short_score = direction_result.get("base_short_score", short_score)
             
-            # Generate direction-specific reasoning based on the actual scores
-            # We use the raw scores, not the overall direction result reasoning
+            # Check if contextual factors were applied
+            proximity_factor = direction_result.get("proximity_factor", 1.0)
+            strength_factor = direction_result.get("strength_factor", 1.0)
+            alignment_factor = direction_result.get("alignment_factor", 1.0)
+            recency_factor = direction_result.get("recency_factor", 1.0)
+            
+            # Generate direction-specific reasoning with contextual information
             if direction == "LONG":
                 direction_score = long_score
-                direction_reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f})"
+                if abs(long_score - base_long_score) > 0.1:  # Contextual factors applied
+                    direction_reasoning = f"LONG signal (contextual: {long_score:.1f} vs base: {base_long_score:.1f}, SHORT: {short_score:.1f})"
+                else:
+                    direction_reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f})"
             else:  # SHORT
                 direction_score = short_score
-                direction_reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f})"
+                if abs(short_score - base_short_score) > 0.1:  # Contextual factors applied
+                    direction_reasoning = f"SHORT signal (contextual: {short_score:.1f} vs base: {base_short_score:.1f}, LONG: {long_score:.1f})"
+                else:
+                    direction_reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f})"
+            
+            # Log contextual factors if they significantly affected the score
+            if proximity_factor != 1.0 or strength_factor != 1.0 or alignment_factor != 1.0:
+                logger.debug(f"📊 Contextual direction factors for {direction} @ ${entry_price:.2f}: "
+                           f"proximity={proximity_factor:.2f}, strength={strength_factor:.2f}, alignment={alignment_factor:.2f}")
             
             # Normalize scores (both are on similar scales, but we can weight them)
             # Entry quality: 50% weight, Direction support: 50% weight
@@ -1576,6 +2036,22 @@ class PredictionEngine:
             # No artificial bonuses - SR score is already the primary factor in entry_score
             total_score = (entry_score * entry_weight) + (direction_score * direction_weight)
             
+            # Calculate score difference for confidence
+            score_diff = abs(long_score - short_score)
+            
+            # Build direction breakdown
+            direction_breakdown = {
+                "base_long_score": base_long_score,
+                "base_short_score": base_short_score,
+                "proximity_factor": proximity_factor,
+                "strength_factor": strength_factor,
+                "alignment_factor": alignment_factor,
+                "recency_factor": recency_factor,
+                "score_diff": score_diff,
+                "final_long_score": long_score,
+                "final_short_score": short_score
+            }
+            
             return {
                 "entry_price": entry_price,
                 "direction": direction,
@@ -1587,6 +2063,9 @@ class PredictionEngine:
                 "direction_reasoning": direction_reasoning,
                 "long_score": long_score,
                 "short_score": short_score,
+                "score_diff": score_diff,
+                "entry_breakdown": entry_breakdown,
+                "direction_breakdown": direction_breakdown,
                 "level_data": level_data  # Include level_data for stop loss calculation
             }
             
@@ -1720,7 +2199,7 @@ class PredictionEngine:
         unified_data: Dict[str, Any],
         level_data: Optional[Dict[str, Any]] = None,
         setup_type: Optional[str] = None
-    ) -> tuple[float, float]:
+    ) -> tuple[float, float, float, float, float]:
         """
         Calculate sophisticated stop loss and take profit
         
@@ -1735,7 +2214,12 @@ class PredictionEngine:
             setup_type: "support_level" or "resistance_level" (optional)
             
         Returns:
-            (stop_loss, take_profit) tuple
+            (stop_loss, take_profit, rr_ratio, stop_loss_pct, take_profit_pct) tuple
+            - stop_loss: Stop loss price
+            - take_profit: Take profit price
+            - rr_ratio: Risk/Reward ratio (reward/risk)
+            - stop_loss_pct: Stop loss as percentage of entry price
+            - take_profit_pct: Take profit as percentage of entry price
         """
         try:
             from core.calculations.risk_manager import RiskManager
@@ -1802,11 +2286,36 @@ class PredictionEngine:
                                 sr_stop_level = level_price + noise_buffer
                             
                             logger.debug(f"📉 {direction} stop from selected level: ${level_price:.2f} (strength: {level_strength:.1f}) → ${sr_stop_level:.2f}")
+                    else:
+                        # No suitable S/R level found - log details for debugging
+                        if direction == "LONG":
+                            supports = [l for l in all_levels if l.get("type") == "support" and l.get("price_level", 0) < entry_price and l.get("status") == "active"]
+                            logger.warning(f"⚠️ No suitable LONG stop level found. Entry: ${entry_price:.2f}, Min distance: ${min_stop_distance:.2f}, Max reasonable: ${max_reasonable_distance:.2f}")
+                            logger.warning(f"⚠️ Available supports below entry: {len(supports)}")
+                            if supports:
+                                distances = [entry_price - s.get("price_level", 0) for s in supports]
+                                strengths = [s.get("strength_score", 0) for s in supports]
+                                logger.warning(f"⚠️ Support distances from entry: {[f'${d:.2f}' for d in distances[:5]]}")
+                                logger.warning(f"⚠️ Support strengths: {[f'{s:.1f}' for s in strengths[:5]]}")
+                        else:  # SHORT
+                            resistances = [l for l in all_levels if l.get("type") == "resistance" and l.get("price_level", 0) > entry_price and l.get("status") == "active"]
+                            logger.warning(f"⚠️ No suitable SHORT stop level found. Entry: ${entry_price:.2f}, Min distance: ${min_stop_distance:.2f}, Max reasonable: ${max_reasonable_distance:.2f}")
+                            logger.warning(f"⚠️ Available resistances above entry: {len(resistances)}")
+                            if resistances:
+                                distances = [r.get("price_level", 0) - entry_price for r in resistances]
+                                strengths = [r.get("strength_score", 0) for r in resistances]
+                                logger.warning(f"⚠️ Resistance distances from entry: {[f'${d:.2f}' for d in distances[:5]]}")
+                                logger.warning(f"⚠️ Resistance strengths: {[f'{s:.1f}' for s in strengths[:5]]}")
+                        raise ValueError(f"No suitable S/R level found for {direction} stop placement (min_distance: ${min_stop_distance:.2f}, max_reasonable: ${max_reasonable_distance:.2f}) (NO FALLBACKS)")
             except Exception as e:
                 logger.error(f"❌ Failed to calculate stop from S/R levels: {e}")
                 raise
             
             # 2. Calculate unified stop loss (delegated to RiskManager)
+            # Include leverage for liquidation price capping
+            from config.config import TradingConfig
+            leverage = config.get("leverage", TradingConfig.LEVERAGE)
+            
             stop_loss = RiskManager.calculate_stop_loss(
                 entry_price=entry_price,
                 direction=direction,
@@ -1814,7 +2323,8 @@ class PredictionEngine:
                 atr_5m=atr_5m,
                 current_price=current_price,
                 config=config,
-                unified_data=unified_data
+                unified_data=unified_data,
+                leverage=leverage
             )
             
             # 3. Calculate take profit (delegated to RiskManager)
@@ -1836,7 +2346,18 @@ class PredictionEngine:
                 min_risk_reward=min_risk_reward
             )
             
-            return stop_loss, take_profit
+            # Calculate risk/reward percentages for confidence system
+            if direction == "LONG":
+                risk_distance = entry_price - stop_loss
+                reward_distance = take_profit - entry_price
+            else:  # SHORT
+                risk_distance = stop_loss - entry_price
+                reward_distance = entry_price - take_profit
+            
+            stop_loss_pct = (risk_distance / entry_price) * 100.0 if entry_price > 0 else 0.0
+            take_profit_pct = (reward_distance / entry_price) * 100.0 if entry_price > 0 else 0.0
+            
+            return stop_loss, take_profit, risk_reward_ratio, stop_loss_pct, take_profit_pct
             
         except Exception as e:
             logger.error(f"❌ Stop/Target calculation failed: {e}")

@@ -221,7 +221,11 @@ class MomentumDetector:
             
             # 4. Price acceleration (15 points)
             trend_direction = trend_data.get("direction", "SIDEWAYS")
-            trend_strength = abs(trend_data.get("strength", 0.0))
+            trend_strength_raw = trend_data.get("strength", 0.0)
+            try:
+                trend_strength = abs(float(trend_strength_raw)) if trend_strength_raw is not None else 0.0
+            except (ValueError, TypeError):
+                trend_strength = 0.0
             
             if trend_direction == "BULLISH" and trend_strength > 0.005:  # 0.5% strength
                 confidence += 15.0
@@ -376,7 +380,11 @@ class MomentumDetector:
             
             # 4. Price acceleration (15 points)
             trend_direction = trend_data.get("direction", "SIDEWAYS")
-            trend_strength = abs(trend_data.get("strength", 0.0))
+            trend_strength_raw = trend_data.get("strength", 0.0)
+            try:
+                trend_strength = abs(float(trend_strength_raw)) if trend_strength_raw is not None else 0.0
+            except (ValueError, TypeError):
+                trend_strength = 0.0
             
             if trend_direction == "BEARISH" and trend_strength > 0.005:
                 confidence += 15.0

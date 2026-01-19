@@ -112,7 +112,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 return scored_levels
             
             # Sort by score (highest first) to keep best levels
-            sorted_levels = sorted(scored_levels, key=lambda x: x.score, reverse=True)
+            sorted_levels = sorted(scored_levels, key=lambda x: x.power or 0, reverse=True)
             deduplicated = []
             
             for level in sorted_levels:
@@ -350,41 +350,46 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Failed to get latest S/R analysis: {e}")
             raise
     
-    def calculate_multi_timeframe_levels(self, current_price: float, strategy: str = None) -> Dict[str, Any]:
+    def calculate_multi_timeframe_levels(self, current_price: float) -> Dict[str, Any]:
         """
         Clean S/R Algorithm: Find best support/resistance levels for trading
         
-        Single unified algorithm:
+        STRATEGY INDEPENDENCE: Returns ALL significant levels without strategy-specific
+        filtering. This ensures analysis is independent of trading strategy, which is
+        determined AFTER analysis is complete.
+        
+        Algorithm:
         1. Start with 1 month of data (liquidation + time filtered)
         2. Process: swing detection → clustering → MTF → filtering → scoring
         3. If not enough levels, progressively expand time range (3m → 6m → 1y → 2y → 5y)
-        4. Return strategy-specific number of support/resistance levels (highest scores)
+        4. Return ALL significant levels (prediction engine applies strategy filtering)
         
         Args:
             current_price: Current market price
-            strategy: Trading strategy name (default: uses instance strategy)
         """
-        # Use provided strategy or instance strategy
-        active_strategy = strategy or self._strategy
+        # STRATEGY-INDEPENDENT MODE: Always use comprehensive parameters
+        from core.calculations.sr_scorer import SRScorer
+        if self._strategy != "comprehensive_analysis":
+            self._scorer = SRScorer(strategy="comprehensive_analysis")
+            self._strategy = "comprehensive_analysis"
         
-        # Update scorer if strategy changed
-        if active_strategy != self._strategy:
-            from core.calculations.sr_scorer import SRScorer
-            self._scorer = SRScorer(strategy=active_strategy)
-            self._strategy = active_strategy
         try:
             current_time = time.time()
             
-            # Performance: Check cache first (strategy-aware)
+            # Performance: Check cache first (strategy-independent)
             last_update = self._last_module_updates.get('support_resistance', 0)
             if current_time - last_update < self._min_recalculation_interval:
-                cached_result = self._get_cached_analysis(current_price, current_time, strategy=active_strategy)
+                cached_result = self._get_cached_analysis(current_price, current_time)
                 if cached_result is not None and cached_result.get("status") == "ok":
                     return cached_result
             
             self._state.reset_session_state()
             
-            # Calculate liquidation prices once (used throughout)
+            # Calculate liquidation prices using actual Hyperliquid formula
+            # Hyperliquid formula: liq_price = price - side * margin_available / position_size / (1 - l * side)
+            # For S/R filtering, we use the maintenance margin rate directly (simplified for filtering purposes)
+            # Actual rate observed: ~1.226% for 40x (not 2.5% theoretical)
+            # This accounts for margin tiers and actual margin requirements
             long_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
             short_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
             logger.debug(f"🔍 LIQUIDATION RANGE: LONG=${long_liquidation:.2f}, SHORT=${short_liquidation:.2f}, Current=${current_price:.2f}")
@@ -450,19 +455,19 @@ class SupportResistanceCalculator(BaseCalculator):
                 new_levels = [l for l in processed_levels if l.level not in existing_prices]
                 scored_levels.extend(new_levels)
                 
-                # Re-deduplicate and re-sort by score
+                # Re-deduplicate and re-sort by power
                 # Mathematically justified: Use 0.125 × ATR for final deduplication (tighter than clustering)
                 atr_14 = self._data_provider.calculate_atr(candles_data.get('5m', []), 14)
                 if atr_14 <= 0:
                     raise ValueError(f"Invalid atr_14: {atr_14} - must be positive for deduplication (NO FALLBACKS)")
                 final_dedup_tolerance = atr_14 * 0.125  # 0.125×ATR for final deduplication
                 scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
-                scored_levels.sort(key=lambda x: x.score or 0, reverse=True)
+                scored_levels.sort(key=lambda x: x.power or 0, reverse=True)
             
-            # Format and return results (with strategy-specific selection)
+            # Format and return results (strategy-independent, returns ALL levels)
             result = self._format_results_optimized(scored_levels, current_price, 
                                                    self._data_provider.calculate_atr(candles_data.get('5m', []), 14), 
-                                                   current_time, strategy=active_strategy)
+                                                   current_time)
             
             # Log final results
             all_levels = result.get('levels', [])
@@ -528,20 +533,11 @@ class SupportResistanceCalculator(BaseCalculator):
             # 4. MTF alignment
             aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
             
-            # 5. Filter by liquidation range
-            levels_within_range = []
-            for level in aligned_levels:
-                if level.level_type == 'support' and level.level < current_price:
-                    if level.level >= long_liquidation:
-                        levels_within_range.append(level)
-                elif level.level_type == 'resistance' and level.level > current_price:
-                    if level.level <= short_liquidation:
-                        levels_within_range.append(level)
-            
-            # 6. Filter by cluster size - only allow actual clusters (cluster_size >= 2)
+            # 5. Filter by cluster size - only allow actual clusters (cluster_size >= 2)
             # Single isolated swing points are not valid S/R levels
+            # Note: Liquidation filtering removed - natural filtering via score and strategy max_distance_pct
             scorable_levels = []
-            for level in levels_within_range:
+            for level in aligned_levels:
                 # Only allow levels that are actual clusters (at least 2 swing points clustered together)
                 # cluster_size >= 2 means multiple swing points were found at similar price levels
                 if level.cluster_size >= 2:
@@ -549,9 +545,9 @@ class SupportResistanceCalculator(BaseCalculator):
                 # Note: Single isolated swing points (cluster_size=1) are discarded
                 # They need to cluster with other swing points to be valid S/R levels
             
-            # 7. Score with historical reversal probability
+            # 7. Calculate power (pure strength: touch, volume, reversal_probability)
             trend_data = self._get_trend_data()
-            scored_levels = self._scorer.score_levels_enhanced(
+            scored_levels = self._scorer.calculate_power(
                 scorable_levels, current_price, atr_14, atr_per_tf,
                 candles_data=candles_data, trend_data=trend_data
             )
@@ -583,7 +579,7 @@ class SupportResistanceCalculator(BaseCalculator):
             if not market_service:
                 raise ValueError("MarketDataService not available - NO FALLBACKS")
             
-            trend_analysis = market_service.get_trend_analysis("standard")
+            trend_analysis = market_service.get_trend_analysis()
             if not trend_analysis or not isinstance(trend_analysis, dict):
                 raise ValueError("Invalid trend analysis data - NO FALLBACKS")
             
@@ -595,23 +591,22 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Failed to get trend data: {e}")
             raise  # NO FALLBACKS - trend data is required for proper scoring
     
-    def _get_cache_key(self, current_price: float, current_time: float, strategy: str = None) -> str:
+    def _get_cache_key(self, current_price: float, current_time: float) -> str:
         """
-        Generate consistent cache key for S/R analysis with strategy awareness
+        Generate consistent cache key for S/R analysis (strategy-independent)
         
         Args:
             current_price: Current price
             current_time: Current timestamp
-            strategy: Trading strategy name (for strategy-aware caching)
             
         Returns:
-            Cache key string with strategy and price precision
+            Cache key string with price precision
         """
         timestamp_bucket = self._get_timestamp_bucket(current_time)
         # Use price with 2 decimal precision to avoid collisions
         price_key = f"{current_price:.2f}".replace('.', 'p')
-        strategy_suffix = f"_{strategy}" if strategy else ""
-        return f"sr_analysis_{self.symbol}_5m_{timestamp_bucket}_{price_key}{strategy_suffix}"
+        # Strategy-independent cache key
+        return f"sr_analysis_{self.symbol}_5m_{timestamp_bucket}_{price_key}"
     
     def _get_timestamp_bucket(self, current_time: float) -> int:
         """
@@ -625,21 +620,20 @@ class SupportResistanceCalculator(BaseCalculator):
         """
         return int(current_time // 300) * 300
     
-    def _get_cached_analysis(self, current_price: float, current_time: float, strategy: str = None) -> Dict[str, Any]:
+    def _get_cached_analysis(self, current_price: float, current_time: float) -> Dict[str, Any]:
         """
-        Get cached analysis if available with strategy-aware cache key
+        Get cached analysis if available (strategy-independent)
         
         Args:
             current_price: Current price
             current_time: Current timestamp
-            strategy: Trading strategy name (for strategy-aware caching)
             
         Returns:
-            Cached analysis or error result
+            Cached analysis or None if cache miss
         """
         try:
-            # Create timestamp bucket (5-minute buckets) with strategy
-            cache_key = self._get_cache_key(current_price, current_time, strategy=strategy)
+            # Create timestamp bucket (5-minute buckets) without strategy
+            cache_key = self._get_cache_key(current_price, current_time)
             
             cached_data = self._cache.get(cache_key)
             if cached_data:
@@ -743,8 +737,8 @@ class SupportResistanceCalculator(BaseCalculator):
                                 mtf_count=level.mtf_count,
                                 mtf_confidence=level.mtf_confidence,
                                 merged_from=level.merged_from,
-                                score=level.score,
-                                score_breakdown=level.score_breakdown
+                                power=level.power,
+                                power_breakdown=level.power_breakdown
                             )
                             updated_levels.append(updated_level)
                         else:
@@ -764,7 +758,7 @@ class SupportResistanceCalculator(BaseCalculator):
             return clustered_levels
     
     def _format_results_optimized(self, scored_levels: List, current_price: float, 
-                                 atr_14: float, current_time: float, strategy: str = None) -> Dict[str, Any]:
+                                 atr_14: float, current_time: float) -> Dict[str, Any]:
         """
         Format results with optimized performance and proper state management
         
@@ -773,12 +767,14 @@ class SupportResistanceCalculator(BaseCalculator):
             current_price: Current price
             atr_14: ATR for level status checking
             current_time: Current timestamp
-            strategy: Trading strategy name (for strategy-specific level selection)
             
         Returns:
-            Formatted result dictionary
+            Formatted result dictionary (strategy-independent, returns ALL levels)
         """
         try:
+            # Calculate ATR as percentage for level metadata
+            atr_pct = atr_14 / current_price if current_price > 0 else 0.0
+            
             # Process levels with state management
             key_levels = []
             active_count = 0
@@ -805,21 +801,26 @@ class SupportResistanceCalculator(BaseCalculator):
                 key_levels.append({
                     "price_level": level.level,
                     "type": level.level_type,  # Use original level_type from swing detection
-                    "strength_score": level.score,
+                    "strength_score": level.power,  # Use power (pure strength) for backward compatibility
+                    "power": level.power,  # New field: pure level strength
                     "multi_tf": level.mtf_count > 0,
                     "status": level_status,
                     "touches": level.touches,
+                    "weighted_touches": level.weighted_touches,  # Required for scoring
+                    "cluster_size": level.cluster_size,  # Required for scoring
                     "last_touch_timestamp": level.timestamp,
                     "mtf_count": level.mtf_count,
                     "mtf_confidence": level.mtf_confidence,
-                    "score_breakdown": level.score_breakdown or {},  # Ensure dict exists
-                    "merged_from": level.merged_from
+                    "power_breakdown": level.power_breakdown or {},  # Power breakdown
+                    "score_breakdown": level.power_breakdown or {},  # Backward compatibility alias
+                    "merged_from": level.merged_from,
+                    "atr_pct": atr_pct  # Required for distance-based scoring
                 })
             
-            # Sort by strength score - SCORING SYSTEM IS THE ONLY FACTOR (touch 50%, proximity 45%, volume 5%)
-            # Highest score wins - proximity penalty (distance), touch rewards, volume confirmation
-            # Sort all levels by strength score (universal scoring)
-            key_levels.sort(key=lambda x: x["strength_score"], reverse=True)
+            # Sort by power (pure strength: touch, volume, reversal_probability)
+            # Highest power wins - represents inherent level quality
+            # Safely handle None values with explicit or chain
+            key_levels.sort(key=lambda x: (x.get("power") or x.get("strength_score") or 0), reverse=True)
             
             # Calculate strongest support and resistance for metadata (use filter module)
             from .sr_level_filter import SRLevelFilter
@@ -827,7 +828,7 @@ class SupportResistanceCalculator(BaseCalculator):
             filtered_levels = level_filter.filter_for_display(
                 all_levels=key_levels,
                 current_price=current_price,
-                max_levels=1  # Only need strongest (top 1)
+                max_levels=1  # Only need strongest (top 1), uses default "standard" weights
             )
             
             # Get strongest levels for metadata (highest score)
@@ -871,8 +872,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 )
             }
             
-            # Cache the result with strategy-aware key and TTL
-            cache_key = self._get_cache_key(current_price, current_time, strategy=strategy)
+            # Cache the result with strategy-independent key and TTL
+            cache_key = self._get_cache_key(current_price, current_time)
             
             self._cache.set(cache_key, result, ttl=300)  # 5-minute TTL
             

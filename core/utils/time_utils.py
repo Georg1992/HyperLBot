@@ -166,3 +166,23 @@ def get_5m_candle_start_time(current_time: float = None) -> float:
 def create_time_snapshot(session_start_time: float = None) -> Dict[str, Any]:
     """Convenience function for time snapshot creation"""
     return TimeUtils.create_time_snapshot(session_start_time)
+
+def calculate_hours_since_touch(last_touch_timestamp: float, current_time: float = None) -> float:
+    """
+    Calculate hours since last touch - Single source of truth
+    
+    Args:
+        last_touch_timestamp: Timestamp of last touch (0 if never touched)
+        current_time: Optional current time, uses time.time() if None
+        
+    Returns:
+        Hours since last touch (999.0 if never touched or invalid)
+    """
+    if current_time is None:
+        current_time = time.time()
+    
+    if last_touch_timestamp <= 0:
+        return 999.0
+    
+    hours_since_touch = (current_time - last_touch_timestamp) / 3600.0
+    return max(0.0, hours_since_touch)

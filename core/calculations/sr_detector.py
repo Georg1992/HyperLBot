@@ -540,15 +540,8 @@ class SRDetector:
                 return None
             
             if len(points) == 1:
-                # For single point, calculate initial score if we have current_price/time
-                point = points[0]
-                if current_price is not None and current_time is not None:
-                    initial_score = self._calculate_point_score(
-                        point, current_price, current_time, atr_5m
-                    )
-                    # Create new Level with score (Level is immutable, so we need to recreate)
-                    return replace(point, score=initial_score)
-                return point
+                # For single point, return as-is (power will be calculated later by scorer)
+                return points[0]
             
             # Calculate score for each point (strength * proximity * recency)
             point_scores = []
@@ -616,8 +609,8 @@ class SRDetector:
                 strength=max(p.strength for p in points),
                 timestamp=most_recent_point.timestamp,  # Use most recent, not strongest
                 timeframe_distribution=timeframe_distribution,
-                merged_from=len(points),
-                score=initial_score  # Initial score calculated during clustering
+                merged_from=len(points)
+                # Note: power will be calculated later by sr_scorer
             )
             
         except Exception as e:

@@ -752,8 +752,11 @@ class MarketConditionsAnalyzer:
             factors.append(f"7-day range: ${min_low:,.0f} - ${max_high:,.0f}")
             factors.append(f"Current: ${current_price:,.0f}")
             
-            # Log at DEBUG level - this runs every 2 seconds, only significant changes logged at INFO
-            logger.debug(f"📊 7-day market status: {market_status} ({price_change_pct:+.1f}%, {range_pct:.1f}% range)")
+            # Log at INFO level when status is BULLISH or BEARISH (significant), DEBUG for NEUTRAL
+            if market_status in ["BULLISH", "BEARISH"]:
+                logger.info(f"📊 7-day market status: {market_status} ({price_change_pct:+.1f}%, range: {range_pct:.1f}%, thresholds: moderate={moderate_bullish_threshold:.1f}%/{moderate_bearish_threshold:.1f}%, strong={strong_bullish_threshold:.1f}%/{strong_bearish_threshold:.1f}%)")
+            else:
+                logger.debug(f"📊 7-day market status: {market_status} ({price_change_pct:+.1f}%, {range_pct:.1f}% range)")
             
             return {
                 "factors": factors,

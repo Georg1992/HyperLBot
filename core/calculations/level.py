@@ -32,14 +32,14 @@ class Level:
         mtf_count: Number of MTF confirmations (int, 0-∞)
         mtf_confidence: MTF confidence score (float, 0.0-1.0)
         merged_from: Number of original levels merged into this one (int, 1-∞)
-        score: Final calculated composite score (float, 0.0-100.0, optional)
-        score_breakdown: Component scores breakdown (Dict[str, float], optional)
+        power: Level power (pure strength: touch, volume, reversal_probability) (float, 0.0-100.0, optional)
+        power_breakdown: Component power breakdown (Dict[str, float], optional)
     
     Note:
         - cluster_size: How many swing points were merged together
         - merged_from: How many original levels were combined (same as cluster_size for single levels)
         - strength: Raw swing point strength before MTF weighting
-        - score: Final composite score after all weighting and normalization
+        - power: Pure level strength (inherent quality: touch count, volume, reversal probability)
         - mtf_confidence: Confidence in multi-timeframe confirmation (0.0 = no MTF, 1.0 = perfect MTF)
     """
     
@@ -58,10 +58,10 @@ class Level:
     mtf_count: int = 0
     mtf_confidence: float = 0.0
     
-    # Merging and scoring data
+    # Merging and power data
     merged_from: int = 1
-    score: Optional[float] = None
-    score_breakdown: Dict[str, float] = field(default_factory=dict)
+    power: Optional[float] = None  # Pure level strength (touch, volume, reversal_probability)
+    power_breakdown: Dict[str, float] = field(default_factory=dict)
     
     @property
     def total_score(self) -> float:
@@ -97,8 +97,8 @@ class Level:
             'mtf_count': self.mtf_count,
             'mtf_confidence': self.mtf_confidence,
             'merged_from': self.merged_from,
-            'score': self.score,
-            'score_breakdown': copy.deepcopy(self.score_breakdown)
+            'power': self.power,
+            'power_breakdown': copy.deepcopy(self.power_breakdown)
         }
         
         return result
@@ -162,8 +162,8 @@ class Level:
             mtf_count=safe_int(data.get('mtf_count'), 0),
             mtf_confidence=safe_float(data.get('mtf_confidence'), 0.0),
             merged_from=safe_int(data.get('merged_from'), 1),
-            score=safe_float(data.get('score')) if data.get('score') is not None else None,
-            score_breakdown=copy.deepcopy(data.get('score_breakdown', {}))
+            power=safe_float(data.get('power')) if data.get('power') is not None else (safe_float(data.get('score')) if data.get('score') is not None else None),  # Backward compatibility
+            power_breakdown=copy.deepcopy(data.get('power_breakdown', data.get('score_breakdown', {})))  # Backward compatibility
         )
     
     def is_support(self) -> bool:
@@ -224,9 +224,9 @@ class Level:
         Returns:
             Human-readable string representation
         """
-        score_str = f"{self.score:.1f}" if self.score is not None else "N/A"
+        power_str = f"{self.power:.1f}" if self.power is not None else "N/A"
         return (f"Level({self.level_type}@{self.level:.2f}, "
-                f"touches={self.touches}, score={score_str}, "
+                f"touches={self.touches}, power={power_str}, "
                 f"mtf={self.mtf_count})")
     
     def __repr__(self) -> str:
@@ -242,4 +242,4 @@ class Level:
                 f"timestamp={self.timestamp}, timeframe_distribution={self.timeframe_distribution}, "
                 f"mtf_matches={self.mtf_matches}, mtf_count={self.mtf_count}, "
                 f"mtf_confidence={self.mtf_confidence}, merged_from={self.merged_from}, "
-                f"score={self.score}, score_breakdown={self.score_breakdown})")
+                f"power={self.power}, power_breakdown={self.power_breakdown})")

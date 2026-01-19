@@ -162,7 +162,8 @@ class EntryPriceCalculator:
         """Calculate level strength-based adjustment multiplier"""
         strength_multiplier = 1.0
         try:
-            level_strength = level_data.get("strength_score", 50.0)
+            from core.utils.level_utils import get_level_power
+            level_strength = get_level_power(level_data, default=50.0)
             if level_strength >= 80:  # Very strong level
                 strength_multiplier = 0.75  # Tighter offset (75% of base) - level very likely to hold
             elif level_strength >= 60:  # Strong level
@@ -216,14 +217,22 @@ class EntryPriceCalculator:
     
     @staticmethod
     def _calculate_recent_action_multiplier(level_data: Dict[str, Any]) -> float:
-        """Calculate recent price action adjustment multiplier"""
+        """
+        Calculate recent price action adjustment multiplier
+        
+        NOTE: This uses hardcoded thresholds (6h, 24h, 72h) for entry price offset adjustment.
+        This is different from recency_factor used in scoring (which uses strategy-specific thresholds).
+        Entry price offset needs different logic (wider offset for recently tested levels).
+        """
         recent_action_multiplier = 1.0
         try:
             # last_touch_timestamp is optional (level might not have been touched yet)
             last_touch_timestamp = level_data.get("last_touch_timestamp", 0)
-            current_time = time.time()
-            hours_since_touch = (current_time - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else float('inf')
+            from core.utils.time_utils import calculate_hours_since_touch
+            hours_since_touch = calculate_hours_since_touch(last_touch_timestamp)
             
+            # Entry price offset logic: recently tested levels need wider offset
+            # This is different from scoring recency (which prefers recent levels)
             if hours_since_touch < 6:  # Recently touched (within 6 hours)
                 recent_action_multiplier = 1.15  # 15% wider offset - level recently tested
             elif hours_since_touch < 24:  # Moderately recent (6-24 hours)

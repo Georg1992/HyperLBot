@@ -75,8 +75,8 @@ class MarketDataService:
         """Receive processed analysis data from analysis modules"""
         self._store_processed_data(data_type, analysis_data)
     
-    def get_volatility_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get volatility analysis from VolatilityCalculator"""
+    def get_volatility_analysis(self) -> Dict[str, Any]:
+        """Get volatility analysis from VolatilityCalculator - strategy independent"""
         try:
             # Check if we have valid processed data
             volatility_data = self._get_processed_data("volatility")
@@ -97,8 +97,8 @@ class MarketDataService:
             logger.error(f"❌ Failed to get volatility analysis: {e}")
             raise
     
-    def get_trend_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get trend analysis from TrendCalculator with proper mapping"""
+    def get_trend_analysis(self) -> Dict[str, Any]:
+        """Get trend analysis from TrendCalculator - strategy independent"""
         try:
             # Check cache for already-mapped trend data
             trend_data = self._get_processed_data("trend")
@@ -125,7 +125,8 @@ class MarketDataService:
             # No valid cached data - fetch fresh trend data
             if "trend" in self._analysis_modules:
                 logger.info("📊 Triggering trend analysis...")
-                raw_trend_data = self._analysis_modules["trend"].get_latest_analysis(strategy)
+                # Strategy-independent analysis
+                raw_trend_data = self._analysis_modules["trend"].get_latest_analysis()
                 mapped_trend = self._map_trend_data(raw_trend_data)
                 # Store mapped result for future use
                 self.update_analysis_data("trend", mapped_trend)
@@ -214,21 +215,22 @@ class MarketDataService:
         }
         return strength_mapping.get(trend, "UNKNOWN")
     
-    def get_support_resistance_analysis(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get S/R analysis from SupportResistanceCalculator
+    def get_support_resistance_analysis(self) -> Dict[str, Any]:
+        """
+        Get S/R analysis from SupportResistanceCalculator - strategy independent
         
-        Args:
-            strategy: Trading strategy name (default: "standard")
+        Returns ALL significant S/R levels found in the market.
+        Strategy-specific filtering happens later in prediction engine.
         """
         try:
-            # Use strategy-aware cache key
-            cache_key = f"support_resistance_{strategy}"
+            # Strategy-independent cache key
+            cache_key = "support_resistance"
             sr_data = self._cache.get(cache_key)
             if sr_data:
                 return sr_data
             
             if "support_resistance" in self._analysis_modules:
-                logger.info(f"📊 Triggering S/R analysis (strategy: {strategy})...")
+                logger.info("📊 Triggering S/R analysis (strategy-independent)...")
                 # Get current price for S/R calculation
                 current_price = None
                 if self.hyperliquid_websocket:
@@ -239,11 +241,12 @@ class MarketDataService:
                 if not current_price or current_price <= 0:
                     raise ValueError("No valid current price for S/R analysis")
                 
-                # Pass strategy to SR calculator
+                # Get S/R calculator and calculate levels (strategy-independent)
                 sr_calculator = self._analysis_modules["support_resistance"]
                 # NO FALLBACKS - assume calculate_multi_timeframe_levels exists
-                result = sr_calculator.calculate_multi_timeframe_levels(current_price, strategy=strategy)
-                # Cache with strategy-aware key
+                # Strategy-independent: returns ALL significant levels
+                result = sr_calculator.calculate_multi_timeframe_levels(current_price)
+                # Cache with strategy-independent key
                 self._cache.set(cache_key, result, ttl=300)
                 # Also store via MarketDataService for consistency
                 self.update_analysis_data("support_resistance", result)
@@ -402,8 +405,13 @@ class MarketDataService:
     # UNIFIED PROCESSED DATA PACKAGES - Pre-processed data for consumers
     # ==================================================================================
     
-    def get_unified_analysis_data(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get comprehensive real-time market data structure with all components"""
+    def get_unified_analysis_data(self) -> Dict[str, Any]:
+        """
+        Get comprehensive real-time market data structure with all components
+        
+        STRATEGY INDEPENDENT: All analysis is objective and not influenced by trading strategy.
+        Strategy is determined AFTER this analysis is complete.
+        """
         try:
             logger.debug("📊 Coordinating unified analysis data...")
             
@@ -428,17 +436,18 @@ class MarketDataService:
                         logger.warning(f"⚠️ Failed to initialize RSI: {e}")
                 # RSI updates happen via WebSocket callback only - NO FALLBACKS
             
-            # Get all processed analysis data
+            # Get all processed analysis data - STRATEGY INDEPENDENT
+            # Analysis represents objective market facts, not strategy-specific interpretations
             rsi_data = self.get_rsi_analysis()
-            trend_data = self.get_trend_analysis(strategy)
-            volatility_data = self.get_volatility_analysis(strategy)
+            trend_data = self.get_trend_analysis()
+            volatility_data = self.get_volatility_analysis()
             volume_data = self.get_volume_analysis()
             
             unified_data = {
                 # Core market data
                 "current_price": current_price,
                 "timestamp": time.time(),
-                "strategy": strategy,
+                "strategy": None,  # Strategy determined after analysis
                 
                 # Flattened data for strategy selection (single source of truth)
                 "trend_direction": trend_data.get("direction", "SIDEWAYS"),
@@ -452,7 +461,7 @@ class MarketDataService:
                 "trend": trend_data,
                 "volatility": volatility_data,
                 "volume": volume_data,
-                "support_resistance": self.get_support_resistance_analysis(strategy),
+                "support_resistance": self.get_support_resistance_analysis(),
                 "pressure": self.get_pressure_analysis(),
                 "patterns": self.get_pattern_analysis(),
                 
@@ -576,9 +585,9 @@ class MarketDataService:
                     market_data = {
                         "current_price": current_price,
                         "rsi": self.get_rsi_analysis().get("rsi", 50.0),
-                        "trend": self.get_trend_analysis("standard").get("direction", "SIDEWAYS"),
-                        "volatility_5m": self.get_volatility_analysis("standard").get("volatility_percentage", 0.0) / 100.0,
-                        "volatility_category": self.get_volatility_analysis("standard").get("level", "MODERATE"),
+                        "trend": self.get_trend_analysis().get("direction", "SIDEWAYS"),
+                        "volatility_5m": self.get_volatility_analysis().get("volatility_percentage", 0.0) / 100.0,
+                        "volatility_category": self.get_volatility_analysis().get("level", "MODERATE"),
                         "volume_category": self.get_volume_analysis().get("hyperliquid_5m", {}).get("volume_category", "MODERATE")
                     }
                     # Get 1d candles for market trend analysis - request more to ensure we have enough
@@ -803,11 +812,18 @@ class MarketDataService:
                 "data_quality": {"all_components_available": False}
             }
     
-    def get_dashboard_data(self, strategy: str = "standard") -> Dict[str, Any]:
-        """Get optimized data package for dashboard UI with prediction data"""
+    def get_dashboard_data(self, strategy: str = None) -> Dict[str, Any]:
+        """
+        Get optimized data package for dashboard UI with prediction data
+        
+        Args:
+            strategy: DEPRECATED - Analysis is now strategy-independent.
+                     Kept for backward compatibility but ignored.
+        """
         try:
-            # Get unified analysis data
-            analysis_data = self.get_unified_analysis_data(strategy)
+            # Get unified analysis data (strategy-independent)
+            # Strategy parameter is deprecated but kept for backward compatibility
+            analysis_data = self.get_unified_analysis_data()
             
             # Prediction data removed - will be re-implemented with clean architecture
             prediction_data = {}
@@ -1019,6 +1035,7 @@ class MarketDataService:
             metadata = sr_data.get("metadata", {})
             
             # Filter levels for dashboard display (top 2)
+            # During analysis phase - no active strategy yet, uses default "standard" weights
             level_filter = SRLevelFilter()
             filtered_levels = level_filter.filter_for_display(
                 all_levels=all_levels,

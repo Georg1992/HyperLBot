@@ -24,24 +24,32 @@ class SRScorer:
     """
     
     def __init__(self, strategy: str = "standard"):
-        """Initialize the scorer with universal weights
+        """Initialize the power calculator with universal weights
         
-        SCORING SYSTEM REPRESENTS REVERSAL PROBABILITY (0-100%)
-        Score = estimated probability that price will reverse at this level
+        POWER SYSTEM REPRESENTS PURE LEVEL STRENGTH (0-100%)
+        Power = inherent level quality (touch count, volume, reversal probability)
         
-        NOTE: Scoring is UNIVERSAL - all strategies use the same weights
+        NOTE: Power is UNIVERSAL - all strategies use the same weights
         SR levels are objective market features - their strength doesn't change based on strategy
-        Strategy only affects SELECTION (which levels to use, not how they're scored)
+        Strategy only affects SELECTION (which levels to use, not how they're powered)
+        
+        Power components (inherent strength only):
+        - Touch: 60% (touch count - more touches = stronger level)
+        - Reversal probability: 30% (historical reversal rate from actual data)
+        - Volume: 10% (volume at level - higher = more liquidity)
+        
+        Contextual factors (proximity, recency) are NOT included in power.
+        They are used in direction/entry calculations instead.
         
         Args:
             strategy: Trading strategy name (default: "standard") - used for learned weights only
         
-        Score interpretation:
-        - 80-100%: Very high reversal probability (excellent trading level)
-        - 60-79%: High reversal probability (good trading level)
-        - 40-59%: Moderate reversal probability (decent level)
-        - 20-39%: Low reversal probability (weak level)
-        - 0-19%: Very low reversal probability (poor level)
+        Power interpretation:
+        - 80-100%: Very strong level (excellent quality)
+        - 60-79%: Strong level (good quality)
+        - 40-59%: Moderate level (decent quality)
+        - 20-39%: Weak level (poor quality)
+        - 0-19%: Very weak level (very poor quality)
         """
         from config.config import TradingConfig
         
@@ -51,34 +59,28 @@ class SRScorer:
         if learned_weights:
             logger.info("✅ Loaded universal learned weights (used by all strategies)")
             # Use learned weights if available (ML-optimized)
-            self._scoring_weights = {
-                'mtf': 0.00,  # Multi-timeframe confirmation (0% - removed)
-                'proximity': learned_weights.get("proximity", 0.15),
-                'touch': learned_weights.get("touch", 0.50),
-                'reversal_probability': learned_weights.get("reversal_probability", 0.20),
-                'recency': learned_weights.get("recency", 0.10),
-                'volume': learned_weights.get("volume", 0.05)
+            # Only include inherent strength factors (no proximity/recency)
+            self._power_weights = {
+                'touch': learned_weights.get("touch", 0.60),
+                'reversal_probability': learned_weights.get("reversal_probability", 0.30),
+                'volume': learned_weights.get("volume", 0.10)
             }
         else:
             # Use universal static weights (same for all strategies)
-            universal_weights = TradingConfig.SR_SCORING_WEIGHTS
-            self._scoring_weights = {
-                'mtf': 0.00,  # Multi-timeframe confirmation (0% - removed)
-                'proximity': universal_weights.get("proximity", 0.15),
-                'touch': universal_weights.get("touch", 0.50),
-                'reversal_probability': universal_weights.get("reversal_probability", 0.20),
-                'recency': universal_weights.get("recency", 0.10),
-                'volume': universal_weights.get("volume", 0.05)
+            universal_weights = TradingConfig.SR_POWER_WEIGHTS
+            self._power_weights = {
+                'touch': universal_weights.get("touch", 0.60),
+                'reversal_probability': universal_weights.get("reversal_probability", 0.30),
+                'volume': universal_weights.get("volume", 0.10)
             }
         
-        # Use universal proximity decay factor (same for all strategies)
-        self.proximity_decay_k = TradingConfig.SR_PROXIMITY_DECAY_K
-        self._strategy = strategy
-        
         # Validate weights sum to 1.0
-        weight_sum = sum(self._scoring_weights.values())
-        if abs(weight_sum - 1.0) > 0.001:
-            raise ValueError(f"Scoring weights must sum to 1.0, got {weight_sum}")
+        total_weight = sum(self._power_weights.values())
+        if abs(total_weight - 1.0) > 0.01:
+            logger.warning(f"⚠️ Power weights don't sum to 1.0: {total_weight}, normalizing...")
+            for key in self._power_weights:
+                self._power_weights[key] /= total_weight
+        self._strategy = strategy
     
     def _load_learned_weights(self, strategy: str) -> Optional[Dict[str, float]]:
         """Load universal learned weights from file (same for all strategies), return None if not available"""
@@ -351,77 +353,63 @@ class SRScorer:
             logger.error(f"❌ Trend adjustment failed: {e}")
             return base_probability
     
-    def score_levels_enhanced(self, levels: List[Level], current_price: float, 
-                             atr_5m: float, atr_per_tf: Dict[str, float],
-                             candles_data: Dict[str, List[Dict]] = None,
-                             trend_data: Dict[str, Any] = None) -> List[Level]:
+    def calculate_power(self, levels: List[Level], current_price: float, 
+                       atr_5m: float, atr_per_tf: Dict[str, float],
+                       candles_data: Dict[str, List[Dict]] = None,
+                       trend_data: Dict[str, Any] = None) -> List[Level]:
         """
-        Enhanced scoring of S/R levels - SCORE REPRESENTS REVERSAL PROBABILITY (0-100%)
+        Calculate level power (pure strength: touch, volume, reversal_probability)
         
-        Mathematically justified: Direct linear combination of all factors with configurable weights
-        Formula: score = Σ(component_i * weight_i) for all i, where weights sum to 1.0
+        Power represents inherent level quality, not contextual relevance.
+        Contextual factors (proximity, recency) are used in direction/entry calculations.
+        
+        Mathematically justified: Direct linear combination of inherent strength factors
+        Formula: power = Σ(component_i * weight_i) for all i, where weights sum to 1.0
         
         Components and default weights:
-        - Touch: 50% (touch count - more touches = stronger level)
-        - Reversal probability: 20% (historical reversal rate from actual data)
-        - Proximity: 15% (distance from current price - closer = higher score)
-        - Recency: 10% (time since last touch - recent = higher score)
-        - Volume: 5% (volume at level - higher = more liquidity)
-        - MTF: 0% (disabled)
+        - Touch: 60% (touch count - more touches = stronger level)
+        - Reversal probability: 30% (historical reversal rate from actual data)
+        - Volume: 10% (volume at level - higher = more liquidity)
         
-        Factors that increase score:
-        - Touch count: More touches = stronger level (configurable weight, default 50%)
-        - Historical reversal rate: Actual reversal probability from historical analysis (configurable weight, default 20%)
-        - Proximity: Closer to current price = higher chance of interaction (configurable weight, default 25%)
-        - Recency: Recent touches = level still active (configurable weight, default 10%)
-        - Volume: Higher volume = more liquidity (configurable weight, default 5%)
-        
-        Score interpretation (reversal probability):
-        - 80-100%: Very high probability of reversal (excellent trading level)
-        - 60-79%: High probability of reversal (good trading level)
-        - 40-59%: Moderate probability of reversal (decent level)
-        - 20-39%: Low probability of reversal (weak level)
-        - 0-19%: Very low probability of reversal (poor level)
+        Power interpretation (pure strength):
+        - 80-100%: Very strong level (excellent quality)
+        - 60-79%: Strong level (good quality)
+        - 40-59%: Moderate level (decent quality)
+        - 20-39%: Weak level (poor quality)
+        - 0-19%: Very weak level (very poor quality)
         
         Args:
             levels: List of Level dataclass objects
-            current_price: Current price for proximity calculation
+            current_price: Current price (for reversal probability calculation only)
             atr_5m: 5m ATR for volatility scaling
             atr_per_tf: Dictionary of ATR values per timeframe
+            candles_data: Historical candles for reversal probability calculation
+            trend_data: Trend data for reversal probability adjustment
             
         Returns:
-            List of scored Level dataclass objects with normalized scores [0-100]
+            List of Level objects with power calculated [0-100]
         """
         try:
-            scored_levels = []
+            powered_levels = []
             
             for level in levels:
                 # Calculate accurate reversal probability from historical data
-                # This is the PRIMARY scoring method - uses actual historical reversals
                 reversal_probability = self.calculate_reversal_probability(
                     level, current_price, atr_5m, candles_data, trend_data
                 )
                 
-                # Calculate individual component scores for weighted combination
-                mtf_score = self._calculate_mtf_score_enhanced(level)
-                proximity_score = self._calculate_proximity_score_enhanced(
-                    level.level, current_price, atr_5m)
+                # Calculate inherent strength components only (no proximity/recency)
                 touch_score = self._calculate_touch_score(level.touches)
                 volume_score = self._calculate_volume_score(level, atr_5m)
-                recency_score = self._calculate_recency_score(level.timestamp)
                 
-                # Mathematically justified: Include reversal_probability as a separate component in weighted sum
-                # This combines all factors (touch, reversal_probability, proximity, recency, volume) directly
-                # using configurable weights - no arbitrary constants, no blending
-                # Formula: score = Σ(component_i * weight_i) for all i
-                normalized_score = self._calculate_weighted_score(
-                    mtf_score, proximity_score, touch_score, reversal_probability,
-                    volume_score, recency_score
+                # Calculate power: weighted sum of inherent strength factors only
+                power = self._calculate_power_weighted(
+                    touch_score, reversal_probability, volume_score
                 )
                 
-                # Create new Level instance with score information
+                # Create new Level instance with power information
                 from .level import Level
-                scored_level = Level(
+                powered_level = Level(
                     level=level.level,
                     level_type=level.level_type,
                     touches=level.touches,
@@ -434,23 +422,20 @@ class SRScorer:
                     mtf_count=level.mtf_count,
                     mtf_confidence=level.mtf_confidence,
                     merged_from=level.merged_from,
-                    score=normalized_score,
-                    score_breakdown={
-                        'reversal_probability': reversal_probability,
-                        'mtf': mtf_score,
-                        'proximity': proximity_score,
+                    power=power,
+                    power_breakdown={
                         'touch': touch_score,
-                        'volume': volume_score,
-                        'recency': recency_score
+                        'reversal_probability': reversal_probability,
+                        'volume': volume_score
                     }
                 )
                 
-                scored_levels.append(scored_level)
+                powered_levels.append(powered_level)
             
-            # Sort by score (highest first)
-            scored_levels.sort(key=lambda x: x.score, reverse=True)
+            # Sort by power (highest first)
+            powered_levels.sort(key=lambda x: x.power or 0, reverse=True)
             
-            return scored_levels
+            return powered_levels
             
         except Exception as e:
             logger.error(f"❌ Level scoring failed: {e}")
@@ -652,53 +637,46 @@ class SRScorer:
             logger.error(f"❌ Recency score calculation failed: {e}")
             return 50.0  # Default to neutral score on error
     
-    def _calculate_weighted_score(self, mtf_score: float, proximity_score: float,
-                                touch_score: float, reversal_probability: float,
-                                volume_score: float, recency_score: float) -> float:
+    def _calculate_power_weighted(self, touch_score: float, reversal_probability: float,
+                                 volume_score: float) -> float:
         """
-        Calculate weighted score with normalization - mathematically justified
+        Calculate weighted power (pure strength only) - mathematically justified
         
-        Mathematically justified approach: Direct linear combination of all factors
+        Mathematically justified approach: Direct linear combination of inherent strength factors
         with configurable weights. No arbitrary constants.
         
-        Formula: score = Σ(component_i * weight_i) for all i
+        Formula: power = Σ(component_i * weight_i) for all i
         where weights sum to 1.0
         
         Args:
-            mtf_score: MTF score (0-100)
-            proximity_score: Proximity score (0-100)
             touch_score: Touch score (0-100) - based on touch count
             reversal_probability: Historical reversal probability (0-100) - from actual data
             volume_score: Volume score (0-100)
-            recency_score: Recency score (0-100) - more recent touches = higher score
             
         Returns:
-            Weighted score (0-100)
+            Weighted power (0-100)
         """
         try:
-            # Calculate weighted score (individual scores are 0-100, so divide by 100 to get 0-1 range)
+            # Calculate weighted power (individual scores are 0-100, so divide by 100 to get 0-1 range)
             # Mathematically justified: direct linear combination with configurable weights
-            weighted_score = (
-                (mtf_score / 100.0) * self._scoring_weights['mtf'] +
-                (proximity_score / 100.0) * self._scoring_weights['proximity'] +
-                (touch_score / 100.0) * self._scoring_weights['touch'] +
-                (reversal_probability / 100.0) * self._scoring_weights['reversal_probability'] +
-                (volume_score / 100.0) * self._scoring_weights['volume'] +
-                (recency_score / 100.0) * self._scoring_weights['recency']
+            weighted_power = (
+                (touch_score / 100.0) * self._power_weights['touch'] +
+                (reversal_probability / 100.0) * self._power_weights['reversal_probability'] +
+                (volume_score / 100.0) * self._power_weights['volume']
             )
             
             # Convert back to 0-100 range with validation
-            normalized_score = min(100.0, max(0.0, weighted_score * 100.0))
+            normalized_power = min(100.0, max(0.0, weighted_power * 100.0))
             
-            # Validate score is within expected range
-            if not (0.0 <= normalized_score <= 100.0):
-                logger.warning(f"⚠️ Score out of range: {normalized_score}")
-                normalized_score = max(0.0, min(100.0, normalized_score))
+            # Validate power is within expected range
+            if not (0.0 <= normalized_power <= 100.0):
+                logger.warning(f"⚠️ Power out of range: {normalized_power}")
+                normalized_power = max(0.0, min(100.0, normalized_power))
             
-            return normalized_score
+            return normalized_power
             
         except Exception as e:
-            logger.error(f"❌ Weighted score calculation failed: {e}")
+            logger.error(f"❌ Power calculation failed: {e}")
             return 50.0
     
     def align_mtf_levels(self, clustered_levels: List[Level], higher_tf_levels: List[Level], 
@@ -784,8 +762,8 @@ class SRScorer:
                         mtf_count=len(mtf_matches),
                         mtf_confidence=mtf_confidence,
                         merged_from=level.merged_from,
-                        score=level.score,
-                        score_breakdown=level.score_breakdown
+                        power=level.power,
+                        power_breakdown=level.power_breakdown
                     )
                     
                     aligned_levels.append(updated_level)
@@ -805,8 +783,8 @@ class SRScorer:
                         mtf_count=0,
                         mtf_confidence=0.0,
                         merged_from=level.merged_from,
-                        score=level.score,
-                        score_breakdown=level.score_breakdown
+                        power=level.power,
+                        power_breakdown=level.power_breakdown
                     )
                     
                     aligned_levels.append(updated_level)
@@ -842,8 +820,8 @@ class SRScorer:
                         mtf_count=1,
                         mtf_confidence=0.7,  # Default confidence for standalone HTF levels
                         merged_from=htf_level.merged_from,
-                        score=htf_level.score if htf_level.score is not None else 0.0,
-                        score_breakdown=htf_level.score_breakdown or {}
+                        power=htf_level.power if htf_level.power is not None else 0.0,
+                        power_breakdown=htf_level.power_breakdown or {}
                     )
                     aligned_levels.append(standalone_level)
             
