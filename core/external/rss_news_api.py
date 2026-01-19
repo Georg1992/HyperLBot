@@ -350,6 +350,9 @@ class RSSNewsAPI:
         # Determine impact level
         impact_level = self._determine_impact_level(avg_sentiment, len(articles), confidence)
         
+        # Count high impact articles (strong sentiment + high confidence)
+        high_impact_count = len([s for s in article_sentiments if abs(s['sentiment']) > 0.3])
+        
         # Generate trading signal
         trading_signal = self._generate_trading_signal(classification, confidence, impact_level)
         
@@ -364,7 +367,8 @@ class RSSNewsAPI:
             'impact': {
                 'impact_level': impact_level,
                 'strength': abs(avg_sentiment),
-                'article_count': len(articles)
+                'article_count': len(articles),
+                'high_impact_count': high_impact_count  # Required (NO FALLBACKS)
             },
             'trading_signal': trading_signal,
             'confidence': confidence,
