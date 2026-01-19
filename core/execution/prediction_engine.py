@@ -490,7 +490,7 @@ class PredictionEngine:
         patterns_short = 0.0
         reasons = []
         
-        bullish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
+        bullish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and "direction" in p and p["direction"] == "BULLISH"]
         if bullish_reversals:
             patterns_long = 100.0
             reasons.append(f"Bullish reversal pattern detected ({len(bullish_reversals)})")
@@ -500,7 +500,7 @@ class PredictionEngine:
             patterns_short = 100.0
             reasons.append(f"Bearish reversal pattern detected ({len(bearish_reversals)})")
         
-        bullish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
+        bullish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and "direction" in p and p["direction"] == "BULLISH"]
         if bullish_continuations:
             patterns_long += 50.0
             reasons.append(f"Bullish continuation pattern ({len(bullish_continuations)})")
@@ -1101,8 +1101,8 @@ class PredictionEngine:
             if not base_direction_result:
                 return None
             
-            base_long_score = base_direction_result.get("long_score", 0.0)
-            base_short_score = base_direction_result.get("short_score", 0.0)
+            base_long_score = base_direction_result["long_score"]  # Required (NO FALLBACKS)
+            base_short_score = base_direction_result["short_score"]  # Required (NO FALLBACKS)
             
             # Initialize contextual scores (start with base scores)
             contextual_long_score = base_long_score
@@ -1559,7 +1559,7 @@ class PredictionEngine:
                     if entry_data is None:
                         continue  # Skip if entry determination failed
                     
-                    entry_price = entry_data.get("entry_price")
+                    entry_price = entry_data["entry_price"]  # Required (NO FALLBACKS)
                     if entry_price is None or entry_price <= 0 or entry_price >= current_price:
                         continue  # Skip if entry is invalid or unfillable
                 except Exception as e:
@@ -1607,7 +1607,7 @@ class PredictionEngine:
                     if entry_data is None:
                         continue  # Skip if entry determination failed
                     
-                    entry_price = entry_data.get("entry_price")
+                    entry_price = entry_data["entry_price"]  # Required (NO FALLBACKS)
                     if entry_price is None or entry_price <= 0 or entry_price <= current_price:
                         continue  # Skip if entry is invalid or unfillable
                 except Exception as e:
@@ -1683,8 +1683,8 @@ class PredictionEngine:
         try:
             # Get ATR for distance calculations
             atr_pct = self._get_atr_pct(unified_data, current_price)
-            sr_data = unified_data.get("support_resistance", {})
-            sr_metadata = sr_data.get("metadata", {})
+            sr_data = unified_data["support_resistance"]  # Required (NO FALLBACKS)
+            sr_metadata = sr_data["metadata"]  # Required (NO FALLBACKS)
             atr_5m = sr_metadata["atr_5m"]  # Required (NO FALLBACKS)
             if atr_5m <= 0:
                 raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
@@ -1854,8 +1854,8 @@ class PredictionEngine:
             # Use entry_score from entry_data if available (avoid recalculation)
             # Otherwise calculate it
             if entry_data and "entry_score" in entry_data:
-                entry_score = entry_data.get("entry_score", 0.0)
-                entry_breakdown = entry_data.get("entry_breakdown", {})
+                entry_score = entry_data["entry_score"]  # Required (NO FALLBACKS)
+                entry_breakdown = entry_data["entry_breakdown"]  # Required (NO FALLBACKS)
                 # Still need reasoning, so calculate entry_result but use cached score
                 entry_result = self._score_entry_setup(
                     entry_price=entry_price,
@@ -1882,8 +1882,8 @@ class PredictionEngine:
                 if not entry_result:
                     return None
                 
-                entry_score = entry_result.get("score", 0.0)
-                entry_reasoning = entry_result.get("reasoning", "")
+                entry_score = entry_result["score"]  # Required (NO FALLBACKS)
+                entry_reasoning = entry_result["reasoning"]  # Required (NO FALLBACKS)
                 # Create entry_breakdown from level_data if not provided
                 level_power = level_data.get("power") if level_data else 50.0
                 entry_breakdown = {
@@ -1894,16 +1894,16 @@ class PredictionEngine:
                 }
             
             # Get contextual direction score for this direction
-            long_score = direction_result.get("long_score", 0.0)
-            short_score = direction_result.get("short_score", 0.0)
-            base_long_score = direction_result.get("base_long_score", long_score)
-            base_short_score = direction_result.get("base_short_score", short_score)
+            long_score = direction_result["long_score"]  # Required (NO FALLBACKS)
+            short_score = direction_result["short_score"]  # Required (NO FALLBACKS)
+            base_long_score = direction_result["base_long_score"] if "base_long_score" in direction_result else long_score
+            base_short_score = direction_result["base_short_score"] if "base_short_score" in direction_result else short_score
             
             # Check if contextual factors were applied
-            proximity_factor = direction_result.get("proximity_factor", 1.0)
-            strength_factor = direction_result.get("strength_factor", 1.0)
-            alignment_factor = direction_result.get("alignment_factor", 1.0)
-            recency_factor = direction_result.get("recency_factor", 1.0)
+            proximity_factor = direction_result["proximity_factor"] if "proximity_factor" in direction_result else 1.0
+            strength_factor = direction_result["strength_factor"] if "strength_factor" in direction_result else 1.0
+            alignment_factor = direction_result["alignment_factor"] if "alignment_factor" in direction_result else 1.0
+            recency_factor = direction_result["recency_factor"] if "recency_factor" in direction_result else 1.0
             
             # Generate direction-specific reasoning with contextual information
             if direction == "LONG":
@@ -2079,7 +2079,7 @@ class PredictionEngine:
             scored_setups.sort(key=lambda x: x.get("score", 0.0), reverse=True)
             best_setup = scored_setups[0]
             
-            logger.debug(f"📊 Entry determined: ${best_setup['entry_price']:.2f} (type: {best_setup['setup_type']}, score: {best_setup.get('score', 0):.1f})")
+            logger.debug(f"📊 Entry determined: ${best_setup['entry_price']:.2f} (type: {best_setup['setup_type']}, score: {best_setup['score']:.1f})")  # Required (NO FALLBACKS)
             
             return {
                 "entry_price": best_setup["entry_price"],
@@ -2164,8 +2164,8 @@ class PredictionEngine:
                     )
                     
                     if selected_level:
-                        level_price = selected_level.get("price_level", 0)
-                        level_strength = selected_level.get("strength_score", 50.0)
+                        level_price = selected_level["price_level"]  # Required (NO FALLBACKS)
+                        level_strength = selected_level["strength_score"]  # Required (NO FALLBACKS)
                         
                         # Validate level is not broken (safety check)
                         if direction == "LONG":
@@ -2193,8 +2193,8 @@ class PredictionEngine:
                             logger.warning(f"⚠️ No suitable LONG stop level found. Entry: ${entry_price:.2f}, Min distance: ${min_stop_distance:.2f}, Max reasonable: ${max_reasonable_distance:.2f}")
                             logger.warning(f"⚠️ Available supports below entry: {len(supports)}")
                             if supports:
-                                distances = [entry_price - s.get("price_level", 0) for s in supports]
-                                strengths = [s.get("strength_score", 0) for s in supports]
+                                distances = [entry_price - s["price_level"] for s in supports]  # Required (NO FALLBACKS)
+                                strengths = [s["strength_score"] for s in supports]  # Required (NO FALLBACKS)
                                 logger.warning(f"⚠️ Support distances from entry: {[f'${d:.2f}' for d in distances[:5]]}")
                                 logger.warning(f"⚠️ Support strengths: {[f'{s:.1f}' for s in strengths[:5]]}")
                         else:  # SHORT
@@ -2202,8 +2202,8 @@ class PredictionEngine:
                             logger.warning(f"⚠️ No suitable SHORT stop level found. Entry: ${entry_price:.2f}, Min distance: ${min_stop_distance:.2f}, Max reasonable: ${max_reasonable_distance:.2f}")
                             logger.warning(f"⚠️ Available resistances above entry: {len(resistances)}")
                             if resistances:
-                                distances = [r.get("price_level", 0) - entry_price for r in resistances]
-                                strengths = [r.get("strength_score", 0) for r in resistances]
+                                distances = [r["price_level"] - entry_price for r in resistances]  # Required (NO FALLBACKS)
+                                strengths = [r["strength_score"] for r in resistances]  # Required (NO FALLBACKS)
                                 logger.warning(f"⚠️ Resistance distances from entry: {[f'${d:.2f}' for d in distances[:5]]}")
                                 logger.warning(f"⚠️ Resistance strengths: {[f'{s:.1f}' for s in strengths[:5]]}")
                         raise ValueError(f"No suitable S/R level found for {direction} stop placement (min_distance: ${min_stop_distance:.2f}, max_reasonable: ${max_reasonable_distance:.2f}) (NO FALLBACKS)")
@@ -2239,7 +2239,7 @@ class PredictionEngine:
             )
             
             # 4. Validate risk/reward ratio (delegated to RiskManager)
-            min_risk_reward = config.get("min_risk_reward", 1.5)
+            min_risk_reward = config["min_rr"] if "min_rr" in config else 1.5  # Strategy config uses min_rr
             risk_reward_ratio, is_valid = RiskManager.validate_risk_reward(
                 entry_price=entry_price,
                 stop_loss=stop_loss,
