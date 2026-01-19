@@ -178,19 +178,19 @@ class StrategyManager:
             raise
     
     def _extract_market_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract and normalize all available market data"""
+        """Extract and normalize all available market data (NO FALLBACKS)"""
         # Basic data (flattened) - ensure numeric types are floats
-        volatility_category = market_data.get("volatility_category", "MODERATE")
-        trend_direction = market_data.get("trend_direction", "SIDEWAYS")
-        volume_category = market_data.get("volume_category", "MODERATE")
+        volatility_category = market_data["volatility_category"]  # Required (NO FALLBACKS)
+        trend_direction = market_data["trend_direction"]  # Required (NO FALLBACKS)
+        volume_category = market_data["volume_category"]  # Required (NO FALLBACKS)
         
-        volatility_5m_raw = market_data.get("volatility_5m", 0.0)
+        volatility_5m_raw = market_data["volatility_5m"]  # Required (NO FALLBACKS)
         try:
             volatility_5m = float(volatility_5m_raw) if volatility_5m_raw is not None else 0.0
         except (ValueError, TypeError):
             volatility_5m = 0.0
         
-        rsi_value_raw = market_data.get("rsi_value", 50.0)
+        rsi_value_raw = market_data["rsi_value"]  # Required (NO FALLBACKS)
         try:
             rsi_value = float(rsi_value_raw) if rsi_value_raw is not None else 50.0
         except (ValueError, TypeError):
@@ -223,7 +223,7 @@ class StrategyManager:
         
         # S/R data - filter levels for strategy selection
         sr_levels = self._safe_get(sr_data, "levels", [])
-        current_price = self._safe_get(market_data, "current_price", 0.0)
+        current_price = market_data["current_price"]  # Required (NO FALLBACKS)
         
         # Filter levels for strategy selection
         # During strategy selection - no active strategy yet, uses default "standard" weights
@@ -354,7 +354,7 @@ class StrategyManager:
         for pattern in pattern_list:
             if not isinstance(pattern, dict):
                 continue
-            pattern_name = pattern.get("pattern", "").upper()
+            pattern_name = pattern["pattern"].upper()  # Required (NO FALLBACKS)
             if any(name.upper() in pattern_name for name in pattern_names):
                 return True
         return False
@@ -408,9 +408,9 @@ class StrategyManager:
         
         # Spread: Tight spread is critical (30 points)
         try:
-            spread = float(data.get("spread_pct", 1.0)) if data.get("spread_pct") is not None else 1.0
+            spread = float(data["spread_pct"])  # Required (NO FALLBACKS)
         except (ValueError, TypeError):
-            spread = 1.0
+            spread = 1.0  # Defensive float conversion only
         if spread < 0.0001:  # <0.01%
             score += 30.0
             factors.append(f"Tight spread ({spread*100:.3f}%)")
@@ -435,9 +435,9 @@ class StrategyManager:
         
         # RSI momentum: Neutral/positive momentum (10 points)
         try:
-            rsi_momentum = float(data.get("rsi_momentum", 0.0))
+            rsi_momentum = float(data["rsi_momentum"])  # Required (NO FALLBACKS)
         except (ValueError, TypeError):
-            rsi_momentum = 0.0
+            rsi_momentum = 0.0  # Defensive float conversion only
         if -0.1 <= rsi_momentum <= 0.2:
             score += 10.0
             factors.append("Stable RSI momentum")
@@ -454,13 +454,13 @@ class StrategyManager:
         
         # Volatility: EXTREME is required (40 points)
         try:
-            vol_5m = float(data.get("volatility_5m", 0.0))
+            vol_5m = float(data["volatility_5m"])  # Required (NO FALLBACKS)
         except (ValueError, TypeError):
-            vol_5m = 0.0
-        if vol_5m > 0.05 or data.get("volatility_category") == "EXTREME":
+            vol_5m = 0.0  # Defensive float conversion only
+        if vol_5m > 0.05 or data["volatility_category"] == "EXTREME":
             score += 40.0
             factors.append(f"Extreme volatility ({vol_5m*100:.2f}%)")
-        elif data.get("volatility_category") in ["HIGH", "VERY_HIGH"]:
+        elif data["volatility_category"] in ["HIGH", "VERY_HIGH"]:
             score += 20.0
             factors.append(f"High volatility ({vol_5m*100:.2f}%)")
         else:
@@ -495,14 +495,14 @@ class StrategyManager:
         factors = []
         
         # Trend: Strong trend required (30 points)
-        if data.get("trend_direction") in ["BULLISH", "BEARISH"]:
+        if data["trend_direction"] in ["BULLISH", "BEARISH"]:
             score += 20.0
-            factors.append(f"{data.get('trend_direction')} trend")
+            factors.append(f"{data['trend_direction']} trend")
             # Trend strength bonus - ensure float conversion
             try:
-                trend_strength = float(data.get("trend_strength", 0.5)) if data.get("trend_strength") is not None else 0.5
+                trend_strength = float(data["trend_strength"])  # Required (NO FALLBACKS)
             except (ValueError, TypeError):
-                trend_strength = 0.5
+                trend_strength = 0.5  # Defensive float conversion only
             if trend_strength > 0.7:
                 score += 10.0
                 factors.append(f"Strong trend (strength: {trend_strength:.2f})")
@@ -517,13 +517,13 @@ class StrategyManager:
             factors.append(f"{data['trend_direction']} trend (no trend)")
         
         # Patterns: Continuation patterns confirm trend (25 points)
-        if self._has_pattern_in_list(data.get("continuation_patterns", []), ["BULLISH_CONTINUATION", "BEARISH_CONTINUATION"]):
+        if self._has_pattern_in_list(data["continuation_patterns"], ["BULLISH_CONTINUATION", "BEARISH_CONTINUATION"]):
             score += 25.0
             factors.append("Continuation pattern (trend confirmation)")
-        elif self._has_pattern_in_list(data.get("trend_patterns", []), ["TREND"]):
+        elif self._has_pattern_in_list(data["trend_patterns"], ["TREND"]):
             score += 15.0
             factors.append("Trend pattern detected")
-        elif self._has_pattern_in_list(data.get("triangle_patterns", []), ["ASCENDING_TRIANGLE", "DESCENDING_TRIANGLE"]):
+        elif self._has_pattern_in_list(data["triangle_patterns"], ["ASCENDING_TRIANGLE", "DESCENDING_TRIANGLE"]):
             score += 10.0
             factors.append("Trending triangle pattern")
         else:
@@ -570,11 +570,11 @@ class StrategyManager:
         
         # RSI momentum: Aligned with trend (10 points)
         try:
-            rsi_momentum_check = float(data.get("rsi_momentum", 0.0)) if data.get("rsi_momentum") is not None else 0.0
+            rsi_momentum_check = float(data["rsi_momentum"])  # Required (NO FALLBACKS)
         except (ValueError, TypeError):
-            rsi_momentum_check = 0.0
-        if (data.get("trend_direction") == "BULLISH" and rsi_momentum_check > 0) or \
-           (data.get("trend_direction") == "BEARISH" and rsi_momentum_check < 0):
+            rsi_momentum_check = 0.0  # Defensive float conversion only
+        if (data["trend_direction"] == "BULLISH" and rsi_momentum_check > 0) or \
+           (data["trend_direction"] == "BEARISH" and rsi_momentum_check < 0):
             score += 10.0
             factors.append("RSI momentum aligned")
         else:
@@ -655,13 +655,13 @@ class StrategyManager:
         factors = []
         
         # Patterns: Range patterns strongly indicate range trading (30 points)
-        if self._has_pattern_in_list(data.get("channel_patterns", []), ["CHANNEL", "HORIZONTAL_CHANNEL"]):
+        if self._has_pattern_in_list(data["channel_patterns"], ["CHANNEL", "HORIZONTAL_CHANNEL"]):
             score += 30.0
             factors.append("Channel pattern detected (strong range signal)")
-        elif self._has_pattern_in_list(data.get("triangle_patterns", []), ["SYMMETRICAL_TRIANGLE"]):
+        elif self._has_pattern_in_list(data["triangle_patterns"], ["SYMMETRICAL_TRIANGLE"]):
             score += 20.0
             factors.append("Symmetrical triangle (range-bound)")
-        elif self._has_pattern_in_list(data.get("wedge_patterns", []), ["WEDGE"]):
+        elif self._has_pattern_in_list(data["wedge_patterns"], ["WEDGE"]):
             score += 15.0
             factors.append("Wedge pattern (range potential)")
         else:
@@ -719,10 +719,10 @@ class StrategyManager:
             factors.append(f"{data['trend_direction']} trend (not sideways)")
         
         # Patterns: Range patterns confirm low volatility range (20 points)
-        if self._has_pattern_in_list(data.get("channel_patterns", []), ["CHANNEL", "HORIZONTAL_CHANNEL"]):
+        if self._has_pattern_in_list(data["channel_patterns"], ["CHANNEL", "HORIZONTAL_CHANNEL"]):
             score += 20.0
             factors.append("Channel pattern (range confirmation)")
-        elif self._has_pattern_in_list(data.get("triangle_patterns", []), ["SYMMETRICAL_TRIANGLE"]):
+        elif self._has_pattern_in_list(data["triangle_patterns"], ["SYMMETRICAL_TRIANGLE"]):
             score += 15.0
             factors.append("Symmetrical triangle (range potential)")
         else:
@@ -753,20 +753,20 @@ class StrategyManager:
             factors.append(f"{data['volatility_category']} volatility (insufficient)")
         
         # Trend: Sideways or weak trend (20 points)
-        if data.get("trend_direction") == "SIDEWAYS":
+        if data["trend_direction"] == "SIDEWAYS":
             score += 20.0
             factors.append("Sideways trend")
         else:
             try:
-                trend_strength_check = float(data.get("trend_strength", 0.5)) if data.get("trend_strength") is not None else 0.5
+                trend_strength_check = float(data["trend_strength"])  # Required (NO FALLBACKS)
             except (ValueError, TypeError):
-                trend_strength_check = 0.5
+                trend_strength_check = 0.5  # Defensive float conversion only
             if trend_strength_check < 0.5:
                 score += 10.0
                 factors.append("Weak trend")
             else:
                 score -= 10.0
-                factors.append(f"Strong {data.get('trend_direction', 'UNKNOWN')} trend (use trend_following)")
+                factors.append(f"Strong {data['trend_direction']} trend (use trend_following)")
         
         # Volume: Moderate to high (20 points)
         if data["volume_category"] in ["NORMAL", "HIGH", "VERY_HIGH"]:
@@ -852,9 +852,9 @@ class StrategyManager:
             missing_critical.append("trend")
             data_quality -= 0.05
         try:
-            rsi_value_check = float(data.get("rsi_value", 0.0)) if data.get("rsi_value") is not None else 0.0
+            rsi_value_check = float(data["rsi_value"])  # Required (NO FALLBACKS)
         except (ValueError, TypeError):
-            rsi_value_check = 0.0
+            rsi_value_check = 0.0  # Defensive float conversion only
         if rsi_value_check <= 0:
             missing_critical.append("rsi")
             data_quality -= 0.05
@@ -921,7 +921,7 @@ class StrategyManager:
         # Dynamic cooldown based on market volatility
         # Get current volatility from the last market data if available
         if self._last_market_data:
-            volatility_5m = self._last_market_data.get("volatility_5m", 0.0)
+            volatility_5m = self._last_market_data["volatility_5m"]  # Required (NO FALLBACKS)
             if volatility_5m > 0.03:  # High volatility (>3%)
                 cooldown = 60  # 1 minute for high volatility
             elif volatility_5m > 0.01:  # Moderate volatility (1-3%)
@@ -985,7 +985,7 @@ class StrategyManager:
             "trend_following": "Optimized for strong trending markets with momentum confirmation",
             "scalping": "High-frequency scalping for small, quick profits with tight risk management",
         }
-        return descriptions.get(strategy_name, "Unknown strategy")
+        return descriptions[strategy_name] if strategy_name in descriptions else f"Unknown strategy: {strategy_name}"  # NO FALLBACKS
     
     def _record_strategy_selection(self, strategy: str, market_data: Dict[str, Any], recommendation) -> None:
         """Record strategy selection for ML learning"""
@@ -1040,7 +1040,7 @@ class StrategyManager:
             perf["last_used"] = time.time()
             
             # Calculate success and profit
-            profit = outcome.get("profit", 0.0)
+            profit = outcome["profit"]  # Required (NO FALLBACKS)
             success = outcome.get("success", profit > 0)
             
             if success:
