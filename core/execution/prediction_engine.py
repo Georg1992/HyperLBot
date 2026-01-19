@@ -115,7 +115,7 @@ class PredictionEngine:
                 return None
                 
         except Exception as e:
-            logger.info(f"⏸️ No trade setup available: {e}")  # Normal - waiting for valid market structure
+            logger.error(f"❌ Prediction generation failed: {e}")
             return None
     
     def _generate_strategy_prediction(
@@ -2262,5 +2262,5 @@ class PredictionEngine:
             return stop_loss, take_profit, risk_reward_ratio, stop_loss_pct, take_profit_pct
             
         except Exception as e:
-            logger.info(f"⏸️ No valid setup: {e}")  # Normal - waiting for better market structure
+            logger.error(f"❌ Stop/Target calculation failed: {e}")
             raise
