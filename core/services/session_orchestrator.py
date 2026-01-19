@@ -628,7 +628,7 @@ class SessionOrchestrator:
         """Detect and update strategy based on market conditions using unified data"""
         try:
             if self.strategy_manager:
-                current_strategy = unified_data.get("strategy", "standard")
+                current_strategy = unified_data["strategy"]  # Required (NO FALLBACKS)
 
                 # Detect optimal strategy using comprehensive unified data
                 new_strategy = self.strategy_manager.detect_optimal_strategy(unified_data)
@@ -637,7 +637,7 @@ class SessionOrchestrator:
                     logger.info(
                         f"🎯 Strategy updated: {current_strategy} → {new_strategy}"
                     )
-                    logger.info(f"   📊 Market conditions: volatility={unified_data['volatility_category']}, trend={unified_data['trend']['direction']}")  # Required (NO FALLBACKS)
+                    logger.info(f"   📊 Market conditions: volatility={unified_data.get('volatility_category', 'UNKNOWN')}, trend={unified_data.get('trend', {}).get('direction', 'UNKNOWN')}")
                     
                     # Update session manager with new strategy
                     if self.session_manager and self.session_manager.current_session_data:
@@ -657,7 +657,7 @@ class SessionOrchestrator:
                 logger.warning(
                     "⚠️ Strategy Manager not available - using default strategy"
                 )
-                return unified_data.get("strategy", "standard")
+                return unified_data["strategy"]  # Required (NO FALLBACKS)
 
         except Exception as e:
             logger.warning(f"⚠️ Strategy detection failed: {e}")
