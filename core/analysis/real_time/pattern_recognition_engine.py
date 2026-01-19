@@ -158,7 +158,7 @@ class PatternRecognitionEngine:
                 for pattern in pattern_list:
                     try:
                         # Use actual pattern indices to get timestamp
-                        start_idx = pattern.get("start_candle_index", 0)
+                        start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
                         if start_idx < len(candles):
                             pattern_timestamp = candles[start_idx].get("timestamp", current_time)
                             
@@ -173,7 +173,7 @@ class PatternRecognitionEngine:
                             
                             # Sanity check: age should be reasonable (0 to 1000 minutes max)
                             if age_minutes < 0 or age_minutes > 1000:
-                                logger.warning(f"⚠️ Invalid pattern age: {age_minutes:.1f}m for pattern {pattern.get('pattern', 'unknown')}, using 0")
+                                logger.warning(f"⚠️ Invalid pattern age: {age_minutes:.1f}m for pattern {pattern['pattern'] if 'pattern' in pattern else 'unknown'}, using 0")
                                 pattern["age_minutes"] = 0
                             else:
                                 pattern["age_minutes"] = age_minutes
@@ -195,12 +195,12 @@ class PatternRecognitionEngine:
         try:
             for category, pattern_list in patterns.items():
                 for pattern in pattern_list:
-                    pattern_name = pattern.get("pattern", "unknown")
+                    pattern_name = pattern["pattern"] if "pattern" in pattern else "unknown"
                     pattern_key = self._get_pattern_key(pattern)
                     
                     if pattern_key not in self.pattern_history:
                         self.pattern_history[pattern_key] = current_time
-                        logger.info(f"🆕 NEW PATTERN DETECTED: {pattern_name} born {pattern.get('age_minutes', 0):.1f}m ago (key: {pattern_key})")
+                        logger.info(f"🆕 NEW PATTERN DETECTED: {pattern_name} born {pattern['age_minutes'] if 'age_minutes' in pattern else 0:.1f}m ago (key: {pattern_key})")
             
         except Exception as e:
             logger.error(f"❌ Pattern timestamp tracking failed: {e}")
@@ -214,13 +214,13 @@ class PatternRecognitionEngine:
                 filtered_list = []
                 
                 for pattern in pattern_list:
-                    pattern_name = pattern.get("pattern", "unknown")
-                    age_minutes = pattern.get("age_minutes", 0)
-                    max_age = self.pattern_expiration.get(pattern_name, 40)
+                    pattern_name = pattern["pattern"] if "pattern" in pattern else "unknown"
+                    age_minutes = pattern["age_minutes"] if "age_minutes" in pattern else 0
+                    max_age = self.pattern_expiration[pattern_name] if pattern_name in self.pattern_expiration else 40
                     
                     if age_minutes <= max_age:
                         filtered_list.append(pattern)
-                        logger.debug(f"⏰ Pattern VALID: {pattern_name} (age: {age_minutes:.1f}m / max: {max_age}m, confidence: {pattern.get('confidence', 0):.1%})")
+                        logger.debug(f"⏰ Pattern VALID: {pattern_name} (age: {age_minutes:.1f}m / max: {max_age}m, confidence: {pattern['confidence'] if 'confidence' in pattern else 0:.1%})")
                     else:
                         logger.debug(f"⏰ Pattern EXPIRED: {pattern_name} (age: {age_minutes:.1f}m / max: {max_age}m)")
                 
@@ -255,8 +255,8 @@ class PatternRecognitionEngine:
         """Generate unique key for pattern tracking"""
         try:
             pattern_name = pattern.get("pattern", "unknown")
-            pattern_high = pattern.get("pattern_high", 0)
-            pattern_low = pattern.get("pattern_low", 0)
+            pattern_high = pattern["pattern_high"] if "pattern_high" in pattern else 0
+            pattern_low = pattern["pattern_low"] if "pattern_low" in pattern else 0
             return f"{pattern_name}_{pattern_high}_{pattern_low}"
         except Exception:
             return "unknown_0_0"
@@ -271,7 +271,7 @@ class PatternRecognitionEngine:
             if not all_patterns:
                 return 0.0
             
-            total_confidence = sum(pattern.get("confidence", 0) for pattern in all_patterns)
+            total_confidence = sum(pattern["confidence"] if "confidence" in pattern else 0 for pattern in all_patterns)
             return total_confidence / len(all_patterns)
             
         except Exception as e:

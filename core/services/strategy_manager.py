@@ -62,7 +62,7 @@ class StrategyManager:
     @staticmethod
     def _safe_get(data: Any, key: str, default: Any) -> Any:
         """Safely get value from dict, return default if not dict or key missing"""
-        return data.get(key, default) if isinstance(data, dict) else default
+        return data[key] if isinstance(data, dict) and key in data else default
     
     def detect_optimal_strategy(self, market_data: Dict[str, Any]) -> str:
         """
@@ -144,7 +144,7 @@ class StrategyManager:
                     score_data = item[1]
                     if not isinstance(score_data, dict):
                         return 0.0
-                    score_val = score_data.get("score", 0.0)
+                    score_val = score_data["score"] if "score" in score_data else 0.0
                     return float(score_val) if score_val is not None else 0.0
                 except (ValueError, TypeError, AttributeError, IndexError):
                     return 0.0
@@ -165,10 +165,10 @@ class StrategyManager:
             # Safe conversion for logging
             try:
                 top_3 = sorted(strategy_scores.items(), key=safe_get_score, reverse=True)[:3]
-                score_display = [(s, float(d.get('score', 0.0))) for s, d in top_3]
+                score_display = [(s, float(d['score']) if 'score' in d else 0.0) for s, d in top_3]
                 logger.debug(f"📊 Strategy scores: {score_display}")
             except Exception as e:
-                logger.debug(f"📊 Strategy scores: {[(s, d.get('score', 'N/A')) for s, d in list(strategy_scores.items())[:3]]}")
+                logger.debug(f"📊 Strategy scores: {[(s, d['score'] if 'score' in d else 'N/A') for s, d in list(strategy_scores.items())[:3]]}")
             logger.info(f"📊 Selected: {strategy_name} (score: {score_data['score']:.2f}, confidence: {confidence:.2f})")
             
             return SimpleRecommendation(strategy_name, reasoning, confidence)
@@ -250,7 +250,7 @@ class StrategyManager:
             strongest_resistance = 0.0
         
         try:
-            current_price = float(market_data.get("current_price", 0.0))
+            current_price = float(market_data["current_price"])  # Required (NO FALLBACKS)
         except (ValueError, TypeError):
             current_price = 0.0
         
@@ -295,7 +295,7 @@ class StrategyManager:
         risk_level = self._safe_get(market_conditions, "risk_level", "MEDIUM")
         
         # Pattern data
-        patterns_data = market_data.get("patterns", {})
+        patterns_data = market_data["patterns"]  # Required (NO FALLBACKS)
         patterns_nested = self._safe_get(patterns_data, "patterns_nested", {})
         patterns_flat = self._safe_get(patterns_data, "patterns", [])
         
@@ -393,7 +393,7 @@ class StrategyManager:
         
         # RSI: 30-70 is ideal (25 points)
         try:
-            rsi = float(data.get("rsi_value", 50.0)) if data.get("rsi_value") is not None else 50.0
+            rsi = float(data["rsi_value"]) if "rsi_value" in data and data["rsi_value"] is not None else 50.0
         except (ValueError, TypeError):
             rsi = 50.0
         if 30 <= rsi <= 70:
@@ -805,8 +805,8 @@ class StrategyManager:
     def _calculate_confidence(self, strategy_scores: Dict[str, Dict], best_strategy: str, data: Dict[str, Any]) -> float:
         """Calculate dynamic confidence based on score quality and data completeness"""
         # Ensure best_score is float
-        best_score_data = strategy_scores.get(best_strategy, {})
-        best_score = float(best_score_data.get("score", 0.0)) if isinstance(best_score_data.get("score"), (int, float, str)) else 0.0
+        best_score_data = strategy_scores[best_strategy] if best_strategy in strategy_scores else {}
+        best_score = float(best_score_data["score"]) if "score" in best_score_data and isinstance(best_score_data["score"], (int, float, str)) else 0.0
         try:
             best_score = float(best_score)
         except (ValueError, TypeError):
@@ -824,7 +824,7 @@ class StrategyManager:
         if len(sorted_scores) > 1:
             try:
                 second_score_data = sorted_scores[1][1]
-                second_score = float(second_score_data.get("score", 0.0)) if isinstance(second_score_data.get("score"), (int, float, str)) else 0.0
+                second_score = float(second_score_data["score"]) if "score" in second_score_data and isinstance(second_score_data["score"], (int, float, str)) else 0.0
                 second_score = float(second_score)
             except (ValueError, TypeError, IndexError, KeyError):
                 second_score = 0.0
