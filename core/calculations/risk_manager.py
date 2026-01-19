@@ -66,18 +66,14 @@ class RiskManager:
         # Strategy multiplier adjusts this base (e.g., 1.0 = 2.0×ATR, 1.5 = 3.0×ATR)
         stop_loss_multiplier = RiskManager._get_stop_loss_multiplier(config)
         
-        # Calculate risk management minimum distance (volatility-adjusted)
-        atr_pct = atr_5m / current_price if current_price > 0 else 0.002
-        
-        # Volatility adjustment multiplier
-        volatility_multiplier = RiskManager._calculate_volatility_multiplier(unified_data, atr_pct)
-        
+        # Calculate risk management minimum distance
         # Mathematically justified base: 2.0 × ATR (standard for 95% coverage)
         atr_base_multiplier = 2.0
         base_atr_stop_distance = atr_5m * atr_base_multiplier
         
-        # Minimum stop distance = strategy_multiplier × 2.0 × ATR × volatility_multiplier
-        min_stop_distance = base_atr_stop_distance * stop_loss_multiplier * volatility_multiplier
+        # Minimum stop distance = strategy_multiplier × 2.0 × ATR
+        # ATR already incorporates volatility; strategy multiplier provides additional adjustment
+        min_stop_distance = base_atr_stop_distance * stop_loss_multiplier
         
         # S/R-based stop position (required, no fallback)
         if sr_stop_level is None:
