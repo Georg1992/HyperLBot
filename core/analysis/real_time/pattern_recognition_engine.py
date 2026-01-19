@@ -111,7 +111,7 @@ class PatternRecognitionEngine:
                 "overall_confidence": overall_confidence,
                 "status": "ok",
                 "timestamp": current_time,
-                "last_candle_timestamp": candles[-1].get("timestamp", current_time) if candles else current_time  # Track last candle for change detection
+                "last_candle_timestamp": candles[-1]["timestamp"] if candles else current_time  # Track last candle for change detection (NO FALLBACKS)
             }
             
             # No internal caching - CentralizedCache handles this
@@ -136,7 +136,7 @@ class PatternRecognitionEngine:
         # Use last candle timestamp and close price to detect new candles
         last_candle = candles[-1] if candles else None
         if last_candle:
-            return f"{last_candle.get('timestamp', 0)}_{last_candle.get('close', 0)}"
+            return f"{last_candle['timestamp']}_{last_candle['close']}"  # Required (NO FALLBACKS)
         return ""
     
     def _extract_price_data(self, candles: List[Dict[str, Any]]) -> Dict[str, List[float]]:
