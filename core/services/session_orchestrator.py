@@ -378,7 +378,7 @@ class SessionOrchestrator:
             should_update = False
             
             # Check time interval using CentralizedCache intervals
-            last_update = self._last_update_times.get(module_name, 0)
+            last_update = self._last_update_times[module_name]  # Always exists (initialized in __init__)
             # Get interval from CentralizedCache singleton
             cache = get_global_centralized_cache()
             interval = cache._get_ttl_policy(module_name)  # Get TTL policy for module
@@ -637,7 +637,7 @@ class SessionOrchestrator:
                     logger.info(
                         f"🎯 Strategy updated: {current_strategy} → {new_strategy}"
                     )
-                    logger.info(f"   📊 Market conditions: volatility={unified_data.get('volatility_category', 'UNKNOWN')}, trend={unified_data.get('trend', {}).get('direction', 'UNKNOWN')}")
+                    logger.info(f"   📊 Market conditions: volatility={unified_data['volatility_category']}, trend={unified_data['trend']['direction']}")  # Required (NO FALLBACKS)
                     
                     # Update session manager with new strategy
                     if self.session_manager and self.session_manager.current_session_data:
