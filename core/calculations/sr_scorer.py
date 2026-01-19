@@ -853,7 +853,17 @@ class SRScorer:
             if not mtf_matches:
                 return 0.0
             
-            timeframe_weights = {'1h': 1.0, '15m': 0.7, '5m': 0.3}
+            # Timeframe weights for MTF confidence (NO FALLBACKS)
+            timeframe_weights = {
+                '5m': 0.3,
+                '15m': 0.7,
+                '1h': 1.0,
+                '4h': 1.3,
+                '1d': 1.5,
+                'daily_peak': 1.5,   # Daily peaks = 1d weight
+                'weekly_peak': 1.8,  # Weekly peaks
+                'monthly_peak': 2.0  # Monthly peaks
+            }
             total_weight = 0.0
             weighted_confidence = 0.0
             
