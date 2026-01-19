@@ -331,15 +331,15 @@ class TradingConfig:
         }
     },
     "range_trading": {
-        "min_power_threshold": 25.0,  # Lower threshold - accept range boundaries even if weaker
+        "min_power_threshold": 30.0,  # Raised from 25.0 - need better quality for lower R:R (1.2)
         "min_range_percentage": 0.001,  # 0.1% minimum range
         "volatility_threshold": ["low", "very_low", "moderate"],  # Range trading works in various conditions
-        "confidence_threshold": 0.52,  # 52% confidence minimum (USER SPECIFIED)
+        "confidence_threshold": 0.60,  # Raised from 0.52 - higher confidence for lower R:R (1.2)
         "min_interval": 60,  # 1 minute between trades
         "max_leverage": 40,
         "profit_target": 0.007,  # 0.7% profit target
         "stop_loss": 0.005,  # 0.5% stop loss (adjusted for 40x leverage)
-        "position_size": 0.15,  # 15% of balance
+        "position_size": 0.12,  # Reduced from 0.15 - smaller size for lower R:R (1.2)
         "range_detection_periods": 15,  # Look back 15 candles for range
         "range_tolerance": 0.0008,  # 0.08% tolerance for range boundaries
         "bounce_threshold": 0.0003,  # 0.03% minimum bounce to trade
@@ -356,7 +356,7 @@ class TradingConfig:
             # S/R REMOVED: S/R defines the range boundaries for entry/exit, NOT direction
             # Direction in range = mean reversion (RSI + pressure determine bounce direction)
         },
-        "min_score_diff": 12.0,  # Higher threshold for range trading (need clear signals)
+        "min_score_diff": 15.0,  # Raised from 12.0 - need clear directional edge for lower R:R (1.2)
         "proximity_config": {
             "close_atr": 1.5,      # Tighter for range trading (recent boundaries matter)
             "medium_atr": 3.0,
@@ -423,15 +423,15 @@ class TradingConfig:
         }
     },
     "low_volatility_range": {
-        "min_power_threshold": 20.0,  # Very low - accept any boundary in tight range
+        "min_power_threshold": 25.0,  # Raised from 20.0 - need better quality levels for lower R:R (1.2)
         "min_range_percentage": 0.0003,  # 0.03% minimum range (very tight)
         "volatility_threshold": ["low", "very_low"],  # Handles both LOW and VERY_LOW
-        "confidence_threshold": 0.50,  # 50% confidence minimum (CORRECTED - minimum for execution)
+        "confidence_threshold": 0.60,  # Raised from 0.50 - need higher confidence for lower R:R (1.2)
         "min_interval": 30,  # 30 seconds between trades (frequent)
         "max_leverage": 40,  # Increased leverage for high-leverage trading
         "profit_target": 0.005,  # 0.5% profit target (small moves)
         "stop_loss": 0.004,  # 0.4% stop loss (adjusted for 40x leverage - even low vol needs wider stops)
-        "position_size": 0.25,  # 25% of balance (larger size for small moves)
+        "position_size": 0.20,  # Reduced from 0.25 - smaller size for lower R:R (1.2) trades
         "range_detection_periods": 20,  # Look back 20 candles for range
         "range_tolerance": 0.0005,  # 0.05% tolerance for range boundaries
         "bounce_threshold": 0.0002,  # 0.02% minimum bounce to trade
@@ -448,7 +448,7 @@ class TradingConfig:
             # S/R REMOVED: S/R defines tight range boundaries, NOT direction
             # Direction = mean reversion signal (RSI oversold/overbought + pressure)
         },
-        "min_score_diff": 10.0,
+        "min_score_diff": 15.0,  # Raised from 10.0 - need clearer directional edge for lower R:R (1.2)
         "proximity_config": {
             "close_atr": 1.0,      # Very tight for low volatility ranges
             "medium_atr": 2.0,
