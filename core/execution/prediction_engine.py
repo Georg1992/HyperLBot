@@ -1685,7 +1685,7 @@ class PredictionEngine:
             atr_pct = self._get_atr_pct(unified_data, current_price)
             sr_data = unified_data.get("support_resistance", {})
             sr_metadata = sr_data.get("metadata", {})
-            atr_5m = sr_metadata.get("atr_5m", 0.0)
+            atr_5m = sr_metadata["atr_5m"]  # Required (NO FALLBACKS)
             if atr_5m <= 0:
                 raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
             
@@ -1720,10 +1720,10 @@ class PredictionEngine:
             best_breakdown = None
             
             level_data_with_type = {**level_data, "setup_type": setup_type}
-            level_power = level_data.get("power") or level_data.get("strength_score", 50.0)
+            level_power = level_data["power"]  # Required (NO FALLBACKS)
             
             # Calculate recency factor once (same for all candidates) - using unified calculator
-            last_touch_timestamp = level_data.get("last_touch_timestamp", 0)
+            last_touch_timestamp = level_data["last_touch_timestamp"]  # Required (NO FALLBACKS)
             from core.calculations.recency_calculator import RecencyCalculator
             recency_factor = RecencyCalculator.calculate_entry_recency_factor(
                 last_touch_timestamp=last_touch_timestamp,

@@ -299,8 +299,8 @@ class RiskManager:
         
         if not valid_candidates:
             # Detailed error for debugging
-            too_close = sum(1 for l in target_levels if abs(l.get("price_level",0) - entry_price) / risk < min_rr)
-            too_far = sum(1 for l in target_levels if abs(l.get("price_level",0) - entry_price) > max_distance)
+            too_close = sum(1 for l in target_levels if abs(l["price_level"] - entry_price) / risk < min_rr)  # Required (NO FALLBACKS)
+            too_far = sum(1 for l in target_levels if abs(l["price_level"] - entry_price) > max_distance)  # Required (NO FALLBACKS)
             rr_invalid = len(target_levels) - too_close - too_far
             
             raise ValueError(
@@ -323,8 +323,8 @@ class RiskManager:
         
         logger.info(
             f"🎯 {direction} TP at next S/R level: ${take_profit:.2f} "
-            f"(level: ${selected_level.get('price_level',0):.2f}, "
-            f"power: {selected_level.get('power',0):.1f}, "
+            f"(level: ${selected_level['price_level']:.2f}, "  # Required (NO FALLBACKS)
+            f"power: {selected_level['power']:.1f}, "  # Required (NO FALLBACKS)
             f"R:R: {final_rr:.2f}:1, "
             f"cushion: ${cushion:.2f})"
         )
