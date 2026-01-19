@@ -314,12 +314,8 @@ class RiskManager:
                 f"(R:R {target_rr:.1f}x = ${reward:.2f} reward)"
             )
             
-            return {
-                "take_profit": take_profit,
-                "rr": target_rr,
-                "selected_level": None,  # No S/R level, pure math
-                "method": "calculated"
-            }
+            # Return same format as when S/R level is found (just the TP price)
+            return take_profit
         
         # STEP 4: Select Best Candidate - Highest R:R within constraints
         # (Higher R:R = better, as long as it's realistic)
