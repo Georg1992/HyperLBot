@@ -62,11 +62,11 @@ class PredictionEngine:
         if current_price <= 0:
             raise ValueError(f"Invalid current_price: {current_price} - must be positive")
         
-        sr_data = unified_data.get("support_resistance", {})
+        sr_data = unified_data["support_resistance"]  # Required (NO FALLBACKS)
         if not sr_data:
             raise ValueError("support_resistance data is required for ATR calculation - NO FALLBACKS")
         
-        sr_metadata = sr_data.get("metadata", {})
+        sr_metadata = sr_data["metadata"]  # Required (NO FALLBACKS)
         if not sr_metadata:
             raise ValueError("support_resistance.metadata is required for ATR calculation - NO FALLBACKS")
         
@@ -142,7 +142,7 @@ class PredictionEngine:
             "spike_hunting": self._predict_spike_hunting,
         }
         
-        method = strategy_methods.get(strategy, self._predict_standard)
+        method = strategy_methods[strategy] if strategy in strategy_methods else self._predict_standard
         return method(unified_data, strategy_config)
     
     def _predict_standard(self, unified_data: Dict[str, Any], config: Dict[str, Any], strategy: str = "standard") -> Optional[TradingPrediction]:
@@ -164,7 +164,7 @@ class PredictionEngine:
             return None
         
         # Select best overall setup (highest combined score)
-        best_setup = max(all_setups, key=lambda x: x.get("total_score", 0.0))
+        best_setup = max(all_setups, key=lambda x: x["total_score"])  # Required (NO FALLBACKS)
         
         direction = best_setup["direction"]
         entry_price = best_setup["entry_price"]
@@ -176,8 +176,8 @@ class PredictionEngine:
         
         # Calculate stop_loss and take_profit with sophisticated logic
         # This already calculates R:R ratio internally, so we capture it
-        best_setup_level_data = best_setup.get("level_data")
-        best_setup_type = best_setup.get("setup_type")
+        best_setup_level_data = best_setup["level_data"]  # Required (NO FALLBACKS)
+        best_setup_type = best_setup["setup_type"]  # Required (NO FALLBACKS)
         stop_loss, take_profit, rr_ratio, stop_loss_pct, take_profit_pct = self._calculate_stop_and_target(
             entry_price=entry_price,
             direction=direction,
@@ -398,7 +398,7 @@ class PredictionEngine:
             if tf_trend == "UNKNOWN":
                 continue
             
-            tf_weight = timeframe_weights.get(tf_name, 0.0)
+            tf_weight = timeframe_weights[tf_name] if tf_name in timeframe_weights else 0.0
             if tf_weight == 0.0:
                 continue
             
@@ -495,7 +495,7 @@ class PredictionEngine:
             patterns_long = 100.0
             reasons.append(f"Bullish reversal pattern detected ({len(bullish_reversals)})")
         
-        bearish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
+        bearish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and "direction" in p and p["direction"] == "BEARISH"]
         if bearish_reversals:
             patterns_short = 100.0
             reasons.append(f"Bearish reversal pattern detected ({len(bearish_reversals)})")
@@ -505,7 +505,7 @@ class PredictionEngine:
             patterns_long += 50.0
             reasons.append(f"Bullish continuation pattern ({len(bullish_continuations)})")
         
-        bearish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
+        bearish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and "direction" in p and p["direction"] == "BEARISH"]
         if bearish_continuations:
             patterns_short += 50.0
             reasons.append(f"Bearish continuation pattern ({len(bearish_continuations)})")
@@ -736,7 +736,7 @@ class PredictionEngine:
             if tf_trend == "UNKNOWN":
                 continue
             
-            tf_weight = timeframe_weights.get(tf_name, 0.0)
+            tf_weight = timeframe_weights[tf_name] if tf_name in timeframe_weights else 0.0
             if tf_weight == 0.0:
                 continue
             
@@ -830,8 +830,8 @@ class PredictionEngine:
                 score += 50.0
                 reasons.append(f"Bullish continuation pattern ({len(bullish_continuations)})")
         else:  # SHORT
-            bearish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
-            bearish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BEARISH"]
+            bearish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and "direction" in p and p["direction"] == "BEARISH"]
+            bearish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and "direction" in p and p["direction"] == "BEARISH"]
             
             if bearish_reversals:
                 score += 100.0
@@ -1227,7 +1227,7 @@ class PredictionEngine:
             elif alignment_factor < 1.0:
                 reasoning_parts.append("conflict-penalized")
             
-            base_reasoning = base_direction_result.get("reasoning", "")
+            base_reasoning = base_direction_result["reasoning"]  # Required (NO FALLBACKS)
             if reasoning_parts:
                 contextual_reasoning = f"{base_reasoning} [{', '.join(reasoning_parts)}]"
             else:
