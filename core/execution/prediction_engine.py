@@ -93,7 +93,7 @@ class PredictionEngine:
         """
         try:
             # Get strategy configuration
-            strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy)
+            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
             if not strategy_config:
                 logger.warning(f"⚠️ Unknown strategy: {strategy}")
                 return None
