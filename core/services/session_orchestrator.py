@@ -414,10 +414,10 @@ class SessionOrchestrator:
             return True
         
         # Simple comparison - could be enhanced with more sophisticated change detection
-        current_bids = orderbook_data.get('bids', [])
-        current_asks = orderbook_data.get('asks', [])
-        last_bids = self._last_orderbook.get('bids', [])
-        last_asks = self._last_orderbook.get('asks', [])
+        current_bids = orderbook_data['bids']  # Required (NO FALLBACKS)
+        current_asks = orderbook_data['asks']  # Required (NO FALLBACKS)
+        last_bids = self._last_orderbook.get('bids') if 'bids' in self._last_orderbook else []  # Optional - first time
+        last_asks = self._last_orderbook.get('asks') if 'asks' in self._last_orderbook else []  # Optional - first time
         
         # Check if bid/ask levels have changed
         if current_bids != last_bids or current_asks != last_asks:

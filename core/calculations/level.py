@@ -158,7 +158,7 @@ class Level:
             strength=safe_float(data.get('strength'), 0.0),
             timestamp=safe_float(data.get('timestamp'), 0.0),
             timeframe_distribution=copy.deepcopy(data.get('timeframe_distribution', {})),
-            mtf_matches=copy.deepcopy(data.get('mtf_matches', [])),
+            mtf_matches=copy.deepcopy(data.get('mtf_matches')) if 'mtf_matches' in data else [],  # Optional MTF data
             mtf_count=safe_int(data.get('mtf_count'), 0),
             mtf_confidence=safe_float(data.get('mtf_confidence'), 0.0),
             merged_from=safe_int(data.get('merged_from'), 1),

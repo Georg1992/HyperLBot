@@ -331,7 +331,7 @@ def run_paper_trading():
             system_initializer = get_system_initializer()
             init_result = system_initializer.initialize_system(initial_balance)
             if not init_result.get("success"):
-                logger.error(f"Failed to initialize system: {init_result.get('error', 'Unknown error')}")
+                logger.error(f"Failed to initialize system: {init_result.get('error') or 'Unknown error'}")  # Error message - optional
                 return
             
             # Get services from system initializer (all singletons)

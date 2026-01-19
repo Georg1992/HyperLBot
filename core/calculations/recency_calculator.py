@@ -45,9 +45,9 @@ class RecencyCalculator:
             "old_hours": 168.0
         })
         
-        very_recent_hours = recency_config.get("very_recent_hours", 24.0)
-        recent_hours = recency_config.get("recent_hours", 72.0)
-        old_hours = recency_config.get("old_hours", 168.0)
+        very_recent_hours = recency_config["very_recent_hours"]  # Required (NO FALLBACKS)
+        recent_hours = recency_config["recent_hours"]  # Required (NO FALLBACKS)
+        old_hours = recency_config["old_hours"]  # Required (NO FALLBACKS)
         
         # Strategy-specific recency weighting
         if hours_since_touch <= very_recent_hours:
@@ -86,9 +86,9 @@ class RecencyCalculator:
             "old_hours": 168.0
         })
         
-        very_recent_hours = recency_config.get("very_recent_hours", 24.0)
-        recent_hours = recency_config.get("recent_hours", 72.0)
-        old_hours = recency_config.get("old_hours", 168.0)
+        very_recent_hours = recency_config["very_recent_hours"]  # Required (NO FALLBACKS)
+        recent_hours = recency_config["recent_hours"]  # Required (NO FALLBACKS)
+        old_hours = recency_config["old_hours"]  # Required (NO FALLBACKS)
         
         # Entry-specific recency weighting (slightly more lenient)
         if hours_since_touch <= very_recent_hours:

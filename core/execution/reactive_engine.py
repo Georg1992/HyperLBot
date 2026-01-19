@@ -74,7 +74,7 @@ class ReactiveEngine:
             # Get ATR for calculations
             sr_data = unified_data.get("support_resistance", {})
             sr_metadata = sr_data.get("metadata", {})
-            atr_5m = sr_metadata.get("atr_5m", 0.0)
+            atr_5m = sr_metadata["atr_5m"]  # Required (NO FALLBACKS)
             
             if atr_5m <= 0:
                 logger.debug("⚡ ATR unavailable - skipping momentum check")
@@ -101,7 +101,7 @@ class ReactiveEngine:
                 return None
             
             # Execute market order (use current_strategy if provided, else detect from unified_data)
-            strategy_to_use = current_strategy or unified_data.get("strategy", "high_volatility")
+            strategy_to_use = current_strategy or unified_data["strategy"]  # Required (NO FALLBACKS)
             execution_result = self._execute_momentum_trade(signal, current_price, strategy_to_use)
             
             if execution_result:
@@ -156,8 +156,8 @@ class ReactiveEngine:
                 return None
             
             # Calculate position size (from strategy config)
-            position_size_pct = strategy_config.get("position_size", 0.10)  # Default 10%
-            leverage = strategy_config.get("max_leverage", 20)  # Default 20x
+            position_size_pct = strategy_config["position_size"]  # Required (NO FALLBACKS)
+            leverage = strategy_config["max_leverage"]  # Required (NO FALLBACKS)
             
             # Prepare order parameters
             order_side = "BUY" if signal.direction == "LONG" else "SELL"
