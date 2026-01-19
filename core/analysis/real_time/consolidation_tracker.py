@@ -107,6 +107,12 @@ class ConsolidationTracker:
             
             # Get required data (NO FALLBACKS)
             sr_data = unified_data["support_resistance"]
+            
+            # Check if trend exists in unified_data
+            if "trend" not in unified_data:
+                logger.error(f"❌ 'trend' key missing from unified_data. Available keys: {list(unified_data.keys())}")
+                raise ValueError("unified_data missing 'trend' key - NO FALLBACKS")
+            
             trend_data = unified_data["trend"]
             volatility_data = unified_data["volatility"]
             volume_data = unified_data["volume"]
