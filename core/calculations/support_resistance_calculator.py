@@ -377,7 +377,7 @@ class SupportResistanceCalculator(BaseCalculator):
             current_time = time.time()
             
             # Performance: Check cache first (strategy-independent)
-            last_update = self._last_module_updates["support_resistance"]  # Required (NO FALLBACKS)
+            last_update = self._last_module_updates.get("support_resistance", 0)  # Optional - first run
             if current_time - last_update < self._min_recalculation_interval:
                 cached_result = self._get_cached_analysis(current_price, current_time)
                 if cached_result is not None and cached_result.get("status") == "ok":
