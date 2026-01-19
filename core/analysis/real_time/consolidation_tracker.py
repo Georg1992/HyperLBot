@@ -105,17 +105,17 @@ class ConsolidationTracker:
                 self._analyze_historical_consolidation(unified_data, current_price, current_time)
                 self._historical_analyzed = True
             
-            # Get required data
-            sr_data = unified_data.get("support_resistance", {})
-            trend_data = unified_data.get("trend", {})
-            volatility_data = unified_data.get("volatility", {})
-            volume_data = unified_data.get("volume", {})
+            # Get required data (NO FALLBACKS)
+            sr_data = unified_data["support_resistance"]
+            trend_data = unified_data["trend"]
+            volatility_data = unified_data["volatility"]
+            volume_data = unified_data["volume"]
             
             if not all([sr_data, trend_data, volatility_data]):
                 return None
             
             # Check if trend is sideways (required for consolidation)
-            trend_direction = trend_data.get("direction", "SIDEWAYS")
+            trend_direction = trend_data["direction"]  # Required (NO FALLBACKS)
             if trend_direction != "SIDEWAYS":
                 # If we had a consolidation, check if it broke
                 if self._current_consolidation:
@@ -123,35 +123,35 @@ class ConsolidationTracker:
                 self._current_consolidation = None
                 return None
             
-            # Get S/R levels
-            levels = sr_data.get("levels", [])
+            # Get S/R levels (NO FALLBACKS)
+            levels = sr_data["levels"]
             if not levels:
                 return None
             
-            # Find closest support and resistance
+            # Find closest support and resistance (NO FALLBACKS)
             active_support = [
                 level for level in levels
-                if level.get("type") == "support"
-                and level.get("status") == "active"
-                and level.get("price_level", 0) < current_price
+                if level["type"] == "support"
+                and level["status"] == "active"
+                and level["price_level"] < current_price
             ]
             
             active_resistance = [
                 level for level in levels
-                if level.get("type") == "resistance"
-                and level.get("status") == "active"
-                and level.get("price_level", 0) > current_price
+                if level["type"] == "resistance"
+                and level["status"] == "active"
+                and level["price_level"] > current_price
             ]
             
             if not active_support or not active_resistance:
                 return None
             
-            # Get closest support and resistance
-            closest_support = max(active_support, key=lambda x: x.get("price_level", 0))
-            closest_resistance = min(active_resistance, key=lambda x: x.get("price_level", 0))
+            # Get closest support and resistance (NO FALLBACKS)
+            closest_support = max(active_support, key=lambda x: x["price_level"])
+            closest_resistance = min(active_resistance, key=lambda x: x["price_level"])
             
-            support_price = closest_support.get("price_level", 0)
-            resistance_price = closest_resistance.get("price_level", 0)
+            support_price = closest_support["price_level"]
+            resistance_price = closest_resistance["price_level"]
             
             if support_price <= 0 or resistance_price <= 0:
                 return None
@@ -173,8 +173,8 @@ class ConsolidationTracker:
                 return None
             
             # Check volatility (should be low for consolidation)
-            volatility_category = volatility_data.get("category", "NORMAL")
-            volatility_value = volatility_data.get("volatility_5m", 0.0)
+            volatility_category = volatility_data["category"]  # Required (NO FALLBACKS)
+            volatility_value = volatility_data["volatility_5m"]  # Required (NO FALLBACKS)
             
             if volatility_category in ["HIGH", "EXTREME", "VERY_HIGH"]:
                 return None  # Too volatile for consolidation
@@ -196,7 +196,7 @@ class ConsolidationTracker:
                     duration_minutes=0.0,
                     touch_count_upper=1,
                     touch_count_lower=1,
-                    avg_volume=volume_data.get("volume_5m", 0.0),
+                    avg_volume=volume_data["volume_5m"],  # Required (NO FALLBACKS)
                     volatility=volatility_value,
                     coiling_score=0.0,
                     breakout_probability=0.0
@@ -246,18 +246,18 @@ class ConsolidationTracker:
         # Update duration
         self._current_consolidation.duration_minutes = (current_time - self._current_consolidation.started_at) / 60.0
         
-        # Update volume (rolling average)
-        volume_data = unified_data.get("volume", {})
-        current_volume = volume_data.get("volume_5m", 0.0)
+        # Update volume (rolling average) (NO FALLBACKS)
+        volume_data = unified_data["volume"]
+        current_volume = volume_data["volume_5m"]
         if current_volume > 0:
             # Simple rolling average
             self._current_consolidation.avg_volume = (
                 self._current_consolidation.avg_volume * 0.9 + current_volume * 0.1
             )
         
-        # Update volatility
-        volatility_data = unified_data.get("volatility", {})
-        self._current_consolidation.volatility = volatility_data.get("volatility_5m", 0.0)
+        # Update volatility (NO FALLBACKS)
+        volatility_data = unified_data["volatility"]
+        self._current_consolidation.volatility = volatility_data["volatility_5m"]
     
     def _calculate_consolidation_metrics(
         self,
@@ -306,27 +306,27 @@ class ConsolidationTracker:
         touch_score = min(30.0, (self._current_consolidation.touch_count_upper + 
                                  self._current_consolidation.touch_count_lower) * 3.0)  # Max 30 points
         
-        # Volume analysis (decreasing volume = accumulation/distribution)
-        volume_data = unified_data.get("volume", {})
-        volume_trend = volume_data.get("trend", "STABLE")
+        # Volume analysis (decreasing volume = accumulation/distribution) (NO FALLBACKS)
+        volume_data = unified_data["volume"]
+        volume_trend = volume_data["trend"]
         volume_score = 10.0 if volume_trend == "DECREASING" else 5.0  # 10 points max
         
         breakout_probability = duration_score + coiling_score_points + touch_score + volume_score
         self._current_consolidation.breakout_probability = min(100.0, breakout_probability)
         
-        # Predict breakout direction
-        pressure_data = unified_data.get("pressure", {})
-        pressure_direction = pressure_data.get("direction", "NEUTRAL")
-        net_pressure = pressure_data.get("net_pressure", 0.0)
+        # Predict breakout direction (NO FALLBACKS)
+        pressure_data = unified_data["pressure"]
+        pressure_direction = pressure_data["direction"]
+        net_pressure = pressure_data["net_pressure"]
         
         if pressure_direction in ["STRONG_BUY", "BUY"] and net_pressure > 0.3:
             self._current_consolidation.expected_direction = "LONG"
         elif pressure_direction in ["STRONG_SELL", "SELL"] and net_pressure < -0.3:
             self._current_consolidation.expected_direction = "SHORT"
         else:
-            # Use RSI for direction hint
-            rsi_data = unified_data.get("rsi", {})
-            rsi_value = rsi_data.get("value", 50.0)
+            # Use RSI for direction hint (NO FALLBACKS)
+            rsi_data = unified_data["rsi"]
+            rsi_value = rsi_data["value"]
             if rsi_value > 55:
                 self._current_consolidation.expected_direction = "LONG"
             elif rsi_value < 45:
@@ -469,12 +469,12 @@ class ConsolidationTracker:
             if self._current_consolidation:
                 breakout = self._check_consolidation_breakout(current_price, current_time)
                 if breakout:
-                    # Validate breakout with volume and pressure
-                    volume_data = unified_data.get("volume", {})
-                    pressure_data = unified_data.get("pressure", {})
+                    # Validate breakout with volume and pressure (NO FALLBACKS)
+                    volume_data = unified_data["volume"]
+                    pressure_data = unified_data["pressure"]
                     
-                    volume_category = volume_data.get("category", "NORMAL")
-                    pressure_direction = pressure_data.get("direction", "NEUTRAL")
+                    volume_category = volume_data["category"]
+                    pressure_direction = pressure_data["direction"]
                     
                     # Breakout must be confirmed by volume or pressure
                     volume_confirmed = volume_category in ["HIGH", "VERY_HIGH"]
@@ -512,36 +512,36 @@ class ConsolidationTracker:
         This avoids duplicating S/R level calculations - we use their metadata (touch counts, strength).
         """
         try:
-            # Get S/R levels from unified_data (already calculated)
-            sr_data = unified_data.get("support_resistance", {})
-            levels = sr_data.get("levels", [])
+            # Get S/R levels from unified_data (already calculated) (NO FALLBACKS)
+            sr_data = unified_data["support_resistance"]
+            levels = sr_data["levels"]
             
             if not levels:
                 return
             
-            # Find closest support and resistance
+            # Find closest support and resistance (NO FALLBACKS)
             active_support = [
                 level for level in levels
-                if level.get("type") == "support"
-                and level.get("status") == "active"
-                and level.get("price_level", 0) < current_price
+                if level["type"] == "support"
+                and level["status"] == "active"
+                and level["price_level"] < current_price
             ]
             
             active_resistance = [
                 level for level in levels
-                if level.get("type") == "resistance"
-                and level.get("status") == "active"
-                and level.get("price_level", 0) > current_price
+                if level["type"] == "resistance"
+                and level["status"] == "active"
+                and level["price_level"] > current_price
             ]
             
             if not active_support or not active_resistance:
                 return
             
-            closest_support = max(active_support, key=lambda x: x.get("price_level", 0))
-            closest_resistance = min(active_resistance, key=lambda x: x.get("price_level", 0))
+            closest_support = max(active_support, key=lambda x: x["price_level"])
+            closest_resistance = min(active_resistance, key=lambda x: x["price_level"])
             
-            support_price = closest_support.get("price_level", 0)
-            resistance_price = closest_resistance.get("price_level", 0)
+            support_price = closest_support["price_level"]
+            resistance_price = closest_resistance["price_level"]
             
             if support_price <= 0 or resistance_price <= 0:
                 return
@@ -558,8 +558,8 @@ class ConsolidationTracker:
                 return
             
             # Use S/R level metadata (already calculated - no need to recalculate)
-            touch_count_upper = closest_resistance.get("touches", 0)
-            touch_count_lower = closest_support.get("touches", 0)
+            touch_count_upper = closest_resistance["touches"]  # Required (NO FALLBACKS)
+            touch_count_lower = closest_support["touches"]  # Required (NO FALLBACKS)
             
             # Get historical data service only for duration and coiling
             from core.services.historical_data_service import create_historical_data_service
@@ -580,10 +580,10 @@ class ConsolidationTracker:
             # Go backwards through candles to find when consolidation started
             for i in range(len(candles_5m) - 1, -1, -1):
                 candle = candles_5m[i]
-                high = candle.get("high", 0)
-                low = candle.get("low", 0)
-                close = candle.get("close", 0)
-                timestamp = candle.get("timestamp", 0)
+                high = candle["high"]  # Required (NO FALLBACKS)
+                low = candle["low"]  # Required (NO FALLBACKS)
+                close = candle["close"]  # Required (NO FALLBACKS)
+                timestamp = candle["timestamp"]  # Required (NO FALLBACKS)
                 
                 # Check if candle is within range
                 if low >= support_price and high <= resistance_price:
@@ -627,9 +627,9 @@ class ConsolidationTracker:
             else:
                 coiling_score = max(0.0, min(100.0, (1.0 - range_width_pct * 100) * 50.0))
             
-            # Get volume and volatility from unified_data (already calculated)
-            volume_data = unified_data.get("volume", {})
-            volatility_data = unified_data.get("volatility", {})
+            # Get volume and volatility from unified_data (already calculated) (NO FALLBACKS)
+            volume_data = unified_data["volume"]
+            volatility_data = unified_data["volatility"]
             
             # Create consolidation using S/R metadata + historical duration/coiling
             self._current_consolidation = ConsolidationRange(
@@ -640,16 +640,16 @@ class ConsolidationTracker:
                 duration_minutes=duration_minutes,
                 touch_count_upper=touch_count_upper,  # From S/R level metadata
                 touch_count_lower=touch_count_lower,  # From S/R level metadata
-                avg_volume=volume_data.get("volume_5m", 0.0),  # From unified_data
-                volatility=volatility_data.get("volatility_5m", 0.0),  # From unified_data
+                avg_volume=volume_data["volume_5m"],  # From unified_data (NO FALLBACKS)
+                volatility=volatility_data["volatility_5m"],  # From unified_data (NO FALLBACKS)
                 coiling_score=coiling_score,  # Calculated from historical prices
                 breakout_probability=0.0  # Will be calculated in _calculate_consolidation_metrics
             )
             
-            # Initialize price history from historical candles
+            # Initialize price history from historical candles (NO FALLBACKS)
             for candle in candles_5m[-min(100, len(candles_5m)):]:
-                close = candle.get("close", 0)
-                timestamp = candle.get("timestamp", 0)
+                close = candle["close"]
+                timestamp = candle["timestamp"]
                 if close > 0 and timestamp > 0:
                     self._price_history.append((close, timestamp))
             
