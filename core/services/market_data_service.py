@@ -145,10 +145,10 @@ class MarketDataService:
                 raise ValueError(f"Invalid raw_trend_data: expected dict, got {type(raw_trend_data)} - NO FALLBACKS")
             
             # Extract all timeframe trends
-            trend_15m = raw_trend_data.get("trend_15m", "UNKNOWN")
-            trend_1h = raw_trend_data.get("trend_1h", "UNKNOWN")
-            trend_4h = raw_trend_data.get("trend_4h", "UNKNOWN")
-            trend_24h = raw_trend_data.get("trend_24h", "UNKNOWN")
+            trend_15m = raw_trend_data["trend_15m"]  # Required (NO FALLBACKS)
+            trend_1h = raw_trend_data["trend_1h"]  # Required (NO FALLBACKS)
+            trend_4h = raw_trend_data["trend_4h"]  # Required (NO FALLBACKS)
+            trend_24h = raw_trend_data["trend_24h"]  # Required (NO FALLBACKS)
             
             # Use 1h as primary for strategy decisions, but preserve all timeframes
             primary_trend = trend_1h
@@ -197,7 +197,7 @@ class MarketDataService:
             "WEAK_DOWNTREND": "BEARISH",
             "SIDEWAYS": "SIDEWAYS"
         }
-        return trend_mapping.get(trend, "UNKNOWN")
+        return trend_mapping[trend] if trend in trend_mapping else "UNKNOWN"  # Handle edge cases explicitly
     
     def _map_trend_to_strength(self, trend: str) -> str:
         """Map detailed trend to strength level"""
@@ -213,7 +213,7 @@ class MarketDataService:
             "WEAK_DOWNTREND": "WEAK",
             "SIDEWAYS": "NEUTRAL"
         }
-        return strength_mapping.get(trend, "UNKNOWN")
+        return strength_mapping[trend] if trend in strength_mapping else "UNKNOWN"  # Handle edge cases explicitly
     
     def get_support_resistance_analysis(self) -> Dict[str, Any]:
         """
@@ -450,11 +450,11 @@ class MarketDataService:
                 "strategy": None,  # Strategy determined after analysis
                 
                 # Flattened data for strategy selection (single source of truth)
-                "trend_direction": trend_data.get("direction", "SIDEWAYS"),
-                "volatility_5m": volatility_data.get("volatility_percentage", 0) / 100.0,
-                "volatility_category": volatility_data.get("level", "MODERATE"),
-                "volume_category": volume_data.get("hyperliquid_5m", {}).get("volume_category", "MODERATE"),
-                "rsi_value": rsi_data.get("rsi", 50.0),
+                "trend_direction": trend_data["direction"],  # Required (NO FALLBACKS)
+                "volatility_5m": volatility_data["volatility_percentage"] / 100.0,  # Required (NO FALLBACKS)
+                "volatility_category": volatility_data["level"],  # Required (NO FALLBACKS)
+                "volume_category": volume_data["hyperliquid_5m"]["volume_category"],  # Required (NO FALLBACKS)
+                "rsi_value": rsi_data["rsi"],  # Required (NO FALLBACKS)
                 
                 # Technical Analysis Components (keep original nested structure for other uses)
                 "rsi": rsi_data,
@@ -532,7 +532,7 @@ class MarketDataService:
                     # Cache hit - use cached data (patterns expiration is handled by pattern engine, not cache)
                     patterns_count = 0
                     if isinstance(cached_data, dict):
-                        flat_patterns = cached_data.get("patterns", [])
+                        flat_patterns = cached_data["patterns"]  # Required (NO FALLBACKS)
                         nested_patterns = cached_data.get("patterns_nested", {})
                         if isinstance(flat_patterns, list):
                             patterns_count += len(flat_patterns)
@@ -555,7 +555,7 @@ class MarketDataService:
                     analysis_result = pattern_engine.analyze_patterns(candles)
                     
                     # Log pattern detection results
-                    patterns_count = len(analysis_result.get("patterns", []))
+                    patterns_count = len(analysis_result["patterns"])  # Required (NO FALLBACKS)
                     nested = analysis_result.get("patterns_nested", {})
                     nested_count = sum(len(v) if isinstance(v, list) else 0 for v in nested.values())
                     logger.info(f"📊 Pattern analysis complete: {patterns_count} flat patterns, {nested_count} nested patterns")
@@ -584,11 +584,11 @@ class MarketDataService:
                 if current_price:
                     market_data = {
                         "current_price": current_price,
-                        "rsi": self.get_rsi_analysis().get("rsi", 50.0),
-                        "trend": self.get_trend_analysis().get("direction", "SIDEWAYS"),
-                        "volatility_5m": self.get_volatility_analysis().get("volatility_percentage", 0.0) / 100.0,
-                        "volatility_category": self.get_volatility_analysis().get("level", "MODERATE"),
-                        "volume_category": self.get_volume_analysis().get("hyperliquid_5m", {}).get("volume_category", "MODERATE")
+                        "rsi": self.get_rsi_analysis()["rsi"],  # Required (NO FALLBACKS)
+                        "trend": self.get_trend_analysis()["direction"],  # Required (NO FALLBACKS)
+                        "volatility_5m": self.get_volatility_analysis()["volatility_percentage"] / 100.0,  # Required (NO FALLBACKS)
+                        "volatility_category": self.get_volatility_analysis()["level"],  # Required (NO FALLBACKS)
+                        "volume_category": self.get_volume_analysis()["hyperliquid_5m"]["volume_category"]  # Required (NO FALLBACKS)
                     }
                     # Get 1d candles for market trend analysis - request more to ensure we have enough
                     from core.services.historical_data_service import create_historical_data_service
@@ -686,8 +686,8 @@ class MarketDataService:
                     asks = orderbook_data['levels'][1] if orderbook_data['levels'][1] else []
                 # Format: {"bids": [...], "asks": [...]}
                 elif 'bids' in orderbook_data and 'asks' in orderbook_data:
-                    bids = orderbook_data.get('bids', [])
-                    asks = orderbook_data.get('asks', [])
+                    bids = orderbook_data['bids']  # Required (NO FALLBACKS)
+                    asks = orderbook_data['asks']  # Required (NO FALLBACKS)
             
             return bids, asks
         except Exception as e:
@@ -718,7 +718,7 @@ class MarketDataService:
             real_time_data = {
                 # Core market info
                 "timestamp": market_data.get("timestamp", time.time()),
-                "current_price": market_data.get("current_price", 0.0),
+                "current_price": market_data["current_price"],  # Required (NO FALLBACKS)
                 "strategy": market_data.get("strategy", strategy),
                 
                 # Technical Analysis (Primary Components) - Handle missing modules gracefully
@@ -759,8 +759,8 @@ class MarketDataService:
                 }),
                 
                 # Dashboard-specific volatility fields
-                "volatility_5m": market_data.get("volatility_5m", 0.0),
-                "volatility_category": market_data.get("volatility_category", "UNKNOWN"),
+                "volatility_5m": market_data["volatility_5m"],  # Required (NO FALLBACKS)
+                "volatility_category": market_data["volatility_category"],  # Required (NO FALLBACKS)
                 
                 "pressure": market_data.get("pressure", {
                     "buy_pressure": 0.0,
@@ -772,7 +772,7 @@ class MarketDataService:
                 
                 "support_resistance": self._prepare_sr_data_for_dashboard(
                     market_data.get("support_resistance", {}),
-                    market_data.get("current_price", 0.0)
+                    market_data["current_price"]  # Required (NO FALLBACKS)
                 ),
                 
                 "patterns": market_data.get("patterns", {
@@ -1031,7 +1031,7 @@ class MarketDataService:
         try:
             from core.calculations.sr_level_filter import SRLevelFilter
             
-            all_levels = sr_data.get("levels", [])
+            all_levels = sr_data["levels"]  # Required (NO FALLBACKS)
             metadata = sr_data.get("metadata", {})
             
             # Filter levels for dashboard display (top 2)
@@ -1044,17 +1044,17 @@ class MarketDataService:
             )
             
             return {
-                "status": sr_data.get("status", "ok"),
+                "status": sr_data["status"],  # Required (NO FALLBACKS)
                 "levels": all_levels,  # Still provide all levels for flexibility
                 "key_levels": all_levels,  # Alias for backward compatibility
                 "top_2_support": filtered_levels["support"],  # Pre-filtered for dashboard
                 "top_2_resistance": filtered_levels["resistance"],  # Pre-filtered for dashboard
                 "metadata": metadata,
-                "strongest_support": metadata.get("strongest_support", 0),
-                "strongest_resistance": metadata.get("strongest_resistance", 0),
-                "support_score": metadata.get("support_score", 0),
-                "resistance_score": metadata.get("resistance_score", 0),
-                "levels_count": metadata.get("total_levels", 0),
+                "strongest_support": metadata["strongest_support"],  # Required (NO FALLBACKS)
+                "strongest_resistance": metadata["strongest_resistance"],  # Required (NO FALLBACKS)
+                "support_score": metadata["support_score"],  # Required (NO FALLBACKS)
+                "resistance_score": metadata["resistance_score"],  # Required (NO FALLBACKS)
+                "levels_count": metadata["total_levels"],  # Required (NO FALLBACKS)
                 "timestamp": metadata.get("timestamp", time.time())
             }
         except Exception as e:
