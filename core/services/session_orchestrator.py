@@ -424,6 +424,10 @@ class SessionOrchestrator:
     
     def _has_orderbook_changed(self, orderbook_data: Dict[str, Any]) -> bool:
         """Check if orderbook data has changed significantly"""
+        # Validate orderbook data structure (NO FALLBACKS - must have bids/asks)
+        if 'bids' not in orderbook_data or 'asks' not in orderbook_data:
+            raise ValueError(f"Invalid orderbook data structure - missing 'bids' or 'asks'. Keys: {list(orderbook_data.keys())}")
+        
         if self._last_orderbook is None:
             self._last_orderbook = orderbook_data
             return True
