@@ -264,7 +264,7 @@ class PredictionEngine:
         # Check spread requirement - spread_pct is in percentage units (e.g., 0.01 = 0.01%), threshold is in decimal (0.0001 = 0.01%)
         # Convert stored percentage to decimal: 0.01% -> 0.0001
         spread_decimal = spread_pct / 100.0
-        spread_threshold = config.get("spread_threshold", 0.0001)  # 0.0001 = 0.01% in decimal
+        spread_threshold = config["spread_threshold"]  # Required for scalping strategy (NO FALLBACKS)
         if spread_decimal > spread_threshold:
             logger.debug(f"⏸️ Spread too wide for scalping: {spread_pct:.4f}% > {spread_threshold*100:.4f}%")
             return False
@@ -281,7 +281,7 @@ class PredictionEngine:
         # Check RSI range requirement
         rsi_data = self._require_key(unified_data, "rsi", "scalping validation")
         rsi_value = self._require_key(rsi_data, "rsi", "scalping validation")
-        rsi_range = config.get("rsi_range", [30, 70])
+        rsi_range = config["rsi_range"]  # Required for scalping strategy (NO FALLBACKS)
         if rsi_value < rsi_range[0] or rsi_value > rsi_range[1]:
             logger.debug(f"⏸️ RSI outside scalping range: {rsi_value:.1f} not in [{rsi_range[0]}, {rsi_range[1]}]")
             return False
@@ -587,15 +587,11 @@ class PredictionEngine:
         atr_pct = self._get_atr_pct(unified_data, current_price)
         
         # Get strategy-specific entry proximity configuration
-        strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
-        entry_proximity_config = strategy_config.get("entry_proximity_config", {
-            "optimal_atr": 0.5,
-            "acceptable_atr": 1.25,
-            "too_far_atr": 2.0
-        })
-        optimal_atr = entry_proximity_config.get("optimal_atr", 0.5)
-        acceptable_atr = entry_proximity_config.get("acceptable_atr", 1.25)
-        too_far_atr = entry_proximity_config.get("too_far_atr", 2.0)
+        strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
+        entry_proximity_config = strategy_config["entry_proximity_config"]  # Required in all strategies (NO FALLBACKS)
+        optimal_atr = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS)
+        acceptable_atr = entry_proximity_config["acceptable_atr"]  # Required (NO FALLBACKS)
+        too_far_atr = entry_proximity_config["too_far_atr"]  # Required (NO FALLBACKS)
         
         # Strategy-specific thresholds based on ATR:
         optimal_threshold = atr_pct * optimal_atr
@@ -984,17 +980,10 @@ class PredictionEngine:
             if current_price <= 0:
                 raise ValueError(f"Invalid current_price: {current_price}")
             
-            # Get strategy-specific weights (config defaults are OK)
+            # Get strategy-specific weights (NO FALLBACKS)
             # NOTE: S/R is NOT included in direction scoring - S/R determines entry/exit, NOT direction
-            strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
-            direction_weights = strategy_config.get("direction_weights", {
-                "rsi": 0.30,          # Increased (was 0.25)
-                "trend": 0.35,        # Increased (was 0.25) - most important
-                "pressure": 0.20,     # Increased (was 0.15)
-                "patterns": 0.10,     # Same
-                "volume": 0.05,       # Same
-                "funding": 0.00       # Removed for now (was 0.05) - often not available
-            })
+            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
+            direction_weights = strategy_config["direction_weights"]  # Required in all strategies (NO FALLBACKS)
             
             # Extract indicators - all required (NO FALLBACKS)
             # NOTE: S/R is NOT used for direction scoring (only for entry/exit determination)
@@ -1010,15 +999,15 @@ class PredictionEngine:
             short_score = 0.0
             all_reasons = []
             
-            # Score each factor using unified framework
-            rsi_weight = direction_weights.get("rsi", 0.0)
+            # Score each factor using unified framework (all weights required - NO FALLBACKS)
+            rsi_weight = direction_weights["rsi"]  # Required (NO FALLBACKS)
             if rsi_weight > 0:
                 rsi_long, rsi_short, reasons = self._score_rsi_factor(rsi_data)
                 long_score += rsi_long * rsi_weight
                 short_score += rsi_short * rsi_weight
                 all_reasons.extend(reasons)
             
-            trend_weight = direction_weights.get("trend", 0.0)
+            trend_weight = direction_weights["trend"]  # Required (NO FALLBACKS)
             if trend_weight > 0:
                 trend_long, trend_short, reasons = self._score_trend_factor(trend_data, strategy)
                 long_score += trend_long * trend_weight
@@ -1029,21 +1018,21 @@ class PredictionEngine:
             # S/R levels determine WHERE to enter/exit, NOT direction
             # Direction is determined by: trend, momentum, pressure, volume
             
-            pressure_weight = direction_weights.get("pressure", 0.0)
+            pressure_weight = direction_weights["pressure"]  # Required (NO FALLBACKS)
             if pressure_weight > 0:
                 pressure_long, pressure_short, reasons = self._score_pressure_factor(pressure_data)
                 long_score += pressure_long * pressure_weight
                 short_score += pressure_short * pressure_weight
                 all_reasons.extend(reasons)
             
-            patterns_weight = direction_weights.get("patterns", 0.0)
+            patterns_weight = direction_weights["patterns"]  # Required (NO FALLBACKS)
             if patterns_weight > 0:
                 patterns_long, patterns_short, reasons = self._score_patterns_factor(patterns_data)
                 long_score += patterns_long * patterns_weight
                 short_score += patterns_short * patterns_weight
                 all_reasons.extend(reasons)
             
-            volume_weight = direction_weights.get("volume", 0.0)
+            volume_weight = direction_weights["volume"]  # Required (NO FALLBACKS)
             if volume_weight > 0:
                 volume_long, volume_short, reasons = self._score_volume_factor(volume_category, long_score, short_score)
                 long_score += volume_long * volume_weight
@@ -1701,13 +1690,9 @@ class PredictionEngine:
                 raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
             
             # Get strategy-specific entry proximity configuration
-            strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
-            entry_proximity_config = strategy_config.get("entry_proximity_config", {
-                "optimal_atr": 0.5,
-                "acceptable_atr": 1.25,
-                "too_far_atr": 2.0
-            })
-            optimal_atr = entry_proximity_config.get("optimal_atr", 0.5)
+            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
+            entry_proximity_config = strategy_config["entry_proximity_config"]  # Required in all strategies (NO FALLBACKS)
+            optimal_atr = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS)
             
             # Generate candidate entry prices around the level
             # Start at level (optimal for entry scoring), then consider small offsets for spread/slippage
