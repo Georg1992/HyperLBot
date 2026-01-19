@@ -2262,5 +2262,5 @@ class PredictionEngine:
             return stop_loss, take_profit, risk_reward_ratio, stop_loss_pct, take_profit_pct
             
         except Exception as e:
-            logger.error(f"❌ Stop/Target calculation failed: {e}")
+            logger.info(f"⏸️ No valid setup: {e}")  # Normal - waiting for better market structure
             raise
