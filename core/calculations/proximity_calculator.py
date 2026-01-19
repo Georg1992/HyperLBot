@@ -73,9 +73,9 @@ class ProximityCalculator:
                 "acceptable_atr": 1.25,
                 "too_far_atr": 2.0
             })
-            optimal_atr = entry_proximity_config.get("optimal_atr", 0.5)
-            acceptable_atr = entry_proximity_config.get("acceptable_atr", 1.25)
-            too_far_atr = entry_proximity_config.get("too_far_atr", 2.0)
+            optimal_atr = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS)
+            acceptable_atr = entry_proximity_config["acceptable_atr"]  # Required (NO FALLBACKS)
+            too_far_atr = entry_proximity_config["too_far_atr"]  # Required (NO FALLBACKS)
             
             # Entry-specific proximity weighting (with bonuses/penalties)
             if distance_atr <= optimal_atr:
