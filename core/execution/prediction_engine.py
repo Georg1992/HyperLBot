@@ -115,7 +115,7 @@ class PredictionEngine:
                 return None
                 
         except Exception as e:
-            logger.error(f"❌ Prediction generation failed: {e}", exc_info=True)
+            logger.info(f"⏸️ No trade setup available: {e}")  # Normal - waiting for valid market structure
             return None
     
     def _generate_strategy_prediction(
