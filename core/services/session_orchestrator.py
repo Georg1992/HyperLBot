@@ -41,7 +41,8 @@ class SessionOrchestrator:
             'funding': 0,
             'orderbook': 0,
             'market_conditions': 0,
-            'cross_asset_correlation_analyzer': 0
+            'cross_asset_correlation_analyzer': 0,
+            'consolidation': 0  # Consolidation tracker module
         }
         
         # Initialize reactive execution engine (for momentum breakouts with market orders)
