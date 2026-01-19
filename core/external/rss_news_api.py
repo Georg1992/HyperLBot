@@ -420,13 +420,17 @@ class RSSNewsAPI:
             if classification == 'bullish':
                 return {
                     'signal': 'BUY',
+                    'trading_bias': 'BULLISH',  # Required (NO FALLBACKS)
                     'strength': 'strong',
+                    'market_impact': 'high',  # Required (NO FALLBACKS)
                     'reasoning': f'Strong bullish news sentiment ({confidence:.1%} confidence)'
                 }
             elif classification == 'bearish':
                 return {
                     'signal': 'SELL',
+                    'trading_bias': 'BEARISH',  # Required (NO FALLBACKS)
                     'strength': 'strong',
+                    'market_impact': 'high',  # Required (NO FALLBACKS)
                     'reasoning': f'Strong bearish news sentiment ({confidence:.1%} confidence)'
                 }
         
@@ -434,19 +438,25 @@ class RSSNewsAPI:
             if classification == 'bullish':
                 return {
                     'signal': 'BUY',
+                    'trading_bias': 'BULLISH',  # Required (NO FALLBACKS)
                     'strength': 'moderate',
+                    'market_impact': 'medium',  # Required (NO FALLBACKS)
                     'reasoning': f'Moderate bullish news sentiment ({confidence:.1%} confidence)'
                 }
             elif classification == 'bearish':
                 return {
                     'signal': 'SELL',
+                    'trading_bias': 'BEARISH',  # Required (NO FALLBACKS)
                     'strength': 'moderate',
+                    'market_impact': 'medium',  # Required (NO FALLBACKS)
                     'reasoning': f'Moderate bearish news sentiment ({confidence:.1%} confidence)'
                 }
         
         return {
             'signal': 'NEUTRAL',
+            'trading_bias': 'NEUTRAL',  # Required (NO FALLBACKS)
             'strength': 'weak',
+            'market_impact': 'low',  # Required (NO FALLBACKS)
             'reasoning': f'Neutral news sentiment ({confidence:.1%} confidence)'
         }
     
@@ -467,7 +477,9 @@ class RSSNewsAPI:
             },
             'trading_signal': {
                 'signal': 'NEUTRAL',
+                'trading_bias': 'NEUTRAL',  # Required (NO FALLBACKS)
                 'strength': 'weak',
+                'market_impact': 'low',  # Required (NO FALLBACKS)
                 'reasoning': 'No recent news available'
             },
             'confidence': 0.1,
