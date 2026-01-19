@@ -992,7 +992,7 @@ class PredictionEngine:
             pressure_data = self._require_key(unified_data, "pressure", "direction scoring")
             patterns_data = self._require_key(unified_data, "patterns", "direction scoring")
             volume_category = self._require_key(unified_data, "volume_category", "direction scoring")
-            # funding_data = unified_data.get("funding_analysis")  # Optional - not always available
+            # funding_data is optional - not always available, checked with "in" operator when needed
             
             # Initialize scores
             long_score = 0.0
