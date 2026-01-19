@@ -221,9 +221,9 @@ class SupportResistanceCalculator(BaseCalculator):
             # Daily peaks
             for day_key, day_candles in daily_groups.items():
                 if day_candles:
-                    day_high = max(c.get('high', 0) for c in day_candles)
-                    day_low = min(c.get('low', 0) for c in day_candles)
-                    day_timestamp = max(c.get('timestamp', 0) for c in day_candles)
+                    day_high = max(c['high'] for c in day_candles)  # Required (NO FALLBACKS)
+                    day_low = min(c['low'] for c in day_candles)  # Required (NO FALLBACKS)
+                    day_timestamp = max(c['timestamp'] for c in day_candles)  # Required (NO FALLBACKS)
                     
                     if day_high > 0:
                         period_peaks.append(Level(
@@ -285,9 +285,9 @@ class SupportResistanceCalculator(BaseCalculator):
             # Monthly peaks
             for month_key, month_candles in monthly_groups.items():
                 if month_candles:
-                    month_high = max(c.get('high', 0) for c in month_candles)
-                    month_low = min(c.get('low', 0) for c in month_candles)
-                    month_timestamp = max(c.get('timestamp', 0) for c in month_candles)
+                    month_high = max(c['high'] for c in month_candles)  # Required (NO FALLBACKS)
+                    month_low = min(c['low'] for c in month_candles)  # Required (NO FALLBACKS)
+                    month_timestamp = max(c['timestamp'] for c in month_candles)  # Required (NO FALLBACKS)
                     
                     if month_high > 0:
                         period_peaks.append(Level(
@@ -377,7 +377,7 @@ class SupportResistanceCalculator(BaseCalculator):
             current_time = time.time()
             
             # Performance: Check cache first (strategy-independent)
-            last_update = self._last_module_updates.get('support_resistance', 0)
+            last_update = self._last_module_updates["support_resistance"]  # Required (NO FALLBACKS)
             if current_time - last_update < self._min_recalculation_interval:
                 cached_result = self._get_cached_analysis(current_price, current_time)
                 if cached_result is not None and cached_result.get("status") == "ok":
@@ -435,7 +435,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 
                 if new_5m_candles:
                     candles_data['5m'].extend(new_5m_candles)
-                    candles_data['5m'].sort(key=lambda x: x.get('timestamp', 0))
+                    candles_data['5m'].sort(key=lambda x: x['timestamp'])  # Required (NO FALLBACKS)
                     logger.debug(f"🔍 Added {len(new_5m_candles)} 5m candles from {label} (total: {len(candles_data['5m'])})")
                 
                 # Fetch other timeframes for MTF alignment (no price filtering - just for swing detection)
@@ -457,7 +457,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 
                 # Re-deduplicate and re-sort by power
                 # Mathematically justified: Use 0.125 × ATR for final deduplication (tighter than clustering)
-                atr_14 = self._data_provider.calculate_atr(candles_data.get('5m', []), 14)
+                atr_14 = self._data_provider.calculate_atr(candles_data['5m'], 14)  # Required (NO FALLBACKS)
                 if atr_14 <= 0:
                     raise ValueError(f"Invalid atr_14: {atr_14} - must be positive for deduplication (NO FALLBACKS)")
                 final_dedup_tolerance = atr_14 * 0.125  # 0.125×ATR for final deduplication
@@ -466,11 +466,11 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # Format and return results (strategy-independent, returns ALL levels)
             result = self._format_results_optimized(scored_levels, current_price, 
-                                                   self._data_provider.calculate_atr(candles_data.get('5m', []), 14), 
+                                                   self._data_provider.calculate_atr(candles_data['5m'], 14),  # Required (NO FALLBACKS) 
                                                    current_time)
             
             # Log final results
-            all_levels = result.get('levels', [])
+            all_levels = result['levels']  # Required (NO FALLBACKS)
             active_support_count = len([l for l in all_levels if l.get("type") == "support" and l.get("status") == "active"])
             active_resistance_count = len([l for l in all_levels if l.get("type") == "resistance" and l.get("status") == "active"])
             logger.info(f"📊 FINAL: {len(all_levels)} total levels ({active_support_count} active support, {active_resistance_count} active resistance)")
@@ -553,7 +553,7 @@ class SupportResistanceCalculator(BaseCalculator):
             # 7. Filter by power threshold (replaced cluster_size filter)
             # Strategy-specific quality gate based on level strength
             from config.config import TradingConfig
-            min_power = TradingConfig.STRATEGY_CONFIGS.get(self._strategy, {}).get("min_power_threshold", 0.0)
+            min_power = TradingConfig.STRATEGY_CONFIGS[self._strategy]["min_power_threshold"]  # Required (NO FALLBACKS)
             if min_power > 0:
                 filtered_levels = [level for level in scored_levels if level.power >= min_power]
                 logger.debug(f"🎯 Power filter: {len(scored_levels)} → {len(filtered_levels)} levels (threshold: {min_power})")
@@ -591,8 +591,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 raise ValueError("Invalid trend analysis data - NO FALLBACKS")
             
             return {
-                'direction': trend_analysis.get('direction', 'SIDEWAYS'),
-                'strength': trend_analysis.get('strength', 0.0)
+                'direction': trend_analysis['direction'],  # Required (NO FALLBACKS)
+                'strength': trend_analysis['strength']  # Required (NO FALLBACKS)
             }
         except Exception as e:
             logger.error(f"❌ Failed to get trend data: {e}")
@@ -678,7 +678,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 return clustered_levels
             
             # Get the oldest timestamp from current candles to know where to start looking back
-            oldest_timestamp = min(candle.get('timestamp', 0) for candle in current_candles)
+            oldest_timestamp = min(candle['timestamp'] for candle in current_candles)  # Required (NO FALLBACKS)
             
             # Look back up to 2 years (we have 5 years of data)
             # 2 years = ~105,000 5m candles, but we'll fetch in chunks to avoid memory issues
@@ -967,23 +967,23 @@ class SupportResistanceCalculator(BaseCalculator):
             candidate_levels = [
                 level for level in levels
                 if level.get("type") == "support"
-                and level.get("price_level", 0) < entry_price
+                and level["price_level"] < entry_price  # Required (NO FALLBACKS)
                 and level.get("status") == "active"
             ]
             # Calculate distance from entry (for LONG, distance = entry - level_price)
             def calc_distance(level):
-                return entry_price - level.get("price_level", 0)
+                return entry_price - level["price_level"]  # Required (NO FALLBACKS)
         else:  # SHORT
             # For SHORT: need resistances ABOVE entry
             candidate_levels = [
                 level for level in levels
                 if level.get("type") == "resistance"
-                and level.get("price_level", 0) > entry_price
+                and level["price_level"] > entry_price  # Required (NO FALLBACKS)
                 and level.get("status") == "active"
             ]
             # Calculate distance from entry (for SHORT, distance = level_price - entry)
             def calc_distance(level):
-                return level.get("price_level", 0) - entry_price
+                return level["price_level"] - entry_price  # Required (NO FALLBACKS)
         
         if not candidate_levels:
             return None
@@ -1000,20 +1000,20 @@ class SupportResistanceCalculator(BaseCalculator):
         # Strategy 1: Prefer strong levels within reasonable distance
         strong_levels_within_range = [
             level for level in valid_levels
-            if level.get("strength_score", 0) >= min_strength_score
+            if level["strength_score"] >= min_strength_score  # Required (NO FALLBACKS)
             and calc_distance(level) <= max_reasonable_distance
         ]
         
         if strong_levels_within_range:
             # Use strongest among those within reasonable distance
-            selected = max(strong_levels_within_range, key=lambda x: x.get("strength_score", 0))
-            logger.debug(f"✅ Selected strong {direction} stop level: ${selected.get('price_level', 0):.2f} (strength: {selected.get('strength_score', 0):.1f}, distance: {calc_distance(selected):.2f})")
+            selected = max(strong_levels_within_range, key=lambda x: x["strength_score"])  # Required (NO FALLBACKS)
+            logger.debug(f"✅ Selected strong {direction} stop level: ${selected['price_level']:.2f} (strength: {selected['strength_score']:.1f}, distance: {calc_distance(selected):.2f})")
             return selected
         
         # Strategy 2: No strong level within range - use closest that meets minimum
         # This maintains R:R while still providing protection
         selected = min(valid_levels, key=lambda x: calc_distance(x))
-        logger.debug(f"✅ Selected closest {direction} stop level: ${selected.get('price_level', 0):.2f} (strength: {selected.get('strength_score', 0):.1f}, distance: {calc_distance(selected):.2f})")
+        logger.debug(f"✅ Selected closest {direction} stop level: ${selected['price_level']:.2f} (strength: {selected['strength_score']:.1f}, distance: {calc_distance(selected):.2f})")
         return selected
 
 
