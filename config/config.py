@@ -122,7 +122,7 @@ class TradingConfig:
             "max_distance_atr": 3.0     # Max distance to level (in ATR)
         },
         "low_volatility_range": {
-            "min_rr": 1.5,
+            "min_rr": 1.2,              # Lower min for tight range trading (smaller but frequent profits)
             "max_rr": 3.0,
             "cushion_atr": 0.25,
             "max_distance_atr": 5.0
@@ -134,7 +134,7 @@ class TradingConfig:
             "max_distance_atr": 8.0
         },
         "range_trading": {
-            "min_rr": 1.5,
+            "min_rr": 1.2,              # Lower min for range trading (take profit at range boundaries)
             "max_rr": 3.0,
             "cushion_atr": 0.25,
             "max_distance_atr": 5.0
