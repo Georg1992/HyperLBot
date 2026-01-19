@@ -71,13 +71,13 @@ class MarketConditionsAnalyzer:
             Dict with condition analysis results
         """
         try:
-            # Extract market data
-            current_price = market_data.get("current_price", 0)
-            rsi = market_data.get("rsi", 50.0)
-            trend = market_data.get("trend", "NEUTRAL")
-            volatility_5m = market_data.get("volatility_5m", 0.0)
-            volatility_category = market_data.get("volatility_category", "MODERATE")
-            volume_category = market_data.get("volume_category", "NORMAL")
+            # Extract market data (NO FALLBACKS - unified_data must provide all required keys)
+            current_price = market_data["current_price"]
+            rsi = market_data["rsi"]
+            trend = market_data["trend"]
+            volatility_5m = market_data["volatility_5m"]
+            volatility_category = market_data["volatility_category"]
+            volume_category = market_data["volume_category"]
             
             # Run all condition analyses
             analyses = self._run_condition_analyses(
@@ -129,9 +129,9 @@ class MarketConditionsAnalyzer:
             if analysis_name == "market_status":
                 continue  # Skip market status, it's informational
                 
-            all_factors.extend(analysis.get("factors", []))
-            risk_factors.extend(analysis.get("risk_factors", []))
-            positive_factors.extend(analysis.get("positive_factors", []))
+            all_factors.extend(analysis["factors"])  # Required (NO FALLBACKS)
+            risk_factors.extend(analysis["risk_factors"])  # Required (NO FALLBACKS)
+            positive_factors.extend(analysis["positive_factors"])  # Required (NO FALLBACKS)
         
         # Determine condition based on factors
         total_risk_score = len(risk_factors)
@@ -192,27 +192,27 @@ class MarketConditionsAnalyzer:
             "confidence": overall_analysis["confidence"],
             "risk_factors": overall_analysis["risk_factors"],
             "positive_factors": overall_analysis["positive_factors"],
-            "analysis_timestamp": market_data.get("timestamp", 0),
+            "analysis_timestamp": market_data["timestamp"],  # Required (NO FALLBACKS)
             "market_status": analyses["market_status"]["market_status"]
         }
         
         # Add optional data if available
-        if analyses["sentiment"].get("sentiment_data"):
+        if "sentiment_data" in analyses["sentiment"]:
             result["sentiment_data"] = analyses["sentiment"]["sentiment_data"]
         
-        if analyses["whale"].get("whale_data"):
+        if "whale_data" in analyses["whale"]:
             result["whale_analytics"] = analyses["whale"]["whale_data"]
         
-        if analyses["news"].get("news_data"):
+        if "news_data" in analyses["news"]:
             result["news_sentiment"] = analyses["news"]["news_data"]
         
         return result
     
     def _log_condition_changes(self, result: Dict[str, Any]) -> None:
         """Log significant condition changes - follows SRP"""
-        condition = result.get("condition", "UNKNOWN")
-        positive_factors = result.get("positive_factors", [])
-        risk_factors = result.get("risk_factors", [])
+        condition = result["condition"]  # Required (NO FALLBACKS)
+        positive_factors = result["positive_factors"]  # Required (NO FALLBACKS)
+        risk_factors = result["risk_factors"]  # Required (NO FALLBACKS)
         
         if condition == "EXCELLENT":
             factors_text = ', '.join(positive_factors[:2]) if positive_factors else 'No factors'
@@ -230,7 +230,7 @@ class MarketConditionsAnalyzer:
             "confidence": 0.3,
             "risk_factors": ["Analysis error"],
             "positive_factors": [],
-            "analysis_timestamp": market_data.get("timestamp", 0),
+            "analysis_timestamp": market_data["timestamp"],  # Required (NO FALLBACKS)
             "market_status": "NEUTRAL"
         }
     
@@ -295,9 +295,9 @@ class MarketConditionsAnalyzer:
                 "positive_factors": []
             }
         
-        # Check market regime from historical analysis
-        market_regime = historical_context.get("market_regime", {})
-        regime = market_regime.get("regime", "UNKNOWN")
+        # Check market regime from historical analysis (NO FALLBACKS)
+        market_regime = historical_context["market_regime"]
+        regime = market_regime["regime"]
         
         if regime == "TIGHT_RANGING":
             factors.append("Historical tight ranging - limited breakouts")
@@ -314,10 +314,10 @@ class MarketConditionsAnalyzer:
         elif regime == "HIGH_VOLATILITY":
             factors.append("Historical high volatility - increased opportunities")
             
-        # Check proximity to major support/resistance levels
-        major_levels = historical_context.get("major_levels", {})
-        support_levels = major_levels.get("support", [])
-        resistance_levels = major_levels.get("resistance", [])
+        # Check proximity to major support/resistance levels (NO FALLBACKS)
+        major_levels = historical_context["major_levels"]
+        support_levels = major_levels["support"]
+        resistance_levels = major_levels["resistance"]
         
         if support_levels or resistance_levels:
             all_levels = support_levels + resistance_levels
@@ -342,9 +342,9 @@ class MarketConditionsAnalyzer:
     
     def get_condition_summary(self, analysis: Dict[str, Any]) -> str:
         """Generate user-friendly summary of market conditions"""
-        condition = analysis.get("condition", "UNKNOWN")
-        main_risks = analysis.get("risk_factors", [])[:2]  # Top 2 risk factors
-        main_positives = analysis.get("positive_factors", [])[:2]  # Top 2 positive factors
+        condition = analysis["condition"]  # Required (NO FALLBACKS)
+        main_risks = analysis["risk_factors"][:2]  # Top 2 risk factors (NO FALLBACKS)
+        main_positives = analysis["positive_factors"][:2]  # Top 2 positive factors (NO FALLBACKS)
         
         if condition == "EXCELLENT":
             return f"Excellent conditions: {', '.join(main_positives)}"
@@ -381,9 +381,9 @@ class MarketConditionsAnalyzer:
                     "positive": False
                 }
             
-            sentiment_signals = fear_greed_data.get("sentiment_signals", {})
-            index_value = fear_greed_data.get("index_value", 50)
-            classification = fear_greed_data.get("classification", "Neutral")
+            sentiment_signals = fear_greed_data["sentiment_signals"]  # Required (NO FALLBACKS)
+            index_value = fear_greed_data["index_value"]  # Required (NO FALLBACKS)
+            classification = fear_greed_data["classification"]  # Required (NO FALLBACKS)
             
             factors = []
             risk_factors = []
@@ -391,11 +391,11 @@ class MarketConditionsAnalyzer:
             risk_level = 0
             is_positive = False
             
-            # Analyze sentiment zones
-            sentiment_zone = sentiment_signals.get("sentiment_zone", "NEUTRAL")
-            trading_bias = sentiment_signals.get("trading_bias", "NEUTRAL")
-            extreme_condition = sentiment_signals.get("extreme_condition", False)
-            reversal_imminent = sentiment_signals.get("reversal_imminent", False)
+            # Analyze sentiment zones (NO FALLBACKS)
+            sentiment_zone = sentiment_signals["sentiment_zone"]
+            trading_bias = sentiment_signals["trading_bias"]
+            extreme_condition = sentiment_signals["extreme_condition"]
+            reversal_imminent = sentiment_signals["reversal_imminent"]
             
             # Add sentiment factors
             factors.append(f"Fear & Greed: {index_value} ({classification})")
@@ -415,7 +415,7 @@ class MarketConditionsAnalyzer:
             
             # Analyze reversal conditions
             if reversal_imminent:
-                reversal_prob = sentiment_signals.get("reversal_probability", 0.0)
+                reversal_prob = sentiment_signals["reversal_probability"]  # Required (NO FALLBACKS)
                 factors.append(f"Reversal Imminent - {reversal_prob:.0%} probability")
                 
                 if sentiment_zone in ["EXTREME_FEAR", "FEAR"]:
@@ -434,7 +434,7 @@ class MarketConditionsAnalyzer:
                 risk_level = max(risk_level, 1)
             
             # Add confidence boost information
-            confidence_boost = sentiment_signals.get("confidence_boost", 0.0)
+            confidence_boost = sentiment_signals["confidence_boost"]  # Required (NO FALLBACKS)
             if confidence_boost > 0:
                 factors.append(f"Sentiment confidence boost: +{confidence_boost:.1%}")
             
@@ -482,9 +482,9 @@ class MarketConditionsAnalyzer:
                     "positive": False
                 }
             
-            whale_activity = whale_analysis.get("whale_activity", {})
-            exchange_flows = whale_analysis.get("exchange_flows", {})
-            sentiment = whale_analysis.get("sentiment", {})
+            whale_activity = whale_analysis["whale_activity"]  # Required (NO FALLBACKS)
+            exchange_flows = whale_analysis["exchange_flows"]  # Required (NO FALLBACKS)
+            sentiment = whale_analysis["sentiment"]  # Required (NO FALLBACKS)
             
             factors = []
             risk_factors = []
@@ -492,27 +492,27 @@ class MarketConditionsAnalyzer:
             risk_level = 0
             is_positive = False
             
-            # Analyze whale activity
-            whale_count = whale_activity.get("whale_count", 0)
-            activity_level = whale_activity.get("activity_level", "low")
-            total_volume_usd = whale_activity.get("total_volume_usd", 0)
+            # Analyze whale activity (NO FALLBACKS)
+            whale_count = whale_activity["whale_count"]
+            activity_level = whale_activity["activity_level"]
+            total_volume_usd = whale_activity["total_volume_usd"]
             
             factors.append(f"Whale Activity: {whale_count} whales ({activity_level})")
             factors.append(f"Whale Volume: ${total_volume_usd:,.0f}")
             
-            # Analyze exchange flows
-            flow_direction = exchange_flows.get("flow_direction", "neutral")
-            net_flow = exchange_flows.get("net_flow", 0)
+            # Analyze exchange flows (NO FALLBACKS)
+            flow_direction = exchange_flows["flow_direction"]
+            net_flow = exchange_flows["net_flow"]
             
             factors.append(f"Exchange Flow: {flow_direction} (${net_flow:,.0f})")
             
-            # Analyze sentiment
-            sentiment_class = sentiment.get("classification", "neutral")
-            confidence = sentiment.get("confidence", "low")
+            # Analyze sentiment (NO FALLBACKS)
+            sentiment_class = sentiment["classification"]
+            confidence = sentiment["confidence"]
             
             factors.append(f"Whale Sentiment: {sentiment_class} ({confidence})")
             
-            # Determine risk and positive factors
+            # Determine risk and positive factors (whale-specific)
             if sentiment_class == "bearish" and confidence == "high":
                 risk_factors.append("High confidence bearish whale sentiment")
                 risk_level = 2
@@ -584,9 +584,9 @@ class MarketConditionsAnalyzer:
                     "positive": False
                 }
             
-            sentiment = news_data.get("sentiment", {})
-            impact = news_data.get("impact", {})
-            trading_signals = news_data.get("trading_signals", {})
+            sentiment = news_data["sentiment"]  # Required (NO FALLBACKS)
+            impact = news_data["impact"]  # Required (NO FALLBACKS)
+            trading_signals = news_data["trading_signals"]  # Required (NO FALLBACKS)
             
             factors = []
             risk_factors = []
@@ -594,25 +594,25 @@ class MarketConditionsAnalyzer:
             risk_level = 0
             is_positive = False
             
-            # Analyze sentiment
-            sentiment_class = sentiment.get("classification", "neutral")
-            confidence = sentiment.get("confidence", "low")
-            bullish_count = sentiment.get("bullish_count", 0)
-            bearish_count = sentiment.get("bearish_count", 0)
-            total_news = sentiment.get("total_news", 0)
+            # Analyze sentiment (NO FALLBACKS)
+            sentiment_class = sentiment["classification"]
+            confidence = sentiment["confidence"]
+            bullish_count = sentiment["bullish_count"]
+            bearish_count = sentiment["bearish_count"]
+            total_news = sentiment["total_news"]
             
             factors.append(f"News Sentiment: {sentiment_class} ({confidence})")
             factors.append(f"News Count: {bullish_count}B/{bearish_count}BE/{total_news} total")
             
-            # Analyze impact
-            impact_level = impact.get("impact_level", "low")
-            high_impact_count = impact.get("high_impact_count", 0)
+            # Analyze impact (NO FALLBACKS)
+            impact_level = impact["impact_level"]
+            high_impact_count = impact["high_impact_count"]
             
             factors.append(f"News Impact: {impact_level} ({high_impact_count} high impact)")
             
-            # Analyze trading signals
-            trading_bias = trading_signals.get("trading_bias", "NEUTRAL")
-            market_impact = trading_signals.get("market_impact", "low")
+            # Analyze trading signals (NO FALLBACKS)
+            trading_bias = trading_signals["trading_bias"]
+            market_impact = trading_signals["market_impact"]
             
             factors.append(f"Trading Bias: {trading_bias} ({market_impact} impact)")
             
@@ -677,7 +677,7 @@ class MarketConditionsAnalyzer:
             
             # Get instances
             system_initializer = get_system_initializer()
-            market_data_service = system_initializer.singleton_systems.get("market_data_service")
+            market_data_service = system_initializer.singleton_systems["market_data_service"]  # Required (NO FALLBACKS)
             hyperliquid_api = get_hyperliquid_api()
             
             # Use passed data or return neutral status
@@ -779,8 +779,8 @@ class MarketConditionsAnalyzer:
         try:
             # Get volatility data from existing calculation modules
             volatility_data = self._get_volatility_data()
-            volatility_5m = volatility_data.get("volatility_5m", 0.0)
-            volatility_category = volatility_data.get("volatility_category", "MODERATE")
+            volatility_5m = volatility_data["volatility_5m"]  # Required (NO FALLBACKS)
+            volatility_category = volatility_data["volatility_category"]  # Required (NO FALLBACKS)
             
             # Base thresholds (standard RSI levels)
             base_neutral_low = 45.0
@@ -832,7 +832,7 @@ class MarketConditionsAnalyzer:
         try:
             # Get volatility data from existing calculation modules
             volatility_data = self._get_volatility_data()
-            current_volatility = volatility_data.get("volatility_5m", 10.0)
+            current_volatility = volatility_data["volatility_5m"]  # Required (NO FALLBACKS)
             
             # Base thresholds (standard levels)
             base_strong_bullish = 5.0
@@ -877,8 +877,8 @@ class MarketConditionsAnalyzer:
         try:
             # Get volatility data from existing calculation modules
             volatility_data = self._get_volatility_data()
-            volatility_5m = volatility_data.get("volatility_5m", 0.0)
-            volatility_category = volatility_data.get("volatility_category", "MODERATE")
+            volatility_5m = volatility_data["volatility_5m"]  # Required (NO FALLBACKS)
+            volatility_category = volatility_data["volatility_category"]  # Required (NO FALLBACKS)
             
             # Base threshold (0.5%)
             base_threshold = 0.005
