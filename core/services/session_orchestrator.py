@@ -26,7 +26,7 @@ class SessionOrchestrator:
         self.prediction_engine = None
         self._last_price = None
         self._last_5m_boundary = None
-        self._last_orderbook = {'bids': [], 'asks': []}  # Initialize with empty lists (NO FALLBACKS)
+        self._last_orderbook = {'levels': [[], []]}  # Initialize with Hyperliquid format: [bids, asks] (NO FALLBACKS)
         # Initialize all module update times (NO FALLBACKS)
         self._last_update_times = {
             'support_resistance': 0,
@@ -424,19 +424,25 @@ class SessionOrchestrator:
     
     def _has_orderbook_changed(self, orderbook_data: Dict[str, Any]) -> bool:
         """Check if orderbook data has changed significantly"""
-        # Validate orderbook data structure (NO FALLBACKS - must have bids/asks)
-        if 'bids' not in orderbook_data or 'asks' not in orderbook_data:
-            raise ValueError(f"Invalid orderbook data structure - missing 'bids' or 'asks'. Keys: {list(orderbook_data.keys())}")
+        # Validate orderbook data structure (Hyperliquid format: levels[0]=bids, levels[1]=asks)
+        if 'levels' not in orderbook_data:
+            raise ValueError(f"Invalid orderbook data structure - missing 'levels'. Keys: {list(orderbook_data.keys())}")
+        
+        levels = orderbook_data['levels']
+        if not isinstance(levels, list) or len(levels) < 2:
+            raise ValueError(f"Invalid orderbook levels structure - expected list with 2 elements (bids, asks)")
         
         if self._last_orderbook is None:
             self._last_orderbook = orderbook_data
             return True
         
         # Simple comparison - could be enhanced with more sophisticated change detection
-        current_bids = orderbook_data['bids']  # Required (NO FALLBACKS)
-        current_asks = orderbook_data['asks']  # Required (NO FALLBACKS)
-        last_bids = self._last_orderbook['bids']  # Required (NO FALLBACKS)
-        last_asks = self._last_orderbook['asks']  # Required (NO FALLBACKS)
+        # Hyperliquid format: levels[0] = bids, levels[1] = asks
+        current_bids = levels[0]  # Required (NO FALLBACKS)
+        current_asks = levels[1]  # Required (NO FALLBACKS)
+        last_levels = self._last_orderbook['levels']
+        last_bids = last_levels[0]  # Required (NO FALLBACKS)
+        last_asks = last_levels[1]  # Required (NO FALLBACKS)
         
         # Check if bid/ask levels have changed
         if current_bids != last_bids or current_asks != last_asks:
