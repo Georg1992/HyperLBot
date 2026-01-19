@@ -49,7 +49,7 @@ class EntryPriceCalculator:
         try:
             # Mathematically justified: Base entry offset = 0.25 × ATR (for limit orders)
             # Strategy multiplier adjusts this base (e.g., 1.0 = 0.25×ATR, 1.5 = 0.375×ATR)
-            entry_offset_multiplier = config.get("entry_offset_multiplier", 1.0)  # Default 1.0 = 0.25×ATR
+            entry_offset_multiplier = config["entry_offset_multiplier"]  # Required (NO FALLBACKS)
             
             # Get ATR for mathematically justified base calculation (NO FALLBACKS)
             sr_data = unified_data.get("support_resistance", {})
@@ -60,7 +60,7 @@ class EntryPriceCalculator:
             if not sr_metadata:
                 raise ValueError("support_resistance.metadata is required for entry price calculation - NO FALLBACKS")
             
-            atr_5m = sr_metadata.get("atr_5m", 0.0)
+            atr_5m = sr_metadata["atr_5m"]  # Required (NO FALLBACKS)
             if atr_5m <= 0:
                 raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
             if current_price <= 0:
@@ -195,7 +195,7 @@ class EntryPriceCalculator:
                     logger.warning("⚠️ Bid-ask spread missing, using 0 spread adjustment")
                     spread_adjustment = 0.0
                 else:
-                    spread_pct = bid_ask_spread.get("percentage", 0.0)  # In percentage format (e.g., 0.01 = 0.01%)
+                    spread_pct = bid_ask_spread["percentage"]  # Required (NO FALLBACKS)
                     
                     if spread_pct > 0:
                         # Convert spread percentage to decimal (0.01% → 0.0001)
@@ -226,8 +226,8 @@ class EntryPriceCalculator:
         """
         recent_action_multiplier = 1.0
         try:
-            # last_touch_timestamp is optional (level might not have been touched yet)
-            last_touch_timestamp = level_data.get("last_touch_timestamp", 0)
+            # last_touch_timestamp: check if exists (level might not have been touched yet)
+            last_touch_timestamp = level_data.get("last_touch_timestamp") if "last_touch_timestamp" in level_data else 0
             from core.utils.time_utils import calculate_hours_since_touch
             hours_since_touch = calculate_hours_since_touch(last_touch_timestamp)
             
@@ -263,7 +263,7 @@ class EntryPriceCalculator:
                     logger.warning("⚠️ Liquidity depth missing, using neutral liquidity multiplier")
                     liquidity_multiplier = 1.0
                 else:
-                    liquidity_score = liquidity_depth.get("depth_score", 50.0)
+                    liquidity_score = liquidity_depth["depth_score"]  # Required (NO FALLBACKS)
                     
                     if liquidity_score < 20:  # Very low liquidity
                         liquidity_multiplier = 1.2  # 20% wider offset - ensure fill despite thin liquidity
