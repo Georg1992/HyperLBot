@@ -149,12 +149,14 @@ class VolumeCalculator(BaseCalculator):
             
             # 11. Format results
             volume_level = categorization.get("level", "UNKNOWN")
+            volume_trend = momentum.get("trend", "UNKNOWN")
             result = {
                 "current_5m_volume": current_5m_volume,
                 "volume_category": volume_level,
                 "category": volume_level,  # Alias for momentum_detector compatibility (NO FALLBACKS)
                 "volume_5m": current_5m_volume,  # Alias for compatibility (NO FALLBACKS)
                 "percentile": categorization.get("percentile", 50.0),  # Add percentile for momentum_detector (NO FALLBACKS)
+                "trend": volume_trend,  # Top-level trend alias for consolidation_tracker (NO FALLBACKS)
                 "volume_momentum": momentum,
                 "volume_trend_strength": trend_strength,
                 "relative_volume": relative_volume,
