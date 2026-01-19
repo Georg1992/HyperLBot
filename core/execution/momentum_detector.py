@@ -73,35 +73,35 @@ class MomentumDetector:
             MomentumSignal if high-confidence breakout detected, None otherwise
         """
         try:
-            # Get required data
-            sr_data = unified_data.get("support_resistance", {})
-            pressure_data = unified_data.get("pressure", {})
-            volume_data = unified_data.get("volume", {})
-            rsi_data = unified_data.get("rsi", {})
-            volatility_data = unified_data.get("volatility", {})
-            trend_data = unified_data.get("trend", {})
+            # Get required data (NO FALLBACKS - unified_data must have all keys)
+            sr_data = unified_data["support_resistance"]
+            pressure_data = unified_data["pressure"]
+            volume_data = unified_data["volume"]
+            rsi_data = unified_data["rsi"]
+            volatility_data = unified_data["volatility"]
+            trend_data = unified_data["trend"]
             
             if not all([sr_data, pressure_data, volume_data]):
                 return None
             
-            # Get S/R levels
-            levels = sr_data.get("levels", [])
+            # Get S/R levels (NO FALLBACKS)
+            levels = sr_data["levels"]
             if not levels:
                 return None
             
-            # Filter for active levels near current price
+            # Filter for active levels near current price (NO FALLBACKS)
             active_support = [
                 level for level in levels
-                if level.get("type") == "support"
-                and level.get("status") == "active"
-                and level.get("price_level", 0) < current_price
+                if level["type"] == "support"
+                and level["status"] == "active"
+                and level["price_level"] < current_price
             ]
             
             active_resistance = [
                 level for level in levels
-                if level.get("type") == "resistance"
-                and level.get("status") == "active"
-                and level.get("price_level", 0) > current_price
+                if level["type"] == "resistance"
+                and level["status"] == "active"
+                and level["price_level"] > current_price
             ]
             
             # Check for LONG breakout (breakout above resistance)
@@ -157,12 +157,12 @@ class MomentumDetector:
         if not resistance_levels:
             return None
         
-        # Find closest strong resistance
-        resistance_levels.sort(key=lambda x: (x.get("price_level", 0) - current_price, -x.get("strength_score", 0)))
+        # Find closest strong resistance (NO FALLBACKS)
+        resistance_levels.sort(key=lambda x: (x["price_level"] - current_price, -x["strength_score"]))
         
         for resistance in resistance_levels:
-            level_price = resistance.get("price_level", 0)
-            level_strength = resistance.get("strength_score", 0)
+            level_price = resistance["price_level"]
+            level_strength = resistance["strength_score"]
             
             if level_price <= 0 or level_price <= current_price:
                 continue
@@ -189,9 +189,9 @@ class MomentumDetector:
                 factors.append(f"Price approaching resistance ${level_price:.2f} ({distance_to_level*100:.2f}% away)")
             
             # 2. Orderbook pressure (25 points)
-            pressure_direction = pressure_data.get("direction", "NEUTRAL")
-            pressure_strength = pressure_data.get("strength", 0.0)
-            net_pressure = pressure_data.get("net_pressure", 0.0)
+            pressure_direction = pressure_data["direction"]  # Required (NO FALLBACKS)
+            pressure_strength = pressure_data["strength"]  # Required (NO FALLBACKS)
+            net_pressure = pressure_data["net_pressure"]  # Required (NO FALLBACKS)
             
             if pressure_direction in ["STRONG_BUY", "BUY"] and pressure_strength > 0.7:
                 confidence += 25.0
@@ -206,9 +206,9 @@ class MomentumDetector:
                 factors.append("No significant buy pressure")
             
             # 3. Volume surge (20 points)
-            volume_category = volume_data.get("category", "NORMAL")
-            volume_value = volume_data.get("volume_5m", 0.0)
-            volume_percentile = volume_data.get("percentile", 50.0)
+            volume_category = volume_data["category"]  # Required (NO FALLBACKS)
+            volume_value = volume_data["volume_5m"]  # Required (NO FALLBACKS)
+            volume_percentile = volume_data["percentile"]  # Required (NO FALLBACKS)
             
             if volume_category in ["HIGH", "VERY_HIGH"] and volume_percentile > 75:
                 confidence += 20.0
@@ -237,7 +237,7 @@ class MomentumDetector:
                 factors.append(f"Trend: {trend_direction}")
             
             # 5. RSI momentum (10 points)
-            rsi_value = rsi_data.get("value", TechnicalAnalysisConstants.RSI_NEUTRAL)
+            rsi_value = rsi_data["value"]  # Required (NO FALLBACKS)
             if TechnicalAnalysisConstants.RSI_NEUTRAL < rsi_value < TechnicalAnalysisConstants.RSI_OVERBOUGHT:  # Bullish but not overbought
                 confidence += 10.0
                 factors.append(f"RSI bullish ({rsi_value:.1f})")
@@ -317,12 +317,12 @@ class MomentumDetector:
         if not support_levels:
             return None
         
-        # Find closest strong support
-        support_levels.sort(key=lambda x: (current_price - x.get("price_level", 0), -x.get("strength_score", 0)))
+        # Find closest strong support (NO FALLBACKS)
+        support_levels.sort(key=lambda x: (current_price - x["price_level"], -x["strength_score"]))
         
         for support in support_levels:
-            level_price = support.get("price_level", 0)
-            level_strength = support.get("strength_score", 0)
+            level_price = support["price_level"]
+            level_strength = support["strength_score"]
             
             if level_price <= 0 or level_price >= current_price:
                 continue
@@ -349,9 +349,9 @@ class MomentumDetector:
                 factors.append(f"Price approaching support ${level_price:.2f} ({distance_to_level*100:.2f}% away)")
             
             # 2. Orderbook pressure (25 points)
-            pressure_direction = pressure_data.get("direction", "NEUTRAL")
-            pressure_strength = pressure_data.get("strength", 0.0)
-            net_pressure = pressure_data.get("net_pressure", 0.0)
+            pressure_direction = pressure_data["direction"]  # Required (NO FALLBACKS)
+            pressure_strength = pressure_data["strength"]  # Required (NO FALLBACKS)
+            net_pressure = pressure_data["net_pressure"]  # Required (NO FALLBACKS)
             
             if pressure_direction in ["STRONG_SELL", "SELL"] and pressure_strength > 0.7:
                 confidence += 25.0
@@ -366,8 +366,8 @@ class MomentumDetector:
                 factors.append("No significant sell pressure")
             
             # 3. Volume surge (20 points)
-            volume_category = volume_data.get("category", "NORMAL")
-            volume_percentile = volume_data.get("percentile", 50.0)
+            volume_category = volume_data["category"]  # Required (NO FALLBACKS)
+            volume_percentile = volume_data["percentile"]  # Required (NO FALLBACKS)
             
             if volume_category in ["HIGH", "VERY_HIGH"] and volume_percentile > 75:
                 confidence += 20.0
@@ -379,8 +379,8 @@ class MomentumDetector:
                 factors.append(f"Normal volume ({volume_percentile:.0f}th percentile)")
             
             # 4. Price acceleration (15 points)
-            trend_direction = trend_data.get("direction", "SIDEWAYS")
-            trend_strength_raw = trend_data.get("strength", 0.0)
+            trend_direction = trend_data["direction"]  # Required (NO FALLBACKS)
+            trend_strength_raw = trend_data["strength"]  # Required (NO FALLBACKS)
             try:
                 trend_strength = abs(float(trend_strength_raw)) if trend_strength_raw is not None else 0.0
             except (ValueError, TypeError):
@@ -396,7 +396,7 @@ class MomentumDetector:
                 factors.append(f"Trend: {trend_direction}")
             
             # 5. RSI momentum (10 points)
-            rsi_value = rsi_data.get("value", TechnicalAnalysisConstants.RSI_NEUTRAL)
+            rsi_value = rsi_data["value"]  # Required (NO FALLBACKS)
             if TechnicalAnalysisConstants.RSI_OVERSOLD < rsi_value < TechnicalAnalysisConstants.RSI_NEUTRAL:  # Bearish but not oversold
                 confidence += 10.0
                 factors.append(f"RSI bearish ({rsi_value:.1f})")
@@ -407,7 +407,7 @@ class MomentumDetector:
                 factors.append(f"RSI: {rsi_value:.1f}")
             
             # 6. Volatility check (10 points)
-            volatility_category = volatility_data.get("category", "NORMAL")
+            volatility_category = volatility_data["category"]  # Required (NO FALLBACKS)
             if volatility_category in ["HIGH", "EXTREME"]:
                 confidence += 10.0
                 factors.append(f"High volatility ({volatility_category})")
