@@ -120,13 +120,14 @@ class VolatilityCalculator(BaseCalculator):
             )
             
             # 8. Format results
+            volatility_level = classification.get("level", "UNKNOWN")
             result = {
                 "volatility": primary_volatility,
                 "volatility_5m": primary_volatility,  # Add standardized key for compatibility
                 "volatility_percentage": primary_volatility * 100,
-                "level": classification.get("level", "UNKNOWN"),
-                "category": classification.get("level", "UNKNOWN"),  # Add standardized key for compatibility
-                "volatility_category": classification.get("level", "UNKNOWN"),  # Add standardized key for compatibility
+                "level": volatility_level,
+                "category": volatility_level,  # Standardized key for momentum_detector (NO FALLBACKS)
+                "volatility_category": volatility_level,  # Standardized key for compatibility
                 "description": classification.get("description", ""),
                 "suitable_for_trading": suitability.get("suitable_for_trading", False),
                 "risk_level": suitability.get("risk_level", "UNKNOWN"),
