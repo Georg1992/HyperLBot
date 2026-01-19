@@ -70,7 +70,7 @@ class PredictionEngine:
         if not sr_metadata:
             raise ValueError("support_resistance.metadata is required for ATR calculation - NO FALLBACKS")
         
-        atr_5m = sr_metadata.get("atr_5m", 0.0)
+        atr_5m = sr_metadata["atr_5m"]  # Required (NO FALLBACKS)
         if atr_5m <= 0:
             raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
         
@@ -569,7 +569,7 @@ class PredictionEngine:
         Returns:
             (sr_score, reasons)
         """
-        level_power = level_data.get("power") or level_data.get("strength_score", 50.0)  # Use power, fallback for compatibility
+        level_power = level_data["power"]  # Required (NO FALLBACKS)
         level_price = self._require_key(level_data, "price_level", "entry S/R factor scoring")
         setup_type = self._require_key(level_data, "setup_type", "entry S/R factor scoring")
         
@@ -1121,10 +1121,10 @@ class PredictionEngine:
             level_strength = 0.0
             
             if level_data:
-                level_price = level_data.get("price_level", 0)
+                level_price = level_data["price_level"]  # Required (NO FALLBACKS)
                 from core.utils.level_utils import get_level_power
-                level_power = get_level_power(level_data, default=50.0)
-                last_touch_timestamp = level_data.get("last_touch_timestamp", 0)
+                level_power = get_level_power(level_data, default=None)  # Will raise if missing (NO FALLBACKS)
+                last_touch_timestamp = level_data["last_touch_timestamp"]  # Required (NO FALLBACKS)
                 
                 # 1. PROXIMITY FACTOR: Direction signals more relevant when entry is closer to current price
                 # Closer entries = direction signals are more immediately relevant
@@ -1168,7 +1168,7 @@ class PredictionEngine:
                 # For LONG at support: if LONG signals are strong, alignment is good
                 # For SHORT at resistance: if SHORT signals are strong, alignment is good
                 # For LONG at support: if SHORT signals are strong, alignment is poor (conflict)
-                setup_type = level_data.get("setup_type", "")
+                setup_type = level_data["setup_type"]  # Required (NO FALLBACKS)
                 
                 if entry_direction == "LONG" and setup_type == "support_level":
                     # LONG at support: good alignment if LONG signals > SHORT signals
@@ -1432,8 +1432,8 @@ class PredictionEngine:
             total_score = 0.0
             all_reasons = []
             
-            # Score each factor using unified framework
-            sr_weight = entry_weights.get("support_resistance", 0.0)
+            # Score each factor using unified framework (all weights required - NO FALLBACKS)
+            sr_weight = entry_weights["support_resistance"]  # Required (NO FALLBACKS)
             if sr_weight > 0:
                 # Add setup_type to level_data for context
                 level_data_with_type = {**level_data, "setup_type": setup_type}
@@ -1441,25 +1441,25 @@ class PredictionEngine:
                 total_score += sr_score * sr_weight
                 all_reasons.extend(reasons)
             
-            rsi_weight = entry_weights.get("rsi", 0.0)
+            rsi_weight = entry_weights["rsi"]  # Required (NO FALLBACKS)
             if rsi_weight > 0:
                 rsi_score, reasons = self._score_entry_rsi_factor(entry_price, current_price, direction, rsi_data)
                 total_score += rsi_score * rsi_weight
                 all_reasons.extend(reasons)
             
-            trend_weight = entry_weights.get("trend", 0.0)
+            trend_weight = entry_weights["trend"]  # Required (NO FALLBACKS)
             if trend_weight > 0:
                 trend_score, reasons = self._score_entry_trend_factor(entry_price, current_price, direction, trend_data, strategy)
                 total_score += trend_score * trend_weight
                 all_reasons.extend(reasons)
             
-            pressure_weight = entry_weights.get("pressure", 0.0)
+            pressure_weight = entry_weights["pressure"]  # Required (NO FALLBACKS)
             if pressure_weight > 0:
                 pressure_score, reasons = self._score_entry_pressure_factor(direction, pressure_data)
                 total_score += pressure_score * pressure_weight
                 all_reasons.extend(reasons)
             
-            patterns_weight = entry_weights.get("patterns", 0.0)
+            patterns_weight = entry_weights["patterns"]  # Required (NO FALLBACKS)
             if patterns_weight > 0:
                 patterns_score, reasons = self._score_entry_patterns_factor(direction, patterns_data)
                 total_score += patterns_score * patterns_weight
