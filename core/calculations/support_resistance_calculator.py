@@ -59,8 +59,10 @@ class SupportResistanceCalculator(BaseCalculator):
         self._state = state_manager or SRState()
         self._liquidation_calc = LiquidationCalculator()
         
-        # Performance optimization: Track module update times
-        self._last_module_updates = {}
+        # Performance optimization: Track module update times (NO FALLBACKS - initialize all keys)
+        self._last_module_updates = {
+            'support_resistance': 0  # Initialize to 0 = "never calculated" (force first calculation)
+        }
         self._min_recalculation_interval = 300  # 5 minutes minimum
         
         logger.info(f"📊 Refactored S/R Calculator initialized for {symbol} - Strategy: {strategy}")
@@ -377,7 +379,7 @@ class SupportResistanceCalculator(BaseCalculator):
             current_time = time.time()
             
             # Performance: Check cache first (strategy-independent)
-            last_update = self._last_module_updates.get("support_resistance", 0)  # Optional - first run
+            last_update = self._last_module_updates["support_resistance"]  # Always exists (initialized in __init__)
             if current_time - last_update < self._min_recalculation_interval:
                 cached_result = self._get_cached_analysis(current_price, current_time)
                 if cached_result is not None and cached_result.get("status") == "ok":
