@@ -56,7 +56,7 @@ class SRDetector:
         try:
             # Use TF-specific default sensitivity
             if n is None:
-                n = self._tf_sensitivity.get(timeframe, 2)
+                n = self._tf_sensitivity[timeframe]  # Required (NO FALLBACKS)
             
             if len(candles) < n * 2 + 1:
                 return []
@@ -72,10 +72,10 @@ class SRDetector:
             # Use adaptive swing detection
             for i in range(n, len(candles) - n):
                 candle = candles[i]
-                high = candle.get('high', 0)
-                low = candle.get('low', 0)
-                close = candle.get('close', 0)
-                open_price = candle.get('open', 0)
+                high = candle['high']  # Required (NO FALLBACKS)
+                low = candle['low']  # Required (NO FALLBACKS)
+                close = candle['close']  # Required (NO FALLBACKS)
+                open_price = candle['open']  # Required (NO FALLBACKS)
                 
                 if high <= 0 or low <= 0 or close <= 0 or open_price <= 0:
                     continue
@@ -162,7 +162,7 @@ class SRDetector:
             List of rolling average volumes
         """
         if len(candles) < window:
-            return [candle.get('volume', 0) for candle in candles]
+            return [candle['volume'] for candle in candles]  # Required (NO FALLBACKS)
         
         avg_volumes = []
         for i in range(len(candles)):
@@ -174,7 +174,7 @@ class SRDetector:
                 avg_volume = sum(candle.get('volume', 0) for candle in window_candles) / len(window_candles)
                 avg_volumes.append(avg_volume)
             else:
-                avg_volumes.append(candles[i].get('volume', 0))
+                avg_volumes.append(candles[i]['volume'])  # Required (NO FALLBACKS)
         
         return avg_volumes
     
@@ -199,8 +199,8 @@ class SRDetector:
             min_time_delta = 180  # 3 minutes minimum between touches (more flexible)
             
             for i in range(1, len(sorted_points)):
-                current_time = sorted_points[i].get('timestamp', 0)
-                prev_time = sorted_points[i-1].get('timestamp', 0)
+                current_time = sorted_points[i]['timestamp']  # Required (NO FALLBACKS)
+                prev_time = sorted_points[i-1]['timestamp']  # Required (NO FALLBACKS)
                 
                 # More flexible time delta - also check if levels are significantly different
                 current_level = sorted_points[i].get('level', 0)
@@ -233,7 +233,7 @@ class SRDetector:
             True if swing high
         """
         try:
-            current_high = candles[index].get('high', 0)
+            current_high = candles[index]['high']  # Required (NO FALLBACKS)
             if current_high <= 0:
                 return False
             
@@ -241,7 +241,7 @@ class SRDetector:
             n_int = int(n)  # Ensure n is integer for range()
             for i in range(max(0, index - n_int), min(len(candles), index + n_int + 1)):
                 if i != index:
-                    other_high = candles[i].get('high', 0)
+                    other_high = candles[i]['high']  # Required (NO FALLBACKS)
                     if other_high >= current_high:
                         return False
             
@@ -277,7 +277,7 @@ class SRDetector:
             n_int = int(n)  # Ensure n is integer for range()
             for i in range(max(0, index - n_int), min(len(candles), index + n_int + 1)):
                 if i != index:
-                    other_low = candles[i].get('low', 0)
+                    other_low = candles[i]['low']  # Required (NO FALLBACKS)
                     if other_low <= current_low:
                         return False
             
@@ -366,10 +366,10 @@ class SRDetector:
         """
         try:
             candle = candles[index]
-            high = candle.get('high', 0)
-            low = candle.get('low', 0)
-            close = candle.get('close', 0)
-            volume = candle.get('volume', 0)
+            high = candle['high']  # Required (NO FALLBACKS)
+            low = candle['low']  # Required (NO FALLBACKS)
+            close = candle['close']  # Required (NO FALLBACKS)
+            volume = candle['volume']  # Required (NO FALLBACKS)
             
             if high <= 0 or low <= 0 or close <= 0:
                 return 0.0
@@ -581,7 +581,7 @@ class SRDetector:
             timeframe_distribution = {}
             for point in points:
                 for tf, count in point.timeframe_distribution.items():
-                    timeframe_distribution[tf] = timeframe_distribution.get(tf, 0) + count
+                    timeframe_distribution[tf] = timeframe_distribution.get(tf, 0) + count  # Accumulator pattern - OK
             
             # Count touches: Each swing point in the cluster represents a touch of the level
             cluster_touches = len(points)  # Each swing point = 1 touch
