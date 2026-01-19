@@ -649,7 +649,7 @@ class SessionOrchestrator:
                     logger.info(
                         f"🎯 Strategy updated: {current_strategy} → {new_strategy}"
                     )
-                    logger.info(f"   📊 Market conditions: volatility={unified_data.get('volatility_category', 'UNKNOWN')}, trend={unified_data.get('trend', {}).get('direction', 'UNKNOWN')}")
+                    logger.info(f"   📊 Market conditions: volatility={unified_data['volatility_category']}, trend={unified_data['trend']['direction']}")  # Required (NO FALLBACKS)
                     
                     # Update session manager with new strategy
                     if self.session_manager and self.session_manager.current_session_data:
@@ -673,7 +673,7 @@ class SessionOrchestrator:
 
         except Exception as e:
             logger.warning(f"⚠️ Strategy detection failed: {e}")
-            return unified_data.get("strategy", "standard")
+            raise  # NO FALLBACKS - detection failure should raise
 
 
     def _end_session(self):
