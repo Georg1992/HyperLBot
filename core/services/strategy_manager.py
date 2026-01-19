@@ -372,7 +372,7 @@ class StrategyManager:
             "standard": self._score_standard
         }
         
-        scorer = strategy_scorers.get(strategy_name, self._score_standard)
+        scorer = strategy_scorers[strategy_name] if strategy_name in strategy_scorers else self._score_standard
         return scorer(data)
     
     def _score_scalping(self, data: Dict[str, Any]) -> tuple:
@@ -815,7 +815,7 @@ class StrategyManager:
         # Get 2nd best score - ensure all scores are float before sorting
         def safe_float_score(item):
             try:
-                score_val = item[1].get("score", 0.0)
+                score_val = item[1]["score"] if "score" in item[1] else 0.0
                 return float(score_val) if score_val is not None else 0.0
             except (ValueError, TypeError):
                 return 0.0
@@ -938,7 +938,7 @@ class StrategyManager:
         try:
             old_strategy = self.current_strategy
             self.current_strategy = new_strategy
-            self.current_strategy_config = self.strategy_configs.get(new_strategy, self.strategy_configs["standard"])
+            self.current_strategy_config = self.strategy_configs[new_strategy] if new_strategy in self.strategy_configs else self.strategy_configs["standard"]
             self.last_strategy_switch = time.time()
             
             logger.info(f"🔄 Strategy switched: {old_strategy} → {new_strategy}")
@@ -1041,7 +1041,7 @@ class StrategyManager:
             
             # Calculate success and profit
             profit = outcome["profit"]  # Required (NO FALLBACKS)
-            success = outcome.get("success", profit > 0)
+            success = outcome["success"] if "success" in outcome else profit > 0
             
             if success:
                 perf["successful_trades"] += 1
