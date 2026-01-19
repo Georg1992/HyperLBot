@@ -182,6 +182,7 @@ class PredictionEngine:
             direction=direction,
             config=config,
             unified_data=unified_data,
+            strategy=strategy,
             level_data=best_setup_level_data,
             setup_type=best_setup_type
         )
@@ -2109,6 +2110,7 @@ class PredictionEngine:
         direction: str,
         config: Dict[str, Any],
         unified_data: Dict[str, Any],
+        strategy: str,
         level_data: Optional[Dict[str, Any]] = None,
         setup_type: Optional[str] = None
     ) -> tuple[float, float, float, float, float]:
@@ -2239,13 +2241,15 @@ class PredictionEngine:
                 leverage=leverage
             )
             
-            # 3. Calculate take profit (delegated to RiskManager)
+            # 3. Calculate adaptive take profit at next S/R level (delegated to RiskManager)
             take_profit = RiskManager.calculate_take_profit(
                 entry_price=entry_price,
                 stop_loss=stop_loss,
                 direction=direction,
                 atr_5m=atr_5m,
-                config=config
+                config=config,
+                sr_levels=all_levels,  # Pass all levels for adaptive TP selection
+                strategy=strategy
             )
             
             # 4. Validate risk/reward ratio (delegated to RiskManager)

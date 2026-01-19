@@ -112,6 +112,65 @@ class TradingConfig:
         }
     }
     
+    # ADAPTIVE TP CONFIGURATION (Market Structure Based)
+    # TP placed at next significant S/R level with constraints
+    TP_ADAPTIVE_CONFIG = {
+        "scalping": {
+            "min_rr": 1.5,              # Minimum risk:reward ratio
+            "max_rr": 3.0,              # Maximum risk:reward ratio
+            "cushion_atr": 0.25,        # Cushion before level (in ATR)
+            "max_distance_atr": 3.0     # Max distance to level (in ATR)
+        },
+        "low_volatility_range": {
+            "min_rr": 1.5,
+            "max_rr": 3.0,
+            "cushion_atr": 0.25,
+            "max_distance_atr": 5.0
+        },
+        "standard": {
+            "min_rr": 1.5,
+            "max_rr": 4.0,
+            "cushion_atr": 0.5,
+            "max_distance_atr": 8.0
+        },
+        "range_trading": {
+            "min_rr": 1.5,
+            "max_rr": 3.0,
+            "cushion_atr": 0.25,
+            "max_distance_atr": 5.0
+        },
+        "breakout": {
+            "min_rr": 2.0,              # Higher risk needs more reward
+            "max_rr": 5.0,
+            "cushion_atr": 0.75,        # Larger cushion for volatile breakouts
+            "max_distance_atr": 12.0
+        },
+        "spike_hunting": {
+            "min_rr": 2.5,              # High risk strategy
+            "max_rr": 5.0,
+            "cushion_atr": 1.0,         # Large cushion for extreme volatility
+            "max_distance_atr": 20.0
+        },
+        "trend_following": {
+            "min_rr": 2.0,
+            "max_rr": 5.0,
+            "cushion_atr": 0.5,
+            "max_distance_atr": 20.0
+        },
+        "high_volatility": {
+            "min_rr": 2.0,
+            "max_rr": 5.0,
+            "cushion_atr": 1.0,
+            "max_distance_atr": 15.0
+        },
+        "comprehensive_analysis": {  # Not used for trading
+            "min_rr": 1.5,
+            "max_rr": 5.0,
+            "cushion_atr": 0.5,
+            "max_distance_atr": 10.0
+        }
+    }
+    
     # S/R LEVEL SCORING WEIGHTS (Strategy-Aware)
     # How to prioritize different factors when scoring S/R levels
     SR_LEVEL_SCORING_WEIGHTS = {

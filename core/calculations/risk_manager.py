@@ -178,10 +178,20 @@ class RiskManager:
         stop_loss: float,
         direction: str,
         atr_5m: float,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        sr_levels: list,
+        strategy: str
     ) -> float:
         """
-        Calculate take profit based on stop distance and R:R ratio
+        Calculate adaptive take profit based on next significant S/R level
+        
+        Algorithm (NO FALLBACKS):
+        1. Filter levels by power (quality gate)
+        2. Filter by distance (realism gate)
+        3. Calculate TP at level with ATR cushion
+        4. Validate R:R constraints
+        5. Select best level within constraints
+        6. Raise error if no valid TP target (NO FALLBACKS)
         
         Args:
             entry_price: Entry price for the trade
@@ -189,53 +199,134 @@ class RiskManager:
             direction: "LONG" or "SHORT"
             atr_5m: 5-minute ATR for distance calculations
             config: Strategy configuration
+            sr_levels: All available S/R levels
+            strategy: Trading strategy name
             
         Returns:
-            Calculated take profit price
+            Calculated take profit price at next significant S/R level
             
         Raises:
-            ValueError: If take profit calculation is invalid
+            ValueError: If no valid TP target found (NO FALLBACKS)
         """
         if entry_price <= 0:
             raise ValueError(f"Invalid entry_price: {entry_price} - must be positive (NO FALLBACKS)")
         if atr_5m <= 0:
             raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
+        if not sr_levels:
+            raise ValueError("No S/R levels provided for TP calculation (NO FALLBACKS)")
         
-        # Get strategy multipliers
-        profit_target_multiplier = RiskManager._get_profit_target_multiplier(config)
-        min_risk_reward = config.get("min_risk_reward", 1.5)  # Minimum R:R ratio
+        # Get adaptive TP configuration
+        from config.config import TradingConfig
+        tp_config = TradingConfig.TP_ADAPTIVE_CONFIG.get(strategy, TradingConfig.TP_ADAPTIVE_CONFIG["standard"])
         
-        # Calculate actual stop distance to use for R:R calculation
+        min_rr = tp_config["min_rr"]
+        max_rr = tp_config["max_rr"]
+        cushion_atr = tp_config["cushion_atr"]
+        max_distance_atr = tp_config["max_distance_atr"]
+        
+        # Calculate risk for R:R validation
         if direction == "LONG":
-            actual_stop_distance_pct = (entry_price - stop_loss) / entry_price
+            risk = entry_price - stop_loss
         else:  # SHORT
-            actual_stop_distance_pct = (stop_loss - entry_price) / entry_price
+            risk = stop_loss - entry_price
         
-        # Mathematically justified: Profit target = strategy_multiplier × base_atr_distance
-        # Base profit target = 3.0 × ATR (default, can be adjusted by multiplier)
-        base_atr_profit_distance = atr_5m * 3.0  # 3.0×ATR default (1.5× stop base)
-        base_profit_distance = base_atr_profit_distance * profit_target_multiplier
-        profit_target_pct = base_profit_distance / entry_price if entry_price > 0 else 0.012
+        if risk <= 0:
+            raise ValueError(f"Invalid risk: ${risk:.2f} (stop_loss must be on correct side of entry)")
         
-        # Adjust profit target if needed to meet minimum R:R ratio
-        min_profit_pct = actual_stop_distance_pct * min_risk_reward
-        if profit_target_pct < min_profit_pct:
-            profit_target_pct = min_profit_pct
-            logger.debug(f"📊 Adjusted profit target to meet min R:R {min_risk_reward}:1 → {profit_target_pct*100:.3f}%")
+        # STEP 1: Quality Gate - Filter by power threshold
+        min_power = config.get("min_power_threshold", 30.0)
+        qualified_levels = [
+            level for level in sr_levels
+            if level.get("power", 0) >= min_power
+            and level.get("status") == "active"
+        ]
         
+        if not qualified_levels:
+            raise ValueError(f"No S/R levels with power >= {min_power} for {strategy} TP target (NO FALLBACKS)")
+        
+        # STEP 2: Direction Filter - Get levels in correct direction
         if direction == "LONG":
-            take_profit = entry_price * (1 + profit_target_pct)
+            # LONG needs resistance above entry
+            target_levels = [
+                level for level in qualified_levels
+                if level.get("type") == "resistance"
+                and level.get("price_level", 0) > entry_price
+            ]
         else:  # SHORT
-            take_profit = entry_price * (1 - profit_target_pct)
+            # SHORT needs support below entry
+            target_levels = [
+                level for level in qualified_levels
+                if level.get("type") == "support"
+                and level.get("price_level", 0) < entry_price
+            ]
         
-        # Validate take profit
-        if take_profit <= 0:
-            raise ValueError(f"Invalid take profit: ${take_profit:.2f} (negative or zero)")
+        if not target_levels:
+            raise ValueError(f"No {direction} TP target levels found (need {'resistance above' if direction=='LONG' else 'support below'} entry ${entry_price:.2f}) (NO FALLBACKS)")
         
-        if direction == "LONG" and take_profit <= entry_price:
-            raise ValueError(f"Invalid LONG take profit: ${take_profit:.2f} <= entry ${entry_price:.2f}")
-        if direction == "SHORT" and take_profit >= entry_price:
-            raise ValueError(f"Invalid SHORT take profit: ${take_profit:.2f} >= entry ${entry_price:.2f}")
+        # STEP 3: Distance Constraint - Filter by realism
+        max_distance = atr_5m * max_distance_atr
+        cushion = atr_5m * cushion_atr
+        
+        valid_candidates = []
+        for level in target_levels:
+            level_price = level.get("price_level", 0)
+            distance = abs(level_price - entry_price)
+            
+            # Check if level is within reachable distance
+            if distance > max_distance:
+                continue
+            
+            # Calculate TP with cushion
+            if direction == "LONG":
+                tp_candidate = level_price - cushion
+            else:  # SHORT
+                tp_candidate = level_price + cushion
+            
+            # Calculate R:R
+            reward = abs(tp_candidate - entry_price)
+            rr = reward / risk
+            
+            # Validate R:R constraints
+            if min_rr <= rr <= max_rr:
+                valid_candidates.append({
+                    "level": level,
+                    "tp_price": tp_candidate,
+                    "rr": rr,
+                    "distance": distance,
+                    "power": level.get("power", 0)
+                })
+        
+        if not valid_candidates:
+            # Detailed error for debugging
+            too_close = sum(1 for l in target_levels if abs(l.get("price_level",0) - entry_price) / risk < min_rr)
+            too_far = sum(1 for l in target_levels if abs(l.get("price_level",0) - entry_price) > max_distance)
+            rr_invalid = len(target_levels) - too_close - too_far
+            
+            raise ValueError(
+                f"No valid {direction} TP target found for {strategy} (NO FALLBACKS). "
+                f"Available levels: {len(target_levels)}, "
+                f"too_close (R:R<{min_rr}): {too_close}, "
+                f"too_far (>{max_distance_atr}×ATR): {too_far}, "
+                f"R:R invalid: {rr_invalid}. "
+                f"Entry: ${entry_price:.2f}, Risk: ${risk:.2f}, "
+                f"Min R:R: {min_rr}, Max R:R: {max_rr}"
+            )
+        
+        # STEP 4: Select Best Candidate - Highest R:R within constraints
+        # (Higher R:R = better, as long as it's realistic)
+        best_candidate = max(valid_candidates, key=lambda x: x["rr"])
+        
+        take_profit = best_candidate["tp_price"]
+        selected_level = best_candidate["level"]
+        final_rr = best_candidate["rr"]
+        
+        logger.info(
+            f"🎯 {direction} TP at next S/R level: ${take_profit:.2f} "
+            f"(level: ${selected_level.get('price_level',0):.2f}, "
+            f"power: {selected_level.get('power',0):.1f}, "
+            f"R:R: {final_rr:.2f}:1, "
+            f"cushion: ${cushion:.2f})"
+        )
         
         return take_profit
     
@@ -297,28 +388,11 @@ class RiskManager:
         else:
             return 1.0  # Default: standard 2.0×ATR
     
-    @staticmethod
-    def _get_profit_target_multiplier(config: Dict[str, Any]) -> float:
-        """Get profit target multiplier from config (with backward compatibility)"""
-        if "profit_target_multiplier" in config:
-            return config["profit_target_multiplier"]
-        elif "profit_target" in config:
-            # Backward compat: Convert old percentage to multiplier
-            # Typical ATR ~0.4% (0.004), base = 3.0 × ATR = 1.2% (0.012)
-            typical_atr_pct = 0.004  # 0.4% typical ATR
-            base_target_pct = 3.0 * typical_atr_pct  # 1.2% base target
-            return config["profit_target"] / base_target_pct
-        else:
-            return 1.5  # Default: 4.5×ATR (1.5 × 3.0×ATR)
+    # REMOVED: _get_profit_target_multiplier() - Old fixed multiplier approach
+    # Now using adaptive TP based on next S/R level
     
-    @staticmethod
-    def _calculate_volatility_multiplier(unified_data: Dict[str, Any], atr_pct: float) -> float:
-        """Calculate volatility adjustment multiplier"""
-        volatility_multiplier = 1.0
-        try:
-            volatility_5m = unified_data.get("volatility_5m", atr_pct)
-            if volatility_5m > 0:
-                vol_atr_ratio = volatility_5m / atr_pct if atr_pct > 0 else 1.0
+    # REMOVED: _calculate_volatility_multiplier() - Old fixed multiplier approach
+    # Now using adaptive TP based on next S/R level with strategy-specific constraints
                 if vol_atr_ratio > 1.5:
                     volatility_multiplier = 1.2
                 elif vol_atr_ratio < 0.7:
