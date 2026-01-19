@@ -106,9 +106,9 @@ class MarketDataService:
                 # Cache stores mapped data, check if it has UNKNOWN values
                 if isinstance(trend_data, dict) and "detailed_timeframes" in trend_data:
                     # Check if all timeframes are UNKNOWN - if so, invalidate cache and recalculate
-                    timeframes = trend_data.get("detailed_timeframes", {})
+                    timeframes = trend_data["detailed_timeframes"]  # Required (NO FALLBACKS)
                     all_unknown = all(
-                        timeframes.get(key, "UNKNOWN") == "UNKNOWN" 
+                        timeframes[key] == "UNKNOWN"  # Required (NO FALLBACKS)
                         for key in ["trend_15m", "trend_1h", "trend_4h", "trend_24h"]
                     )
                     if all_unknown:
