@@ -1325,12 +1325,12 @@ class PredictionEngine:
             }
         }
         
-        return timeframe_weights_map.get(strategy, {
+        return timeframe_weights_map[strategy] if strategy in timeframe_weights_map else {
             "trend_15m": 0.25,
             "trend_1h": 0.25,
             "trend_4h": 0.25,
             "trend_24h": 0.25
-        })
+        }
     
     # ==================================================================================
     # CONFIDENCE CALCULATION - Separate from scoring system
@@ -1731,11 +1731,11 @@ class PredictionEngine:
             )
             
             # Get strategy-specific candidate weights
-            candidate_weights = strategy_config.get("entry_candidate_weights", {
+            candidate_weights = strategy_config["entry_candidate_weights"] if "entry_candidate_weights" in strategy_config else {
                 "level_strength": 0.30,
                 "entry_quality": 0.40,
                 "fill_probability": 0.30
-            })
+            }
             
             for candidate_price in candidates:
                 # Validate candidate
@@ -1885,7 +1885,7 @@ class PredictionEngine:
                 entry_score = entry_result["score"]  # Required (NO FALLBACKS)
                 entry_reasoning = entry_result["reasoning"]  # Required (NO FALLBACKS)
                 # Create entry_breakdown from level_data if not provided
-                level_power = level_data.get("power") if level_data else 50.0
+                level_power = level_data["power"] if level_data and "power" in level_data else 50.0
                 entry_breakdown = {
                     "power": level_power,
                     "proximity_factor": 1.0,  # Default, would need calculation
@@ -2006,7 +2006,7 @@ class PredictionEngine:
                 return None
             
             # Extract market data
-            sr_data = unified_data.get("support_resistance", {})
+            sr_data = unified_data["support_resistance"]  # Required (NO FALLBACKS)
             
             # Get all levels and filter for entry setup
             all_levels = self._require_key(sr_data, "levels", "setup generation")
@@ -2140,10 +2140,10 @@ class PredictionEngine:
             # 1. Get S/R level for stop placement (delegated to calculator module)
             sr_stop_level = None
             try:
-                sr_data = unified_data.get("support_resistance", {})
+                sr_data = unified_data["support_resistance"]  # Required (NO FALLBACKS)
                 if sr_data:
                     # Get all available levels (calculator now provides all levels, modules filter as needed)
-                    all_levels = sr_data.get("levels", [])
+                    all_levels = sr_data["levels"]  # Required (NO FALLBACKS)
                     if not all_levels:
                         raise ValueError("No S/R levels available in support_resistance.levels (NO FALLBACKS)")
                     
@@ -2198,7 +2198,7 @@ class PredictionEngine:
                                 logger.warning(f"⚠️ Support distances from entry: {[f'${d:.2f}' for d in distances[:5]]}")
                                 logger.warning(f"⚠️ Support strengths: {[f'{s:.1f}' for s in strengths[:5]]}")
                         else:  # SHORT
-                            resistances = [l for l in all_levels if l.get("type") == "resistance" and l.get("price_level", 0) > entry_price and l.get("status") == "active"]
+                            resistances = [l for l in all_levels if l["type"] == "resistance" and l["price_level"] > entry_price and l["status"] == "active"]  # Required (NO FALLBACKS)
                             logger.warning(f"⚠️ No suitable SHORT stop level found. Entry: ${entry_price:.2f}, Min distance: ${min_stop_distance:.2f}, Max reasonable: ${max_reasonable_distance:.2f}")
                             logger.warning(f"⚠️ Available resistances above entry: {len(resistances)}")
                             if resistances:
@@ -2214,7 +2214,7 @@ class PredictionEngine:
             # 2. Calculate unified stop loss (delegated to RiskManager)
             # Include leverage for liquidation price capping
             from config.config import TradingConfig
-            leverage = config.get("leverage", TradingConfig.LEVERAGE)
+            leverage = config["max_leverage"] if "max_leverage" in config else TradingConfig.LEVERAGE  # Strategy uses max_leverage
             
             stop_loss = RiskManager.calculate_stop_loss(
                 entry_price=entry_price,
