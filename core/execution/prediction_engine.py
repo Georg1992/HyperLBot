@@ -270,7 +270,7 @@ class PredictionEngine:
             return False
         
         # Check liquidity requirement
-        require_high_liquidity = config.get("require_high_liquidity", True)
+        require_high_liquidity = config["require_high_liquidity"]  # Required (NO FALLBACKS)
         if require_high_liquidity:
             liquidity_depth = self._require_key(orderbook_data, "liquidity_depth", "orderbook_analysis structure")
             liquidity_score = self._require_key(liquidity_depth, "depth_score", "liquidity_depth structure")
@@ -820,8 +820,8 @@ class PredictionEngine:
         reasons = []
         
         if direction == "LONG":
-            bullish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
-            bullish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and p.get("direction") == "BULLISH"]
+            bullish_reversals = [p for p in reversal_patterns if isinstance(p, dict) and "direction" in p and p["direction"] == "BULLISH"]
+            bullish_continuations = [p for p in continuation_patterns if isinstance(p, dict) and "direction" in p and p["direction"] == "BULLISH"]
             
             if bullish_reversals:
                 score += 100.0
@@ -1410,8 +1410,8 @@ class PredictionEngine:
             # Get strategy-specific entry weights (config defaults are OK)
             # NOTE: SR power includes touch, reversal_probability, and volume (inherent strength)
             # Proximity and recency are handled separately in entry scoring (contextual factors)
-            strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
-            entry_weights = strategy_config.get("entry_weights", {
+            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
+            entry_weights = strategy_config["entry_weights"] if "entry_weights" in strategy_config else {  # Use default if not in strategy config
                 "support_resistance": 0.50,  # Primary factor - SR power (touch 60%, reversal_prob 30%, volume 10%)
                 "rsi": 0.20,  # Additional factor not in SR power
                 "trend": 0.15,  # Additional factor not in SR power
@@ -1419,7 +1419,7 @@ class PredictionEngine:
                 "patterns": 0.05  # Additional factor not in SR power
                 # Note: Proximity (distance) is scored separately in _score_entry_sr_factor based on entry offset
                 # Note: Recency is handled in direction scoring, not entry scoring
-            })
+            }
             
             # Extract indicators - all required (NO FALLBACKS)
             rsi_data = self._require_key(unified_data, "rsi", "entry scoring")
@@ -1866,7 +1866,7 @@ class PredictionEngine:
                     strategy=strategy,
                     config=config
                 )
-                entry_reasoning = entry_result.get("reasoning", "") if entry_result else ""
+                entry_reasoning = entry_result["reasoning"] if entry_result and "reasoning" in entry_result else ""  # Optional field
             else:
                 # Score entry quality (fallback if entry_data not provided)
                 entry_result = self._score_entry_setup(
@@ -2189,7 +2189,7 @@ class PredictionEngine:
                     else:
                         # No suitable S/R level found - log details for debugging
                         if direction == "LONG":
-                            supports = [l for l in all_levels if l.get("type") == "support" and l.get("price_level", 0) < entry_price and l.get("status") == "active"]
+                            supports = [l for l in all_levels if "type" in l and l["type"] == "support" and "price_level" in l and l["price_level"] < entry_price and "status" in l and l["status"] == "active"]
                             logger.warning(f"⚠️ No suitable LONG stop level found. Entry: ${entry_price:.2f}, Min distance: ${min_stop_distance:.2f}, Max reasonable: ${max_reasonable_distance:.2f}")
                             logger.warning(f"⚠️ Available supports below entry: {len(supports)}")
                             if supports:

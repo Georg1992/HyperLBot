@@ -72,8 +72,8 @@ class ReactiveEngine:
                 return None
             
             # Get ATR for calculations
-            sr_data = unified_data.get("support_resistance", {})
-            sr_metadata = sr_data.get("metadata", {})
+            sr_data = unified_data["support_resistance"]  # Required (NO FALLBACKS)
+            sr_metadata = sr_data["metadata"]  # Required (NO FALLBACKS)
             atr_5m = sr_metadata["atr_5m"]  # Required (NO FALLBACKS)
             
             if atr_5m <= 0:
@@ -145,11 +145,10 @@ class ReactiveEngine:
             Execution call result (order placed, not necessarily filled)
         """
         try:
-            # Get strategy config (use provided strategy, fallback to high_volatility for unexpected moves)
-            strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy) or \
-                            TradingConfig.STRATEGY_CONFIGS.get("high_volatility") or \
-                            TradingConfig.STRATEGY_CONFIGS.get("breakout") or \
-                            TradingConfig.STRATEGY_CONFIGS.get("standard")
+            # Get strategy config (use provided strategy)
+            if strategy not in TradingConfig.STRATEGY_CONFIGS:
+                raise ValueError(f"Unknown strategy: {strategy} - NO FALLBACKS")
+            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
             
             if not strategy_config:
                 logger.error("❌ No strategy config available for momentum trade")
@@ -221,12 +220,12 @@ class ReactiveEngine:
                             metadata=order_metadata
                         )
                         
-                        if order_result.get("success"):
+                        if "success" in order_result and order_result["success"]:
                             logger.info(f"⚡ MARKET order CALLED: {signal.direction} @ ${signal.entry_price:.2f} "
                                        f"(SL: ${signal.stop_loss:.2f}, TP: ${signal.take_profit:.2f})")
                             
                             # Track pending order
-                            order_id = order_result.get("order_id", f"momentum_{int(time.time())}")
+                            order_id = order_result["order_id"] if "order_id" in order_result else f"momentum_{int(time.time())}"
                             self._pending_orders[order_id] = {
                                 "signal": signal,
                                 "order_result": order_result,
@@ -251,7 +250,8 @@ class ReactiveEngine:
                                 "api_result": order_result
                             }
                         else:
-                            logger.warning(f"⚠️ MARKET order call failed: {order_result.get('error', 'Unknown error')}")
+                            error_msg = order_result["error"] if "error" in order_result else "Unknown error"
+                            logger.warning(f"⚠️ MARKET order call failed: {error_msg}")
                             return None
                     else:
                         logger.debug("⚡ API manager available but place_order not accessible - logging order call")
@@ -292,10 +292,10 @@ class ReactiveEngine:
     def _has_pending_order(self, direction: str) -> bool:
         """Check if we have a pending order in this direction"""
         for order_id, order_data in self._pending_orders.items():
-            signal = order_data.get("signal")
+            signal = order_data["signal"] if "signal" in order_data else None
             if signal and signal.direction == direction:
                 # Check if order is recent (within last 30 seconds)
-                called_at = order_data.get("called_at", 0)
+                called_at = order_data["called_at"] if "called_at" in order_data else 0
                 if time.time() - called_at < 30:
                     return True
         return False
