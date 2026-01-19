@@ -27,7 +27,7 @@ class RiskManager:
         current_price: float,
         config: Dict[str, Any],
         unified_data: Dict[str, Any],
-        leverage: int = 40
+        leverage: int = None
     ) -> float:
         """
         Calculate unified stop loss considering both S/R structure and risk management
@@ -46,7 +46,7 @@ class RiskManager:
             current_price: Current market price
             config: Strategy configuration
             unified_data: Complete market analysis data
-            leverage: Leverage multiplier (default 40x)
+            leverage: Leverage multiplier (uses TradingConfig.LEVERAGE if not provided)
             
         Returns:
             Calculated stop loss price
@@ -54,6 +54,11 @@ class RiskManager:
         Raises:
             ValueError: If stop loss calculation is invalid
         """
+        # Use config leverage if not provided
+        if leverage is None:
+            from config.config import TradingConfig
+            leverage = TradingConfig.LEVERAGE
+        
         if atr_5m <= 0:
             raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
         if current_price <= 0:

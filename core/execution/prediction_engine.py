@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Dict, Any, Optional, Literal
 from loguru import logger
 from config.config import TradingConfig
+from core.constants import technical_constants
 
 
 @dataclass
@@ -356,10 +357,10 @@ class PredictionEngine:
         rsi_short = 0.0
         reasons = []
         
-        if rsi_value < 30:  # Oversold - bullish
+        if rsi_value < technical_constants.RSI_OVERSOLD:  # Oversold - bullish
             rsi_long = 100.0
             reasons.append(f"RSI oversold ({rsi_value:.1f})")
-        elif rsi_value > 70:  # Overbought - bearish
+        elif rsi_value > technical_constants.RSI_OVERBOUGHT:  # Overbought - bearish
             rsi_short = 100.0
             reasons.append(f"RSI overbought ({rsi_value:.1f})")
         elif rsi_value < 50 and rsi_trend == "BULLISH":  # Below neutral but rising
@@ -680,7 +681,7 @@ class PredictionEngine:
         
         if direction == "LONG":
             # For LONG: entry below current (buying cheaper) is good, especially if RSI is oversold
-            if rsi_value < 30 and price_diff_pct < 0:  # Oversold + entry below current = very good
+            if rsi_value < technical_constants.RSI_OVERSOLD and price_diff_pct < 0:  # Oversold + entry below current = very good
                 score = 100.0
                 reasons.append(f"RSI oversold ({rsi_value:.1f}) + entry below current ({price_diff_pct*100:.2f}%)")
             elif rsi_value < 50 and rsi_trend == "BULLISH" and price_diff_pct <= 0:
@@ -694,7 +695,7 @@ class PredictionEngine:
                 reasons.append(f"Entry slightly below current ({price_diff_pct*100:.2f}%)")
         else:  # SHORT
             # For SHORT: entry above current (selling higher) is good, especially if RSI is overbought
-            if rsi_value > 70 and price_diff_pct > 0:  # Overbought + entry above current = very good
+            if rsi_value > technical_constants.RSI_OVERBOUGHT and price_diff_pct > 0:  # Overbought + entry above current = very good
                 score = 100.0
                 reasons.append(f"RSI overbought ({rsi_value:.1f}) + entry above current ({price_diff_pct*100:.2f}%)")
             elif rsi_value > 50 and rsi_trend == "BEARISH" and price_diff_pct >= 0:

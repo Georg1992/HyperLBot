@@ -95,6 +95,17 @@ def main():
         logger.error("Missing dependencies detected; install them and retry.")
         return
     
+    # Validate configuration at startup (NO FALLBACKS policy)
+    from config.config import TradingConfig
+    config_errors = TradingConfig.validate_config()
+    if config_errors:
+        logger.error("❌ Configuration validation failed:")
+        for error in config_errors:
+            logger.error(f"   - {error}")
+        logger.error("Fix configuration errors before starting the bot.")
+        return
+    logger.info("✅ Configuration validated successfully")
+    
     while True:
         print("\nHyperLBot Menu:")
         print("1. Paper Trading (Testing Mode)")

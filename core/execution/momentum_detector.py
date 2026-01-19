@@ -237,11 +237,11 @@ class MomentumDetector:
                 factors.append(f"Trend: {trend_direction}")
             
             # 5. RSI momentum (10 points)
-            rsi_value = rsi_data.get("value", 50.0)
-            if 50 < rsi_value < 70:  # Bullish but not overbought
+            rsi_value = rsi_data.get("value", TechnicalAnalysisConstants.RSI_NEUTRAL)
+            if TechnicalAnalysisConstants.RSI_NEUTRAL < rsi_value < TechnicalAnalysisConstants.RSI_OVERBOUGHT:  # Bullish but not overbought
                 confidence += 10.0
                 factors.append(f"RSI bullish ({rsi_value:.1f})")
-            elif rsi_value >= 70:
+            elif rsi_value >= TechnicalAnalysisConstants.RSI_OVERBOUGHT:
                 confidence -= 5.0  # Overbought - reduce confidence
                 factors.append(f"RSI overbought ({rsi_value:.1f})")
             else:
@@ -396,11 +396,11 @@ class MomentumDetector:
                 factors.append(f"Trend: {trend_direction}")
             
             # 5. RSI momentum (10 points)
-            rsi_value = rsi_data.get("value", 50.0)
-            if 30 < rsi_value < 50:  # Bearish but not oversold
+            rsi_value = rsi_data.get("value", TechnicalAnalysisConstants.RSI_NEUTRAL)
+            if TechnicalAnalysisConstants.RSI_OVERSOLD < rsi_value < TechnicalAnalysisConstants.RSI_NEUTRAL:  # Bearish but not oversold
                 confidence += 10.0
                 factors.append(f"RSI bearish ({rsi_value:.1f})")
-            elif rsi_value <= 30:
+            elif rsi_value <= TechnicalAnalysisConstants.RSI_OVERSOLD:
                 confidence -= 5.0  # Oversold - reduce confidence
                 factors.append(f"RSI oversold ({rsi_value:.1f})")
             else:
