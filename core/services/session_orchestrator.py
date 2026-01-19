@@ -26,8 +26,20 @@ class SessionOrchestrator:
         self.prediction_engine = None
         self._last_price = None
         self._last_5m_boundary = None
-        self._last_orderbook = None
-        self._last_update_times = {}
+        self._last_orderbook = {'bids': [], 'asks': []}  # Initialize with empty lists (NO FALLBACKS)
+        # Initialize all module update times (NO FALLBACKS)
+        self._last_update_times = {
+            'support_resistance': 0,
+            'volume': 0,
+            'volatility': 0,
+            'trend': 0,
+            'rsi': 0,
+            'patterns': 0,
+            'pressure': 0,
+            'funding': 0,
+            'orderbook': 0,
+            'market_conditions': 0
+        }
         
         # Initialize reactive execution engine (for momentum breakouts with market orders)
         # Pass API manager to enable trade execution calls
@@ -596,13 +608,13 @@ class SessionOrchestrator:
             
             session_data = self.session_manager.current_session_data
             return {
-                "session_id": session_data.get("session_id", "unknown"),
-                "start_time": session_data.get("start_time", 0.0),
-                "current_balance": session_data.get("current_balance", 0.0),
-                "session_start_time": session_data.get("start_time", 0.0),
-                "session_time": session_data.get("session_time", "0s"),
-                "status": session_data.get("status", "INACTIVE"),
-                "strategy": session_data.get("strategy", "standard"),
+                "session_id": session_data["session_id"],  # Required (NO FALLBACKS)
+                "start_time": session_data["start_time"],  # Required (NO FALLBACKS)
+                "current_balance": session_data["current_balance"],  # Required (NO FALLBACKS)
+                "session_start_time": session_data["start_time"],  # Required (NO FALLBACKS)
+                "session_time": session_data["session_time"],  # Required (NO FALLBACKS)
+                "status": session_data["status"],  # Required (NO FALLBACKS)
+                "strategy": session_data["strategy"],  # Required (NO FALLBACKS)
             }
         except Exception as e:
             logger.error(f"❌ Failed to get session data: {e}")

@@ -697,11 +697,15 @@ class SRScorer:
                 return clustered_levels
             
             # Timeframe weights (higher = more important)
+            # Map timeframe strings to weights (NO FALLBACKS)
             tf_weights = {
                 '5m': 1.0,
                 '15m': 1.2, 
                 '1h': 1.5,
-                '1d': 2.0
+                '1d': 2.0,
+                'daily_peak': 2.0,  # Daily peaks = 1d weight
+                'weekly_peak': 2.5,  # Weekly peaks = higher weight
+                'monthly_peak': 3.0  # Monthly peaks = highest weight
             }
             
             # Adaptive tolerance based on per-timeframe volatility
