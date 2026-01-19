@@ -142,18 +142,20 @@ class PressureCalculator:
             recommendations = self._classifier.get_pressure_recommendations(classification, implications)
             
             # 9. Format results
+            pressure_imbalance = pressure_ratios.get("pressure_imbalance", 0.0)
             result = {
                 "direction": direction,
                 "confidence": confidence,
                 "strength": strength,
                 "trend": trend,
+                "net_pressure": pressure_imbalance,  # Top-level field for momentum_detector (NO FALLBACKS)
                 "pressure_classification": classification,
                 "trading_implications": implications,
                 "recommendations": recommendations,
                 "analysis_details": {
                     "bid_pressure_ratio": pressure_ratios.get("bid_pressure_ratio", 0.5),
                     "ask_pressure_ratio": pressure_ratios.get("ask_pressure_ratio", 0.5),
-                    "pressure_imbalance": pressure_ratios.get("pressure_imbalance", 0.0),
+                    "pressure_imbalance": pressure_imbalance,
                     "depth_concentration": pressure_ratios.get("depth_concentration", 1.0),
                     "bid_depth_5": depth_metrics.get("bid_depth_5", 0.0),
                     "ask_depth_5": depth_metrics.get("ask_depth_5", 0.0),
