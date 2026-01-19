@@ -468,7 +468,7 @@ class MarketDataService:
                 # Market conditions and sentiment
                 "market_conditions": self.get_market_conditions_analysis(),
                 "cross_asset_analysis": self.get_cross_asset_analysis(),
-                "funding_analysis": self.get_funding_analysis(),
+                "funding_analysis": self.get_funding_analysis(),  # Required - will raise if API fails
                 "orderbook_analysis": self.get_orderbook_analysis(),
                 
                 # Raw data access for additional processing

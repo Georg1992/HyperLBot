@@ -444,72 +444,9 @@ class PredictionEngine:
         
         return trend_long, trend_short, reasons
     
-    def _score_sr_factor(self, sr_data: Dict[str, Any], current_price: float, unified_data: Dict[str, Any]) -> tuple[float, float, list]:
-        """
-        Score Support/Resistance factor for direction determination (NO FALLBACKS)
-        
-        This is called during direction scoring BEFORE strategy selection,
-        so it uses default "standard" weights (no strategy parameter).
-        
-        Args:
-            sr_data: Support/resistance data
-            current_price: Current market price
-            unified_data: Unified data for ATR calculation (required - NO FALLBACKS)
-        
-        Returns:
-            (sr_long_score, sr_short_score, reasons)
-        """
-        # Get all levels and filter for scoring (use strongest active levels)
-        all_levels = sr_data.get("levels", [])
-        current_price = self._require_key(unified_data, "current_price", "S/R factor scoring")
-        
-        # Filter levels for scoring (direction scoring = pre-strategy, uses default "standard")
-        from core.calculations.sr_level_filter import SRLevelFilter
-        level_filter = SRLevelFilter()
-        filtered_levels = level_filter.filter_for_scoring(
-            all_levels=all_levels,
-            current_price=current_price,
-            max_levels=2
-        )
-        top_support = filtered_levels["support"]
-        top_resistance = filtered_levels["resistance"]
-        
-        sr_long = 0.0
-        sr_short = 0.0
-        reasons = []
-        
-        # Get ATR for mathematically justified thresholds (NO FALLBACKS)
-        atr_pct = self._get_atr_pct(unified_data, current_price)
-        near_threshold = atr_pct * 2.5  # 2.5×ATR = reasonable "near" distance
-        
-        if top_support:
-            closest_support = max(top_support, key=lambda x: x["price_level"])
-            support_price = self._require_key(closest_support, "price_level", "S/R factor scoring")
-            from core.utils.level_utils import get_level_power
-            support_power = get_level_power(closest_support, default=50.0)
-            
-            from core.utils.distance_utils import calculate_distance_pct
-            distance_pct = calculate_distance_pct(current_price, support_price, current_price)
-            # Mathematically justified: Use 2.5×ATR as "near" threshold (standard proximity measure)
-            if distance_pct < near_threshold:
-                # Use power directly - it already includes reversal_probability (30% weight in power calculation)
-                sr_long = support_power
-                reasons.append(f"Near strong support @ ${support_price:.2f} (power: {support_power:.1f}, {distance_pct*100:.3f}% away)")
-        
-        if top_resistance:
-            closest_resistance = min(top_resistance, key=lambda x: x["price_level"])
-            resistance_price = self._require_key(closest_resistance, "price_level", "S/R factor scoring")
-            resistance_power = closest_resistance.get("power") or closest_resistance.get("strength_score", 50.0)  # Use power, fallback to strength_score
-            
-            from core.utils.distance_utils import calculate_distance_pct
-            distance_pct = calculate_distance_pct(current_price, resistance_price, current_price)
-            # Mathematically justified: Use 2.5×ATR as "near" threshold
-            if distance_pct < near_threshold:
-                # Use power directly - it already includes reversal_probability (30% weight in power calculation)
-                sr_short = resistance_power
-                reasons.append(f"Near strong resistance @ ${resistance_price:.2f} (power: {resistance_power:.1f}, {distance_pct*100:.3f}% away)")
-        
-        return sr_long, sr_short, reasons
+    # REMOVED: _score_sr_factor() - S/R no longer used for direction scoring
+    # S/R levels determine WHERE to enter/exit, NOT direction
+    # Direction determined by: trend, RSI, pressure, volume, patterns only
     
     def _score_pressure_factor(self, pressure_data: Dict[str, Any]) -> tuple[float, float, list]:
         """
@@ -594,28 +531,9 @@ class PredictionEngine:
         
         return volume_long, volume_short, reasons
     
-    def _score_funding_factor(self, funding_data: Dict[str, Any]) -> tuple[float, float, list]:
-        """
-        Score funding rate factor for direction determination
-        
-        Returns:
-            (funding_long_score, funding_short_score, reasons)
-        """
-        funding_trend = self._require_key(funding_data, "funding_trend", "funding factor scoring")
-        funding_direction = self._require_key(funding_trend, "direction", "funding factor scoring")
-        
-        funding_long = 0.0
-        funding_short = 0.0
-        reasons = []
-        
-        if funding_direction == "INCREASING":  # Increasing funding = bullish sentiment
-            funding_long = 100.0
-            reasons.append("Funding rate increasing (bullish sentiment)")
-        elif funding_direction == "DECREASING":  # Decreasing funding = bearish sentiment
-            funding_short = 100.0
-            reasons.append("Funding rate decreasing (bearish sentiment)")
-        
-        return funding_long, funding_short, reasons
+    # REMOVED: _score_funding_factor() - Funding no longer used for direction scoring
+    # Funding rate often unavailable and has minimal impact on short-term direction
+    # Can be added back if needed for long-term position bias
     
     # ==================================================================================
     # UNIFIED SCORING FRAMEWORK - Entry Factor Scorers (Reusable)
@@ -1065,25 +983,25 @@ class PredictionEngine:
                 raise ValueError(f"Invalid current_price: {current_price}")
             
             # Get strategy-specific weights (config defaults are OK)
+            # NOTE: S/R is NOT included in direction scoring - S/R determines entry/exit, NOT direction
             strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
             direction_weights = strategy_config.get("direction_weights", {
-                "rsi": 0.25,
-                "trend": 0.25,
-                "support_resistance": 0.20,
-                "pressure": 0.15,
-                "patterns": 0.10,
-                "volume": 0.05,
-                "funding": 0.05
+                "rsi": 0.30,          # Increased (was 0.25)
+                "trend": 0.35,        # Increased (was 0.25) - most important
+                "pressure": 0.20,     # Increased (was 0.15)
+                "patterns": 0.10,     # Same
+                "volume": 0.05,       # Same
+                "funding": 0.00       # Removed for now (was 0.05) - often not available
             })
             
             # Extract indicators - all required (NO FALLBACKS)
+            # NOTE: S/R is NOT used for direction scoring (only for entry/exit determination)
             rsi_data = self._require_key(unified_data, "rsi", "direction scoring")
             trend_data = self._require_key(unified_data, "trend", "direction scoring")
-            sr_data = self._require_key(unified_data, "support_resistance", "direction scoring")
             pressure_data = self._require_key(unified_data, "pressure", "direction scoring")
             patterns_data = self._require_key(unified_data, "patterns", "direction scoring")
-            funding_data = self._require_key(unified_data, "funding_analysis", "direction scoring")
             volume_category = self._require_key(unified_data, "volume_category", "direction scoring")
+            # funding_data = unified_data.get("funding_analysis")  # Optional - not always available
             
             # Initialize scores
             long_score = 0.0
@@ -1105,12 +1023,9 @@ class PredictionEngine:
                 short_score += trend_short * trend_weight
                 all_reasons.extend(reasons)
             
-            sr_weight = direction_weights.get("support_resistance", 0.0)
-            if sr_weight > 0:
-                sr_long, sr_short, reasons = self._score_sr_factor(sr_data, current_price, unified_data)
-                long_score += sr_long * sr_weight
-                short_score += sr_short * sr_weight
-                all_reasons.extend(reasons)
+            # S/R REMOVED FROM DIRECTION SCORING
+            # S/R levels determine WHERE to enter/exit, NOT direction
+            # Direction is determined by: trend, momentum, pressure, volume
             
             pressure_weight = direction_weights.get("pressure", 0.0)
             if pressure_weight > 0:
@@ -1133,12 +1048,9 @@ class PredictionEngine:
                 short_score += volume_short * volume_weight
                 all_reasons.extend(reasons)
             
-            funding_weight = direction_weights.get("funding", 0.0)
-            if funding_weight > 0:
-                funding_long, funding_short, reasons = self._score_funding_factor(funding_data)
-                long_score += funding_long * funding_weight
-                short_score += funding_short * funding_weight
-                all_reasons.extend(reasons)
+            # FUNDING REMOVED FROM DIRECTION SCORING
+            # Funding is often not available and doesn't significantly impact short-term direction
+            # If needed in the future, make it optional and handle missing data gracefully
             
             # Determine direction from scores
             score_diff = abs(long_score - short_score)

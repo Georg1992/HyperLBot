@@ -533,24 +533,31 @@ class SupportResistanceCalculator(BaseCalculator):
             # 4. MTF alignment
             aligned_levels = self._scorer.align_mtf_levels(clustered_levels, higher_tf_levels, atr_per_tf)
             
-            # 5. Filter by cluster size - only allow actual clusters (cluster_size >= 2)
-            # Single isolated swing points are not valid S/R levels
-            # Note: Liquidation filtering removed - natural filtering via score and strategy max_distance_pct
-            scorable_levels = []
-            for level in aligned_levels:
-                # Only allow levels that are actual clusters (at least 2 swing points clustered together)
-                # cluster_size >= 2 means multiple swing points were found at similar price levels
-                if level.cluster_size >= 2:
-                    scorable_levels.append(level)
-                # Note: Single isolated swing points (cluster_size=1) are discarded
-                # They need to cluster with other swing points to be valid S/R levels
+            # 5. CLUSTER SIZE FILTER REMOVED
+            # Old logic: Filter out cluster_size < 2 (discard single-touch levels)
+            # Problem: Misses strong single-touch levels (e.g., major support with huge volume)
+            # Solution: Rely on POWER threshold instead
+            #   - Power considers: touches (volume-weighted) + volume + reversal probability
+            #   - Weak single-touch = low power → filtered by scoring
+            #   - Strong single-touch = high power → kept (as it should be!)
+            #   - Cluster size is just ONE factor in power calculation (5% weight in scoring)
+            scorable_levels = aligned_levels  # All levels go to scoring
             
-            # 7. Calculate power (pure strength: touch, volume, reversal_probability)
+            # 6. Calculate power (pure strength: touch, volume, reversal_probability)
             trend_data = self._get_trend_data()
             scored_levels = self._scorer.calculate_power(
                 scorable_levels, current_price, atr_14, atr_per_tf,
                 candles_data=candles_data, trend_data=trend_data
             )
+            
+            # 7. Filter by power threshold (replaced cluster_size filter)
+            # Strategy-specific quality gate based on level strength
+            from config.config import TradingConfig
+            min_power = TradingConfig.STRATEGY_CONFIGS.get(self._strategy, {}).get("min_power_threshold", 0.0)
+            if min_power > 0:
+                filtered_levels = [level for level in scored_levels if level.power >= min_power]
+                logger.debug(f"🎯 Power filter: {len(scored_levels)} → {len(filtered_levels)} levels (threshold: {min_power})")
+                scored_levels = filtered_levels
             
             # 8. Deduplicate
             # Mathematically justified: Use 1.5 × ATR for final deduplication
