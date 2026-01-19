@@ -588,7 +588,8 @@ class MarketDataService:
                         "trend": self.get_trend_analysis()["direction"],  # Required (NO FALLBACKS)
                         "volatility_5m": self.get_volatility_analysis()["volatility_percentage"] / 100.0,  # Required (NO FALLBACKS)
                         "volatility_category": self.get_volatility_analysis()["level"],  # Required (NO FALLBACKS)
-                        "volume_category": self.get_volume_analysis()["volume_category"]  # Required (NO FALLBACKS)
+                        "volume_category": self.get_volume_analysis()["volume_category"],  # Required (NO FALLBACKS)
+                        "timestamp": time.time()  # Required (NO FALLBACKS)
                     }
                     # Get 1d candles for market trend analysis - request more to ensure we have enough
                     from core.services.historical_data_service import create_historical_data_service
