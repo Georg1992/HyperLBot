@@ -393,10 +393,3 @@ class RiskManager:
     
     # REMOVED: _calculate_volatility_multiplier() - Old fixed multiplier approach
     # Now using adaptive TP based on next S/R level with strategy-specific constraints
-                if vol_atr_ratio > 1.5:
-                    volatility_multiplier = 1.2
-                elif vol_atr_ratio < 0.7:
-                    volatility_multiplier = 0.9
-        except Exception:
-            volatility_multiplier = 1.0
-        return volatility_multiplier
