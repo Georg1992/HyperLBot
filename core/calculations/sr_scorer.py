@@ -61,17 +61,17 @@ class SRScorer:
             # Use learned weights if available (ML-optimized)
             # Only include inherent strength factors (no proximity/recency)
             self._power_weights = {
-                'touch': learned_weights.get("touch", 0.60),
-                'reversal_probability': learned_weights.get("reversal_probability", 0.30),
-                'volume': learned_weights.get("volume", 0.10)
+                'touch': learned_weights["touch"],  # Required (NO FALLBACKS)
+                'reversal_probability': learned_weights["reversal_probability"],  # Required (NO FALLBACKS)
+                'volume': learned_weights["volume"]  # Required (NO FALLBACKS)
             }
         else:
             # Use universal static weights (same for all strategies)
             universal_weights = TradingConfig.SR_POWER_WEIGHTS
             self._power_weights = {
-                'touch': universal_weights.get("touch", 0.60),
-                'reversal_probability': universal_weights.get("reversal_probability", 0.30),
-                'volume': universal_weights.get("volume", 0.10)
+                'touch': universal_weights["touch"],  # Required (NO FALLBACKS)
+                'reversal_probability': universal_weights["reversal_probability"],  # Required (NO FALLBACKS)
+                'volume': universal_weights["volume"]  # Required (NO FALLBACKS)
             }
         
         # Validate weights sum to 1.0
@@ -191,8 +191,8 @@ class SRScorer:
             # A touch occurs when price gets within tolerance of the level
             for i in range(len(candles_5m) - 1):
                 candle = candles_5m[i]
-                candle_low = candle.get('low', 0)
-                candle_high = candle.get('high', 0)
+                candle_low = candle['low']  # Required (NO FALLBACKS)
+                candle_high = candle['high']  # Required (NO FALLBACKS)
                 
                 if candle_low <= 0 or candle_high <= 0:
                     continue
@@ -335,8 +335,8 @@ class SRScorer:
             # Small trend adjustment (fine-tuning, not major factor)
             # Additive adjustment: ±5% based on trend alignment
             if trend_data:
-                trend_direction = trend_data.get('direction', 'SIDEWAYS')
-                trend_strength = trend_data.get('strength', 0.0)
+                trend_direction = trend_data['direction']  # Required (NO FALLBACKS)
+                trend_strength = trend_data['strength']  # Required (NO FALLBACKS)
                 
                 if level.level_type == 'support' and trend_direction == 'BULLISH':
                     adjusted += 5.0 * trend_strength
@@ -462,7 +462,7 @@ class SRScorer:
             base_score = mtf_confidence * 100.0
             
             # Timeframe diversity bonus (more timeframes = higher score)
-            tf_count = len(set(match.get('timeframe', '5m') for match in level.mtf_matches))
+            tf_count = len(set(match['timeframe'] for match in level.mtf_matches))  # Required (NO FALLBACKS)
             diversity_bonus = min(30.0, tf_count * 10.0)
             
             # Confidence multiplier (0.5 to 1.0)
@@ -705,7 +705,7 @@ class SRScorer:
             }
             
             # Adaptive tolerance based on per-timeframe volatility
-            base_atr = atr_per_tf.get('15m', atr_per_tf.get('5m', 100.0))
+            base_atr = atr_per_tf.get('15m') if '15m' in atr_per_tf else atr_per_tf['5m']  # Fallback to 5m if 15m not available
             aligned_levels = []
             
             for level in clustered_levels:
@@ -721,11 +721,11 @@ class SRScorer:
                     
                     # Use timeframe-specific ATR for tolerance (ATR% normalized)
                     tf_atr = atr_per_tf.get(htf_timeframe, base_atr)
-                    tf_tolerance = tf_atr * 0.5 * tf_weights.get(htf_timeframe, 1.0)
+                    tf_tolerance = tf_atr * 0.5 * tf_weights[htf_timeframe]  # Required (NO FALLBACKS)
                     
                     if distance <= tf_tolerance:
                         # Calculate weighted contribution
-                        weight = tf_weights.get(htf_timeframe, 1.0)
+                        weight = tf_weights[htf_timeframe]  # Required (NO FALLBACKS)
                         distance_factor = max(0.1, 1.0 - (distance / tf_tolerance))
                         contribution = weight * distance_factor
                         
@@ -854,8 +854,8 @@ class SRScorer:
             weighted_confidence = 0.0
             
             for match in mtf_matches:
-                tf = match.get('timeframe', '5m')
-                weight = timeframe_weights.get(tf, 0.3)
+                tf = match['timeframe']  # Required (NO FALLBACKS)
+                weight = timeframe_weights[tf]  # Required (NO FALLBACKS)
                 total_weight += weight
                 weighted_confidence += weight
             

@@ -140,8 +140,8 @@ class SRLevelFilter(BaseCalculator):
             # FACTOR 4: MTF CONFIRMATION (multi-timeframe alignment)
             # Weight: Strategy-aware (8-20%)
             # ===================================================================
-            mtf_confidence = level.get("mtf_confidence", 0.0)
-            mtf_count = level.get("mtf_count", 0)
+            mtf_confidence = level.get("mtf_confidence") if "mtf_confidence" in level else 0.0  # Optional MTF data
+            mtf_count = level.get("mtf_count") if "mtf_count" in level else 0  # Optional MTF data
             
             # MTF scoring: confidence (0-1) * 100, with bonus for multiple TFs
             mtf_base_score = mtf_confidence * 100.0
@@ -176,7 +176,7 @@ class SRLevelFilter(BaseCalculator):
             # FACTOR 6: CLUSTER SIZE (evidence consolidation)
             # Weight: 5% - Larger clusters indicate strong convergence
             # ===================================================================
-            cluster_size = level.get("cluster_size", 1)
+            cluster_size = level.get("cluster_size") if "cluster_size" in level else 1  # Optional cluster data
             
             # Cluster scoring: 1 = 30, 2 = 50, 3 = 70, 5 = 85, 10+ = 100
             if cluster_size >= 10:
@@ -261,7 +261,7 @@ class SRLevelFilter(BaseCalculator):
         )
         max_levels_per_side = strategy_config["max_levels_per_side"]
         min_level_distance_pct = strategy_config["min_level_distance_pct"]
-        max_distance_pct = strategy_config.get("max_distance_pct", 0.10)
+        max_distance_pct = strategy_config["max_distance_pct"]  # Required (NO FALLBACKS)
         
         # Filter for active levels in correct position relative to current price
         active_support_candidates = [
@@ -307,8 +307,8 @@ class SRLevelFilter(BaseCalculator):
             )
         
         # Sort by strategy-aware score
-        active_support_candidates.sort(key=lambda x: x.get("_level_score", 0), reverse=True)
-        active_resistance_candidates.sort(key=lambda x: x.get("_level_score", 0), reverse=True)
+        active_support_candidates.sort(key=lambda x: x["_level_score"], reverse=True)  # Required internal field (NO FALLBACKS)
+        active_resistance_candidates.sort(key=lambda x: x["_level_score"], reverse=True)  # Required internal field (NO FALLBACKS)
         
         # Apply strategy-specific proximity filtering (justified by expected price movement)
         if max_distance_pct > 0:
@@ -417,8 +417,8 @@ class SRLevelFilter(BaseCalculator):
             )
         
         # Sort by strategy-aware score and take top N
-        active_support.sort(key=lambda x: x.get("_level_score", 0), reverse=True)
-        active_resistance.sort(key=lambda x: x.get("_level_score", 0), reverse=True)
+        active_support.sort(key=lambda x: x["_level_score"], reverse=True)  # Required internal field (NO FALLBACKS)
+        active_resistance.sort(key=lambda x: x["_level_score"], reverse=True)  # Required internal field (NO FALLBACKS)
         
         return {
             "support": active_support[:max_levels],
