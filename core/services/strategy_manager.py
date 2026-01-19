@@ -196,14 +196,14 @@ class StrategyManager:
         except (ValueError, TypeError):
             rsi_value = 50.0
         
-        # Extended data (nested)
-        trend_data = market_data.get("trend", {})
-        rsi_data = market_data.get("rsi", {})
-        sr_data = market_data.get("support_resistance", {})
-        orderbook_data = market_data.get("orderbook_analysis", {})
-        pressure_data = market_data.get("pressure", {})
-        funding_data = market_data.get("funding_analysis", {})
-        market_conditions = market_data.get("market_conditions", {})
+        # Extended data (nested) - Required (NO FALLBACKS)
+        trend_data = market_data["trend"]
+        rsi_data = market_data["rsi"]
+        sr_data = market_data["support_resistance"]
+        orderbook_data = market_data["orderbook_analysis"]
+        pressure_data = market_data["pressure"]
+        funding_data = market_data["funding_analysis"]
+        market_conditions = market_data["market_conditions"]
         
         # Extract detailed values using safe get helper - ensure numeric types are floats
         trend_strength_raw = self._safe_get(trend_data, "strength", 0.5)
@@ -888,7 +888,9 @@ class StrategyManager:
     
     def get_strategy_config(self, strategy_name: str) -> Dict[str, Any]:
         """Get configuration for specific strategy"""
-        return self.strategy_configs.get(strategy_name, self.strategy_configs["standard"]).copy()
+        if strategy_name not in self.strategy_configs:
+            raise ValueError(f"Unknown strategy: {strategy_name} - NO FALLBACKS")
+        return self.strategy_configs[strategy_name].copy()
     
     
     def _find_next_best_strategy_by_score(self, market_data: Dict[str, Any], rejected_strategy: str) -> str:
@@ -1078,7 +1080,7 @@ class StrategyManager:
                 # Get dashboard service and update
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
-                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                dashboard_service = system_initializer.singleton_systems["dashboard_service"] if "dashboard_service" in system_initializer.singleton_systems else None
                 if dashboard_service:
                     dashboard_service.update_session_data(session_manager_instance.current_session_data)
                     logger.info(f"🔄 Strategy switched to: {new_strategy}")

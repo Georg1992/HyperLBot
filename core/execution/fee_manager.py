@@ -223,20 +223,21 @@ class FeeManager:
     def record_trade_fees(self, trade_data: Dict[str, Any]):
         """Record fees for a completed trade"""
         try:
-            fees = trade_data.get("fees", {})
-            self.total_fees_paid += fees.get("total_cost", 0)
+            fees = trade_data["fees"] if "fees" in trade_data else {}
+            self.total_fees_paid += fees["total_cost"] if "total_cost" in fees else 0
             self.total_trades += 1
             
             fee_record = {
                 "timestamp": time.time(),
-                "trade_id": trade_data.get("trade_id", f"trade_{self.total_trades}"),
+                "trade_id": trade_data["trade_id"] if "trade_id" in trade_data else f"trade_{self.total_trades}",
                 "fees": fees,
                 "cumulative_fees": self.total_fees_paid
             }
             
             self.fee_history.append(fee_record)
             
-            logger.info(f"💰 Trade fees recorded: ${fees.get('total_cost', 0):.4f}")
+            fee_cost = fees["total_cost"] if "total_cost" in fees else 0
+            logger.info(f"💰 Trade fees recorded: ${fee_cost:.4f}")
             logger.info(f"📊 Total fees paid: ${self.total_fees_paid:.4f} ({self.total_trades} trades)")
             
         except Exception as e:
@@ -270,10 +271,10 @@ class FeeManager:
         Returns:
             Dictionary with fee analysis
         """
-        position_size = strategy_params.get("position_size", 0.001)
-        leverage = strategy_params.get("leverage", 30)
-        trades_per_day = strategy_params.get("trades_per_day", 10)
-        avg_holding_time = strategy_params.get("avg_holding_time_hours", 5/60)  # 5 minutes
+        position_size = strategy_params["position_size"] if "position_size" in strategy_params else 0.001
+        leverage = strategy_params["leverage"] if "leverage" in strategy_params else 30
+        trades_per_day = strategy_params["trades_per_day"] if "trades_per_day" in strategy_params else 10
+        avg_holding_time = strategy_params["avg_holding_time_hours"] if "avg_holding_time_hours" in strategy_params else 5/60  # 5 minutes
         
         # Daily fee calculations
         daily_trading_fees = trades_per_day * 2 * position_size * 50000 * self.fee_rates["maker"]  # Entry + exit
