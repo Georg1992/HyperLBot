@@ -218,7 +218,11 @@ class RiskManager:
         
         # Get adaptive TP configuration
         from config.config import TradingConfig
-        tp_config = TradingConfig.TP_ADAPTIVE_CONFIG.get(strategy, TradingConfig.TP_ADAPTIVE_CONFIG["standard"])
+        # Strategy-specific config with fallback to "standard" (valid config fallback, not data)
+        if strategy in TradingConfig.TP_ADAPTIVE_CONFIG:
+            tp_config = TradingConfig.TP_ADAPTIVE_CONFIG[strategy]
+        else:
+            tp_config = TradingConfig.TP_ADAPTIVE_CONFIG["standard"]
         
         min_rr = tp_config["min_rr"]
         max_rr = tp_config["max_rr"]
@@ -235,11 +239,11 @@ class RiskManager:
             raise ValueError(f"Invalid risk: ${risk:.2f} (stop_loss must be on correct side of entry)")
         
         # STEP 1: Quality Gate - Filter by power threshold
-        min_power = config.get("min_power_threshold", 30.0)
+        min_power = config["min_power_threshold"]  # Required (NO FALLBACKS)
         qualified_levels = [
             level for level in sr_levels
-            if level.get("power", 0) >= min_power
-            and level.get("status") == "active"
+            if level["power"] >= min_power  # Required (NO FALLBACKS)
+            and level["status"] == "active"  # Required (NO FALLBACKS)
         ]
         
         if not qualified_levels:
@@ -250,15 +254,15 @@ class RiskManager:
             # LONG needs resistance above entry
             target_levels = [
                 level for level in qualified_levels
-                if level.get("type") == "resistance"
-                and level.get("price_level", 0) > entry_price
+                if level["type"] == "resistance"  # Required (NO FALLBACKS)
+                and level["price_level"] > entry_price  # Required (NO FALLBACKS)
             ]
         else:  # SHORT
             # SHORT needs support below entry
             target_levels = [
                 level for level in qualified_levels
-                if level.get("type") == "support"
-                and level.get("price_level", 0) < entry_price
+                if level["type"] == "support"  # Required (NO FALLBACKS)
+                and level["price_level"] < entry_price  # Required (NO FALLBACKS)
             ]
         
         if not target_levels:
@@ -270,7 +274,7 @@ class RiskManager:
         
         valid_candidates = []
         for level in target_levels:
-            level_price = level.get("price_level", 0)
+            level_price = level["price_level"]  # Required (NO FALLBACKS)
             distance = abs(level_price - entry_price)
             
             # Check if level is within reachable distance
@@ -294,7 +298,7 @@ class RiskManager:
                     "tp_price": tp_candidate,
                     "rr": rr,
                     "distance": distance,
-                    "power": level.get("power", 0)
+                    "power": level["power"]  # Required (NO FALLBACKS)
                 })
         
         if not valid_candidates:
