@@ -298,20 +298,28 @@ class RiskManager:
                 })
         
         if not valid_candidates:
-            # Detailed error for debugging
-            too_close = sum(1 for l in target_levels if abs(l["price_level"] - entry_price) / risk < min_rr)  # Required (NO FALLBACKS)
-            too_far = sum(1 for l in target_levels if abs(l["price_level"] - entry_price) > max_distance)  # Required (NO FALLBACKS)
-            rr_invalid = len(target_levels) - too_close - too_far
+            # No perfect S/R level found - calculate mathematical TP based on target R:R
+            # Use optimal R:R (midpoint between min and max) for calculation
+            target_rr = (min_rr + max_rr) / 2.0
+            reward = risk * target_rr
             
-            raise ValueError(
-                f"No valid {direction} TP target found for {strategy} (NO FALLBACKS). "
-                f"Available levels: {len(target_levels)}, "
-                f"too_close (R:R<{min_rr}): {too_close}, "
-                f"too_far (>{max_distance_atr}×ATR): {too_far}, "
-                f"R:R invalid: {rr_invalid}. "
-                f"Entry: ${entry_price:.2f}, Risk: ${risk:.2f}, "
-                f"Min R:R: {min_rr}, Max R:R: {max_rr}"
+            if direction == "LONG":
+                take_profit = entry_price + reward
+            else:  # SHORT
+                take_profit = entry_price - reward
+            
+            logger.info(
+                f"📐 No perfect S/R level for TP - using mathematical calculation: "
+                f"{direction} @ ${entry_price:.2f}, TP @ ${take_profit:.2f} "
+                f"(R:R {target_rr:.1f}x = ${reward:.2f} reward)"
             )
+            
+            return {
+                "take_profit": take_profit,
+                "rr": target_rr,
+                "selected_level": None,  # No S/R level, pure math
+                "method": "calculated"
+            }
         
         # STEP 4: Select Best Candidate - Highest R:R within constraints
         # (Higher R:R = better, as long as it's realistic)
