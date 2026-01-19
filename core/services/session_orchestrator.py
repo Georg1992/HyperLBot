@@ -34,11 +34,14 @@ class SessionOrchestrator:
             'volatility': 0,
             'trend': 0,
             'rsi': 0,
+            'rsi_calculator': 0,  # Alias for rsi module
             'patterns': 0,
+            'pattern_recognition': 0,  # Alias for patterns
             'pressure': 0,
             'funding': 0,
             'orderbook': 0,
-            'market_conditions': 0
+            'market_conditions': 0,
+            'cross_asset_correlation_analyzer': 0
         }
         
         # Initialize reactive execution engine (for momentum breakouts with market orders)
@@ -499,7 +502,7 @@ class SessionOrchestrator:
                     "weights_age_days": round(weights_info["age_days"], 1) if weights_info["age_days"] is not None else None,
                     "method": weights_info["method"],
                     "weights": weights_info["weights"],
-                    "training_needed": weights_info.get("training_needed", "needed")
+                    "training_needed": weights_info["training_needed"]  # Required (NO FALLBACKS)
                 }
             except Exception as e:
                 logger.debug(f"Could not get ML weights info: {e}")
