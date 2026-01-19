@@ -453,7 +453,7 @@ class MarketDataService:
                 "trend_direction": trend_data["direction"],  # Required (NO FALLBACKS)
                 "volatility_5m": volatility_data["volatility_percentage"] / 100.0,  # Required (NO FALLBACKS)
                 "volatility_category": volatility_data["level"],  # Required (NO FALLBACKS)
-                "volume_category": volume_data.get("hyperliquid_5m", {}).get("volume_category", "MODERATE"),  # Nested optional key
+                "volume_category": volume_data["hyperliquid_5m"]["volume_category"],  # Required (NO FALLBACKS)
                 "rsi_value": rsi_data["rsi"],  # Required (NO FALLBACKS)
                 
                 # Technical Analysis Components (keep original nested structure for other uses)
@@ -588,7 +588,7 @@ class MarketDataService:
                         "trend": self.get_trend_analysis()["direction"],  # Required (NO FALLBACKS)
                         "volatility_5m": self.get_volatility_analysis()["volatility_percentage"] / 100.0,  # Required (NO FALLBACKS)
                         "volatility_category": self.get_volatility_analysis()["level"],  # Required (NO FALLBACKS)
-                        "volume_category": self.get_volume_analysis().get("hyperliquid_5m", {}).get("volume_category", "MODERATE")  # Nested optional key
+                        "volume_category": self.get_volume_analysis()["hyperliquid_5m"]["volume_category"]  # Required (NO FALLBACKS)
                     }
                     # Get 1d candles for market trend analysis - request more to ensure we have enough
                     from core.services.historical_data_service import create_historical_data_service
