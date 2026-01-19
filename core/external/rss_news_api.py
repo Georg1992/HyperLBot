@@ -140,7 +140,7 @@ class RSSNewsAPI:
                     'total_news': len(all_articles)  # Total articles analyzed
                 },
                 'impact': sentiment_analysis['impact'],
-                'trading_signal': sentiment_analysis['trading_signal'],
+                'trading_signals': sentiment_analysis['trading_signal'],  # Fixed: plural key name
                 'confidence': sentiment_analysis['confidence'],
                 'articles': all_articles[:10],  # Include top 10 articles for reference
                 'total_articles': len(all_articles),
