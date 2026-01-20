@@ -17,6 +17,7 @@ from loguru import logger
 from config.config import TradingConfig
 
 from .momentum_detector import MomentumDetector, MomentumSignal
+from .position_sizer import PositionSizer
 
 
 class ReactiveEngine:
@@ -154,44 +155,37 @@ class ReactiveEngine:
                 logger.error("❌ No strategy config available for momentum trade")
                 return None
             
-            # Calculate position size (from strategy config)
+            # Get position sizing parameters from strategy config
             base_position_size_pct = strategy_config["position_size"]  # Required (NO FALLBACKS)
             leverage = strategy_config["max_leverage"]  # Required (NO FALLBACKS)
             
             # Prepare order parameters
             order_side = "BUY" if signal.direction == "LONG" else "SELL"
             
-            # Calculate R:R-based position size multiplier
-            from core.execution.prediction_engine import PredictionEngine
-            rr_multiplier = PredictionEngine.calculate_rr_position_multiplier(signal.risk_reward_ratio)
+            # Calculate position size using shared PositionSizer (unified logic)
+            current_balance = PositionSizer.get_balance_from_simulator()
+            position_sizing = PositionSizer.calculate_position_size(
+                balance=current_balance,
+                base_position_size_pct=base_position_size_pct,
+                risk_reward_ratio=signal.risk_reward_ratio,
+                leverage=leverage,
+                entry_price=signal.entry_price
+            )
             
-            # Adjusted position size with R:R scaling
-            adjusted_position_size_pct = base_position_size_pct * rr_multiplier
+            # Extract calculated values
+            position_size_btc = position_sizing["position_size_btc"]
+            rr_multiplier = position_sizing["rr_multiplier"]
+            adjusted_position_size_pct = position_sizing["adjusted_position_size_pct"]
+            position_value_usd = position_sizing["position_value_usd"]
             
-            # Get current balance from simulator
-            current_balance = 0.0
+            # Get hyperliquid simulator for order placement
             hyperliquid_simulator = None
             try:
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
                 hyperliquid_simulator = system_initializer.singleton_systems["hyperliquid_simulator"] if "hyperliquid_simulator" in system_initializer.singleton_systems else None
-                if hyperliquid_simulator and hasattr(hyperliquid_simulator, 'get_balance'):
-                    current_balance = hyperliquid_simulator.get_balance()
-            except Exception as e:
-                logger.warning(f"⚠️ Could not get balance: {e}")
-                current_balance = 10000.0  # Fallback for testing
-            
-            # Calculate position size in BTC: (balance × position_size_pct × leverage) / current_price
-            # This accounts for leverage: with 40x leverage, 10% of balance = 400% exposure
-            position_value_usd = current_balance * adjusted_position_size_pct * leverage
-            position_size_btc = position_value_usd / signal.entry_price
-            
-            logger.info(
-                f"💰 Position sizing: Balance=${current_balance:.2f}, "
-                f"Base={base_position_size_pct*100:.1f}%, R:R multiplier={rr_multiplier:.2f}x, "
-                f"Adjusted={adjusted_position_size_pct*100:.1f}%, "
-                f"Leverage={leverage}x → {position_size_btc:.4f} BTC (${position_value_usd:.2f})"
-            )
+            except Exception:
+                pass
             
             # Prepare order metadata
             order_metadata = {
