@@ -143,7 +143,9 @@ class WhaleAnalysisCalculator:
                     "data_source": "whale_analysis_calculator"
                 }
                 
-                logger.info(f"🐋 Whale analysis completed: {whale_activity.get('whale_count', 0)} whales, {sentiment.get('classification', 'neutral')} sentiment")
+                whale_count = whale_activity['whale_count'] if 'whale_count' in whale_activity else 0
+                sentiment_class = sentiment['classification'] if 'classification' in sentiment else 'neutral'
+                logger.info(f"🐋 Whale analysis completed: {whale_count} whales, {sentiment_class} sentiment")
                 return result
             
             # Get from cache or calculate fresh
@@ -171,7 +173,7 @@ class WhaleAnalysisCalculator:
             for tx in transactions:
                 try:
                     # Check if transaction is recent enough
-                    tx_time = self._parse_transaction_time(tx.get("received", ""))
+                    tx_time = self._parse_transaction_time(tx["received"] if "received" in tx else "")
                     if tx_time < cutoff_time:
                         continue
                     
@@ -184,13 +186,13 @@ class WhaleAnalysisCalculator:
                     
                     if value_usd >= self.whale_threshold_usd:
                         whale_transactions.append({
-                            "hash": tx.get("hash"),
+                            "hash": tx["hash"] if "hash" in tx else "unknown",
                             "value_btc": value_btc,
                             "value_usd": value_usd,
                             "time": tx_time,
-                            "inputs": tx.get("inputs", []),
-                            "outputs": tx.get("outputs", []),
-                            "addresses": tx.get("addresses", [])
+                            "inputs": tx["inputs"] if "inputs" in tx else [],
+                            "outputs": tx_outputs,
+                            "addresses": tx["addresses"] if "addresses" in tx else []
                         })
                         
                 except Exception as e:

@@ -73,7 +73,7 @@ class PressureCalculator:
             
             # Extract bids and asks from orderbook
             # Hyperliquid orderbook format: levels is a list of [bids, asks]
-            levels = orderbook_data.get('levels', [])
+            levels = orderbook_data['levels'] if 'levels' in orderbook_data else []
             if len(levels) < 2:
                 raise ValueError("Invalid orderbook structure - expected [bids, asks] - NO FALLBACKS")
             
@@ -116,8 +116,8 @@ class PressureCalculator:
             
             # 3. Analyze pressure direction and strength via analyzer
             direction, strength = self._analyzer.categorize_pressure_direction(
-                pressure_ratios.get("pressure_imbalance", 0.0),
-                pressure_ratios.get("depth_concentration", 1.0)
+                pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0,
+                pressure_ratios["depth_concentration"] if "depth_concentration" in pressure_ratios else 1.0
             )
             
             # 4. Calculate confidence via analyzer
