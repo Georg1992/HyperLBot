@@ -89,7 +89,7 @@ class SRDetector:
                         cluster_size=1,
                         weighted_touches=1.0,
                         strength=self._calculate_swing_strength(candles, i, 'high', adaptive_params, avg_volumes),
-                        timestamp=candle.get('timestamp', time.time()),
+                        timestamp=candle['timestamp'] if 'timestamp' in candle else time.time(),
                         timeframe_distribution={timeframe: 1},
                         merged_from=1
                     )
@@ -104,7 +104,7 @@ class SRDetector:
                         cluster_size=1,
                         weighted_touches=1.0,
                         strength=self._calculate_swing_strength(candles, i, 'low', adaptive_params, avg_volumes),
-                        timestamp=candle.get('timestamp', time.time()),
+                        timestamp=candle['timestamp'] if 'timestamp' in candle else time.time(),
                         timeframe_distribution={timeframe: 1},
                         merged_from=1
                     )
@@ -148,7 +148,7 @@ class SRDetector:
             }
         }
         
-        return params.get(timeframe, params["5m"])
+        return params[timeframe] if timeframe in params else params["5m"]
     
     def _precompute_rolling_volumes(self, candles: List[Dict], window: int = 20) -> List[float]:
         """
@@ -171,7 +171,7 @@ class SRDetector:
             window_candles = candles[start_idx:end_idx]
             
             if window_candles:
-                avg_volume = sum(candle.get('volume', 0) for candle in window_candles) / len(window_candles)
+                avg_volume = sum(candle['volume'] if 'volume' in candle else 0 for candle in window_candles) / len(window_candles)
                 avg_volumes.append(avg_volume)
             else:
                 avg_volumes.append(candles[i]['volume'])  # Required (NO FALLBACKS)
@@ -193,7 +193,7 @@ class SRDetector:
                 return 0
             
             # Sort by timestamp
-            sorted_points = sorted(points, key=lambda x: x.get('timestamp', 0))
+            sorted_points = sorted(points, key=lambda x: x['timestamp'] if 'timestamp' in x else 0)
             
             distinct_touches = 1  # First point counts
             min_time_delta = 180  # 3 minutes minimum between touches (more flexible)
