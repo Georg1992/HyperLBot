@@ -1797,6 +1797,7 @@ class PredictionEngine:
             # Distance metrics for breakdown (entry is AT level)
             distance_from_level = 0.0
             distance_pct = 0.0
+            hours_since_touch = (time.time() - last_touch_timestamp) / 3600 if last_touch_timestamp > 0 else 0
             
             entry_breakdown = {
                 "strength_score": level_power,
