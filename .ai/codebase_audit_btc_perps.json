@@ -130,7 +130,7 @@
     "1. ✅ FIXED: Entry offset logic + scoring bias",
     "2. ✅ FIXED: Strategy-aware dashboard filtering", 
     "3. ✅ FIXED: Position sizing liquidation risk factor (prevents blow-ups)",
-    "4. Add S/R liquidation wick filtering (MAJOR - avoids stop hunt zones)",
+    "4. ✅ FIXED: S/R liquidation wick filtering (tracks stop hunt zones)",
     "5. Add spread cost to profit calculations (MAJOR - realistic P&L)",
     "6. Add round number stop avoidance (MAJOR - reduces stop hunt risk)"
   ],
