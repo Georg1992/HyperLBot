@@ -118,11 +118,21 @@
   ],
   
   "recommended_priority": [
-    "1. Fix entry offset logic (CRITICAL - affects every trade)",
-    "2. Fix entry scoring bias (CRITICAL - actively prefers wrong entries)",
+    "1. ✅ FIXED: Entry offset logic + scoring bias",
+    "2. ✅ FIXED: Strategy-aware dashboard filtering", 
     "3. Add position sizing liquidation risk factor (MAJOR - prevents blow-ups)",
     "4. Add S/R liquidation wick filtering (MAJOR - avoids stop hunt zones)",
     "5. Add spread cost to profit calculations (MAJOR - realistic P&L)",
     "6. Add round number stop avoidance (MAJOR - reduces stop hunt risk)"
-  ]
+  ],
+  
+  "additional_fixes": {
+    "dashboard_strategy_awareness": {
+      "fixed": "2026-01-12",
+      "was": "Dashboard showed ALL S/R levels (3 per side for scalping)",
+      "now": "Strategy-aware: scalping=1, standard=2, swing=3 per side",
+      "location": "core/services/session_orchestrator.py:279-311",
+      "cleanup": "Removed 62 lines of dead code (_prepare_sr_data_for_dashboard)"
+    }
+  }
 }
