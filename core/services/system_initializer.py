@@ -51,12 +51,8 @@ class SystemInitializer:
             if not data_results["success"]:
                 return {"success": False, "error": "Data system initialization failed"}
             
-            # Step 4: Initialize RSI with Historical Data (MOVED: now MarketDataService exists)
-            rsi_results = self._initialize_rsi_with_data(api_results["hyperliquid_api"])
-            if not rsi_results["success"]:
-                return {"success": False, "error": "RSI initialization failed"}
-            
-            # Step 5: Initialize ML Systems (AI prediction logic removed)
+            # Step 4: Initialize ML Systems (AI prediction logic removed)
+            # NOTE: RSI is already initialized with historical data in _register_analysis_modules
             ml_results = self._initialize_ml_systems()
             if not ml_results["success"]:
                 return {"success": False, "error": "ML system initialization failed"}
@@ -126,29 +122,8 @@ class SystemInitializer:
             logger.error(f"❌ API initialization failed: {e}")
             return {"success": False, "error": str(e)}
     
-    def _initialize_rsi_with_data(self, hyperliquid_api) -> Dict[str, Any]:
-        """Initialize RSI calculator with historical data"""
-        try:
-            logger.info("🔬 Initializing RSI with historical data...")
-            
-            from core.calculations.rsi_calculator import create_rsi_calculator
-            rsi_calculator = create_rsi_calculator()
-            # Get 5-minute data for RSI baseline calculation from MarketDataService (single source of truth)
-            market_data_service = self.singleton_systems["market_data_service"] if "market_data_service" in self.singleton_systems else None
-            from core.services.historical_data_service import create_historical_data_service
-            historical_service = create_historical_data_service()
-            candles_5m = historical_service.get_5m_candles("BTC", 30)
-            if candles_5m and len(candles_5m) >= 15:
-                rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
-                # RSI Calculator initialized with historical data
-                return {"success": True}
-            else:
-                logger.warning("⚠️ RSI Calculator - insufficient data, using defaults")
-                return {"success": True}
-                
-        except Exception as e:
-            logger.error(f"❌ RSI initialization failed: {e}")
-            return {"success": False, "error": str(e)}
+    # REMOVED: _initialize_rsi_with_data - was redundant with _register_analysis_modules
+    # RSI is now initialized once in _register_analysis_modules with historical data
     
     def _initialize_singleton_systems(self, initial_balance: float) -> Dict[str, Any]:
         """Initialize core singleton systems only (no analysis modules)"""
@@ -369,7 +344,6 @@ class SystemInitializer:
                 candles_5m = historical_service.get_5m_candles("BTC", 30)
                 if candles_5m and len(candles_5m) >= 15:
                     rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
-                    logger.debug("📊 RSI calculator initialized with baseline data")
                 else:
                     logger.warning("⚠️ RSI Calculator - insufficient historical data, using defaults")
             except Exception as e:

@@ -12,22 +12,30 @@ class VolatilityConditionAnalyzer:
     """Analyzes volatility conditions - follows SRP"""
     
     def __init__(self):
-        # Removed excessive debug logging
         pass
     
     def analyze_volatility_conditions(self, volatility_5m: float, volatility_category: str) -> Dict[str, Any]:
-        """Analyze volatility conditions using existing VolatilityCalculator - NO DUPLICATION"""
+        """Analyze volatility conditions using PASSED DATA - NO REDUNDANT FETCHING"""
         try:
-            # Use existing VolatilityCalculator instead of duplicating logic
-            from core.calculations.volatility_calculator import create_volatility_calculator
-            volatility_calculator = create_volatility_calculator("BTC")
-            volatility_analysis = volatility_calculator.get_latest_analysis()
+            # Use passed parameters directly - data already fetched once in market_data_service
+            # NO redundant calculator creation!
+            level = volatility_category
             
-            # Extract data from existing calculator
-            level = volatility_analysis["level"] if "level" in volatility_analysis else "UNKNOWN"
-            suitable_for_trading = volatility_analysis["suitable_for_trading"] if "suitable_for_trading" in volatility_analysis else False
-            risk_level = volatility_analysis["risk_level"] if "risk_level" in volatility_analysis else "UNKNOWN"
-            recommendations = volatility_analysis["recommendations"] if "recommendations" in volatility_analysis else []
+            # Determine suitability based on category
+            suitable_for_trading = volatility_category in ["LOW", "MODERATE", "HIGH"]
+            risk_level = {
+                "VERY_LOW": "LOW",
+                "LOW": "LOW", 
+                "MODERATE": "MEDIUM",
+                "HIGH": "HIGH",
+                "EXTREME": "VERY_HIGH"
+            }.get(volatility_category, "UNKNOWN")
+            
+            recommendations = []
+            if volatility_category == "EXTREME":
+                recommendations.append("Reduce position size")
+            elif volatility_category == "VERY_LOW":
+                recommendations.append("Widen stop losses")
             
             # Convert to condition analyzer format
             factors = [f"Volatility: {level}"]

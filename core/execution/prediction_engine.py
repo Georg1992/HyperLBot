@@ -25,6 +25,8 @@ class TradingPrediction:
     strategy: str
     timestamp: float
     risk_reward_ratio: float = 0.0  # Actual R:R achieved (for position sizing)
+    position_size_btc: Optional[float] = None  # Position size in BTC (calculated if balance provided)
+    position_size_usd: Optional[float] = None  # Position value in USD (calculated if balance provided)
 
 
 class PredictionEngine:
@@ -1468,6 +1470,11 @@ class PredictionEngine:
             patterns_data = self._require_key(unified_data, "patterns", "entry scoring")
             volume_category = self._require_key(unified_data, "volume_category", "entry scoring")
             
+            # Extract ATR for ATR-based scoring (FIXED 2026-01-20)
+            sr_data = self._require_key(unified_data, "support_resistance", "entry scoring")
+            sr_metadata = sr_data.get("metadata", {})
+            atr_5m = sr_metadata.get("atr_5m", None)  # Optional for backward compatibility
+            
             # Initialize score
             total_score = 0.0
             all_reasons = []
@@ -1483,7 +1490,7 @@ class PredictionEngine:
             
             rsi_weight = entry_weights["rsi"]  # Required (NO FALLBACKS)
             if rsi_weight > 0:
-                rsi_score, reasons = self._score_entry_rsi_factor(entry_price, current_price, direction, rsi_data)
+                rsi_score, reasons = self._score_entry_rsi_factor(entry_price, current_price, direction, rsi_data, atr_5m)
                 total_score += rsi_score * rsi_weight
                 all_reasons.extend(reasons)
             

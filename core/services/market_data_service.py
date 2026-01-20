@@ -40,7 +40,6 @@ class MarketDataService:
         # Register WebSocket callback to update RSI immediately when price changes
         if self.hyperliquid_websocket:
             self.hyperliquid_websocket.add_price_callback(self._on_websocket_price_update)
-            logger.debug("📊 Registered WebSocket price callback for real-time RSI updates")
         
         logger.info("📊 Processed Data Coordinator initialized - New architecture")
     
@@ -51,8 +50,6 @@ class MarketDataService:
     def register_analysis_module(self, module_name: str, module_instance: Any) -> None:
         """Register an analysis module for data coordination"""
         self._analysis_modules[module_name] = module_instance
-        
-        # Removed excessive debug logging for module registration
     
     def _is_data_valid(self, data_type: str) -> bool:
         """Check if processed data is still valid based on schedule"""
@@ -174,9 +171,6 @@ class MarketDataService:
                 "data_type": "trend"
             }
             
-            # Log trend mapping only if there are issues (not UNKNOWN)
-            if primary_trend != "UNKNOWN":
-                logger.debug(f"📊 Trend mapped: {primary_trend} → {mapped_direction}")
             return mapped_trend
             
         except Exception as e:
@@ -413,8 +407,6 @@ class MarketDataService:
         Strategy is determined AFTER this analysis is complete.
         """
         try:
-            logger.debug("📊 Coordinating unified analysis data...")
-            
             # Get current price (single source of truth)
             current_price = self.get_current_price()
             
@@ -429,7 +421,6 @@ class MarketDataService:
                         candles_5m = historical_service.get_5m_candles("BTC", 30)
                         if candles_5m and len(candles_5m) >= 15:
                             rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
-                            logger.debug("📊 RSI calculator initialized with baseline data")
                         else:
                             logger.warning("⚠️ RSI Calculator - insufficient historical data, using defaults")
                     except Exception as e:
@@ -489,7 +480,6 @@ class MarketDataService:
                     except Exception as e:
                         logger.warning(f"⚠️ Failed to get {module_name} analysis: {e}")
             
-            logger.debug(f"📊 Unified analysis data coordinated: {len(unified_data)} keys")
             return unified_data
             
         except Exception as e:
@@ -760,8 +750,9 @@ class MarketDataService:
                 },
                 
                 # Dashboard-specific volatility fields
-                "volatility_5m": market_data["volatility_5m"],  # Required (NO FALLBACKS)
-                "volatility_category": market_data["volatility_category"],  # Required (NO FALLBACKS)
+                # These ARE required - if missing, the error should propagate to show data issue
+                "volatility_5m": market_data["volatility_5m"],  # Will raise KeyError if missing
+                "volatility_category": market_data["volatility_category"],  # Will raise KeyError if missing
                 
                 "pressure": market_data["pressure"] if "pressure" in market_data else {
                     "buy_pressure": 0.0,
@@ -839,7 +830,6 @@ class MarketDataService:
                 "last_update": time.time()
             }
             
-            logger.debug(f"📊 Dashboard data prepared with prediction: {prediction_result is not None}")
             return dashboard_data
             
         except Exception as e:
@@ -936,7 +926,6 @@ class MarketDataService:
                 if new_price != self._current_price:
                     self._current_price = new_price
                     self._price_timestamp = current_time
-                    logger.debug(f"📊 Real-time price updated: ${self._current_price:.2f}")
                     # Update RSI immediately when price changes
                     self._update_rsi_with_price(new_price)
             
@@ -975,6 +964,48 @@ class MarketDataService:
         except Exception as e:
             # Don't log errors here to avoid spam
             pass
+    
+    def _prepare_sr_data_for_dashboard(self, sr_data: Dict[str, Any], current_price: float) -> Dict[str, Any]:
+        """
+        Prepare S/R data for dashboard display with proper sorting
+        
+        Sorts levels by proximity to current price (closest first) for intuitive display:
+        - Supports: Descending by price (closest to current price at top)
+        - Resistances: Ascending by price (closest to current price at top)
+        
+        Args:
+            sr_data: S/R data from analysis
+            current_price: Current market price
+            
+        Returns:
+            Dashboard-ready S/R data with sorted levels
+        """
+        try:
+            # Create a copy to avoid mutating original data
+            dashboard_sr_data = sr_data.copy() if sr_data else {}
+            
+            # Sort top_support: Descending by price (highest price = closest to current = first)
+            if "top_support" in dashboard_sr_data and dashboard_sr_data["top_support"]:
+                dashboard_sr_data["top_support"] = sorted(
+                    dashboard_sr_data["top_support"],
+                    key=lambda x: x.get("price_level", 0),
+                    reverse=True  # Descending: closest to current price first
+                )
+            
+            # Sort top_resistance: Ascending by price (lowest price = closest to current = first)
+            if "top_resistance" in dashboard_sr_data and dashboard_sr_data["top_resistance"]:
+                dashboard_sr_data["top_resistance"] = sorted(
+                    dashboard_sr_data["top_resistance"],
+                    key=lambda x: x.get("price_level", float('inf')),
+                    reverse=False  # Ascending: closest to current price first
+                )
+            
+            return dashboard_sr_data
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to prepare S/R data for dashboard: {e}")
+            # Return original data on error (graceful degradation)
+            return sr_data if sr_data else {}
     
     def _update_rsi_with_price(self, new_price: float):
         """Update RSI immediately when price changes (called from price updates)"""

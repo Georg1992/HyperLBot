@@ -51,7 +51,9 @@ class PsychologicalLevelsCalculator:
         Returns:
             List of Level objects representing relevant psychological levels
         """
-        # TODO: Implement - find relevant psychological levels around current price
-        # Fixed intervals: 500, 1000, 2500, 5000, 10000, 100000
-        logger.info("🧠 Psychological levels - to be implemented")
+        # INTENTIONALLY NOT IMPLEMENTED YET
+        # This feature requires extensive research and validation to ensure it doesn't interfere
+        # with S/R detection from actual market structure. Returning empty list for now.
+        # Fixed intervals to implement later: 500, 1000, 2500, 5000, 10000, 100000
+        logger.debug("🧠 Psychological levels not enabled (research required)")
         return []

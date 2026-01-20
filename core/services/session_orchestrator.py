@@ -300,17 +300,42 @@ class SessionOrchestrator:
                                 strategy=current_strategy
                             )
                             
-                            # Update S/R data with strategy-filtered levels for dashboard
-                            sr_data["key_levels"] = filtered_levels["support"] + filtered_levels["resistance"]
-                            sr_data["top_support"] = filtered_levels["support"]
-                            sr_data["top_resistance"] = filtered_levels["resistance"]
-                            
-                            logger.debug(f"📊 Dashboard S/R filtered for {current_strategy}: {len(filtered_levels['support'])} support, {len(filtered_levels['resistance'])} resistance (max: {max_levels} per side)")
+                    # Update S/R data with strategy-filtered levels for dashboard
+                    sr_data["key_levels"] = filtered_levels["support"] + filtered_levels["resistance"]
+                    sr_data["top_support"] = filtered_levels["support"]
+                    sr_data["top_resistance"] = filtered_levels["resistance"]
 
                     # Generate prediction
                     try:
                         prediction = self.prediction_engine.generate_prediction(unified_data, current_strategy)
                         if prediction:
+                            # Calculate position size for the prediction
+                            position_size_info = None
+                            if self.session_manager:
+                                try:
+                                    session_data = self.session_manager.get_current_session_data()
+                                    current_balance = session_data.get("current_balance", 0.0)
+                                    
+                                    if current_balance > 0:
+                                        from core.execution.position_sizer import PositionSizer
+                                        from config.config import TradingConfig
+                                        
+                                        # Get strategy-specific position size %
+                                        strategy_config = TradingConfig.STRATEGY_CONFIGS.get(current_strategy, {})
+                                        base_position_size_pct = strategy_config.get("position_size", 0.02)  # Default 2%
+                                        
+                                        position_size_info = PositionSizer.calculate_position_size(
+                                            balance=current_balance,
+                                            base_position_size_pct=base_position_size_pct,
+                                            risk_reward_ratio=prediction.risk_reward_ratio,
+                                            leverage=TradingConfig.LEVERAGE,
+                                            entry_price=prediction.entry_price,
+                                            stop_loss=prediction.stop_loss,
+                                            direction=prediction.direction
+                                        )
+                                except Exception as e:
+                                    logger.warning(f"⚠️ Could not calculate position size: {e}")
+                            
                             unified_data["prediction"] = {
                                 "direction": prediction.direction,
                                 "entry_price": prediction.entry_price,
@@ -320,7 +345,9 @@ class SessionOrchestrator:
                                 "reasoning": prediction.reasoning,
                                 "strategy": prediction.strategy,
                                 "timestamp": prediction.timestamp,
-                                "status": "READY"
+                                "status": "READY",
+                                "position_size_btc": position_size_info["position_size_btc"] if position_size_info else None,
+                                "position_size_usd": position_size_info["position_value_usd"] if position_size_info else None
                             }
                         else:
                             unified_data["prediction"] = None
@@ -437,7 +464,6 @@ class SessionOrchestrator:
             # Pattern recognition: trigger on new 5-minute candle close (optimized)
             if module_name == "pattern_recognition" and new_candle_closed:
                 should_update = True
-                logger.debug(f"🕐 Pattern recognition triggered by new 5m candle close")
             
             # Check price change for price-sensitive modules
             price_sensitive_modules = ['rsi_calculator', 'support_resistance']
@@ -521,8 +547,6 @@ class SessionOrchestrator:
             # Log if analysis_data is empty
             if not analysis_data or len(analysis_data) == 0:
                 logger.error(f"❌ analysis_data is EMPTY from get_dashboard_data!")
-            else:
-                logger.debug(f"📊 Got {len(analysis_data)} keys from get_dashboard_data: {list(analysis_data.keys())[:10]}...")
 
             # Remove non-serializable objects for dashboard compatibility
             if "raw_data_access" in analysis_data:
@@ -534,22 +558,6 @@ class SessionOrchestrator:
             # Get trading data
             trading_data = self._get_trading_data()
             
-            # Get ML weights info (weights file status - training is done separately)
-            ml_weights_info = {}
-            try:
-                from core.calculations.sr_weight_info import get_weights_info
-                weights_info = get_weights_info()
-                ml_weights_info = {
-                    "weights_status": "Trained" if weights_info["exists"] else "Static",
-                    "weights_file": "elasticnet_weights.json" if weights_info["exists"] else "Not found",
-                    "weights_age_days": round(weights_info["age_days"], 1) if weights_info["age_days"] is not None else None,
-                    "method": weights_info["method"],
-                    "weights": weights_info["weights"],
-                    "training_needed": weights_info["training_needed"]  # Required (NO FALLBACKS)
-                }
-            except Exception as e:
-                logger.debug(f"Could not get ML weights info: {e}")
-
             # Get consolidation analysis (requires unified_data, so call after analysis_data)
             consolidation_data = {}
             try:
@@ -566,7 +574,7 @@ class SessionOrchestrator:
                     current_price=current_price
                 )
             except Exception as e:
-                logger.debug(f"Could not get consolidation analysis: {e}")
+                logger.warning(f"⚠️ Could not get consolidation analysis: {e}")
             
             # Prepare unified data with analysis data
             # Strategy is None initially - will be set by strategy detection
@@ -577,7 +585,6 @@ class SessionOrchestrator:
                 "orderbook_data": orderbook_data,  # Level 2 orderbook with bids/asks
                 "session_data": session_data,
                 "trading_data": trading_data,
-                "ml_performance": ml_weights_info,  # ML weights file info (training done separately)
                 "consolidation": consolidation_data,  # Consolidation tracking data
                 # Include all analysis data
                 **analysis_data,
@@ -601,7 +608,6 @@ class SessionOrchestrator:
         try:
             # Get analysis modules from MarketDataService to determine what needs updating
             analysis_modules = getattr(market_data_service, "_analysis_modules", {})
-            # Removed excessive debug logging
 
             # Check which modules actually need updates
             modules_to_update = self._get_modules_needing_update(
@@ -609,10 +615,7 @@ class SessionOrchestrator:
             )
             
             if not modules_to_update:
-                # Removed excessive debug logging
                 return
-
-            # Removed excessive debug logging
 
             # Map module names to MarketDataService get methods (all strategy-independent)
             module_to_getter = {
@@ -630,14 +633,10 @@ class SessionOrchestrator:
             # Update modules via MarketDataService (SRP: MarketDataService coordinates all module access)
             for module_name in modules_to_update:
                 try:
-                    # Removed excessive debug logging
-                    
                     # Get analysis via MarketDataService (single source of truth)
                     getter = module_to_getter[module_name] if module_name in module_to_getter else None
                     if getter:
                         analysis_result = getter()
-                        # MarketDataService already stores the result via its get_* methods
-                        # Removed excessive debug logging
 
                 except Exception as e:
                     logger.warning(f"⚠️ Failed to update {module_name} via MarketDataService: {e}")
@@ -700,17 +699,14 @@ class SessionOrchestrator:
                     # Update session manager with new strategy
                     if self.session_manager and self.session_manager.current_session_data:
                         self.session_manager.current_session_data["strategy"] = new_strategy
-                        logger.debug(f"📊 Session manager strategy updated to: {new_strategy}")
                     
                     return new_strategy
                 else:
-                    logger.debug(f"🎯 Strategy unchanged: {current_strategy}")
                     # Even if unchanged, ensure session manager has the correct strategy
                     if self.session_manager:
                         current_session_strategy = self.session_manager.current_session_data["strategy"] if "strategy" in self.session_manager.current_session_data else None
                         if current_session_strategy != current_strategy:
                             self.session_manager.current_session_data["strategy"] = current_strategy
-                            logger.debug(f"📊 Session manager strategy synced to: {current_strategy}")
                     return current_strategy
             else:
                 logger.warning(

@@ -162,13 +162,6 @@ class StrategyManager:
             # Build reasoning from factors
             reasoning = self._build_reasoning(strategy_name, score_data["factors"], confidence)
             
-            # Safe conversion for logging
-            try:
-                top_3 = sorted(strategy_scores.items(), key=safe_get_score, reverse=True)[:3]
-                score_display = [(s, float(d['score']) if 'score' in d else 0.0) for s, d in top_3]
-                logger.debug(f"📊 Strategy scores: {score_display}")
-            except Exception as e:
-                logger.debug(f"📊 Strategy scores: {[(s, d['score'] if 'score' in d else 'N/A') for s, d in list(strategy_scores.items())[:3]]}")
             logger.info(f"📊 Selected: {strategy_name} (score: {score_data['score']:.2f}, confidence: {confidence:.2f})")
             
             return SimpleRecommendation(strategy_name, reasoning, confidence)
@@ -184,17 +177,9 @@ class StrategyManager:
         trend_direction = market_data["trend_direction"]  # Required (NO FALLBACKS)
         volume_category = market_data["volume_category"]  # Required (NO FALLBACKS)
         
-        volatility_5m_raw = market_data["volatility_5m"]  # Required (NO FALLBACKS)
-        try:
-            volatility_5m = float(volatility_5m_raw) if volatility_5m_raw is not None else 0.0
-        except (ValueError, TypeError):
-            volatility_5m = 0.0
-        
-        rsi_value_raw = market_data["rsi_value"]  # Required (NO FALLBACKS)
-        try:
-            rsi_value = float(rsi_value_raw) if rsi_value_raw is not None else 50.0
-        except (ValueError, TypeError):
-            rsi_value = 50.0
+        # Required fields - will raise if missing or invalid (NO FALLBACKS)
+        volatility_5m = float(market_data["volatility_5m"])
+        rsi_value = float(market_data["rsi_value"])
         
         # Extended data (nested) - Required (NO FALLBACKS)
         trend_data = market_data["trend"]
@@ -224,10 +209,7 @@ class StrategyManager:
         # STRATEGY INDEPENDENCE: S/R levels NOT used for strategy selection
         # Strategy selection is based purely on market conditions (volatility, trend, volume, RSI, pressure)
         # S/R level filtering happens AFTER strategy is selected in PredictionEngine
-        try:
-            current_price = float(market_data["current_price"])  # Required (NO FALLBACKS)
-        except (ValueError, TypeError):
-            current_price = 0.0
+        current_price = float(market_data["current_price"])  # Required (NO FALLBACKS) - will raise if invalid
         
         # Orderbook data - ensure numeric types are floats
         spread_pct_raw = self._safe_get(orderbook_data, "spread_percentage", 0.0)
@@ -377,10 +359,7 @@ class StrategyManager:
             factors.append(f"RSI {rsi:.1f} (extreme)")
         
         # Spread: Tight spread is critical (30 points)
-        try:
-            spread = float(data["spread_pct"])  # Required (NO FALLBACKS)
-        except (ValueError, TypeError):
-            spread = 1.0  # Defensive float conversion only
+        spread = float(data["spread_pct"])  # Required (NO FALLBACKS) - will raise if invalid
         if spread < 0.0001:  # <0.01%
             score += 30.0
             factors.append(f"Tight spread ({spread*100:.3f}%)")
@@ -404,10 +383,7 @@ class StrategyManager:
             factors.append(f"{vol_cat} volume (insufficient)")
         
         # RSI momentum: Neutral/positive momentum (10 points)
-        try:
-            rsi_momentum = float(data["rsi_momentum"])  # Required (NO FALLBACKS)
-        except (ValueError, TypeError):
-            rsi_momentum = 0.0  # Defensive float conversion only
+        rsi_momentum = float(data["rsi_momentum"])  # Required (NO FALLBACKS) - will raise if invalid
         if -0.1 <= rsi_momentum <= 0.2:
             score += 10.0
             factors.append("Stable RSI momentum")
@@ -423,10 +399,7 @@ class StrategyManager:
         factors = []
         
         # Volatility: EXTREME is required (40 points)
-        try:
-            vol_5m = float(data["volatility_5m"])  # Required (NO FALLBACKS)
-        except (ValueError, TypeError):
-            vol_5m = 0.0  # Defensive float conversion only
+        vol_5m = float(data["volatility_5m"])  # Required (NO FALLBACKS) - will raise if invalid
         if vol_5m > 0.05 or data["volatility_category"] == "EXTREME":
             score += 40.0
             factors.append(f"Extreme volatility ({vol_5m*100:.2f}%)")
@@ -469,10 +442,7 @@ class StrategyManager:
             score += 20.0
             factors.append(f"{data['trend_direction']} trend")
             # Trend strength bonus - ensure float conversion
-            try:
-                trend_strength = float(data["trend_strength"])  # Required (NO FALLBACKS)
-            except (ValueError, TypeError):
-                trend_strength = 0.5  # Defensive float conversion only
+            trend_strength = float(data["trend_strength"])  # Required (NO FALLBACKS) - will raise if invalid
             if trend_strength > 0.7:
                 score += 10.0
                 factors.append(f"Strong trend (strength: {trend_strength:.2f})")
@@ -539,10 +509,7 @@ class StrategyManager:
             factors.append(f"{data['volatility_category']} volatility (low)")
         
         # RSI momentum: Aligned with trend (10 points)
-        try:
-            rsi_momentum_check = float(data["rsi_momentum"])  # Required (NO FALLBACKS)
-        except (ValueError, TypeError):
-            rsi_momentum_check = 0.0  # Defensive float conversion only
+        rsi_momentum_check = float(data["rsi_momentum"])  # Required (NO FALLBACKS) - will raise if invalid
         if (data["trend_direction"] == "BULLISH" and rsi_momentum_check > 0) or \
            (data["trend_direction"] == "BEARISH" and rsi_momentum_check < 0):
             score += 10.0
@@ -725,10 +692,7 @@ class StrategyManager:
             score += 20.0
             factors.append("Sideways trend")
         else:
-            try:
-                trend_strength_check = float(data["trend_strength"])  # Required (NO FALLBACKS)
-            except (ValueError, TypeError):
-                trend_strength_check = 0.5  # Defensive float conversion only
+            trend_strength_check = float(data["trend_strength"])  # Required (NO FALLBACKS) - will raise if invalid
             if trend_strength_check < 0.5:
                 score += 10.0
                 factors.append("Weak trend")
@@ -755,18 +719,81 @@ class StrategyManager:
         return max(0.0, score), factors
     
     def _score_standard(self, data: Dict[str, Any]) -> tuple:
-        """Score standard strategy - fallback for balanced conditions"""
-        score = 50.0  # Base score (always available)
-        factors = ["Standard fallback strategy"]
+        """Score standard strategy - balanced medium-term trades (1-4h holds)"""
+        score = 0.0
+        factors = []
         
-        # Bonus for balanced conditions
+        # Volatility: MODERATE or LOW-MODERATE preferred (30 points)
         if data["volatility_category"] == "MODERATE":
-            score += 10.0
-            factors.append("Moderate volatility")
+            score += 30.0
+            factors.append("Moderate volatility (ideal)")
+        elif data["volatility_category"] == "LOW":
+            score += 20.0
+            factors.append("Low volatility (acceptable)")
+        elif data["volatility_category"] == "HIGH":
+            score += 15.0
+            factors.append("High volatility (manageable)")
+        else:
+            score -= 10.0
+            factors.append(f"{data['volatility_category']} volatility (poor)")
         
-        if data["volume_category"] in ["NORMAL", "HIGH"]:
+        # Volume: NORMAL/HIGH preferred (20 points)
+        vol_cat = data["volume_category"]
+        if vol_cat in ["NORMAL", "HIGH"]:
+            score += 20.0
+            factors.append(f"{vol_cat} volume (good)")
+        elif vol_cat == "VERY_HIGH":
+            score += 15.0
+            factors.append("Very high volume (acceptable)")
+        elif vol_cat == "LOW":
             score += 10.0
-            factors.append(f"{data['volume_category']} volume")
+            factors.append("Low volume (suboptimal)")
+        else:
+            score -= 10.0
+            factors.append(f"{vol_cat} volume (poor)")
+        
+        # RSI: Wide range acceptable (20 points)
+        try:
+            rsi = float(data["rsi_value"]) if "rsi_value" in data and data["rsi_value"] is not None else 50.0
+        except (ValueError, TypeError):
+            rsi = 50.0
+        if 35 <= rsi <= 65:
+            score += 20.0
+            factors.append(f"RSI {rsi:.1f} (neutral - ideal)")
+        elif 25 <= rsi < 35 or 65 < rsi <= 75:
+            score += 15.0
+            factors.append(f"RSI {rsi:.1f} (directional opportunity)")
+        else:
+            score += 5.0
+            factors.append(f"RSI {rsi:.1f} (extreme - careful)")
+        
+        # Spread: Wider spread acceptable than scalping (15 points)
+        try:
+            spread = float(data["spread_pct"])
+        except (ValueError, TypeError):
+            spread = 1.0
+        if spread < 0.001:  # <0.1%
+            score += 15.0
+            factors.append(f"Excellent spread ({spread*100:.3f}%)")
+        elif spread < 0.005:  # <0.5%
+            score += 10.0
+            factors.append(f"Good spread ({spread*100:.3f}%)")
+        else:
+            score += 5.0
+            factors.append(f"Acceptable spread ({spread*100:.3f}%)")
+        
+        # Trend: Clear trend helps (15 points)
+        trend_15m = data.get("trend_15m", "SIDEWAYS")
+        trend_1h = data.get("trend_1h", "SIDEWAYS")
+        if trend_15m != "SIDEWAYS" and trend_15m == trend_1h:
+            score += 15.0
+            factors.append(f"Strong trend alignment ({trend_15m})")
+        elif trend_15m != "SIDEWAYS" or trend_1h != "SIDEWAYS":
+            score += 10.0
+            factors.append("Some trend present")
+        else:
+            score += 5.0
+            factors.append("Sideways (range trading)")
         
         return max(0.0, score), factors
     
@@ -819,10 +846,7 @@ class StrategyManager:
         if data["trend_direction"] == "UNKNOWN":
             missing_critical.append("trend")
             data_quality -= 0.05
-        try:
-            rsi_value_check = float(data["rsi_value"])  # Required (NO FALLBACKS)
-        except (ValueError, TypeError):
-            rsi_value_check = 0.0  # Defensive float conversion only
+        rsi_value_check = float(data["rsi_value"])  # Required (NO FALLBACKS) - will raise if invalid
         if rsi_value_check <= 0:
             missing_critical.append("rsi")
             data_quality -= 0.05
@@ -832,9 +856,6 @@ class StrategyManager:
         # Total confidence
         total_confidence = score_confidence + gap_confidence + data_quality
         total_confidence = min(0.95, max(0.1, total_confidence))  # Clamp between 0.1 and 0.95
-        
-        if missing_critical:
-            logger.debug(f"⚠️ Missing critical data: {missing_critical} (confidence penalty)")
         
         return round(total_confidence, 3)
     
@@ -977,8 +998,6 @@ class StrategyManager:
             # Keep only recent records
             if len(self.pending_strategy_outcomes) > 100:
                 self.pending_strategy_outcomes = self.pending_strategy_outcomes[-100:]
-            
-            logger.debug(f"📊 Strategy selection recorded: {strategy} (confidence: {recommendation.confidence:.3f})")
             
         except Exception as e:
             logger.error(f"❌ Strategy selection recording failed: {e}")

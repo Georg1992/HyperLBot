@@ -72,18 +72,11 @@ class DashboardService:
                         # Only load data if it's less than 30 seconds old (very fresh)
                         if time_diff < 30:  # 30 seconds
                             self._data = file_data
-                            logger.debug("📊 Dashboard data loaded from file (fresh data)")
                         else:
-                            logger.info("🧹 Dashboard data file is stale - starting with fresh data")
                             # Keep the initialized structure, don't load stale data
+                            pass
                     except Exception as e:
                         logger.warning(f"⚠️ Could not parse file timestamp: {e}")
-                        # Keep the initialized structure, don't load stale data
-                else:
-                    logger.info("🧹 Dashboard data file has no timestamp - starting with fresh data")
-                    # Keep the initialized structure, don't load stale data
-            else:
-                logger.debug("📊 No dashboard data file found - starting fresh")
         except Exception as e:
             logger.warning(f"⚠️ Could not load dashboard data: {e}")
     
@@ -126,23 +119,8 @@ class DashboardService:
                 pred_obj = market_data["prediction"] if "prediction" in market_data else None
                 self._data["prediction"] = pred_obj
                 
-                # Surface ML performance to top-level for UI consumption (always set, even if empty)
-                ml_perf = market_data["ml_performance"] if "ml_performance" in market_data else {}
-                self._data["ml_performance"] = ml_perf
-                
-                # Log prediction status for debugging
-                if pred_obj:
-                    pred_dir = pred_obj["direction"] if "direction" in pred_obj else "N/A"
-                    pred_conf = pred_obj["confidence"] if "confidence" in pred_obj else None
-                    # Handle None confidence (not yet implemented)
-                    conf_str = f"{pred_conf:.1f}%" if pred_conf is not None else "N/A"
-                    logger.info(f"🤖 ✅ Prediction surfaced to dashboard: {pred_dir} @ {conf_str}")
-                else:
-                    logger.debug(f"🤖 No prediction available (prediction is None)")
-                
                 self._save_data()
-                # Trigger WebSocket emission
-                self._trigger_websocket_emission()
+                # WebSocket emission happens automatically via file monitoring
                 # RSI removed - not working properly
         except Exception as e:
             logger.error(f"❌ Could not update market data: {e}")
@@ -175,14 +153,6 @@ class DashboardService:
             # Re-raise to fail fast - NO FALLBACKS
             raise
     
-    def _trigger_websocket_emission(self):
-        """Trigger WebSocket emission to update dashboard"""
-        try:
-            # The dashboard will automatically detect data changes through its monitoring loop
-            # The data has been saved to file, so the dashboard's _start_data_monitoring will pick it up
-            pass
-        except Exception as e:
-            logger.error(f"❌ Could not trigger WebSocket emission: {e}")
     
     def update_session_data(self, session_data: Dict[str, Any]):
         """Update session data"""
@@ -190,7 +160,6 @@ class DashboardService:
             with self._lock:
                 self._data["session"] = session_data.copy()
                 self._save_data()
-                # Removed excessive debug logging
         except Exception as e:
             logger.error(f"❌ Could not update session data: {e}")
     
@@ -346,5 +315,4 @@ def create_dashboard_service(heartbeat_file=None) -> DashboardService:
     if _global_dashboard_service is None:
         _global_dashboard_service = DashboardService(heartbeat_file=heartbeat_file)
         logger.info("🎛️ DashboardService singleton created")
-    # Removed excessive singleton reuse logging
     return _global_dashboard_service

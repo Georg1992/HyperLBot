@@ -12,22 +12,29 @@ class WhaleConditionAnalyzer:
     """Analyzes whale conditions - follows SRP"""
     
     def __init__(self):
-        # Removed excessive debug logging
         pass
     
-    def analyze_whale_conditions(self) -> Dict[str, Any]:
-        """Analyze whale conditions using existing WhaleAnalysisCalculator - NO DUPLICATION"""
+    def analyze_whale_conditions(self, whale_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Analyze whale conditions using PASSED DATA - NO REDUNDANT FETCHING"""
         try:
-            # Use existing WhaleAnalysisCalculator instead of duplicating logic
-            from core.calculations.whale_analysis_calculator import create_whale_analysis_calculator
-            whale_calculator = create_whale_analysis_calculator()
-            whale_analysis = whale_calculator.get_latest_analysis()
+            # This analyzer should receive whale data as parameter from caller
+            # For now, return minimal analysis since whale data should be passed in
+            if not whale_data:
+                # Minimal response when no data provided
+                return {
+                    "factors": ["Whale data not available"],
+                    "risk_factors": [],
+                    "positive_factors": [],
+                    "whale_activity": "UNKNOWN",
+                    "whale_count": 0,
+                    "whale_sentiment": "UNKNOWN"
+                }
             
-            # Extract data from existing calculator
-            whale_activity = whale_analysis["whale_activity"] if "whale_activity" in whale_analysis else "UNKNOWN"
-            whale_count = whale_analysis["whale_count"] if "whale_count" in whale_analysis else 0
-            whale_sentiment = whale_analysis["whale_sentiment"] if "whale_sentiment" in whale_analysis else "NEUTRAL"
-            exchange_flows = whale_analysis["exchange_flows"] if "exchange_flows" in whale_analysis else {}
+            # Use passed data
+            whale_activity = whale_data.get("whale_activity", "UNKNOWN")
+            whale_count = whale_data.get("whale_count", 0)
+            whale_sentiment = whale_data.get("whale_sentiment", "NEUTRAL")
+            exchange_flows = whale_data.get("exchange_flows", {})
             
             # Convert to condition analyzer format
             factors = [f"Whale Activity: {whale_activity}"]
@@ -74,7 +81,7 @@ class WhaleConditionAnalyzer:
                 "whale_sentiment": whale_sentiment,
                 "exchange_flows": exchange_flows,
                 "suitable_for_trading": suitable_for_trading,
-                "whale_data": whale_analysis  # Include raw data for dashboard
+                "whale_data": whale_data  # Include raw data for dashboard
             }
         except Exception as e:
             logger.error(f"❌ Whale condition analysis failed: {e}")

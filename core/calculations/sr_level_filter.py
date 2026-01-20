@@ -36,7 +36,6 @@ class SRLevelFilter(BaseCalculator):
             symbol: Trading symbol (default: "BTC")
         """
         super().__init__(symbol)
-        logger.debug(f"SR Level Filter initialized for {symbol}")
     
     def calculate_level_score(
         self,
@@ -213,18 +212,6 @@ class SRLevelFilter(BaseCalculator):
                 cluster_score * weights["cluster"]
             )
             
-            # Log breakdown for debugging (only if score is significant)
-            if composite_score > 50:
-                logger.debug(
-                    f"[{strategy}] Level @${level_price:.2f}: score={composite_score:.1f} "
-                    f"(power={power_score:.0f}*{weights['power']:.2f}, "
-                    f"prox={proximity_score:.0f}*{weights['proximity']:.2f}, "
-                    f"rec={recency_score:.0f}*{weights['recency']:.2f}, "
-                    f"mtf={mtf_score:.0f}*{weights['mtf']:.2f}, "
-                    f"touch={touch_score:.0f}*{weights['touches']:.2f}, "
-                    f"clust={cluster_score:.0f}*{weights['cluster']:.2f})"
-                )
-            
             return composite_score
             
         except Exception as e:
@@ -374,12 +361,20 @@ class SRLevelFilter(BaseCalculator):
         Returns:
             Dictionary with "support" and "resistance" lists
         """
-        # Filter for active levels
+        # Get strategy-specific max distance constraint
+        from config.config import TradingConfig
+        
+        strategy_config = TradingConfig.SR_LEVEL_SELECTION.get(strategy, {})
+        max_distance_pct = strategy_config.get("max_distance_pct", 0.05)  # Default 5%
+        max_distance = current_price * max_distance_pct
+        
+        # Filter for active levels WITHIN strategy-specific distance range
         active_support = [
             level for level in all_levels
             if "type" in level and level["type"] == "support"
             and "price_level" in level and level["price_level"] is not None
             and level["price_level"] < current_price
+            and (current_price - level["price_level"]) <= max_distance  # Enforce max distance
             and "status" in level and level["status"] == "active"
         ]
         
@@ -388,6 +383,7 @@ class SRLevelFilter(BaseCalculator):
             if "type" in level and level["type"] == "resistance"
             and "price_level" in level and level["price_level"] is not None
             and level["price_level"] > current_price
+            and (level["price_level"] - current_price) <= max_distance  # Enforce max distance
             and "status" in level and level["status"] == "active"
         ]
         

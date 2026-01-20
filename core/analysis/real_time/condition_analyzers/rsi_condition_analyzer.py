@@ -12,22 +12,25 @@ class RSIConditionAnalyzer:
     """Analyzes RSI conditions - follows SRP"""
     
     def __init__(self):
-        # Removed excessive debug logging
         pass
     
     def analyze_rsi_conditions(self, rsi: float) -> Dict[str, Any]:
-        """Analyze RSI conditions using existing RSICalculator - NO DUPLICATION"""
+        """Analyze RSI conditions using PASSED DATA - NO REDUNDANT FETCHING"""
         try:
-            # Use existing RSICalculator instead of duplicating logic
-            from core.calculations.rsi_calculator import create_rsi_calculator
-            rsi_calculator = create_rsi_calculator()
-            rsi_analysis = rsi_calculator.get_latest_analysis()
+            # Use passed parameter directly - data already fetched once
+            current_rsi = rsi
             
-            # Extract data from existing calculator
-            current_rsi = rsi_analysis["rsi"] if "rsi" in rsi_analysis else rsi
-            rsi_trend = rsi_analysis["rsi_trend"] if "rsi_trend" in rsi_analysis else "UNKNOWN"
-            rsi_signal = rsi_analysis["rsi_signal"] if "rsi_signal" in rsi_analysis else "NEUTRAL"
-            rsi_momentum = rsi_analysis["rsi_momentum"] if "rsi_momentum" in rsi_analysis else 0.0
+            # Determine signal from RSI value
+            if current_rsi < 30:
+                rsi_signal = "OVERSOLD"
+            elif current_rsi > 70:
+                rsi_signal = "OVERBOUGHT"
+            else:
+                rsi_signal = "NEUTRAL"
+            
+            # Note: Trend and momentum require historical data - not available from single value
+            rsi_trend = "UNKNOWN"
+            rsi_momentum = 0.0
             
             # Handle None RSI values - no placeholders
             if current_rsi is None:

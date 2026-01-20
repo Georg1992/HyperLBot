@@ -53,26 +53,13 @@ class SRScorer:
         """
         from config.config import TradingConfig
         
-        # Try to load learned weights (if ML training was done), fallback to universal static weights
-        learned_weights = self._load_learned_weights(strategy)
-        
-        if learned_weights:
-            logger.info("✅ Loaded universal learned weights (used by all strategies)")
-            # Use learned weights if available (ML-optimized)
-            # Only include inherent strength factors (no proximity/recency)
-            self._power_weights = {
-                'touch': learned_weights["touch"],  # Required (NO FALLBACKS)
-                'reversal_probability': learned_weights["reversal_probability"],  # Required (NO FALLBACKS)
-                'volume': learned_weights["volume"]  # Required (NO FALLBACKS)
-            }
-        else:
-            # Use universal static weights (same for all strategies)
-            universal_weights = TradingConfig.SR_POWER_WEIGHTS
-            self._power_weights = {
-                'touch': universal_weights["touch"],  # Required (NO FALLBACKS)
-                'reversal_probability': universal_weights["reversal_probability"],  # Required (NO FALLBACKS)
-                'volume': universal_weights["volume"]  # Required (NO FALLBACKS)
-            }
+        # Use universal static weights from config
+        universal_weights = TradingConfig.SR_POWER_WEIGHTS
+        self._power_weights = {
+            'touch': universal_weights["touch"],  # Required (NO FALLBACKS)
+            'reversal_probability': universal_weights["reversal_probability"],  # Required (NO FALLBACKS)
+            'volume': universal_weights["volume"]  # Required (NO FALLBACKS)
+        }
         
         # Validate weights sum to 1.0
         total_weight = sum(self._power_weights.values())
@@ -81,18 +68,6 @@ class SRScorer:
             for key in self._power_weights:
                 self._power_weights[key] /= total_weight
         self._strategy = strategy
-    
-    def _load_learned_weights(self, strategy: str) -> Optional[Dict[str, float]]:
-        """Load universal learned weights from file (same for all strategies), return None if not available"""
-        try:
-            from .sr_weight_trainer import SRWeightTrainer
-            trainer = SRWeightTrainer()
-            # Universal weights - strategy parameter ignored (kept for backward compatibility)
-            weights = trainer.load_weights(method="elasticnet")
-            return weights
-        except Exception as e:
-            logger.debug(f"Could not load learned weights: {e}")
-            return None
         
         
     def calculate_reversal_probability(self, level: Level, current_price: float, 
