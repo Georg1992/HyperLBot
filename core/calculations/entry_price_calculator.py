@@ -52,11 +52,11 @@ class EntryPriceCalculator:
             entry_offset_multiplier = config["entry_offset_multiplier"]  # Required (NO FALLBACKS)
             
             # Get ATR for mathematically justified base calculation (NO FALLBACKS)
-            sr_data = unified_data.get("support_resistance", {})
-            if not sr_data:
+            if "support_resistance" not in unified_data:
                 raise ValueError("support_resistance data is required for entry price calculation - NO FALLBACKS")
+            sr_data = unified_data["support_resistance"]
             
-            sr_metadata = sr_data.get("metadata", {})
+            if "metadata" not in sr_data:
             if not sr_metadata:
                 raise ValueError("support_resistance.metadata is required for entry price calculation - NO FALLBACKS")
             
@@ -185,7 +185,7 @@ class EntryPriceCalculator:
         spread_adjustment = 0.0
         try:
             # Orderbook data should be available (NO FALLBACKS)
-            orderbook_data = unified_data.get("orderbook_analysis", {})
+            orderbook_data = unified_data["orderbook_analysis"] if "orderbook_analysis" in unified_data else {}
             if not orderbook_data:
                 logger.warning("⚠️ Orderbook analysis missing, using 0 spread adjustment")
                 spread_adjustment = 0.0
@@ -253,7 +253,7 @@ class EntryPriceCalculator:
         liquidity_multiplier = 1.0
         try:
             # Orderbook data should be available (NO FALLBACKS)
-            orderbook_data = unified_data.get("orderbook_analysis", {})
+            orderbook_data = unified_data["orderbook_analysis"] if "orderbook_analysis" in unified_data else {}
             if not orderbook_data:
                 logger.warning("⚠️ Orderbook analysis missing, using neutral liquidity multiplier")
                 liquidity_multiplier = 1.0

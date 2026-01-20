@@ -142,10 +142,10 @@ class PatternRecognitionEngine:
     def _extract_price_data(self, candles: List[Dict[str, Any]]) -> Dict[str, List[float]]:
         """Extract price data from candles"""
         return {
-            "high": [float(candle.get("high", 0)) for candle in candles],
-            "low": [float(candle.get("low", 0)) for candle in candles],
-            "close": [float(candle.get("close", 0)) for candle in candles],
-            "open": [float(candle.get("open", 0)) for candle in candles]
+            "high": [float(candle["high"]) if "high" in candle else 0.0 for candle in candles],
+            "low": [float(candle["low"]) if "low" in candle else 0.0 for candle in candles],
+            "close": [float(candle["close"]) if "close" in candle else 0.0 for candle in candles],
+            "open": [float(candle["open"]) if "open" in candle else 0.0 for candle in candles]
         }
     
     def _calculate_pattern_birth_times(self, patterns: Dict[str, List[Dict[str, Any]]], candles: List[Dict[str, Any]], current_time: float) -> Dict[str, List[Dict[str, Any]]]:
@@ -160,7 +160,7 @@ class PatternRecognitionEngine:
                         # Use actual pattern indices to get timestamp
                         start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
                         if start_idx < len(candles):
-                            pattern_timestamp = candles[start_idx].get("timestamp", current_time)
+                            pattern_timestamp = candles[start_idx]["timestamp"] if "timestamp" in candles[start_idx] else current_time
                             
                             # Handle both seconds and milliseconds timestamps
                             # If timestamp is > 1e10, it's in milliseconds, convert to seconds
@@ -177,7 +177,8 @@ class PatternRecognitionEngine:
                                 pattern["age_minutes"] = 0
                             else:
                                 pattern["age_minutes"] = age_minutes
-                                logger.debug(f"🕐 Pattern {pattern.get('pattern', 'unknown')}: age: {age_minutes:.1f}m")
+                                p_name = pattern["pattern"] if "pattern" in pattern else "unknown"
+                                logger.debug(f"🕐 Pattern {p_name}: age: {age_minutes:.1f}m")
                         else:
                             pattern["age_minutes"] = 0
                     except Exception as e:
@@ -254,7 +255,7 @@ class PatternRecognitionEngine:
     def _get_pattern_key(self, pattern: Dict[str, Any]) -> str:
         """Generate unique key for pattern tracking"""
         try:
-            pattern_name = pattern.get("pattern", "unknown")
+            pattern_name = pattern["pattern"] if "pattern" in pattern else "unknown"
             pattern_high = pattern["pattern_high"] if "pattern_high" in pattern else 0
             pattern_low = pattern["pattern_low"] if "pattern_low" in pattern else 0
             return f"{pattern_name}_{pattern_high}_{pattern_low}"

@@ -43,7 +43,7 @@ class VolumeClassifier:
             raise ValueError("Volume history is required for percentile-based categorization")
         
         # Extract volumes and filter out zero/invalid volumes
-        volumes = [v.get('volume', 0.0) for v in volume_history if v.get('volume', 0.0) > 0]
+        volumes = [v['volume'] if 'volume' in v else 0.0 for v in volume_history if ('volume' in v and v['volume'] > 0)]
         
         if not volumes or len(volumes) < 20:
             raise ValueError(f"Insufficient volume data for percentile calculation: {len(volumes)} valid volumes (minimum 20 required)")
