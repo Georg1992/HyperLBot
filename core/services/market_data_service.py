@@ -728,7 +728,7 @@ class MarketDataService:
                     "category": "unknown",
                     "signal": "neutral",
                     "timestamp": time.time()
-                }),
+                },
                 
                 "trend": market_data["trend"] if "trend" in market_data else {
                     "direction": "neutral",
