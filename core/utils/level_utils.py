@@ -21,7 +21,7 @@ def get_level_power(level_data: Dict[str, Any], default: float = 50.0) -> float:
         return default
     
     # Try power first (new field), then strength_score (old field), then default
-    power = level_data.get("power")
+    power = level_data["power"] if "power" in level_data else None
     if power is not None:
         return float(power)
     
