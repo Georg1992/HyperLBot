@@ -124,24 +124,24 @@ class CrossAssetCorrelationAnalyzer:
     def _analyze_risk_sentiment(self, external_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze risk sentiment - follows SRP"""
         try:
-            dxy_data = external_data.get("dxy", {})
-            gold_data = external_data.get("gold", {})
-            stock_data = external_data.get("stock", {})
+            dxy_data = external_data["dxy"] if "dxy" in external_data else {}
+            gold_data = external_data["gold"] if "gold" in external_data else {}
+            stock_data = external_data["stock"] if "stock" in external_data else {}
             
             # Analyze risk factors from each asset
             risk_factors = []
             
             # DXY risk analysis
-            if dxy_data.get("price", 0) > 0:
-                dxy_change = dxy_data.get("change_percent", 0)
+            if "price" in dxy_data and dxy_data["price"] > 0:
+                dxy_change = dxy_data["change_percent"] if "change_percent" in dxy_data else 0
                 if dxy_change > 0.5:  # Strong dollar strength
                     risk_factors.append("DXY_STRENGTH")
                 elif dxy_change < -0.5:  # Dollar weakness
                     risk_factors.append("DXY_WEAKNESS")
             
             # Gold risk analysis
-            if gold_data.get("price", 0) > 0:
-                gold_change = gold_data.get("change_percent", 0)
+            if "price" in gold_data and gold_data["price"] > 0:
+                gold_change = gold_data["change_percent"] if "change_percent" in gold_data else 0
                 if gold_change > 1.0:  # Strong gold rally
                     risk_factors.append("GOLD_RALLY")
                 elif gold_change < -1.0:  # Gold selloff
