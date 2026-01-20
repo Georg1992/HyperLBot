@@ -1726,40 +1726,33 @@ class PredictionEngine:
             if atr_5m <= 0:
                 raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
             
-            # Get strategy-specific entry proximity configuration
-            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
-            entry_proximity_config = strategy_config["entry_proximity_config"]  # Required in all strategies (NO FALLBACKS)
-            optimal_atr = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS)
+            # FIXED Issue #5: Entry price candidates circular logic
+            # Problem: Generated 4 candidates, scored by proximity to S/R, candidate AT level always won
+            # Solution: Use level price directly (optimal entry point)
+            # Rationale:
+            #   - S/R levels are already optimal entry points (tested by market)
+            #   - Proximity scoring makes "at level" the best choice anyway
+            #   - Spread/slippage should be handled by order type (limit vs market), not entry offset
             
-            # Generate candidate entry prices around the level
-            # Start at level (optimal for entry scoring), then consider small offsets for spread/slippage
-            candidates = []
+            # Use level price directly as entry (no candidate generation needed)
+            entry_price = level_price
             
-            # Candidate 1: Exactly at level (best for entry scoring)
-            candidates.append(level_price)
+            # Validate entry price
+            if entry_price <= 0:
+                logger.warning(f"⚠️ Invalid entry price: ${entry_price:.2f}")
+                return None
+            if setup_type == "support_level" and entry_price >= current_price:
+                logger.warning(f"⚠️ LONG entry ${entry_price:.2f} >= current ${current_price:.2f}")
+                return None
+            if setup_type == "resistance_level" and entry_price <= current_price:
+                logger.warning(f"⚠️ SHORT entry ${entry_price:.2f} <= current ${current_price:.2f}")
+                return None
             
-            # Candidate 2-4: Small offsets within optimal range (for spread/slippage)
-            optimal_offset_distance = atr_5m * optimal_atr
-            if setup_type == "support_level":  # LONG
-                # Slightly above support (catches bounce, accounts for spread)
-                candidates.append(level_price + (optimal_offset_distance * 0.3))
-                candidates.append(level_price + (optimal_offset_distance * 0.6))
-                candidates.append(level_price + (optimal_offset_distance * 1.0))
-            else:  # resistance_level - SHORT
-                # Slightly below resistance (catches bounce down, accounts for spread)
-                candidates.append(level_price - (optimal_offset_distance * 0.3))
-                candidates.append(level_price - (optimal_offset_distance * 0.6))
-                candidates.append(level_price - (optimal_offset_distance * 1.0))
-            
-            # Score each candidate using entry scoring factors
-            best_entry_price = None
-            best_score = -1.0
-            best_breakdown = None
-            
+            # Calculate entry quality factors (for reasoning)
             level_data_with_type = {**level_data, "setup_type": setup_type}
             level_power = level_data["power"]  # Required (NO FALLBACKS)
             
-            # Calculate recency factor once (same for all candidates) - using unified calculator
+            # Calculate recency factor - using unified calculator
             last_touch_timestamp = level_data["last_touch_timestamp"]  # Required (NO FALLBACKS)
             from core.calculations.recency_calculator import RecencyCalculator
             recency_factor = RecencyCalculator.calculate_entry_recency_factor(
@@ -1767,81 +1760,46 @@ class PredictionEngine:
                 strategy=strategy
             )
             
-            # Get strategy-specific candidate weights
-            candidate_weights = strategy_config["entry_candidate_weights"] if "entry_candidate_weights" in strategy_config else {
-                "level_strength": 0.30,
-                "entry_quality": 0.40,
-                "fill_probability": 0.30
+            # Calculate entry quality score (proximity to S/R level)
+            sr_score, _ = self._score_entry_sr_factor(
+                entry_price=entry_price,
+                current_price=current_price,
+                direction=direction,
+                level_data=level_data_with_type,
+                unified_data=unified_data,
+                strategy=strategy
+            )
+            
+            # Calculate fill probability (proximity to current price)
+            from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
+            distance_to_current_pct = calculate_distance_pct(entry_price, current_price, current_price)
+            distance_to_current_atr = calculate_distance_atr(distance_to_current_pct, atr_pct)
+            # Convert distance to probability (closer = higher probability)
+            # 0 ATR = 100%, 3 ATR = 40%, 6+ ATR = 10%
+            fill_probability_score = max(10, 100 - (distance_to_current_atr / 6.0) * 90)
+            
+            # Calculate combined entry score
+            entry_score = (level_power + sr_score + fill_probability_score) / 3.0 * recency_factor
+            
+            # Distance metrics for breakdown (entry is AT level)
+            distance_from_level = 0.0
+            distance_pct = 0.0
+            
+            entry_breakdown = {
+                "strength_score": level_power,
+                "entry_quality_score": sr_score,
+                "fill_probability_score": fill_probability_score,
+                "recency_factor": recency_factor,
+                "distance_atr": 0.0,
+                "distance_pct": distance_pct,
+                "hours_since_touch": hours_since_touch,
+                "setup_type": setup_type
             }
             
-            for candidate_price in candidates:
-                # Validate candidate
-                if candidate_price <= 0:
-                    continue
-                if setup_type == "support_level" and candidate_price >= current_price:
-                    continue  # LONG entry must be below current price
-                if setup_type == "resistance_level" and candidate_price <= current_price:
-                    continue  # SHORT entry must be above current price
-                
-                # 1. LEVEL STRENGTH SCORE (inherent level quality)
-                strength_score = level_power  # 0-100
-                
-                # 2. ENTRY QUALITY SCORE (proximity to S/R level)
-                sr_score, _ = self._score_entry_sr_factor(
-                    entry_price=candidate_price,
-                    current_price=current_price,
-                    direction=direction,
-                    level_data=level_data_with_type,
-                    unified_data=unified_data,
-                    strategy=strategy
-                )
-                entry_quality_score = sr_score  # 0-100
-                
-                # 3. FILL PROBABILITY SCORE (proximity to current price)
-                from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
-                distance_to_current_pct = calculate_distance_pct(candidate_price, current_price, current_price)
-                distance_to_current_atr = calculate_distance_atr(distance_to_current_pct, atr_pct)
-                # Convert distance to probability (closer = higher probability)
-                # 0 ATR = 100%, 3 ATR = 40%, 6+ ATR = 10%
-                fill_probability_score = max(10, 100 - (distance_to_current_atr / 6.0) * 90)
-                
-                # STRATEGY-AWARE COMBINED SCORE
-                combined_score = (
-                    strength_score * candidate_weights["level_strength"] +
-                    entry_quality_score * candidate_weights["entry_quality"] +
-                    fill_probability_score * candidate_weights["fill_probability"]
-                ) * recency_factor
-                
-                if combined_score > best_score:
-                    best_score = combined_score
-                    best_entry_price = candidate_price
-                    
-                    # Calculate distance metrics for breakdown
-                    from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
-                    distance_pct = calculate_distance_pct(candidate_price, level_price, current_price)
-                    distance_atr = calculate_distance_atr(distance_pct, atr_pct)
-                    hours_since_touch = (time.time() - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else 0.0
-                    
-                    # Store breakdown for best candidate
-                    best_breakdown = {
-                        "strength_score": strength_score,
-                        "entry_quality_score": entry_quality_score,
-                        "fill_probability_score": fill_probability_score,
-                        "recency_factor": recency_factor,
-                        "strategy_weights": candidate_weights,
-                        "distance_atr": distance_atr,
-                        "distance_pct": distance_pct,
-                        "hours_since_touch": hours_since_touch,
-                        "setup_type": setup_type
-                    }
-            
-            if best_entry_price is None:
-                return None
-            
             return {
-                "entry_price": best_entry_price,
-                "entry_score": best_score,
-                "entry_breakdown": best_breakdown
+                "entry_price": entry_price,
+                "entry_score": entry_score,
+                "entry_breakdown": entry_breakdown
             }
             
         except Exception as e:

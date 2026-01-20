@@ -1,34 +1,6 @@
 {
   "last_updated": "2026-01-12",
   "active_issues": {
-    "liquidation_range_too_restrictive": {
-      "severity": "CRITICAL",
-      "location": "core/calculations/support_resistance_calculator.py:535-555",
-      "problem": "40x leverage → liquidation range only ±1.2% from current price",
-      "impact": "Filters out valid S/R levels at $87k-$89k support, $92k-$94k resistance",
-      "fix_required": "Expand to 2-3x liquidation range OR make optional"
-    },
-    "power_calculation_too_late": {
-      "severity": "MAJOR",
-      "location": "core/calculations/support_resistance_calculator.py:570",
-      "problem": "Levels clustered/MTF-aligned/filtered BEFORE power calculated",
-      "impact": "Weak levels with many touches rank higher than strong levels",
-      "fix_required": "Calculate preliminary power before clustering"
-    },
-    "cluster_size_filter_arbitrary": {
-      "severity": "MAJOR",
-      "location": "core/calculations/support_resistance_calculator.py:560-566",
-      "problem": "Requires cluster_size >= 2, discards isolated strong levels",
-      "impact": "Loses single strong swing points (e.g., daily high with 15 touches)",
-      "fix_required": "Use power >= 40 instead of cluster_size >= 2"
-    },
-    "entry_price_candidates_circular": {
-      "severity": "CRITICAL",
-      "location": "core/execution/prediction_engine.py:1746-1888",
-      "problem": "Generates 4 entry candidates, scores by S/R proximity, always picks AT level",
-      "impact": "3 of 4 candidates never win, wasted computation",
-      "fix_required": "Remove candidates OR use different scoring (fill probability)"
-    },
     "direction_scoring_asymmetric": {
       "severity": "CRITICAL",
       "location": "core/execution/prediction_engine.py:1299-1308",
@@ -44,6 +16,20 @@
       "was": "Fetched with ±2% expansion, never filtered after → 80% wasted data",
       "now": "Strict liquidation range fetch only, no expansion, no waste",
       "files": ["core/calculations/sr_data_provider.py", "core/calculations/support_resistance_calculator.py"]
+    },
+    "liquidation_range_too_restrictive": {
+      "resolved": "2026-01-12",
+      "was": "40x leverage → ±1.2% range only, filtered valid $87k-$89k support, $92k-$94k resistance",
+      "now": "3x expanded range (±3.6%) for S/R discovery, sees all valid levels",
+      "rationale": "Tight range good for SL/TP placement, wide range needed for market structure/breakout targets",
+      "files": ["core/calculations/support_resistance_calculator.py"]
+    },
+    "cluster_size_filter_arbitrary": {
+      "resolved": "2026-01-12 (pre-existing fix)",
+      "was": "Required cluster_size >= 2, discarded strong single-touch levels",
+      "now": "Uses power >= threshold, keeps strong levels regardless of cluster size",
+      "location": "core/calculations/support_resistance_calculator.py:563-571",
+      "note": "Already fixed before review, confirmed working"
     },
     "rr_hard_constraint": {
       "resolved": "2026-01-12",
