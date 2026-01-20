@@ -225,7 +225,7 @@ class SRScorer:
                     # Support: breakout if price fell below (level - ATR)
                     # Reversal if price stayed above (level - ATR)
                     breakout_threshold = level_price - atr_5m
-                    min_price_after = min(c.get('low', level_price) for c in candles_5m[i+1:i+1+lookahead])
+                    min_price_after = min(c['low'] if 'low' in c else level_price for c in candles_5m[i+1:i+1+lookahead])
                     
                     if min_price_after < breakout_threshold:
                         breakouts += 1
@@ -235,7 +235,7 @@ class SRScorer:
                     # Resistance: breakout if price rose above (level + ATR)
                     # Reversal if price stayed below (level + ATR)
                     breakout_threshold = level_price + atr_5m
-                    max_price_after = max(c.get('high', level_price) for c in candles_5m[i+1:i+1+lookahead])
+                    max_price_after = max(c['high'] if 'high' in c else level_price for c in candles_5m[i+1:i+1+lookahead])
                     
                     if max_price_after > breakout_threshold:
                         breakouts += 1
