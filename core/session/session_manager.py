@@ -430,7 +430,7 @@ class SessionManager:
             if not self.current_session_data:
                 return
                 
-            start_time = self.current_session_data["start_time"] if "start_time" in self.current_session_data else None
+            start_time = self.current_session_data.get("start_time")
             if start_time:
                 try:
                     start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
@@ -465,7 +465,7 @@ class SessionManager:
                 if not self.current_session_id or not self.current_session_data:
                     return False
                     
-                if self.current_session_data.get("status") != "ACTIVE":
+                if ("status" not in self.current_session_data or self.current_session_data["status"] != "ACTIVE"):
                     return False
                 
                 # Update session time
@@ -497,8 +497,8 @@ class SessionManager:
                 
                 if account_data and self.current_session_data:
                     # Only update balance if account balance differs significantly
-                    account_balance = account_data.get("current_balance", 0.0)
-                    session_balance = self.current_session_data.get("current_balance", 0.0)
+                    account_balance = account_data["current_balance"] if "current_balance" in account_data else 0.0
+                    session_balance = self.current_session_data["current_balance"] if "current_balance" in self.current_session_data else 0.0
                     
                     # Small tolerance for floating point differences
                     if abs(account_balance - session_balance) > 0.01:
