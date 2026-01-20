@@ -506,11 +506,15 @@ class SupportResistanceCalculator(BaseCalculator):
         try:
             # Calculate ATR for all timeframes
             atr_14 = self._data_provider.calculate_atr(candles_data['5m'] if '5m' in candles_data else [], 14)
+            candles_15m = candles_data['15m'] if '15m' in candles_data else []
+            candles_1h = candles_data['1h'] if '1h' in candles_data else []
+            candles_1d = candles_data['1d'] if '1d' in candles_data else []
+            
             atr_per_tf = {
                 '5m': atr_14,
-                '15m': self._data_provider.calculate_atr(candles_data.get('15m', []), 14) if candles_data.get('15m') else atr_14 * 3,
-                '1h': self._data_provider.calculate_atr(candles_data.get('1h', []), 14) if candles_data.get('1h') else atr_14 * 12,
-                '1d': self._data_provider.calculate_atr(candles_data.get('1d', []), 14) if candles_data.get('1d') else atr_14 * 288
+                '15m': self._data_provider.calculate_atr(candles_15m, 14) if candles_15m else atr_14 * 3,
+                '1h': self._data_provider.calculate_atr(candles_1h, 14) if candles_1h else atr_14 * 12,
+                '1d': self._data_provider.calculate_atr(candles_1d, 14) if candles_1d else atr_14 * 288
             }
             
             # 1. Detect swing points
@@ -528,8 +532,9 @@ class SupportResistanceCalculator(BaseCalculator):
             # 3. Search for additional touches (1-touch levels)
             levels_with_1_touch = [l for l in clustered_levels if l.touches == 1]
             if levels_with_1_touch:
+                candles_5m = candles_data["5m"] if "5m" in candles_data else []
                 clustered_levels = self._search_database_for_additional_touches(
-                    clustered_levels, levels_with_1_touch, candles_data.get("5m", []), cluster_tolerance, atr_14
+                    clustered_levels, levels_with_1_touch, candles_5m, cluster_tolerance, atr_14
                 )
             
             # 4. MTF alignment
@@ -829,7 +834,7 @@ class SupportResistanceCalculator(BaseCalculator):
             # Sort by power (pure strength: touch, volume, reversal_probability)
             # Highest power wins - represents inherent level quality
             # Safely handle None values with explicit or chain
-            key_levels.sort(key=lambda x: (x.get("power") or x.get("strength_score") or 0), reverse=True)
+            key_levels.sort(key=lambda x: (x["power"] if "power" in x and x["power"] is not None else (x["strength_score"] if "strength_score" in x and x["strength_score"] is not None else 0)), reverse=True)
             
             # Calculate strongest support and resistance for metadata (use filter module)
             from .sr_level_filter import SRLevelFilter
@@ -968,9 +973,9 @@ class SupportResistanceCalculator(BaseCalculator):
             # For LONG: need supports BELOW entry
             candidate_levels = [
                 level for level in levels
-                if level.get("type") == "support"
+                if "type" in level and level["type"] == "support"
                 and level["price_level"] < entry_price  # Required (NO FALLBACKS)
-                and level.get("status") == "active"
+                and "status" in level and level["status"] == "active"
             ]
             # Calculate distance from entry (for LONG, distance = entry - level_price)
             def calc_distance(level):
@@ -979,9 +984,9 @@ class SupportResistanceCalculator(BaseCalculator):
             # For SHORT: need resistances ABOVE entry
             candidate_levels = [
                 level for level in levels
-                if level.get("type") == "resistance"
+                if "type" in level and level["type"] == "resistance"
                 and level["price_level"] > entry_price  # Required (NO FALLBACKS)
-                and level.get("status") == "active"
+                and "status" in level and level["status"] == "active"
             ]
             # Calculate distance from entry (for SHORT, distance = level_price - entry)
             def calc_distance(level):

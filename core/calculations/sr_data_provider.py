@@ -240,7 +240,7 @@ class SRDataProvider:
                     all_candles[ts] = candle
             
             # Convert to list and sort by timestamp (oldest first)
-            filtered_candles = sorted(all_candles.values(), key=lambda x: x.get('timestamp', 0))
+            filtered_candles = sorted(all_candles.values(), key=lambda x: x['timestamp'] if 'timestamp' in x else 0)
             
             # Only log if significant number found (reduce noise)
             if len(filtered_candles) > 100:
@@ -299,7 +299,7 @@ class SRDataProvider:
                 return []
             
             # Cache the data using injected cache with TTL
-            ttl = self._ttl_mapping.get(timeframe, 300)
+            ttl = self._ttl_mapping[timeframe] if timeframe in self._ttl_mapping else 300
             self._cache.set(cache_key, candles, ttl)
             self._last_fetch_time[timeframe] = time.time()
             
@@ -334,10 +334,10 @@ class SRDataProvider:
             true_ranges = []
             
             for i in range(1, len(candles)):
-                prev_close = candles[i-1].get('close', 0)
-                high = candles[i].get('high', 0)
-                low = candles[i].get('low', 0)
-                close = candles[i].get('close', 0)
+                prev_close = candles[i-1]['close'] if 'close' in candles[i-1] else 0
+                high = candles[i]['high'] if 'high' in candles[i] else 0
+                low = candles[i]['low'] if 'low' in candles[i] else 0
+                close = candles[i]['close'] if 'close' in candles[i] else 0
                 
                 if prev_close > 0 and high > 0 and low > 0 and close > 0:
                     tr1 = high - low

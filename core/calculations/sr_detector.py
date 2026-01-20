@@ -307,11 +307,11 @@ class SRDetector:
         """
         try:
             candle = candles[index]
-            high = candle.get('high', 0)
-            low = candle.get('low', 0)
-            close = candle.get('close', 0)
-            open_price = candle.get('open', 0)
-            volume = candle.get('volume', 0)
+            high = candle['high'] if 'high' in candle else 0
+            low = candle['low'] if 'low' in candle else 0
+            close = candle['close'] if 'close' in candle else 0
+            open_price = candle['open'] if 'open' in candle else 0
+            volume = candle['volume'] if 'volume' in candle else 0
             
             if high <= 0 or low <= 0 or close <= 0 or open_price <= 0:
                 return False
@@ -326,7 +326,7 @@ class SRDetector:
             else:
                 # Fallback to percentage-based check
                 swing_size_pct = swing_size / close
-                if swing_size_pct < params.get('min_swing_size', 0.001):
+                if swing_size_pct < (params['min_swing_size'] if 'min_swing_size' in params else 0.001):
                     return False
             
             # Check wick ratio (avoid small wicks)
@@ -334,14 +334,14 @@ class SRDetector:
             total_size = high - low
             if total_size > 0:
                 wick_ratio = (total_size - body_size) / total_size
-                if wick_ratio > params.get('wick_ratio', 0.3):
+                if wick_ratio > (params['wick_ratio'] if 'wick_ratio' in params else 0.3):
                     return False
             
             # Volume check (if available)
             if volume > 0:
                 # Calculate average volume for context
-                avg_volume = sum(c.get('volume', 0) for c in candles[max(0, index-10):index+1]) / 11
-                if avg_volume > 0 and volume < avg_volume * params.get('volume_threshold', 0.5):  # More lenient for psychological levels
+                avg_volume = sum(c['volume'] if 'volume' in c else 0 for c in candles[max(0, index-10):index+1]) / 11
+                if avg_volume > 0 and volume < avg_volume * (params['volume_threshold'] if 'volume_threshold' in params else 0.5):  # More lenient for psychological levels
                     return False
             
             return True
@@ -387,7 +387,7 @@ class SRDetector:
                     volume_score = min(100.0, volume_ratio * 50)
             elif volume > 0:
                 # Fallback to inline calculation
-                avg_volume = sum(c.get('volume', 0) for c in candles[max(0, index-10):index+1]) / 11
+                avg_volume = sum(c['volume'] if 'volume' in c else 0 for c in candles[max(0, index-10):index+1]) / 11
                 if avg_volume > 0:
                     volume_ratio = volume / avg_volume
                     volume_score = min(100.0, volume_ratio * 50)
@@ -581,7 +581,7 @@ class SRDetector:
             timeframe_distribution = {}
             for point in points:
                 for tf, count in point.timeframe_distribution.items():
-                    timeframe_distribution[tf] = timeframe_distribution.get(tf, 0) + count  # Accumulator pattern - OK
+                    timeframe_distribution[tf] = (timeframe_distribution[tf] if tf in timeframe_distribution else 0) + count  # Accumulator pattern
             
             # Count touches: Each swing point in the cluster represents a touch of the level
             cluster_touches = len(points)  # Each swing point = 1 touch
