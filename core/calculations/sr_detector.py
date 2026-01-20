@@ -269,7 +269,7 @@ class SRDetector:
             True if swing low
         """
         try:
-            current_low = candles[index].get('low', 0)
+            current_low = candles[index]['low'] if 'low' in candles[index] else 0
             if current_low <= 0:
                 return False
             

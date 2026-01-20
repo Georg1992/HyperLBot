@@ -965,7 +965,7 @@ class MarketDataService:
     def _on_websocket_price_update(self, price_data: Dict[str, Any]):
         """Callback for WebSocket price updates - update RSI immediately"""
         try:
-            new_price = price_data["current_price"] if "current_price" in price_data else None
+            new_price = price_data.get("current_price")
             if new_price and new_price > 0:
                 # Update internal price cache
                 self._current_price = new_price
@@ -1033,7 +1033,7 @@ class MarketDataService:
             from core.calculations.sr_level_filter import SRLevelFilter
             
             all_levels = sr_data["levels"]  # Required (NO FALLBACKS)
-            metadata = sr_data.get("metadata", {})
+            metadata = sr_data["metadata"] if "metadata" in sr_data else {}  # Optional metadata
             
             # Filter levels for dashboard display (top 2)
             # During analysis phase - no active strategy yet, uses default "standard" weights
@@ -1056,7 +1056,7 @@ class MarketDataService:
                 "support_score": metadata["support_score"],  # Required (NO FALLBACKS)
                 "resistance_score": metadata["resistance_score"],  # Required (NO FALLBACKS)
                 "levels_count": metadata["total_levels"],  # Required (NO FALLBACKS)
-                "timestamp": metadata.get("timestamp", time.time())
+                "timestamp": metadata["timestamp"] if "timestamp" in metadata else time.time()  # Optional
             }
         except Exception as e:
             logger.error(f"❌ Failed to prepare S/R data for dashboard: {e}")

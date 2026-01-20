@@ -76,12 +76,12 @@ class CandlestickPatternDetector(BasePatternDetector):
         candle2 = candles[1]
         candle3 = candles[2]
         
-        open1 = float(candle1.get("open", 0))
-        close1 = float(candle1.get("close", 0))
-        open2 = float(candle2.get("open", 0))
-        close2 = float(candle2.get("close", 0))
-        open3 = float(candle3.get("open", 0))
-        close3 = float(candle3.get("close", 0))
+        open1 = float(candle1["open"]) if "open" in candle1 else 0.0
+        close1 = float(candle1["close"]) if "close" in candle1 else 0.0
+        open2 = float(candle2["open"]) if "open" in candle2 else 0.0
+        close2 = float(candle2["close"]) if "close" in candle2 else 0.0
+        open3 = float(candle3["open"]) if "open" in candle3 else 0.0
+        close3 = float(candle3["close"]) if "close" in candle3 else 0.0
         
         if not all([open1, close1, open2, close2, open3, close3]):
             return None
@@ -122,12 +122,12 @@ class CandlestickPatternDetector(BasePatternDetector):
         candle2 = candles[1] 
         candle3 = candles[2]
         
-        open1 = float(candle1.get("open", 0))
-        close1 = float(candle1.get("close", 0))
-        open2 = float(candle2.get("open", 0))
-        close2 = float(candle2.get("close", 0))
-        open3 = float(candle3.get("open", 0))
-        close3 = float(candle3.get("close", 0))
+        open1 = float(candle1["open"]) if "open" in candle1 else 0.0
+        close1 = float(candle1["close"]) if "close" in candle1 else 0.0
+        open2 = float(candle2["open"]) if "open" in candle2 else 0.0
+        close2 = float(candle2["close"]) if "close" in candle2 else 0.0
+        open3 = float(candle3["open"]) if "open" in candle3 else 0.0
+        close3 = float(candle3["close"]) if "close" in candle3 else 0.0
         
         if not all([open1, close1, open2, close2, open3, close3]):
             return None
@@ -168,10 +168,10 @@ class CandlestickPatternDetector(BasePatternDetector):
         prev_candle = candles[0]
         curr_candle = candles[1]
         
-        prev_open = float(prev_candle.get("open", 0))
-        prev_close = float(prev_candle.get("close", 0))
-        curr_open = float(curr_candle.get("open", 0))
-        curr_close = float(curr_candle.get("close", 0))
+        prev_open = float(prev_candle["open"]) if "open" in prev_candle else 0.0
+        prev_close = float(prev_candle["close"]) if "close" in prev_candle else 0.0
+        curr_open = float(curr_candle["open"]) if "open" in curr_candle else 0.0
+        curr_close = float(curr_candle["close"]) if "close" in curr_candle else 0.0
         
         if not all([prev_open, prev_close, curr_open, curr_close]):
             return None
@@ -210,10 +210,10 @@ class CandlestickPatternDetector(BasePatternDetector):
         prev_candle = candles[0]
         curr_candle = candles[1]
         
-        prev_open = float(prev_candle.get("open", 0))
-        prev_close = float(prev_candle.get("close", 0))
-        curr_open = float(curr_candle.get("open", 0))
-        curr_close = float(curr_candle.get("close", 0))
+        prev_open = float(prev_candle["open"]) if "open" in prev_candle else 0.0
+        prev_close = float(prev_candle["close"]) if "close" in prev_candle else 0.0
+        curr_open = float(curr_candle["open"]) if "open" in curr_candle else 0.0
+        curr_close = float(curr_candle["close"]) if "close" in curr_candle else 0.0
         
         if not all([prev_open, prev_close, curr_open, curr_close]):
             return None

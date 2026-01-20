@@ -140,16 +140,16 @@ class CrossAssetCorrelationAnalyzer:
                     risk_factors.append("DXY_WEAKNESS")
             
             # Gold risk analysis
-            if "price" in gold_data and gold_data["price"] > 0:
-                gold_change = gold_data["change_percent"] if "change_percent" in gold_data else 0
+            if gold_data.get("price", 0) > 0:
+                gold_change = gold_data.get("change_percent", 0)
                 if gold_change > 1.0:  # Strong gold rally
                     risk_factors.append("GOLD_RALLY")
                 elif gold_change < -1.0:  # Gold selloff
                     risk_factors.append("GOLD_SELLOFF")
             
             # Stock market risk analysis
-            if stock_data.get("composite_change", 0) != 0:
-                stock_change = stock_data.get("composite_change", 0)
+            if "composite_change" in stock_data and stock_data["composite_change"] != 0:
+                stock_change = stock_data["composite_change"]
                 if stock_change > 1.0:  # Strong stock rally
                     risk_factors.append("STOCK_RALLY")
                 elif stock_change < -1.0:  # Stock selloff
@@ -247,7 +247,7 @@ class CrossAssetCorrelationAnalyzer:
             
             dxy_price = dxy_data["price"]
             # Use period_change (5-day change) for more meaningful correlation data
-            dxy_change = dxy_data.get("period_change", dxy_data.get("change_percent", 0))
+            dxy_change = dxy_data["period_change"] if "period_change" in dxy_data else (dxy_data["change_percent"] if "change_percent" in dxy_data else 0)
             
             # Calculate real-time correlation based on actual price movements
             # Use current price data to determine correlation strength
