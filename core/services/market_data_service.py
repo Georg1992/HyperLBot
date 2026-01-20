@@ -781,7 +781,7 @@ class MarketDataService:
                     "pattern_signals": [],
                     "confidence_scores": [],
                     "timestamp": time.time()
-                }),
+                },
                 
                 # Additional market context
                 "market_conditions": market_data["market_conditions"] if "market_conditions" in market_data else {},

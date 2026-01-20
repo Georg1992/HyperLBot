@@ -351,13 +351,13 @@ class EventDrivenTradingDashboard:
                 "market": market_data_dict,
                 "ai_system_status": ai_system_status,  # Add AI system status
                 "ml_performance": ml_performance,  # Add ML performance data
-                "logs": dashboard_data.get("logs", []),
+                "logs": dashboard_data["logs"] if "logs" in dashboard_data else [],
                 "predictions": [prediction] if prediction else [],  # Always a list for compatibility
                 "prediction": prediction,  # Top-level prediction (single object) - THIS IS WHAT UI READS
-                "trades": dashboard_data.get("trades", []),  # Includes pending orders, open positions, closed trades
+                "trades": dashboard_data["trades"] if "trades" in dashboard_data else [],  # Includes pending orders, open positions, closed trades
                 "orderbook": {"bids": [], "asks": []},
                 "candleData": candle_data,  # Add candle data to dashboard data
-                "timestamp": dashboard_data.get("timestamp", ""),
+                "timestamp": dashboard_data["timestamp"] if "timestamp" in dashboard_data else "",
                 "data_source": "DashboardService - Single Source of Truth",
                 "connection_status": "✅ Connected"
             }

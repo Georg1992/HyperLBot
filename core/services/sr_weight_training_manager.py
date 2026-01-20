@@ -225,9 +225,9 @@ class SRWeightTrainingManager:
         
         status_text = status["status"].upper()
         if status["status"] == "training":
-            progress = status.get("training_progress", 0)
-            window = status.get("training_window", 0)
-            total = status.get("total_windows", 0)
+            progress = status["training_progress"] if "training_progress" in status else 0
+            window = status["training_window"] if "training_window" in status else 0
+            total = status["total_windows"] if "total_windows" in status else 0
             status_text = f"Training ({progress}% - {window}/{total})"
         elif status["status"] == "completed":
             status_text = "Completed"
@@ -235,29 +235,29 @@ class SRWeightTrainingManager:
             status_text = "Error"
         
         next_train = "N/A"
-        if status.get("next_training_time"):
+        if "next_training_time" in status and status["next_training_time"]:
             days = (status["next_training_time"] - time.time()) / 86400.0
             if days > 0:
                 next_train = f"{days:.1f} days"
             else:
                 next_train = "Due"
         
-        age_days = status.get("weights_age_days")
+        age_days = status["weights_age_days"] if "weights_age_days" in status else None
         age_text = f"{age_days:.1f} days" if age_days is not None else "N/A"
         
         return {
             "analysis_type": "SR Weight Learning",
             "analysis_type_detail": "ElasticNet Regression",
-            "training_data_points": status.get("total_windows", 0),
-            "training_progress": status.get("training_progress", 0),  # 0-100 percentage
+            "training_data_points": status["total_windows"] if "total_windows" in status else 0,
+            "training_progress": status["training_progress"] if "training_progress" in status else 0,  # 0-100 percentage
             "accuracy": None,
             "confidence_correlation": None,
             "retrain_status": status_text,
-            "learning_status": "Active" if status.get("weights_loaded") else "No weights",
+            "learning_status": "Active" if ("weights_loaded" in status and status["weights_loaded"]) else "No weights",
             "weights_age_days": age_days,
             "next_training": next_train,
             "training_in_progress": status["status"] == "training",
-            "error_message": status.get("error_message")
+            "error_message": status["error_message"] if "error_message" in status else None
         }
 
 

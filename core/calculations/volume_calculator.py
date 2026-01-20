@@ -113,7 +113,7 @@ class VolumeCalculator(BaseCalculator):
             # 2. Calculate 5m volume via data provider
             current_time = time.time()
             volume_calc = self._data_provider.calculate_5m_volume(raw_trades, current_time)
-            current_5m_volume = volume_calc.get("current_5m_volume", 0.0)
+            current_5m_volume = volume_calc["current_5m_volume"] if "current_5m_volume" in volume_calc else 0.0
             
             # 3. Get volume history for analysis (REQUIRED - no fallbacks)
             volume_history = self._data_provider.get_volume_history(10)
@@ -148,8 +148,8 @@ class VolumeCalculator(BaseCalculator):
             )
             
             # 11. Format results
-            volume_level = categorization.get("level", "UNKNOWN")
-            volume_trend = momentum.get("trend", "UNKNOWN")
+            volume_level = categorization["level"] if "level" in categorization else "UNKNOWN"
+            volume_trend = momentum["trend"] if "trend" in momentum else "UNKNOWN"
             result = {
                 "current_5m_volume": current_5m_volume,
                 "volume_category": volume_level,
@@ -166,14 +166,15 @@ class VolumeCalculator(BaseCalculator):
                 "data_source": "hyperliquid_5m",
                 "timestamp": current_time,
                 "analysis_details": {
-                    "trade_count": volume_calc.get("trade_count", 0),
-                    "reset_time": volume_calc.get("reset_time", 0),
-                    "time_window": volume_calc.get("time_window", "5m"),
+                    "trade_count": volume_calc["trade_count"] if "trade_count" in volume_calc else 0,
+                    "reset_time": volume_calc["reset_time"] if "reset_time" in volume_calc else 0,
+                    "time_window": volume_calc["time_window"] if "time_window" in volume_calc else "5m",
                     "historical_volumes": volume_history
                 }
             }
             
-            logger.info(f"📊 Volume analysis complete: {categorization.get('level', 'UNKNOWN')} ({current_5m_volume:.2f})")
+            log_level = categorization["level"] if "level" in categorization else "UNKNOWN"
+            logger.info(f"📊 Volume analysis complete: {log_level} ({current_5m_volume:.2f})")
             return result
             
         except Exception as e:

@@ -518,7 +518,7 @@ class HyperliquidSimulator:
             
             if should_close:
                 result = self.close_position(trade_id, current_price, exit_reason)
-                if result.get("success"):
+                if "success" in result and result["success"]:
                     closed_positions.append(result["position"])
         
         return closed_positions
@@ -847,7 +847,7 @@ class HyperliquidSimulator:
     
     def _calculate_fees(self, fee_type: str, size: float, price: float) -> Dict[str, Any]:
         """Calculate realistic Hyperliquid fees"""
-        fee_rate = self.fee_rates.get(fee_type, self.fee_rates['taker'])
+        fee_rate = self.fee_rates[fee_type] if fee_type in self.fee_rates else self.fee_rates['taker']
         position_value = size * price
         fee_amount = position_value * fee_rate
         
