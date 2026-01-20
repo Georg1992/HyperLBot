@@ -1718,10 +1718,21 @@ class PredictionEngine:
         config: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
         """
-        Determine optimal entry price by optimizing entry scoring factors
+        Determine optimal entry price for BTC perp trading (research-backed)
         
-        Uses the same factors as entry scoring (power, proximity, recency) to find
-        the entry price that maximizes entry score, rather than calculating independently.
+        Generates 4 entry candidates with offsets INSIDE S/R zone (toward current price):
+        - 0×ATR (at level)
+        - 0.3×ATR inside
+        - 0.6×ATR inside
+        - 1.0×ATR inside
+        
+        Scores each candidate by:
+        - Fill probability (35%): Closer to current = higher
+        - Liquidation safety (35%): Distance from liquidation
+        - Level strength (20%): S/R power
+        - Spread penalty (-10%): Cost of execution
+        
+        Returns the best scoring candidate.
         
         Args:
             level_price: S/R level price
