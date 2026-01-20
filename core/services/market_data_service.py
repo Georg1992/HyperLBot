@@ -170,7 +170,7 @@ class MarketDataService:
                     "trend_24h": trend_24h
                 },
                 "raw_data": raw_trend_data,  # Keep original data for detailed analysis
-                "timestamp": raw_trend_data.get("timestamp", time.time()),
+                "timestamp": raw_trend_data["timestamp"] if "timestamp" in raw_trend_data else time.time(),  # Optional timestamp
                 "data_type": "trend"
             }
             
@@ -533,7 +533,7 @@ class MarketDataService:
                     patterns_count = 0
                     if isinstance(cached_data, dict):
                         flat_patterns = cached_data["patterns"]  # Required (NO FALLBACKS)
-                        nested_patterns = cached_data.get("patterns_nested", {})
+                        nested_patterns = cached_data["patterns_nested"] if "patterns_nested" in cached_data else {}
                         if isinstance(flat_patterns, list):
                             patterns_count += len(flat_patterns)
                         if isinstance(nested_patterns, dict):
@@ -556,7 +556,7 @@ class MarketDataService:
                     
                     # Log pattern detection results
                     patterns_count = len(analysis_result["patterns"])  # Required (NO FALLBACKS)
-                    nested = analysis_result.get("patterns_nested", {})
+                    nested = analysis_result["patterns_nested"] if "patterns_nested" in analysis_result else {}
                     nested_count = sum(len(v) if isinstance(v, list) else 0 for v in nested.values())
                     logger.info(f"📊 Pattern analysis complete: {patterns_count} flat patterns, {nested_count} nested patterns")
                     
@@ -676,9 +676,9 @@ class MarketDataService:
                     # Format: [level1, level2, ...] - need to separate by side
                     for level in orderbook_data:
                         if isinstance(level, dict):
-                            if level.get('side') == 'B':
+                            if 'side' in level and level['side'] == 'B':
                                 bids.append(level)
-                            elif level.get('side') == 'A':
+                            elif 'side' in level and level['side'] == 'A':
                                 asks.append(level)
             elif isinstance(orderbook_data, dict):
                 # Check for 'levels' key (WebSocket format: {'levels': [[bids], [asks]]})
@@ -718,9 +718,9 @@ class MarketDataService:
             # Structure the data for easy consumption
             real_time_data = {
                 # Core market info
-                "timestamp": market_data.get("timestamp", time.time()),
+                "timestamp": market_data["timestamp"] if "timestamp" in market_data else time.time(),  # Optional
                 "current_price": market_data["current_price"],  # Required (NO FALLBACKS)
-                "strategy": market_data.get("strategy", strategy),
+                "strategy": market_data["strategy"] if "strategy" in market_data else strategy,  # Optional
                 
                 # Technical Analysis (Primary Components) - Handle missing modules gracefully
                 "rsi": market_data.get("rsi", {
@@ -772,7 +772,7 @@ class MarketDataService:
                 }),
                 
                 "support_resistance": self._prepare_sr_data_for_dashboard(
-                    market_data.get("support_resistance", {}),
+                    market_data["support_resistance"] if "support_resistance" in market_data else {},  # Optional for dashboard
                     market_data["current_price"]  # Required (NO FALLBACKS)
                 ),
                 
@@ -965,7 +965,7 @@ class MarketDataService:
     def _on_websocket_price_update(self, price_data: Dict[str, Any]):
         """Callback for WebSocket price updates - update RSI immediately"""
         try:
-            new_price = price_data.get("current_price")
+            new_price = price_data["current_price"] if "current_price" in price_data else None
             if new_price and new_price > 0:
                 # Update internal price cache
                 self._current_price = new_price
