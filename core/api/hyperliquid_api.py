@@ -171,7 +171,7 @@ class HyperliquidAPI:
             "1w": 604800,
             "1M": 2592000
         }
-        return interval_map.get(interval, 300)  # Default to 5m
+        return interval_map[interval] if interval in interval_map else 300  # Default to 5m
 
     # get_volume_analysis() REMOVED - Volume logic moved to VolumeCalculator for clean architecture
     # MarketDataManager now handles volume analysis using VolumeCalculator delegation
@@ -223,7 +223,8 @@ class HyperliquidAPI:
                     "4h": 240,
                     "8h": 480,
                     "12h": 720
-                }.get(interval, 1)
+                }
+                multiplier = interval_multipliers[interval] if interval in interval_multipliers else 1
                 
                 start_timestamp = int((time.time() - (limit * interval_minutes * 60)) * 1000)
                 end_timestamp = int(time.time() * 1000)

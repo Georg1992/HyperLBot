@@ -184,7 +184,7 @@ class HyperliquidSimulator:
     
     def get_position(self, trade_id: str) -> Optional[Dict[str, Any]]:
         """Get specific position by trade_id"""
-        return self.open_positions.get(trade_id)
+        return self.open_positions[trade_id] if trade_id in self.open_positions else None
     
     def get_closed_positions(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Get closed positions (most recent first)"""

@@ -152,18 +152,18 @@ class Level:
         return cls(
             level=safe_float(data['level']),
             level_type=level_type,
-            touches=safe_int(data.get('touches'), 0),
-            cluster_size=safe_int(data.get('cluster_size'), 1),
-            weighted_touches=safe_float(data.get('weighted_touches'), 0.0),
-            strength=safe_float(data.get('strength'), 0.0),
-            timestamp=safe_float(data.get('timestamp'), 0.0),
-            timeframe_distribution=copy.deepcopy(data.get('timeframe_distribution', {})),
-            mtf_matches=copy.deepcopy(data.get('mtf_matches')) if 'mtf_matches' in data else [],  # Optional MTF data
-            mtf_count=safe_int(data.get('mtf_count'), 0),
-            mtf_confidence=safe_float(data.get('mtf_confidence'), 0.0),
-            merged_from=safe_int(data.get('merged_from'), 1),
-            power=safe_float(data.get('power')) if data.get('power') is not None else (safe_float(data.get('score')) if data.get('score') is not None else None),  # Backward compatibility
-            power_breakdown=copy.deepcopy(data.get('power_breakdown', data.get('score_breakdown', {})))  # Backward compatibility
+            touches=safe_int(data['touches'] if 'touches' in data else None, 0),
+            cluster_size=safe_int(data['cluster_size'] if 'cluster_size' in data else None, 1),
+            weighted_touches=safe_float(data['weighted_touches'] if 'weighted_touches' in data else None, 0.0),
+            strength=safe_float(data['strength'] if 'strength' in data else None, 0.0),
+            timestamp=safe_float(data['timestamp'] if 'timestamp' in data else None, 0.0),
+            timeframe_distribution=copy.deepcopy(data['timeframe_distribution'] if 'timeframe_distribution' in data else {}),
+            mtf_matches=copy.deepcopy(data['mtf_matches']) if 'mtf_matches' in data else [],  # Optional MTF data
+            mtf_count=safe_int(data['mtf_count'] if 'mtf_count' in data else None, 0),
+            mtf_confidence=safe_float(data['mtf_confidence'] if 'mtf_confidence' in data else None, 0.0),
+            merged_from=safe_int(data['merged_from'] if 'merged_from' in data else None, 1),
+            power=safe_float(data['power'] if 'power' in data else None) if ('power' in data and data['power'] is not None) else (safe_float(data['score'] if 'score' in data else None) if ('score' in data and data['score'] is not None) else None),  # Backward compatibility
+            power_breakdown=copy.deepcopy(data['power_breakdown'] if 'power_breakdown' in data else (data['score_breakdown'] if 'score_breakdown' in data else {}))  # Backward compatibility
         )
     
     def is_support(self) -> bool:
