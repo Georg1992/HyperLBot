@@ -1,13 +1,6 @@
 {
   "last_updated": "2026-01-12",
   "active_issues": {
-    "double_liquidation_filtering": {
-      "severity": "CRITICAL",
-      "location": "core/calculations/support_resistance_calculator.py:423+545",
-      "problem": "Fetches data with liquidation ±2% expansion, then filters AGAIN by exact range",
-      "impact": "~80% of fetched/processed data discarded after expensive computation",
-      "fix_required": "Either fetch strict OR filter strict, not both"
-    },
     "liquidation_range_too_restrictive": {
       "severity": "CRITICAL",
       "location": "core/calculations/support_resistance_calculator.py:535-555",
@@ -46,6 +39,12 @@
   },
   
   "resolved_issues": {
+    "double_liquidation_filtering": {
+      "resolved": "2026-01-12",
+      "was": "Fetched with ±2% expansion, never filtered after → 80% wasted data",
+      "now": "Strict liquidation range fetch only, no expansion, no waste",
+      "files": ["core/calculations/sr_data_provider.py", "core/calculations/support_resistance_calculator.py"]
+    },
     "rr_hard_constraint": {
       "resolved": "2026-01-12",
       "was": "R:R ratio filtered TP candidates, rejected valid S/R levels",

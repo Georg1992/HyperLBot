@@ -389,12 +389,31 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # Calculate liquidation prices using actual Hyperliquid formula
             # Hyperliquid formula: liq_price = price - side * margin_available / position_size / (1 - l * side)
-            # For S/R filtering, we use the maintenance margin rate directly (simplified for filtering purposes)
             # Actual rate observed: ~1.226% for 40x (not 2.5% theoretical)
-            # This accounts for margin tiers and actual margin requirements
-            long_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
-            short_liquidation = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
-            logger.debug(f"🔍 LIQUIDATION RANGE: LONG=${long_liquidation:.2f}, SHORT=${short_liquidation:.2f}, Current=${current_price:.2f}")
+            
+            # EXPAND liquidation range for S/R discovery (Fix Issue #2)
+            # Problem: 40x leverage → ±1.2% range → filters out valid S/R levels
+            # Solution: Use 3x expanded range for S/R discovery
+            #   - Tight range: Good for immediate SL/TP placement
+            #   - Wide range: Needed for market structure understanding, multi-level entries, breakout targets
+            # Example: At $90,778 with 40x:
+            #   - Actual liquidation: $89,665 (1.2% below), $91,891 (1.2% above)
+            #   - S/R discovery:     $87,000 (3.6% below), $94,000 (3.6% above)
+            expansion_factor = 3.0  # 3x expansion for S/R discovery
+            
+            long_liquidation_actual = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
+            short_liquidation_actual = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
+            
+            # Expand range for S/R discovery
+            long_distance = current_price - long_liquidation_actual  # e.g., $1,113 at 40x
+            short_distance = short_liquidation_actual - current_price  # e.g., $1,113 at 40x
+            
+            long_liquidation = current_price - (long_distance * expansion_factor)  # 3x wider
+            short_liquidation = current_price + (short_distance * expansion_factor)  # 3x wider
+            
+            logger.debug(f"🔍 LIQUIDATION RANGE (3x expanded for S/R): LONG=${long_liquidation:.2f} ({(current_price-long_liquidation)/current_price*100:.1f}%), "
+                        f"SHORT=${short_liquidation:.2f} ({(short_liquidation-current_price)/current_price*100:.1f}%), Current=${current_price:.2f}")
+            logger.debug(f"   Actual liquidation (tight): LONG=${long_liquidation_actual:.2f}, SHORT=${short_liquidation_actual:.2f}")
             
             # Progressive time expansion: Start with 1 month, expand if needed
             lookback_ranges = [
