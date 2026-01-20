@@ -148,7 +148,7 @@ class SupportResistanceCalculator(BaseCalculator):
             Tuple of (swing_points_5m, higher_tf_levels)
         """
         swing_points_5m = self._detector.detect_swing_points(
-            candles_data.get("5m", []), current_price, n=1, timeframe="5m")
+            candles_data["5m"] if "5m" in candles_data else [], current_price, n=1, timeframe="5m")
         
         higher_tf_levels = []
         for tf in ["15m", "1h", "1d"]:
@@ -159,8 +159,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 higher_tf_levels.extend(swing_tf)
         
         # Detect daily/weekly/monthly peaks from 1d candles
-        if candles_data.get("1d"):
-            period_peaks = self._detect_period_peaks(candles_data.get("1d", []))
+        if "1d" in candles_data and candles_data["1d"]:
+            period_peaks = self._detect_period_peaks(candles_data["1d"])
             higher_tf_levels.extend(period_peaks)
         
         return swing_points_5m, higher_tf_levels
@@ -194,7 +194,7 @@ class SupportResistanceCalculator(BaseCalculator):
             monthly_groups = {}
             
             for candle in daily_candles:
-                timestamp = candle.get('timestamp', 0)
+                timestamp = candle['timestamp'] if 'timestamp' in candle else 0
                 if timestamp == 0:
                     continue
                 
@@ -255,9 +255,9 @@ class SupportResistanceCalculator(BaseCalculator):
             # Weekly peaks
             for week_key, week_candles in weekly_groups.items():
                 if week_candles:
-                    week_high = max(c.get('high', 0) for c in week_candles)
-                    week_low = min(c.get('low', 0) for c in week_candles)
-                    week_timestamp = max(c.get('timestamp', 0) for c in week_candles)
+                    week_high = max(c['high'] if 'high' in c else 0 for c in week_candles)
+                    week_low = min(c['low'] if 'low' in c else 0 for c in week_candles)
+                    week_timestamp = max(c['timestamp'] if 'timestamp' in c else 0 for c in week_candles)
                     
                     if week_high > 0:
                         period_peaks.append(Level(
@@ -382,7 +382,7 @@ class SupportResistanceCalculator(BaseCalculator):
             last_update = self._last_module_updates["support_resistance"]  # Always exists (initialized in __init__)
             if current_time - last_update < self._min_recalculation_interval:
                 cached_result = self._get_cached_analysis(current_price, current_time)
-                if cached_result is not None and cached_result.get("status") == "ok":
+                if cached_result is not None and "status" in cached_result and cached_result["status"] == "ok":
                     return cached_result
             
             self._state.reset_session_state()
@@ -432,8 +432,8 @@ class SupportResistanceCalculator(BaseCalculator):
                     continue
                 
                 # Merge with existing 5m candles (avoid duplicates)
-                existing_timestamps = {c.get('timestamp') for c in candles_data['5m']}
-                new_5m_candles = [c for c in additional_5m_candles if c.get('timestamp') not in existing_timestamps]
+                existing_timestamps = {c['timestamp'] for c in candles_data['5m'] if 'timestamp' in c}
+                new_5m_candles = [c for c in additional_5m_candles if 'timestamp' in c and c['timestamp'] not in existing_timestamps]
                 
                 if new_5m_candles:
                     candles_data['5m'].extend(new_5m_candles)
@@ -473,8 +473,8 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # Log final results
             all_levels = result['levels']  # Required (NO FALLBACKS)
-            active_support_count = len([l for l in all_levels if l.get("type") == "support" and l.get("status") == "active"])
-            active_resistance_count = len([l for l in all_levels if l.get("type") == "resistance" and l.get("status") == "active"])
+            active_support_count = len([l for l in all_levels if "type" in l and l["type"] == "support" and "status" in l and l["status"] == "active"])
+            active_resistance_count = len([l for l in all_levels if "type" in l and l["type"] == "resistance" and "status" in l and l["status"] == "active"])
             logger.info(f"📊 FINAL: {len(all_levels)} total levels ({active_support_count} active support, {active_resistance_count} active resistance)")
             
             self._state.update_calculation_state(current_price, current_time)
@@ -505,7 +505,7 @@ class SupportResistanceCalculator(BaseCalculator):
         """
         try:
             # Calculate ATR for all timeframes
-            atr_14 = self._data_provider.calculate_atr(candles_data.get('5m', []), 14)
+            atr_14 = self._data_provider.calculate_atr(candles_data['5m'] if '5m' in candles_data else [], 14)
             atr_per_tf = {
                 '5m': atr_14,
                 '15m': self._data_provider.calculate_atr(candles_data.get('15m', []), 14) if candles_data.get('15m') else atr_14 * 3,
