@@ -57,7 +57,7 @@ class OrderBookAnalyzer:
                         if isinstance(level, dict):
                             if 'side' in level and level['side'] == 'B':
                                 bids.append(level)
-                            elif level.get('side') == 'A':
+                            elif 'side' in level and level['side'] == 'A':
                                 asks.append(level)
                     bids = bids[:10]
                     asks = asks[:10]
@@ -74,7 +74,7 @@ class OrderBookAnalyzer:
                         if isinstance(level, dict):
                             if 'side' in level and level['side'] == 'B':
                                 bids.append(level)
-                            elif level.get('side') == 'A':
+                            elif 'side' in level and level['side'] == 'A':
                                 asks.append(level)
                     bids = bids[:10]
                     asks = asks[:10]

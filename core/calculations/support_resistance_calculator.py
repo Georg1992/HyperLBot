@@ -152,7 +152,7 @@ class SupportResistanceCalculator(BaseCalculator):
         
         higher_tf_levels = []
         for tf in ["15m", "1h", "1d"]:
-            tf_candles = candles_data.get(tf, [])
+            tf_candles = candles_data[tf] if tf in candles_data else []
             if tf_candles:
                 n_value = {"15m": 2, "1h": 3, "1d": 4}[tf]
                 swing_tf = self._detector.detect_swing_points(tf_candles, current_price, n=n_value, timeframe=tf)

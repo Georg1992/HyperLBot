@@ -116,11 +116,11 @@ class VolatilityCalculator(BaseCalculator):
             # 7. Get recommendations
             recommendations = self._classifier.get_volatility_recommendations(
                 primary_volatility,
-                classification.get("level", "UNKNOWN")
+                classification["level"] if "level" in classification else "UNKNOWN"
             )
             
             # 8. Format results
-            volatility_level = classification.get("level", "UNKNOWN")
+            volatility_level = classification["level"] if "level" in classification else "UNKNOWN"
             result = {
                 "volatility": primary_volatility,
                 "volatility_5m": primary_volatility,  # Add standardized key for compatibility
