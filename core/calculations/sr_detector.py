@@ -320,7 +320,7 @@ class SRDetector:
             swing_size = high - low
             if atr and atr > 0:
                 swing_size_norm = swing_size / atr
-                min_swing_size_norm = params.get('min_swing_size_norm', 0.2)  # More sensitive for psychological levels
+                min_swing_size_norm = params['min_swing_size_norm'] if 'min_swing_size_norm' in params else 0.2  # More sensitive for psychological levels
                 if swing_size_norm < min_swing_size_norm:
                     return False
             else:

@@ -223,8 +223,7 @@ class HyperliquidAPI:
                     "4h": 240,
                     "8h": 480,
                     "12h": 720
-                }
-                multiplier = interval_multipliers[interval] if interval in interval_multipliers else 1
+                }.get(interval, 1)
                 
                 start_timestamp = int((time.time() - (limit * interval_minutes * 60)) * 1000)
                 end_timestamp = int(time.time() * 1000)
@@ -259,12 +258,12 @@ class HyperliquidAPI:
                 formatted_candles = []
                 for candle in candles[-limit:]:
                     formatted_candle = {
-                        "open": float(candle.get("o", "0")),
-                        "high": float(candle.get("h", "0")),
-                        "low": float(candle.get("l", "0")),
-                        "close": float(candle.get("c", "0")),
-                        "volume": float(candle.get("v", "0")),
-                        "timestamp": int(candle.get("t", time.time() * 1000)) // 1000  # Convert ms to seconds
+                        "open": float(candle["o"]) if "o" in candle else 0.0,
+                        "high": float(candle["h"]) if "h" in candle else 0.0,
+                        "low": float(candle["l"]) if "l" in candle else 0.0,
+                        "close": float(candle["c"]) if "c" in candle else 0.0,
+                        "volume": float(candle["v"]) if "v" in candle else 0.0,
+                        "timestamp": int(candle["t"]) // 1000 if "t" in candle else int(time.time())  # Convert ms to seconds
                     }
                     formatted_candles.append(formatted_candle)
                 

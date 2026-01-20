@@ -105,7 +105,7 @@ class VolumeCalculator(BaseCalculator):
             
             # 1. Fetch volume data via data provider - NO FALLBACKS
             volume_data = self._data_provider.fetch_hyperliquid_volume_data(hyperliquid_websocket)
-            raw_trades = volume_data.get("raw_trades", [])
+            raw_trades = volume_data["raw_trades"] if "raw_trades" in volume_data else []
             
             if not raw_trades:
                 raise ValueError("No raw trades available for volume calculation - NO FALLBACKS")
@@ -135,7 +135,7 @@ class VolumeCalculator(BaseCalculator):
             
             # 9. Determine implications via classifier
             implications = self._classifier.determine_volume_implications(
-                categorization.get("level", "UNKNOWN"),
+                categorization["level"] if "level" in categorization else "UNKNOWN",
                 momentum,
                 anomaly
             )

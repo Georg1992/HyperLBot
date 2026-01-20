@@ -108,7 +108,7 @@ class PressureCalculator:
             # 1. Calculate depth metrics via data provider - NO FALLBACKS
             depth_metrics = self._data_provider.calculate_depth_metrics(bids, asks)
             
-            if depth_metrics.get("total_depth_5", 0.0) == 0:
+            if ("total_depth_5" not in depth_metrics or depth_metrics["total_depth_5"] == 0.0):
                 raise ValueError("No orderbook depth available for pressure calculation - NO FALLBACKS")
             
             # 2. Calculate pressure ratios via data provider
@@ -116,20 +116,20 @@ class PressureCalculator:
             
             # 3. Analyze pressure direction and strength via analyzer
             direction, strength = self._analyzer.categorize_pressure_direction(
-                pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0,
-                pressure_ratios["depth_concentration"] if "depth_concentration" in pressure_ratios else 1.0
+                pressure_ratios.get("pressure_imbalance", 0.0),
+                pressure_ratios.get("depth_concentration", 1.0)
             )
             
             # 4. Calculate confidence via analyzer
             confidence = self._analyzer.calculate_pressure_confidence(
-                depth_metrics.get("total_depth_5", 0.0),
-                pressure_ratios.get("pressure_imbalance", 0.0)
+                depth_metrics["total_depth_5"] if "total_depth_5" in depth_metrics else 0.0,
+                pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0
             )
             
             # 5. Determine trend via analyzer
             trend = self._analyzer.determine_pressure_trend(
-                pressure_ratios.get("pressure_imbalance", 0.0),
-                pressure_ratios.get("depth_concentration", 1.0)
+                pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0,
+                pressure_ratios["depth_concentration"] if "depth_concentration" in pressure_ratios else 1.0
             )
             
             # 6. Classify pressure level via classifier
@@ -153,13 +153,13 @@ class PressureCalculator:
                 "trading_implications": implications,
                 "recommendations": recommendations,
                 "analysis_details": {
-                    "bid_pressure_ratio": pressure_ratios.get("bid_pressure_ratio", 0.5),
-                    "ask_pressure_ratio": pressure_ratios.get("ask_pressure_ratio", 0.5),
+                    "bid_pressure_ratio": pressure_ratios["bid_pressure_ratio"] if "bid_pressure_ratio" in pressure_ratios else 0.5,
+                    "ask_pressure_ratio": pressure_ratios["ask_pressure_ratio"] if "ask_pressure_ratio" in pressure_ratios else 0.5,
                     "pressure_imbalance": pressure_imbalance,
-                    "depth_concentration": pressure_ratios.get("depth_concentration", 1.0),
-                    "bid_depth_5": depth_metrics.get("bid_depth_5", 0.0),
-                    "ask_depth_5": depth_metrics.get("ask_depth_5", 0.0),
-                    "total_depth_5": depth_metrics.get("total_depth_5", 0.0)
+                    "depth_concentration": pressure_ratios["depth_concentration"] if "depth_concentration" in pressure_ratios else 1.0,
+                    "bid_depth_5": depth_metrics["bid_depth_5"] if "bid_depth_5" in depth_metrics else 0.0,
+                    "ask_depth_5": depth_metrics["ask_depth_5"] if "ask_depth_5" in depth_metrics else 0.0,
+                    "total_depth_5": depth_metrics["total_depth_5"] if "total_depth_5" in depth_metrics else 0.0
                 },
                 "data_source": "live_orderbook_calculation",
                 "timestamp": time.time()

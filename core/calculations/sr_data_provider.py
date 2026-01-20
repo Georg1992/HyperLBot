@@ -240,7 +240,7 @@ class SRDataProvider:
                     all_candles[ts] = candle
             
             # Convert to list and sort by timestamp (oldest first)
-            filtered_candles = sorted(all_candles.values(), key=lambda x: x['timestamp'] if 'timestamp' in x else 0)
+            filtered_candles = sorted(all_candles.values(), key=lambda x: x.get('timestamp', 0))
             
             # Only log if significant number found (reduce noise)
             if len(filtered_candles) > 100:
@@ -292,8 +292,9 @@ class SRDataProvider:
             
             # Validate minimum data requirements (graceful handling)
             min_candles = {"5m": 50, "15m": 20, "1h": 20, "1d": 10}
-            if len(candles) < min_candles.get(timeframe, 20):
-                logger.warning(f"⚠️ Insufficient {timeframe} candles: {len(candles)} (min: {min_candles.get(timeframe, 20)})")
+            min_required = min_candles[timeframe] if timeframe in min_candles else 20
+            if len(candles) < min_required:
+                logger.warning(f"⚠️ Insufficient {timeframe} candles: {len(candles)} (min: {min_required})")
                 # Return empty list instead of raising error for graceful degradation
                 return []
             
@@ -323,7 +324,7 @@ class SRDataProvider:
             if len(candles) < period:
                 # Return minimum ATR based on price
                 if candles:
-                    price = candles[-1].get('close', 100.0)
+                    price = candles[-1]['close'] if 'close' in candles[-1] else 100.0
                     min_atr = max(price * 0.0005, 0.1)  # 0.05% of price or 0.1 minimum
                     logger.warning(f"⚠️ Insufficient candles for ATR, using minimum safety value: {min_atr:.2f}")
                     return min_atr
@@ -347,7 +348,7 @@ class SRDataProvider:
             
             if len(true_ranges) < period:
                 # Return minimum ATR based on price
-                price = candles[-1].get('close', 100.0)
+                price = candles[-1]['close'] if 'close' in candles[-1] else 100.0
                 min_atr = max(price * 0.0005, 0.1)
                 logger.warning(f"⚠️ Insufficient true ranges for ATR, using minimum safety value: {min_atr:.2f}")
                 return min_atr
@@ -359,7 +360,7 @@ class SRDataProvider:
                 atr = ((atr * (period - 1)) + true_ranges[i]) / period
             
             # Ensure minimum ATR
-            price = candles[-1].get('close', 100.0)
+            price = candles[-1]['close'] if 'close' in candles[-1] else 100.0
             min_atr = max(price * 0.0005, 0.1)
             final_atr = max(atr, min_atr)
             

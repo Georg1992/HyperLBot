@@ -220,7 +220,8 @@ class HyperliquidSimulator:
                 raise ValueError("Order rejected by exchange (simulated)")
             
             # Simulate execution delay
-            delay = self.execution_delays.get(order_request.order_type.value.upper(), 1.0)
+            order_type_key = order_request.order_type.value.upper()
+            delay = self.execution_delays[order_type_key] if order_type_key in self.execution_delays else 1.0
             time.sleep(delay * 0.001)  # Convert to milliseconds
             
             # Execute order based on type
@@ -333,7 +334,8 @@ class HyperliquidSimulator:
                 return self._create_error_response("Order rejected by exchange (simulated)")
             
             # Simulate execution delay
-            delay = self.execution_delays.get(order_type.upper(), 1.0)
+            order_type_upper = order_type.upper()
+            delay = self.execution_delays[order_type_upper] if order_type_upper in self.execution_delays else 1.0
             time.sleep(delay * 0.001)  # Convert to milliseconds
             
             # Execute order based on type
