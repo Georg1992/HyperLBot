@@ -291,19 +291,19 @@ class RiskManager:
             reward = abs(tp_candidate - entry_price)
             rr = reward / risk
             
-            # Validate R:R constraints
-            if min_rr <= rr <= max_rr:
-                valid_candidates.append({
-                    "level": level,
-                    "tp_price": tp_candidate,
-                    "rr": rr,
-                    "distance": distance,
-                    "power": level["power"]  # Required (NO FALLBACKS)
-                })
+            # Accept ALL valid S/R levels (no R:R filtering)
+            # R:R will be used for position sizing in prediction_engine instead
+            valid_candidates.append({
+                "level": level,
+                "tp_price": tp_candidate,
+                "rr": rr,
+                "distance": distance,
+                "power": level["power"]  # Required (NO FALLBACKS)
+            })
         
         if not valid_candidates:
-            # No perfect S/R level found - calculate mathematical TP based on target R:R
-            # Use optimal R:R (midpoint between min and max) for calculation
+            # No S/R levels found - calculate mathematical TP
+            # Use target R:R (midpoint between min and max) for fallback calculation
             target_rr = (min_rr + max_rr) / 2.0
             reward = risk * target_rr
             
@@ -313,27 +313,30 @@ class RiskManager:
                 take_profit = entry_price - reward
             
             logger.info(
-                f"📐 No perfect S/R level for TP - using mathematical calculation: "
+                f"📐 No S/R level for TP - using mathematical calculation: "
                 f"{direction} @ ${entry_price:.2f}, TP @ ${take_profit:.2f} "
                 f"(R:R {target_rr:.1f}x = ${reward:.2f} reward)"
             )
             
-            # Return same format as when S/R level is found (just the TP price)
             return take_profit
         
-        # STEP 4: Select Best Candidate - Highest R:R within constraints
-        # (Higher R:R = better, as long as it's realistic)
-        best_candidate = max(valid_candidates, key=lambda x: x["rr"])
+        # STEP 4: Select Best Candidate
+        # Priority: 1) Power (S/R strength), 2) R:R (reward potential)
+        # Select strongest S/R level with best R:R
+        best_candidate = max(valid_candidates, key=lambda x: (x["power"], x["rr"]))
         
         take_profit = best_candidate["tp_price"]
         selected_level = best_candidate["level"]
         final_rr = best_candidate["rr"]
         
+        # Log with R:R classification
+        rr_quality = "excellent" if final_rr >= 2.5 else "good" if final_rr >= 1.5 else "acceptable"
+        
         logger.info(
-            f"🎯 {direction} TP at next S/R level: ${take_profit:.2f} "
+            f"🎯 {direction} TP at strongest S/R level: ${take_profit:.2f} "
             f"(level: ${selected_level['price_level']:.2f}, "  # Required (NO FALLBACKS)
             f"power: {selected_level['power']:.1f}, "  # Required (NO FALLBACKS)
-            f"R:R: {final_rr:.2f}:1, "
+            f"R:R: {final_rr:.2f}:1 [{rr_quality}], "
             f"cushion: ${cushion:.2f})"
         )
         

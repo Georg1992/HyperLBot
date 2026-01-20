@@ -23,6 +23,7 @@ class TradingPrediction:
     reasoning: str
     strategy: str
     timestamp: float
+    risk_reward_ratio: float = 0.0  # Actual R:R achieved (for position sizing)
 
 
 class PredictionEngine:
@@ -210,7 +211,8 @@ class PredictionEngine:
             take_profit=take_profit,
             confidence=confidence,
             reasoning=combined_reasoning,
-            strategy=strategy
+            strategy=strategy,
+            risk_reward_ratio=rr_ratio
         )
     
     def _create_prediction(
@@ -221,7 +223,8 @@ class PredictionEngine:
         take_profit: float,
         confidence: float,
         reasoning: str,
-        strategy: str
+        strategy: str,
+        risk_reward_ratio: float = 0.0
     ) -> TradingPrediction:
         """Create a TradingPrediction object - single responsibility: prediction creation"""
         return TradingPrediction(
@@ -232,8 +235,55 @@ class PredictionEngine:
             confidence=confidence,
             reasoning=reasoning,
             strategy=strategy,
-            timestamp=time.time()
+            timestamp=time.time(),
+            risk_reward_ratio=risk_reward_ratio
         )
+    
+    @staticmethod
+    def calculate_rr_position_multiplier(rr_ratio: float) -> float:
+        """
+        Calculate position size multiplier based on Risk:Reward ratio
+        
+        Logic: Trade smaller on low R:R, bigger on high R:R
+        - R:R < 0.8: Dangerous (reject or 0.5x)
+        - R:R 0.8-1.5: Acceptable (0.5x-0.9x)
+        - R:R 1.5-2.5: Good (1.0x)
+        - R:R 2.5+: Excellent (1.1x-1.5x)
+        
+        Args:
+            rr_ratio: Achieved risk:reward ratio
+            
+        Returns:
+            Multiplier to apply to base position_size (0.5 to 1.5)
+        """
+        from config.config import TradingConfig
+        
+        rr_config = TradingConfig.RR_POSITION_MULTIPLIERS
+        min_rr = rr_config["min_rr"]
+        low_rr = rr_config["low_rr"]
+        good_rr = rr_config["good_rr"]
+        excellent_rr = rr_config["excellent_rr"]
+        max_mult = rr_config["max_multiplier"]
+        min_mult = rr_config["min_multiplier"]
+        
+        if rr_ratio < min_rr:
+            # Dangerous R:R - minimum size
+            return min_mult
+        elif rr_ratio < low_rr:
+            # Low R:R (0.8-1.2) - scale from 0.5x to 0.8x
+            progress = (rr_ratio - min_rr) / (low_rr - min_rr)
+            return min_mult + (0.8 - min_mult) * progress
+        elif rr_ratio < good_rr:
+            # Acceptable R:R (1.2-1.5) - scale from 0.8x to 1.0x
+            progress = (rr_ratio - low_rr) / (good_rr - low_rr)
+            return 0.8 + 0.2 * progress
+        elif rr_ratio < excellent_rr:
+            # Good R:R (1.5-2.5) - keep at 1.0x (base size)
+            return 1.0
+        else:
+            # Excellent R:R (2.5+) - scale from 1.0x to 1.5x (capped)
+            progress = min((rr_ratio - excellent_rr) / 2.5, 1.0)  # Cap at R:R 5.0
+            return 1.0 + (max_mult - 1.0) * progress
     
     def _predict_scalping(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
         """

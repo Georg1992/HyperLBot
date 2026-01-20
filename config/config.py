@@ -113,7 +113,9 @@ class TradingConfig:
     }
     
     # ADAPTIVE TP CONFIGURATION (Market Structure Based)
-    # TP placed at next significant S/R level with constraints
+    # TP placed at strongest S/R level (prioritizing level power over R:R)
+    # min_rr/max_rr are GUIDELINES for mathematical fallback, not hard filters
+    # Actual R:R achieved determines position sizing (see RR_POSITION_MULTIPLIERS)
     TP_ADAPTIVE_CONFIG = {
         "scalping": {
             "min_rr": 1.5,              # Minimum risk:reward ratio
@@ -169,6 +171,18 @@ class TradingConfig:
             "cushion_atr": 0.5,
             "max_distance_atr": 10.0
         }
+    }
+    
+    # R:R-Based Position Sizing Multipliers
+    # Base position_size (in strategy configs) is scaled by R:R achieved
+    # This ensures we trade SMALLER on low R:R, BIGGER on high R:R
+    RR_POSITION_MULTIPLIERS = {
+        "min_rr": 0.8,           # R:R < 0.8 is dangerous
+        "low_rr": 1.2,           # R:R 0.8-1.5: acceptable but small (0.5x-0.8x size)
+        "good_rr": 1.5,          # R:R 1.5-2.5: good (1.0x size)
+        "excellent_rr": 2.5,     # R:R 2.5+: excellent (1.2x-1.5x size)
+        "max_multiplier": 1.5,   # Never exceed 1.5x base position size
+        "min_multiplier": 0.5    # Never go below 0.5x base position size
     }
     
     # S/R LEVEL SCORING WEIGHTS (Strategy-Aware)
