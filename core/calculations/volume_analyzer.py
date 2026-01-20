@@ -22,8 +22,8 @@ class VolumeAnalyzer:
                 return {"momentum": 0.0, "trend": "UNKNOWN"}
             
             # Simple momentum calculation
-            recent_avg = sum(v.get('volume', 0) for v in volume_history[-3:]) / 3
-            older_avg = sum(v.get('volume', 0) for v in volume_history[-6:-3]) / 3
+            recent_avg = sum(v['volume'] if 'volume' in v else 0 for v in volume_history[-3:]) / 3
+            older_avg = sum(v['volume'] if 'volume' in v else 0 for v in volume_history[-6:-3]) / 3
             
             momentum = (recent_avg - older_avg) / older_avg if older_avg > 0 else 0.0
             
@@ -44,7 +44,7 @@ class VolumeAnalyzer:
                 return 0.0
             
             # Simple trend strength calculation
-            volumes = [v.get('volume', 0) for v in volume_history[-5:]]
+            volumes = [v['volume'] if 'volume' in v else 0 for v in volume_history[-5:]]
             if not volumes:
                 return 0.0
             

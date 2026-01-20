@@ -192,7 +192,7 @@ class HyperliquidWebSocket:
             
             # Handle subscription response
             if "channel" in data and data["channel"] == "subscriptionResponse":
-                logger.info(f"✅ Subscription response: {data.get('data', {})}")
+                logger.info(f"✅ Subscription response: {data['data'] if 'data' in data else {}}")
                 return
             
             # Handle trades data
@@ -243,7 +243,7 @@ class HyperliquidWebSocket:
                         for trade in trades_data:
                             if "px" in trade and "sz" in trade:
                                 # Use actual trade timestamp if available, otherwise use current time
-                                trade_timestamp = trade.get("time", time.time() * 1000) / 1000  # Convert from ms to seconds
+                                trade_timestamp = (trade["time"] if "time" in trade else time.time() * 1000) / 1000  # Convert from ms to seconds
                                 trade_data = {
                                     "price": float(trade["px"]),
                                     "size": float(trade["sz"]),
@@ -303,7 +303,7 @@ class HyperliquidWebSocket:
                 cutoff_timestamp = current_time - (2 * 60 * 60)  # 2 hours ago
                 self.trades_cache = [
                     trade for trade in self.trades_cache 
-                    if trade.get('timestamp', 0) >= cutoff_timestamp
+                    if ('timestamp' in trade and trade['timestamp'] >= cutoff_timestamp)
                 ]
                 
                 # Return raw trades - NO BUSINESS LOGIC
@@ -321,7 +321,7 @@ class HyperliquidWebSocket:
                     # Keep only trades newer than cutoff
                     self.trades_cache = [
                         trade for trade in self.trades_cache 
-                        if trade.get('timestamp', 0) >= cutoff_timestamp
+                        if ('timestamp' in trade and trade['timestamp'] >= cutoff_timestamp)
                     ]
                     logger.debug(f"🧹 Cleared old trades, {len(self.trades_cache)} trades remaining")
         except Exception as e:

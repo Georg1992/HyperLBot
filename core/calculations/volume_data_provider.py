@@ -48,7 +48,7 @@ class VolumeDataProvider:
             # Filter trades within current 5-minute candle (from candle start to now)
             recent_trades = [
                 trade for trade in raw_trades
-                if trade.get('timestamp', 0) >= candle_start_timestamp
+                if ('timestamp' in trade and trade['timestamp'] >= candle_start_timestamp)
             ]
             
             # Calculate total volume for current candle
@@ -103,11 +103,11 @@ class VolumeDataProvider:
         # Extract volume data (only include candles with valid volume > 0)
         volume_history = [
             {
-                "volume": candle.get("volume", 0.0),
-                "timestamp": candle.get("timestamp", 0.0)
+                "volume": candle["volume"] if "volume" in candle else 0.0,
+                "timestamp": candle["timestamp"] if "timestamp" in candle else 0.0
             }
             for candle in candles
-            if candle.get("volume", 0.0) > 0
+            if ("volume" in candle and candle["volume"] > 0)
         ]
         
         if len(volume_history) < 20:

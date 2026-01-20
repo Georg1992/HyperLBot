@@ -55,7 +55,7 @@ class OrderBookAnalyzer:
                     # Format: [level1, level2, ...] - need to separate by side
                     for level in orderbook_data:
                         if isinstance(level, dict):
-                            if level.get('side') == 'B':
+                            if 'side' in level and level['side'] == 'B':
                                 bids.append(level)
                             elif level.get('side') == 'A':
                                 asks.append(level)
@@ -63,7 +63,7 @@ class OrderBookAnalyzer:
                     asks = asks[:10]
             elif isinstance(orderbook_data, dict):
                 # Format: {"levels": [bids_list, asks_list]}
-                levels = orderbook_data.get('levels', [])
+                levels = orderbook_data['levels'] if 'levels' in orderbook_data else []
                 if len(levels) == 2:
                     # Hyperliquid format: levels[0] = bids, levels[1] = asks
                     bids = levels[0][:10] if levels[0] else []
@@ -72,7 +72,7 @@ class OrderBookAnalyzer:
                     # Legacy format: levels with side field
                     for level in levels:
                         if isinstance(level, dict):
-                            if level.get('side') == 'B':
+                            if 'side' in level and level['side'] == 'B':
                                 bids.append(level)
                             elif level.get('side') == 'A':
                                 asks.append(level)
