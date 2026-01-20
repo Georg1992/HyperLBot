@@ -142,7 +142,7 @@ class EntryPriceCalculator:
         """Calculate volatility adjustment multiplier"""
         volatility_multiplier = 1.0
         try:
-            volatility_5m = unified_data.get("volatility_5m", atr_5m / current_price if current_price > 0 else 0.002)
+            volatility_5m = unified_data["volatility_5m"] if "volatility_5m" in unified_data else (atr_5m / current_price if current_price > 0 else 0.002)
             if volatility_5m > 0 and current_price > 0:
                 # Fine-tune based on volatility vs ATR relationship
                 atr_pct = atr_5m / current_price
@@ -185,12 +185,12 @@ class EntryPriceCalculator:
         spread_adjustment = 0.0
         try:
             # Orderbook data should be available (NO FALLBACKS)
-            orderbook_data = unified_data["orderbook_analysis"] if "orderbook_analysis" in unified_data else {}
+            orderbook_data = unified_data.get("orderbook_analysis", {})
             if not orderbook_data:
                 logger.warning("⚠️ Orderbook analysis missing, using 0 spread adjustment")
                 spread_adjustment = 0.0
             else:
-                bid_ask_spread = orderbook_data.get("bid_ask_spread", {})
+                bid_ask_spread = orderbook_data["bid_ask_spread"] if "bid_ask_spread" in orderbook_data else {}
                 if not bid_ask_spread:
                     logger.warning("⚠️ Bid-ask spread missing, using 0 spread adjustment")
                     spread_adjustment = 0.0
@@ -227,7 +227,7 @@ class EntryPriceCalculator:
         recent_action_multiplier = 1.0
         try:
             # last_touch_timestamp: check if exists (level might not have been touched yet)
-            last_touch_timestamp = level_data.get("last_touch_timestamp") if "last_touch_timestamp" in level_data else 0
+            last_touch_timestamp = level_data["last_touch_timestamp"] if "last_touch_timestamp" in level_data else 0
             from core.utils.time_utils import calculate_hours_since_touch
             hours_since_touch = calculate_hours_since_touch(last_touch_timestamp)
             
@@ -253,7 +253,7 @@ class EntryPriceCalculator:
         liquidity_multiplier = 1.0
         try:
             # Orderbook data should be available (NO FALLBACKS)
-            orderbook_data = unified_data["orderbook_analysis"] if "orderbook_analysis" in unified_data else {}
+            orderbook_data = unified_data.get("orderbook_analysis", {})
             if not orderbook_data:
                 logger.warning("⚠️ Orderbook analysis missing, using neutral liquidity multiplier")
                 liquidity_multiplier = 1.0
