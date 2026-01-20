@@ -221,34 +221,9 @@ class StrategyManager:
         except (ValueError, TypeError):
             rsi_momentum = 0.0
         
-        # S/R data - filter levels for strategy selection
-        sr_levels = self._safe_get(sr_data, "levels", [])
-        current_price = market_data["current_price"]  # Required (NO FALLBACKS)
-        
-        # Filter levels for strategy selection
-        # During strategy selection - no active strategy yet, uses default "standard" weights
-        from core.calculations.sr_level_filter import SRLevelFilter
-        level_filter = SRLevelFilter()
-        filtered_levels = level_filter.filter_for_strategy_selection(
-            all_levels=sr_levels,
-            current_price=current_price,
-            max_levels=2
-        )
-        top_support = filtered_levels["support"]
-        top_resistance = filtered_levels["resistance"]
-        
-        strongest_support_raw = self._safe_get(sr_data, "strongest_support", 0.0)
-        try:
-            strongest_support = float(strongest_support_raw) if strongest_support_raw is not None else 0.0
-        except (ValueError, TypeError):
-            strongest_support = 0.0
-        
-        strongest_resistance_raw = self._safe_get(sr_data, "strongest_resistance", 0.0)
-        try:
-            strongest_resistance = float(strongest_resistance_raw) if strongest_resistance_raw is not None else 0.0
-        except (ValueError, TypeError):
-            strongest_resistance = 0.0
-        
+        # STRATEGY INDEPENDENCE: S/R levels NOT used for strategy selection
+        # Strategy selection is based purely on market conditions (volatility, trend, volume, RSI, pressure)
+        # S/R level filtering happens AFTER strategy is selected in PredictionEngine
         try:
             current_price = float(market_data["current_price"])  # Required (NO FALLBACKS)
         except (ValueError, TypeError):
@@ -323,11 +298,6 @@ class StrategyManager:
             "rsi_trend": rsi_trend,
             "rsi_signal": rsi_signal,
             "rsi_momentum": rsi_momentum,
-            "sr_levels": sr_levels,
-            "top_support": top_support,
-            "top_resistance": top_resistance,
-            "strongest_support": strongest_support,
-            "strongest_resistance": strongest_resistance,
             "current_price": current_price,
             "spread_pct": spread_pct,
             "liquidity_score": liquidity_score,
@@ -584,41 +554,39 @@ class StrategyManager:
         return max(0.0, score), factors
     
     def _score_breakout(self, data: Dict[str, Any]) -> tuple:
-        """Score breakout - requires S/R proximity + pressure + volatility"""
+        """Score breakout - requires pressure buildup + volume surge + volatility"""
         score = 0.0
         factors = []
         
-        # S/R: Need strong levels near price (30 points)
-        price = data["current_price"]
-        if price > 0:
-            support_dist = abs(price - data["strongest_support"]) / price if data["strongest_support"] > 0 else 1.0
-            resistance_dist = abs(data["strongest_resistance"] - price) / price if data["strongest_resistance"] > 0 else 1.0
-            min_dist = min(support_dist, resistance_dist)
-            
-            if min_dist < 0.01:  # Within 1%
-                score += 30.0
-                factors.append(f"Strong S/R level near price ({min_dist*100:.2f}%)")
-            elif min_dist < 0.02:  # Within 2%
-                score += 15.0
-                factors.append(f"S/R level nearby ({min_dist*100:.2f}%)")
-            else:
-                score -= 10.0
-                factors.append("No nearby S/R levels")
-        else:
-            score -= 15.0
-            factors.append("Price data unavailable")
-        
-        # Pressure: Strong directional pressure (25 points)
+        # Pressure: Strong directional pressure indicates breakout potential (30 points)
         net_pressure = data["net_pressure"]
-        if abs(net_pressure) > 0.3:
-            score += 25.0
+        pressure_strength = abs(net_pressure)
+        if pressure_strength > 0.4:
+            score += 30.0
+            factors.append(f"Extreme pressure buildup ({net_pressure:+.2f})")
+        elif pressure_strength > 0.25:
+            score += 20.0
             factors.append(f"Strong pressure ({net_pressure:+.2f})")
-        elif abs(net_pressure) > 0.1:
+        elif pressure_strength > 0.1:
             score += 10.0
             factors.append(f"Moderate pressure ({net_pressure:+.2f})")
         else:
-            score -= 10.0
-            factors.append("Weak pressure")
+            score -= 15.0
+            factors.append("Weak pressure (no breakout momentum)")
+        
+        # Volume: Need surge for breakout confirmation (25 points)
+        if data["volume_category"] in ["VERY_HIGH", "EXTREME"]:
+            score += 25.0
+            factors.append(f"{data['volume_category']} volume (breakout surge)")
+        elif data["volume_category"] == "HIGH":
+            score += 15.0
+            factors.append("High volume (good)")
+        elif data["volume_category"] == "NORMAL":
+            score += 5.0
+            factors.append("Normal volume (acceptable)")
+        else:
+            score -= 15.0
+            factors.append(f"{data['volume_category']} volume (insufficient for breakout)")
         
         # Volatility: Moderate to high (20 points)
         if data["volatility_category"] in ["MODERATE", "HIGH"]:

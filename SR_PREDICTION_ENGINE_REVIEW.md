@@ -319,25 +319,30 @@ StrategyManager → Decision
 
 ### 🔴 CRITICAL ISSUES
 
-#### 4.1 Circular Dependency: Strategy → SR → Strategy
-**Problem:**
-- `SRCalculator` needs strategy to filter levels (`max_distance_pct`)
-- But strategy is determined by `StrategyManager`
-- Which needs S/R levels to make decision
-- Circular: Strategy → SR → Strategy
+#### ✅ 4.1 Circular Dependency: Strategy → SR → Strategy [FIXED]
+**Problem (RESOLVED):**
+- ~~`SRCalculator` needs strategy to filter levels (`max_distance_pct`)~~
+- ~~But strategy is determined by `StrategyManager`~~
+- ~~Which needs S/R levels to make decision~~
+- ~~Circular: Strategy → SR → Strategy~~
 
-**Current workaround:**
-- Uses "standard" strategy for S/R fetch
-- Then strategy manager selects actual strategy
-- Then prediction engine uses different strategy
-- Result: S/R levels fetched for wrong strategy
+**Solution Implemented:**
+1. **`SRCalculator`**: Always uses "comprehensive_analysis" mode - returns ALL significant levels without strategy filtering
+2. **`StrategyManager`**: No longer uses S/R levels for strategy selection - based purely on volatility, trend, volume, RSI, pressure, patterns
+3. **`PredictionEngine`**: Filters S/R levels by selected strategy AFTER strategy is determined
 
-**Impact:**
-- Scalping strategy gets S/R levels filtered for 3% range (standard)
-- But scalping only needs 0.5% range
-- Wasted data and wrong levels
+**New Flow:**
+```
+1. SRCalculator → ALL levels (strategy-independent)
+2. StrategyManager → Select strategy (volatility/trend/volume/RSI/pressure only)
+3. PredictionEngine → Filter S/R by selected strategy
+```
 
-**Fix:** Break cycle - fetch S/R strategy-agnostic, filter per-strategy in prediction engine.
+**Result:**
+- ✅ No circular dependency
+- ✅ Each strategy gets correctly filtered S/R levels
+- ✅ Strategy selection independent of S/R data
+- ✅ Scalping gets 0.5% range, swing gets 3% range (correct!)
 
 ---
 
