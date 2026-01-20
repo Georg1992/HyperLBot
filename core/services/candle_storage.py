@@ -152,13 +152,13 @@ class CandleStorage:
                     (timestamp, open, high, low, close, volume, trades_count)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    candle.get('timestamp', 0),
-                    candle.get('open', 0),
-                    candle.get('high', 0),
-                    candle.get('low', 0),
-                    candle.get('close', 0),
-                    candle.get('volume', 0),
-                    candle.get('trades_count', 0)
+                    candle['timestamp'] if 'timestamp' in candle else 0,
+                    candle['open'] if 'open' in candle else 0,
+                    candle['high'] if 'high' in candle else 0,
+                    candle['low'] if 'low' in candle else 0,
+                    candle['close'] if 'close' in candle else 0,
+                    candle['volume'] if 'volume' in candle else 0,
+                    candle['trades_count'] if 'trades_count' in candle else 0
                 ))
             
             conn.commit()
@@ -422,13 +422,13 @@ class CandleStorage:
                 return
             
             # Sort candles by timestamp (oldest first) and remove duplicates
-            all_candles.sort(key=lambda x: x.get('timestamp', 0))
+            all_candles.sort(key=lambda x: x['timestamp'] if 'timestamp' in x else 0)
             
             # Remove duplicates (same timestamp)
             seen_timestamps = set()
             unique_candles = []
             for candle in all_candles:
-                ts = candle.get('timestamp', 0)
+                ts = candle['timestamp'] if 'timestamp' in candle else 0
                 if ts not in seen_timestamps:
                     seen_timestamps.add(ts)
                     unique_candles.append(candle)
@@ -493,12 +493,12 @@ class CandleStorage:
             candles = []
             for candle in data:
                 formatted_candle = {
-                    "open": float(candle.get("o", "0")),
-                    "high": float(candle.get("h", "0")),
-                    "low": float(candle.get("l", "0")),
-                    "close": float(candle.get("c", "0")),
-                    "volume": float(candle.get("v", "0")),
-                    "timestamp": int(candle.get("t", time.time() * 1000)) // 1000,  # Convert ms to seconds
+                    "open": float(candle["o"]) if "o" in candle else 0.0,
+                    "high": float(candle["h"]) if "h" in candle else 0.0,
+                    "low": float(candle["l"]) if "l" in candle else 0.0,
+                    "close": float(candle["c"]) if "c" in candle else 0.0,
+                    "volume": float(candle["v"]) if "v" in candle else 0.0,
+                    "timestamp": int(candle["t"]) // 1000 if "t" in candle else int(time.time()),  # Convert ms to seconds
                     "trades_count": 0  # Hyperliquid doesn't provide trades count in candle data
                 }
                 candles.append(formatted_candle)
