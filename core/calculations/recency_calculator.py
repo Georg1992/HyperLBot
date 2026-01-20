@@ -43,7 +43,7 @@ class RecencyCalculator:
             "very_recent_hours": 24.0,
             "recent_hours": 72.0,
             "old_hours": 168.0
-        })
+        }
         
         very_recent_hours = recency_config["very_recent_hours"]  # Required (NO FALLBACKS)
         recent_hours = recency_config["recent_hours"]  # Required (NO FALLBACKS)
@@ -84,7 +84,7 @@ class RecencyCalculator:
             "very_recent_hours": 24.0,
             "recent_hours": 72.0,
             "old_hours": 168.0
-        })
+        }
         
         very_recent_hours = recency_config["very_recent_hours"]  # Required (NO FALLBACKS)
         recent_hours = recency_config["recent_hours"]  # Required (NO FALLBACKS)
