@@ -61,7 +61,7 @@ class DashboardService:
                     file_data = json.load(f)
                 
                 # Check if data is fresh (less than 5 minutes old)
-                last_update = file_data.get("last_update")
+                last_update = file_data["last_update"] if "last_update" in file_data else None
                 if last_update:
                     try:
                         from datetime import datetime
@@ -123,17 +123,17 @@ class DashboardService:
                 self._data["market"].update(market_dict)
                 
                 # Surface prediction to top-level for UI consumption (always set, even None)
-                pred_obj = market_data.get("prediction")
+                pred_obj = market_data["prediction"] if "prediction" in market_data else None
                 self._data["prediction"] = pred_obj
                 
                 # Surface ML performance to top-level for UI consumption (always set, even if empty)
-                ml_perf = market_data.get("ml_performance", {})
+                ml_perf = market_data["ml_performance"] if "ml_performance" in market_data else {}
                 self._data["ml_performance"] = ml_perf
                 
                 # Log prediction status for debugging
                 if pred_obj:
-                    pred_dir = pred_obj.get("direction", "N/A")
-                    pred_conf = pred_obj.get("confidence", "N/A")
+                    pred_dir = pred_obj["direction"] if "direction" in pred_obj else "N/A"
+                    pred_conf = pred_obj["confidence"] if "confidence" in pred_obj else "N/A"
                     logger.info(f"🤖 ✅ Prediction surfaced to dashboard: {pred_dir} @ {pred_conf:.1f}%")
                 else:
                     logger.debug(f"🤖 No prediction available (prediction is None)")
@@ -149,10 +149,10 @@ class DashboardService:
         """Prepare candle data structure for dashboard chart"""
         try:
             # Get pattern data from market data
-            patterns = market_data.get("patterns", {})
+            patterns = market_data["patterns"] if "patterns" in market_data else {}
             
             # Get current price for chart data preparation
-            current_price = market_data.get("current_price", 0.0)
+            current_price = market_data["current_price"] if "current_price" in market_data else 0.0
             if not current_price or current_price <= 0:
                 raise ValueError("No valid current price for chart data preparation - NO FALLBACKS")
             
@@ -214,12 +214,12 @@ class DashboardService:
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data"""
         with self._lock:
-            return self._data.get("market", {}).copy()
+            return (self._data["market"] if "market" in self._data else {}).copy()
     
     def get_chart_data(self) -> Dict[str, Any]:
         """Get chart data"""
         with self._lock:
-            return self._data.get("chart", {}).copy()
+            return (self._data["chart"] if "chart" in self._data else {}).copy()
     
     def clear_session_data(self):
         """Clear session data"""
@@ -264,7 +264,7 @@ class DashboardService:
             with open(self.heartbeat_file, 'r') as f:
                 heartbeat_data = json.load(f)
             
-            last_heartbeat = heartbeat_data.get("last_heartbeat", 0)
+            last_heartbeat = heartbeat_data["last_heartbeat"] if "last_heartbeat" in heartbeat_data else 0
             current_time = time.time()
             
             # Consider heartbeat stale if older than 2 minutes
