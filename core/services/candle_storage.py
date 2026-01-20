@@ -638,7 +638,8 @@ class CandleStorage:
             # Cleanup old candles (rolling 5-year window)
             self.cleanup_old_candles(5.0)
             
-            logger.info(f"✅ New candle added to database: timestamp={latest_timestamp}, datetime={latest_datetime.strftime('%Y-%m-%d %H:%M:%S')} UTC, price=${latest_candle.get('close', 0):.2f}")
+            candle_close = latest_candle['close'] if 'close' in latest_candle else 0
+            logger.info(f"✅ New candle added to database: timestamp={latest_timestamp}, datetime={latest_datetime.strftime('%Y-%m-%d %H:%M:%S')} UTC, price=${candle_close:.2f}")
             
         except Exception as e:
             logger.error(f"❌ Failed to update with latest candle: {e}")

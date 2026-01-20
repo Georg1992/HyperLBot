@@ -232,8 +232,9 @@ class HyperliquidSimulator:
             else:
                 raise ValueError(f"Unsupported order type: {order_request.order_type}")
             
-            if not execution_result.get("success"):
-                raise ValueError(execution_result.get("error", "Order execution failed"))
+            if "success" not in execution_result or not execution_result["success"]:
+                error_msg = execution_result["error"] if "error" in execution_result else "Order execution failed"
+                raise ValueError(error_msg)
             
             # Check margin requirements
             margin_check = self._check_margin_requirements(
@@ -401,7 +402,7 @@ class HyperliquidSimulator:
             Position close result with P&L details
         """
         try:
-            position = self.open_positions.get(trade_id)
+            position = self.open_positions[trade_id] if trade_id in self.open_positions else None
             if not position:
                 return self._create_error_response(f"Position {trade_id} not found")
             
@@ -502,7 +503,7 @@ class HyperliquidSimulator:
             exit_reason = None
             
             # Check take profit
-            if position.get("take_profit"):
+            if "take_profit" in position and position["take_profit"]:
                 if (position["side"] == "BUY" and current_price >= position["take_profit"]) or \
                    (position["side"] == "SELL" and current_price <= position["take_profit"]):
                     should_close = True

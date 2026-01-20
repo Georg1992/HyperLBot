@@ -134,9 +134,9 @@ class RSSNewsAPI:
                     'classification': sentiment_data['classification'],
                     'score': sentiment_data['score'],
                     'confidence': sentiment_analysis['confidence'],
-                    'bullish_count': sentiment_data.get('bullish_count', 0),
-                    'bearish_count': sentiment_data.get('bearish_count', 0),
-                    'neutral_count': sentiment_data.get('neutral_count', 0),
+                    'bullish_count': sentiment_data['bullish_count'] if 'bullish_count' in sentiment_data else 0,
+                    'bearish_count': sentiment_data['bearish_count'] if 'bearish_count' in sentiment_data else 0,
+                    'neutral_count': sentiment_data['neutral_count'] if 'neutral_count' in sentiment_data else 0,
                     'total_news': len(all_articles)  # Total articles analyzed
                 },
                 'impact': sentiment_analysis['impact'],
@@ -211,11 +211,11 @@ class RSSNewsAPI:
             
             for entry in feed.entries:
                 # Extract article data
-                published_date = self._parse_date(entry.get('published', ''))
+                published_date = self._parse_date(entry['published'] if 'published' in entry else '')
                 article = {
-                    'title': entry.get('title', ''),
-                    'summary': entry.get('summary', ''),
-                    'link': entry.get('link', ''),
+                    'title': entry['title'] if 'title' in entry else '',
+                    'summary': entry['summary'] if 'summary' in entry else '',
+                    'link': entry['link'] if 'link' in entry else '',
                     'published': published_date.isoformat() if published_date else None,  # Convert to ISO string for JSON
                     'published_timestamp': published_date.timestamp() if published_date else time.time(),  # For sorting
                     'source': source_name,
