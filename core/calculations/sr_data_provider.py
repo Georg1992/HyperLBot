@@ -235,12 +235,12 @@ class SRDataProvider:
             # Combine and deduplicate by timestamp (should already be deduplicated, but just in case)
             all_candles = {}
             for candle in support_candles + resistance_candles:
-                ts = candle.get('timestamp', 0)
+                ts = candle['timestamp'] if 'timestamp' in candle else 0
                 if ts not in all_candles:
                     all_candles[ts] = candle
             
             # Convert to list and sort by timestamp (oldest first)
-            filtered_candles = sorted(all_candles.values(), key=lambda x: x.get('timestamp', 0))
+            filtered_candles = sorted(all_candles.values(), key=lambda x: x['timestamp'] if 'timestamp' in x else 0)
             
             # Only log if significant number found (reduce noise)
             if len(filtered_candles) > 100:
