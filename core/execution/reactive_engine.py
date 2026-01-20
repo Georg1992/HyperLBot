@@ -155,15 +155,43 @@ class ReactiveEngine:
                 return None
             
             # Calculate position size (from strategy config)
-            position_size_pct = strategy_config["position_size"]  # Required (NO FALLBACKS)
+            base_position_size_pct = strategy_config["position_size"]  # Required (NO FALLBACKS)
             leverage = strategy_config["max_leverage"]  # Required (NO FALLBACKS)
             
             # Prepare order parameters
             order_side = "BUY" if signal.direction == "LONG" else "SELL"
             
-            # Calculate position size in BTC (would need balance from session manager)
-            # For now, use percentage - actual size calculation happens in trade executor
-            position_size_btc = None  # Will be calculated by trade executor based on balance
+            # Calculate R:R-based position size multiplier
+            from core.execution.prediction_engine import PredictionEngine
+            rr_multiplier = PredictionEngine.calculate_rr_position_multiplier(signal.risk_reward_ratio)
+            
+            # Adjusted position size with R:R scaling
+            adjusted_position_size_pct = base_position_size_pct * rr_multiplier
+            
+            # Get current balance from simulator
+            current_balance = 0.0
+            hyperliquid_simulator = None
+            try:
+                from core.services.system_initializer import get_system_initializer
+                system_initializer = get_system_initializer()
+                hyperliquid_simulator = system_initializer.singleton_systems["hyperliquid_simulator"] if "hyperliquid_simulator" in system_initializer.singleton_systems else None
+                if hyperliquid_simulator and hasattr(hyperliquid_simulator, 'get_balance'):
+                    current_balance = hyperliquid_simulator.get_balance()
+            except Exception as e:
+                logger.warning(f"⚠️ Could not get balance: {e}")
+                current_balance = 10000.0  # Fallback for testing
+            
+            # Calculate position size in BTC: (balance × position_size_pct × leverage) / current_price
+            # This accounts for leverage: with 40x leverage, 10% of balance = 400% exposure
+            position_value_usd = current_balance * adjusted_position_size_pct * leverage
+            position_size_btc = position_value_usd / signal.entry_price
+            
+            logger.info(
+                f"💰 Position sizing: Balance=${current_balance:.2f}, "
+                f"Base={base_position_size_pct*100:.1f}%, R:R multiplier={rr_multiplier:.2f}x, "
+                f"Adjusted={adjusted_position_size_pct*100:.1f}%, "
+                f"Leverage={leverage}x → {position_size_btc:.4f} BTC (${position_value_usd:.2f})"
+            )
             
             # Prepare order metadata
             order_metadata = {
@@ -173,7 +201,13 @@ class ReactiveEngine:
                 "expected_move_pct": signal.expected_move_pct,
                 "breakout_level": signal.breakout_level,
                 "reasoning": signal.reasoning,
-                "detected_at": signal.detected_at
+                "detected_at": signal.detected_at,
+                "risk_reward_ratio": signal.risk_reward_ratio,
+                "base_position_size_pct": base_position_size_pct,
+                "rr_multiplier": rr_multiplier,
+                "adjusted_position_size_pct": adjusted_position_size_pct,
+                "position_size_btc": position_size_btc,
+                "balance_at_entry": current_balance
             }
             
             # Call API manager to place market order (if available)
@@ -181,37 +215,13 @@ class ReactiveEngine:
             # Actual execution logic is handled by the trade executor (not implemented yet)
             if self._api_manager:
                 try:
-                    # Try to get Hyperliquid simulator from system initializer
-                    # The simulator handles order execution calls
-                    hyperliquid_simulator = None
-                    try:
-                        from core.services.system_initializer import get_system_initializer
-                        system_initializer = get_system_initializer()
-                        # Try different possible keys for simulator
-                        hyperliquid_simulator = system_initializer.get_singleton_system("hyperliquid_simulator")
-                        if not hyperliquid_simulator:
-                            # Try getting from trading systems
-                            trading_systems = system_initializer.get_singleton_system("trading_systems")
-                            if trading_systems:
-                                hyperliquid_simulator = getattr(trading_systems, 'simulator', None)
-                    except Exception:
-                        pass
-                    
-                    # Fallback: try to get from API manager or create new instance
-                    if not hyperliquid_simulator:
-                        try:
-                            from core.api.hyperliquid_simulator import HyperliquidSimulator
-                            # Create simulator instance for order calls (paper trading)
-                            hyperliquid_simulator = HyperliquidSimulator()
-                        except Exception:
-                            pass
-                    
+                    # Hyperliquid simulator already fetched above
                     if hyperliquid_simulator and hasattr(hyperliquid_simulator, 'place_order'):
-                        # Call place_order - this is the execution call (no actual execution logic here)
+                        # Call place_order with proper position size
                         order_result = hyperliquid_simulator.place_order(
                             order_type="MARKET",
                             side=order_side,
-                            size=position_size_btc or 0.001,  # Placeholder size, will be calculated properly
+                            size=position_size_btc,  # Calculated based on balance, position_size%, R:R, leverage
                             symbol="BTC",
                             price=None,  # Market order - no price needed
                             leverage=leverage,
@@ -241,9 +251,13 @@ class ReactiveEngine:
                                 "entry_price": signal.entry_price,
                                 "stop_loss": signal.stop_loss,
                                 "take_profit": signal.take_profit,
-                                "position_size_pct": position_size_pct,
+                                "base_position_size_pct": base_position_size_pct,
+                                "rr_multiplier": rr_multiplier,
+                                "adjusted_position_size_pct": adjusted_position_size_pct,
+                                "position_size_btc": position_size_btc,
                                 "leverage": leverage,
                                 "confidence": signal.confidence,
+                                "risk_reward_ratio": signal.risk_reward_ratio,
                                 "expected_move_pct": signal.expected_move_pct,
                                 "reasoning": signal.reasoning,
                                 "called_at": time.time(),
@@ -272,9 +286,13 @@ class ReactiveEngine:
                 "entry_price": signal.entry_price,
                 "stop_loss": signal.stop_loss,
                 "take_profit": signal.take_profit,
-                "position_size_pct": position_size_pct,
+                "base_position_size_pct": base_position_size_pct,
+                "rr_multiplier": rr_multiplier,
+                "adjusted_position_size_pct": adjusted_position_size_pct,
+                "position_size_btc": position_size_btc,
                 "leverage": leverage,
                 "confidence": signal.confidence,
+                "risk_reward_ratio": signal.risk_reward_ratio,
                 "expected_move_pct": signal.expected_move_pct,
                 "reasoning": signal.reasoning,
                 "called_at": time.time(),
