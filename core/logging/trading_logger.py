@@ -115,7 +115,7 @@ class TradingLogger:
         self.session_metadata["last_balance_update"] = datetime.now().isoformat()
         
         # Calculate P&L from initial balance
-        initial_balance = self.session_metadata.get("initial_balance", balance)
+        initial_balance = self.session_metadata["initial_balance"] if "initial_balance" in self.session_metadata else balance
         balance_change = balance - initial_balance
         balance_change_pct = (balance_change / initial_balance * 100) if initial_balance > 0 else 0
         
@@ -130,29 +130,29 @@ class TradingLogger:
         trade_record = {
             "timestamp": time.time(),
             "datetime": datetime.now().isoformat(),
-            "trade_id": trade_data.get("trade_id", f"trade_{len(self.trades) + 1}"),
-            "side": trade_data.get("side"),
-            "price": trade_data.get("price"),
-            "size": trade_data.get("size"),
-            "leverage": trade_data.get("leverage"),
-            "order_type": trade_data.get("order_type", "LIMIT"),
-            "fees": trade_data.get("fees", {}),
-            "signal_data": trade_data.get("signal_data", {}),
-            "order_result": trade_data.get("order_result", {}),
+            "trade_id": trade_data["trade_id"] if "trade_id" in trade_data else f"trade_{len(self.trades) + 1}",
+            "side": trade_data["side"] if "side" in trade_data else None,
+            "price": trade_data["price"] if "price" in trade_data else None,
+            "size": trade_data["size"] if "size" in trade_data else None,
+            "leverage": trade_data["leverage"] if "leverage" in trade_data else None,
+            "order_type": trade_data["order_type"] if "order_type" in trade_data else "LIMIT",
+            "fees": trade_data["fees"] if "fees" in trade_data else {},
+            "signal_data": trade_data["signal_data"] if "signal_data" in trade_data else {},
+            "order_result": trade_data["order_result"] if "order_result" in trade_data else {},
             "market_conditions": {
-                "current_price": trade_data.get("current_price"),
-                "support": trade_data.get("support"),
-                "resistance": trade_data.get("resistance"),
-                "trend_5m": trade_data.get("trend_5m"),
-                "trend_1h": trade_data.get("trend_1h"),
-                "variability_score": trade_data.get("variability_score"),
-                "market_condition": trade_data.get("market_condition")
+                "current_price": trade_data["current_price"] if "current_price" in trade_data else None,
+                "support": trade_data["support"] if "support" in trade_data else None,
+                "resistance": trade_data["resistance"] if "resistance" in trade_data else None,
+                "trend_5m": trade_data["trend_5m"] if "trend_5m" in trade_data else None,
+                "trend_1h": trade_data["trend_1h"] if "trend_1h" in trade_data else None,
+                "variability_score": trade_data["variability_score"] if "variability_score" in trade_data else None,
+                "market_condition": trade_data["market_condition"] if "market_condition" in trade_data else None
             },
             "strategy_info": {
-                "signal_reason": trade_data.get("signal_reason"),
-                "profit_target": trade_data.get("profit_target"),
-                "stop_loss": trade_data.get("stop_loss"),
-                "risk_level": trade_data.get("risk_level", "STANDARD")
+                "signal_reason": trade_data["signal_reason"] if "signal_reason" in trade_data else None,
+                "profit_target": trade_data["profit_target"] if "profit_target" in trade_data else None,
+                "stop_loss": trade_data["stop_loss"] if "stop_loss" in trade_data else None,
+                "risk_level": trade_data["risk_level"] if "risk_level" in trade_data else "STANDARD"
             }
         }
         
@@ -169,15 +169,15 @@ class TradingLogger:
         data_point = {
             "timestamp": time.time(),
             "datetime": datetime.now().isoformat(),
-            "price": market_data.get("price"),
-            "volume": market_data.get("volume"),
-            "bid": market_data.get("bid"),
-            "ask": market_data.get("ask"),
-            "spread": market_data.get("spread"),
-            "candles_5m": market_data.get("candles_5m", []),
-            "candles_1h": market_data.get("candles_1h", []),
-            "support_resistance": market_data.get("support_resistance", {}),
-            "trend_analysis": market_data.get("trend_analysis", {}),
+            "price": market_data["price"] if "price" in market_data else None,
+            "volume": market_data["volume"] if "volume" in market_data else None,
+            "bid": market_data["bid"] if "bid" in market_data else None,
+            "ask": market_data["ask"] if "ask" in market_data else None,
+            "spread": market_data["spread"] if "spread" in market_data else None,
+            "candles_5m": market_data["candles_5m"] if "candles_5m" in market_data else [],
+            "candles_1h": market_data["candles_1h"] if "candles_1h" in market_data else [],
+            "support_resistance": market_data["support_resistance"] if "support_resistance" in market_data else {},
+            "trend_analysis": market_data["trend_analysis"] if "trend_analysis" in market_data else {},
             "variability_data": market_data.get("variability_data", {})
         }
         
