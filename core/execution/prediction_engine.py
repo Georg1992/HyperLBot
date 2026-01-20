@@ -2303,7 +2303,18 @@ class PredictionEngine:
                 leverage=leverage
             )
             
+            # Get spread for realistic profit calculations (ADDED 2026-01-12)
+            spread_pct = 0.01  # Default: 0.01% (BTC perp typical)
+            if "orderbook_analysis" in unified_data:
+                orderbook_data = unified_data["orderbook_analysis"]
+                if "bid_ask_spread" in orderbook_data:
+                    bid_ask_spread = orderbook_data["bid_ask_spread"]
+                    if "percentage" in bid_ask_spread:
+                        spread_pct = bid_ask_spread["percentage"]
+                        logger.debug(f"📊 Using actual spread: {spread_pct:.3f}%")
+            
             # 3. Calculate adaptive take profit at next S/R level (delegated to RiskManager)
+            # NOW WITH SPREAD COSTS (FIXED 2026-01-12)
             take_profit = RiskManager.calculate_take_profit(
                 entry_price=entry_price,
                 stop_loss=stop_loss,
@@ -2311,7 +2322,8 @@ class PredictionEngine:
                 atr_5m=atr_5m,
                 config=config,
                 sr_levels=all_levels,  # Pass all levels for adaptive TP selection
-                strategy=strategy
+                strategy=strategy,
+                spread_pct=spread_pct  # Pass spread for realistic profit calculation
             )
             
             # 4. Validate risk/reward ratio (delegated to RiskManager)

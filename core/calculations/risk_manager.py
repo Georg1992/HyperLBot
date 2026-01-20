@@ -181,18 +181,20 @@ class RiskManager:
         atr_5m: float,
         config: Dict[str, Any],
         sr_levels: list,
-        strategy: str
+        strategy: str,
+        spread_pct: float = 0.01  # Spread in percentage (e.g., 0.01 = 0.01%)
     ) -> float:
         """
-        Calculate adaptive take profit based on next significant S/R level
+        Calculate adaptive take profit based on next significant S/R level WITH SPREAD COSTS
         
         Algorithm (NO FALLBACKS):
         1. Filter levels by power (quality gate)
         2. Filter by distance (realism gate)
         3. Calculate TP at level with ATR cushion
-        4. Validate R:R constraints
-        5. Select best level within constraints
-        6. Raise error if no valid TP target (NO FALLBACKS)
+        4. Subtract spread costs from reward (FIXED 2026-01-12)
+        5. Validate R:R constraints
+        6. Select best level within constraints
+        7. Raise error if no valid TP target (NO FALLBACKS)
         
         Args:
             entry_price: Entry price for the trade
@@ -202,6 +204,7 @@ class RiskManager:
             config: Strategy configuration
             sr_levels: All available S/R levels
             strategy: Trading strategy name
+            spread_pct: Bid-ask spread in percentage (e.g., 0.01 = 0.01%)
             
         Returns:
             Calculated take profit price at next significant S/R level
@@ -272,6 +275,14 @@ class RiskManager:
         max_distance = atr_5m * max_distance_atr
         cushion = atr_5m * cushion_atr
         
+        # Calculate round-trip spread cost (FIXED 2026-01-12)
+        # Spread cost = entry spread + exit spread
+        # For BTC at $90K with 0.01% spread: $90K * 0.0001 * 2 = $18
+        spread_decimal = spread_pct / 100.0  # Convert 0.01% to 0.0001
+        spread_cost_usd = entry_price * spread_decimal * 2.0  # Round-trip (entry + exit)
+        
+        logger.debug(f"💰 Spread cost calculation: {spread_pct:.3f}% → ${spread_cost_usd:.2f} round-trip at ${entry_price:.2f}")
+        
         valid_candidates = []
         for level in target_levels:
             level_price = level["price_level"]  # Required (NO FALLBACKS)
@@ -287,9 +298,18 @@ class RiskManager:
             else:  # SHORT
                 tp_candidate = level_price + cushion
             
-            # Calculate R:R
-            reward = abs(tp_candidate - entry_price)
-            rr = reward / risk
+            # Calculate R:R WITH SPREAD COSTS (FIXED 2026-01-12)
+            # Research: Ignoring spread = overestimating profit by 0.01-0.02% per trade
+            # For high-leverage, this compounds to significant P&L error
+            raw_reward = abs(tp_candidate - entry_price)
+            net_reward = raw_reward - spread_cost_usd  # Subtract spread costs
+            
+            # If net reward is negative or zero, level is too close (spread eats all profit)
+            if net_reward <= 0:
+                logger.debug(f"⚠️ TP candidate ${tp_candidate:.2f} rejected: spread cost ${spread_cost_usd:.2f} exceeds reward ${raw_reward:.2f}")
+                continue
+            
+            rr = net_reward / risk
             
             # Accept ALL valid S/R levels (no R:R filtering)
             # R:R will be used for position sizing in prediction_engine instead
