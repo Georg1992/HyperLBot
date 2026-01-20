@@ -260,9 +260,6 @@ class SRLevelFilter(BaseCalculator):
         if strategy_key not in TradingConfig.SR_LEVEL_SELECTION:
             raise ValueError(f"Unknown strategy: {strategy_key} - NO FALLBACKS")
         strategy_config = TradingConfig.SR_LEVEL_SELECTION[strategy_key]  # Required (NO FALLBACKS)
-        if not strategy_config or strategy_config is None: 
-            TradingConfig.SR_LEVEL_SELECTION["standard"]
-        )
         max_levels_per_side = strategy_config["max_levels_per_side"]
         min_level_distance_pct = strategy_config["min_level_distance_pct"]
         max_distance_pct = strategy_config["max_distance_pct"]  # Required (NO FALLBACKS)
