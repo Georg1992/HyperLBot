@@ -744,7 +744,7 @@ class MarketDataService:
                     "total_volume_btc": 0.0,
                     "volume_category": "unknown",
                     "timestamp": time.time()
-                }),
+                },
                 
                 "volatility": market_data["volatility"] if "volatility" in market_data else {
                     "current": 0.0,
@@ -757,7 +757,7 @@ class MarketDataService:
                         "1d": 0.0
                     },
                     "timestamp": time.time()
-                }),
+                },
                 
                 # Dashboard-specific volatility fields
                 "volatility_5m": market_data["volatility_5m"],  # Required (NO FALLBACKS)
