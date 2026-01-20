@@ -263,7 +263,7 @@ class WhaleAnalysisCalculator:
                         for address in addresses:
                             if self._is_exchange_address(address):
                                 has_exchange_involvement = True
-                                tx_outflow += input_tx.get("output_value", 0) / 100000000  # Convert to BTC
+                                tx_outflow += (input_tx["output_value"] if "output_value" in input_tx else 0) / 100000000  # Convert to BTC
                 
                 # Check outputs for exchange addresses
                 outputs = tx["outputs"] if "outputs" in tx else []

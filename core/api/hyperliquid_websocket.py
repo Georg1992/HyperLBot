@@ -248,7 +248,7 @@ class HyperliquidWebSocket:
                                     "price": float(trade["px"]),
                                     "size": float(trade["sz"]),
                                     "timestamp": trade_timestamp,
-                                    "side": trade.get("side", "unknown")
+                                    "side": trade["side"] if "side" in trade else "unknown"
                                 }
                                 self.trades_cache.append(trade_data)
                                 

@@ -209,7 +209,7 @@ class DashboardService:
     def get_session_data(self) -> Dict[str, Any]:
         """Get session data"""
         with self._lock:
-            return self._data.get("session", {}).copy()
+            return (self._data["session"] if "session" in self._data else {}).copy()
     
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data"""

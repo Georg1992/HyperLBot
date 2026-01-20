@@ -529,7 +529,7 @@ class SRWeightTrainer:
             with open(filepath, 'r') as f:
                 data = json.load(f)
             
-            weights = data.get('weights')
+            weights = data['weights'] if 'weights' in data else None
             if weights is None:
                 return None
             

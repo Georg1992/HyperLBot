@@ -79,7 +79,7 @@ class FundingRateAnalyzer:
             self._funding_rate_history.append({
                 "timestamp": current_time,
                 "funding_rate": funding_rate,
-                "data_source": funding_data.get('data_source', 'unknown')
+                "data_source": funding_data['data_source'] if 'data_source' in funding_data else 'unknown'
             })
             
             # Keep only recent history

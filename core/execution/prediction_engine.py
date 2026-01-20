@@ -2076,7 +2076,7 @@ class PredictionEngine:
                 return None
             
             # Sort by score (highest first) and select best setup
-            scored_setups.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+            scored_setups.sort(key=lambda x: x["score"] if "score" in x else 0.0, reverse=True)
             best_setup = scored_setups[0]
             
             logger.debug(f"📊 Entry determined: ${best_setup['entry_price']:.2f} (type: {best_setup['setup_type']}, score: {best_setup['score']:.1f})")  # Required (NO FALLBACKS)

@@ -65,7 +65,7 @@ def get_weights_info(weights_dir: str = "data/sr_weights", method: str = "elasti
         try:
             with open(filepath, 'r') as f:
                 data = json.load(f)
-                info["weights"] = data.get("weights")
+                info["weights"] = data["weights"] if "weights" in data else None
         except Exception as e:
             logger.debug(f"Could not load weights from file for info: {e}")
         

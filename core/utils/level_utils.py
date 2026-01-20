@@ -25,7 +25,7 @@ def get_level_power(level_data: Dict[str, Any], default: float = 50.0) -> float:
     if power is not None:
         return float(power)
     
-    strength_score = level_data.get("strength_score")
+    strength_score = level_data["strength_score"] if "strength_score" in level_data else None
     if strength_score is not None:
         return float(strength_score)
     

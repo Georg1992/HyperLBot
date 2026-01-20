@@ -179,7 +179,7 @@ class SimulatedAccountManager:
         """Get current account balance"""
         if not self.account_data:
             return 0.0
-        return float(self.account_data.get("current_balance", 0.0))
+        return float(self.account_data["current_balance"]) if "current_balance" in self.account_data else 0.0
     
     def get_account_summary(self) -> Dict[str, Any]:
         """Get a summary of account performance"""

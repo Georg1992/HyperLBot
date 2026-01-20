@@ -355,7 +355,7 @@ class CrossAssetCorrelationAnalyzer:
             
             for index_name, index_data in indices_data.items():
                 if index_data:
-                    changes.append(index_data.get("change_percent", 0))
+                    changes.append(index_data["change_percent"] if "change_percent" in index_data else 0)
                     trends.append("UNKNOWN")  # Yahoo Finance doesn't provide trend
             
             if not changes:
@@ -500,7 +500,7 @@ class CrossAssetCorrelationAnalyzer:
                     enhanced_analysis['btc_price'] = current_btc_price
                     # Calculate BTC change if we have previous data
                     if len(self._correlation_history) > 0:
-                        prev_btc_price = self._correlation_history[-1].get('btc_price', 0)
+                        prev_btc_price = self._correlation_history[-1]['btc_price'] if 'btc_price' in self._correlation_history[-1] else 0
                         if prev_btc_price > 0:
                             btc_change = (current_btc_price - prev_btc_price) / prev_btc_price
                             enhanced_analysis['btc_change'] = btc_change

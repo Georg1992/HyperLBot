@@ -258,7 +258,7 @@ class EntryPriceCalculator:
                 logger.warning("⚠️ Orderbook analysis missing, using neutral liquidity multiplier")
                 liquidity_multiplier = 1.0
             else:
-                liquidity_depth = orderbook_data.get("liquidity_depth", {})
+                liquidity_depth = orderbook_data["liquidity_depth"] if "liquidity_depth" in orderbook_data else {}
                 if not liquidity_depth:
                     logger.warning("⚠️ Liquidity depth missing, using neutral liquidity multiplier")
                     liquidity_multiplier = 1.0

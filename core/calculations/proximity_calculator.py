@@ -47,7 +47,7 @@ class ProximityCalculator:
         
         if context == "direction":
             # Direction scoring: entry-to-current distance
-            proximity_config = strategy_config.get("proximity_config", {
+            proximity_config = strategy_config["proximity_config"] if "proximity_config" in strategy_config else {
                 "close_atr": 2.0,
                 "medium_atr": 4.0,
                 "far_atr": 6.0

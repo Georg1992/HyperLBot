@@ -231,7 +231,7 @@ class SystemInitializer:
             logger.info("📊 Initializing data systems...")
             
             # Clear caches for fresh data using simplified MarketDataService
-            market_data_service = self.singleton_systems.get("market_data_service")
+            market_data_service = self.singleton_systems["market_data_service"] if "market_data_service" in self.singleton_systems else None
             if market_data_service:
                 market_data_service.invalidate_processed_data()
                 logger.info("🗑️ MarketDataService cache cleared")
