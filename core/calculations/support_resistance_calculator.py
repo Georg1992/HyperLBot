@@ -420,9 +420,10 @@ class SupportResistanceCalculator(BaseCalculator):
                     logger.info(f"✅ Found sufficient levels: {len(support_levels)} support, {len(resistance_levels)} resistance")
                     break
                 
-                logger.debug(f"📊 Processing {label} of data (liquidation range filtered)...")
+                logger.debug(f"📊 Processing {label} of data (STRICT liquidation range)...")
                 
-                # Fetch 5m candles for this time range (price + time filtered at database level)
+                # Fetch 5m candles STRICTLY within liquidation range (no expansion)
+                # FIXED: Double filtering - now fetches only what we need
                 additional_5m_candles = self._data_provider._fetch_candles_in_liquidation_range(
                     current_price, long_liquidation, short_liquidation, days
                 )

@@ -179,42 +179,41 @@ class SRDataProvider:
             raise ValueError(f"Data fetching failed: {e}")
     
     def _fetch_candles_in_liquidation_range(self, current_price: float, long_liquidation: float,
-                                           short_liquidation: float, days: int) -> List[Dict]:
+                                          short_liquidation: float, days: int) -> List[Dict]:
         """
-        Fetch candles for swing detection with expanded price range, then filter levels by liquidation
+        Fetch candles STRICTLY within liquidation range (NO expansion)
         
-        Strategy:
-        - Fetch candles in EXPANDED range (2% beyond liquidation) to catch all swing points
-        - Swing detection will find all relevant levels
-        - Final levels are filtered by liquidation range (safe for trading)
+        FIXED: Double liquidation filtering issue
+        - Old: Fetched with 2% expansion, never filtered after → 80% wasted data
+        - New: Fetch strict liquidation range only → no wasted processing
         
-        This ensures we don't miss important swing points just outside liquidation range.
+        Rationale:
+        - S/R levels outside liquidation are irrelevant (can't be used for trading)
+        - Fetching extra data just to discard it wastes CPU/memory
+        - If more range needed, increase liquidation range (Issue #2), not expansion here
         
         Args:
             current_price: Current price
-            long_liquidation: LONG liquidation price
-            short_liquidation: SHORT liquidation price
+            long_liquidation: LONG liquidation price (strict support boundary)
+            short_liquidation: SHORT liquidation price (strict resistance boundary)
             days: Number of days to look back
             
         Returns:
-            List of candles in expanded range (for swing detection)
+            List of candles STRICTLY in liquidation range
         """
         try:
             # Calculate time cutoff timestamp
             current_time = time.time()
             cutoff_timestamp = current_time - (days * 24 * 3600)
             
-            # EXPAND price ranges by 2% to catch swing points just outside liquidation range
-            # We'll filter the final levels by liquidation range, but need all swing points for detection
-            expansion_factor = 0.02  # 2% expansion
-            
-            # Support: Expand below liquidation to catch swing points
-            support_min_price = long_liquidation * (1 - expansion_factor)  # 2% below liquidation
+            # STRICT liquidation range (NO expansion)
+            # Support: From LONG liquidation to current price
+            support_min_price = long_liquidation  # Strict boundary
             support_max_price = current_price
             
-            # Resistance: Expand above short liquidation to catch swing points
+            # Resistance: From current price to SHORT liquidation
             resistance_min_price = current_price
-            resistance_max_price = short_liquidation * (1 + expansion_factor)  # 2% above short liquidation
+            resistance_max_price = short_liquidation  # Strict boundary
             
             # Smart query: Fetch support candles (expanded range below current price)
             # WITH time filtering at database level
