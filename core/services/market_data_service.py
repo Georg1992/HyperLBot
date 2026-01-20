@@ -736,7 +736,7 @@ class MarketDataService:
                     "timeframes": {},
                     "consensus": "neutral",
                     "timestamp": time.time()
-                }),
+                },
                 
                 "volume": market_data["volume"] if "volume" in market_data else {
                     "hyperliquid_5m": {"current_volume_btc": 0.0, "volume_category": "unknown"},
