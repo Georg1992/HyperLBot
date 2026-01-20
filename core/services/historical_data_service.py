@@ -200,7 +200,7 @@ class HistoricalDataService:
                 raise ValueError("NO CANDLES AVAILABLE - NO FALLBACKS: Database must be populated with historical candles")
             
             # Get real-time volume from the last candle if available
-            real_time_volume = chart_candles_5m[-1].get("volume", 0.0)
+            real_time_volume = chart_candles_5m[-1]["volume"] if chart_candles_5m and "volume" in chart_candles_5m[-1] else 0.0
             
             # Determine which candles to display
             # We need exactly 19 completed candles + 1 ongoing = 20 total
@@ -234,7 +234,7 @@ class HistoricalDataService:
             chart_candles_with_ongoing.append(ongoing_candle)
             
             mapped_pattern_analysis = pattern_analysis
-            if pattern_analysis and pattern_analysis.get("patterns"):
+            if pattern_analysis and "patterns" in pattern_analysis and pattern_analysis["patterns"]:
                 mapped_pattern_analysis = self._map_pattern_indices_to_display_candles(
                     pattern_analysis, chart_candles_with_ongoing
                 )
@@ -282,12 +282,12 @@ class HistoricalDataService:
             offset = DETECTION_CANDLE_COUNT - DISPLAY_CANDLE_COUNT
             
             # Process flat patterns array
-            flat_patterns = patterns.get("patterns", [])
+            flat_patterns = patterns["patterns"] if "patterns" in patterns else []
             mapped_patterns = []
             
             for pattern in flat_patterns:
-                start_idx = pattern.get("start_candle_index", 0)
-                end_idx = pattern.get("end_candle_index", 0)
+                start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
+                end_idx = pattern["end_candle_index"] if "end_candle_index" in pattern else 0
                 
                 # Check if pattern is within visible range (last 20 candles of 50)
                 if start_idx >= offset and start_idx < DETECTION_CANDLE_COUNT:
@@ -306,20 +306,21 @@ class HistoricalDataService:
                     mapped_patterns.append(mapped_pattern)
                 else:
                     # Pattern is outside visible range, skip it
-                    logger.debug(f"⏭️ Pattern {pattern.get('pattern', 'unknown')} outside visible range (index {start_idx} not in [{offset}, {DETECTION_CANDLE_COUNT}])")
+                    pattern_name = pattern["pattern"] if "pattern" in pattern else "unknown"
+                    logger.debug(f"⏭️ Pattern {pattern_name} outside visible range (index {start_idx} not in [{offset}, {DETECTION_CANDLE_COUNT}])")
             
             # Update patterns structure
             patterns["patterns"] = mapped_patterns
             
             # Also map nested patterns if they exist
-            if patterns.get("patterns_nested"):
+            if "patterns_nested" in patterns and patterns["patterns_nested"]:
                 nested = patterns["patterns_nested"]
                 for category in ["reversal_patterns", "continuation_patterns", "triangle_patterns", 
                                "channel_patterns", "wedge_patterns", "candlestick_patterns", "trend_patterns"]:
                     if nested.get(category):
                         mapped_category = []
                         for pattern in nested[category]:
-                            start_idx = pattern.get("start_candle_index", 0)
+                            start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
                             if start_idx >= offset and start_idx < DETECTION_CANDLE_COUNT:
                                 mapped_pattern = pattern.copy()
                                 mapped_pattern["start_candle_index"] = start_idx - offset
