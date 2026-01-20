@@ -178,7 +178,8 @@ class WhaleAnalysisCalculator:
                         continue
                     
                     # Calculate transaction value
-                    total_value = sum(output.get("value", 0) for output in tx.get("outputs", []))
+                    outputs = tx["outputs"] if "outputs" in tx else []
+                    total_value = sum(output["value"] if "value" in output else 0 for output in outputs)
                     value_btc = total_value / 100000000  # Convert satoshis to BTC
                     
                     # Approximate USD value (using current BTC price ~$110k)
@@ -255,8 +256,9 @@ class WhaleAnalysisCalculator:
                 tx_outflow = 0
                 
                 # Check inputs for exchange addresses
-                for input_tx in tx.get("inputs", []):
-                    addresses = input_tx.get("addresses", [])
+                inputs = tx["inputs"] if "inputs" in tx else []
+                for input_tx in inputs:
+                    addresses = input_tx["addresses"] if "addresses" in input_tx else []
                     if addresses is not None:  # Check for None
                         for address in addresses:
                             if self._is_exchange_address(address):
@@ -264,13 +266,14 @@ class WhaleAnalysisCalculator:
                                 tx_outflow += input_tx.get("output_value", 0) / 100000000  # Convert to BTC
                 
                 # Check outputs for exchange addresses
-                for output in tx.get("outputs", []):
-                    addresses = output.get("addresses", [])
+                outputs = tx["outputs"] if "outputs" in tx else []
+                for output in outputs:
+                    addresses = output["addresses"] if "addresses" in output else []
                     if addresses is not None:  # Check for None
                         for address in addresses:
                             if self._is_exchange_address(address):
                                 has_exchange_involvement = True
-                                tx_inflow += output.get("value", 0) / 100000000  # Convert to BTC
+                                tx_inflow += (output["value"] if "value" in output else 0) / 100000000  # Convert to BTC
                 
                 if has_exchange_involvement:
                     exchange_transactions += 1
@@ -306,9 +309,9 @@ class WhaleAnalysisCalculator:
     def _calculate_whale_sentiment(self, whale_activity: Dict[str, Any], exchange_flows: Dict[str, Any]) -> Dict[str, Any]:
         """Calculate whale sentiment based on activity and flows"""
         try:
-            activity_level = whale_activity.get("activity_level", "low")
-            flow_direction = exchange_flows.get("flow_direction", "neutral")
-            whale_count = whale_activity.get("whale_count", 0)
+            activity_level = whale_activity["activity_level"] if "activity_level" in whale_activity else "low"
+            flow_direction = exchange_flows["flow_direction"] if "flow_direction" in exchange_flows else "neutral"
+            whale_count = whale_activity["whale_count"] if "whale_count" in whale_activity else 0
             
             # Base sentiment scoring
             sentiment_score = 0
@@ -334,7 +337,7 @@ class WhaleAnalysisCalculator:
                 sentiment_score -= 1
             
             # Volume-based sentiment (high volume = more significant)
-            total_volume = whale_activity.get("total_volume_usd", 0)
+            total_volume = whale_activity["total_volume_usd"] if "total_volume_usd" in whale_activity else 0
             if total_volume > 50000000:  # >$50M
                 sentiment_score += 2
             elif total_volume > 10000000:  # >$10M
