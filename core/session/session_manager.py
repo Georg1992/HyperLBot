@@ -61,12 +61,12 @@ class SessionManager:
                 
                 # Use account data if available, otherwise use provided initial_balance
                 if account_data:
-                    current_balance = account_data.get("current_balance", initial_balance)
-                    total_trades = account_data.get("total_trades", 0)
-                    winning_trades = account_data.get("winning_trades", 0)
-                    losing_trades = account_data.get("losing_trades", 0)
-                    total_pnl = account_data.get("total_pnl", 0.0)
-                    win_rate = account_data.get("win_rate", 0.0)
+                    current_balance = account_data["current_balance"] if "current_balance" in account_data else initial_balance
+                    total_trades = account_data["total_trades"] if "total_trades" in account_data else 0
+                    winning_trades = account_data["winning_trades"] if "winning_trades" in account_data else 0
+                    losing_trades = account_data["losing_trades"] if "losing_trades" in account_data else 0
+                    total_pnl = account_data["total_pnl"] if "total_pnl" in account_data else 0.0
+                    win_rate = account_data["win_rate"] if "win_rate" in account_data else 0.0
                 else:
                     current_balance = initial_balance
                     total_trades = 0
@@ -109,7 +109,7 @@ class SessionManager:
                 # Update trading logger with correct initial balance
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
-                trading_logger = system_initializer.singleton_systems.get("trading_logger")
+                trading_logger = system_initializer.singleton_systems["trading_logger"] if "trading_logger" in system_initializer.singleton_systems else None
                 if trading_logger:
                     trading_logger.update_initial_balance(initial_balance)
                     logger.info(f"💰 Trading logger updated with initial balance: ${initial_balance:.2f}")
@@ -117,7 +117,7 @@ class SessionManager:
                     logger.warning("⚠️ Trading logger not found - session metadata may have incorrect balance")
                 
                 # Sync to dashboard immediately
-                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                dashboard_service = system_initializer.singleton_systems["dashboard_service"] if "dashboard_service" in system_initializer.singleton_systems else None
                 if dashboard_service:
                     dashboard_service.update_session_data(self.current_session_data)
                     logger.info(f"🚀 Trading session started - {strategy} strategy initialized")
@@ -135,18 +135,18 @@ class SessionManager:
             # Check dashboard for any active sessions
             from core.services.system_initializer import get_system_initializer
             system_initializer = get_system_initializer()
-            dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+            dashboard_service = system_initializer.singleton_systems["dashboard_service"] if "dashboard_service" in system_initializer.singleton_systems else None
             if dashboard_service:
                 dashboard_data = dashboard_service.get_data()
             else:
                 dashboard_data = {"session": {}}
-            dashboard_session = dashboard_data.get("session", {})
+            dashboard_session = dashboard_data["session"] if "session" in dashboard_data else {}
             
             # Check for ANY existing session (ACTIVE or COMPLETED) that needs cleanup
-            if dashboard_session.get("session_id") != "no_session" and dashboard_session.get("session_id"):
-                logger.info(f"🔄 Found existing session in dashboard: {dashboard_session.get('session_id')}")
-                logger.info(f"   Status: {dashboard_session.get('status')}")
-                logger.info(f"   Balance: ${dashboard_session.get('current_balance', 0):.2f}")
+            if "session_id" in dashboard_session and dashboard_session["session_id"] != "no_session" and dashboard_session["session_id"]:
+                logger.info(f"🔄 Found existing session in dashboard: {dashboard_session['session_id']}")
+                logger.info(f"   Status: {dashboard_session['status'] if 'status' in dashboard_session else 'UNKNOWN'}")
+                logger.info(f"   Balance: ${dashboard_session['current_balance'] if 'current_balance' in dashboard_session else 0:.2f}")
                 
                 # Clear any existing session data to ensure clean start
                 if dashboard_service:
