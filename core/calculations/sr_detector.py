@@ -449,6 +449,62 @@ class SRDetector:
         except Exception:
             return 50.0  # Default strength
     
+    def _calculate_stop_hunt_risk(self, points: List[Level]) -> tuple:
+        """
+        Calculate stop hunt risk from wick rejection data
+        
+        Research-backed scoring for BTC perps (40x leverage):
+        - High wick rejection (>60%) indicates liquidation hunting by market makers
+        - Multiple touches with high wicks = consistent stop hunting activity
+        - These levels ARE valid S/R but RISKY to trade
+        
+        Args:
+            points: List of Level objects in cluster
+            
+        Returns:
+            Tuple of (avg_wick_ratio, stop_hunt_risk_score)
+            - avg_wick_ratio: Average wick rejection ratio (0.0-1.0)
+            - stop_hunt_risk_score: Risk score (0.0-100.0)
+        """
+        try:
+            if not points:
+                return (0.0, 0.0)
+            
+            # Calculate average wick rejection ratio
+            wick_ratios = [p.wick_rejection_ratio for p in points]
+            avg_wick_ratio = sum(wick_ratios) / len(wick_ratios) if wick_ratios else 0.0
+            
+            # Base risk from average wick ratio
+            if avg_wick_ratio < 0.4:
+                # LOW risk: <40% wick (natural support/resistance)
+                base_risk = avg_wick_ratio * 50.0  # 0-20 range
+            elif avg_wick_ratio < 0.6:
+                # MODERATE risk: 40-60% wick (some stop hunting)
+                base_risk = 20.0 + (avg_wick_ratio - 0.4) * 150.0  # 20-50 range
+            elif avg_wick_ratio < 0.75:
+                # HIGH risk: 60-75% wick (active stop hunting)
+                base_risk = 50.0 + (avg_wick_ratio - 0.6) * 200.0  # 50-80 range
+            else:
+                # VERY HIGH risk: >75% wick (extreme liquidation hunting)
+                base_risk = 80.0 + min((avg_wick_ratio - 0.75) * 80.0, 20.0)  # 80-100 range
+            
+            # Penalty for consistent high wicks across multiple touches
+            # If ALL touches have high wicks (>50%), it's a consistent stop hunt zone
+            high_wick_count = sum(1 for ratio in wick_ratios if ratio > 0.5)
+            consistency_penalty = 0.0
+            if len(wick_ratios) >= 3 and high_wick_count >= len(wick_ratios) * 0.75:
+                # 75%+ of touches have high wicks = consistent stop hunting
+                consistency_penalty = min(15.0, high_wick_count * 3.0)  # Up to +15 points
+            
+            # Final stop hunt risk score (0-100)
+            stop_hunt_risk = min(100.0, base_risk + consistency_penalty)
+            
+            return (avg_wick_ratio, stop_hunt_risk)
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Stop hunt risk calculation failed: {e}")
+            return (0.0, 0.0)
+    
     def cluster_levels(self, swing_points: List[Level], cluster_tolerance: float, 
                       current_price: float = None, current_time: float = None, 
                       atr_5m: float = None) -> List[Level]:
@@ -650,6 +706,9 @@ class SRDetector:
             strongest_point = max(points, key=lambda x: x.strength)
             most_recent_point = max(points, key=lambda x: x.timestamp)
             
+            # Calculate stop hunt risk from wick rejection data (ADDED 2026-01-12)
+            avg_wick_ratio, stop_hunt_risk = self._calculate_stop_hunt_risk(points)
+            
             return Level(
                 level=weighted_level,
                 level_type=strongest_point.level_type,
@@ -659,7 +718,9 @@ class SRDetector:
                 strength=max(p.strength for p in points),
                 timestamp=most_recent_point.timestamp,  # Use most recent, not strongest
                 timeframe_distribution=timeframe_distribution,
-                merged_from=len(points)
+                merged_from=len(points),
+                wick_rejection_ratio=avg_wick_ratio,  # Average wick ratio across cluster
+                stop_hunt_risk=stop_hunt_risk  # Calculated risk score (0-100)
                 # Note: power will be calculated later by sr_scorer
             )
             
