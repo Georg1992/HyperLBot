@@ -309,10 +309,10 @@ class EventDrivenTradingDashboard:
             candle_data = self._get_chart_data()
             
             # Extract AI system status and ML performance from market data
-            market_data_dict = dashboard_data.get("market", {})
-            ai_system_status = market_data_dict.get("ai_system_status", {})
+            market_data_dict = dashboard_data["market"] if "market" in dashboard_data else {}
+            ai_system_status = market_data_dict["ai_system_status"] if "ai_system_status" in market_data_dict else {}
             # Check both top-level and market dict for ml_performance
-            ml_performance = dashboard_data.get("ml_performance") or market_data_dict.get("ml_performance", {})
+            ml_performance = (dashboard_data["ml_performance"] if "ml_performance" in dashboard_data else None) or (market_data_dict["ml_performance"] if "ml_performance" in market_data_dict else {})
             
             # Get prediction - CHECK MULTIPLE SOURCES (top-level, market.prediction, market.predictions list)
             prediction = None
@@ -327,7 +327,7 @@ class EventDrivenTradingDashboard:
                 pred_conf = prediction.get("confidence", "N/A")
                 logger.info(f"📡 ✅ FOUND PREDICTION (market_data_dict): dir={pred_dir} conf={pred_conf}")
             else:
-                predictions_list = market_data_dict.get("predictions", [])
+                predictions_list = market_data_dict["predictions"] if "predictions" in market_data_dict else []
                 if predictions_list:
                     prediction = predictions_list[-1]
                     pred_dir = prediction.get("direction", "N/A")
@@ -337,27 +337,27 @@ class EventDrivenTradingDashboard:
             # Format data for dashboard - DashboardService ONLY
             dashboard_data = {
                 "session": {
-                    "session_id": session_data.get("session_id", "no_session"),
-                    "status": session_data.get("status", "INACTIVE"),
-                    "strategy": session_data.get("strategy", "standard"),
-                    "session_time": session_data.get("session_time", "0m"),  # Pre-calculated by SessionManager
-                    "start_time": session_data.get("start_time"),
-                    "current_balance": session_data.get("current_balance", 0.0),
-                    "initial_balance": session_data.get("initial_balance", 0.0),
-                    "total_pnl": session_data.get("total_pnl", 0.0),
-                    "win_rate": session_data.get("win_rate", 0.0),
-                    "total_trades": session_data.get("total_trades", 0)
+                    "session_id": session_data["session_id"] if "session_id" in session_data else "no_session",
+                    "status": session_data["status"] if "status" in session_data else "INACTIVE",
+                    "strategy": session_data["strategy"] if "strategy" in session_data else "standard",
+                    "session_time": session_data["session_time"] if "session_time" in session_data else "0m",
+                    "start_time": session_data["start_time"] if "start_time" in session_data else None,
+                    "current_balance": session_data["current_balance"] if "current_balance" in session_data else 0.0,
+                    "initial_balance": session_data["initial_balance"] if "initial_balance" in session_data else 0.0,
+                    "total_pnl": session_data["total_pnl"] if "total_pnl" in session_data else 0.0,
+                    "win_rate": session_data["win_rate"] if "win_rate" in session_data else 0.0,
+                    "total_trades": session_data["total_trades"] if "total_trades" in session_data else 0
                 },
                 "market": market_data_dict,
                 "ai_system_status": ai_system_status,  # Add AI system status
                 "ml_performance": ml_performance,  # Add ML performance data
-                "logs": dashboard_data.get("logs", []),
+                "logs": dashboard_data["logs"] if "logs" in dashboard_data else [],
                 "predictions": [prediction] if prediction else [],  # Always a list for compatibility
                 "prediction": prediction,  # Top-level prediction (single object) - THIS IS WHAT UI READS
-                "trades": dashboard_data.get("trades", []),  # Includes pending orders, open positions, closed trades
+                "trades": dashboard_data["trades"] if "trades" in dashboard_data else [],
                 "orderbook": {"bids": [], "asks": []},
                 "candleData": candle_data,  # Add candle data to dashboard data
-                "timestamp": dashboard_data.get("timestamp", ""),
+                "timestamp": dashboard_data["timestamp"] if "timestamp" in dashboard_data else "",
                 "data_source": "DashboardService - Single Source of Truth",
                 "connection_status": "✅ Connected"
             }
