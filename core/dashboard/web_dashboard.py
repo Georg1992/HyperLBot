@@ -351,13 +351,13 @@ class EventDrivenTradingDashboard:
                 "market": market_data_dict,
                 "ai_system_status": ai_system_status,  # Add AI system status
                 "ml_performance": ml_performance,  # Add ML performance data
-                "logs": dashboard_data["logs"] if "logs" in dashboard_data else [],
+                "logs": dashboard_data.get("logs", []),
                 "predictions": [prediction] if prediction else [],  # Always a list for compatibility
                 "prediction": prediction,  # Top-level prediction (single object) - THIS IS WHAT UI READS
-                "trades": dashboard_data["trades"] if "trades" in dashboard_data else [],
+                "trades": dashboard_data.get("trades", []),  # Includes pending orders, open positions, closed trades
                 "orderbook": {"bids": [], "asks": []},
                 "candleData": candle_data,  # Add candle data to dashboard data
-                "timestamp": dashboard_data["timestamp"] if "timestamp" in dashboard_data else "",
+                "timestamp": dashboard_data.get("timestamp", ""),
                 "data_source": "DashboardService - Single Source of Truth",
                 "connection_status": "✅ Connected"
             }
@@ -392,7 +392,7 @@ class EventDrivenTradingDashboard:
             
             # Get market data service from system initializer (it has the APIs)
             system_initializer = get_system_initializer()
-            market_data_service = system_initializer.singleton_systems.get("market_data_service")
+            market_data_service = system_initializer.singleton_systems["market_data_service"] if "market_data_service" in system_initializer.singleton_systems else None
             
             if not market_data_service:
                 logger.error("❌ Market data service not available for chart data")

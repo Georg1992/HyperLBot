@@ -406,8 +406,8 @@ class CrossAssetCorrelationAnalyzer:
         """Determine overall market regime based on cross-asset analysis"""
         try:
             # Analyze each asset's trend
-            dxy_trend = dxy_data.get("trend", "UNKNOWN")
-            gold_trend = gold_data.get("trend", "UNKNOWN")
+            dxy_trend = dxy_data["trend"] if "trend" in dxy_data else "UNKNOWN"
+            gold_trend = gold_data["trend"] if "trend" in gold_data else "UNKNOWN"
             
             # Get stock trend
             stock_trends = []
@@ -460,9 +460,9 @@ class CrossAssetCorrelationAnalyzer:
             recent_correlations = self._correlation_history[-10:]
             
             # Analyze trend direction
-            dxy_correlations = [c.get("dxy_correlation", {}).get("correlation", 0) for c in recent_correlations]
-            gold_correlations = [c.get("gold_correlation", {}).get("correlation", 0) for c in recent_correlations]
-            stock_correlations = [c.get("stock_correlation", {}).get("correlation", 0) for c in recent_correlations]
+            dxy_correlations = [(c["dxy_correlation"]["correlation"] if "dxy_correlation" in c and "correlation" in c["dxy_correlation"] else 0) for c in recent_correlations]
+            gold_correlations = [(c["gold_correlation"]["correlation"] if "gold_correlation" in c and "correlation" in c["gold_correlation"] else 0) for c in recent_correlations]
+            stock_correlations = [(c["stock_correlation"]["correlation"] if "stock_correlation" in c and "correlation" in c["stock_correlation"] else 0) for c in recent_correlations]
             
             # Calculate trend direction
             dxy_trend = "STABLE"
@@ -515,7 +515,7 @@ class CrossAssetCorrelationAnalyzer:
                     from core.external.yahoo_finance_api import get_global_yahoo_finance_api
                     yahoo_api = get_global_yahoo_finance_api()
                     dxy_raw_data = yahoo_api.get_dxy_data()
-                    enhanced_analysis['dxy_change'] = dxy_raw_data.get('change_percent', 0) / 100
+                    enhanced_analysis['dxy_change'] = (dxy_raw_data['change_percent'] if 'change_percent' in dxy_raw_data else 0) / 100
                 except Exception as e:
                     logger.debug(f"Could not get DXY change for history: {e}")
                     enhanced_analysis['dxy_change'] = 0
@@ -568,7 +568,7 @@ class CrossAssetCorrelationAnalyzer:
                 # Use historical correlation if available, otherwise return neutral
                 if len(self._correlation_history) > 0:
                     # Use average historical correlation for this asset
-                    historical_correlations = [entry.get('correlation', 0) for entry in self._correlation_history[-5:]]
+                    historical_correlations = [entry['correlation'] if 'correlation' in entry else 0 for entry in self._correlation_history[-5:]]
                     if historical_correlations:
                         return sum(historical_correlations) / len(historical_correlations)
                 

@@ -266,10 +266,10 @@ class SRLevelFilter(BaseCalculator):
         # Filter for active levels in correct position relative to current price
         active_support_candidates = [
             level for level in all_levels
-            if level.get("type") == "support"
-            and level.get("price_level") is not None
-            and level.get("price_level") < current_price
-            and level.get("status") == "active"
+            if "type" in level and level["type"] == "support"
+            and "price_level" in level and level["price_level"] is not None
+            and level["price_level"] < current_price
+            and "status" in level and level["status"] == "active"
         ]
         
         active_resistance_candidates = [
@@ -289,7 +289,7 @@ class SRLevelFilter(BaseCalculator):
         if active_support_candidates or active_resistance_candidates:
             for level in (active_support_candidates + active_resistance_candidates):
                 if "atr_pct" in level:
-                    atr_pct = level.get("atr_pct")
+                    atr_pct = level["atr_pct"]
                     break
         
         if atr_pct is None:
@@ -376,10 +376,10 @@ class SRLevelFilter(BaseCalculator):
         # Filter for active levels
         active_support = [
             level for level in all_levels
-            if level.get("type") == "support"
-            and level.get("price_level") is not None
-            and level.get("price_level") < current_price
-            and level.get("status") == "active"
+            if "type" in level and level["type"] == "support"
+            and "price_level" in level and level["price_level"] is not None
+            and level["price_level"] < current_price
+            and "status" in level and level["status"] == "active"
         ]
         
         active_resistance = [
@@ -399,7 +399,7 @@ class SRLevelFilter(BaseCalculator):
         if active_support or active_resistance:
             for level in (active_support + active_resistance):
                 if "atr_pct" in level:
-                    atr_pct = level.get("atr_pct")
+                    atr_pct = level["atr_pct"]
                     break
         
         if atr_pct is None:

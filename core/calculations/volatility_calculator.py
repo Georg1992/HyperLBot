@@ -93,15 +93,15 @@ class VolatilityCalculator(BaseCalculator):
             weighted_vol_data = self._analyzer.calculate_weighted_volatility(candles)
             
             # 3. Detect volatility spikes
-            current_vol = weighted_vol_data.get("current_volatility", 0.0)
+            current_vol = weighted_vol_data["current_volatility"] if "current_volatility" in weighted_vol_data else 0.0
             spike_data = self._analyzer.detect_volatility_spikes(current_vol, 0.01)
             
             # 4. Calculate primary volatility
             primary_volatility = self._analyzer.calculate_primary_volatility(
-                basic_vol_data.get("volatility", 0.0),
-                weighted_vol_data.get("weighted_volatility", 0.0),
+                basic_vol_data["volatility"] if "volatility" in basic_vol_data else 0.0,
+                weighted_vol_data["weighted_volatility"] if "weighted_volatility" in weighted_vol_data else 0.0,
                 current_vol,
-                spike_data.get("is_spike", False)
+                spike_data["is_spike"] if "is_spike" in spike_data else False
             )
             
             # 5. Classify volatility level
@@ -110,7 +110,7 @@ class VolatilityCalculator(BaseCalculator):
             # 6. Determine trading suitability
             suitability = self._classifier.determine_trading_suitability(
                 primary_volatility, 
-                classification.get("level", "UNKNOWN")
+                classification["level"] if "level" in classification else "UNKNOWN"
             )
             
             # 7. Get recommendations
@@ -128,27 +128,27 @@ class VolatilityCalculator(BaseCalculator):
                 "level": volatility_level,
                 "category": volatility_level,  # Standardized key for momentum_detector (NO FALLBACKS)
                 "volatility_category": volatility_level,  # Standardized key for compatibility
-                "description": classification.get("description", ""),
-                "suitable_for_trading": suitability.get("suitable_for_trading", False),
-                "risk_level": suitability.get("risk_level", "UNKNOWN"),
-                "recommendations": recommendations.get("recommendations", []),
+                "description": classification["description"] if "description" in classification else "",
+                "suitable_for_trading": suitability["suitable_for_trading"] if "suitable_for_trading" in suitability else False,
+                "risk_level": suitability["risk_level"] if "risk_level" in suitability else "UNKNOWN",
+                "recommendations": recommendations["recommendations"] if "recommendations" in recommendations else [],
                 "analysis_details": {
-                    "basic_volatility": basic_vol_data.get("volatility", 0.0),
-                    "weighted_volatility": weighted_vol_data.get("weighted_volatility", 0.0),
+                    "basic_volatility": basic_vol_data["volatility"] if "volatility" in basic_vol_data else 0.0,
+                    "weighted_volatility": weighted_vol_data["weighted_volatility"] if "weighted_volatility" in weighted_vol_data else 0.0,
                     "current_volatility": current_vol,
-                    "is_spike": spike_data.get("is_spike", False),
-                    "spike_intensity": spike_data.get("spike_intensity", "NONE"),
-                    "price_range": basic_vol_data.get("range", 0.0),
-                    "avg_price": basic_vol_data.get("avg_price", 0.0),
-                    "candle_count": basic_vol_data.get("candle_count", 0)
+                    "is_spike": spike_data["is_spike"] if "is_spike" in spike_data else False,
+                    "spike_intensity": spike_data["spike_intensity"] if "spike_intensity" in spike_data else "NONE",
+                    "price_range": basic_vol_data["range"] if "range" in basic_vol_data else 0.0,
+                    "avg_price": basic_vol_data["avg_price"] if "avg_price" in basic_vol_data else 0.0,
+                    "candle_count": basic_vol_data["candle_count"] if "candle_count" in basic_vol_data else 0
                 },
-                "thresholds": classification.get("thresholds", {}),
+                "thresholds": classification["thresholds"] if "thresholds" in classification else {},
                 "timestamp": time.time(),
                 "timeframe": timeframe,
                 "strategy": strategy
             }
             
-            logger.info(f"📊 Volatility analysis complete: {classification.get('level', 'UNKNOWN')} ({primary_volatility*100:.4f}%)")
+            logger.info(f"📊 Volatility analysis complete: {classification['level'] if 'level' in classification else 'UNKNOWN'} ({primary_volatility*100:.4f}%)")
             return result
             
         except Exception as e:
