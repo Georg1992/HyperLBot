@@ -769,7 +769,7 @@ class MarketDataService:
                     "net_pressure": 0.0,
                     "pressure_ratio": 0.0,
                     "timestamp": time.time()
-                }),
+                },
                 
                 "support_resistance": self._prepare_sr_data_for_dashboard(
                     market_data["support_resistance"] if "support_resistance" in market_data else {},  # Optional for dashboard
