@@ -59,7 +59,7 @@ class VolumeCalculator(BaseCalculator):
             if not hyperliquid_websocket:
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
-                market_data_service = system_initializer.singleton_systems.get("market_data_service")
+                market_data_service = system_initializer.singleton_systems["market_data_service"] if "market_data_service" in system_initializer.singleton_systems else None
                 
                 if not market_data_service or not market_data_service.hyperliquid_websocket:
                     raise ValueError("Hyperliquid WebSocket not available for volume calculation - NO FALLBACKS")

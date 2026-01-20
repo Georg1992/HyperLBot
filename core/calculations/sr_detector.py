@@ -203,8 +203,8 @@ class SRDetector:
                 prev_time = sorted_points[i-1]['timestamp']  # Required (NO FALLBACKS)
                 
                 # More flexible time delta - also check if levels are significantly different
-                current_level = sorted_points[i].get('level', 0)
-                prev_level = sorted_points[i-1].get('level', 0)
+                current_level = sorted_points[i]['level'] if 'level' in sorted_points[i] else 0
+                prev_level = sorted_points[i-1]['level'] if 'level' in sorted_points[i-1] else 0
                 level_diff = abs(current_level - prev_level)
                 
                 # Count as distinct if either time or level difference is significant
