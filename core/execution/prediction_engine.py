@@ -1238,18 +1238,31 @@ class PredictionEngine:
                     # Other setups: neutral alignment
                     alignment_factor = 1.0
             
-            # Apply contextual factors to direction scores (proximity, recency, power, alignment)
-            # Only apply to the entry direction (the direction we're considering for this entry)
+            # Apply contextual factors to BOTH direction scores (FIXED Issue #6)
+            # Problem: Old logic only applied factors to entry_direction, kept opposite as base → biased
+            # Solution: Apply boost to entry_direction, apply decay to opposite direction → fair comparison
+            #
+            # Rationale:
+            # - LONG at strong support: LONG score boosted by proximity/strength/recency
+            #                          SHORT score penalized (far from resistance, conflict)
+            # - SHORT at strong resistance: SHORT score boosted by proximity/strength/recency
+            #                              LONG score penalized (far from support, conflict)
+            
             if entry_direction == "LONG":
-                # Apply factors to LONG score (the direction of this entry)
+                # LONG at support: boost LONG, decay SHORT
                 contextual_long_score = base_long_score * proximity_factor * recency_factor * strength_factor * alignment_factor
-                # Keep SHORT score as base (for comparison, but not the entry direction)
-                contextual_short_score = base_short_score
+                # Apply inverse decay to SHORT (opposing direction)
+                # If proximity_factor is 1.5 (boost), SHORT gets 1/1.5 = 0.67 (decay)
+                inverse_proximity = 1.0 / proximity_factor if proximity_factor > 0 else 1.0
+                inverse_strength = 1.0 / strength_factor if strength_factor > 0 else 1.0
+                contextual_short_score = base_short_score * inverse_proximity * inverse_strength
             else:  # SHORT
-                # Apply factors to SHORT score (the direction of this entry)
+                # SHORT at resistance: boost SHORT, decay LONG
                 contextual_short_score = base_short_score * proximity_factor * recency_factor * strength_factor * alignment_factor
-                # Keep LONG score as base (for comparison, but not the entry direction)
-                contextual_long_score = base_long_score
+                # Apply inverse decay to LONG (opposing direction)
+                inverse_proximity = 1.0 / proximity_factor if proximity_factor > 0 else 1.0
+                inverse_strength = 1.0 / strength_factor if strength_factor > 0 else 1.0
+                contextual_long_score = base_long_score * inverse_proximity * inverse_strength
             
             # Generate contextual reasoning
             reasoning_parts = []
