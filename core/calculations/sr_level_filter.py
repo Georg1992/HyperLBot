@@ -203,9 +203,6 @@ class SRLevelFilter(BaseCalculator):
             if strategy not in TradingConfig.SR_LEVEL_SCORING_WEIGHTS:
                 raise ValueError(f"Unknown strategy: {strategy} - NO FALLBACKS")
             weights = TradingConfig.SR_LEVEL_SCORING_WEIGHTS[strategy]  # Required (NO FALLBACKS)
-            if not weights or weights is None:
-                TradingConfig.SR_LEVEL_SCORING_WEIGHTS["standard"]
-            )
             
             composite_score = (
                 power_score * weights["power"] +
