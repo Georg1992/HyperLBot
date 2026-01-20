@@ -24,10 +24,10 @@ class VolatilityConditionAnalyzer:
             volatility_analysis = volatility_calculator.get_latest_analysis()
             
             # Extract data from existing calculator
-            level = volatility_analysis.get("level", "UNKNOWN")
-            suitable_for_trading = volatility_analysis.get("suitable_for_trading", False)
-            risk_level = volatility_analysis.get("risk_level", "UNKNOWN")
-            recommendations = volatility_analysis.get("recommendations", [])
+            level = volatility_analysis["level"] if "level" in volatility_analysis else "UNKNOWN"
+            suitable_for_trading = volatility_analysis["suitable_for_trading"] if "suitable_for_trading" in volatility_analysis else False
+            risk_level = volatility_analysis["risk_level"] if "risk_level" in volatility_analysis else "UNKNOWN"
+            recommendations = volatility_analysis["recommendations"] if "recommendations" in volatility_analysis else []
             
             # Convert to condition analyzer format
             factors = [f"Volatility: {level}"]

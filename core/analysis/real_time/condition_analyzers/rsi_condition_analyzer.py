@@ -24,10 +24,10 @@ class RSIConditionAnalyzer:
             rsi_analysis = rsi_calculator.get_latest_analysis()
             
             # Extract data from existing calculator
-            current_rsi = rsi_analysis.get("rsi", rsi)
-            rsi_trend = rsi_analysis.get("rsi_trend", "UNKNOWN")
-            rsi_signal = rsi_analysis.get("rsi_signal", "NEUTRAL")
-            rsi_momentum = rsi_analysis.get("rsi_momentum", 0.0)
+            current_rsi = rsi_analysis["rsi"] if "rsi" in rsi_analysis else rsi
+            rsi_trend = rsi_analysis["rsi_trend"] if "rsi_trend" in rsi_analysis else "UNKNOWN"
+            rsi_signal = rsi_analysis["rsi_signal"] if "rsi_signal" in rsi_analysis else "NEUTRAL"
+            rsi_momentum = rsi_analysis["rsi_momentum"] if "rsi_momentum" in rsi_analysis else 0.0
             
             # Handle None RSI values - no placeholders
             if current_rsi is None:

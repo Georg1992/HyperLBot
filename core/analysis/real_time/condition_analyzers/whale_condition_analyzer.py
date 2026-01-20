@@ -24,10 +24,10 @@ class WhaleConditionAnalyzer:
             whale_analysis = whale_calculator.get_latest_analysis()
             
             # Extract data from existing calculator
-            whale_activity = whale_analysis.get("whale_activity", "UNKNOWN")
-            whale_count = whale_analysis.get("whale_count", 0)
-            whale_sentiment = whale_analysis.get("whale_sentiment", "NEUTRAL")
-            exchange_flows = whale_analysis.get("exchange_flows", {})
+            whale_activity = whale_analysis["whale_activity"] if "whale_activity" in whale_analysis else "UNKNOWN"
+            whale_count = whale_analysis["whale_count"] if "whale_count" in whale_analysis else 0
+            whale_sentiment = whale_analysis["whale_sentiment"] if "whale_sentiment" in whale_analysis else "NEUTRAL"
+            exchange_flows = whale_analysis["exchange_flows"] if "exchange_flows" in whale_analysis else {}
             
             # Convert to condition analyzer format
             factors = [f"Whale Activity: {whale_activity}"]

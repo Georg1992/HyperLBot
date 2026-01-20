@@ -24,7 +24,7 @@ class SentimentConditionAnalyzer:
             
             # Get fear & greed data
             fear_greed_data = self._get_fear_greed_data()
-            fear_greed_value = fear_greed_data.get("value", 50)
+            fear_greed_value = fear_greed_data["value"] if "value" in fear_greed_data else 50
             
             # Analyze fear & greed levels
             if fear_greed_value <= 20:

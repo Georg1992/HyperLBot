@@ -24,11 +24,11 @@ class VolumeConditionAnalyzer:
             volume_analysis = volume_calculator.get_latest_analysis()
             
             # Extract data from existing calculator
-            category = volume_analysis.get("volume_category", "UNKNOWN")
-            implications = volume_analysis.get("volume_implications", {})
-            recommendations = volume_analysis.get("volume_recommendations", [])
-            suitable_for_trading = implications.get("trading_suitable", False)
-            risk_level = implications.get("risk_level", "UNKNOWN")
+            category = volume_analysis["volume_category"] if "volume_category" in volume_analysis else "UNKNOWN"
+            implications = volume_analysis["volume_implications"] if "volume_implications" in volume_analysis else {}
+            recommendations = volume_analysis["volume_recommendations"] if "volume_recommendations" in volume_analysis else []
+            suitable_for_trading = implications["trading_suitable"] if "trading_suitable" in implications else False
+            risk_level = implications["risk_level"] if "risk_level" in implications else "UNKNOWN"
             
             # Convert to condition analyzer format
             factors = [f"Volume: {category}"]
