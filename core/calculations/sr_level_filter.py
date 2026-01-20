@@ -71,9 +71,9 @@ class SRLevelFilter(BaseCalculator):
             Strategy-aware quality score (0-100)
         """
         try:
-            level_price = level.get("price_level")
-            if level_price is None:
+            if "price_level" not in level:
                 raise ValueError(f"Level missing 'price_level' - required field (NO FALLBACKS)")
+            level_price = level["price_level"]
             if level_price <= 0 or current_price <= 0:
                 raise ValueError(f"Invalid prices: level={level_price}, current={current_price}")
             
@@ -81,9 +81,9 @@ class SRLevelFilter(BaseCalculator):
             # FACTOR 1: POWER (inherent strength)
             # Weight: Strategy-aware (15-60%)
             # ===================================================================
-            power = level.get("power")
-            if power is None:
+            if "power" not in level:
                 raise ValueError(f"Level missing 'power' - required field (NO FALLBACKS)")
+            power = level["power"]
             power = max(0.0, min(100.0, float(power)))  # Clamp 0-100
             power_score = power  # Already 0-100
             
@@ -114,9 +114,9 @@ class SRLevelFilter(BaseCalculator):
             # FACTOR 3: RECENCY (how recently touched)
             # Weight: Strategy-aware (5-25%)
             # ===================================================================
-            last_touch = level.get("last_touch_timestamp")
-            if last_touch is None:
+            if "last_touch_timestamp" not in level:
                 raise ValueError(f"Level missing 'last_touch_timestamp' - required field (NO FALLBACKS)")
+            last_touch = level["last_touch_timestamp"]
             
             hours_since_touch = (current_time - last_touch) / 3600.0
             
@@ -140,8 +140,8 @@ class SRLevelFilter(BaseCalculator):
             # FACTOR 4: MTF CONFIRMATION (multi-timeframe alignment)
             # Weight: Strategy-aware (8-20%)
             # ===================================================================
-            mtf_confidence = level.get("mtf_confidence") if "mtf_confidence" in level else 0.0  # Optional MTF data
-            mtf_count = level.get("mtf_count") if "mtf_count" in level else 0  # Optional MTF data
+            mtf_confidence = level["mtf_confidence"] if "mtf_confidence" in level else 0.0  # Optional MTF data
+            mtf_count = level["mtf_count"] if "mtf_count" in level else 0  # Optional MTF data
             
             # MTF scoring: confidence (0-1) * 100, with bonus for multiple TFs
             mtf_base_score = mtf_confidence * 100.0
@@ -176,7 +176,7 @@ class SRLevelFilter(BaseCalculator):
             # FACTOR 6: CLUSTER SIZE (evidence consolidation)
             # Weight: 5% - Larger clusters indicate strong convergence
             # ===================================================================
-            cluster_size = level.get("cluster_size") if "cluster_size" in level else 1  # Optional cluster data
+            cluster_size = level["cluster_size"] if "cluster_size" in level else 1  # Optional cluster data
             
             # Cluster scoring: 1 = 30, 2 = 50, 3 = 70, 5 = 85, 10+ = 100
             if cluster_size >= 10:
