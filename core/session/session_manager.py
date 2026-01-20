@@ -209,15 +209,15 @@ class SessionManager:
                 # Sync to dashboard
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
-                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                dashboard_service = system_initializer.singleton_systems["dashboard_service"] if "dashboard_service" in system_initializer.singleton_systems else None
                 if dashboard_service:
                     dashboard_service.update_session_data(self.current_session_data)
-                    logger.info(f"🏁 Trading session completed - {session_data.get('duration_minutes', 0):.1f} minutes")
+                    logger.info(f"🏁 Trading session completed - {session_data['duration_minutes'] if 'duration_minutes' in session_data else 0:.1f} minutes")
                 
                 logger.success(f"✅ Session ended: {self.current_session_id}")
-                logger.info(f"   Duration: {session_data.get('duration_minutes', 0):.1f} minutes")
-                logger.info(f"   Final Balance: ${session_data.get('current_balance', 0):.2f}")
-                logger.info(f"   Total Trades: {session_data.get('total_trades', 0)}")
+                logger.info(f"   Duration: {session_data['duration_minutes'] if 'duration_minutes' in session_data else 0:.1f} minutes")
+                logger.info(f"   Final Balance: ${session_data['current_balance'] if 'current_balance' in session_data else 0:.2f}")
+                logger.info(f"   Total Trades: {session_data['total_trades'] if 'total_trades' in session_data else 0}")
                 
                 self.current_session_id = None
                 return True
@@ -324,9 +324,10 @@ class SessionManager:
                 # Update internal session data
                 if self.current_session_data:
                     self.current_session_data["current_balance"] = new_balance
-                    balance_change = new_balance - self.current_session_data.get("initial_balance", 0)
+                    initial_balance = self.current_session_data["initial_balance"] if "initial_balance" in self.current_session_data else 0
+                    balance_change = new_balance - initial_balance
                     self.current_session_data["balance_change"] = balance_change
-                    self.current_session_data["balance_change_pct"] = (balance_change / self.current_session_data.get("initial_balance", 1)) * 100
+                    self.current_session_data["balance_change_pct"] = (balance_change / initial_balance) * 100 if initial_balance > 0 else 0
                 
                 # Update session time before syncing
                 self._update_session_time()
@@ -353,11 +354,11 @@ class SessionManager:
                 
                 # Update internal session data
                 if self.current_session_data:
-                    self.current_session_data["total_trades"] = self.current_session_data.get("total_trades", 0) + 1
-                    if trade_data.get("was_profitable", False):
-                        self.current_session_data["winning_trades"] = self.current_session_data.get("winning_trades", 0) + 1
+                    self.current_session_data["total_trades"] = (self.current_session_data["total_trades"] if "total_trades" in self.current_session_data else 0) + 1
+                    if "was_profitable" in trade_data and trade_data["was_profitable"]:
+                        self.current_session_data["winning_trades"] = (self.current_session_data["winning_trades"] if "winning_trades" in self.current_session_data else 0) + 1
                     else:
-                        self.current_session_data["losing_trades"] = self.current_session_data.get("losing_trades", 0) + 1
+                        self.current_session_data["losing_trades"] = (self.current_session_data["losing_trades"] if "losing_trades" in self.current_session_data else 0) + 1
                     
                                     # Update win rate
                 total_trades = self.current_session_data["total_trades"]
@@ -365,11 +366,11 @@ class SessionManager:
                 self.current_session_data["win_rate"] = (winning_trades / total_trades * 100) if total_trades > 0 else 0
                 
                 # Update additional performance metrics
-                pnl = trade_data.get("pnl", 0)
+                pnl = trade_data["pnl"] if "pnl" in trade_data else 0
                 
                 # Update best/worst trade
-                current_best = self.current_session_data.get("best_trade", 0)
-                current_worst = self.current_session_data.get("worst_trade", 0)
+                current_best = self.current_session_data["best_trade"] if "best_trade" in self.current_session_data else 0
+                current_worst = self.current_session_data["worst_trade"] if "worst_trade" in self.current_session_data else 0
                 
                 if pnl > current_best:
                     self.current_session_data["best_trade"] = pnl
@@ -386,20 +387,20 @@ class SessionManager:
                     self.current_session_data["daily_pnl"] = pnl
                     self.current_session_data["daily_pnl_reset"] = current_time
                 else:
-                    self.current_session_data["daily_pnl"] = self.current_session_data.get("daily_pnl", 0) + pnl
+                    self.current_session_data["daily_pnl"] = (self.current_session_data["daily_pnl"] if "daily_pnl" in self.current_session_data else 0) + pnl
                 
                 # Update active positions (count open trades)
                 if dashboard_service:
                     active_trades = dashboard_service.get_trades()
                 else:
                     active_trades = []
-                open_trades = [t for t in active_trades if t.get("status") == "OPEN"]
+                open_trades = [t for t in active_trades if "status" in t and t["status"] == "OPEN"]
                 self.current_session_data["active_positions"] = len(open_trades)
                 
                 # Update average trade time (simplified - use trade duration if available)
-                trade_duration = trade_data.get("duration_minutes", 0)
+                trade_duration = trade_data["duration_minutes"] if "duration_minutes" in trade_data else 0
                 if trade_duration > 0:
-                    avg_time = self.current_session_data.get("avg_trade_time_minutes", 0)
+                    avg_time = self.current_session_data["avg_trade_time_minutes"] if "avg_trade_time_minutes" in self.current_session_data else 0
                     new_avg = ((avg_time * (total_trades - 1)) + trade_duration) / total_trades
                     self.current_session_data["avg_trade_time_minutes"] = new_avg
                     self.current_session_data["avg_trade_time"] = f"{int(new_avg)}m"
@@ -412,13 +413,13 @@ class SessionManager:
                     dashboard_service.update_session_data(self.current_session_data)
                     
                     # Add trade activity
-                    side = trade_data.get("side", "UNKNOWN")
-                    pnl = trade_data.get("pnl", 0)
-                    pnl_pct = trade_data.get("pnl_pct", 0)
+                    side = trade_data["side"] if "side" in trade_data else "UNKNOWN"
+                    pnl = trade_data["pnl"] if "pnl" in trade_data else 0
+                    pnl_pct = trade_data["pnl_pct"] if "pnl_pct" in trade_data else 0
                     
                     logger.info(f"📊 Trade completed: {side} {pnl:+.2f} ({pnl_pct*100:+.1f}%)")
                 
-                logger.info(f"📊 Trade added to session: {trade_data.get('trade_id')}")
+                logger.info(f"📊 Trade added to session: {trade_data['trade_id'] if 'trade_id' in trade_data else 'unknown'}")
                 
             except Exception as e:
                 logger.error(f"Error adding trade to session: {e}")
@@ -429,7 +430,7 @@ class SessionManager:
             if not self.current_session_data:
                 return
                 
-            start_time = self.current_session_data.get("start_time")
+            start_time = self.current_session_data["start_time"] if "start_time" in self.current_session_data else None
             if start_time:
                 try:
                     start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
