@@ -119,7 +119,7 @@ class EventDrivenTradingDashboard:
             response = requests.get(f'http://{host}:{port}/health', timeout=2)
             if response.status_code == 200:
                 health_data = response.json()
-                active_connections = health_data.get('active_connections', 0)
+                active_connections = health_data['active_connections'] if 'active_connections' in health_data else 0
                 logger.info(f"📊 Dashboard has {active_connections} active browser connections")
                 return active_connections > 0
         except requests.exceptions.RequestException as e:
@@ -202,7 +202,7 @@ class EventDrivenTradingDashboard:
                         current_hash = self._calculate_data_hash(current_data)
                         
                         # Emit if data changed OR force update
-                        if current_hash != self.last_data_hash.get('all_data') or force_update:
+                        if current_hash != (self.last_data_hash['all_data'] if 'all_data' in self.last_data_hash else None) or force_update:
                             self._emit_data_update(current_data)
                             self.last_data_hash['all_data'] = current_hash
                             self.force_update_counter = 0
@@ -223,27 +223,29 @@ class EventDrivenTradingDashboard:
         """Calculate hash of data for change detection"""
         try:
             # Create a simplified hash of key changing fields
-            market_data = data.get('market', {})
-            trend_analysis = market_data.get('trend_analysis', {})
+            market_data = data['market'] if 'market' in data else {}
+            trend_analysis = market_data['trend_analysis'] if 'trend_analysis' in market_data else {}
+            session_data = data['session'] if 'session' in data else {}
+            rsi_data = market_data['rsi'] if 'rsi' in market_data else {}
             
             hash_data = {
-                'price': market_data.get('current_price', 0),
-                'rsi': market_data.get('rsi', {}).get('rsi', 0),
-                'overall_trend': trend_analysis.get('overall_trend'),
-                'trading_volume_btc': market_data.get('trading_volume_btc', 0),
-                'trading_volume_category': market_data.get('trading_volume_category'),
-                'volatility_5m': market_data.get('volatility_5m', 0),
-                'volatility_5m_category': market_data.get('volatility_5m_category'),
-                'pressure': market_data.get('pressure'),
-                'pressure_confidence': market_data.get('pressure_confidence', 0),
-                'key_levels': len(market_data.get('key_levels', [])),
-                'patterns': bool(market_data.get('patterns', {})),
-                'balance': data.get('session', {}).get('current_balance', 0),
-                'trades': data.get('session', {}).get('total_trades', 0),
-                'session_id': data.get('session', {}).get('session_id', ''),
-                'status': data.get('session', {}).get('status', ''),
-                'session_time': data.get('session', {}).get('session_time', '0m'),
-                'timestamp': data.get('timestamp', '')
+                'price': market_data['current_price'] if 'current_price' in market_data else 0,
+                'rsi': rsi_data['rsi'] if 'rsi' in rsi_data else 0,
+                'overall_trend': trend_analysis['overall_trend'] if 'overall_trend' in trend_analysis else None,
+                'trading_volume_btc': market_data['trading_volume_btc'] if 'trading_volume_btc' in market_data else 0,
+                'trading_volume_category': market_data['trading_volume_category'] if 'trading_volume_category' in market_data else None,
+                'volatility_5m': market_data['volatility_5m'] if 'volatility_5m' in market_data else 0,
+                'volatility_5m_category': market_data['volatility_5m_category'] if 'volatility_5m_category' in market_data else None,
+                'pressure': market_data['pressure'] if 'pressure' in market_data else None,
+                'pressure_confidence': market_data['pressure_confidence'] if 'pressure_confidence' in market_data else 0,
+                'key_levels': len(market_data['key_levels']) if 'key_levels' in market_data else 0,
+                'patterns': bool(market_data['patterns']) if 'patterns' in market_data else False,
+                'balance': session_data['current_balance'] if 'current_balance' in session_data else 0,
+                'trades': session_data['total_trades'] if 'total_trades' in session_data else 0,
+                'session_id': session_data['session_id'] if 'session_id' in session_data else '',
+                'status': session_data['status'] if 'status' in session_data else '',
+                'session_time': session_data['session_time'] if 'session_time' in session_data else '0m',
+                'timestamp': data['timestamp'] if 'timestamp' in data else ''
             }
             return str(hash(json.dumps(hash_data, sort_keys=True)))
         except:
@@ -301,7 +303,7 @@ class EventDrivenTradingDashboard:
             dashboard_data = dashboard_service.get_data()
             
             # Dashboard ONLY displays data - NO calculations
-            session_data = dashboard_data.get("session", {})
+            session_data = dashboard_data["session"] if "session" in dashboard_data else {}
             
             # Dashboard fetches its own chart data (frontend responsibility)
             candle_data = self._get_chart_data()
