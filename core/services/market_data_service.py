@@ -723,14 +723,14 @@ class MarketDataService:
                 "strategy": market_data["strategy"] if "strategy" in market_data else strategy,  # Optional
                 
                 # Technical Analysis (Primary Components) - Handle missing modules gracefully
-                "rsi": market_data.get("rsi", {
+                "rsi": market_data["rsi"] if "rsi" in market_data else {
                     "value": 0.0,
                     "category": "unknown",
                     "signal": "neutral",
                     "timestamp": time.time()
                 }),
                 
-                "trend": market_data.get("trend", {
+                "trend": market_data["trend"] if "trend" in market_data else {
                     "direction": "neutral",
                     "strength": 0.0,
                     "timeframes": {},
@@ -738,7 +738,7 @@ class MarketDataService:
                     "timestamp": time.time()
                 }),
                 
-                "volume": market_data.get("volume", {
+                "volume": market_data["volume"] if "volume" in market_data else {
                     "hyperliquid_5m": {"current_volume_btc": 0.0, "volume_category": "unknown"},
                     "binance_global": {"current_volume_btc": 0.0, "volume_category": "unknown"},
                     "total_volume_btc": 0.0,
@@ -746,7 +746,7 @@ class MarketDataService:
                     "timestamp": time.time()
                 }),
                 
-                "volatility": market_data.get("volatility", {
+                "volatility": market_data["volatility"] if "volatility" in market_data else {
                     "current": 0.0,
                     "category": "unknown",
                     "change_detection": {"status": "unknown"},
@@ -763,7 +763,7 @@ class MarketDataService:
                 "volatility_5m": market_data["volatility_5m"],  # Required (NO FALLBACKS)
                 "volatility_category": market_data["volatility_category"],  # Required (NO FALLBACKS)
                 
-                "pressure": market_data.get("pressure", {
+                "pressure": market_data["pressure"] if "pressure" in market_data else {
                     "buy_pressure": 0.0,
                     "sell_pressure": 0.0,
                     "net_pressure": 0.0,
@@ -776,7 +776,7 @@ class MarketDataService:
                     market_data["current_price"]  # Required (NO FALLBACKS)
                 ),
                 
-                "patterns": market_data.get("patterns", {
+                "patterns": market_data["patterns"] if "patterns" in market_data else {
                     "active_patterns": [],
                     "pattern_signals": [],
                     "confidence_scores": [],
@@ -784,18 +784,18 @@ class MarketDataService:
                 }),
                 
                 # Additional market context
-                "market_conditions": market_data.get("market_conditions", {}),
-                "funding_analysis": market_data.get("funding_analysis", {}),
-                "orderbook_analysis": market_data.get("orderbook_analysis", {}),
+                "market_conditions": market_data["market_conditions"] if "market_conditions" in market_data else {},
+                "funding_analysis": market_data["funding_analysis"] if "funding_analysis" in market_data else {},
+                "orderbook_analysis": market_data["orderbook_analysis"] if "orderbook_analysis" in market_data else {},
                 
                 # Data quality indicators
                 "data_quality": {
                     "all_components_available": all([
-                        market_data.get("rsi"),
-                        market_data.get("trend"),
-                        market_data.get("volume"),
-                        market_data.get("volatility"),
-                        market_data.get("support_resistance", {}).get("status") == "ok"
+                        "rsi" in market_data and market_data["rsi"],
+                        "trend" in market_data and market_data["trend"],
+                        "volume" in market_data and market_data["volume"],
+                        "volatility" in market_data and market_data["volatility"],
+                        "support_resistance" in market_data and "status" in market_data["support_resistance"] and market_data["support_resistance"]["status"] == "ok"
                     ]),
                     "last_update": time.time(),
                     "update_frequency": "real-time"
@@ -965,7 +965,7 @@ class MarketDataService:
     def _on_websocket_price_update(self, price_data: Dict[str, Any]):
         """Callback for WebSocket price updates - update RSI immediately"""
         try:
-            new_price = price_data.get("current_price")
+            new_price = price_data["current_price"] if "current_price" in price_data else None
             if new_price and new_price > 0:
                 # Update internal price cache
                 self._current_price = new_price
