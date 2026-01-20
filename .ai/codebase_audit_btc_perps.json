@@ -1,0 +1,126 @@
+{
+  "audit_date": "2026-01-12",
+  "context": "BTC Perpetual Futures, 40x Leverage, Hyperliquid",
+  "audit_scope": "High-leverage trading assumptions and market microstructure considerations",
+  
+  "critical_issues": {
+    "entry_offset_logic": {
+      "severity": "CRITICAL",
+      "status": "CONFIRMED",
+      "location": [
+        "core/execution/prediction_engine.py:1750 (entry = level_price, no offset)",
+        "core/execution/prediction_engine.py:647-648 (20% bonus for distance=0)",
+        "core/execution/prediction_engine.py:663-664 (20% bonus for distance=0)"
+      ],
+      "problem": "System enters EXACTLY at S/R level with 20% scoring bonus",
+      "research_findings": {
+        "source": "Academic + Professional BTC Perp Research 2025-2026",
+        "key_facts": [
+          "Price regularly wicks THROUGH S/R levels before bouncing (liquidation hunting)",
+          "Market makers actively hunt stop clusters at obvious levels",
+          "40x leverage: 2.5% move = liquidation, wicks can be 0.5-1% easily",
+          "Professional entry offset: +0.3 to +0.5× ATR INSIDE zone (toward current price)",
+          "Entry AT level = high risk of liquidation before bounce"
+        ]
+      },
+      "impact": "High risk of liquidation on wick-through before S/R bounce occurs",
+      "fix_required": {
+        "restore_candidate_generation": "Re-implement 4 entry candidates (AT, +0.3×ATR, +0.6×ATR, +1.0×ATR inside zone)",
+        "fix_scoring": "Score by: fill_probability (35%) + liquidation_safety (35%) + level_strength (20%) - spread_penalty (10%)",
+        "remove_at_level_bonus": "Remove 20% bonus for distance=0, prefer 0.3-0.5×ATR inside"
+      }
+    },
+    
+    "entry_scoring_bias": {
+      "severity": "CRITICAL",
+      "status": "CONFIRMED",
+      "location": "core/execution/prediction_engine.py:638-674",
+      "problem": "Scoring explicitly rewards entering AT S/R level (distance=0.0 → 1.2x multiplier)",
+      "why_wrong": "Ignores BTC perp market structure: stop hunts, liquidation wicks, market maker behavior",
+      "fix": "Optimal entry should be 0.3-0.5×ATR INSIDE zone, not AT level"
+    }
+  },
+  
+  "major_issues": {
+    "position_sizing_liquidation_risk": {
+      "severity": "MAJOR",
+      "status": "CONFIRMED",
+      "location": "core/execution/position_sizer.py:80-151",
+      "problem": "Position sizing uses R:R multiplier but doesn't consider DISTANCE to liquidation",
+      "scenario": "High R:R trade → larger position → closer to liquidation → wick can trigger liq before SL",
+      "example": "Entry $90,000, SL $89,700 (0.33%), Liq $88,900 (1.2%). Large position → 0.7% wick hits liquidation, SL never triggers",
+      "fix_required": "Add liquidation_distance_factor to position sizing: reduce size if liq is close to SL"
+    },
+    
+    "sr_liquidation_wick_filtering": {
+      "severity": "MAJOR",
+      "status": "CONFIRMED",
+      "location": "core/calculations/sr_detector.py + support_resistance_calculator.py",
+      "problem": "S/R detection finds levels with wicks but doesn't distinguish natural wicks from liquidation/stop-hunt wicks",
+      "research_findings": "Levels with high wick rejection often indicate stop hunting zones → higher risk",
+      "impact": "System may trade levels that are actively hunted by market makers",
+      "fix_required": "Add 'wick_rejection_ratio' and 'stop_hunt_risk' scoring to S/R levels"
+    },
+    
+    "spread_cost_omission": {
+      "severity": "MAJOR",
+      "status": "CONFIRMED",
+      "location": "core/execution/prediction_engine.py:296-306 (only for scalping validation)",
+      "problem": "Spread checked for scalping strategy viability, but NOT factored into entry/exit profit calculations",
+      "impact": "Predicted profit doesn't account for spread costs → overestimation",
+      "typical_btc_spread": "0.005% to 0.02% depending on volatility",
+      "fix_required": "Subtract spread cost from TP distance when calculating R:R ratio"
+    },
+    
+    "round_number_stop_clustering": {
+      "severity": "MAJOR",
+      "status": "CONFIRMED",
+      "location": "No logic found",
+      "problem": "No avoidance of stop placement at round numbers ($90,000, $95,000, $100,000, etc)",
+      "research_findings": {
+        "source": "BTC Trading Psychology Research 2025",
+        "key_fact": "Stops cluster heavily at round numbers → stop hunt targets → liquidation risk"
+      },
+      "fix_required": "Offset stops by small random/deterministic amount (e.g., $89,950 instead of $90,000)"
+    }
+  },
+  
+  "verified_correct": {
+    "liquidation_calculation": {
+      "status": "✅ CORRECT",
+      "location": "core/calculations/liquidation_calculator.py:36-39",
+      "implementation": "Uses actual observed rate 1.226% for 40x (not theoretical 2.5%)",
+      "validation": "Matches Hyperliquid actual behavior"
+    },
+    
+    "stop_loss_liquidation_protection": {
+      "status": "✅ CORRECT",
+      "location": "core/calculations/risk_manager.py:138-173",
+      "implementation": "Caps SL at liquidation ± 0.5% buffer, ensures SL triggers BEFORE liquidation",
+      "note": "However, doesn't avoid obvious levels (round numbers)"
+    },
+    
+    "atr_calculation": {
+      "status": "✅ CORRECT",
+      "method": "14-period ATR on 5-minute timeframe",
+      "validation": "Research confirms this is standard for BTC perp trading (adapts to volatility)"
+    }
+  },
+  
+  "research_sources": [
+    "Academic: 'Support and Resistance Levels towards Profitability in Algorithmic Trading' (MDPI 2025)",
+    "Academic: 'Evidence and Behaviour of S/R Levels in Financial Time Series' (2021)",
+    "Industry: Liquidation cascade analysis (Hyperliquid $6.7B 2025 event)",
+    "Professional: BTC perp entry offset best practices (0.3-0.5×ATR standard)",
+    "Behavioral: Round number clustering in BTC trading (Investopedia, CryptoChartInsights 2025)"
+  ],
+  
+  "recommended_priority": [
+    "1. Fix entry offset logic (CRITICAL - affects every trade)",
+    "2. Fix entry scoring bias (CRITICAL - actively prefers wrong entries)",
+    "3. Add position sizing liquidation risk factor (MAJOR - prevents blow-ups)",
+    "4. Add S/R liquidation wick filtering (MAJOR - avoids stop hunt zones)",
+    "5. Add spread cost to profit calculations (MAJOR - realistic P&L)",
+    "6. Add round number stop avoidance (MAJOR - reduces stop hunt risk)"
+  ]
+}
