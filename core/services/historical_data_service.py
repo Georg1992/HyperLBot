@@ -270,7 +270,7 @@ class HistoricalDataService:
             Patterns with mapped indices
         """
         try:
-            if not patterns or not patterns.get("patterns"):
+            if not patterns or ("patterns" not in patterns or not patterns["patterns"]):
                 return patterns
             
             # Patterns are detected on 50 candles (indices 0-49, oldest to newest)
@@ -313,14 +313,14 @@ class HistoricalDataService:
             patterns["patterns"] = mapped_patterns
             
             # Also map nested patterns if they exist
-            if patterns.get("patterns_nested"):
+            if "patterns_nested" in patterns and patterns["patterns_nested"]:
                 nested = patterns["patterns_nested"]
                 for category in ["reversal_patterns", "continuation_patterns", "triangle_patterns", 
                                "channel_patterns", "wedge_patterns", "candlestick_patterns", "trend_patterns"]:
                     if category in nested and nested[category]:
                         mapped_category = []
                         for pattern in nested[category]:
-                            start_idx = pattern.get("start_candle_index", 0)
+                            start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
                             if start_idx >= offset and start_idx < DETECTION_CANDLE_COUNT:
                                 mapped_pattern = pattern.copy()
                                 mapped_pattern["start_candle_index"] = start_idx - offset

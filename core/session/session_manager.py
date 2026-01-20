@@ -378,11 +378,11 @@ class SessionManager:
                     self.current_session_data["worst_trade"] = pnl
                 
                 # Update total P&L
-                self.current_session_data["total_pnl"] = self.current_session_data.get("total_pnl", 0) + pnl
+                self.current_session_data["total_pnl"] = (self.current_session_data["total_pnl"] if "total_pnl" in self.current_session_data else 0) + pnl
                 
                 # Update daily P&L (reset daily at midnight)
                 current_time = time.time()
-                last_reset = self.current_session_data.get("daily_pnl_reset", current_time)
+                last_reset = self.current_session_data["daily_pnl_reset"] if "daily_pnl_reset" in self.current_session_data else current_time
                 if current_time - last_reset > 86400:  # 24 hours
                     self.current_session_data["daily_pnl"] = pnl
                     self.current_session_data["daily_pnl_reset"] = current_time
@@ -474,7 +474,7 @@ class SessionManager:
                 # Sync to dashboard
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
-                dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+                dashboard_service = system_initializer.singleton_systems["dashboard_service"] if "dashboard_service" in system_initializer.singleton_systems else None
                 if dashboard_service:
                     dashboard_service.update_session_data(self.current_session_data)
                 

@@ -252,10 +252,10 @@ class CandlestickPatternDetector(BasePatternDetector):
     
     def _detect_single_candlestick(self, candle: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Detect single candlestick patterns"""
-        open_price = float(candle.get("open", 0))
-        high_price = float(candle.get("high", 0))
-        low_price = float(candle.get("low", 0))
-        close_price = float(candle.get("close", 0))
+        open_price = float(candle["open"]) if "open" in candle else 0.0
+        high_price = float(candle["high"]) if "high" in candle else 0.0
+        low_price = float(candle["low"]) if "low" in candle else 0.0
+        close_price = float(candle["close"]) if "close" in candle else 0.0
         
         if not all([open_price, high_price, low_price, close_price]):
             return None

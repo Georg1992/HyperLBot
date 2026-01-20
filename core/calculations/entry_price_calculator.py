@@ -185,7 +185,7 @@ class EntryPriceCalculator:
         spread_adjustment = 0.0
         try:
             # Orderbook data should be available (NO FALLBACKS)
-            orderbook_data = unified_data.get("orderbook_analysis", {})
+            orderbook_data = unified_data["orderbook_analysis"] if "orderbook_analysis" in unified_data else {}
             if not orderbook_data:
                 logger.warning("⚠️ Orderbook analysis missing, using 0 spread adjustment")
                 spread_adjustment = 0.0
@@ -253,7 +253,7 @@ class EntryPriceCalculator:
         liquidity_multiplier = 1.0
         try:
             # Orderbook data should be available (NO FALLBACKS)
-            orderbook_data = unified_data.get("orderbook_analysis", {})
+            orderbook_data = unified_data["orderbook_analysis"] if "orderbook_analysis" in unified_data else {}
             if not orderbook_data:
                 logger.warning("⚠️ Orderbook analysis missing, using neutral liquidity multiplier")
                 liquidity_multiplier = 1.0
