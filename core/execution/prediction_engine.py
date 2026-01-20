@@ -283,8 +283,9 @@ class PredictionEngine:
         if require_high_liquidity:
             liquidity_depth = self._require_key(orderbook_data, "liquidity_depth", "orderbook_analysis structure")
             liquidity_score = self._require_key(liquidity_depth, "depth_score", "liquidity_depth structure")
-            if liquidity_score < 0.5:
-                logger.debug(f"⏸️ Insufficient liquidity for scalping: {liquidity_score:.2f}")
+            min_liquidity = TradingConfig.MIN_LIQUIDITY_SCORE
+            if liquidity_score < min_liquidity:
+                logger.debug(f"⏸️ Insufficient liquidity for scalping: {liquidity_score:.2f} (min: {min_liquidity})")
                 return False
         
         # Check RSI range requirement

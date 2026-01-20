@@ -97,8 +97,10 @@ class ReactiveEngine:
                 return None
             
             # Check confidence threshold (must be high enough)
-            if signal.confidence < 65.0:  # Minimum 65% confidence
-                logger.debug(f"⚡ Signal confidence too low: {signal.confidence:.1f}%")
+            from config.config import TradingConfig
+            min_confidence = TradingConfig.MIN_MOMENTUM_CONFIDENCE
+            if signal.confidence < min_confidence:
+                logger.debug(f"⚡ Signal confidence too low: {signal.confidence:.1f}% (min: {min_confidence}%)")
                 return None
             
             # Execute market order (use current_strategy if provided, else detect from unified_data)

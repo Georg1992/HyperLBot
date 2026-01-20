@@ -59,6 +59,11 @@ class TradingConfig:
         "minor_offset_usd": 75.0       # Offset $75 for minor levels ($91K, $92K, etc)
     }
     
+    # Trading Signal Thresholds (ADDED 2026-01-12 - Audit Fix)
+    # Quality gates for signal execution and strategy validation
+    MIN_MOMENTUM_CONFIDENCE = 65.0  # Minimum confidence % for momentum signals (reactive_engine)
+    MIN_LIQUIDITY_SCORE = 0.5       # Minimum liquidity depth score for scalping (0.0-1.0)
+    
     # Universal Support/Resistance Power Configuration
     # Power = pure level strength (inherent quality, not contextual)
     # Only includes: touch count, volume, reversal_probability
