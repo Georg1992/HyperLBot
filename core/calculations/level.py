@@ -63,6 +63,10 @@ class Level:
     power: Optional[float] = None  # Pure level strength (touch, volume, reversal_probability)
     power_breakdown: Dict[str, float] = field(default_factory=dict)
     
+    # Liquidation & stop hunt risk data (ADDED 2026-01-12)
+    wick_rejection_ratio: float = 0.0  # Avg wick rejection ratio for this level (0.0-1.0)
+    stop_hunt_risk: float = 0.0  # Stop hunt risk score (0.0-100.0, higher = more dangerous)
+    
     @property
     def total_score(self) -> float:
         """
@@ -98,7 +102,9 @@ class Level:
             'mtf_confidence': self.mtf_confidence,
             'merged_from': self.merged_from,
             'power': self.power,
-            'power_breakdown': copy.deepcopy(self.power_breakdown)
+            'power_breakdown': copy.deepcopy(self.power_breakdown),
+            'wick_rejection_ratio': self.wick_rejection_ratio,
+            'stop_hunt_risk': self.stop_hunt_risk
         }
         
         return result
@@ -163,7 +169,9 @@ class Level:
             mtf_confidence=safe_float(data['mtf_confidence'] if 'mtf_confidence' in data else None, 0.0),
             merged_from=safe_int(data['merged_from'] if 'merged_from' in data else None, 1),
             power=safe_float(data['power'] if 'power' in data else None) if ('power' in data and data['power'] is not None) else (safe_float(data['score'] if 'score' in data else None) if ('score' in data and data['score'] is not None) else None),  # Backward compatibility
-            power_breakdown=copy.deepcopy(data['power_breakdown'] if 'power_breakdown' in data else (data['score_breakdown'] if 'score_breakdown' in data else {}))  # Backward compatibility
+            power_breakdown=copy.deepcopy(data['power_breakdown'] if 'power_breakdown' in data else (data['score_breakdown'] if 'score_breakdown' in data else {})),  # Backward compatibility
+            wick_rejection_ratio=safe_float(data['wick_rejection_ratio'] if 'wick_rejection_ratio' in data else None, 0.0),
+            stop_hunt_risk=safe_float(data['stop_hunt_risk'] if 'stop_hunt_risk' in data else None, 0.0)
         )
     
     def is_support(self) -> bool:

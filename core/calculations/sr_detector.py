@@ -82,6 +82,9 @@ class SRDetector:
                 
                 # Check for swing high
                 if self._is_swing_high(candles, i, n, adaptive_params, atr):
+                    # Calculate wick rejection ratio for stop hunt risk assessment
+                    wick_ratio = self._calculate_wick_rejection_ratio(candle, 'high')
+                    
                     level = Level(
                         level=high,
                         level_type='resistance',
@@ -91,12 +94,17 @@ class SRDetector:
                         strength=self._calculate_swing_strength(candles, i, 'high', adaptive_params, avg_volumes),
                         timestamp=candle['timestamp'] if 'timestamp' in candle else time.time(),
                         timeframe_distribution={timeframe: 1},
-                        merged_from=1
+                        merged_from=1,
+                        wick_rejection_ratio=wick_ratio,  # Track wick rejection for stop hunt risk
+                        stop_hunt_risk=0.0  # Will be calculated during clustering/scoring
                     )
                     swing_points.append(level)
                 
                 # Check for swing low
                 if self._is_swing_low(candles, i, n, adaptive_params, atr):
+                    # Calculate wick rejection ratio for stop hunt risk assessment
+                    wick_ratio = self._calculate_wick_rejection_ratio(candle, 'low')
+                    
                     level = Level(
                         level=low,
                         level_type='support',
@@ -106,7 +114,9 @@ class SRDetector:
                         strength=self._calculate_swing_strength(candles, i, 'low', adaptive_params, avg_volumes),
                         timestamp=candle['timestamp'] if 'timestamp' in candle else time.time(),
                         timeframe_distribution={timeframe: 1},
-                        merged_from=1
+                        merged_from=1,
+                        wick_rejection_ratio=wick_ratio,  # Track wick rejection for stop hunt risk
+                        stop_hunt_risk=0.0  # Will be calculated during clustering/scoring
                     )
                     swing_points.append(level)
             
@@ -149,6 +159,50 @@ class SRDetector:
         }
         
         return params[timeframe] if timeframe in params else params["5m"]
+    
+    def _calculate_wick_rejection_ratio(self, candle: Dict, swing_type: str) -> float:
+        """
+        Calculate wick rejection ratio for stop hunt risk assessment
+        
+        Research: High wick rejection (>60%) at S/R levels indicates liquidation hunting
+        or stop hunting activity by market makers - these levels ARE valid but RISKY.
+        
+        Args:
+            candle: Candle dictionary
+            swing_type: 'high' or 'low'
+            
+        Returns:
+            Wick rejection ratio (0.0-1.0)
+        """
+        try:
+            high = candle['high']  # Required (NO FALLBACKS)
+            low = candle['low']  # Required (NO FALLBACKS)
+            close = candle['close']  # Required (NO FALLBACKS)
+            open_price = candle['open']  # Required (NO FALLBACKS)
+            
+            if high <= 0 or low <= 0:
+                return 0.0
+            
+            total_range = high - low
+            if total_range <= 0:
+                return 0.0
+            
+            if swing_type == 'high':
+                # For resistance (swing high): measure upper wick
+                # Upper wick = high - max(open, close)
+                upper_wick = high - max(open_price, close)
+                wick_ratio = upper_wick / total_range
+            else:  # swing_type == 'low'
+                # For support (swing low): measure lower wick
+                # Lower wick = min(open, close) - low
+                lower_wick = min(open_price, close) - low
+                wick_ratio = lower_wick / total_range
+            
+            return min(1.0, max(0.0, wick_ratio))  # Clamp to 0.0-1.0
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Wick rejection ratio calculation failed: {e}")
+            return 0.0
     
     def _precompute_rolling_volumes(self, candles: List[Dict], window: int = 20) -> List[float]:
         """
@@ -329,13 +383,9 @@ class SRDetector:
                 if swing_size_pct < (params['min_swing_size'] if 'min_swing_size' in params else 0.001):
                     return False
             
-            # Check wick ratio (avoid small wicks)
-            body_size = abs(close - open_price)
-            total_size = high - low
-            if total_size > 0:
-                wick_ratio = (total_size - body_size) / total_size
-                if wick_ratio > (params['wick_ratio'] if 'wick_ratio' in params else 0.3):
-                    return False
+            # REMOVED: Wick ratio filter (was rejecting high-wick swings)
+            # Research shows high-wick levels ARE valid S/R (stop hunt zones)
+            # We now TRACK wick_rejection_ratio instead of filtering it out
             
             # Volume check (if available)
             if volume > 0:
