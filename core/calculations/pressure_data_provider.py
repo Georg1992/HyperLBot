@@ -39,8 +39,8 @@ class PressureDataProvider:
             if not orderbook_data:
                 return {"bids": [], "asks": [], "timestamp": time.time()}
             
-            bids = orderbook_data.get("bids", [])
-            asks = orderbook_data.get("asks", [])
+            bids = orderbook_data["bids"] if "bids" in orderbook_data else []
+            asks = orderbook_data["asks"] if "asks" in orderbook_data else []
             
             return {
                 "bids": bids,
@@ -75,12 +75,12 @@ class PressureDataProvider:
                 }
             
             # Calculate depth for top 5 levels
-            bid_depth_5 = sum(float(level.get('sz', 0)) for level in bids[:5])
-            ask_depth_5 = sum(float(level.get('sz', 0)) for level in asks[:5])
+            bid_depth_5 = sum(float(level['sz']) if 'sz' in level else 0 for level in bids[:5])
+            ask_depth_5 = sum(float(level['sz']) if 'sz' in level else 0 for level in asks[:5])
             
             # Calculate depth for top 10 levels
-            bid_depth_10 = sum(float(level.get('sz', 0)) for level in bids[:10])
-            ask_depth_10 = sum(float(level.get('sz', 0)) for level in asks[:10])
+            bid_depth_10 = sum(float(level['sz']) if 'sz' in level else 0 for level in bids[:10])
+            ask_depth_10 = sum(float(level['sz']) if 'sz' in level else 0 for level in asks[:10])
             
             total_depth_5 = bid_depth_5 + ask_depth_5
             total_depth_10 = bid_depth_10 + ask_depth_10
