@@ -1,0 +1,87 @@
+{
+  "last_updated": "2026-01-12",
+  "active_issues": {
+    "double_liquidation_filtering": {
+      "severity": "CRITICAL",
+      "location": "core/calculations/support_resistance_calculator.py:423+545",
+      "problem": "Fetches data with liquidation ±2% expansion, then filters AGAIN by exact range",
+      "impact": "~80% of fetched/processed data discarded after expensive computation",
+      "fix_required": "Either fetch strict OR filter strict, not both"
+    },
+    "liquidation_range_too_restrictive": {
+      "severity": "CRITICAL",
+      "location": "core/calculations/support_resistance_calculator.py:535-555",
+      "problem": "40x leverage → liquidation range only ±1.2% from current price",
+      "impact": "Filters out valid S/R levels at $87k-$89k support, $92k-$94k resistance",
+      "fix_required": "Expand to 2-3x liquidation range OR make optional"
+    },
+    "power_calculation_too_late": {
+      "severity": "MAJOR",
+      "location": "core/calculations/support_resistance_calculator.py:570",
+      "problem": "Levels clustered/MTF-aligned/filtered BEFORE power calculated",
+      "impact": "Weak levels with many touches rank higher than strong levels",
+      "fix_required": "Calculate preliminary power before clustering"
+    },
+    "cluster_size_filter_arbitrary": {
+      "severity": "MAJOR",
+      "location": "core/calculations/support_resistance_calculator.py:560-566",
+      "problem": "Requires cluster_size >= 2, discards isolated strong levels",
+      "impact": "Loses single strong swing points (e.g., daily high with 15 touches)",
+      "fix_required": "Use power >= 40 instead of cluster_size >= 2"
+    },
+    "entry_price_candidates_circular": {
+      "severity": "CRITICAL",
+      "location": "core/execution/prediction_engine.py:1746-1888",
+      "problem": "Generates 4 entry candidates, scores by S/R proximity, always picks AT level",
+      "impact": "3 of 4 candidates never win, wasted computation",
+      "fix_required": "Remove candidates OR use different scoring (fill probability)"
+    },
+    "direction_scoring_asymmetric": {
+      "severity": "CRITICAL",
+      "location": "core/execution/prediction_engine.py:1299-1308",
+      "problem": "Applies proximity/recency/strength to LONG score only, not SHORT",
+      "impact": "Artificially inflates LONG score, biased direction determination",
+      "fix_required": "Apply distance decay to BOTH scores"
+    }
+  },
+  
+  "resolved_issues": {
+    "rr_hard_constraint": {
+      "resolved": "2026-01-12",
+      "was": "R:R ratio filtered TP candidates, rejected valid S/R levels",
+      "now": "R:R used for position sizing only, all S/R levels accepted"
+    },
+    "hardcoded_position_size": {
+      "resolved": "2026-01-12", 
+      "was": "0.001 BTC hardcoded per trade",
+      "now": "Dynamic calculation based on balance/strategy/R:R/leverage"
+    },
+    "circular_strategy_dependency": {
+      "resolved": "2026-01-12",
+      "was": "StrategyManager needed S/R to select strategy",
+      "now": "Strategy selection independent, uses volatility/trend/volume/RSI/pressure only"
+    },
+    "srp_violation_position_sizing": {
+      "resolved": "2026-01-12",
+      "was": "Position sizing logic duplicated in PredictionEngine and ReactiveEngine",
+      "now": "Unified in PositionSizer module, both engines delegate"
+    }
+  },
+  
+  "deferred_improvements": {
+    "confidence_calculation": {
+      "status": "PLACEHOLDER",
+      "location": "core/execution/prediction_engine.py:1386",
+      "current": "return 50.0  # TODO",
+      "priority": "HIGH",
+      "blocked_by": "User wants all other fixes done first"
+    },
+    "stop_loss_liquidation_cap": {
+      "status": "MISSING",
+      "location": "core/calculations/risk_manager.py",
+      "problem": "SL calculated based on ATR/S/R, doesn't check if beyond liquidation",
+      "priority": "CRITICAL",
+      "fix": "Cap SL at liquidation_price * (1 ± safety_buffer)"
+    }
+  }
+}

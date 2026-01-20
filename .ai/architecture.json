@@ -1,0 +1,127 @@
+{
+  "project": "HyperLBot - High-leverage Bitcoin trading bot",
+  "last_updated": "2026-01-12",
+  "version": "1.0.0",
+  
+  "core_principles": {
+    "NO_FALLBACKS": {
+      "policy": "STRICT - No .get() with defaults on critical data",
+      "rationale": "Fail fast, fail loud - financial systems must not silently degrade",
+      "exceptions": ["Optional config values", "Cache lookups", "HTTP GET requests"],
+      "enforcement": "Direct dict access with explicit 'if key in dict else' for optional data"
+    },
+    "SRP_compliance": {
+      "principle": "Single Responsibility per module",
+      "recent_fixes": ["PositionSizer extracted from engines", "Strategy selection independent of S/R"]
+    },
+    "strategy_independence": {
+      "principle": "S/R calculation independent of active strategy",
+      "implementation": "SRCalculator uses 'comprehensive_analysis' mode, returns ALL levels"
+    }
+  },
+  
+  "execution_architecture": {
+    "two_engines": {
+      "prediction_engine": {
+        "type": "Strategic/Planned",
+        "order_type": "LIMIT (at S/R levels)",
+        "when": "Analyzes market structure, predicts future setups",
+        "signal": "TradingPrediction"
+      },
+      "reactive_engine": {
+        "type": "Tactical/Opportunistic",
+        "order_type": "MARKET (immediate execution)",
+        "when": "Detects momentum breakouts happening NOW",
+        "signal": "MomentumSignal"
+      }
+    },
+    "shared_modules": {
+      "position_sizer": {
+        "responsibility": "Calculate position sizes for ALL engines",
+        "formula": "balance × position_size% × rr_multiplier × leverage / entry_price",
+        "rr_scaling": {
+          "low_rr_1.0": "0.7x size",
+          "good_rr_1.5": "1.0x size",
+          "excellent_rr_3.0": "1.3x size"
+        },
+        "location": "core/execution/position_sizer.py"
+      }
+    }
+  },
+  
+  "data_flow": {
+    "unified_pipeline": [
+      "Database → SRCalculator (comprehensive mode, ALL levels)",
+      "MarketDataService → Unified data dict",
+      "StrategyManager → Select strategy (volatility/trend/volume/RSI/pressure ONLY)",
+      "PredictionEngine → Filter S/R by strategy, generate predictions",
+      "ReactiveEngine → Detect momentum, execute market orders",
+      "Both engines → PositionSizer → Calculate size → Place order"
+    ],
+    "no_circular_dependencies": true,
+    "strategy_selection_inputs": [
+      "volatility_category",
+      "trend_direction", 
+      "volume_category",
+      "rsi_value",
+      "net_pressure",
+      "patterns"
+    ],
+    "strategy_selection_excludes": ["S/R levels", "S/R proximity"]
+  },
+  
+  "critical_fixes_completed": {
+    "rr_refactor": {
+      "date": "2026-01-12",
+      "change": "R:R no longer hard constraint for TP placement",
+      "before": "Filtered S/R levels by R:R, rejected valid levels",
+      "after": "Accept ALL S/R levels, use R:R for position sizing",
+      "impact": "No more 'No valid TP target' errors"
+    },
+    "position_sizing": {
+      "date": "2026-01-12",
+      "change": "Balance-aware position sizing with R:R scaling",
+      "before": "Hardcoded 0.001 BTC per trade",
+      "after": "Dynamic: balance × position_size% × rr_multiplier × leverage / price",
+      "location": "core/execution/position_sizer.py"
+    },
+    "circular_dependency": {
+      "date": "2026-01-12",
+      "change": "Strategy selection independent of S/R levels",
+      "before": "StrategyManager used S/R proximity → circular dependency",
+      "after": "StrategyManager uses volatility/trend/volume/RSI/pressure only",
+      "impact": "Each strategy gets correctly filtered S/R levels"
+    }
+  },
+  
+  "data_contracts": {
+    "TradingPrediction": {
+      "fields": ["direction", "entry_price", "stop_loss", "take_profit", "confidence", "reasoning", "strategy", "timestamp", "risk_reward_ratio"],
+      "required": "ALL fields must be present (NO FALLBACKS)"
+    },
+    "MomentumSignal": {
+      "fields": ["direction", "entry_price", "stop_loss", "take_profit", "confidence", "reasoning", "detected_at", "breakout_level", "expected_move_pct", "risk_reward_ratio"],
+      "required": "ALL fields must be present (NO FALLBACKS)"
+    },
+    "unified_data": {
+      "required_keys": ["current_price", "volatility_category", "trend_direction", "volume_category", "rsi", "support_resistance", "pressure", "orderbook_analysis"],
+      "validation": "All keys must exist, raise KeyError if missing"
+    }
+  },
+  
+  "config_structure": {
+    "strategy_configs": {
+      "location": "config/config.py",
+      "per_strategy": ["position_size", "max_leverage", "min_rr", "max_rr", "confidence_threshold"]
+    },
+    "rr_position_multipliers": {
+      "location": "config/config.py",
+      "thresholds": ["min_rr: 0.8", "low_rr: 1.2", "good_rr: 1.5", "excellent_rr: 2.5"],
+      "multipliers": ["min: 0.5x", "max: 1.5x"]
+    },
+    "tp_adaptive_config": {
+      "location": "config/config.py",
+      "note": "min_rr/max_rr are GUIDELINES for mathematical TP fallback, not filters"
+    }
+  }
+}
