@@ -42,6 +42,23 @@ class TradingConfig:
     MIN_PROFIT_TARGET = float(os.getenv("MIN_PROFIT_TARGET", "0.002"))  # 0.2% (lower for 40x)
     MAX_STOP_LOSS = float(os.getenv("MAX_STOP_LOSS", "0.008"))  # 0.8% (tighter for 40x)
     
+    # Risk Calculation Constants (ADDED 2026-01-12 - Audit Fix)
+    # Previously hardcoded throughout codebase, now centralized
+    LIQUIDATION_SAFETY_BUFFER_PCT = 0.005  # 0.5% buffer before liquidation triggers stop
+    ATR_BASE_MULTIPLIER = 2.0  # Base stop distance: 2.0×ATR (covers ~95% of normal moves)
+    NOISE_BUFFER_ATR_MULTIPLIER = 0.25  # Noise buffer for level breaks: 0.25×ATR
+    DEFAULT_SPREAD_PCT = 0.01  # Default spread if orderbook unavailable: 0.01% (typical BTC perp)
+    ENTRY_DISTANCE_THRESHOLD_ATR = 1.25  # Significant entry distance: 1.25×ATR (for proximity scoring)
+    
+    # Round Number Avoidance (ADDED 2026-01-12 - Audit Fix)
+    # Stop hunting prevention by offsetting stops from psychological levels
+    ROUND_NUMBER_CONFIG = {
+        "major_threshold_usd": 100.0,  # Within $100 of $5K round = VERY DANGEROUS
+        "minor_threshold_usd": 150.0,  # Within $150 of $1K round = DANGEROUS
+        "major_offset_usd": 150.0,     # Offset $150 for major levels ($90K, $95K, etc)
+        "minor_offset_usd": 75.0       # Offset $75 for minor levels ($91K, $92K, etc)
+    }
+    
     # Universal Support/Resistance Power Configuration
     # Power = pure level strength (inherent quality, not contextual)
     # Only includes: touch count, volume, reversal_probability

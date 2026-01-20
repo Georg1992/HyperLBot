@@ -667,10 +667,18 @@ class PredictionEngine:
         entry_price: float,
         current_price: float,
         direction: str,
-        rsi_data: Dict[str, Any]
+        rsi_data: Dict[str, Any],
+        atr_5m: Optional[float] = None
     ) -> tuple[float, list]:
         """
         Score RSI alignment factor for entry setup
+        
+        Args:
+            entry_price: Proposed entry price
+            current_price: Current market price
+            direction: "LONG" or "SHORT"
+            rsi_data: RSI data with "rsi" and "rsi_trend"
+            atr_5m: 5-minute ATR (optional, for ATR-based thresholds)
         
         Returns:
             (rsi_score, reasons)
@@ -684,11 +692,13 @@ class PredictionEngine:
         # Entry price relative to current price
         price_diff_pct = (entry_price - current_price) / current_price if current_price > 0 else 0.0
         
-        # Get ATR for mathematically justified thresholds (NO FALLBACKS)
-        # Note: This method doesn't have unified_data parameter, so ATR-based threshold cannot be used
-        # Use fixed threshold as fallback (not ideal, but method signature limitation)
-        # TODO: Refactor method to accept unified_data parameter for ATR-based threshold
-        significant_diff_threshold = 0.0025  # 0.25% = reasonable threshold (should be 1.25×ATR if available)
+        # ATR-based threshold (FIXED 2026-01-12)
+        # Use 1.25×ATR as significant distance threshold (mathematically justified)
+        # Falls back to 0.25% only if ATR unavailable (backward compatibility)
+        if atr_5m and atr_5m > 0 and current_price > 0:
+            significant_diff_threshold = (atr_5m / current_price) * 1.25  # 1.25×ATR as percentage
+        else:
+            significant_diff_threshold = 0.0025  # Fallback: 0.25% (reasonable for BTC)
         
         if direction == "LONG":
             # For LONG: entry below current (buying cheaper) is good, especially if RSI is oversold
@@ -2141,8 +2151,9 @@ class PredictionEngine:
                                 raise ValueError(f"Resistance level ${level_price:.2f} is broken (current_price ${current_price:.2f} > break_threshold ${level_break_threshold:.2f}) - cannot use for stop placement")
                         
                         if level_price > 0:
-                            # Place stop with noise buffer (0.25×ATR) to avoid false breaks
-                            noise_buffer = atr_5m * 0.25
+                            # Place stop with noise buffer (FIXED 2026-01-12 - from config)
+                            from config.config import TradingConfig
+                            noise_buffer = atr_5m * TradingConfig.NOISE_BUFFER_ATR_MULTIPLIER
                             if direction == "LONG":
                                 sr_stop_level = level_price - noise_buffer
                             else:  # SHORT
@@ -2190,8 +2201,9 @@ class PredictionEngine:
                 leverage=leverage
             )
             
-            # Get spread for realistic profit calculations (ADDED 2026-01-12)
-            spread_pct = 0.01  # Default: 0.01% (BTC perp typical)
+            # Get spread for realistic profit calculations (FIXED 2026-01-12 - from config)
+            from config.config import TradingConfig
+            spread_pct = TradingConfig.DEFAULT_SPREAD_PCT  # Default if orderbook unavailable
             if "orderbook_analysis" in unified_data:
                 orderbook_data = unified_data["orderbook_analysis"]
                 if "bid_ask_spread" in orderbook_data:

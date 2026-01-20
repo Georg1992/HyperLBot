@@ -72,8 +72,9 @@ class RiskManager:
         stop_loss_multiplier = RiskManager._get_stop_loss_multiplier(config)
         
         # Calculate risk management minimum distance
-        # Mathematically justified base: 2.0 × ATR (standard for 95% coverage)
-        atr_base_multiplier = 2.0
+        # Use centralized ATR_BASE_MULTIPLIER from config (FIXED 2026-01-12)
+        from config.config import TradingConfig
+        atr_base_multiplier = TradingConfig.ATR_BASE_MULTIPLIER
         base_atr_stop_distance = atr_5m * atr_base_multiplier
         
         # Minimum stop distance = strategy_multiplier × 2.0 × ATR
@@ -141,8 +142,8 @@ class RiskManager:
         liq_calc = LiquidationCalculator(leverage=leverage)
         liquidation_price = liq_calc.calculate_liquidation_price(entry_price, direction)
         
-        # Safety buffer: 0.5% before liquidation (ensures stop triggers first)
-        safety_buffer_pct = 0.005  # 0.5%
+        # Safety buffer before liquidation (FIXED 2026-01-12 - now from config)
+        safety_buffer_pct = TradingConfig.LIQUIDATION_SAFETY_BUFFER_PCT
         
         if direction == "LONG":
             # For LONG: liquidation is below entry, stop must be above liquidation
@@ -213,16 +214,19 @@ class RiskManager:
             distance_to_5k = abs(stop_loss - nearest_5k)
             
             # Check if stop is dangerously close to a round number
-            # Within $100 of $5K round number = VERY DANGEROUS
-            # Within $150 of $1K round number = DANGEROUS
-            if distance_to_5k < 100.0:
+            # Get round number thresholds from config (FIXED 2026-01-12)
+            from config.config import TradingConfig
+            rn_config = TradingConfig.ROUND_NUMBER_CONFIG
+            
+            # Check proximity to round numbers
+            if distance_to_5k < rn_config["major_threshold_usd"]:
                 # Major round number detected ($90K, $95K, etc)
-                offset = 150.0  # Larger offset for major levels
+                offset = rn_config["major_offset_usd"]
                 round_level = nearest_5k
                 logger.debug(f"⚠️ Stop at ${stop_loss:.2f} too close to major round number ${round_level:.0f} (${distance_to_5k:.0f} away)")
-            elif distance_to_1k < 150.0:
+            elif distance_to_1k < rn_config["minor_threshold_usd"]:
                 # Minor round number detected ($91K, $92K, etc)
-                offset = 75.0  # Smaller offset for minor levels
+                offset = rn_config["minor_offset_usd"]
                 round_level = nearest_1k
                 logger.debug(f"⚠️ Stop at ${stop_loss:.2f} too close to round number ${round_level:.0f} (${distance_to_1k:.0f} away)")
             else:
