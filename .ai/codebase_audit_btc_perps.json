@@ -75,24 +75,35 @@
     
     "spread_cost_omission": {
       "severity": "MAJOR",
-      "status": "CONFIRMED",
-      "location": "core/execution/prediction_engine.py:296-306 (only for scalping validation)",
-      "problem": "Spread checked for scalping strategy viability, but NOT factored into entry/exit profit calculations",
-      "impact": "Predicted profit doesn't account for spread costs → overestimation",
-      "typical_btc_spread": "0.005% to 0.02% depending on volatility",
-      "fix_required": "Subtract spread cost from TP distance when calculating R:R ratio"
+      "status": "✅ FIXED",
+      "fixed_date": "2026-01-12",
+      "location": "core/calculations/risk_manager.py:271-312, core/execution/prediction_engine.py:2306-2324",
+      "problem": "Spread was checked for scalping validation but NOT factored into profit calculations",
+      "impact": "Overestimated profit by $9-$36 per trade at $90K BTC (0.01% spread)",
+      "fix_implemented": {
+        "spread_cost_calculation": "✅ Round-trip: entry_price * spread_decimal * 2",
+        "net_reward": "✅ raw_reward - spread_cost_usd",
+        "rejection_logic": "✅ Rejects TP if spread exceeds raw reward",
+        "realistic_rr": "✅ R:R now based on NET profit after spread"
+      }
     },
     
     "round_number_stop_clustering": {
       "severity": "MAJOR",
-      "status": "CONFIRMED",
-      "location": "No logic found",
+      "status": "✅ FIXED",
+      "fixed_date": "2026-01-12",
+      "location": "core/calculations/risk_manager.py:176-260",
       "problem": "No avoidance of stop placement at round numbers ($90,000, $95,000, $100,000, etc)",
       "research_findings": {
         "source": "BTC Trading Psychology Research 2025",
         "key_fact": "Stops cluster heavily at round numbers → stop hunt targets → liquidation risk"
       },
-      "fix_required": "Offset stops by small random/deterministic amount (e.g., $89,950 instead of $90,000)"
+      "fix_implemented": {
+        "detection": "✅ Checks proximity to $1K and $5K round numbers",
+        "offset_strategy": "✅ $150 for $5K rounds ($90K, $95K), $75 for $1K rounds",
+        "direction": "✅ Offset AWAY from entry (LONG=down, SHORT=up)",
+        "validation": "✅ Ensures offset doesn't violate entry/liquidation constraints"
+      }
     }
   },
   
@@ -131,7 +142,7 @@
     "2. ✅ FIXED: Strategy-aware dashboard filtering", 
     "3. ✅ FIXED: Position sizing liquidation risk factor (prevents blow-ups)",
     "4. ✅ FIXED: S/R liquidation wick filtering (tracks stop hunt zones)",
-    "5. Add spread cost to profit calculations (MAJOR - realistic P&L)",
+    "5. ✅ FIXED: Spread cost in profit calculations (realistic P&L)",
     "6. Add round number stop avoidance (MAJOR - reduces stop hunt risk)"
   ],
   
