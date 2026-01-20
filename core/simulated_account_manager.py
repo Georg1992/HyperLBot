@@ -28,7 +28,7 @@ class SimulatedAccountManager:
         if self.dashboard_service is None:
             from core.services.system_initializer import get_system_initializer
             system_initializer = get_system_initializer()
-            self.dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
+            self.dashboard_service = system_initializer.singleton_systems["dashboard_service"] if "dashboard_service" in system_initializer.singleton_systems else None
     
     def account_exists(self) -> bool:
         """Check if a simulated account file exists"""
@@ -119,7 +119,7 @@ class SimulatedAccountManager:
         if self.account_data:
             self.account_data["total_trades"] += 1
             
-            if trade_data.get("pnl", 0) > 0:
+            if ("pnl" in trade_data and trade_data["pnl"] > 0):
                 self.account_data["winning_trades"] += 1
             else:
                 self.account_data["losing_trades"] += 1

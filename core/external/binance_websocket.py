@@ -148,10 +148,10 @@ class BinanceWebSocket:
             trade_data = json.loads(message)
             
             # Extract trade information
-            trade_volume = float(trade_data.get('q', 0))  # Volume in BTC
-            trade_price = float(trade_data.get('p', 0))   # Price in USDT
-            trade_time = int(trade_data.get('T', 0))      # Trade time
-            is_buyer_maker = trade_data.get('m', False)   # Is buyer maker
+            trade_volume = float(trade_data['q']) if 'q' in trade_data else 0.0  # Volume in BTC
+            trade_price = float(trade_data['p']) if 'p' in trade_data else 0.0   # Price in USDT
+            trade_time = int(trade_data['T']) if 'T' in trade_data else 0      # Trade time
+            is_buyer_maker = trade_data['m'] if 'm' in trade_data else False   # Is buyer maker
             
             # Calculate USD volume
             trade_volume_usd = trade_volume * trade_price

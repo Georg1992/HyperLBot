@@ -351,7 +351,7 @@ class HyperliquidSimulator:
             else:
                 return self._create_error_response(f"Unsupported order type: {order_type}")
             
-            if not execution_result.get("success"):
+            if not ("success" in execution_result and execution_result["success"]):
                 return execution_result
             
             # Check margin requirements
@@ -423,7 +423,7 @@ class HyperliquidSimulator:
             exit_side = "SELL" if position["side"] == "BUY" else "BUY"
             execution_result = self._execute_market_order(exit_side, position["size"], position["leverage"])
             
-            if not execution_result.get("success"):
+            if not ("success" in execution_result and execution_result["success"]):
                 return execution_result
             
             actual_exit_price = execution_result["execution_price"]
@@ -510,7 +510,7 @@ class HyperliquidSimulator:
                     exit_reason = "TAKE_PROFIT"
             
             # Check stop loss
-            if position.get("stop_loss") and not should_close:
+            if "stop_loss" in position and position["stop_loss"] and not should_close:
                 if (position["side"] == "BUY" and current_price <= position["stop_loss"]) or \
                    (position["side"] == "SELL" and current_price >= position["stop_loss"]):
                     should_close = True
@@ -799,7 +799,7 @@ class HyperliquidSimulator:
             if current_margin < maintenance_margin:
                 logger.warning(f"🚨 LIQUIDATION: {trade_id} - Margin ${current_margin:.2f} < ${maintenance_margin:.2f}")
                 result = self.close_position(trade_id, current_price, "LIQUIDATION")
-                if result.get("success"):
+                if "success" in result and result["success"]:
                     liquidated_positions.append(result["position"])
         
         return liquidated_positions

@@ -73,8 +73,8 @@ class BinanceAPI:
             volume_data = self.websocket.get_volume_data()
             return {
                 "connected": self.websocket.is_connected(),
-                "connection_status": volume_data.get("connection_status", "unknown"),
-                "last_update": volume_data.get("timestamp", 0),
+                "connection_status": volume_data["connection_status"] if "connection_status" in volume_data else "unknown",
+                "last_update": volume_data["timestamp"] if "timestamp" in volume_data else 0,
                 "symbol": self.symbol
             }
         else:
