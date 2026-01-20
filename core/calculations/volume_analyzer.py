@@ -64,7 +64,7 @@ class VolumeAnalyzer:
                 return 1.0
             
             # Calculate average volume from history
-            avg_volume = sum(v.get('volume', 0) for v in volume_history) / len(volume_history)
+            avg_volume = sum(v['volume'] if 'volume' in v else 0 for v in volume_history) / len(volume_history)
             
             if avg_volume == 0:
                 return 1.0
@@ -81,7 +81,7 @@ class VolumeAnalyzer:
                 return {"is_anomaly": False, "severity": "NORMAL"}
             
             # Calculate average and standard deviation
-            volumes = [v.get('volume', 0) for v in volume_history]
+            volumes = [v['volume'] if 'volume' in v else 0 for v in volume_history]
             avg_volume = sum(volumes) / len(volumes)
             variance = sum((v - avg_volume) ** 2 for v in volumes) / len(volumes)
             std_dev = variance ** 0.5

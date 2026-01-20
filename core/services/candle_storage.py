@@ -620,8 +620,8 @@ class CandleStorage:
                 return
             
             # Get the most recent completed candle
-            latest_candle = max(completed_candles, key=lambda x: x.get('timestamp', 0))
-            latest_timestamp = latest_candle.get('timestamp', 0)
+            latest_candle = max(completed_candles, key=lambda x: x['timestamp'] if 'timestamp' in x else 0)
+            latest_timestamp = latest_candle['timestamp'] if 'timestamp' in latest_candle else 0
             latest_datetime = datetime.fromtimestamp(latest_timestamp)
             
             # Check if this candle is already in storage

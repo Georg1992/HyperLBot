@@ -133,7 +133,7 @@ class PressureAnalyzer:
                 }
             
             # Extract pressure imbalances
-            imbalances = [p.get("pressure_imbalance", 0.0) for p in pressure_history]
+            imbalances = [p["pressure_imbalance"] if "pressure_imbalance" in p else 0.0 for p in pressure_history]
             
             # Calculate volatility
             if len(imbalances) > 1:
@@ -152,7 +152,7 @@ class PressureAnalyzer:
                 stability = "VOLATILE"
             
             # Calculate trend consistency
-            directions = [p.get("direction", "NEUTRAL") for p in pressure_history]
+            directions = [p["direction"] if "direction" in p else "NEUTRAL" for p in pressure_history]
             buy_count = sum(1 for d in directions if "BUY" in d)
             sell_count = sum(1 for d in directions if "SELL" in d)
             total_count = len(directions)
