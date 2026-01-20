@@ -33,8 +33,8 @@ class SingleInstanceManager:
                         # Another instance is still running
                         logger.error(f"❌ Another bot instance is already running (PID: {existing_pid})")
                         logger.error(f"   Lock file: {os.path.abspath(self.lock_file)}")
-                        logger.error(f"   Started: {lock_data.get('start_time', 'Unknown')}")
-                        logger.error(f"   Strategy: {lock_data.get('strategy', 'Unknown')}")
+                        logger.error(f"   Started: {lock_data['start_time'] if 'start_time' in lock_data else 'Unknown'}")
+                        logger.error(f"   Strategy: {lock_data['strategy'] if 'strategy' in lock_data else 'Unknown'}")
                         return False
                     else:
                         # Stale lock file - remove it
@@ -106,7 +106,7 @@ class SingleInstanceManager:
             if os.path.exists(self.lock_file):
                 lock_data = self._read_lock_file()
                 if lock_data:
-                    pid = lock_data.get("pid")
+                    pid = lock_data["pid"] if "pid" in lock_data else None
                     if pid and self._is_process_running(pid):
                         lock_data["status"] = "RUNNING"
                         return lock_data

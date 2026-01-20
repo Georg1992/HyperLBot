@@ -110,13 +110,14 @@ class VolumeClassifier:
             elif level == "VERY_LOW":
                 implications.extend(["Very low volatility", "Minimal price movement"])
             
-            if momentum.get("trend") == "INCREASING":
+            if "trend" in momentum and momentum["trend"] == "INCREASING":
                 implications.append("Volume momentum building")
-            elif momentum.get("trend") == "DECREASING":
+            elif "trend" in momentum and momentum["trend"] == "DECREASING":
                 implications.append("Volume momentum declining")
             
-            if anomaly.get("is_anomaly"):
-                implications.append(f"Volume anomaly detected: {anomaly.get('severity', 'UNKNOWN')}")
+            if "is_anomaly" in anomaly and anomaly["is_anomaly"]:
+                severity = anomaly["severity"] if "severity" in anomaly else "UNKNOWN"
+                implications.append(f"Volume anomaly detected: {severity}")
             
             return {
                 "implications": implications,

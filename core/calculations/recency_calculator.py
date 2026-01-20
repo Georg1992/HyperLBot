@@ -38,8 +38,8 @@ class RecencyCalculator:
         hours_since_touch = calculate_hours_since_touch(last_touch_timestamp, current_time)
         
         # Get strategy-specific recency configuration
-        strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
-        recency_config = strategy_config.get("recency_config", {
+        strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy] if strategy in TradingConfig.STRATEGY_CONFIGS else {}
+        recency_config = strategy_config["recency_config"] if "recency_config" in strategy_config else {
             "very_recent_hours": 24.0,
             "recent_hours": 72.0,
             "old_hours": 168.0
@@ -79,8 +79,8 @@ class RecencyCalculator:
         hours_since_touch = calculate_hours_since_touch(last_touch_timestamp, current_time)
         
         # Get strategy-specific recency configuration
-        strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
-        recency_config = strategy_config.get("recency_config", {
+        strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy] if strategy in TradingConfig.STRATEGY_CONFIGS else {}
+        recency_config = strategy_config["recency_config"] if "recency_config" in strategy_config else {
             "very_recent_hours": 24.0,
             "recent_hours": 72.0,
             "old_hours": 168.0

@@ -264,12 +264,12 @@ class TradingLogger:
         error_record = {
             "timestamp": time.time(),
             "datetime": datetime.now().isoformat(),
-            "error_type": error_data.get("type", "unknown"),
-            "error_message": error_data.get("message", ""),
-            "error_details": error_data.get("details", {}),
-            "context": error_data.get("context", {}),
-            "stack_trace": error_data.get("stack_trace", ""),
-            "recovery_action": error_data.get("recovery_action", "")
+            "error_type": error_data["type"] if "type" in error_data else "unknown",
+            "error_message": error_data["message"] if "message" in error_data else "",
+            "error_details": error_data["details"] if "details" in error_data else {},
+            "context": error_data["context"] if "context" in error_data else {},
+            "stack_trace": error_data["stack_trace"] if "stack_trace" in error_data else "",
+            "recovery_action": error_data["recovery_action"] if "recovery_action" in error_data else ""
         }
         
         self.errors.append(error_record)
@@ -287,14 +287,14 @@ class TradingLogger:
                 trade.update({
                     "exit_timestamp": time.time(),
                     "exit_datetime": datetime.now().isoformat(),
-                    "exit_price": result_data.get("exit_price"),
-                    "profit_loss": result_data.get("profit_loss"),
-                    "profit_loss_pct": result_data.get("profit_loss_pct"),
-                    "fees_paid": result_data.get("fees_paid"),
-                    "net_profit_loss": result_data.get("net_profit_loss"),
-                    "holding_time": result_data.get("holding_time"),
-                    "exit_reason": result_data.get("exit_reason", "manual"),
-                    "was_profitable": result_data.get("was_profitable", False)
+                    "exit_price": result_data["exit_price"] if "exit_price" in result_data else None,
+                    "profit_loss": result_data["profit_loss"] if "profit_loss" in result_data else None,
+                    "profit_loss_pct": result_data["profit_loss_pct"] if "profit_loss_pct" in result_data else None,
+                    "fees_paid": result_data["fees_paid"] if "fees_paid" in result_data else None,
+                    "net_profit_loss": result_data["net_profit_loss"] if "net_profit_loss" in result_data else None,
+                    "holding_time": result_data["holding_time"] if "holding_time" in result_data else None,
+                    "exit_reason": result_data["exit_reason"] if "exit_reason" in result_data else "manual",
+                    "was_profitable": result_data["was_profitable"] if "was_profitable" in result_data else False
                 })
                 break
         
@@ -307,12 +307,12 @@ class TradingLogger:
         if not self.trades:
             return self.performance_metrics
         
-        profitable_trades = [t for t in self.trades if t.get("was_profitable", False)]
-        losing_trades = [t for t in self.trades if not t.get("was_profitable", True)]
+        profitable_trades = [t for t in self.trades if ("was_profitable" in t and t["was_profitable"])]
+        losing_trades = [t for t in self.trades if not ("was_profitable" in t and t["was_profitable"])]
         
-        total_profit = sum(t.get("profit_loss", 0) for t in profitable_trades)
-        total_loss = abs(sum(t.get("profit_loss", 0) for t in losing_trades))
-        total_fees = sum(t.get("fees_paid", 0) for t in self.trades)
+        total_profit = sum(t["profit_loss"] if "profit_loss" in t else 0 for t in profitable_trades)
+        total_loss = abs(sum(t["profit_loss"] if "profit_loss" in t else 0 for t in losing_trades))
+        total_fees = sum(t["fees_paid"] if "fees_paid" in t else 0 for t in self.trades)
         
         self.performance_metrics.update({
             "session_end": time.time(),
@@ -327,8 +327,8 @@ class TradingLogger:
             "win_rate": len(profitable_trades) / len(self.trades) if self.trades else 0,
             "average_profit": total_profit / len(profitable_trades) if profitable_trades else 0,
             "average_loss": total_loss / len(losing_trades) if losing_trades else 0,
-            "largest_win": max((t.get("profit_loss", 0) for t in profitable_trades), default=0),
-            "largest_loss": min((t.get("profit_loss", 0) for t in losing_trades), default=0),
+            "largest_win": max((t["profit_loss"] if "profit_loss" in t else 0 for t in profitable_trades), default=0),
+            "largest_loss": min((t["profit_loss"] if "profit_loss" in t else 0 for t in losing_trades), default=0),
             "profit_factor": total_profit / total_loss if total_loss > 0 else float('inf'),
             "average_trade": (total_profit - total_loss) / len(self.trades) if self.trades else 0
         })
@@ -339,7 +339,7 @@ class TradingLogger:
         max_drawdown = 0
         
         for trade in self.trades:
-            running_balance += trade.get("net_profit_loss", 0)
+            running_balance += trade["net_profit_loss"] if "net_profit_loss" in trade else 0
             max_balance = max(max_balance, running_balance)
             drawdown = max_balance - running_balance
             max_drawdown = max(max_drawdown, drawdown)
@@ -386,7 +386,7 @@ class TradingLogger:
         # Count error types
         for error in self.errors:
             error_type = error["error_type"]
-            report["error_summary"]["error_types"][error_type] = report["error_summary"]["error_types"].get(error_type, 0) + 1
+            report["error_summary"]["error_types"][error_type] = (report["error_summary"]["error_types"][error_type] if error_type in report["error_summary"]["error_types"] else 0) + 1
         
         return report
     
@@ -439,12 +439,13 @@ class TradingLogger:
         # Analyze performance by market conditions
         condition_performance = {}
         for trade in self.trades:
-            condition = trade.get("market_conditions", {}).get("market_condition", "UNKNOWN")
+            market_conditions = trade["market_conditions"] if "market_conditions" in trade else {}
+            condition = market_conditions["market_condition"] if "market_condition" in market_conditions else "UNKNOWN"
             if condition not in condition_performance:
                 condition_performance[condition] = {"trades": [], "total_pnl": 0}
             
             condition_performance[condition]["trades"].append(trade)
-            condition_performance[condition]["total_pnl"] += trade.get("net_profit_loss", 0)
+            condition_performance[condition]["total_pnl"] += trade["net_profit_loss"] if "net_profit_loss" in trade else 0
         
         # Find best and worst conditions
         if condition_performance:
@@ -474,15 +475,16 @@ class TradingLogger:
         
         # Match signals to trade results
         for trade in self.trades:
-            signal_reason = trade.get("strategy_info", {}).get("signal_reason")
-            if signal_reason in signal_reasons and trade.get("was_profitable"):
+            strategy_info = trade["strategy_info"] if "strategy_info" in trade else {}
+            signal_reason = strategy_info["signal_reason"] if "signal_reason" in strategy_info else None
+            if signal_reason in signal_reasons and ("was_profitable" in trade and trade["was_profitable"]):
                 signal_reasons[signal_reason]["successful"] += 1
         
         insights["signal_effectiveness"] = signal_reasons
         
         # Fee impact analysis
-        total_fees = sum(t.get("fees_paid", 0) for t in self.trades)
-        total_gross_profit = sum(t.get("profit_loss", 0) for t in self.trades)
+        total_fees = sum(t["fees_paid"] if "fees_paid" in t else 0 for t in self.trades)
+        total_gross_profit = sum(t["profit_loss"] if "profit_loss" in t else 0 for t in self.trades)
         fee_impact = (total_fees / total_gross_profit * 100) if total_gross_profit > 0 else 0
         
         insights["fee_impact"] = {
