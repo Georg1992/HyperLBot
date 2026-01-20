@@ -52,7 +52,7 @@ class FearGreedAPI:
                     
                     data = response.json()
                     
-                    if data.get("data") and len(data["data"]) > 0:
+                    if "data" in data and data["data"] and len(data["data"]) > 0:
                         fng_data = data["data"][0]
                         
                         # Parse the Fear & Greed data

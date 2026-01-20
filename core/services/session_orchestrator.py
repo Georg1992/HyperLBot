@@ -311,7 +311,9 @@ class SessionOrchestrator:
                                 current_strategy=current_strategy  # Use detected strategy for consistency
                             )
                             if momentum_result:
-                                logger.info(f"⚡ Momentum trade executed: {momentum_result.get('direction')} @ ${momentum_result.get('entry_price'):.2f}")
+                                direction = momentum_result["direction"] if "direction" in momentum_result else "UNKNOWN"
+                                entry_price = momentum_result["entry_price"] if "entry_price" in momentum_result else 0.0
+                                logger.info(f"⚡ Momentum trade executed: {direction} @ ${entry_price:.2f}")
                         except Exception as e:
                             logger.warning(f"⚠️ Reactive engine check failed: {e}")  # Changed from debug to warning
                     
@@ -601,7 +603,7 @@ class SessionOrchestrator:
                     # Removed excessive debug logging
                     
                     # Get analysis via MarketDataService (single source of truth)
-                    getter = module_to_getter.get(module_name)
+                    getter = module_to_getter[module_name] if module_name in module_to_getter else None
                     if getter:
                         analysis_result = getter()
                         # MarketDataService already stores the result via its get_* methods
@@ -675,7 +677,8 @@ class SessionOrchestrator:
                     logger.debug(f"🎯 Strategy unchanged: {current_strategy}")
                     # Even if unchanged, ensure session manager has the correct strategy
                     if self.session_manager:
-                        if self.session_manager.current_session_data.get("strategy") != current_strategy:
+                        current_session_strategy = self.session_manager.current_session_data["strategy"] if "strategy" in self.session_manager.current_session_data else None
+                        if current_session_strategy != current_strategy:
                             self.session_manager.current_session_data["strategy"] = current_strategy
                             logger.debug(f"📊 Session manager strategy synced to: {current_strategy}")
                     return current_strategy

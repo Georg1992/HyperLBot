@@ -115,9 +115,11 @@ class PressureCalculator:
             pressure_ratios = self._data_provider.calculate_pressure_ratios(depth_metrics)
             
             # 3. Analyze pressure direction and strength via analyzer
+            pressure_imbalance = pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0
+            depth_concentration = pressure_ratios["depth_concentration"] if "depth_concentration" in pressure_ratios else 1.0
             direction, strength = self._analyzer.categorize_pressure_direction(
-                pressure_ratios.get("pressure_imbalance", 0.0),
-                pressure_ratios.get("depth_concentration", 1.0)
+                pressure_imbalance,
+                depth_concentration
             )
             
             # 4. Calculate confidence via analyzer
@@ -142,13 +144,13 @@ class PressureCalculator:
             recommendations = self._classifier.get_pressure_recommendations(classification, implications)
             
             # 9. Format results
-            pressure_imbalance = pressure_ratios.get("pressure_imbalance", 0.0)
+            pressure_imbalance_val = pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0
             result = {
                 "direction": direction,
                 "confidence": confidence,
                 "strength": strength,
                 "trend": trend,
-                "net_pressure": pressure_imbalance,  # Top-level field for momentum_detector (NO FALLBACKS)
+                "net_pressure": pressure_imbalance_val,  # Top-level field for momentum_detector (NO FALLBACKS)
                 "pressure_classification": classification,
                 "trading_implications": implications,
                 "recommendations": recommendations,

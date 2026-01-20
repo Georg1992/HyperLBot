@@ -220,8 +220,8 @@ class MomentumDetector:
                 factors.append(f"Normal volume ({volume_percentile:.0f}th percentile)")
             
             # 4. Price acceleration (15 points)
-            trend_direction = trend_data.get("direction", "SIDEWAYS")
-            trend_strength_raw = trend_data.get("strength", 0.0)
+            trend_direction = trend_data["direction"] if "direction" in trend_data else "SIDEWAYS"
+            trend_strength_raw = trend_data["strength"] if "strength" in trend_data else 0.0
             try:
                 trend_strength = abs(float(trend_strength_raw)) if trend_strength_raw is not None else 0.0
             except (ValueError, TypeError):
@@ -248,7 +248,7 @@ class MomentumDetector:
                 factors.append(f"RSI: {rsi_value:.1f}")
             
             # 6. Volatility check (10 points)
-            volatility_category = volatility_data.get("category", "NORMAL")
+            volatility_category = volatility_data["category"] if "category" in volatility_data else "NORMAL"
             if volatility_category in ["HIGH", "EXTREME"]:
                 confidence += 10.0
                 factors.append(f"High volatility ({volatility_category})")
