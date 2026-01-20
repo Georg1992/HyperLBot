@@ -133,8 +133,10 @@ class DashboardService:
                 # Log prediction status for debugging
                 if pred_obj:
                     pred_dir = pred_obj["direction"] if "direction" in pred_obj else "N/A"
-                    pred_conf = pred_obj["confidence"] if "confidence" in pred_obj else "N/A"
-                    logger.info(f"🤖 ✅ Prediction surfaced to dashboard: {pred_dir} @ {pred_conf:.1f}%")
+                    pred_conf = pred_obj["confidence"] if "confidence" in pred_obj else None
+                    # Handle None confidence (not yet implemented)
+                    conf_str = f"{pred_conf:.1f}%" if pred_conf is not None else "N/A"
+                    logger.info(f"🤖 ✅ Prediction surfaced to dashboard: {pred_dir} @ {conf_str}")
                 else:
                     logger.debug(f"🤖 No prediction available (prediction is None)")
                 
