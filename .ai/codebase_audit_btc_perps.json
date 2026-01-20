@@ -6,7 +6,8 @@
   "critical_issues": {
     "entry_offset_logic": {
       "severity": "CRITICAL",
-      "status": "CONFIRMED",
+      "status": "✅ FIXED",
+      "fixed_date": "2026-01-12",
       "location": [
         "core/execution/prediction_engine.py:1750 (entry = level_price, no offset)",
         "core/execution/prediction_engine.py:647-648 (20% bonus for distance=0)",
@@ -24,16 +25,17 @@
         ]
       },
       "impact": "High risk of liquidation on wick-through before S/R bounce occurs",
-      "fix_required": {
-        "restore_candidate_generation": "Re-implement 4 entry candidates (AT, +0.3×ATR, +0.6×ATR, +1.0×ATR inside zone)",
-        "fix_scoring": "Score by: fill_probability (35%) + liquidation_safety (35%) + level_strength (20%) - spread_penalty (10%)",
-        "remove_at_level_bonus": "Remove 20% bonus for distance=0, prefer 0.3-0.5×ATR inside"
+      "fix_implemented": {
+        "candidate_generation": "✅ 4 entry candidates (0, +0.3×ATR, +0.6×ATR, +1.0×ATR inside zone)",
+        "scoring": "✅ fill_probability (35%) + liquidation_safety (35%) + level_strength (20%) - spread_penalty (10%)",
+        "optimal_preference": "✅ 0.2-0.5×ATR inside zone gets 1.1x bonus, distance=0 gets no bonus"
       }
     },
     
     "entry_scoring_bias": {
       "severity": "CRITICAL",
-      "status": "CONFIRMED",
+      "status": "✅ FIXED",
+      "fixed_date": "2026-01-12",
       "location": "core/execution/prediction_engine.py:638-674",
       "problem": "Scoring explicitly rewards entering AT S/R level (distance=0.0 → 1.2x multiplier)",
       "why_wrong": "Ignores BTC perp market structure: stop hunts, liquidation wicks, market maker behavior",
