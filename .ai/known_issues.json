@@ -31,10 +31,11 @@
     },
     "entry_price_candidates_circular": {
       "resolved": "2026-01-12",
-      "was": "Generated 4 entry candidates, scored by proximity to S/R, candidate AT level always won",
-      "now": "Use level price directly, no candidate loop, no wasted computation",
-      "files": ["core/execution/prediction_engine.py"],
-      "benefit": "~56 lines removed, cleaner logic, same result"
+      "was": "Generated 4 candidates, scored by proximity to S/R → candidate AT level always won (circular)",
+      "intermediate_fix_was_wrong": "Removed candidates, used level price directly → entered AT level (wrong for BTC perps)",
+      "now": "Restored 4 candidates with BTC perp-optimized offsets (0, 0.3, 0.6, 1.0×ATR INSIDE zone), scores by fill_probability + liquidation_safety + level_strength - spread_penalty",
+      "files": ["core/execution/prediction_engine.py:1709-1914"],
+      "benefit": "Survives liquidation wicks, higher fill probability, still catches bounce"
     },
     "direction_scoring_asymmetric": {
       "resolved": "2026-01-12",
