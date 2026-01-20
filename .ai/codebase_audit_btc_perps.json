@@ -46,12 +46,17 @@
   "major_issues": {
     "position_sizing_liquidation_risk": {
       "severity": "MAJOR",
-      "status": "CONFIRMED",
-      "location": "core/execution/position_sizer.py:80-151",
-      "problem": "Position sizing uses R:R multiplier but doesn't consider DISTANCE to liquidation",
+      "status": "✅ FIXED",
+      "fixed_date": "2026-01-12",
+      "location": "core/execution/position_sizer.py:113-195",
+      "problem": "Position sizing used R:R multiplier but didn't consider DISTANCE to liquidation",
       "scenario": "High R:R trade → larger position → closer to liquidation → wick can trigger liq before SL",
       "example": "Entry $90,000, SL $89,700 (0.33%), Liq $88,900 (1.2%). Large position → 0.7% wick hits liquidation, SL never triggers",
-      "fix_required": "Add liquidation_distance_factor to position sizing: reduce size if liq is close to SL"
+      "fix_implemented": {
+        "liquidation_safety_factor": "✅ Reduces position size when SL is too close to liquidation",
+        "buffer_zones": "✅ ≥50%=1.0x, 30-50%=0.8-1.0x, 15-30%=0.5-0.8x, <15%=0.3-0.5x",
+        "final_formula": "✅ base_size × rr_multiplier × liq_safety_factor"
+      }
     },
     
     "sr_liquidation_wick_filtering": {
@@ -120,7 +125,7 @@
   "recommended_priority": [
     "1. ✅ FIXED: Entry offset logic + scoring bias",
     "2. ✅ FIXED: Strategy-aware dashboard filtering", 
-    "3. Add position sizing liquidation risk factor (MAJOR - prevents blow-ups)",
+    "3. ✅ FIXED: Position sizing liquidation risk factor (prevents blow-ups)",
     "4. Add S/R liquidation wick filtering (MAJOR - avoids stop hunt zones)",
     "5. Add spread cost to profit calculations (MAJOR - realistic P&L)",
     "6. Add round number stop avoidance (MAJOR - reduces stop hunt risk)"
