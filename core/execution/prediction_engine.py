@@ -20,7 +20,7 @@ class TradingPrediction:
     entry_price: float
     stop_loss: float
     take_profit: float
-    confidence: float  # 0.0 - 100.0 (percentage)
+    confidence: Optional[float]  # 0.0 - 100.0 (percentage) - None if not implemented
     reasoning: str
     strategy: str
     timestamp: float
@@ -1401,51 +1401,16 @@ class PredictionEngine:
         Returns:
             Confidence percentage (0.0 - 100.0)
         """
-        try:
-            # Extract scores from setup_data (all required - NO FALLBACKS)
-            entry_score = setup_data.get("entry_score", 0.0)  # 0-100
-            direction_score = setup_data.get("direction_score", 0.0)  # 0-100
-            
-            # R:R scoring: 1.5:1 = 50, 2.0:1 = 70, 3.0:1+ = 100
-            if rr_ratio >= 3.0:
-                rr_score = 100.0
-            elif rr_ratio >= 2.0:
-                rr_score = 70.0 + ((rr_ratio - 2.0) / 1.0) * 30.0  # 70-100
-            elif rr_ratio >= 1.5:
-                rr_score = 50.0 + ((rr_ratio - 1.5) / 0.5) * 20.0  # 50-70
-            else:
-                rr_score = (rr_ratio / 1.5) * 50.0  # 0-50
-            
-            # Alignment scoring from direction breakdown (if available)
-            alignment_score = 50.0  # Default: neutral
-            if "direction_breakdown" in setup_data:
-                direction_breakdown = setup_data["direction_breakdown"]
-                if "alignment_factor" in direction_breakdown:
-                    alignment_factor = direction_breakdown["alignment_factor"]  # 0.7-1.3
-                    # Convert alignment_factor (0.7-1.3) to score (0-100)
-                    # 0.7=0, 1.0=50, 1.3=100
-                    if alignment_factor >= 1.0:
-                        alignment_score = 50.0 + ((alignment_factor - 1.0) / 0.3) * 50.0
-                    else:
-                        alignment_score = (alignment_factor / 1.0) * 50.0
-            
-            # Weighted confidence calculation
-            confidence = (
-                entry_score * 0.4 +       # Entry quality (40%)
-                direction_score * 0.3 +    # Direction strength (30%)
-                rr_score * 0.2 +           # Risk/Reward (20%)
-                alignment_score * 0.1      # Setup alignment (10%)
-            )
-            
-            # Clamp to 0-100
-            confidence = max(0.0, min(100.0, confidence))
-            
-            logger.debug(f"📊 Confidence: {confidence:.1f}% (entry={entry_score:.1f}, direction={direction_score:.1f}, rr={rr_score:.1f}, align={alignment_score:.1f})")
-            return confidence
-            
-        except Exception as e:
-            logger.error(f"❌ Confidence calculation failed: {e} (NO FALLBACKS)")
-            raise
+        # CONFIDENCE CALCULATION NOT IMPLEMENTED YET
+        # This is a critical component that requires extensive research and validation
+        # Returning None to indicate confidence is not available (optional field)
+        # When implemented, should consider:
+        #   - Entry quality (setup scores)
+        #   - Direction strength (score differential)
+        #   - Risk/Reward ratio quality
+        #   - Market conditions alignment
+        #   - Historical prediction accuracy (if available)
+        return None
     
     def _score_entry_setup(
         self,
