@@ -1015,67 +1015,6 @@ class MarketDataService:
         except Exception as e:
             # Don't log errors here to avoid spam
             pass
-    
-    def _prepare_sr_data_for_dashboard(self, sr_data: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """
-        Prepare S/R data for dashboard with pre-filtered levels
-        
-        Uses SRLevelFilter to provide filtered levels for display, reducing frontend filtering logic.
-        
-        Args:
-            sr_data: Raw S/R data from calculator
-            current_price: Current market price
-            
-        Returns:
-            Formatted S/R data with filtered levels for dashboard
-        """
-        try:
-            from core.calculations.sr_level_filter import SRLevelFilter
-            
-            all_levels = sr_data["levels"]  # Required (NO FALLBACKS)
-            metadata = sr_data["metadata"] if "metadata" in sr_data else {}  # Optional metadata
-            
-            # Filter levels for dashboard display (top 2)
-            # During analysis phase - no active strategy yet, uses default "standard" weights
-            level_filter = SRLevelFilter()
-            filtered_levels = level_filter.filter_for_display(
-                all_levels=all_levels,
-                current_price=current_price,
-                max_levels=2
-            )
-            
-            return {
-                "status": sr_data["status"],  # Required (NO FALLBACKS)
-                "levels": all_levels,  # Still provide all levels for flexibility
-                "key_levels": all_levels,  # Alias for backward compatibility
-                "top_2_support": filtered_levels["support"],  # Pre-filtered for dashboard
-                "top_2_resistance": filtered_levels["resistance"],  # Pre-filtered for dashboard
-                "metadata": metadata,
-                "strongest_support": metadata["strongest_support"],  # Required (NO FALLBACKS)
-                "strongest_resistance": metadata["strongest_resistance"],  # Required (NO FALLBACKS)
-                "support_score": metadata["support_score"],  # Required (NO FALLBACKS)
-                "resistance_score": metadata["resistance_score"],  # Required (NO FALLBACKS)
-                "levels_count": metadata["total_levels"],  # Required (NO FALLBACKS)
-                "timestamp": metadata["timestamp"] if "timestamp" in metadata else time.time()  # Optional
-            }
-        except Exception as e:
-            logger.error(f"❌ Failed to prepare S/R data for dashboard: {e}")
-            # Return safe fallback
-            return {
-                "status": "error",
-                "levels": [],
-                "key_levels": [],
-                "top_2_support": [],
-                "top_2_resistance": [],
-                "metadata": {},
-                "strongest_support": 0,
-                "strongest_resistance": 0,
-                "support_score": 0,
-                "resistance_score": 0,
-                "levels_count": 0,
-                "timestamp": time.time()
-            }
-    
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data from API"""
         try:

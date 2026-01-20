@@ -276,6 +276,36 @@ class SessionOrchestrator:
                     unified_data["strategy"] = current_strategy
                     if current_strategy != strategy:
                         logger.info(f"🔄 Strategy updated in unified data: {strategy} → {current_strategy}")
+                    
+                    # STRATEGY-AWARE S/R FILTERING FOR DASHBOARD
+                    # Now that we know the strategy, filter S/R levels for dashboard display
+                    if "support_resistance" in unified_data and unified_data["support_resistance"]:
+                        sr_data = unified_data["support_resistance"]
+                        from core.calculations.sr_level_filter import SRLevelFilter
+                        from config.config import TradingConfig
+                        
+                        # Get strategy-specific max_levels
+                        if current_strategy in TradingConfig.SR_LEVEL_SELECTION:
+                            strategy_config = TradingConfig.SR_LEVEL_SELECTION[current_strategy]
+                            max_levels = strategy_config["max_levels_per_side"]
+                            
+                            # Filter levels for dashboard (strategy-aware)
+                            level_filter = SRLevelFilter()
+                            all_levels = sr_data["levels"] if "levels" in sr_data else []
+                            
+                            filtered_levels = level_filter.filter_for_display(
+                                all_levels=all_levels,
+                                current_price=current_price,
+                                max_levels=max_levels,  # Strategy-specific (scalping=1, swing=3)
+                                strategy=current_strategy
+                            )
+                            
+                            # Update S/R data with strategy-filtered levels for dashboard
+                            sr_data["key_levels"] = filtered_levels["support"] + filtered_levels["resistance"]
+                            sr_data["top_support"] = filtered_levels["support"]
+                            sr_data["top_resistance"] = filtered_levels["resistance"]
+                            
+                            logger.debug(f"📊 Dashboard S/R filtered for {current_strategy}: {len(filtered_levels['support'])} support, {len(filtered_levels['resistance'])} resistance (max: {max_levels} per side)")
 
                     # Generate prediction
                     try:
