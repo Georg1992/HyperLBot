@@ -145,12 +145,12 @@ class VolumeClassifier:
             elif level == "VERY_LOW":
                 recommendations.extend(["Avoid trading", "Wait for volume increase"])
             
-            if momentum.get("trend") == "INCREASING":
+            if "trend" in momentum and momentum["trend"] == "INCREASING":
                 recommendations.append("Volume momentum building - consider entries")
-            elif momentum.get("trend") == "DECREASING":
+            elif "trend" in momentum and momentum["trend"] == "DECREASING":
                 recommendations.append("Volume momentum declining - consider exits")
             
-            if anomaly.get("is_anomaly"):
+            if "is_anomaly" in anomaly and anomaly["is_anomaly"]:
                 recommendations.append("Volume anomaly detected - use caution")
             
             return recommendations

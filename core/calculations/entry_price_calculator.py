@@ -57,8 +57,8 @@ class EntryPriceCalculator:
             sr_data = unified_data["support_resistance"]
             
             if "metadata" not in sr_data:
-            if not sr_metadata:
                 raise ValueError("support_resistance.metadata is required for entry price calculation - NO FALLBACKS")
+            sr_metadata = sr_data["metadata"]
             
             atr_5m = sr_metadata["atr_5m"]  # Required (NO FALLBACKS)
             if atr_5m <= 0:
