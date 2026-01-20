@@ -435,7 +435,7 @@ class CandleStorage:
             
             # Filter to exact time range (remove any outside 5 years)
             cutoff_timestamp = current_time - (years * 365 * 24 * 3600)
-            filtered_candles = [c for c in unique_candles if cutoff_timestamp <= c.get('timestamp', 0) <= current_time]
+            filtered_candles = [c for c in unique_candles if 'timestamp' in c and cutoff_timestamp <= c['timestamp'] <= current_time]
             
             # Insert into database
             self.insert_candles(filtered_candles)
@@ -504,7 +504,7 @@ class CandleStorage:
                 candles.append(formatted_candle)
             
             # Sort by timestamp (oldest first)
-            candles.sort(key=lambda x: x.get('timestamp', 0))
+            candles.sort(key=lambda x: x['timestamp'] if 'timestamp' in x else 0)
             
             return candles
                 
@@ -552,13 +552,13 @@ class CandleStorage:
             # Filter out ongoing candles - only use completed candles
             current_time = time.time()
             current_5m_start = (int(current_time) // 300) * 300  # Round to 5-minute boundary
-            completed_candles = [c for c in candles if c.get('timestamp', 0) < current_5m_start]
+            completed_candles = [c for c in candles if 'timestamp' in c and c['timestamp'] < current_5m_start]
             
             # Sort candles by timestamp (oldest first)
-            completed_candles.sort(key=lambda x: x.get('timestamp', 0))
+            completed_candles.sort(key=lambda x: x['timestamp'] if 'timestamp' in x else 0)
             
             # Filter to only new candles (after last_timestamp)
-            new_candles = [c for c in completed_candles if c.get('timestamp', 0) > last_timestamp]
+            new_candles = [c for c in completed_candles if 'timestamp' in c and c['timestamp'] > last_timestamp]
             
             # Insert into database
             if new_candles:
@@ -613,7 +613,7 @@ class CandleStorage:
             current_5m_start = (int(current_time) // 300) * 300  # Round to 5-minute boundary
             
             # Find the last COMPLETED candle (timestamp < current_5m_start)
-            completed_candles = [c for c in candles if c.get('timestamp', 0) < current_5m_start]
+            completed_candles = [c for c in candles if 'timestamp' in c and c['timestamp'] < current_5m_start]
             
             if not completed_candles:
                 logger.debug(f"💾 No completed candles yet (current 5m start: {datetime.fromtimestamp(current_5m_start).strftime('%H:%M:%S')})")
