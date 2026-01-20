@@ -140,8 +140,8 @@ class CrossAssetCorrelationAnalyzer:
                     risk_factors.append("DXY_WEAKNESS")
             
             # Gold risk analysis
-            if gold_data.get("price", 0) > 0:
-                gold_change = gold_data.get("change_percent", 0)
+            if "price" in gold_data and gold_data["price"] > 0:
+                gold_change = gold_data["change_percent"] if "change_percent" in gold_data else 0
                 if gold_change > 1.0:  # Strong gold rally
                     risk_factors.append("GOLD_RALLY")
                 elif gold_change < -1.0:  # Gold selloff
@@ -242,7 +242,7 @@ class CrossAssetCorrelationAnalyzer:
     def _analyze_dxy_correlation(self, dxy_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze DXY correlation with Bitcoin using real data only"""
         try:
-            if not dxy_data or dxy_data.get("price", 0) == 0:
+            if not dxy_data or ("price" not in dxy_data or dxy_data["price"] == 0):
                 raise ValueError("No DXY data available - NO FALLBACKS")
             
             dxy_price = dxy_data["price"]
@@ -292,7 +292,7 @@ class CrossAssetCorrelationAnalyzer:
     def _analyze_gold_correlation(self, gold_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze Gold correlation with Bitcoin using real data only"""
         try:
-            if not gold_data or gold_data.get("price", 0) == 0:
+            if not gold_data or ("price" not in gold_data or gold_data["price"] == 0):
                 raise ValueError("No Gold data available - NO FALLBACKS")
             
             gold_price = gold_data["price"]
@@ -330,7 +330,7 @@ class CrossAssetCorrelationAnalyzer:
                 "interpretation": interpretation,
                 "gold_price": gold_price,
                 "gold_change_pct": gold_change,
-                "gold_trend": gold_data.get("trend", "UNKNOWN"),
+                "gold_trend": gold_data["trend"] if "trend" in gold_data else "UNKNOWN",
                 "data_source": "real_time_calculation"
             }
             
@@ -345,9 +345,9 @@ class CrossAssetCorrelationAnalyzer:
                 raise ValueError("No stock data available - NO FALLBACKS")
             
             # Use composite data from Yahoo Finance
-            composite_change = stock_data.get("composite_change", 0)
-            composite_price = stock_data.get("composite_price", 0)
-            indices_data = stock_data.get("indices", {})
+            composite_change = stock_data["composite_change"] if "composite_change" in stock_data else 0
+            composite_price = stock_data["composite_price"] if "composite_price" in stock_data else 0
+            indices_data = stock_data["indices"] if "indices" in stock_data else {}
             
             # Calculate average stock market performance
             changes = []
