@@ -52,7 +52,7 @@ class VolumeDataProvider:
             ]
             
             # Calculate total volume for current candle
-            total_volume = sum(trade.get('size', 0) for trade in recent_trades)
+            total_volume = sum(trade['size'] if 'size' in trade else 0 for trade in recent_trades)
             
             return {
                 "current_5m_volume": total_volume,  # Can be 0.0 if no trades (valid result)

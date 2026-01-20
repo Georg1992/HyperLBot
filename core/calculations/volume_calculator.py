@@ -142,7 +142,7 @@ class VolumeCalculator(BaseCalculator):
             
             # 10. Get recommendations via classifier
             recommendations = self._classifier.get_volume_recommendations(
-                categorization.get("level", "UNKNOWN"),
+                categorization["level"] if "level" in categorization else "UNKNOWN",
                 momentum,
                 anomaly
             )
