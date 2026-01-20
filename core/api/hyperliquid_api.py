@@ -303,7 +303,7 @@ class HyperliquidAPI:
                     # Find the symbol in universe
                     symbol_index = None
                     for i, asset in enumerate(universe_list):
-                        if isinstance(asset, dict) and asset.get('name') == symbol:
+                        if isinstance(asset, dict) and ('name' in asset and asset['name'] == symbol):
                             symbol_index = i
                             break
                     

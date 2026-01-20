@@ -231,7 +231,7 @@ class CentralizedCache:
         if key not in self._cache or key not in self._timestamps:
             return False
         
-        ttl = self._ttl_policies.get(key, self._get_ttl_policy(key))
+        ttl = self._ttl_policies[key] if key in self._ttl_policies else self._get_ttl_policy(key)
         age = time.time() - self._timestamps[key]
         
         return age < ttl

@@ -724,7 +724,7 @@ class SRScorer:
                     distance = abs(htf_price - level_price)
                     
                     # Use timeframe-specific ATR for tolerance (ATR% normalized)
-                    tf_atr = atr_per_tf.get(htf_timeframe, base_atr)
+                    tf_atr = atr_per_tf[htf_timeframe] if htf_timeframe in atr_per_tf else base_atr
                     tf_tolerance = tf_atr * 0.5 * tf_weights[htf_timeframe]  # Required (NO FALLBACKS)
                     
                     if distance <= tf_tolerance:
@@ -818,8 +818,7 @@ class SRScorer:
                             'level': htf_level.level,
                             'timeframe': list(htf_level.timeframe_distribution.keys())[0] if htf_level.timeframe_distribution else '5m',
                             'distance': 0.0,
-                            first_tf = list(htf_level.timeframe_distribution.keys())[0] if htf_level.timeframe_distribution else '5m'
-                            'weight': tf_weights[first_tf] if first_tf in tf_weights else 1.0,
+                            'weight': tf_weights[list(htf_level.timeframe_distribution.keys())[0]] if (htf_level.timeframe_distribution and list(htf_level.timeframe_distribution.keys())[0] in tf_weights) else 1.0,
                             'contribution': 1.0
                         }],
                         mtf_count=1,

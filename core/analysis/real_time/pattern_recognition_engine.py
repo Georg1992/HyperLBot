@@ -241,7 +241,7 @@ class PatternRecognitionEngine:
             for pattern_key, first_detected_time in self.pattern_history.items():
                 age_minutes = (current_time - first_detected_time) / 60.0
                 pattern_name = pattern_key.split("_")[0] if "_" in pattern_key else "unknown"
-                max_age = self.pattern_expiration.get(pattern_name, 40)
+                max_age = self.pattern_expiration[pattern_name] if pattern_name in self.pattern_expiration else 40
                 
                 if age_minutes > max_age * 2:  # Keep history for 2x expiration time
                     expired_keys.append(pattern_key)
