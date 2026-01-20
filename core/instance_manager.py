@@ -33,8 +33,8 @@ class SingleInstanceManager:
                         # Another instance is still running
                         logger.error(f"❌ Another bot instance is already running (PID: {existing_pid})")
                         logger.error(f"   Lock file: {os.path.abspath(self.lock_file)}")
-                        logger.error(f"   Started: {lock_data['start_time'] if 'start_time' in lock_data else 'Unknown'}")
-                        logger.error(f"   Strategy: {lock_data['strategy'] if 'strategy' in lock_data else 'Unknown'}")
+                        logger.error(f"   Started: {lock_data.get('start_time', 'Unknown')}")
+                        logger.error(f"   Strategy: {lock_data.get('strategy', 'Unknown')}")
                         return False
                     else:
                         # Stale lock file - remove it
@@ -68,7 +68,7 @@ class SingleInstanceManager:
             if self.lock_acquired and os.path.exists(self.lock_file):
                 # Verify this is our lock file
                 lock_data = self._read_lock_file()
-                if lock_data and lock_data.get("pid") == self.current_pid:
+                if lock_data and "pid" in lock_data and lock_data["pid"] == self.current_pid:
                     self._remove_lock_file()
                     self.lock_acquired = False
                     logger.success("✅ Bot instance lock released")
@@ -88,7 +88,7 @@ class SingleInstanceManager:
         try:
             if self.lock_acquired and os.path.exists(self.lock_file):
                 lock_data = self._read_lock_file()
-                if lock_data and lock_data.get("pid") == self.current_pid:
+                if lock_data and "pid" in lock_data and lock_data["pid"] == self.current_pid:
                     if strategy:
                         lock_data["strategy"] = strategy
                     if initial_balance is not None:
@@ -189,10 +189,10 @@ def check_single_instance() -> bool:
     
     if running_info:
         logger.error("❌ Another bot instance is already running:")
-        logger.error(f"   PID: {running_info.get('pid')}")
-        logger.error(f"   Started: {running_info.get('start_time')}")
-        logger.error(f"   Strategy: {running_info.get('strategy')}")
-        logger.error(f"   Balance: ${running_info.get('initial_balance', 0):.2f}")
+        logger.error(f"   PID: {running_info['pid'] if 'pid' in running_info else 'Unknown'}")
+        logger.error(f"   Started: {running_info['start_time'] if 'start_time' in running_info else 'Unknown'}")
+        logger.error(f"   Strategy: {running_info['strategy'] if 'strategy' in running_info else 'Unknown'}")
+        logger.error(f"   Balance: ${running_info['initial_balance'] if 'initial_balance' in running_info else 0:.2f}")
         logger.error("   Please stop the existing instance first.")
         return False
     

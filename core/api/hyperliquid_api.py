@@ -223,7 +223,7 @@ class HyperliquidAPI:
                     "4h": 240,
                     "8h": 480,
                     "12h": 720
-                }.get(interval, 1)
+                }[interval] if interval in {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "1h": 3600, "4h": 14400, "1d": 86400} else 1
                 
                 start_timestamp = int((time.time() - (limit * interval_minutes * 60)) * 1000)
                 end_timestamp = int(time.time() * 1000)

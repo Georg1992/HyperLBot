@@ -128,18 +128,19 @@ class WhaleAnalyticsAPI:
             for tx in transactions:
                 try:
                     # Calculate transaction value in USD (approximate)
-                    total_value = sum(output.get("value", 0) for output in tx.get("outputs", []))
+                    outputs = tx["outputs"] if "outputs" in tx else []
+                    total_value = sum(output["value"] if "value" in output else 0 for output in outputs)
                     value_usd = (total_value / 100000000) * 112000  # Convert satoshis to BTC, then to USD
                     
                     if value_usd >= self.whale_threshold_usd:
                         large_transactions.append({
-                            "hash": tx.get("hash"),
+                            "hash": tx["hash"] if "hash" in tx else "",
                             "value_btc": total_value / 100000000,
                             "value_usd": value_usd,
-                            "confirmations": tx.get("confirmations", 0),
-                            "time": tx.get("received"),
-                            "inputs": tx.get("inputs", []),
-                            "outputs": tx.get("outputs", [])
+                            "confirmations": tx["confirmations"] if "confirmations" in tx else 0,
+                            "time": tx["received"] if "received" in tx else None,
+                            "inputs": tx["inputs"] if "inputs" in tx else [],
+                            "outputs": tx["outputs"] if "outputs" in tx else []
                         })
                 except Exception as e:
                     continue

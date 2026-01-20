@@ -78,10 +78,10 @@ class PressureClassifier:
             Dictionary with trading implications
         """
         try:
-            level = classification.get("level", "UNKNOWN")
-            direction = classification.get("direction", "NEUTRAL")
-            strength = classification.get("strength", 0.0)
-            confidence = classification.get("confidence", 0.0)
+            level = classification["level"] if "level" in classification else "UNKNOWN"
+            direction = classification["direction"] if "direction" in classification else "NEUTRAL"
+            strength = classification["strength"] if "strength" in classification else 0.0
+            confidence = classification["confidence"] if "confidence" in classification else 0.0
             
             implications = []
             risk_level = "MEDIUM"
@@ -172,9 +172,9 @@ class PressureClassifier:
         """
         try:
             recommendations = []
-            level = classification.get("level", "UNKNOWN")
-            direction = classification.get("direction", "NEUTRAL")
-            trading_suitability = implications.get("trading_suitability", False)
+            level = classification["level"] if "level" in classification else "UNKNOWN"
+            direction = classification["direction"] if "direction" in classification else "NEUTRAL"
+            trading_suitability = implications["trading_suitability"] if "trading_suitability" in implications else False
             
             # General recommendations based on level
             if level == "VERY_STRONG":
