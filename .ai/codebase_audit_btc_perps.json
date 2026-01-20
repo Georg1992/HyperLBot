@@ -61,12 +61,16 @@
     
     "sr_liquidation_wick_filtering": {
       "severity": "MAJOR",
-      "status": "CONFIRMED",
-      "location": "core/calculations/sr_detector.py + support_resistance_calculator.py",
-      "problem": "S/R detection finds levels with wicks but doesn't distinguish natural wicks from liquidation/stop-hunt wicks",
-      "research_findings": "Levels with high wick rejection often indicate stop hunting zones → higher risk",
-      "impact": "System may trade levels that are actively hunted by market makers",
-      "fix_required": "Add 'wick_rejection_ratio' and 'stop_hunt_risk' scoring to S/R levels"
+      "status": "✅ FIXED",
+      "fixed_date": "2026-01-12",
+      "location": "core/calculations/sr_detector.py:162-217, 709-769",
+      "problem": "S/R detection found levels with wicks but didn't distinguish natural wicks from liquidation/stop-hunt wicks",
+      "research_findings": "Levels with high wick rejection (>60%) indicate stop hunting zones → higher risk but still valid",
+      "fix_implemented": {
+        "wick_rejection_ratio": "✅ Tracked for each swing (0.0-1.0) - upper/lower wick as % of total range",
+        "stop_hunt_risk": "✅ Scored during clustering (0-100): <40%=LOW, 40-60%=MOD, 60-75%=HIGH, >75%=VERY_HIGH",
+        "consistency_penalty": "✅ +15 points if 75%+ touches have high wicks (consistent stop hunting)"
+      }
     },
     
     "spread_cost_omission": {
