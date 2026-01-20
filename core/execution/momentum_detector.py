@@ -33,6 +33,7 @@ class MomentumSignal:
     detected_at: float
     breakout_level: Optional[float] = None  # S/R level that's about to break
     expected_move_pct: float = 0.0  # Expected move percentage based on historical breakouts
+    risk_reward_ratio: float = 0.0  # Actual R:R for position sizing
 
 
 class MomentumDetector:
@@ -279,6 +280,11 @@ class MomentumDetector:
                 0.025  # Cap at 2.5%
             )
             
+            # Calculate risk:reward ratio for position sizing
+            risk = abs(current_price - stop_loss)
+            reward = abs(take_profit - current_price)
+            risk_reward_ratio = reward / risk if risk > 0 else 0.0
+            
             signal = MomentumSignal(
                 direction="LONG",
                 confidence=min(confidence, 100.0),
@@ -288,7 +294,8 @@ class MomentumDetector:
                 reasoning=factors,
                 detected_at=time.time(),
                 breakout_level=level_price,
-                expected_move_pct=expected_move_pct
+                expected_move_pct=expected_move_pct,
+                risk_reward_ratio=risk_reward_ratio
             )
             
             # Check cooldown
@@ -438,6 +445,11 @@ class MomentumDetector:
                 0.025
             )
             
+            # Calculate risk:reward ratio for position sizing
+            risk = abs(stop_loss - current_price)
+            reward = abs(current_price - take_profit)
+            risk_reward_ratio = reward / risk if risk > 0 else 0.0
+            
             signal = MomentumSignal(
                 direction="SHORT",
                 confidence=min(confidence, 100.0),
@@ -447,7 +459,8 @@ class MomentumDetector:
                 reasoning=factors,
                 detected_at=time.time(),
                 breakout_level=level_price,
-                expected_move_pct=expected_move_pct
+                expected_move_pct=expected_move_pct,
+                risk_reward_ratio=risk_reward_ratio
             )
             
             # Check cooldown
