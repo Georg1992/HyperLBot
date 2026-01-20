@@ -1743,14 +1743,14 @@ class PredictionEngine:
             # Problem: Generated 4 candidates, scored by proximity to S/R, candidate AT level always won
             # Solution: Use level price directly (optimal entry point)
             # Rationale:
-            #   - S/R levels are already optimal entry points (tested by market)
-            #   - Proximity scoring makes "at level" the best choice anyway
-            #   - Spread/slippage should be handled by order type (limit vs market), not entry offset
+            #   - S/R levels are already optimal entry points (proven by market history)
+            #   - Entry exactly at level maximizes bounce probability
+            #   - Spread/slippage handled by order execution (limit orders), not entry offset
             
-            # Use level price directly as entry (no candidate generation needed)
+            # Entry price determination: Use S/R level price directly
             entry_price = level_price
             
-            # Validate entry price
+            # Validation: Entry must be valid for direction
             if entry_price <= 0:
                 logger.warning(f"⚠️ Invalid entry price: ${entry_price:.2f}")
                 return None
@@ -1761,12 +1761,15 @@ class PredictionEngine:
                 logger.warning(f"⚠️ SHORT entry ${entry_price:.2f} <= current ${current_price:.2f}")
                 return None
             
-            # Calculate entry quality factors (for reasoning)
-            level_data_with_type = {**level_data, "setup_type": setup_type}
+            # Extract level metadata (required for scoring)
             level_power = level_data["power"]  # Required (NO FALLBACKS)
-            
-            # Calculate recency factor - using unified calculator
             last_touch_timestamp = level_data["last_touch_timestamp"]  # Required (NO FALLBACKS)
+            
+            # Calculate time since last touch (hours)
+            import time
+            hours_since_touch = (time.time() - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else 0.0
+            
+            # Calculate recency factor (time decay: fresh levels score higher)
             from core.calculations.recency_calculator import RecencyCalculator
             recency_factor = RecencyCalculator.calculate_entry_recency_factor(
                 last_touch_timestamp=last_touch_timestamp,
@@ -1774,6 +1777,8 @@ class PredictionEngine:
             )
             
             # Calculate entry quality score (proximity to S/R level)
+            # Entry is AT level → maximum proximity score (100)
+            level_data_with_type = {**level_data, "setup_type": setup_type}
             sr_score, _ = self._score_entry_sr_factor(
                 entry_price=entry_price,
                 current_price=current_price,
@@ -1783,30 +1788,33 @@ class PredictionEngine:
                 strategy=strategy
             )
             
-            # Calculate fill probability (proximity to current price)
+            # Calculate fill probability score (proximity to current price)
+            # Closer to current price = higher probability of fill
             from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
             distance_to_current_pct = calculate_distance_pct(entry_price, current_price, current_price)
             distance_to_current_atr = calculate_distance_atr(distance_to_current_pct, atr_pct)
-            # Convert distance to probability (closer = higher probability)
-            # 0 ATR = 100%, 3 ATR = 40%, 6+ ATR = 10%
-            fill_probability_score = max(10, 100 - (distance_to_current_atr / 6.0) * 90)
+            # Fill probability formula: 100% at 0 ATR → 40% at 3 ATR → 10% at 6+ ATR
+            fill_probability_score = max(10.0, 100.0 - (distance_to_current_atr / 6.0) * 90.0)
             
-            # Calculate combined entry score
+            # Calculate combined entry score (3-factor weighted average × recency decay)
+            # Formula: (level_power + sr_score + fill_probability) / 3 × recency_factor
+            # Rationale:
+            #   - level_power: Inherent level strength (touches, volume, reversal history)
+            #   - sr_score: Entry quality (proximity to level, should be ~100 since at level)
+            #   - fill_probability: Execution likelihood (proximity to current price)
+            #   - recency_factor: Time decay (0.5 to 1.0, penalizes stale levels)
             entry_score = (level_power + sr_score + fill_probability_score) / 3.0 * recency_factor
             
-            # Distance metrics for breakdown (entry is AT level)
-            distance_from_level = 0.0
-            distance_pct = 0.0
-            hours_since_touch = (time.time() - last_touch_timestamp) / 3600 if last_touch_timestamp > 0 else 0
-            
+            # Breakdown for reasoning/logging
             entry_breakdown = {
-                "strength_score": level_power,
-                "entry_quality_score": sr_score,
+                "level_power": level_power,
+                "sr_score": sr_score,
                 "fill_probability_score": fill_probability_score,
                 "recency_factor": recency_factor,
-                "distance_atr": 0.0,
-                "distance_pct": distance_pct,
+                "entry_score": entry_score,
                 "hours_since_touch": hours_since_touch,
+                "distance_to_current_atr": distance_to_current_atr,
+                "distance_to_current_pct": distance_to_current_pct,
                 "setup_type": setup_type
             }
             
