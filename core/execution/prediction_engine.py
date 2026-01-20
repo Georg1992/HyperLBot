@@ -240,37 +240,9 @@ class PredictionEngine:
             risk_reward_ratio=risk_reward_ratio
         )
     
-    @staticmethod
-    def calculate_position_size(
-        balance: float,
-        base_position_size_pct: float,
-        risk_reward_ratio: float,
-        leverage: int,
-        entry_price: float
-    ) -> Dict[str, Any]:
-        """
-        Calculate position size using shared PositionSizer
-        
-        DELEGATED to PositionSizer for unified logic across all execution engines
-        (Predictions and Reactions use identical sizing)
-        
-        Args:
-            balance: Current account balance
-            base_position_size_pct: Base position size from strategy config
-            risk_reward_ratio: Achieved R:R ratio
-            leverage: Trading leverage
-            entry_price: Entry price for the trade
-            
-        Returns:
-            Position sizing result with all calculated values
-        """
-        return PositionSizer.calculate_position_size(
-            balance=balance,
-            base_position_size_pct=base_position_size_pct,
-            risk_reward_ratio=risk_reward_ratio,
-            leverage=leverage,
-            entry_price=entry_price
-        )
+    # REMOVED: calculate_position_size static method (dead code, never called)
+    # Position sizing is now done directly via PositionSizer.calculate_position_size
+    # with liquidation risk protection
     
     def _predict_scalping(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
         """

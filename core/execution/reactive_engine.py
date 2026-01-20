@@ -162,14 +162,16 @@ class ReactiveEngine:
             # Prepare order parameters
             order_side = "BUY" if signal.direction == "LONG" else "SELL"
             
-            # Calculate position size using shared PositionSizer (unified logic)
+            # Calculate position size using shared PositionSizer (unified logic with liquidation risk protection)
             current_balance = PositionSizer.get_balance_from_simulator()
             position_sizing = PositionSizer.calculate_position_size(
                 balance=current_balance,
                 base_position_size_pct=base_position_size_pct,
                 risk_reward_ratio=signal.risk_reward_ratio,
                 leverage=leverage,
-                entry_price=signal.entry_price
+                entry_price=signal.entry_price,
+                stop_loss=signal.stop_loss,  # REQUIRED for liquidation risk calculation
+                direction=signal.direction  # REQUIRED for liquidation risk calculation
             )
             
             # Extract calculated values

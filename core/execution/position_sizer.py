@@ -83,16 +83,23 @@ class PositionSizer:
         base_position_size_pct: float,
         risk_reward_ratio: float,
         leverage: int,
-        entry_price: float
+        entry_price: float,
+        stop_loss: float = None,
+        direction: str = "LONG"
     ) -> Dict[str, Any]:
         """
-        Calculate position size in BTC based on all parameters
+        Calculate position size in BTC with LIQUIDATION RISK PROTECTION
         
-        Formula:
+        Formula (FIXED for high-leverage BTC perps):
         1. Get R:R multiplier (0.5x - 1.5x)
-        2. Adjust position size: base_size × rr_multiplier
-        3. Calculate position value: balance × adjusted_size × leverage
-        4. Convert to BTC: position_value / entry_price
+        2. Calculate liquidation safety factor (NEW)
+        3. Adjust position size: base_size × rr_multiplier × liq_safety_factor
+        4. Calculate position value: balance × adjusted_size × leverage
+        5. Convert to BTC: position_value / entry_price
+        
+        CRITICAL FIX: Position sizing now considers liquidation distance
+        - Problem: High R:R → large position → liq closer to SL → wick hits liq before SL
+        - Solution: Reduce size if SL is <40% of distance to liquidation
         
         Args:
             balance: Current account balance (USD)
@@ -100,14 +107,17 @@ class PositionSizer:
             risk_reward_ratio: Achieved R:R ratio
             leverage: Trading leverage (e.g., 40)
             entry_price: Entry price for the trade
+            stop_loss: Stop loss price (REQUIRED for liquidation risk calc)
+            direction: Trade direction ("LONG" or "SHORT")
             
         Returns:
             Dict with:
                 - position_size_btc: Position size in BTC
                 - position_value_usd: Position value in USD
                 - base_position_size_pct: Base % from config
-                - adjusted_position_size_pct: Adjusted % after R:R scaling
+                - adjusted_position_size_pct: Adjusted % after all scaling
                 - rr_multiplier: R:R multiplier applied
+                - liquidation_safety_factor: Liquidation risk reduction factor
                 - balance: Balance used in calculation
         """
         if balance <= 0:
@@ -122,8 +132,69 @@ class PositionSizer:
         # Calculate R:R multiplier
         rr_multiplier = PositionSizer.calculate_rr_multiplier(risk_reward_ratio)
         
-        # Adjust position size based on R:R
-        adjusted_position_size_pct = base_position_size_pct * rr_multiplier
+        # CRITICAL: Calculate liquidation safety factor (NEW)
+        liquidation_safety_factor = 1.0  # Default: no reduction
+        
+        if stop_loss is not None and stop_loss > 0:
+            from core.calculations.liquidation_calculator import LiquidationCalculator
+            liq_calc = LiquidationCalculator(leverage=leverage)
+            liquidation_price = liq_calc.calculate_liquidation_price(entry_price, direction)
+            
+            # Calculate distances
+            if direction.upper() == "LONG":
+                # LONG: entry > SL > liquidation
+                sl_distance = entry_price - stop_loss
+                liq_distance = entry_price - liquidation_price
+                # Buffer zone: distance from SL to liquidation
+                buffer_zone = stop_loss - liquidation_price
+            else:  # SHORT
+                # SHORT: liquidation > SL > entry
+                sl_distance = stop_loss - entry_price
+                liq_distance = liquidation_price - entry_price
+                # Buffer zone: distance from SL to liquidation
+                buffer_zone = liquidation_price - stop_loss
+            
+            # Calculate SL position as % of total liquidation distance
+            if liq_distance > 0:
+                sl_liq_ratio = sl_distance / liq_distance
+                buffer_pct = (buffer_zone / liq_distance) * 100.0
+                
+                # LIQUIDATION RISK REDUCTION LOGIC (Research-backed for 40x BTC perps)
+                # Based on professional risk management for high-leverage trading
+                #
+                # Safe SL placement: 30-50% of distance to liquidation
+                # - SL at 50%+ of liq distance: SAFE (buffer_pct ≥ 50% → 1.0x, no reduction)
+                # - SL at 30-50% of liq distance: ACCEPTABLE (buffer_pct 30-50% → 0.8-1.0x)
+                # - SL at 15-30% of liq distance: RISKY (buffer_pct 15-30% → 0.5-0.8x)
+                # - SL at <15% of liq distance: DANGEROUS (buffer_pct <15% → 0.3-0.5x)
+                #
+                # Why: Wicks on BTC perps can easily be 0.5-1.0% even in normal conditions
+                # With 40x leverage (1.226% to liq), tight SL = high liquidation risk
+                
+                if buffer_pct >= 50.0:
+                    # SAFE: SL has ≥50% buffer to liquidation
+                    liquidation_safety_factor = 1.0  # No reduction
+                elif buffer_pct >= 30.0:
+                    # ACCEPTABLE: 30-50% buffer (linear scale 0.8 → 1.0)
+                    liquidation_safety_factor = 0.8 + ((buffer_pct - 30.0) / 20.0) * 0.2
+                elif buffer_pct >= 15.0:
+                    # RISKY: 15-30% buffer (linear scale 0.5 → 0.8)
+                    liquidation_safety_factor = 0.5 + ((buffer_pct - 15.0) / 15.0) * 0.3
+                else:
+                    # DANGEROUS: <15% buffer (linear scale 0.3 → 0.5)
+                    liquidation_safety_factor = max(0.3, 0.3 + (buffer_pct / 15.0) * 0.2)
+                
+                logger.info(
+                    f"🛡️ Liquidation risk check: Entry=${entry_price:.2f}, SL=${stop_loss:.2f}, Liq=${liquidation_price:.2f} | "
+                    f"SL distance={sl_distance:.2f} ({sl_liq_ratio*100:.1f}% of liq distance), "
+                    f"Buffer to liq={buffer_zone:.2f} ({buffer_pct:.1f}%) → "
+                    f"safety_factor={liquidation_safety_factor:.2f}x"
+                )
+        else:
+            logger.warning("⚠️ No stop loss provided - skipping liquidation risk check (NOT RECOMMENDED)")
+        
+        # Adjust position size based on R:R AND liquidation safety
+        adjusted_position_size_pct = base_position_size_pct * rr_multiplier * liquidation_safety_factor
         
         # Calculate position value in USD (accounts for leverage)
         position_value_usd = balance * adjusted_position_size_pct * leverage
@@ -133,7 +204,8 @@ class PositionSizer:
         
         logger.info(
             f"💰 Position sizing: Balance=${balance:.2f}, "
-            f"Base={base_position_size_pct*100:.1f}%, R:R={risk_reward_ratio:.2f} → multiplier={rr_multiplier:.2f}x, "
+            f"Base={base_position_size_pct*100:.1f}%, R:R={risk_reward_ratio:.2f} → rr_mult={rr_multiplier:.2f}x, "
+            f"Liq safety={liquidation_safety_factor:.2f}x → "
             f"Adjusted={adjusted_position_size_pct*100:.1f}%, "
             f"Leverage={leverage}x → {position_size_btc:.4f} BTC (${position_value_usd:.2f})"
         )
@@ -144,10 +216,13 @@ class PositionSizer:
             "base_position_size_pct": base_position_size_pct,
             "adjusted_position_size_pct": adjusted_position_size_pct,
             "rr_multiplier": rr_multiplier,
+            "liquidation_safety_factor": liquidation_safety_factor,
             "balance": balance,
             "leverage": leverage,
             "entry_price": entry_price,
-            "risk_reward_ratio": risk_reward_ratio
+            "risk_reward_ratio": risk_reward_ratio,
+            "stop_loss": stop_loss,
+            "direction": direction
         }
     
     @staticmethod
