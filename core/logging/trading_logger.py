@@ -178,7 +178,7 @@ class TradingLogger:
             "candles_1h": market_data["candles_1h"] if "candles_1h" in market_data else [],
             "support_resistance": market_data["support_resistance"] if "support_resistance" in market_data else {},
             "trend_analysis": market_data["trend_analysis"] if "trend_analysis" in market_data else {},
-            "variability_data": market_data.get("variability_data", {})
+            "variability_data": market_data["variability_data"] if "variability_data" in market_data else {}
         }
         
         self.market_data_points.append(data_point)
@@ -196,23 +196,23 @@ class TradingLogger:
             "timestamp": time.time(),
             "datetime": datetime.now().isoformat(),
             "signal_id": f"signal_{len(self.signals) + 1}",
-            "should_trade": signal_data.get("should_trade", False),
-            "reason": signal_data.get("reason"),
-            "side": signal_data.get("side"),
-            "current_price": signal_data.get("current_price"),
-            "target_price": signal_data.get("target"),
-            "stop_price": signal_data.get("stop"),
+            "should_trade": signal_data["should_trade"] if "should_trade" in signal_data else False,
+            "reason": signal_data["reason"] if "reason" in signal_data else None,
+            "side": signal_data["side"] if "side" in signal_data else None,
+            "current_price": signal_data["current_price"] if "current_price" in signal_data else None,
+            "target_price": signal_data["target"] if "target" in signal_data else None,
+            "stop_price": signal_data["stop"] if "stop" in signal_data else None,
             "market_analysis": {
-                "support_5m": signal_data.get("support_5m"),
-                "resistance_5m": signal_data.get("resistance_5m"),
-                "trend_5m": signal_data.get("trend_5m"),
-                "trend_1h": signal_data.get("trend_1h"),
-                "volatility_5m": signal_data.get("volatility_5m"),
-                "market_condition": signal_data.get("market_condition")
+                "support_5m": signal_data["support_5m"] if "support_5m" in signal_data else None,
+                "resistance_5m": signal_data["resistance_5m"] if "resistance_5m" in signal_data else None,
+                "trend_5m": signal_data["trend_5m"] if "trend_5m" in signal_data else None,
+                "trend_1h": signal_data["trend_1h"] if "trend_1h" in signal_data else None,
+                "volatility_5m": signal_data["volatility_5m"] if "volatility_5m" in signal_data else None,
+                "market_condition": signal_data["market_condition"] if "market_condition" in signal_data else None
             },
             "variability_analysis": {},  # Variability analysis is handled separately
-            "profitability_analysis": signal_data.get("profitability", {}),
-            "optimal_params": signal_data.get("optimal_params", {})
+            "profitability_analysis": signal_data["profitability"] if "profitability" in signal_data else {},
+            "optimal_params": signal_data["optimal_params"] if "optimal_params" in signal_data else {}
         }
         
         self.signals.append(signal_record)
@@ -234,18 +234,18 @@ class TradingLogger:
         
         # Add all fields from analysis_data, with defaults for core fields
         analysis_record.update({
-            "analysis_type": analysis_data.get("type", "general"),
-            "timeframe": analysis_data.get("timeframe", "5m"),
-            "indicators": analysis_data.get("indicators", {}),
-            "patterns": analysis_data.get("patterns", []),
-            "support_resistance": analysis_data.get("support_resistance", {}),
-            "trend_analysis": analysis_data.get("trend_analysis", {}),
-            "volume_analysis": analysis_data.get("volume_analysis", {}),
-            "volatility_analysis": analysis_data.get("volatility_analysis", {}),
-            "momentum_analysis": analysis_data.get("momentum_analysis", {}),
-            "market_condition": analysis_data.get("market_condition", "UNKNOWN"),
-            "confidence_score": analysis_data.get("confidence_score", 0.0),
-            "recommendations": analysis_data.get("recommendations", [])
+            "analysis_type": analysis_data["type"] if "type" in analysis_data else "general",
+            "timeframe": analysis_data["timeframe"] if "timeframe" in analysis_data else "5m",
+            "indicators": analysis_data["indicators"] if "indicators" in analysis_data else {},
+            "patterns": analysis_data["patterns"] if "patterns" in analysis_data else [],
+            "support_resistance": analysis_data["support_resistance"] if "support_resistance" in analysis_data else {},
+            "trend_analysis": analysis_data["trend_analysis"] if "trend_analysis" in analysis_data else {},
+            "volume_analysis": analysis_data["volume_analysis"] if "volume_analysis" in analysis_data else {},
+            "volatility_analysis": analysis_data["volatility_analysis"] if "volatility_analysis" in analysis_data else {},
+            "momentum_analysis": analysis_data["momentum_analysis"] if "momentum_analysis" in analysis_data else {},
+            "market_condition": analysis_data["market_condition"] if "market_condition" in analysis_data else "UNKNOWN",
+            "confidence_score": analysis_data["confidence_score"] if "confidence_score" in analysis_data else 0.0,
+            "recommendations": analysis_data["recommendations"] if "recommendations" in analysis_data else []
         })
         
         # Add any additional fields from analysis_data (like hyperliquid_price)
