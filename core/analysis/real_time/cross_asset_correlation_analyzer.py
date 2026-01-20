@@ -281,7 +281,7 @@ class CrossAssetCorrelationAnalyzer:
                 "interpretation": interpretation,
                 "dxy_price": dxy_price,
                 "dxy_change_pct": dxy_change,
-                "dxy_trend": dxy_data.get("trend", "UNKNOWN"),
+                "dxy_trend": dxy_data["trend"] if "trend" in dxy_data else "UNKNOWN",
                 "data_source": "real_time_calculation"
             }
             
@@ -297,7 +297,7 @@ class CrossAssetCorrelationAnalyzer:
             
             gold_price = gold_data["price"]
             # Use period_change (5-day change) for more meaningful correlation data
-            gold_change = gold_data.get("period_change", gold_data.get("change_percent", 0))
+            gold_change = gold_data["period_change"] if "period_change" in gold_data else (gold_data["change_percent"] if "change_percent" in gold_data else 0)
             
             # Calculate real-time correlation based on actual price movements
             correlation_value = self._calculate_real_correlation(gold_change, btc_price)
@@ -341,7 +341,7 @@ class CrossAssetCorrelationAnalyzer:
     def _analyze_stock_correlation(self, stock_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze stock market correlation with Bitcoin using real data only"""
         try:
-            if not stock_data or not stock_data.get("indices"):
+            if not stock_data or ("indices" not in stock_data or not stock_data["indices"]):
                 raise ValueError("No stock data available - NO FALLBACKS")
             
             # Use composite data from Yahoo Finance
