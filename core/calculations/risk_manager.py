@@ -248,9 +248,11 @@ class RiskManager:
             logger.info(f"🎯 Stop adjusted to avoid round number: ${stop_loss:.2f} → ${adjusted_stop:.2f} (offset ${offset:.0f}, away from ${round_level:.0f})")
             return adjusted_stop
             
-        except Exception as e:
-            logger.warning(f"⚠️ Round number avoidance failed: {e} - using original stop")
-            return stop_loss
+        except (ValueError, TypeError, ZeroDivisionError) as e:
+            # Only catch specific calculation errors
+            # Re-raise to maintain NO FALLBACKS policy
+            logger.error(f"❌ Round number avoidance calculation error: {e}")
+            raise ValueError(f"Round number avoidance failed: {e} (NO FALLBACKS)")
     
     @staticmethod
     def calculate_take_profit(

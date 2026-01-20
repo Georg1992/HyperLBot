@@ -28,9 +28,7 @@ class PositionSizer:
     
     Both use identical position sizing logic for consistency
     """
-    
-    def __init__(self):
-        logger.debug("💰 Position Sizer initialized")
+    # NOTE: All methods are @staticmethod - no instance needed, no __init__ required
     
     @staticmethod
     def calculate_rr_multiplier(rr_ratio: float) -> float:

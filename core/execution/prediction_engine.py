@@ -1401,15 +1401,51 @@ class PredictionEngine:
         Returns:
             Confidence percentage (0.0 - 100.0)
         """
-        # Placeholder: Return fixed value until confidence calculation is implemented
-        # TODO: Implement full confidence calculation using:
-        #   - Entry quality: setup_data["entry_breakdown"] (power, proximity, recency)
-        #   - Direction strength: setup_data["direction_breakdown"] (scores, factors, score_diff)
-        #   - Setup alignment: alignment_factor from direction_breakdown
-        #   - Risk/Reward: rr_ratio, stop_loss_pct, take_profit_pct
-        #   - Market conditions: unified_data (volatility, trend, market_conditions, volume_category)
-        #   - Strategy-specific factors: strategy config
-        return 50.0
+        try:
+            # Extract scores from setup_data (all required - NO FALLBACKS)
+            entry_score = setup_data.get("entry_score", 0.0)  # 0-100
+            direction_score = setup_data.get("direction_score", 0.0)  # 0-100
+            
+            # R:R scoring: 1.5:1 = 50, 2.0:1 = 70, 3.0:1+ = 100
+            if rr_ratio >= 3.0:
+                rr_score = 100.0
+            elif rr_ratio >= 2.0:
+                rr_score = 70.0 + ((rr_ratio - 2.0) / 1.0) * 30.0  # 70-100
+            elif rr_ratio >= 1.5:
+                rr_score = 50.0 + ((rr_ratio - 1.5) / 0.5) * 20.0  # 50-70
+            else:
+                rr_score = (rr_ratio / 1.5) * 50.0  # 0-50
+            
+            # Alignment scoring from direction breakdown (if available)
+            alignment_score = 50.0  # Default: neutral
+            if "direction_breakdown" in setup_data:
+                direction_breakdown = setup_data["direction_breakdown"]
+                if "alignment_factor" in direction_breakdown:
+                    alignment_factor = direction_breakdown["alignment_factor"]  # 0.7-1.3
+                    # Convert alignment_factor (0.7-1.3) to score (0-100)
+                    # 0.7=0, 1.0=50, 1.3=100
+                    if alignment_factor >= 1.0:
+                        alignment_score = 50.0 + ((alignment_factor - 1.0) / 0.3) * 50.0
+                    else:
+                        alignment_score = (alignment_factor / 1.0) * 50.0
+            
+            # Weighted confidence calculation
+            confidence = (
+                entry_score * 0.4 +       # Entry quality (40%)
+                direction_score * 0.3 +    # Direction strength (30%)
+                rr_score * 0.2 +           # Risk/Reward (20%)
+                alignment_score * 0.1      # Setup alignment (10%)
+            )
+            
+            # Clamp to 0-100
+            confidence = max(0.0, min(100.0, confidence))
+            
+            logger.debug(f"📊 Confidence: {confidence:.1f}% (entry={entry_score:.1f}, direction={direction_score:.1f}, rr={rr_score:.1f}, align={alignment_score:.1f})")
+            return confidence
+            
+        except Exception as e:
+            logger.error(f"❌ Confidence calculation failed: {e} (NO FALLBACKS)")
+            raise
     
     def _score_entry_setup(
         self,
@@ -2048,123 +2084,9 @@ class PredictionEngine:
             logger.error(f"❌ Complete setup evaluation failed: {e}")
             return None
     
-    def _determine_entry_price(
-        self, 
-        unified_data: Dict[str, Any], 
-        direction: str,
-        strategy: str,
-        config: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """
-        DEPRECATED: This method is kept for backward compatibility but is not used.
-        
-        New approach: Use _generate_all_setups() which evaluates all setups (both LONG and SHORT)
-        and selects the best overall combination (hybrid approach).
-        
-        Entry setups analyzed (all for limit orders at S/R levels):
-        1. S/R Level Entry: Enter at support (LONG) or resistance (SHORT)
-        2. Breakout Entry: Enter above resistance (LONG)
-        3. Breakdown Entry: Enter below support (SHORT)
-        
-        Args:
-            unified_data: Complete market analysis data
-            direction: "LONG" or "SHORT"
-            strategy: Current trading strategy
-            config: Strategy configuration
-            
-        Returns:
-            Dict with "entry_price" and "reasoning", or None if no valid setup
-        """
-        try:
-            current_price = self._require_key(unified_data, "current_price", "entry determination")
-            if current_price <= 0:
-                logger.warning("⚠️ Invalid current price for entry determination")
-                return None
-            
-            # Extract market data
-            sr_data = unified_data["support_resistance"]  # Required (NO FALLBACKS)
-            
-            # Get all levels and filter for entry setup
-            all_levels = self._require_key(sr_data, "levels", "setup generation")
-            from core.calculations.sr_level_filter import SRLevelFilter
-            level_filter = SRLevelFilter()
-            filtered_levels = level_filter.filter_for_entry_setup(
-                all_levels=all_levels,
-                current_price=current_price,
-                strategy=strategy,
-                direction=direction
-            )
-            top_support = filtered_levels["support"]
-            top_resistance = filtered_levels["resistance"]
-            
-            # Generate and score potential entry setups
-            scored_setups = []
-            
-            # All entries must be at specific S/R levels (for limit orders only, no current_price entries)
-            if direction == "LONG":
-                # 1. Support Level Entry (limit order at support)
-                for support in top_support:
-                    level_price = self._require_key(support, "price_level", "setup generation")
-                    if level_price <= 0 or level_price >= current_price:
-                        continue
-                    
-                    support_with_type = {**support, "setup_type": "support_level"}
-                    setup_result = self._score_entry_setup(
-                        entry_price=level_price,
-                        setup_type="support_level",
-                        direction=direction,
-                        unified_data=unified_data,
-                        level_data=support_with_type,
-                        strategy=strategy,
-                        config=config
-                    )
-                    if setup_result:
-                        scored_setups.append(setup_result)
-                
-                # NOTE: Breakout entries removed - limit orders can't fill above resistance
-                # when current price is below resistance (would require stop-limit or market orders)
-            
-            else:  # SHORT
-                # 1. Resistance Level Entry (limit order at resistance)
-                for resistance in top_resistance:
-                    level_price = self._require_key(resistance, "price_level", "setup generation")
-                    if level_price <= 0 or level_price <= current_price:
-                        continue
-                    
-                    resistance_with_type = {**resistance, "setup_type": "resistance_level"}
-                    setup_result = self._score_entry_setup(
-                        entry_price=level_price,
-                        setup_type="resistance_level",
-                        direction=direction,
-                        unified_data=unified_data,
-                        level_data=resistance_with_type,
-                        strategy=strategy,
-                        config=config
-                    )
-                    if setup_result:
-                        scored_setups.append(setup_result)
-                
-                # NOTE: Breakdown entries removed - limit orders can't fill below support
-                # when current price is above support (would require stop-limit or market orders)
-            
-            if not scored_setups:
-                logger.debug(f"⏸️ No valid entry setups found for {direction}")
-                return None
-            
-            # Sort by score (highest first) and select best setup
-            scored_setups.sort(key=lambda x: x["score"] if "score" in x else 0.0, reverse=True)
-            best_setup = scored_setups[0]
-            
-            logger.debug(f"📊 Entry determined: ${best_setup['entry_price']:.2f} (type: {best_setup['setup_type']}, score: {best_setup['score']:.1f})")  # Required (NO FALLBACKS)
-            
-            return {
-                "entry_price": best_setup["entry_price"],
-                "reasoning": best_setup["reasoning"]
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Entry price determination failed: {e}")
-            return None
+    # DEPRECATED METHOD REMOVED (2026-01-12)
+    # Old _determine_entry_price method deleted (117 lines of dead code)
+    # Reason: Never called, marked DEPRECATED, replaced by _generate_all_setups()
     
     def _calculate_stop_and_target(
         self,
