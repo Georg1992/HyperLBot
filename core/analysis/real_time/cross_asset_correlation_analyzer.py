@@ -413,7 +413,7 @@ class CrossAssetCorrelationAnalyzer:
             stock_trends = []
             for index in ["sp500", "nasdaq", "dow"]:
                 if index in stock_data and stock_data[index]:
-                    stock_trends.append(stock_data[index].get("trend", "UNKNOWN"))
+                    stock_trends.append(stock_data[index]["trend"] if "trend" in stock_data[index] else "UNKNOWN")
             
             # Determine market regime
             if dxy_trend in ["STRONG_UP", "UP"] and gold_trend in ["STRONG_DOWN", "DOWN"] and any("DOWN" in t for t in stock_trends):
@@ -527,7 +527,7 @@ class CrossAssetCorrelationAnalyzer:
                     from core.external.yahoo_finance_api import get_global_yahoo_finance_api
                     yahoo_api = get_global_yahoo_finance_api()
                     gold_raw_data = yahoo_api.get_gold_data()
-                    enhanced_analysis['gold_change'] = gold_raw_data.get('change_percent', 0) / 100
+                    enhanced_analysis['gold_change'] = (gold_raw_data['change_percent'] if 'change_percent' in gold_raw_data else 0) / 100
                 except Exception as e:
                     logger.debug(f"Could not get Gold change for history: {e}")
                     enhanced_analysis['gold_change'] = 0

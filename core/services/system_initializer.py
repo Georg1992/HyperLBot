@@ -134,7 +134,7 @@ class SystemInitializer:
             from core.calculations.rsi_calculator import create_rsi_calculator
             rsi_calculator = create_rsi_calculator()
             # Get 5-minute data for RSI baseline calculation from MarketDataService (single source of truth)
-            market_data_service = self.singleton_systems.get("market_data_service")
+            market_data_service = self.singleton_systems["market_data_service"] if "market_data_service" in self.singleton_systems else None
             from core.services.historical_data_service import create_historical_data_service
             historical_service = create_historical_data_service()
             candles_5m = historical_service.get_5m_candles("BTC", 30)
@@ -184,10 +184,10 @@ class SystemInitializer:
             from core.services.session_orchestrator import SessionOrchestrator
             
             market_data_service = create_market_data_service(
-                self.singleton_systems.get("hyperliquid_api"),
-                self.singleton_systems.get("hyperliquid_websocket"),
-                self.singleton_systems.get("binance_api"),
-                self.singleton_systems.get("binance_websocket")
+                self.singleton_systems["hyperliquid_api"] if "hyperliquid_api" in self.singleton_systems else None,
+                self.singleton_systems["hyperliquid_websocket"] if "hyperliquid_websocket" in self.singleton_systems else None,
+                self.singleton_systems["binance_api"] if "binance_api" in self.singleton_systems else None,
+                self.singleton_systems["binance_websocket"] if "binance_websocket" in self.singleton_systems else None
             )
             set_global_market_data_service(market_data_service)
             
@@ -315,7 +315,7 @@ class SystemInitializer:
     
     def get_singleton_system(self, system_name: str):
         """Get a specific singleton system"""
-        return self.singleton_systems.get(system_name)
+        return self.singleton_systems[system_name] if system_name in self.singleton_systems else None
     
     def get_all_systems_status(self) -> Dict[str, Any]:
         """Get status of all initialized systems"""

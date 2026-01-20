@@ -54,12 +54,12 @@ class EntryPriceCalculator:
             # Get ATR for mathematically justified base calculation (NO FALLBACKS)
             if "support_resistance" not in unified_data:
                 raise ValueError("support_resistance data is required for entry price calculation - NO FALLBACKS")
-            sr_data = unified_data["support_resistance"]
             
+            sr_data = unified_data["support_resistance"]
             if "metadata" not in sr_data:
                 raise ValueError("support_resistance.metadata is required for entry price calculation - NO FALLBACKS")
-            sr_metadata = sr_data["metadata"]
             
+            sr_metadata = sr_data["metadata"]
             atr_5m = sr_metadata["atr_5m"]  # Required (NO FALLBACKS)
             if atr_5m <= 0:
                 raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")

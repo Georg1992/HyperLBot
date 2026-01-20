@@ -43,7 +43,7 @@ class ProximityCalculator:
         distance_atr = calculate_distance_atr(distance_pct, atr_pct)
         
         # Get strategy-specific proximity configuration
-        strategy_config = TradingConfig.STRATEGY_CONFIGS.get(strategy, {})
+        strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy] if strategy in TradingConfig.STRATEGY_CONFIGS else {}
         
         if context == "direction":
             # Direction scoring: entry-to-current distance
@@ -51,10 +51,10 @@ class ProximityCalculator:
                 "close_atr": 2.0,
                 "medium_atr": 4.0,
                 "far_atr": 6.0
-            })
-            close_atr = proximity_config.get("close_atr", 2.0)
-            medium_atr = proximity_config.get("medium_atr", 4.0)
-            far_atr = proximity_config.get("far_atr", 6.0)
+            }
+            close_atr = proximity_config["close_atr"] if "close_atr" in proximity_config else 2.0
+            medium_atr = proximity_config["medium_atr"] if "medium_atr" in proximity_config else 4.0
+            far_atr = proximity_config["far_atr"] if "far_atr" in proximity_config else 6.0
             
             # Strategy-specific proximity weighting
             if distance_atr <= close_atr:
@@ -68,7 +68,7 @@ class ProximityCalculator:
         
         else:  # context == "entry"
             # Entry scoring: entry-to-level distance
-            entry_proximity_config = strategy_config.get("entry_proximity_config", {
+            entry_proximity_config = strategy_config["entry_proximity_config"] if "entry_proximity_config" in strategy_config else {
                 "optimal_atr": 0.5,
                 "acceptable_atr": 1.25,
                 "too_far_atr": 2.0

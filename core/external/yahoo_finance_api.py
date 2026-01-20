@@ -94,11 +94,11 @@ class YahooFinanceAPI:
                 'daily_change_percent': daily_change,  # Keep daily change for reference
                 'timestamp': time.time(),
                 'data_source': 'yahoo_finance',
-                'name': info.get('longName', symbol),
-                'currency': info.get('currency', 'USD'),
-                'market_cap': info.get('marketCap', 0),
-                'pe_ratio': info.get('trailingPE', 0),
-                'beta': info.get('beta', 0),
+                'name': info['longName'] if 'longName' in info else symbol,
+                'currency': info['currency'] if 'currency' in info else 'USD',
+                'market_cap': info['marketCap'] if 'marketCap' in info else 0,
+                'pe_ratio': info['trailingPE'] if 'trailingPE' in info else 0,
+                'beta': info['beta'] if 'beta' in info else 0,
                 'period_days': len(hist)
             }
             
