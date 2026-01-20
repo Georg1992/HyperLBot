@@ -318,20 +318,20 @@ class EventDrivenTradingDashboard:
             prediction = None
             if "prediction" in dashboard_data and dashboard_data["prediction"]:
                 prediction = dashboard_data["prediction"]
-                pred_dir = prediction.get("direction", "N/A")
-                pred_conf = prediction.get("confidence", "N/A")
+                pred_dir = prediction["direction"] if "direction" in prediction else "N/A"
+                pred_conf = prediction["confidence"] if "confidence" in prediction else "N/A"
                 logger.info(f"📡 ✅ FOUND PREDICTION (top-level): dir={pred_dir} conf={pred_conf}")
             elif "prediction" in market_data_dict and market_data_dict["prediction"]:
                 prediction = market_data_dict["prediction"]
-                pred_dir = prediction.get("direction", "N/A")
-                pred_conf = prediction.get("confidence", "N/A")
+                pred_dir = prediction["direction"] if "direction" in prediction else "N/A"
+                pred_conf = prediction["confidence"] if "confidence" in prediction else "N/A"
                 logger.info(f"📡 ✅ FOUND PREDICTION (market_data_dict): dir={pred_dir} conf={pred_conf}")
             else:
                 predictions_list = market_data_dict["predictions"] if "predictions" in market_data_dict else []
                 if predictions_list:
                     prediction = predictions_list[-1]
-                    pred_dir = prediction.get("direction", "N/A")
-                    pred_conf = prediction.get("confidence", "N/A")
+                    pred_dir = prediction["direction"] if "direction" in prediction else "N/A"
+                    pred_conf = prediction["confidence"] if "confidence" in prediction else "N/A"
                     logger.info(f"📡 ✅ FOUND PREDICTION (predictions list): dir={pred_dir} conf={pred_conf}")
             
             # Format data for dashboard - DashboardService ONLY
