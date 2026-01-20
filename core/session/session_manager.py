@@ -430,7 +430,7 @@ class SessionManager:
             if not self.current_session_data:
                 return
                 
-            start_time = self.current_session_data.get("start_time")
+            start_time = self.current_session_data["start_time"] if "start_time" in self.current_session_data else None
             if start_time:
                 try:
                     start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
