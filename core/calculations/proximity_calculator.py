@@ -72,7 +72,7 @@ class ProximityCalculator:
                 "optimal_atr": 0.5,
                 "acceptable_atr": 1.25,
                 "too_far_atr": 2.0
-            })
+            }
             optimal_atr = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS)
             acceptable_atr = entry_proximity_config["acceptable_atr"]  # Required (NO FALLBACKS)
             too_far_atr = entry_proximity_config["too_far_atr"]  # Required (NO FALLBACKS)
