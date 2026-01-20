@@ -152,7 +152,9 @@ class SRLevelFilter(BaseCalculator):
             # FACTOR 5: TOUCH COUNT (how well-tested)
             # Uses volume-weighted touches (NO FALLBACKS)
             # ===================================================================
-            weighted_touches = level.get("weighted_touches")
+            if "weighted_touches" not in level:
+                raise ValueError(f"Level missing 'weighted_touches' - required field (NO FALLBACKS)")
+            weighted_touches = level["weighted_touches"]
             if weighted_touches is None:
                 raise ValueError(f"Level missing weighted_touches - required field (NO FALLBACKS)")
             
@@ -198,8 +200,10 @@ class SRLevelFilter(BaseCalculator):
             from config.config import TradingConfig
             
             # Get strategy-specific weights
-            weights = TradingConfig.SR_LEVEL_SCORING_WEIGHTS.get(
-                strategy,
+            if strategy not in TradingConfig.SR_LEVEL_SCORING_WEIGHTS:
+                raise ValueError(f"Unknown strategy: {strategy} - NO FALLBACKS")
+            weights = TradingConfig.SR_LEVEL_SCORING_WEIGHTS[strategy]  # Required (NO FALLBACKS)
+            if not weights or weights is None:
                 TradingConfig.SR_LEVEL_SCORING_WEIGHTS["standard"]
             )
             
@@ -255,8 +259,11 @@ class SRLevelFilter(BaseCalculator):
         from config.config import TradingConfig
         
         # Get strategy-specific configuration for SELECTION (not scoring)
-        strategy_config = TradingConfig.SR_LEVEL_SELECTION.get(
-            strategy or "standard", 
+        strategy_key = strategy if strategy else "standard"
+        if strategy_key not in TradingConfig.SR_LEVEL_SELECTION:
+            raise ValueError(f"Unknown strategy: {strategy_key} - NO FALLBACKS")
+        strategy_config = TradingConfig.SR_LEVEL_SELECTION[strategy_key]  # Required (NO FALLBACKS)
+        if not strategy_config or strategy_config is None: 
             TradingConfig.SR_LEVEL_SELECTION["standard"]
         )
         max_levels_per_side = strategy_config["max_levels_per_side"]
@@ -274,10 +281,10 @@ class SRLevelFilter(BaseCalculator):
         
         active_resistance_candidates = [
             level for level in all_levels
-            if level.get("type") == "resistance"
-            and level.get("price_level") is not None
-            and level.get("price_level") > current_price
-            and level.get("status") == "active"
+            if "type" in level and level["type"] == "resistance"
+            and "price_level" in level and level["price_level"] is not None
+            and level["price_level"] > current_price
+            and "status" in level and level["status"] == "active"
         ]
         
         # Sort by STRATEGY-AWARE QUALITY SCORE
@@ -384,10 +391,10 @@ class SRLevelFilter(BaseCalculator):
         
         active_resistance = [
             level for level in all_levels
-            if level.get("type") == "resistance"
-            and level.get("price_level") is not None
-            and level.get("price_level") > current_price
-            and level.get("status") == "active"
+            if "type" in level and level["type"] == "resistance"
+            and "price_level" in level and level["price_level"] is not None
+            and level["price_level"] > current_price
+            and "status" in level and level["status"] == "active"
         ]
         
         # Sort by STRATEGY-AWARE QUALITY SCORE
