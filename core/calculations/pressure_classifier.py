@@ -223,7 +223,7 @@ class PressureClassifier:
                 ])
             
             # Risk management recommendations
-            risk_level = implications.get("risk_level", "MEDIUM")
+            risk_level = implications["risk_level"] if "risk_level" in implications else "MEDIUM"
             if risk_level == "HIGH":
                 recommendations.append("High risk - use strict risk management")
             elif risk_level == "LOW":

@@ -75,12 +75,12 @@ class PressureDataProvider:
                 }
             
             # Calculate depth for top 5 levels
-            bid_depth_5 = sum(float(level['sz']) if 'sz' in level else 0 for level in bids[:5])
-            ask_depth_5 = sum(float(level['sz']) if 'sz' in level else 0 for level in asks[:5])
+            bid_depth_5 = sum(float(level.get('sz', 0)) for level in bids[:5])
+            ask_depth_5 = sum(float(level.get('sz', 0)) for level in asks[:5])
             
             # Calculate depth for top 10 levels
-            bid_depth_10 = sum(float(level['sz']) if 'sz' in level else 0 for level in bids[:10])
-            ask_depth_10 = sum(float(level['sz']) if 'sz' in level else 0 for level in asks[:10])
+            bid_depth_10 = sum(float(level.get('sz', 0)) for level in bids[:10])
+            ask_depth_10 = sum(float(level.get('sz', 0)) for level in asks[:10])
             
             total_depth_5 = bid_depth_5 + ask_depth_5
             total_depth_10 = bid_depth_10 + ask_depth_10
@@ -116,10 +116,10 @@ class PressureDataProvider:
             Dictionary with pressure ratios
         """
         try:
-            total_depth_5 = depth_metrics.get("total_depth_5", 0.0)
-            bid_depth_5 = depth_metrics.get("bid_depth_5", 0.0)
-            ask_depth_5 = depth_metrics.get("ask_depth_5", 0.0)
-            total_depth_10 = depth_metrics.get("total_depth_10", 0.0)
+            total_depth_5 = depth_metrics["total_depth_5"] if "total_depth_5" in depth_metrics else 0.0
+            bid_depth_5 = depth_metrics["bid_depth_5"] if "bid_depth_5" in depth_metrics else 0.0
+            ask_depth_5 = depth_metrics["ask_depth_5"] if "ask_depth_5" in depth_metrics else 0.0
+            total_depth_10 = depth_metrics["total_depth_10"] if "total_depth_10" in depth_metrics else 0.0
             
             if total_depth_5 == 0:
                 return {

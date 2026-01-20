@@ -709,7 +709,7 @@ class SRScorer:
             }
             
             # Adaptive tolerance based on per-timeframe volatility
-            base_atr = atr_per_tf.get('15m') if '15m' in atr_per_tf else atr_per_tf['5m']  # Fallback to 5m if 15m not available
+            base_atr = atr_per_tf['15m'] if '15m' in atr_per_tf else atr_per_tf['5m']  # Fallback to 5m if 15m not available
             aligned_levels = []
             
             for level in clustered_levels:
@@ -818,7 +818,8 @@ class SRScorer:
                             'level': htf_level.level,
                             'timeframe': list(htf_level.timeframe_distribution.keys())[0] if htf_level.timeframe_distribution else '5m',
                             'distance': 0.0,
-                            'weight': tf_weights.get(list(htf_level.timeframe_distribution.keys())[0] if htf_level.timeframe_distribution else '5m', 1.0),
+                            first_tf = list(htf_level.timeframe_distribution.keys())[0] if htf_level.timeframe_distribution else '5m'
+                            'weight': tf_weights[first_tf] if first_tf in tf_weights else 1.0,
                             'contribution': 1.0
                         }],
                         mtf_count=1,

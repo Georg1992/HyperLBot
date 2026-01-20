@@ -321,9 +321,9 @@ class HyperliquidAPI:
                                 "symbol": symbol,
                                 "timestamp": time.time(),
                                 "data_source": "hyperliquid_api",
-                                "mark_price": float(asset_context.get('markPx', 0)),
-                                "oracle_price": float(asset_context.get('oraclePx', 0)),
-                                "open_interest": float(asset_context.get('openInterest', 0))
+                                "mark_price": float(asset_context['markPx']) if 'markPx' in asset_context else 0.0,
+                                "oracle_price": float(asset_context['oraclePx']) if 'oraclePx' in asset_context else 0.0,
+                                "open_interest": float(asset_context['openInterest']) if 'openInterest' in asset_context else 0.0
                             }
             
             # NO FALLBACKS - Real funding rate data not available
