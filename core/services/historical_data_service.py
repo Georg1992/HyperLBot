@@ -313,18 +313,19 @@ class HistoricalDataService:
             patterns["patterns"] = mapped_patterns
             
             # Also map nested patterns if they exist
-            if "patterns_nested" in patterns and patterns["patterns_nested"]:
+            if patterns.get("patterns_nested"):
                 nested = patterns["patterns_nested"]
                 for category in ["reversal_patterns", "continuation_patterns", "triangle_patterns", 
                                "channel_patterns", "wedge_patterns", "candlestick_patterns", "trend_patterns"]:
-                    if nested.get(category):
+                    if category in nested and nested[category]:
                         mapped_category = []
                         for pattern in nested[category]:
-                            start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
+                            start_idx = pattern.get("start_candle_index", 0)
                             if start_idx >= offset and start_idx < DETECTION_CANDLE_COUNT:
                                 mapped_pattern = pattern.copy()
                                 mapped_pattern["start_candle_index"] = start_idx - offset
-                                mapped_pattern["end_candle_index"] = max(0, min(pattern.get("end_candle_index", start_idx) - offset, DISPLAY_CANDLE_COUNT - 1))
+                                end_idx_raw = pattern["end_candle_index"] if "end_candle_index" in pattern else start_idx
+                                mapped_pattern["end_candle_index"] = max(0, min(end_idx_raw - offset, DISPLAY_CANDLE_COUNT - 1))
                                 mapped_category.append(mapped_pattern)
                         nested[category] = mapped_category
                 patterns["patterns_nested"] = nested
@@ -363,7 +364,7 @@ class HistoricalDataService:
             high_price = max(c["high"] for c in group)
             low_price = min(c["low"] for c in group)
             total_volume = sum(c["volume"] for c in group)
-            total_trades = sum(c.get("trades_count", 0) for c in group)
+            total_trades = sum(c["trades_count"] if "trades_count" in c else 0 for c in group)
             
             # Use timestamp of first 5m candle in the 15m period
             timestamp = group[0]["timestamp"]
@@ -407,7 +408,7 @@ class HistoricalDataService:
             high_price = max(c["high"] for c in group)
             low_price = min(c["low"] for c in group)
             total_volume = sum(c["volume"] for c in group)
-            total_trades = sum(c.get("trades_count", 0) for c in group)
+            total_trades = sum(c["trades_count"] if "trades_count" in c else 0 for c in group)
             
             # Use timestamp of first 5m candle in the hour
             timestamp = group[0]["timestamp"]
@@ -451,7 +452,7 @@ class HistoricalDataService:
             high_price = max(c["high"] for c in group)
             low_price = min(c["low"] for c in group)
             total_volume = sum(c["volume"] for c in group)
-            total_trades = sum(c.get("trades_count", 0) for c in group)
+            total_trades = sum(c["trades_count"] if "trades_count" in c else 0 for c in group)
             
             # Use timestamp of first 5m candle in the day (round to midnight)
             from datetime import datetime
