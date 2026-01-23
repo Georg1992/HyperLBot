@@ -143,9 +143,9 @@ class SystemInitializer:
             
             # Initialize data analysis components
             from config.config import TradingConfig
-            config = TradingConfig()
             
-            strategy_manager = StrategyManager(config)
+            # TradingConfig is a class with static attributes, pass the class itself
+            strategy_manager = StrategyManager(TradingConfig)
             
             self.singleton_systems["strategy_manager"] = strategy_manager
             
@@ -167,7 +167,7 @@ class SystemInitializer:
             set_global_market_data_service(market_data_service)
             
             dashboard_service = DashboardService.get_global_instance() or create_dashboard_service()
-            session_orchestrator = SessionOrchestrator(config, initial_balance)  # Use real account balance
+            session_orchestrator = SessionOrchestrator(TradingConfig, initial_balance)  # Use real account balance
             
             self.singleton_systems["market_data_service"] = market_data_service
             self.singleton_systems["dashboard_service"] = dashboard_service

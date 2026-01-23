@@ -135,7 +135,7 @@ class PredictionEngine:
         """
         # Route to strategy-specific prediction method
         strategy_methods = {
-            "standard": self._predict_standard,
+            "standard": self._predict,
             "scalping": self._predict_scalping,
             "swing_trading": self._predict_swing_trading,
             "trend_following": self._predict_trend_following,
@@ -146,42 +146,82 @@ class PredictionEngine:
             "spike_hunting": self._predict_spike_hunting,
         }
         
-        method = strategy_methods[strategy] if strategy in strategy_methods else self._predict_standard
+        method = strategy_methods[strategy] if strategy in strategy_methods else self._predict
         return method(unified_data, strategy_config)
     
-    def _predict_standard(self, unified_data: Dict[str, Any], config: Dict[str, Any], strategy: str = "standard") -> Optional[TradingPrediction]:
+    def _predict(self, unified_data: Dict[str, Any], config: Dict[str, Any], strategy: str = "standard") -> Optional[TradingPrediction]:
         """
-        Standard strategy prediction logic (also used as base for other strategies)
+        Sequential prediction logic (shared base for all strategies)
         
-        Uses hybrid approach with contextual direction scoring:
-        1. Generate all potential setups (both LONG and SHORT)
-        2. Score each setup with: entry_quality + contextual_direction_support
-           - Entry quality: SR strength, proximity, reversal probability, etc.
-           - Contextual direction: considers entry proximity, level strength, and alignment
-        3. Select best overall combination
-        4. Calculate stop loss and take profit from config
+        SEQUENTIAL DECISION FLOW (Option A - Confidence influences position size):
+        1. GET ALL DATA (already done via unified_data)
+        2. DETERMINE DIRECTION (market condition decision) - PERFECT calculation
+        3. DETERMINE ENTRY PRICE (tactical decision for selected direction)
+        4. DETERMINE STOP/TARGET (risk management)
+        
+        This ensures direction is determined PERFECTLY first, then we find the best entry for that direction.
+        
+        All strategies use this sequential flow with strategy-specific parameters (direction_weights, 
+        timeframe_weights, proximity_config, etc.) from TradingConfig.STRATEGY_CONFIGS[strategy].
         """
-        # Generate and score all potential setups (both LONG and SHORT)
-        all_setups = self._generate_all_setups(unified_data, strategy, config)
-        if not all_setups:
-            logger.debug(f"⏸️ No valid setups found for {strategy} strategy")
+        # ==================================================================================
+        # STEP 1: GET ALL DATA (already done via unified_data)
+        # ==================================================================================
+        # All market data is already available in unified_data
+        
+        # ==================================================================================
+        # STEP 2: DETERMINE DIRECTION PERFECTLY (market condition decision)
+        # ==================================================================================
+        direction_result = self._score_direction(unified_data, strategy)
+        if not direction_result:
+            logger.warning(f"⚠️ Direction determination failed for {strategy} strategy")
             return None
         
-        # Select best overall setup (highest combined score)
-        best_setup = max(all_setups, key=lambda x: x["total_score"])  # Required (NO FALLBACKS)
+        direction = direction_result["direction"]  # Required (NO FALLBACKS)
+        direction_reasoning = direction_result["reasoning"]  # Required (NO FALLBACKS)
+        long_score = direction_result["long_score"]  # Required (NO FALLBACKS)
+        short_score = direction_result["short_score"]  # Required (NO FALLBACKS)
+        score_diff = abs(long_score - short_score)
         
-        direction = best_setup["direction"]
-        entry_price = best_setup["entry_price"]
-        entry_score = best_setup["entry_score"]
-        direction_score = best_setup["direction_score"]
-        total_score = best_setup["total_score"]
+        # Check minimum score difference threshold (configurable)
+        min_score_diff = config.get("min_score_diff", 10.0)
+        if score_diff < min_score_diff:
+            logger.debug(f"⏸️ Direction signal too weak: {direction} (score diff: {score_diff:.1f} < {min_score_diff:.1f})")
+            return None
         
-        logger.debug(f"📊 Best setup: {direction} @ ${entry_price:.2f} (entry: {entry_score:.1f}, direction: {direction_score:.1f}, total: {total_score:.1f})")
+        logger.info(f"📊 Direction determined: {direction} (LONG: {long_score:.1f}, SHORT: {short_score:.1f}, diff: {score_diff:.1f})")
+        logger.debug(f"📊 Direction reasoning: {direction_reasoning}")
         
-        # Calculate stop_loss and take_profit with sophisticated logic
-        # This already calculates R:R ratio internally, so we capture it
+        # ==================================================================================
+        # STEP 3: DETERMINE ENTRY PRICE (tactical decision for selected direction)
+        # ==================================================================================
+        # Generate setups ONLY for the selected direction
+        setups = self._generate_setups_for_direction(
+            unified_data=unified_data,
+            direction=direction,
+            strategy=strategy,
+            config=config
+        )
+        
+        if not setups:
+            logger.debug(f"⏸️ No valid entry setups found for {direction} direction ({strategy} strategy)")
+            return None
+        
+        # Select best entry setup (highest entry score)
+        best_setup = max(setups, key=lambda x: x["entry_score"])  # Required (NO FALLBACKS)
+        
+        entry_price = best_setup["entry_price"]  # Required (NO FALLBACKS)
+        entry_score = best_setup["entry_score"]  # Required (NO FALLBACKS)
+        entry_reasoning = best_setup["entry_reasoning"]  # Required (NO FALLBACKS)
         best_setup_level_data = best_setup["level_data"]  # Required (NO FALLBACKS)
         best_setup_type = best_setup["setup_type"]  # Required (NO FALLBACKS)
+        
+        logger.info(f"📊 Best entry: {direction} @ ${entry_price:.2f} (entry score: {entry_score:.1f})")
+        logger.debug(f"📊 Entry reasoning: {entry_reasoning}")
+        
+        # ==================================================================================
+        # STEP 4: DETERMINE STOP/TARGET (risk management)
+        # ==================================================================================
         stop_loss, take_profit, rr_ratio, stop_loss_pct, take_profit_pct = self._calculate_stop_and_target(
             entry_price=entry_price,
             direction=direction,
@@ -193,7 +233,7 @@ class PredictionEngine:
         )
         
         # Combine reasoning
-        combined_reasoning = f"{best_setup['direction_reasoning']}. Entry: {best_setup['entry_reasoning']}"
+        combined_reasoning = f"Direction: {direction_reasoning}. Entry: {entry_reasoning}"
         
         # Pass full setup data to confidence calculation (includes all breakdowns and metrics)
         confidence = self._calculate_prediction_confidence(
@@ -264,7 +304,7 @@ class PredictionEngine:
         
         # Use base prediction logic with scalping strategy
         # Note: Scalping still uses limit orders at S/R levels, not market orders
-        return self._predict_standard(unified_data, config, "scalping")
+        return self._predict(unified_data, config, "scalping")
     
     def _validate_scalping_requirements(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> bool:
         """Validate scalping-specific requirements (spread, liquidity, RSI range)"""
@@ -301,39 +341,38 @@ class PredictionEngine:
         return True
     
     def _predict_swing_trading(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
-        """Swing trading strategy prediction logic - uses strategy-specific direction/entry weights"""
-        return self._predict_standard(unified_data, config, "swing_trading")
+        """Swing trading strategy prediction logic - uses base prediction with strategy-specific parameters"""
+        return self._predict(unified_data, config, "swing_trading")
     
     def _predict_trend_following(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
-        """Trend following strategy prediction logic - uses strategy-specific direction/entry weights"""
-        return self._predict_standard(unified_data, config, "trend_following")
+        """Trend following strategy prediction logic - uses base prediction with strategy-specific parameters"""
+        return self._predict(unified_data, config, "trend_following")
     
     def _predict_breakout(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
-        """Breakout strategy prediction logic - uses strategy-specific direction/entry weights"""
-        return self._predict_standard(unified_data, config, "breakout")
+        """Breakout strategy prediction logic - uses base prediction with strategy-specific parameters"""
+        return self._predict(unified_data, config, "breakout")
     
     def _predict_range_trading(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
-        """Range trading strategy prediction logic - uses strategy-specific direction/entry weights"""
-        return self._predict_standard(unified_data, config, "range_trading")
+        """Range trading strategy prediction logic - uses base prediction with strategy-specific parameters"""
+        return self._predict(unified_data, config, "range_trading")
     
     def _predict_low_volatility_range(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
-        """Low volatility range strategy prediction logic - uses strategy-specific direction/entry weights"""
-        return self._predict_standard(unified_data, config, "low_volatility_range")
+        """Low volatility range strategy prediction logic - uses base prediction with strategy-specific parameters"""
+        return self._predict(unified_data, config, "low_volatility_range")
     
     def _predict_high_volatility(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
-        """High volatility strategy prediction logic - uses strategy-specific direction/entry weights"""
-        return self._predict_standard(unified_data, config, "high_volatility")
+        """High volatility strategy prediction logic - uses base prediction with strategy-specific parameters"""
+        return self._predict(unified_data, config, "high_volatility")
     
     def _predict_spike_hunting(self, unified_data: Dict[str, Any], config: Dict[str, Any]) -> Optional[TradingPrediction]:
-        """Spike hunting strategy prediction logic - uses strategy-specific direction/entry weights"""
-        return self._predict_standard(unified_data, config, "spike_hunting")
+        """Spike hunting strategy prediction logic - uses base prediction with strategy-specific parameters"""
+        return self._predict(unified_data, config, "spike_hunting")
     
     def _determine_direction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[Dict[str, Any]]:
         """
         Determine trade direction using unified scoring framework (global - no entry context)
         
         NOTE: This method returns GLOBAL direction scores (not contextual).
-        For entry-specific direction scoring, use _score_direction_for_entry instead.
         This method is kept for backward compatibility and general direction analysis.
         
         NOTE: This method uses "scores" (long_score, short_score) for direction determination.
@@ -1019,7 +1058,7 @@ class PredictionEngine:
         Score direction using unified scoring framework (global - no entry context)
         
         Uses factor scorers to calculate long_score and short_score, then determines direction.
-        This is the base method - use _score_direction_for_entry for entry-specific scoring.
+        This is the base method used in the sequential flow (Step 2: Determine Direction).
         
         Returns:
             Dict with "direction", "reasoning", "long_score", "short_score"
@@ -1118,207 +1157,6 @@ class PredictionEngine:
             logger.error(f"❌ Direction scoring failed: {e}")
             return None
     
-    def _score_direction_for_entry(
-        self,
-        unified_data: Dict[str, Any],
-        strategy: str,
-        entry_price: float,
-        entry_direction: str,
-        level_data: Optional[Dict[str, Any]] = None
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Score direction with entry-specific context (contextual direction scoring)
-        
-        Considers:
-        1. Base direction signals (trend, RSI, pressure, etc.)
-        2. Entry level proximity (direction signals weighted by distance to entry)
-        3. Entry level strength (stronger levels align better with direction)
-        4. Alignment check (how well this specific entry level aligns with direction signals)
-        
-        Args:
-            unified_data: Complete market analysis data
-            strategy: Trading strategy name
-            entry_price: Entry price for this setup
-            entry_direction: "LONG" or "SHORT" - the direction of this entry
-            level_data: Optional S/R level data for this entry
-            
-        Returns:
-            Dict with "direction", "reasoning", "long_score", "short_score" (contextualized)
-        """
-        try:
-            # Get base direction scores (global market conditions)
-            base_direction_result = self._score_direction(unified_data, strategy)
-            if not base_direction_result:
-                return None
-            
-            base_long_score = base_direction_result["long_score"]  # Required (NO FALLBACKS)
-            base_short_score = base_direction_result["short_score"]  # Required (NO FALLBACKS)
-            
-            # Initialize contextual scores (start with base scores)
-            contextual_long_score = base_long_score
-            contextual_short_score = base_short_score
-            
-            current_price = self._require_key(unified_data, "current_price", "contextual direction scoring")
-            if current_price <= 0 or entry_price <= 0:
-                raise ValueError(f"Invalid prices: current_price={current_price}, entry_price={entry_price}")
-            
-            # Calculate entry level context factors
-            proximity_factor = 1.0  # Default: no proximity adjustment
-            recency_factor = 1.0    # Default: no recency adjustment
-            strength_factor = 1.0   # Default: no strength adjustment
-            alignment_factor = 1.0  # Default: no alignment adjustment
-            distance_atr = 0.0
-            level_strength = 0.0
-            
-            if level_data:
-                level_price = level_data["price_level"]  # Required (NO FALLBACKS)
-                from core.utils.level_utils import get_level_power
-                level_power = get_level_power(level_data, default=None)  # Will raise if missing (NO FALLBACKS)
-                last_touch_timestamp = level_data["last_touch_timestamp"]  # Required (NO FALLBACKS)
-                
-                # 1. PROXIMITY FACTOR: Direction signals more relevant when entry is closer to current price
-                # Closer entries = direction signals are more immediately relevant
-                # Further entries = direction signals may change before price reaches entry
-                try:
-                    atr_pct = self._get_atr_pct(unified_data, current_price)
-                    from core.calculations.proximity_calculator import ProximityCalculator
-                    from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr as calc_dist_atr
-                    
-                    proximity_factor = ProximityCalculator.calculate_proximity_factor(
-                        entry_price=entry_price,
-                        reference_price=current_price,
-                        atr_pct=atr_pct,
-                        strategy=strategy,
-                        context="direction"
-                    )
-                    
-                    # Calculate distance in ATR units for reasoning
-                    distance_pct_val = calculate_distance_pct(entry_price, current_price, current_price)
-                    distance_atr = calc_dist_atr(distance_pct_val, atr_pct)
-                except Exception:
-                    proximity_factor = 1.0  # Default if calculation fails
-                    distance_atr = 0.0
-                
-                # 2. RECENCY FACTOR: More recent touches = level still active and relevant
-                # Recent levels are more likely to still be valid support/resistance
-                from core.calculations.recency_calculator import RecencyCalculator
-                recency_factor = RecencyCalculator.calculate_recency_factor(
-                    last_touch_timestamp=last_touch_timestamp,
-                    strategy=strategy
-                )
-                
-                # 3. POWER FACTOR: Stronger entry levels align better with direction signals
-                # Strong support + strong LONG signals = better than weak support + strong LONG signals
-                # Normalize power (0-100) to factor (0.7-1.3)
-                power_normalized = level_power / 100.0  # 0.0 to 1.0
-                strength_factor = 0.7 + (power_normalized * 0.6)  # Range: 0.7 to 1.3
-                level_strength = level_power
-                
-                # 4. ALIGNMENT FACTOR: Check how well this specific entry level aligns with direction signals
-                # For LONG at support: if LONG signals are strong, alignment is good
-                # For SHORT at resistance: if SHORT signals are strong, alignment is good
-                # For LONG at support: if SHORT signals are strong, alignment is poor (conflict)
-                setup_type = level_data["setup_type"]  # Required (NO FALLBACKS)
-                
-                if entry_direction == "LONG" and setup_type == "support_level":
-                    # LONG at support: good alignment if LONG signals > SHORT signals
-                    direction_diff = base_long_score - base_short_score
-                    if direction_diff > 20.0:  # Strong LONG preference
-                        alignment_factor = 1.2  # Boost for good alignment
-                    elif direction_diff > 10.0:  # Moderate LONG preference
-                        alignment_factor = 1.1
-                    elif direction_diff < -20.0:  # Strong SHORT preference (conflict)
-                        alignment_factor = TradingConfig.ALIGNMENT_FACTORS["penalty"]
-                    elif direction_diff < -10.0:  # Moderate SHORT preference (conflict)
-                        alignment_factor = 0.75
-                    else:  # Neutral
-                        alignment_factor = 1.0
-                
-                elif entry_direction == "SHORT" and setup_type == "resistance_level":
-                    # SHORT at resistance: good alignment if SHORT signals > LONG signals
-                    direction_diff = base_short_score - base_long_score
-                    if direction_diff > 20.0:  # Strong SHORT preference
-                        alignment_factor = 1.2  # Boost for good alignment
-                    elif direction_diff > 10.0:  # Moderate SHORT preference
-                        alignment_factor = 1.1
-                    elif direction_diff < -20.0:  # Strong LONG preference (conflict)
-                        alignment_factor = TradingConfig.ALIGNMENT_FACTORS["penalty"]
-                    elif direction_diff < -10.0:  # Moderate LONG preference (conflict)
-                        alignment_factor = 0.75
-                    else:  # Neutral
-                        alignment_factor = 1.0
-                else:
-                    # Other setups: neutral alignment
-                    alignment_factor = 1.0
-            
-            # Apply contextual factors to BOTH direction scores (FIXED Issue #6)
-            # Problem: Old logic only applied factors to entry_direction, kept opposite as base → biased
-            # Solution: Apply boost to entry_direction, apply decay to opposite direction → fair comparison
-            #
-            # Rationale:
-            # - LONG at strong support: LONG score boosted by proximity/strength/recency
-            #                          SHORT score penalized (far from resistance, conflict)
-            # - SHORT at strong resistance: SHORT score boosted by proximity/strength/recency
-            #                              LONG score penalized (far from support, conflict)
-            
-            if entry_direction == "LONG":
-                # LONG at support: boost LONG, decay SHORT
-                contextual_long_score = base_long_score * proximity_factor * recency_factor * strength_factor * alignment_factor
-                # Apply inverse decay to SHORT (opposing direction)
-                # If proximity_factor is 1.5 (boost), SHORT gets 1/1.5 = 0.67 (decay)
-                inverse_proximity = 1.0 / proximity_factor if proximity_factor > 0 else 1.0
-                inverse_strength = 1.0 / strength_factor if strength_factor > 0 else 1.0
-                contextual_short_score = base_short_score * inverse_proximity * inverse_strength
-            else:  # SHORT
-                # SHORT at resistance: boost SHORT, decay LONG
-                contextual_short_score = base_short_score * proximity_factor * recency_factor * strength_factor * alignment_factor
-                # Apply inverse decay to LONG (opposing direction)
-                inverse_proximity = 1.0 / proximity_factor if proximity_factor > 0 else 1.0
-                inverse_strength = 1.0 / strength_factor if strength_factor > 0 else 1.0
-                contextual_long_score = base_long_score * inverse_proximity * inverse_strength
-            
-            # Generate contextual reasoning
-            reasoning_parts = []
-            if proximity_factor < 1.0:
-                reasoning_parts.append(f"proximity-adjusted (distance: {distance_atr:.1f}×ATR)")
-            if strength_factor > 1.0:
-                reasoning_parts.append(f"strength-boosted (level: {level_strength:.1f})")
-            elif strength_factor < 1.0:
-                reasoning_parts.append(f"strength-penalized (level: {level_strength:.1f})")
-            if alignment_factor > 1.0:
-                reasoning_parts.append("aligned")
-            elif alignment_factor < 1.0:
-                reasoning_parts.append("conflict-penalized")
-            
-            base_reasoning = base_direction_result["reasoning"]  # Required (NO FALLBACKS)
-            if reasoning_parts:
-                contextual_reasoning = f"{base_reasoning} [{', '.join(reasoning_parts)}]"
-            else:
-                contextual_reasoning = base_reasoning
-            
-            # Determine direction from contextual scores
-            if contextual_long_score > contextual_short_score:
-                direction = "LONG"
-            elif contextual_short_score > contextual_long_score:
-                direction = "SHORT"
-            else:
-                direction = entry_direction  # Use entry direction as tiebreaker
-            
-            return {
-                "direction": direction,
-                "reasoning": contextual_reasoning,
-                "long_score": contextual_long_score,
-                "short_score": contextual_short_score,
-                "base_long_score": base_long_score,
-                "base_short_score": base_short_score,
-                "proximity_factor": proximity_factor,
-                "strength_factor": strength_factor,
-                "alignment_factor": alignment_factor
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Contextual direction scoring failed: {e}")
-            return None
     
     def _get_strategy_timeframe_weights(self, strategy: str) -> Dict[str, float]:
         """
@@ -1516,21 +1354,27 @@ class PredictionEngine:
             logger.error(f"❌ Entry setup scoring failed: {e}")
             return None
     
-    def _generate_all_setups(
+    def _generate_setups_for_direction(
         self,
         unified_data: Dict[str, Any],
+        direction: str,
         strategy: str,
         config: Dict[str, Any]
     ) -> list[Dict[str, Any]]:
         """
-        Generate and score all potential setups (both LONG and SHORT)
+        Generate and score entry setups for a SPECIFIC direction only
         
-        Hybrid approach: evaluates all entry setups for both directions,
-        scores each with entry_quality + direction_support, and returns
-        all valid setups sorted by total score.
+        SEQUENTIAL FLOW - Step 3: After direction is determined, find best entry for that direction.
+        Only evaluates entry quality (not direction support, since direction is already determined).
         
+        Args:
+            unified_data: Complete market analysis data
+            direction: "LONG" or "SHORT" - the direction determined in Step 2
+            strategy: Trading strategy name
+            config: Strategy configuration
+            
         Returns:
-            List of setup dictionaries with total_score, entry_score, direction_score, etc.
+            List of setup dictionaries with entry_score, entry_price, entry_reasoning, etc.
         """
         try:
             # All required data must be present (NO FALLBACKS)
@@ -1550,135 +1394,121 @@ class PredictionEngine:
                 current_price=current_price,
                 strategy=strategy
             )
-            top_support = filtered_levels["support"]
-            top_resistance = filtered_levels["resistance"]
             
-            all_setups = []
+            setups = []
             
-            # Contextual direction scoring: direction scores are calculated per entry level
-            # This considers entry proximity, strength, and alignment with direction signals
-            # No global direction scoring - each entry gets its own contextual direction score
-            
-            # For each potential entry setup, evaluate for appropriate direction(s)
-            # All entries must be at specific S/R levels (for limit orders)
-            # IMPORTANT: Limit orders can only fill if entry_price is reachable:
-            #   - LONG: entry_price must be <= current_price (buying at or below current price)
-            #   - SHORT: entry_price must be >= current_price (selling at or above current price)
-            # Breakout/breakdown entries don't make sense with limit orders (would require stop-limit or market orders)
-            
-            # 1. Support Level Entry (LONG - buying at support, limit order)
-            # Entry price determined by optimizing entry scoring factors (power, proximity, recency)
-            for support in top_support:
-                level_price = self._require_key(support, "price_level", "setup generation")
-                if level_price <= 0 or level_price >= current_price:
-                    continue
+            # Generate setups ONLY for the selected direction
+            if direction == "LONG":
+                # LONG: Only evaluate support levels (buying at support)
+                top_support = filtered_levels["support"]
                 
-                # Determine optimal entry price based on entry scoring factors
-                # Generate candidate entry prices and select the one with best entry score
-                try:
-                    entry_data = self._determine_optimal_entry_price(
-                        level_price=level_price,
-                        current_price=current_price,
-                        direction="LONG",
+                for support in top_support:
+                    level_price = self._require_key(support, "price_level", "setup generation")
+                    if level_price <= 0 or level_price >= current_price:
+                        continue  # Skip invalid or unfillable levels
+                    
+                    # Determine optimal entry price based on entry scoring factors
+                    try:
+                        entry_data = self._determine_optimal_entry_price(
+                            level_price=level_price,
+                            current_price=current_price,
+                            direction="LONG",
+                            setup_type="support_level",
+                            level_data=support,
+                            unified_data=unified_data,
+                            strategy=strategy,
+                            config=config
+                        )
+                        
+                        if entry_data is None:
+                            continue  # Skip if entry determination failed
+                        
+                        entry_price = entry_data["entry_price"]  # Required (NO FALLBACKS)
+                        if entry_price is None or entry_price <= 0 or entry_price >= current_price:
+                            continue  # Skip if entry is invalid or unfillable
+                    except Exception as e:
+                        logger.warning(f"⚠️ Entry price determination failed for support ${level_price:.2f}: {e}")
+                        continue  # Skip this level if determination fails
+                    
+                    # Score entry setup (entry quality only - direction already determined)
+                    support_with_type = {**support, "setup_type": "support_level"}
+                    entry_result = self._score_entry_setup(
+                        entry_price=entry_price,
                         setup_type="support_level",
-                        level_data=support,
+                        direction="LONG",
                         unified_data=unified_data,
+                        level_data=support_with_type,
                         strategy=strategy,
                         config=config
                     )
                     
-                    if entry_data is None:
-                        continue  # Skip if entry determination failed
-                    
-                    entry_price = entry_data["entry_price"]  # Required (NO FALLBACKS)
-                    if entry_price is None or entry_price <= 0 or entry_price >= current_price:
-                        continue  # Skip if entry is invalid or unfillable
-                except Exception as e:
-                    logger.warning(f"⚠️ Entry price determination failed for support ${level_price:.2f}: {e}")
-                    continue  # Skip this level if determination fails
-                
-                # Evaluate as LONG setup at support level (limit order below current price = fillable)
-                support_with_type = {**support, "setup_type": "support_level"}
-                # Pass entry_data to preserve entry_score and breakdown
-                setup_long = self._evaluate_complete_setup(
-                    entry_price=entry_price,
-                    setup_type="support_level",
-                    direction="LONG",
-                    unified_data=unified_data,
-                    level_data=support_with_type,
-                    strategy=strategy,
-                    config=config,
-                    direction_result=None,  # Will be calculated contextually inside _evaluate_complete_setup
-                    entry_data=entry_data  # Pass entry data to avoid recalculation
-                )
-                if setup_long:
-                    all_setups.append(setup_long)
+                    if entry_result:
+                        setups.append({
+                            "entry_price": entry_price,
+                            "entry_score": entry_result["score"],  # Required (NO FALLBACKS)
+                            "entry_reasoning": entry_result["reasoning"],  # Required (NO FALLBACKS)
+                            "setup_type": "support_level",
+                            "level_data": support_with_type
+                        })
             
-            # 2. Resistance Level Entry (SHORT - selling at resistance, limit order)
-            # Entry price determined by optimizing entry scoring factors (power, proximity, recency)
-            for resistance in top_resistance:
-                level_price = self._require_key(resistance, "price_level", "setup generation")
-                if level_price <= 0 or level_price <= current_price:
-                    continue
+            else:  # SHORT
+                # SHORT: Only evaluate resistance levels (selling at resistance)
+                top_resistance = filtered_levels["resistance"]
                 
-                # Determine optimal entry price based on entry scoring factors
-                # Generate candidate entry prices and select the one with best entry score
-                try:
-                    entry_data = self._determine_optimal_entry_price(
-                        level_price=level_price,
-                        current_price=current_price,
-                        direction="SHORT",
+                for resistance in top_resistance:
+                    level_price = self._require_key(resistance, "price_level", "setup generation")
+                    if level_price <= 0 or level_price <= current_price:
+                        continue  # Skip invalid or unfillable levels
+                    
+                    # Determine optimal entry price based on entry scoring factors
+                    try:
+                        entry_data = self._determine_optimal_entry_price(
+                            level_price=level_price,
+                            current_price=current_price,
+                            direction="SHORT",
+                            setup_type="resistance_level",
+                            level_data=resistance,
+                            unified_data=unified_data,
+                            strategy=strategy,
+                            config=config
+                        )
+                        
+                        if entry_data is None:
+                            continue  # Skip if entry determination failed
+                        
+                        entry_price = entry_data["entry_price"]  # Required (NO FALLBACKS)
+                        if entry_price is None or entry_price <= 0 or entry_price <= current_price:
+                            continue  # Skip if entry is invalid or unfillable
+                    except Exception as e:
+                        logger.warning(f"⚠️ Entry price determination failed for resistance ${level_price:.2f}: {e}")
+                        continue  # Skip this level if determination fails
+                    
+                    # Score entry setup (entry quality only - direction already determined)
+                    resistance_with_type = {**resistance, "setup_type": "resistance_level"}
+                    entry_result = self._score_entry_setup(
+                        entry_price=entry_price,
                         setup_type="resistance_level",
-                        level_data=resistance,
+                        direction="SHORT",
                         unified_data=unified_data,
+                        level_data=resistance_with_type,
                         strategy=strategy,
                         config=config
                     )
                     
-                    if entry_data is None:
-                        continue  # Skip if entry determination failed
-                    
-                    entry_price = entry_data["entry_price"]  # Required (NO FALLBACKS)
-                    if entry_price is None or entry_price <= 0 or entry_price <= current_price:
-                        continue  # Skip if entry is invalid or unfillable
-                except Exception as e:
-                    logger.warning(f"⚠️ Entry price determination failed for resistance ${level_price:.2f}: {e}")
-                    continue  # Skip this level if determination fails
-                
-                # Evaluate as SHORT setup at resistance level (limit order above current price = fillable)
-                resistance_with_type = {**resistance, "setup_type": "resistance_level"}
-                # Pass entry_data to preserve entry_score and breakdown
-                setup_short = self._evaluate_complete_setup(
-                    entry_price=entry_price,
-                    setup_type="resistance_level",
-                    direction="SHORT",
-                    unified_data=unified_data,
-                    level_data=resistance_with_type,
-                    strategy=strategy,
-                    config=config,
-                    direction_result=None,  # Will be calculated contextually inside _evaluate_complete_setup
-                    entry_data=entry_data  # Pass entry data to avoid recalculation
-                )
-                if setup_short:
-                    all_setups.append(setup_short)
+                    if entry_result:
+                        setups.append({
+                            "entry_price": entry_price,
+                            "entry_score": entry_result["score"],  # Required (NO FALLBACKS)
+                            "entry_reasoning": entry_result["reasoning"],  # Required (NO FALLBACKS)
+                            "setup_type": "resistance_level",
+                            "level_data": resistance_with_type
+                        })
             
-            # NOTE: Breakout (LONG above resistance) and Breakdown (SHORT below support) entries
-            # are removed because they don't work with limit orders:
-            # - Breakout LONG above resistance: If current price is below resistance, a limit order
-            #   above resistance won't fill until price breaks through AND reaches that level (too late)
-            # - Breakdown SHORT below support: If current price is above support, a limit order
-            #   below support won't fill until price breaks down AND reaches that level (too late)
-            # 
-            # For breakout/breakdown strategies, we would need:
-            # - Stop-limit orders (not currently implemented)
-            # - Market orders (not using limit orders only)
-            # - Or wait for price to be AT the level before entering (would be support/resistance level entry, not breakout)
-            
-            logger.debug(f"📊 Generated {len(all_setups)} potential setups for {strategy}")
-            return all_setups
+            logger.debug(f"📊 Generated {len(setups)} entry setups for {direction} direction ({strategy} strategy)")
+            return setups
             
         except Exception as e:
-            logger.error(f"❌ Setup generation failed: {e}")
+            logger.error(f"❌ Setup generation for {direction} direction failed: {e}")
             return []
     
     def _determine_optimal_entry_price(
@@ -1889,171 +1719,6 @@ class PredictionEngine:
         except Exception as e:
             logger.error(f"❌ Optimal entry price determination failed: {e}")
             return None
-    
-    def _evaluate_complete_setup(
-        self,
-        entry_price: float,
-        setup_type: str,
-        direction: str,
-        unified_data: Dict[str, Any],
-        level_data: Optional[Dict[str, Any]],
-        strategy: str,
-        config: Dict[str, Any],
-        direction_result: Optional[Dict[str, Any]] = None,
-        entry_data: Optional[Dict[str, Any]] = None
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Evaluate a complete setup: entry quality + contextual direction support
-        
-        Combines entry scoring with contextual direction scoring to get total setup score.
-        Direction scoring is now contextual - considers entry proximity, strength, and alignment.
-        
-        Args:
-            direction_result: Optional pre-calculated direction result (for backward compatibility).
-                            If None, will calculate contextual direction score for this entry.
-        
-        Returns:
-            Dict with entry_price, direction, entry_score, direction_score, total_score, etc.
-        """
-        try:
-            # Calculate contextual direction score for this specific entry
-            # This considers entry proximity, level strength, and alignment with direction signals
-            if direction_result is None:
-                direction_result = self._score_direction_for_entry(
-                    unified_data=unified_data,
-                    strategy=strategy,
-                    entry_price=entry_price,
-                    entry_direction=direction,
-                    level_data=level_data
-                )
-            
-            if not direction_result:
-                return None
-            
-            # Use entry_score from entry_data if available (avoid recalculation)
-            # Otherwise calculate it
-            if entry_data and "entry_score" in entry_data:
-                entry_score = entry_data["entry_score"]  # Required (NO FALLBACKS)
-                entry_breakdown = entry_data["entry_breakdown"]  # Required (NO FALLBACKS)
-                # Still need reasoning, so calculate entry_result but use cached score
-                entry_result = self._score_entry_setup(
-                    entry_price=entry_price,
-                    setup_type=setup_type,
-                    direction=direction,
-                    unified_data=unified_data,
-                    level_data=level_data,
-                    strategy=strategy,
-                    config=config
-                )
-                entry_reasoning = entry_result["reasoning"] if entry_result and "reasoning" in entry_result else ""  # Optional field
-            else:
-                # Score entry quality (fallback if entry_data not provided)
-                entry_result = self._score_entry_setup(
-                    entry_price=entry_price,
-                    setup_type=setup_type,
-                    direction=direction,
-                    unified_data=unified_data,
-                    level_data=level_data,
-                    strategy=strategy,
-                    config=config
-                )
-                
-                if not entry_result:
-                    return None
-                
-                entry_score = entry_result["score"]  # Required (NO FALLBACKS)
-                entry_reasoning = entry_result["reasoning"]  # Required (NO FALLBACKS)
-                # Create entry_breakdown from level_data if not provided
-                level_power = level_data["power"] if level_data and "power" in level_data else 50.0
-                entry_breakdown = {
-                    "power": level_power,
-                    "proximity_factor": 1.0,  # Default, would need calculation
-                    "recency_factor": 1.0,   # Default, would need calculation
-                    "setup_type": setup_type
-                }
-            
-            # Get contextual direction score for this direction
-            long_score = direction_result["long_score"]  # Required (NO FALLBACKS)
-            short_score = direction_result["short_score"]  # Required (NO FALLBACKS)
-            base_long_score = direction_result["base_long_score"] if "base_long_score" in direction_result else long_score
-            base_short_score = direction_result["base_short_score"] if "base_short_score" in direction_result else short_score
-            
-            # Check if contextual factors were applied
-            proximity_factor = direction_result["proximity_factor"] if "proximity_factor" in direction_result else 1.0
-            strength_factor = direction_result["strength_factor"] if "strength_factor" in direction_result else 1.0
-            alignment_factor = direction_result["alignment_factor"] if "alignment_factor" in direction_result else 1.0
-            recency_factor = direction_result["recency_factor"] if "recency_factor" in direction_result else 1.0
-            
-            # Generate direction-specific reasoning with contextual information
-            if direction == "LONG":
-                direction_score = long_score
-                if abs(long_score - base_long_score) > 0.1:  # Contextual factors applied
-                    direction_reasoning = f"LONG signal (contextual: {long_score:.1f} vs base: {base_long_score:.1f}, SHORT: {short_score:.1f})"
-                else:
-                    direction_reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f})"
-            else:  # SHORT
-                direction_score = short_score
-                if abs(short_score - base_short_score) > 0.1:  # Contextual factors applied
-                    direction_reasoning = f"SHORT signal (contextual: {short_score:.1f} vs base: {base_short_score:.1f}, LONG: {long_score:.1f})"
-                else:
-                    direction_reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f})"
-            
-            # Log contextual factors if they significantly affected the score
-            if proximity_factor != 1.0 or strength_factor != 1.0 or alignment_factor != 1.0:
-                logger.debug(f"📊 Contextual direction factors for {direction} @ ${entry_price:.2f}: "
-                           f"proximity={proximity_factor:.2f}, strength={strength_factor:.2f}, alignment={alignment_factor:.2f}")
-            
-            # Normalize scores (both are on similar scales, but we can weight them)
-            # Get entry/direction weights from config (configurable for optimization)
-            # Entry score already includes SR score (50% weight) which considers all SR factors
-            # So the SR system's ranking is naturally respected through entry_score
-            entry_weight = TradingConfig.ENTRY_DIRECTION_WEIGHTS["entry"]
-            direction_weight = TradingConfig.ENTRY_DIRECTION_WEIGHTS["direction"]
-            
-            # Calculate total score (weighted combination)
-            # No artificial bonuses - SR score is already the primary factor in entry_score
-            total_score = (entry_score * entry_weight) + (direction_score * direction_weight)
-            
-            # Calculate score difference for confidence
-            score_diff = abs(long_score - short_score)
-            
-            # Build direction breakdown
-            direction_breakdown = {
-                "base_long_score": base_long_score,
-                "base_short_score": base_short_score,
-                "proximity_factor": proximity_factor,
-                "strength_factor": strength_factor,
-                "alignment_factor": alignment_factor,
-                "recency_factor": recency_factor,
-                "score_diff": score_diff,
-                "final_long_score": long_score,
-                "final_short_score": short_score
-            }
-            
-            return {
-                "entry_price": entry_price,
-                "direction": direction,
-                "setup_type": setup_type,
-                "entry_score": entry_score,
-                "direction_score": direction_score,
-                "total_score": total_score,
-                "entry_reasoning": entry_reasoning,
-                "direction_reasoning": direction_reasoning,
-                "long_score": long_score,
-                "short_score": short_score,
-                "score_diff": score_diff,
-                "entry_breakdown": entry_breakdown,
-                "direction_breakdown": direction_breakdown,
-                "level_data": level_data  # Include level_data for stop loss calculation
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Complete setup evaluation failed: {e}")
-            return None
-    
-    # DEPRECATED METHOD REMOVED (2026-01-12)
-    # Old _determine_entry_price method deleted (117 lines of dead code)
-    # Reason: Never called, marked DEPRECATED, replaced by _generate_all_setups()
     
     def _calculate_stop_and_target(
         self,

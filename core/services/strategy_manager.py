@@ -30,9 +30,14 @@ class StrategyManager:
     4. Validate strategy appropriateness for current conditions
     """
     
-    def __init__(self, config: TradingConfig):
-        self.config = config
-        self.strategy_configs = config.STRATEGY_CONFIGS
+    def __init__(self, config: TradingConfig = None):
+        # TradingConfig is a class with static attributes, not an instance
+        # If config is provided, use it; otherwise use TradingConfig class directly
+        if config is None:
+            self.config = TradingConfig
+        else:
+            self.config = config
+        self.strategy_configs = self.config.STRATEGY_CONFIGS
         
         # Current strategy state
         self.current_strategy = "standard"
@@ -262,6 +267,17 @@ class StrategyManager:
         # Volatility spike intensity (for spike_hunting strategy)
         spike_intensity = self._safe_get(volatility_data, "spike_intensity", "NONE")
         
+        # Volume data - extract volume_trend_strength and volume_anomaly
+        volume_trend_strength_raw = self._safe_get(volume_data, "volume_trend_strength", 0.0)
+        try:
+            volume_trend_strength = float(volume_trend_strength_raw) if volume_trend_strength_raw is not None else 0.0
+        except (ValueError, TypeError):
+            volume_trend_strength = 0.0
+        
+        volume_anomaly = self._safe_get(volume_data, "volume_anomaly", {})
+        if not isinstance(volume_anomaly, dict):
+            volume_anomaly = {}
+        
         # Pattern data
         patterns_data = market_data["patterns"]  # Required (NO FALLBACKS)
         patterns_nested = self._safe_get(patterns_data, "patterns_nested", {})
@@ -433,7 +449,8 @@ class StrategyManager:
         
         # Volatility spike intensity check (uses config min_spike_severity: "HIGH")
         spike_intensity = data.get("spike_intensity", "NONE")
-        min_severity = self.config.get("spike_hunting", {}).get("min_spike_severity", "HIGH")
+        spike_config = self.strategy_configs.get("spike_hunting", {})
+        min_severity = spike_config.get("min_spike_severity", "HIGH") if isinstance(spike_config, dict) else "HIGH"
         
         # Severity hierarchy: NONE < MODERATE < HIGH < EXTREME
         severity_levels = {"NONE": 0, "MODERATE": 1, "HIGH": 2, "EXTREME": 3}
