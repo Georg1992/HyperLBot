@@ -156,7 +156,9 @@ class SRScorer:
             candles_5m = candles_data['5m']
             level_price = level.level
             level_type = level.level_type
-            tolerance = atr_5m * 0.5  # Consider level "touched" if within 0.5 ATR
+            # Use ATR multiplier from config (configurable for optimization)
+            from config.config import TradingConfig
+            tolerance = atr_5m * TradingConfig.ATR_MULTIPLIERS["touch_tolerance"]
             
             reversals = 0
             breakouts = 0
@@ -377,9 +379,9 @@ class SRScorer:
                 touch_score = self._calculate_touch_score(level.touches)
                 volume_score = self._calculate_volume_score(level, atr_5m)
                 
-                # Calculate power: weighted sum of inherent strength factors only
+                # Calculate power: weighted sum of inherent strength factors + psychological confluence
                 power = self._calculate_power_weighted(
-                    touch_score, reversal_probability, volume_score
+                    touch_score, reversal_probability, volume_score, level.level
                 )
                 
                 # Create new Level instance with power information
@@ -612,21 +614,53 @@ class SRScorer:
             logger.error(f"❌ Recency score calculation failed: {e}")
             return 50.0  # Default to neutral score on error
     
+    def _check_psychological_confluence(self, level_price: float) -> float:
+        """
+        Check if level aligns with major psychological round number
+        
+        Simple confluence check: If real S/R level is within $200 of major round number
+        ($10K intervals), give it a small power boost.
+        
+        Args:
+            level_price: Level price to check
+            
+        Returns:
+            Power boost (0-5 points)
+        """
+        try:
+            # Find nearest major round number ($10K intervals: $90K, $100K, $110K, etc.)
+            nearest_major = round(level_price / 10000) * 10000
+            distance = abs(level_price - nearest_major)
+            
+            # If within $200 of major psychological level, boost power
+            if distance < 200:
+                # Boost: 5 points at exact match, 0 points at $200 distance
+                # Linear decay: boost = 5 * (1 - distance/200)
+                boost = 5.0 * (1.0 - distance / 200.0)
+                return max(0.0, min(5.0, boost))
+            
+            return 0.0
+            
+        except Exception as e:
+            logger.error(f"❌ Psychological confluence check failed: {e}")
+            return 0.0
+    
     def _calculate_power_weighted(self, touch_score: float, reversal_probability: float,
-                                 volume_score: float) -> float:
+                                 volume_score: float, level_price: float = 0.0) -> float:
         """
         Calculate weighted power (pure strength only) - mathematically justified
         
         Mathematically justified approach: Direct linear combination of inherent strength factors
         with configurable weights. No arbitrary constants.
         
-        Formula: power = Σ(component_i * weight_i) for all i
+        Formula: power = Σ(component_i * weight_i) for all i + psychological_confluence_bonus
         where weights sum to 1.0
         
         Args:
             touch_score: Touch score (0-100) - based on touch count
             reversal_probability: Historical reversal probability (0-100) - from actual data
             volume_score: Volume score (0-100)
+            level_price: Level price for psychological confluence check (optional)
             
         Returns:
             Weighted power (0-100)
@@ -647,6 +681,12 @@ class SRScorer:
             if not (0.0 <= normalized_power <= 100.0):
                 logger.warning(f"⚠️ Power out of range: {normalized_power}")
                 normalized_power = max(0.0, min(100.0, normalized_power))
+            
+            # Add psychological confluence bonus (0-5 points)
+            if level_price > 0:
+                psych_boost = self._check_psychological_confluence(level_price)
+                if psych_boost > 0:
+                    normalized_power = min(100.0, normalized_power + psych_boost)
             
             return normalized_power
             
@@ -700,7 +740,8 @@ class SRScorer:
                     
                     # Use timeframe-specific ATR for tolerance (ATR% normalized)
                     tf_atr = atr_per_tf[htf_timeframe] if htf_timeframe in atr_per_tf else base_atr
-                    tf_tolerance = tf_atr * 0.5 * tf_weights[htf_timeframe]  # Required (NO FALLBACKS)
+                    # Use ATR multiplier from config
+                    tf_tolerance = tf_atr * TradingConfig.ATR_MULTIPLIERS["touch_tolerance"] * tf_weights[htf_timeframe]
                     
                     if distance <= tf_tolerance:
                         # Calculate weighted contribution

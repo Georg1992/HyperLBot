@@ -89,7 +89,9 @@ class StrategyManager:
             
             # Validate strategy compatibility (redundant check removed - scoring handles this)
             # Only check if confidence is too low (<0.3) - might indicate data issues
-            if recommendation.confidence < 0.3:
+            # Use confidence threshold from config (configurable for optimization)
+            from config.config import TradingConfig
+            if recommendation.confidence < TradingConfig.CONFIDENCE_THRESHOLDS["low"]:
                 logger.warning(f"⚠️ Low confidence ({recommendation.confidence:.2f}) for {optimal_strategy}, checking alternatives")
                 # Find next best strategy
                 optimal_strategy = self._find_next_best_strategy_by_score(market_data, optimal_strategy)
@@ -184,6 +186,8 @@ class StrategyManager:
         # Extended data (nested) - Required (NO FALLBACKS)
         trend_data = market_data["trend"]
         rsi_data = market_data["rsi"]
+        volatility_data = market_data["volatility"]  # Get full volatility data for spike_intensity
+        volume_data = market_data["volume"]  # Get full volume data for volume_trend_strength and volume_anomaly
         sr_data = market_data["support_resistance"]
         orderbook_data = market_data["orderbook_analysis"]
         pressure_data = market_data["pressure"]
@@ -247,9 +251,16 @@ class StrategyManager:
         except (ValueError, TypeError):
             funding_strength = 0.0
         
+        # Funding volatility for risk management
+        funding_volatility_data = self._safe_get(funding_data, "funding_volatility", {})
+        funding_volatility_category = self._safe_get(funding_volatility_data, "category", "UNKNOWN") if isinstance(funding_volatility_data, dict) else "UNKNOWN"
+        
         # Market conditions
         market_condition = self._safe_get(market_conditions, "condition", "NEUTRAL")
         risk_level = self._safe_get(market_conditions, "risk_level", "MEDIUM")
+        
+        # Volatility spike intensity (for spike_hunting strategy)
+        spike_intensity = self._safe_get(volatility_data, "spike_intensity", "NONE")
         
         # Pattern data
         patterns_data = market_data["patterns"]  # Required (NO FALLBACKS)
@@ -287,8 +298,13 @@ class StrategyManager:
             "pressure_ratio": pressure_ratio,
             "funding_direction": funding_direction,
             "funding_strength": funding_strength,
+            "funding_trend": funding_trend,  # Full trend data including rate_change
+            "funding_volatility_category": funding_volatility_category,  # For risk management
+            "volume_trend_strength": volume_trend_strength,  # For strategy selection
+            "volume_anomaly": volume_anomaly,  # For risk management
             "market_condition": market_condition,
             "risk_level": risk_level,
+            "spike_intensity": spike_intensity,  # Used by spike_hunting strategy
             # Pattern data for strategy selection
             "pattern_confidence": pattern_confidence,
             "reversal_patterns": reversal_patterns,
@@ -328,68 +344,85 @@ class StrategyManager:
         return scorer(data)
     
     def _score_scalping(self, data: Dict[str, Any]) -> tuple:
-        """Score scalping strategy - requires tight spreads, moderate volatility, good RSI"""
+        """Score scalping strategy - requires tight spreads, HIGH liquidity, MODERATE volatility, neutral RSI"""
         score = 0.0
         factors = []
         
-        # Volatility: MODERATE is ideal (30 points)
+        # Volatility: MODERATE is REQUIRED (40 points) - scalping needs predictable moves
         if data["volatility_category"] == "MODERATE":
-            score += 30.0
-            factors.append("Moderate volatility")
-        elif data["volatility_category"] in ["LOW", "HIGH"]:
-            score += 15.0
-            factors.append(f"{data['volatility_category']} volatility (suboptimal)")
+            score += 40.0
+            factors.append("Moderate volatility (ideal)")
+        elif data["volatility_category"] == "LOW":
+            score += 10.0
+            factors.append("Low volatility (marginal)")
         else:
-            score -= 20.0
-            factors.append(f"{data['volatility_category']} volatility (poor)")
+            score -= 30.0
+            factors.append(f"{data['volatility_category']} volatility (unsuitable for scalping)")
         
-        # RSI: 30-70 is ideal (25 points)
+        # RSI: 40-60 is ideal (MUCH STRICTER - neutral zone only) (25 points)
         try:
             rsi = float(data["rsi_value"]) if "rsi_value" in data and data["rsi_value"] is not None else 50.0
         except (ValueError, TypeError):
             rsi = 50.0
-        if 30 <= rsi <= 70:
+        if 40 <= rsi <= 60:
             score += 25.0
-            factors.append(f"RSI {rsi:.1f} (good)")
-        elif 20 <= rsi < 30 or 70 < rsi <= 80:
+            factors.append(f"RSI {rsi:.1f} (neutral - ideal)")
+        elif 35 <= rsi < 40 or 60 < rsi <= 65:
             score += 10.0
             factors.append(f"RSI {rsi:.1f} (acceptable)")
         else:
             score -= 15.0
-            factors.append(f"RSI {rsi:.1f} (extreme)")
+            factors.append(f"RSI {rsi:.1f} (directional - use trend/breakout)")
         
-        # Spread: Tight spread is critical (30 points)
+        # Spread: Tight spread is CRITICAL (35 points) - scalping lives on tight spreads
         spread = float(data["spread_pct"])  # Required (NO FALLBACKS) - will raise if invalid
-        if spread < 0.0001:  # <0.01%
-            score += 30.0
-            factors.append(f"Tight spread ({spread*100:.3f}%)")
-        elif spread < 0.0005:  # <0.05%
-            score += 15.0
-            factors.append(f"Moderate spread ({spread*100:.3f}%)")
+        # Use spread thresholds from config (configurable for optimization)
+        if spread < TradingConfig.SPREAD_THRESHOLDS["excellent"]:
+            score += 35.0
+            factors.append(f"Excellent spread ({spread*100:.3f}%)")
+        elif spread < TradingConfig.SPREAD_THRESHOLDS["good"]:
+            score += 10.0
+            factors.append(f"Moderate spread ({spread*100:.3f}%) - marginal")
         else:
-            score -= 25.0
-            factors.append(f"Wide spread ({spread*100:.3f}%) - HIGH SLIPPAGE RISK")
+            score -= 30.0
+            factors.append(f"Wide spread ({spread*100:.3f}%) - SCALPING IMPOSSIBLE")
         
-        # Volume: Need decent volume (15 points)
-        vol_cat = data["volume_category"]
-        if vol_cat in ["NORMAL", "HIGH", "VERY_HIGH"]:
-            score += 15.0
-            factors.append(f"{vol_cat} volume")
-        elif vol_cat == "LOW":
+        # Liquidity: HIGH liquidity REQUIRED (20 points) - scalping needs immediate fills
+        liquidity_score = float(data["liquidity_score"])  # Required (NO FALLBACKS)
+        if liquidity_score >= 0.7:
+            score += 20.0
+            factors.append(f"High liquidity (score: {liquidity_score:.2f})")
+        elif liquidity_score >= 0.5:
             score += 5.0
-            factors.append("Low volume")
+            factors.append(f"Moderate liquidity (score: {liquidity_score:.2f}) - marginal")
         else:
-            score -= 10.0
+            score -= 20.0
+            factors.append(f"Low liquidity (score: {liquidity_score:.2f}) - RISKY")
+        
+        # Volume: HIGH volume REQUIRED (15 points)
+        vol_cat = data["volume_category"]
+        if vol_cat in ["HIGH", "VERY_HIGH"]:
+            score += 15.0
+            factors.append(f"{vol_cat} volume (ideal)")
+        elif vol_cat == "NORMAL":
+            score += 5.0
+            factors.append("Normal volume (marginal)")
+        else:
+            score -= 15.0
             factors.append(f"{vol_cat} volume (insufficient)")
         
-        # RSI momentum: Neutral/positive momentum (10 points)
-        rsi_momentum = float(data["rsi_momentum"])  # Required (NO FALLBACKS) - will raise if invalid
-        if -0.1 <= rsi_momentum <= 0.2:
-            score += 10.0
-            factors.append("Stable RSI momentum")
+        # Trend: Weak/sideways preferred (15 points) - scalping needs range-bound conditions
+        if data["trend_direction"] == "SIDEWAYS":
+            score += 15.0
+            factors.append("Sideways trend (ideal for scalping)")
         else:
-            score -= 5.0
-            factors.append("Volatile RSI momentum")
+            trend_strength = float(data["trend_strength"])  # Required (NO FALLBACKS)
+            if trend_strength < 0.5:
+                score += 5.0
+                factors.append(f"Weak {data['trend_direction']} trend (acceptable)")
+            else:
+                score -= 15.0
+                factors.append(f"Strong {data['trend_direction']} trend (use trend_following)")
         
         return max(0.0, score), factors
     
@@ -398,17 +431,38 @@ class StrategyManager:
         score = 0.0
         factors = []
         
-        # Volatility: EXTREME is required (40 points)
+        # Volatility spike intensity check (uses config min_spike_severity: "HIGH")
+        spike_intensity = data.get("spike_intensity", "NONE")
+        min_severity = self.config.get("spike_hunting", {}).get("min_spike_severity", "HIGH")
+        
+        # Severity hierarchy: NONE < MODERATE < HIGH < EXTREME
+        severity_levels = {"NONE": 0, "MODERATE": 1, "HIGH": 2, "EXTREME": 3}
+        spike_level = severity_levels.get(spike_intensity, 0)
+        min_level = severity_levels.get(min_severity, 2)
+        
         vol_5m = float(data["volatility_5m"])  # Required (NO FALLBACKS) - will raise if invalid
-        if vol_5m > 0.05 or data["volatility_category"] == "EXTREME":
-            score += 40.0
-            factors.append(f"Extreme volatility ({vol_5m*100:.2f}%)")
+        
+        # Volatility: Check spike intensity first, then fallback to category/value
+        if spike_level >= min_level:
+            if spike_intensity == "EXTREME":
+                score += 40.0
+                factors.append(f"Extreme volatility spike ({vol_5m*100:.2f}%)")
+            elif spike_intensity == "HIGH":
+                score += 35.0
+                factors.append(f"High volatility spike ({vol_5m*100:.2f}%)")
+            else:  # MODERATE
+                score += 25.0
+                factors.append(f"Moderate volatility spike ({vol_5m*100:.2f}%)")
+        elif vol_5m > 0.05 or data["volatility_category"] == "EXTREME":
+            # Fallback: high value or EXTREME category even without spike detection
+            score += 30.0
+            factors.append(f"Extreme volatility ({vol_5m*100:.2f}%) - no spike detected")
         elif data["volatility_category"] in ["HIGH", "VERY_HIGH"]:
-            score += 20.0
-            factors.append(f"High volatility ({vol_5m*100:.2f}%)")
+            score += 15.0
+            factors.append(f"High volatility ({vol_5m*100:.2f}%) - insufficient spike")
         else:
             score -= 30.0
-            factors.append(f"{data['volatility_category']} volatility (insufficient)")
+            factors.append(f"{data['volatility_category']} volatility (insufficient for spike hunting)")
         
         # Volume: HIGH/VERY_HIGH required (30 points)
         vol_cat = data["volume_category"]
@@ -429,6 +483,15 @@ class StrategyManager:
         else:
             score -= 5.0
             factors.append(f"{data['risk_level']} risk")
+        
+        # Funding volatility risk check: High funding volatility indicates market instability
+        funding_volatility_cat = data.get("funding_volatility_category", "UNKNOWN")
+        if funding_volatility_cat == "HIGH":
+            score -= 15.0
+            factors.append("High funding volatility (market instability - avoid spike hunting)")
+        elif funding_volatility_cat == "MEDIUM":
+            score -= 5.0
+            factors.append("Moderate funding volatility (increased risk)")
         
         return max(0.0, score), factors
     
@@ -470,32 +533,65 @@ class StrategyManager:
             score += 5.0
             factors.append("No continuation patterns")
         
-        # Funding: Alignment with trend (20 points)
+        # Funding: Alignment with trend (20 points) + Rate change momentum (up to 5 points)
         funding_dir = data["funding_direction"]
+        funding_trend = data.get("funding_trend", {})
+        funding_rate_change = funding_trend.get("rate_change", 0.0) if isinstance(funding_trend, dict) else 0.0
+        
+        funding_score = 0.0
         if data["trend_direction"] == "BULLISH" and funding_dir == "INCREASING":
-            score += 20.0
+            funding_score = 20.0
             factors.append("Funding aligns with bullish trend")
         elif data["trend_direction"] == "BEARISH" and funding_dir == "DECREASING":
-            score += 20.0
+            funding_score = 20.0
             factors.append("Funding aligns with bearish trend")
         elif funding_dir == "STABLE":
-            score += 10.0
+            funding_score = 10.0
             factors.append("Stable funding")
         else:
-            score -= 15.0
+            funding_score = -15.0
             factors.append(f"Funding misaligned ({funding_dir})")
         
-        # Volume: High volume confirms trend (15 points)
+        # Funding rate change momentum: Strong rate change confirms trend
+        if data["trend_direction"] == "BULLISH" and funding_rate_change > 0.0001:  # Increasing funding (bullish)
+            funding_score += 5.0
+            factors.append(f"Funding rate increasing ({funding_rate_change*10000:.2f} bps)")
+        elif data["trend_direction"] == "BEARISH" and funding_rate_change < -0.0001:  # Decreasing funding (bearish)
+            funding_score += 5.0
+            factors.append(f"Funding rate decreasing ({funding_rate_change*10000:.2f} bps)")
+        elif abs(funding_rate_change) < 0.00005:  # Very stable funding
+            funding_score += 2.0
+            factors.append("Funding rate stable")
+        
+        score += funding_score
+        
+        # Volume: High volume confirms trend (15 points) + Volume trend strength bonus (up to 10 points)
         vol_cat = data["volume_category"]
+        volume_trend_strength = data.get("volume_trend_strength", 0.0)  # Strength of volume trend (0.0-1.0)
+        
+        volume_score = 0.0
         if vol_cat in ["HIGH", "VERY_HIGH", "EXTREME"]:
-            score += 15.0
+            volume_score = 15.0
             factors.append(f"{vol_cat} volume confirms trend")
         elif vol_cat == "NORMAL":
-            score += 10.0
+            volume_score = 10.0
             factors.append("Normal volume")
         else:
-            score -= 10.0
+            volume_score = -10.0
             factors.append(f"{vol_cat} volume (weak)")
+        
+        # Volume trend strength bonus: Strong volume trend increases confidence
+        if volume_trend_strength > 0.7:  # Very strong volume trend
+            volume_score += 10.0
+            factors.append(f"Very strong volume trend (strength: {volume_trend_strength:.2f})")
+        elif volume_trend_strength > 0.5:  # Moderate volume trend
+            volume_score += 5.0
+            factors.append(f"Moderate volume trend (strength: {volume_trend_strength:.2f})")
+        elif volume_trend_strength < 0.3:  # Weak volume trend
+            volume_score -= 5.0
+            factors.append(f"Weak volume trend (strength: {volume_trend_strength:.2f})")
+        
+        score += volume_score
         
         # Volatility: Moderate to high (10 points)
         if data["volatility_category"] in ["MODERATE", "HIGH"]:
@@ -772,10 +868,11 @@ class StrategyManager:
             spread = float(data["spread_pct"])
         except (ValueError, TypeError):
             spread = 1.0
-        if spread < 0.001:  # <0.1%
+        # Use spread thresholds from config
+        if spread < TradingConfig.SPREAD_THRESHOLDS["acceptable"]:
             score += 15.0
             factors.append(f"Excellent spread ({spread*100:.3f}%)")
-        elif spread < 0.005:  # <0.5%
+        elif spread < TradingConfig.SPREAD_THRESHOLDS["poor"]:
             score += 10.0
             factors.append(f"Good spread ({spread*100:.3f}%)")
         else:
@@ -861,9 +958,10 @@ class StrategyManager:
     
     def _build_reasoning(self, strategy: str, factors: List[str], confidence: float) -> str:
         """Build human-readable reasoning from factors"""
-        if confidence >= 0.7:
+        # Use confidence thresholds from config
+        if confidence >= TradingConfig.CONFIDENCE_THRESHOLDS["high"]:
             conf_level = "high"
-        elif confidence >= 0.5:
+        elif confidence >= TradingConfig.CONFIDENCE_THRESHOLDS["medium"]:
             conf_level = "moderate"
         else:
             conf_level = "low"

@@ -72,8 +72,6 @@ class PatternRecognitionEngine:
             
             current_time = time.time()
             
-            logger.debug(f"📊 Performing fresh pattern analysis on {len(candles)} candles")
-            
             # Extract price data
             prices = self._extract_price_data(candles)
             
@@ -96,6 +94,9 @@ class PatternRecognitionEngine:
             
             # Filter expired patterns
             patterns = self._filter_expired_patterns(patterns, current_time)
+            
+            # Deduplicate overlapping patterns (keep highest confidence)
+            patterns = self._deduplicate_overlapping_patterns(patterns)
             
             # Clean up expired patterns from history
             self._cleanup_expired_pattern_history(current_time)
@@ -149,7 +150,7 @@ class PatternRecognitionEngine:
         }
     
     def _calculate_pattern_birth_times(self, patterns: Dict[str, List[Dict[str, Any]]], candles: List[Dict[str, Any]], current_time: float) -> Dict[str, List[Dict[str, Any]]]:
-        """Calculate pattern birth times using actual pattern indices"""
+        """Calculate pattern birth times using END index (most recent confirmation) not START index"""
         try:
             if not candles:
                 return patterns
@@ -157,10 +158,15 @@ class PatternRecognitionEngine:
             for category, pattern_list in patterns.items():
                 for pattern in pattern_list:
                     try:
-                        # Use actual pattern indices to get timestamp
-                        start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
-                        if start_idx < len(candles):
-                            pattern_timestamp = candles[start_idx]["timestamp"] if "timestamp" in candles[start_idx] else current_time
+                        # Use END index (most recent confirmation) instead of START index
+                        # This prevents patterns from being "born old" when they span many candles
+                        end_idx = pattern["end_candle_index"] if "end_candle_index" in pattern else len(candles) - 1
+                        
+                        # Clamp to valid range
+                        end_idx = max(0, min(end_idx, len(candles) - 1))
+                        
+                        if end_idx < len(candles):
+                            pattern_timestamp = candles[end_idx]["timestamp"] if "timestamp" in candles[end_idx] else current_time
                             
                             # Handle both seconds and milliseconds timestamps
                             # If timestamp is > 1e10, it's in milliseconds, convert to seconds
@@ -177,8 +183,6 @@ class PatternRecognitionEngine:
                                 pattern["age_minutes"] = 0
                             else:
                                 pattern["age_minutes"] = age_minutes
-                                p_name = pattern["pattern"] if "pattern" in pattern else "unknown"
-                                logger.debug(f"🕐 Pattern {p_name}: age: {age_minutes:.1f}m")
                         else:
                             pattern["age_minutes"] = 0
                     except Exception as e:
@@ -221,9 +225,6 @@ class PatternRecognitionEngine:
                     
                     if age_minutes <= max_age:
                         filtered_list.append(pattern)
-                        logger.debug(f"⏰ Pattern VALID: {pattern_name} (age: {age_minutes:.1f}m / max: {max_age}m, confidence: {pattern['confidence'] if 'confidence' in pattern else 0:.1%})")
-                    else:
-                        logger.debug(f"⏰ Pattern EXPIRED: {pattern_name} (age: {age_minutes:.1f}m / max: {max_age}m)")
                 
                 filtered_patterns[category] = filtered_list
             
@@ -251,6 +252,141 @@ class PatternRecognitionEngine:
                 
         except Exception as e:
             logger.error(f"❌ Pattern history cleanup failed: {e}")
+    
+    def _deduplicate_overlapping_patterns(self, patterns: Dict[str, List[Dict[str, Any]]]) -> Dict[str, List[Dict[str, Any]]]:
+        """
+        Remove overlapping patterns, keeping most important pattern based on:
+        1. Pattern type priority (reversal > continuation > candlestick)
+        2. Confidence level
+        3. Pattern clarity (price range coverage)
+        Patterns overlap if they have >80% price range overlap
+        """
+        try:
+            # Flatten all patterns for comparison
+            all_patterns = []
+            for category, pattern_list in patterns.items():
+                for pattern in pattern_list:
+                    pattern["_category"] = category  # Track original category
+                    all_patterns.append(pattern)
+            
+            # Sort by importance score (highest first)
+            all_patterns.sort(key=lambda p: self._calculate_pattern_importance(p), reverse=True)
+            
+            # Keep track of patterns to keep
+            deduplicated = []
+            
+            for pattern in all_patterns:
+                # Check if this pattern significantly overlaps with any kept pattern
+                overlaps = False
+                for kept_pattern in deduplicated:
+                    if self._patterns_overlap(pattern, kept_pattern):
+                        overlaps = True
+                        break
+                
+                if not overlaps:
+                    deduplicated.append(pattern)
+            
+            # Re-organize into categories
+            result = {category: [] for category in patterns.keys()}
+            for pattern in deduplicated:
+                category = pattern.pop("_category")  # Remove temp field
+                result[category].append(pattern)
+            
+            original_count = sum(len(v) for v in patterns.values())
+            deduplicated_count = sum(len(v) for v in result.values())
+            if original_count != deduplicated_count:
+                logger.info(f"🔄 Deduplicated patterns: {original_count} → {deduplicated_count} (removed {original_count - deduplicated_count} overlapping)")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to deduplicate patterns: {e}")
+            return patterns
+    
+    def _calculate_pattern_importance(self, pattern: Dict[str, Any]) -> float:
+        """
+        Calculate pattern importance score using research-based best practices:
+        
+        1. Pattern confidence (0-100 pts) - Base quality metric
+        2. Pattern clarity bonus (0-20 pts) - How well-defined the pattern is
+        3. Recency bonus (0-10 pts) - Newer patterns slightly preferred
+        
+        NOTE: Pattern TYPE priorities should be strategy-specific:
+        - For SCALPING: Favor continuation patterns in trends
+        - For SWING: Favor reversal patterns at support/resistance
+        - For BREAKOUT: Favor triangles/wedges near consolidation
+        
+        Currently using NEUTRAL weighting (confidence + clarity + recency only)
+        to avoid biasing toward specific pattern types without historical data.
+        
+        TODO: Implement historical pattern performance tracking to data-drive priorities
+        """
+        try:
+            pattern_name = pattern.get("pattern", "").upper()
+            
+            # 1. Confidence score (0-100 pts) - Most important factor
+            confidence = pattern.get("confidence", 0.5)
+            confidence_score = confidence * 100.0
+            
+            # 2. Pattern clarity bonus (0-20 pts)
+            # Patterns with wider price ranges are generally clearer/stronger
+            pattern_high = pattern.get("pattern_high", 0)
+            pattern_low = pattern.get("pattern_low", 0)
+            price_range = pattern_high - pattern_low
+            
+            # Normalize to typical BTC volatility (assume ~1% range for reference)
+            avg_price = (pattern_high + pattern_low) / 2.0 if pattern_high and pattern_low else 1.0
+            range_pct = (price_range / avg_price) if avg_price > 0 else 0.0
+            
+            # Clarity bonus: 0 pts for <0.5% range, 20 pts for >2% range
+            clarity_bonus = min(20.0, max(0.0, (range_pct - 0.005) / 0.015 * 20.0))
+            
+            # 3. Recency bonus (0-10 pts)
+            # Fresher patterns slightly preferred (market conditions change)
+            age_minutes = pattern.get("age_minutes", 0)
+            recency_bonus = max(0, 10 - (age_minutes / 3.0))  # 10 pts at 0min, 0 pts at 30min
+            
+            # Combined score
+            importance = confidence_score + clarity_bonus + recency_bonus
+            
+            return importance
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to calculate pattern importance: {e}")
+            return 0.0
+    
+    def _patterns_overlap(self, pattern1: Dict[str, Any], pattern2: Dict[str, Any]) -> bool:
+        """Check if two patterns significantly overlap (>80% price range overlap)"""
+        try:
+            # Get price ranges
+            high1 = pattern1.get("pattern_high", 0)
+            low1 = pattern1.get("pattern_low", 0)
+            high2 = pattern2.get("pattern_high", 0)
+            low2 = pattern2.get("pattern_low", 0)
+            
+            if not all([high1, low1, high2, low2]):
+                return False
+            
+            # Calculate overlap
+            overlap_high = min(high1, high2)
+            overlap_low = max(low1, low2)
+            
+            if overlap_low >= overlap_high:
+                return False  # No overlap
+            
+            overlap_range = overlap_high - overlap_low
+            range1 = high1 - low1
+            range2 = high2 - low2
+            
+            # Check if overlap is >80% of either pattern's range
+            overlap_pct1 = overlap_range / range1 if range1 > 0 else 0
+            overlap_pct2 = overlap_range / range2 if range2 > 0 else 0
+            
+            return max(overlap_pct1, overlap_pct2) > 0.8
+            
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to check pattern overlap: {e}")
+            return False
     
     def _get_pattern_key(self, pattern: Dict[str, Any]) -> str:
         """Generate unique key for pattern tracking"""
@@ -295,4 +431,4 @@ class PatternRecognitionEngine:
         Note: This method is kept for compatibility, but caching is now handled
         by CentralizedCache system. Call CentralizedCache.invalidate() instead.
         """
-        logger.debug("🔄 Pattern analysis cache invalidation requested (handled by CentralizedCache)")
+        pass

@@ -21,6 +21,7 @@ class VolatilityAnalyzer:
     def calculate_weighted_volatility(self, candles: List[Dict]) -> Dict[str, Any]:
         """
         Calculate weighted volatility with emphasis on recent candles.
+        Uses shorter window (last 10 candles) for faster change detection.
         
         Args:
             candles: List of candle dictionaries
@@ -32,14 +33,16 @@ class VolatilityAnalyzer:
             if len(candles) < 1:
                 return {"weighted_volatility": 0.0, "max_volatility": 0.0, "current_volatility": 0.0}
             
+            # Use last 15 candles (balanced: faster response but keeps trend context)
+            recent_candles = candles[-15:] if len(candles) >= 15 else candles
             weighted_volatilities = []
             total_weight = 0
             
-            for i, candle in enumerate(candles):
+            for i, candle in enumerate(recent_candles):
                 if candle["close"] > 0 and candle["high"] > 0 and candle["low"] > 0:
                     range_vol = (candle["high"] - candle["low"]) / candle["close"]
-                    # Give exponentially more weight to recent candles
-                    weight = (i + 1) ** 2.5
+                    # Give exponentially more weight to recent candles (moderate increase for faster response)
+                    weight = (i + 1) ** 2.7  # Slightly increased from 2.5 to 2.7 for better recent emphasis
                     weighted_volatilities.append(range_vol * weight)
                     total_weight += weight
             
@@ -49,8 +52,8 @@ class VolatilityAnalyzer:
             # Calculate weighted average
             weighted_avg_volatility = sum(weighted_volatilities) / total_weight
             
-            # Calculate maximum volatility
-            max_volatility = max(weighted_volatilities) / max(weight for weight in [(i + 1) ** 2.5 for i in range(len(candles))])
+            # Calculate maximum volatility from recent window
+            max_volatility = max(weighted_volatilities) / max(weight for weight in [(i + 1) ** 2.7 for i in range(len(recent_candles))])
             
             # Current candle volatility (most recent)
             current_volatility = 0.0
@@ -120,18 +123,16 @@ class VolatilityAnalyzer:
         """
         try:
             if is_spike:
-                # During spikes, prioritize current volatility
-                primary_volatility = (current_vol * 0.98) + (weighted_vol * 0.02)
-                logger.debug(f"🚨 SPIKE DETECTED: prioritizing current volatility {current_vol:.6f}")
+                # During spikes, prioritize current volatility almost entirely
+                primary_volatility = (current_vol * 0.99) + (weighted_vol * 0.01)
             else:
-                # Normal conditions: balance current and historical
-                primary_volatility = (current_vol * 0.95) + (weighted_vol * 0.05)
-                logger.debug(f"🔍 Normal conditions: current={current_vol:.6f}, weighted={weighted_vol:.6f}")
+                # Normal conditions: slightly increased current weight for faster response
+                # 96% current (was 95%) - balanced: responsive but not too reactive to noise
+                primary_volatility = (current_vol * 0.96) + (weighted_vol * 0.04)
             
             # Use the higher of primary or basic volatility
             final_volatility = max(primary_volatility, basic_vol)
             
-            logger.debug(f"🔍 Final volatility: {final_volatility:.6f} ({final_volatility*100:.4f}%)")
             return final_volatility
             
         except Exception as e:

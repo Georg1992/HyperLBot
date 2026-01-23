@@ -87,6 +87,7 @@ class VolatilityCalculator(BaseCalculator):
                 raise ValueError(f"Insufficient candles for volatility calculation: {len(candles)} < 1 - NO FALLBACKS")
             
             # 1. Get basic volatility from data provider - NO FALLBACKS
+            # Use 15 minutes (3 candles) - balanced: responsive but not too noisy
             basic_vol_data = self._data_provider.calculate_basic_volatility(candles, 15)
             
             # 2. Calculate weighted volatility from analyzer
@@ -107,45 +108,16 @@ class VolatilityCalculator(BaseCalculator):
             # 5. Classify volatility level
             classification = self._classifier.classify_volatility_level(primary_volatility)
             
-            # 6. Determine trading suitability
-            suitability = self._classifier.determine_trading_suitability(
-                primary_volatility, 
-                classification["level"] if "level" in classification else "UNKNOWN"
-            )
-            
-            # 7. Get recommendations
-            recommendations = self._classifier.get_volatility_recommendations(
-                primary_volatility,
-                classification["level"] if "level" in classification else "UNKNOWN"
-            )
-            
-            # 8. Format results
+            # 6. Format results - only include fields that are actually used
             volatility_level = classification["level"] if "level" in classification else "UNKNOWN"
             result = {
                 "volatility": primary_volatility,
-                "volatility_5m": primary_volatility,  # Add standardized key for compatibility
-                "volatility_percentage": primary_volatility * 100,
-                "level": volatility_level,
-                "category": volatility_level,  # Standardized key for momentum_detector (NO FALLBACKS)
-                "volatility_category": volatility_level,  # Standardized key for compatibility
-                "description": classification["description"] if "description" in classification else "",
-                "suitable_for_trading": suitability["suitable_for_trading"] if "suitable_for_trading" in suitability else False,
-                "risk_level": suitability["risk_level"] if "risk_level" in suitability else "UNKNOWN",
-                "recommendations": recommendations["recommendations"] if "recommendations" in recommendations else [],
-                "analysis_details": {
-                    "basic_volatility": basic_vol_data["volatility"] if "volatility" in basic_vol_data else 0.0,
-                    "weighted_volatility": weighted_vol_data["weighted_volatility"] if "weighted_volatility" in weighted_vol_data else 0.0,
-                    "current_volatility": current_vol,
-                    "is_spike": spike_data["is_spike"] if "is_spike" in spike_data else False,
-                    "spike_intensity": spike_data["spike_intensity"] if "spike_intensity" in spike_data else "NONE",
-                    "price_range": basic_vol_data["range"] if "range" in basic_vol_data else 0.0,
-                    "avg_price": basic_vol_data["avg_price"] if "avg_price" in basic_vol_data else 0.0,
-                    "candle_count": basic_vol_data["candle_count"] if "candle_count" in basic_vol_data else 0
-                },
-                "thresholds": classification["thresholds"] if "thresholds" in classification else {},
-                "timestamp": time.time(),
-                "timeframe": timeframe,
-                "strategy": strategy
+                "volatility_5m": primary_volatility,  # Used by strategy_manager, consolidation_tracker
+                "volatility_percentage": primary_volatility * 100,  # Used to calculate volatility_5m
+                "level": volatility_level,  # Used by market_data_service
+                "category": volatility_level,  # Used by momentum_detector, consolidation_tracker
+                "volatility_category": volatility_level,  # Used by strategy_manager, market_conditions_analyzer
+                "spike_intensity": spike_data["spike_intensity"] if "spike_intensity" in spike_data else "NONE",  # Used by spike_hunting strategy
             }
             
             logger.info(f"📊 Volatility analysis complete: {classification['level'] if 'level' in classification else 'UNKNOWN'} ({primary_volatility*100:.4f}%)")
@@ -161,14 +133,11 @@ class VolatilityCalculator(BaseCalculator):
         return {
             **base_result,
             "volatility": 0.0,
+            "volatility_5m": 0.0,
             "volatility_percentage": 0.0,
             "level": "ERROR",
-            "description": f"Calculation failed: {error_message}",
-            "suitable_for_trading": False,
-            "risk_level": "UNKNOWN",
-            "recommendations": ["Analysis failed - use caution"],
-            "analysis_details": {},
-            "thresholds": {}
+            "category": "ERROR",
+            "volatility_category": "ERROR"
         }
     
     def invalidate_cache(self):

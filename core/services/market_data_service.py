@@ -617,6 +617,22 @@ class MarketDataService:
             logger.error(f"❌ Failed to get funding analysis: {e}")
             raise
     
+    def get_whale_data(self) -> Dict[str, Any]:
+        """Get whale analytics data"""
+        try:
+            # Use WhaleAnalysisCalculator to get fresh whale data
+            from core.calculations.whale_analysis_calculator import WhaleAnalysisCalculator
+            whale_calculator = WhaleAnalysisCalculator()
+            whale_result = whale_calculator.get_latest_analysis()
+            
+            # Store result for future use
+            self.update_analysis_data("whale_analytics", whale_result)
+            return whale_result
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to get whale data: {e}")
+            # Return empty data instead of raising - whale data is optional
+            return {}
+    
     def get_orderbook_analysis(self) -> Dict[str, Any]:
         """Get orderbook analysis data"""
         try:

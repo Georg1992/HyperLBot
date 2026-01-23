@@ -106,11 +106,19 @@ class MarketConditionsAnalyzer:
                                volume_category: str, historical_context: Dict[str, Any],
                                candles_1d) -> Dict[str, Any]:
         """Run all condition analyses - follows SRP"""
+        # Fetch whale data from data provider if available
+        whale_data = None
+        if self._data_provider:
+            try:
+                whale_data = self._data_provider.get_whale_data()
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to fetch whale data: {e}")
+        
         return {
             "volatility": self.volatility_analyzer.analyze_volatility_conditions(volatility_5m, volatility_category),
             "volume": self.volume_analyzer.analyze_volume_conditions(volume_category),
             "sentiment": self.sentiment_analyzer.analyze_sentiment_conditions(),
-            "whale": self.whale_analyzer.analyze_whale_conditions(),
+            "whale": self.whale_analyzer.analyze_whale_conditions(whale_data),
             "news": self._analyze_rss_news_conditions(),
             "rsi": self.rsi_analyzer.analyze_rsi_conditions(rsi),
             "trend": self._analyze_trend_conditions(trend),
@@ -750,6 +758,9 @@ class MarketConditionsAnalyzer:
     def _calculate_dynamic_rsi_thresholds(self, volatility_5m: float, volatility_category: str) -> Dict[str, float]:
         """Calculate dynamic RSI thresholds based on market conditions"""
         try:
+            # Use volatility adjustment from config (configurable for optimization)
+            from config.config import TradingConfig
+            
             # Use passed parameters (already fetched once in analyze_trading_conditions - NO REDUNDANCY)
             
             # Base thresholds (standard RSI levels)
@@ -767,9 +778,9 @@ class MarketConditionsAnalyzer:
             elif volatility_category == "LOW":
                 volatility_adjustment = -2.5
             elif volatility_category == "HIGH":
-                volatility_adjustment = 2.5  # Wider thresholds in high volatility
+                volatility_adjustment = TradingConfig.VOLATILITY_ADJUSTMENTS["extreme_moderate"]
             elif volatility_category == "EXTREME":
-                volatility_adjustment = 5.0  # Much wider thresholds in extreme volatility
+                volatility_adjustment = TradingConfig.VOLATILITY_ADJUSTMENTS["extreme_wide"]
             
             # Apply volatility adjustment
             neutral_low = max(30.0, min(60.0, base_neutral_low + volatility_adjustment))
@@ -843,6 +854,9 @@ class MarketConditionsAnalyzer:
     def _calculate_dynamic_sr_proximity_threshold(self, volatility_5m: float, volatility_category: str) -> float:
         """Calculate dynamic S/R proximity threshold based on market volatility"""
         try:
+            # Use volatility multipliers from config (configurable for optimization)
+            from config.config import TradingConfig
+            
             # Use passed parameters (already fetched once in analyze_trading_conditions - NO REDUNDANCY)
             
             # Base threshold (0.5%)
@@ -851,13 +865,13 @@ class MarketConditionsAnalyzer:
             # Adjust threshold based on volatility
             # Higher volatility = wider threshold, lower volatility = tighter threshold
             if volatility_category == "VERY_LOW":
-                volatility_multiplier = 0.5  # Tighter threshold in low volatility
+                volatility_multiplier = TradingConfig.VOLATILITY_ADJUSTMENTS["low"]
             elif volatility_category == "LOW":
                 volatility_multiplier = 0.7
             elif volatility_category == "MODERATE":
-                volatility_multiplier = 1.0  # Standard threshold
+                volatility_multiplier = TradingConfig.VOLATILITY_ADJUSTMENTS["normal"]
             elif volatility_category == "HIGH":
-                volatility_multiplier = 1.5  # Wider threshold in high volatility
+                volatility_multiplier = TradingConfig.VOLATILITY_ADJUSTMENTS["high"]
             elif volatility_category == "EXTREME":
                 volatility_multiplier = 2.0  # Much wider threshold in extreme volatility
             else:

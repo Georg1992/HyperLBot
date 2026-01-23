@@ -357,7 +357,8 @@ class SystemInitializer:
             market_data_service.register_analysis_module("pressure", create_pressure_calculator("BTC"))
             
             # Register analysis modules with new factory functions
-            market_data_service.register_analysis_module("market_conditions", create_market_conditions_analyzer())
+            # Pass market_data_service as data_provider for whale data access
+            market_data_service.register_analysis_module("market_conditions", create_market_conditions_analyzer(data_provider=market_data_service))
             market_data_service.register_analysis_module("pattern_recognition", PatternRecognitionEngine())
             market_data_service.register_analysis_module("funding_rate", create_funding_rate_analyzer())
             market_data_service.register_analysis_module("orderbook", create_orderbook_analyzer())
@@ -369,8 +370,23 @@ class SystemInitializer:
             
             logger.info("📊 Analysis modules registered with MarketDataService using new factory functions")
             
+            # Verify critical modules are registered
+            try:
+                registered_modules = list(market_data_service._analysis_modules.keys())
+                logger.info(f"✅ Registered modules: {', '.join(registered_modules)}")
+                
+                if "rsi_calculator" not in registered_modules:
+                    raise ValueError("CRITICAL: rsi_calculator module registration failed")
+                if "pattern_recognition" not in registered_modules:
+                    raise ValueError("CRITICAL: pattern_recognition module registration failed")
+            except AttributeError:
+                raise ValueError("CRITICAL: market_data_service._analysis_modules not accessible")
+            
         except Exception as e:
             logger.error(f"❌ Failed to register analysis modules: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise  # Re-raise to prevent silent failures
     
 
 # Global system initializer instance

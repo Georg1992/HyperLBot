@@ -231,10 +231,7 @@ class RSICalculator:
                 "value": self.current_rsi,  # Alias for momentum_detector compatibility (NO FALLBACKS)
                 "rsi_trend": self._get_rsi_trend(self.current_rsi),
                 "rsi_signal": self._get_rsi_signal(self.current_rsi),
-                "rsi_momentum": self._calculate_rsi_momentum(),
-                "baseline_rsi": self.baseline_rsi,
-                "initialized": True,
-                "timestamp": time.time()
+                "rsi_momentum": self._calculate_rsi_momentum()
             }
             
         except Exception as e:
@@ -244,8 +241,6 @@ class RSICalculator:
                 "rsi_trend": "ERROR",
                 "rsi_signal": "ERROR",
                 "rsi_momentum": 0.0,
-                "baseline_rsi": self.baseline_rsi,
-                "initialized": False,
                 "error": str(e)
             }
 

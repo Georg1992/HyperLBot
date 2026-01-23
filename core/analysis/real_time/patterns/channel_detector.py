@@ -53,13 +53,20 @@ class ChannelPatternDetector(BasePatternDetector):
             recent_highs = highs[-10:]
             recent_lows = lows[-10:]
             
+            # Calculate average price for percentage calculation
+            avg_price = (sum(recent_highs) + sum(recent_lows)) / (len(recent_highs) + len(recent_lows))
+            
             # Calculate slopes
             high_slope = self._calculate_slope(recent_highs)
             low_slope = self._calculate_slope(recent_lows)
             
-            # Check if both slopes are horizontal (parallel channel)
-            if abs(high_slope) < 0.0001 and abs(low_slope) < 0.0001:
-                confidence = 0.67
+            # Convert slopes to percentage per candle
+            high_slope_pct = abs(high_slope / avg_price) if avg_price > 0 else 0
+            low_slope_pct = abs(low_slope / avg_price) if avg_price > 0 else 0
+            
+            # Check if both slopes are horizontal (< 0.05% per candle = ~0.5% over 10 candles)
+            if high_slope_pct < 0.0005 and low_slope_pct < 0.0005:
+                confidence = 0.75
                 return self._create_pattern(
                     "HORIZONTAL_CHANNEL", "CONTINUATION", "NEUTRAL", confidence,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
@@ -84,13 +91,20 @@ class ChannelPatternDetector(BasePatternDetector):
             recent_highs = highs[-10:]
             recent_lows = lows[-10:]
             
+            # Calculate average price for percentage calculation
+            avg_price = (sum(recent_highs) + sum(recent_lows)) / (len(recent_highs) + len(recent_lows))
+            
             # Calculate slopes
             high_slope = self._calculate_slope(recent_highs)
             low_slope = self._calculate_slope(recent_lows)
             
-            # Check if both slopes are positive and similar (ascending channel)
-            if high_slope > 0 and low_slope > 0 and abs(high_slope - low_slope) < 0.001:
-                confidence = 0.90
+            # Convert slopes to percentage per candle
+            high_slope_pct = (high_slope / avg_price) if avg_price > 0 else 0
+            low_slope_pct = (low_slope / avg_price) if avg_price > 0 else 0
+            
+            # Check if both slopes are positive and parallel (within 0.03% per candle difference)
+            if high_slope_pct > 0.0001 and low_slope_pct > 0.0001 and abs(high_slope_pct - low_slope_pct) < 0.0003:
+                confidence = 0.80
                 return self._create_pattern(
                     "ASCENDING_CHANNEL", "CONTINUATION", "BULLISH", confidence,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
@@ -115,13 +129,20 @@ class ChannelPatternDetector(BasePatternDetector):
             recent_highs = highs[-10:]
             recent_lows = lows[-10:]
             
+            # Calculate average price for percentage calculation
+            avg_price = (sum(recent_highs) + sum(recent_lows)) / (len(recent_highs) + len(recent_lows))
+            
             # Calculate slopes
             high_slope = self._calculate_slope(recent_highs)
             low_slope = self._calculate_slope(recent_lows)
             
-            # Check if both slopes are negative and similar (descending channel)
-            if high_slope < 0 and low_slope < 0 and abs(high_slope - low_slope) < 0.001:
-                confidence = 0.90
+            # Convert slopes to percentage per candle
+            high_slope_pct = (high_slope / avg_price) if avg_price > 0 else 0
+            low_slope_pct = (low_slope / avg_price) if avg_price > 0 else 0
+            
+            # Check if both slopes are negative and parallel (within 0.03% per candle difference)
+            if high_slope_pct < -0.0001 and low_slope_pct < -0.0001 and abs(high_slope_pct - low_slope_pct) < 0.0003:
+                confidence = 0.80
                 return self._create_pattern(
                     "DESCENDING_CHANNEL", "CONTINUATION", "BEARISH", confidence,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)

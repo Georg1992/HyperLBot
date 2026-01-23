@@ -145,24 +145,18 @@ class PressureCalculator:
             
             # 9. Format results
             pressure_imbalance_val = pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0
+            # Calculate pressure_ratio for strategy_manager (bid_pressure_ratio / ask_pressure_ratio)
+            bid_pressure_ratio = pressure_ratios.get("bid_pressure_ratio", 0.5)
+            ask_pressure_ratio = pressure_ratios.get("ask_pressure_ratio", 0.5)
+            pressure_ratio = bid_pressure_ratio / ask_pressure_ratio if ask_pressure_ratio > 0 else 1.0
+            
             result = {
                 "direction": direction,
                 "confidence": confidence,
                 "strength": strength,
                 "trend": trend,
                 "net_pressure": pressure_imbalance_val,  # Top-level field for momentum_detector (NO FALLBACKS)
-                "pressure_classification": classification,
-                "trading_implications": implications,
-                "recommendations": recommendations,
-                "analysis_details": {
-                    "bid_pressure_ratio": pressure_ratios["bid_pressure_ratio"] if "bid_pressure_ratio" in pressure_ratios else 0.5,
-                    "ask_pressure_ratio": pressure_ratios["ask_pressure_ratio"] if "ask_pressure_ratio" in pressure_ratios else 0.5,
-                    "pressure_imbalance": pressure_imbalance,
-                    "depth_concentration": pressure_ratios["depth_concentration"] if "depth_concentration" in pressure_ratios else 1.0,
-                    "bid_depth_5": depth_metrics["bid_depth_5"] if "bid_depth_5" in depth_metrics else 0.0,
-                    "ask_depth_5": depth_metrics["ask_depth_5"] if "ask_depth_5" in depth_metrics else 0.0,
-                    "total_depth_5": depth_metrics["total_depth_5"] if "total_depth_5" in depth_metrics else 0.0
-                },
+                "pressure_ratio": pressure_ratio,  # Used by strategy_manager
                 "data_source": "live_orderbook_calculation",
                 "timestamp": time.time()
             }
@@ -181,10 +175,7 @@ class PressureCalculator:
             "confidence": 0.0,
             "strength": 0.0,
             "trend": "UNKNOWN",
-            "pressure_classification": {"level": "ERROR", "description": "Analysis failed"},
-            "trading_implications": {"implications": ["Analysis failed"], "risk_level": "UNKNOWN"},
-            "recommendations": {"recommendations": ["Use caution"], "recommendation_count": 1},
-            "analysis_details": {},
+            "pressure_ratio": 1.0,
             "data_source": "error",
             "timestamp": time.time(),
             "error": error_message

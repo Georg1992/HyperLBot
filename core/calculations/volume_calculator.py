@@ -80,12 +80,13 @@ class VolumeCalculator(BaseCalculator):
             **base_result,
             "current_5m_volume": 0.0,
             "volume_category": "ERROR",
-            "volume_momentum": {"momentum": 0.0, "trend": "UNKNOWN"},
+            "category": "ERROR",
+            "volume_5m": 0.0,
+            "percentile": 50.0,
+            "trend": "UNKNOWN",
+            "volume_momentum": 0.0,
             "volume_trend_strength": 0.0,
-            "relative_volume": 0.0,
             "volume_anomaly": {"is_anomaly": False, "severity": "NORMAL"},
-            "volume_implications": {"implications": [], "trading_suitable": False, "risk_level": "UNKNOWN"},
-            "volume_recommendations": ["Volume analysis failed - use caution"],
             "data_source": "error"
         }
     
@@ -157,20 +158,11 @@ class VolumeCalculator(BaseCalculator):
                 "volume_5m": current_5m_volume,  # Alias for compatibility (NO FALLBACKS)
                 "percentile": categorization["percentile"] if "percentile" in categorization else 50.0,  # Add percentile for momentum_detector (NO FALLBACKS)
                 "trend": volume_trend,  # Top-level trend alias for consolidation_tracker (NO FALLBACKS)
-                "volume_momentum": momentum,
-                "volume_trend_strength": trend_strength,
-                "relative_volume": relative_volume,
-                "volume_anomaly": anomaly,
-                "volume_implications": implications,
-                "volume_recommendations": recommendations,
+                "volume_momentum": momentum.get("momentum", 0.0),  # Numeric momentum for entry timing (used by momentum_detector)
+                "volume_trend_strength": trend_strength,  # Strength of volume trend (0.0-1.0) for strategy selection
+                "volume_anomaly": anomaly,  # Anomaly detection for risk management
                 "data_source": "hyperliquid_5m",
-                "timestamp": current_time,
-                "analysis_details": {
-                    "trade_count": volume_calc["trade_count"] if "trade_count" in volume_calc else 0,
-                    "reset_time": volume_calc["reset_time"] if "reset_time" in volume_calc else 0,
-                    "time_window": volume_calc["time_window"] if "time_window" in volume_calc else "5m",
-                    "historical_volumes": volume_history
-                }
+                "timestamp": current_time
             }
             
             log_level = categorization["level"] if "level" in categorization else "UNKNOWN"

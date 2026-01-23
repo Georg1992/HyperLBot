@@ -233,10 +233,13 @@ class HistoricalDataService:
             chart_candles_with_ongoing = chart_candles_5m.copy()
             chart_candles_with_ongoing.append(ongoing_candle)
             
+            # IMPORTANT: Deep copy pattern_analysis to avoid mutating the cached object
             mapped_pattern_analysis = pattern_analysis
             if pattern_analysis and "patterns" in pattern_analysis and pattern_analysis["patterns"]:
+                import copy
+                pattern_analysis_copy = copy.deepcopy(pattern_analysis)
                 mapped_pattern_analysis = self._map_pattern_indices_to_display_candles(
-                    pattern_analysis, chart_candles_with_ongoing
+                    pattern_analysis_copy, chart_candles_with_ongoing
                 )
             
             # Prepare chart data structure
@@ -287,13 +290,20 @@ class HistoricalDataService:
             
             for pattern in flat_patterns:
                 start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
-                end_idx = pattern["end_candle_index"] if "end_candle_index" in pattern else 0
+                end_idx = pattern["end_candle_index"] if "end_candle_index" in pattern else start_idx
                 
-                # Check if pattern is within visible range (last 20 candles of 50)
-                if start_idx >= offset and start_idx < DETECTION_CANDLE_COUNT:
-                    # Map index: from 50-candle array to 20-candle array
-                    mapped_start_idx = start_idx - offset
-                    mapped_end_idx = max(mapped_start_idx, end_idx - offset) if end_idx >= offset else mapped_start_idx
+                # Check if pattern is visible in the display window
+                # Pattern is visible if: end_idx is in visible range OR pattern spans the visible range
+                pattern_visible = (
+                    end_idx >= offset or  # Pattern ends in or after visible range
+                    (start_idx < offset and end_idx >= offset)  # Pattern spans into visible range
+                )
+                
+                if pattern_visible and end_idx < DETECTION_CANDLE_COUNT:
+                    # Map indices: from 50-candle array to 20-candle array
+                    # Clamp start_idx to visible range
+                    mapped_start_idx = max(0, start_idx - offset)
+                    mapped_end_idx = max(0, end_idx - offset)
                     
                     # Ensure indices are within display range
                     mapped_start_idx = max(0, min(mapped_start_idx, DISPLAY_CANDLE_COUNT - 1))
@@ -305,9 +315,9 @@ class HistoricalDataService:
                     mapped_pattern["end_candle_index"] = mapped_end_idx
                     mapped_patterns.append(mapped_pattern)
                 else:
-                    # Pattern is outside visible range, skip it
+                    # Pattern is completely outside visible range, skip it
                     pattern_name = pattern["pattern"] if "pattern" in pattern else "unknown"
-                    logger.debug(f"⏭️ Pattern {pattern_name} outside visible range (index {start_idx} not in [{offset}, {DETECTION_CANDLE_COUNT}])")
+                    logger.debug(f"⏭️ Pattern {pattern_name} outside visible range (end_idx {end_idx} not >= {offset})")
             
             # Update patterns structure
             patterns["patterns"] = mapped_patterns
@@ -321,11 +331,18 @@ class HistoricalDataService:
                         mapped_category = []
                         for pattern in nested[category]:
                             start_idx = pattern["start_candle_index"] if "start_candle_index" in pattern else 0
-                            if start_idx >= offset and start_idx < DETECTION_CANDLE_COUNT:
+                            end_idx = pattern["end_candle_index"] if "end_candle_index" in pattern else start_idx
+                            
+                            # Check if pattern is visible (same logic as flat patterns)
+                            pattern_visible = (
+                                end_idx >= offset or
+                                (start_idx < offset and end_idx >= offset)
+                            )
+                            
+                            if pattern_visible and end_idx < DETECTION_CANDLE_COUNT:
                                 mapped_pattern = pattern.copy()
-                                mapped_pattern["start_candle_index"] = start_idx - offset
-                                end_idx_raw = pattern["end_candle_index"] if "end_candle_index" in pattern else start_idx
-                                mapped_pattern["end_candle_index"] = max(0, min(end_idx_raw - offset, DISPLAY_CANDLE_COUNT - 1))
+                                mapped_pattern["start_candle_index"] = max(0, start_idx - offset)
+                                mapped_pattern["end_candle_index"] = max(0, min(end_idx - offset, DISPLAY_CANDLE_COUNT - 1))
                                 mapped_category.append(mapped_pattern)
                         nested[category] = mapped_category
                 patterns["patterns_nested"] = nested

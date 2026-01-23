@@ -48,7 +48,6 @@ class TradingConfig:
     ATR_BASE_MULTIPLIER = 2.0  # Base stop distance: 2.0×ATR (covers ~95% of normal moves)
     NOISE_BUFFER_ATR_MULTIPLIER = 0.25  # Noise buffer for level breaks: 0.25×ATR
     DEFAULT_SPREAD_PCT = 0.01  # Default spread if orderbook unavailable: 0.01% (typical BTC perp)
-    ENTRY_DISTANCE_THRESHOLD_ATR = 1.25  # Significant entry distance: 1.25×ATR (for proximity scoring)
     
     # Round Number Avoidance (ADDED 2026-01-12 - Audit Fix)
     # Stop hunting prevention by offsetting stops from psychological levels
@@ -73,8 +72,6 @@ class TradingConfig:
         "reversal_probability": 0.30,  # Historical reversal rate from actual data (secondary factor)
         "volume": 0.10      # Volume at level - higher = more liquidity
     }
-    # Backward compatibility alias
-    SR_SCORING_WEIGHTS = SR_POWER_WEIGHTS
     SR_PROXIMITY_DECAY_K = float(os.getenv("SR_PROXIMITY_DECAY_K", "0.15"))  # k in exp(-distance/(k*ATR)) - universal decay factor
     
     # Strategy-Based Support/Resistance Level Selection
@@ -688,6 +685,134 @@ class TradingConfig:
     
     # Default strategy
     DEFAULT_STRATEGY = "standard"
+    
+    # Entry vs Direction Scoring Balance
+    # How to weight entry quality vs direction strength in final setup score
+    ENTRY_DIRECTION_WEIGHTS = {
+        "entry": 0.5,      # 50% - Entry quality (proximity, level strength)
+        "direction": 0.5   # 50% - Direction strength (trend, RSI, pressure)
+    }
+    
+    # ATR Multipliers for Distance Thresholds
+    # Used throughout the system for proximity, fill probability, and scoring
+    ATR_MULTIPLIERS = {
+        "too_close": 0.25,      # Within 0.25×ATR = too close to current price
+        "optimal": 1.25,        # Within 1.25×ATR = optimal entry distance
+        "moderate": 2.5,        # Within 2.5×ATR = moderate entry distance
+        "far": 5.0,             # Within 5.0×ATR = far but acceptable
+        "touch_tolerance": 0.5, # Within 0.5×ATR = consider level "touched"
+        "dedup_cluster": 0.125, # 0.125×ATR for clustering deduplication
+        "dedup_final": 1.5,     # 1.5×ATR for final deduplication
+        "near_threshold": 2.5,  # 2.5×ATR = "near" distance for scoring
+        "significant_diff": 1.25 # 1.25×ATR = significant price difference
+    }
+    
+    # Entry Quality Scoring Multipliers
+    # Bonuses and penalties for entry offset quality
+    ENTRY_QUALITY_MULTIPLIERS = {
+        "optimal_bonus": 1.1,      # 10% bonus for optimal entry offset (0.2-0.5×ATR)
+        "neutral": 1.0,            # No bonus/penalty for at-level entries
+        "small_penalty": 0.95,     # 5% penalty for acceptable but suboptimal
+        "medium_penalty": 0.8,     # 20% penalty for poor entry distance
+        "large_penalty": 0.6       # 40% penalty for very poor entries
+    }
+    
+    # Confidence and Score Thresholds
+    # Used for filtering predictions and strategy selection
+    CONFIDENCE_THRESHOLDS = {
+        "min_prediction": 0.5,     # Minimum confidence to generate prediction
+        "high": 0.7,               # High confidence threshold
+        "medium": 0.5,             # Medium confidence threshold
+        "low": 0.3,                # Low confidence threshold
+        "min_score_log": 70.0      # Minimum total score to log setup details
+    }
+    
+    # Spread Cost Thresholds (as decimal percentages)
+    # Used for cost filtering and strategy scoring
+    SPREAD_THRESHOLDS = {
+        "excellent": 0.0001,   # <0.01% - Excellent spread
+        "good": 0.0005,        # <0.05% - Good spread
+        "acceptable": 0.001,   # <0.1% - Acceptable spread
+        "poor": 0.005,         # <0.5% - Poor spread (warning)
+        "max_acceptable": 0.01 # <1.0% - Maximum acceptable spread
+    }
+    
+    # Alignment Factors for Contextual Direction Scoring
+    # Applied when S/R level aligns/conflicts with direction
+    ALIGNMENT_FACTORS = {
+        "boost": 1.2,    # 20% boost for good alignment
+        "penalty": 0.6,  # 40% penalty for conflict
+        "neutral": 1.0   # No adjustment
+    }
+    
+    # Volatility Adjustment Multipliers
+    # How to adjust thresholds based on volatility category
+    VOLATILITY_ADJUSTMENTS = {
+        "low": 0.5,      # Tighter thresholds in low volatility
+        "normal": 1.0,   # Standard thresholds
+        "high": 1.5,     # Wider thresholds in high volatility
+        "extreme_moderate": 2.5,  # Much wider in extreme volatility
+        "extreme_wide": 5.0       # Very wide in extreme volatility
+    }
+    
+    # Timeframe Weights per Strategy
+    # Different strategies care about different timeframes for trend analysis
+    STRATEGY_TIMEFRAME_WEIGHTS = {
+        "scalping": {
+            "trend_15m": 0.50,  # 50% - Most important for scalping
+            "trend_1h": 0.30,   # 30% - Medium importance
+            "trend_4h": 0.15,   # 15% - Low importance
+            "trend_24h": 0.05   # 5% - Minimal importance
+        },
+        "swing_trading": {
+            "trend_15m": 0.10,  # 10% - Less important
+            "trend_1h": 0.25,   # 25% - Medium importance
+            "trend_4h": 0.35,   # 35% - High importance
+            "trend_24h": 0.30   # 30% - High importance
+        },
+        "trend_following": {
+            "trend_15m": 0.15,  # 15% - Low importance
+            "trend_1h": 0.25,   # 25% - Medium importance
+            "trend_4h": 0.30,   # 30% - High importance
+            "trend_24h": 0.30   # 30% - High importance
+        },
+        "range_trading": {
+            "trend_15m": 0.20,  # 20% - Low importance (ranges are medium-term)
+            "trend_1h": 0.40,   # 40% - High importance
+            "trend_4h": 0.30,   # 30% - Medium importance
+            "trend_24h": 0.10   # 10% - Low importance
+        },
+        "breakout": {
+            "trend_15m": 0.25,  # 25% - Medium importance
+            "trend_1h": 0.35,   # 35% - High importance
+            "trend_4h": 0.30,   # 30% - High importance
+            "trend_24h": 0.10   # 10% - Low importance
+        },
+        "low_volatility_range": {
+            "trend_15m": 0.30,  # 30% - Medium importance
+            "trend_1h": 0.40,   # 40% - High importance
+            "trend_4h": 0.20,   # 20% - Medium importance
+            "trend_24h": 0.10   # 10% - Low importance
+        },
+        "high_volatility": {
+            "trend_15m": 0.20,  # 20% - Low importance
+            "trend_1h": 0.30,   # 30% - Medium importance
+            "trend_4h": 0.30,   # 30% - Medium importance
+            "trend_24h": 0.20   # 20% - Medium importance
+        },
+        "spike_hunting": {
+            "trend_15m": 0.40,  # 40% - High importance (spikes are short-term)
+            "trend_1h": 0.35,   # 35% - High importance
+            "trend_4h": 0.20,   # 20% - Medium importance
+            "trend_24h": 0.05   # 5% - Low importance
+        },
+        "standard": {
+            "trend_15m": 0.20,  # 20% - Balanced approach
+            "trend_1h": 0.30,   # 30% - Primary timeframe
+            "trend_4h": 0.30,   # 30% - Primary timeframe
+            "trend_24h": 0.20   # 20% - Secondary timeframe
+        }
+    }
     
     # Whale Analytics Configuration
     WHALE_ANALYTICS_ENABLED = bool(os.getenv("WHALE_ANALYTICS_ENABLED", "True").lower() == "true")

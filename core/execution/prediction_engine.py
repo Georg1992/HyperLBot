@@ -627,40 +627,42 @@ class PredictionEngine:
             
             if setup_type == "support_level":
                 # LONG at support: entry ABOVE support (inside zone, toward current)
+                # Use entry quality multipliers from config (configurable for optimization)
                 if 0.2 <= distance_atr <= 0.5:  # Optimal: 0.2-0.5×ATR above support
-                    score = min(100.0, score * 1.1)  # 10% bonus for optimal offset
+                    score = min(100.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["optimal_bonus"])
                     reasons.append(f"Optimal entry above support @ {distance_atr:.2f}×ATR (power: {level_power:.1f})")
                 elif distance_atr < 0.2:  # At or very close to level
-                    score = min(100.0, score * 1.0)  # No bonus (risky for stop hunts)
+                    score = min(100.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["neutral"])
                     reasons.append(f"Entry near/at support @ {distance_atr:.2f}×ATR (power: {level_power:.1f})")
                 elif distance_atr <= 1.0:  # Acceptable: 0.5-1.0×ATR
-                    score = min(100.0, score * 0.95)  # Small penalty
+                    score = min(100.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["small_penalty"])
                     reasons.append(f"Entry acceptable above support @ {distance_atr:.2f}×ATR (power: {level_power:.1f})")
                 else:  # Too far: >1.0×ATR
-                    score = max(0.0, score * 0.8)  # Penalty
+                    score = max(0.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["medium_penalty"])
                     reasons.append(f"Entry too far from support @ {distance_atr:.2f}×ATR")
             else:  # resistance_level
                 # SHORT at resistance: entry BELOW resistance (inside zone, toward current)
+                # Use entry quality multipliers from config (configurable for optimization)
                 if 0.2 <= distance_atr <= 0.5:  # Optimal: 0.2-0.5×ATR below resistance
-                    score = min(100.0, score * 1.1)  # 10% bonus for optimal offset
+                    score = min(100.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["optimal_bonus"])
                     reasons.append(f"Optimal entry below resistance @ {distance_atr:.2f}×ATR (power: {level_power:.1f})")
                 elif distance_atr < 0.2:  # At or very close to level
-                    score = min(100.0, score * 1.0)  # No bonus (risky for stop hunts)
+                    score = min(100.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["neutral"])
                     reasons.append(f"Entry near/at resistance @ {distance_atr:.2f}×ATR (power: {level_power:.1f})")
                 elif distance_atr <= 1.0:  # Acceptable: 0.5-1.0×ATR
-                    score = min(100.0, score * 0.95)  # Small penalty
+                    score = min(100.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["small_penalty"])
                     reasons.append(f"Entry acceptable below resistance @ {distance_atr:.2f}×ATR (power: {level_power:.1f})")
                 else:  # Too far: >1.0×ATR
-                    score = max(0.0, score * 0.8)  # Penalty
+                    score = max(0.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["medium_penalty"])
                     reasons.append(f"Entry too far from resistance @ {distance_atr:.2f}×ATR")
         
         else:
             # Unknown setup type - use default scoring with ATR-based threshold
-            near_threshold = atr_pct * 2.5  # 2.5×ATR = reasonable "near" distance
+            near_threshold = atr_pct * TradingConfig.ATR_MULTIPLIERS["near_threshold"]
             if distance_pct < near_threshold:
                 reasons.append(f"S/R level reference (power: {level_power:.1f}, distance: {distance_pct*100:.3f}%)")
             else:
-                score = max(0.0, score * 0.8)  # Penalty
+                score = max(0.0, score * TradingConfig.ENTRY_QUALITY_MULTIPLIERS["medium_penalty"])
                 reasons.append(f"Far from S/R level (distance: {distance_pct*100:.3f}% > {near_threshold*100:.3f}%)")
         
         return score, reasons
@@ -872,10 +874,15 @@ class PredictionEngine:
     
     def _score_entry_volume_factor(
         self,
-        volume_category: str
+        volume_category: str,
+        volume_anomaly: Dict[str, Any] = None
     ) -> tuple[float, list]:
         """
         Score volume confirmation factor for entry setup
+        
+        Args:
+            volume_category: Volume category (HIGH, NORMAL, LOW, etc.)
+            volume_anomaly: Volume anomaly detection data for risk management
         
         Returns:
             (volume_score, reasons)
@@ -883,17 +890,31 @@ class PredictionEngine:
         score = 0.0
         reasons = []
         
+        # Volume anomaly risk check: Reduce score if anomaly detected
+        if volume_anomaly and volume_anomaly.get("is_anomaly", False):
+            severity = volume_anomaly.get("severity", "NORMAL")
+            if severity == "EXTREME":
+                score -= 50.0  # Significant penalty for extreme anomalies
+                reasons.append(f"⚠️ EXTREME volume anomaly detected - high risk")
+            elif severity == "HIGH":
+                score -= 30.0  # Moderate penalty for high anomalies
+                reasons.append(f"⚠️ HIGH volume anomaly detected - increased risk")
+            elif severity == "MODERATE":
+                score -= 15.0  # Small penalty for moderate anomalies
+                reasons.append(f"⚠️ MODERATE volume anomaly detected - caution advised")
+        
+        # Normal volume scoring
         if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-            score = 100.0
+            score += 100.0
             reasons.append(f"High volume confirms entry ({volume_category})")
         elif volume_category in ["NORMAL"]:
-            score = 50.0
+            score += 50.0
             reasons.append("Normal volume")
         else:
-            score = 20.0
+            score += 20.0
             reasons.append(f"Low volume ({volume_category})")
         
-        return score, reasons
+        return max(0.0, score), reasons
     
     def _score_entry_distance_factor(
         self,
@@ -925,10 +946,11 @@ class PredictionEngine:
         # - Moderate: 1.25×ATR to 2.5×ATR (reasonable, might take longer)
         # - Far: 2.5×ATR to 5×ATR (lower fill probability)
         # - Very far: >5×ATR (very low fill probability)
-        too_close_threshold = atr_pct * 0.25  # 0.25×ATR
-        optimal_max_threshold = atr_pct * 1.25  # 1.25×ATR
-        moderate_max_threshold = atr_pct * 2.5  # 2.5×ATR
-        far_max_threshold = atr_pct * 5.0  # 5×ATR
+        # Use ATR multipliers from config (configurable for optimization)
+        too_close_threshold = atr_pct * TradingConfig.ATR_MULTIPLIERS["too_close"]
+        optimal_max_threshold = atr_pct * TradingConfig.ATR_MULTIPLIERS["optimal"]
+        moderate_max_threshold = atr_pct * TradingConfig.ATR_MULTIPLIERS["moderate"]
+        far_max_threshold = atr_pct * TradingConfig.ATR_MULTIPLIERS["far"]
         
         if too_close_threshold <= distance_pct < optimal_max_threshold:  # Optimal range: 0.25×ATR to 1.25×ATR
             score = 100.0
@@ -1206,7 +1228,7 @@ class PredictionEngine:
                     elif direction_diff > 10.0:  # Moderate LONG preference
                         alignment_factor = 1.1
                     elif direction_diff < -20.0:  # Strong SHORT preference (conflict)
-                        alignment_factor = 0.6  # Penalize conflict
+                        alignment_factor = TradingConfig.ALIGNMENT_FACTORS["penalty"]
                     elif direction_diff < -10.0:  # Moderate SHORT preference (conflict)
                         alignment_factor = 0.75
                     else:  # Neutral
@@ -1220,7 +1242,7 @@ class PredictionEngine:
                     elif direction_diff > 10.0:  # Moderate SHORT preference
                         alignment_factor = 1.1
                     elif direction_diff < -20.0:  # Strong LONG preference (conflict)
-                        alignment_factor = 0.6  # Penalize conflict
+                        alignment_factor = TradingConfig.ALIGNMENT_FACTORS["penalty"]
                     elif direction_diff < -10.0:  # Moderate LONG preference (conflict)
                         alignment_factor = 0.75
                     else:  # Neutral
@@ -1300,7 +1322,7 @@ class PredictionEngine:
     
     def _get_strategy_timeframe_weights(self, strategy: str) -> Dict[str, float]:
         """
-        Get strategy-specific timeframe weights
+        Get strategy-specific timeframe weights from config
         
         Different strategies care about different timeframes:
         - Scalping: 15m (high), 1h (medium), 4h (low), 24h (none)
@@ -1309,69 +1331,16 @@ class PredictionEngine:
         - Range Trading: 1h (high), 4h (medium), 15m (low), 24h (low)
         - Breakout: 1h (high), 4h (high), 15m (medium), 24h (low)
         """
-        timeframe_weights_map = {
-            "scalping": {
-                "trend_15m": 0.50,  # 50% - Most important for scalping
-                "trend_1h": 0.30,   # 30% - Medium importance
-                "trend_4h": 0.15,   # 15% - Low importance
-                "trend_24h": 0.05   # 5% - Minimal importance
-            },
-            "swing_trading": {
-                "trend_15m": 0.10,  # 10% - Less important
-                "trend_1h": 0.25,   # 25% - Medium importance
-                "trend_4h": 0.35,   # 35% - High importance
-                "trend_24h": 0.30   # 30% - High importance
-            },
-            "trend_following": {
-                "trend_15m": 0.15,  # 15% - Low importance
-                "trend_1h": 0.25,   # 25% - Medium importance
-                "trend_4h": 0.30,   # 30% - High importance
-                "trend_24h": 0.30   # 30% - High importance
-            },
-            "range_trading": {
-                "trend_15m": 0.20,  # 20% - Low importance (ranges are medium-term)
-                "trend_1h": 0.40,   # 40% - High importance
-                "trend_4h": 0.30,   # 30% - Medium importance
-                "trend_24h": 0.10   # 10% - Low importance
-            },
-            "breakout": {
-                "trend_15m": 0.25,  # 25% - Medium importance
-                "trend_1h": 0.35,   # 35% - High importance
-                "trend_4h": 0.30,   # 30% - High importance
-                "trend_24h": 0.10   # 10% - Low importance
-            },
-            "low_volatility_range": {
-                "trend_15m": 0.30,  # 30% - Medium importance
-                "trend_1h": 0.40,   # 40% - High importance
-                "trend_4h": 0.20,   # 20% - Medium importance
-                "trend_24h": 0.10   # 10% - Low importance
-            },
-            "high_volatility": {
-                "trend_15m": 0.20,  # 20% - Low importance
-                "trend_1h": 0.30,   # 30% - Medium importance
-                "trend_4h": 0.30,   # 30% - Medium importance
-                "trend_24h": 0.20   # 20% - Medium importance
-            },
-            "spike_hunting": {
-                "trend_15m": 0.40,  # 40% - High importance (spikes are short-term)
-                "trend_1h": 0.35,   # 35% - High importance
-                "trend_4h": 0.20,   # 20% - Medium importance
-                "trend_24h": 0.05   # 5% - Low importance
-            },
-            "standard": {
-                "trend_15m": 0.20,  # 20% - Balanced approach
-                "trend_1h": 0.30,   # 30% - Primary timeframe
-                "trend_4h": 0.30,   # 30% - Primary timeframe
-                "trend_24h": 0.20   # 20% - Secondary timeframe
-            }
-        }
+        # Get timeframe weights from config (NO FALLBACKS)
+        timeframe_weights_map = TradingConfig.STRATEGY_TIMEFRAME_WEIGHTS
         
-        return timeframe_weights_map[strategy] if strategy in timeframe_weights_map else {
+        # Return strategy-specific weights, or balanced default if strategy not found
+        return timeframe_weights_map.get(strategy, {
             "trend_15m": 0.25,
             "trend_1h": 0.25,
             "trend_4h": 0.25,
             "trend_24h": 0.25
-        }
+        })
     
     # ==================================================================================
     # CONFIDENCE CALCULATION - Separate from scoring system
@@ -1512,13 +1481,28 @@ class PredictionEngine:
                 total_score += patterns_score * patterns_weight
                 all_reasons.extend(reasons)
             
+            # Volume anomaly risk check: Apply penalty if anomaly detected
+            volume_data = unified_data.get("volume", {})
+            volume_anomaly = volume_data.get("volume_anomaly") if isinstance(volume_data, dict) else None
+            if volume_anomaly and volume_anomaly.get("is_anomaly", False):
+                severity = volume_anomaly.get("severity", "NORMAL")
+                if severity == "EXTREME":
+                    total_score -= 30.0  # Significant penalty for extreme anomalies
+                    all_reasons.append(f"⚠️ EXTREME volume anomaly - high risk entry")
+                elif severity == "HIGH":
+                    total_score -= 15.0  # Moderate penalty for high anomalies
+                    all_reasons.append(f"⚠️ HIGH volume anomaly - increased risk")
+                elif severity == "MODERATE":
+                    total_score -= 7.0  # Small penalty for moderate anomalies
+                    all_reasons.append(f"⚠️ MODERATE volume anomaly - caution")
+            
             # NOTE: 
             # - Volume: included in SR power (10% weight)
             # - Distance/proximity: scored separately in _score_entry_sr_factor based on entry offset from level
             # - Recency: handled in direction scoring, not entry scoring
             
             # Removed excessive debug logging - only log top scores
-            if total_score >= 70.0:  # Only log high-scoring setups
+            if total_score >= TradingConfig.CONFIDENCE_THRESHOLDS["min_score_log"]:  # Only log high-scoring setups
                 logger.debug(f"📊 Entry setup scored: {setup_type} @ ${entry_price:.2f} = {total_score:.1f}")
             
             return {
@@ -2020,11 +2004,11 @@ class PredictionEngine:
                            f"proximity={proximity_factor:.2f}, strength={strength_factor:.2f}, alignment={alignment_factor:.2f}")
             
             # Normalize scores (both are on similar scales, but we can weight them)
-            # Entry quality: 50% weight, Direction support: 50% weight
+            # Get entry/direction weights from config (configurable for optimization)
             # Entry score already includes SR score (50% weight) which considers all SR factors
             # So the SR system's ranking is naturally respected through entry_score
-            entry_weight = 0.5
-            direction_weight = 0.5
+            entry_weight = TradingConfig.ENTRY_DIRECTION_WEIGHTS["entry"]
+            direction_weight = TradingConfig.ENTRY_DIRECTION_WEIGHTS["direction"]
             
             # Calculate total score (weighted combination)
             # No artificial bonuses - SR score is already the primary factor in entry_score

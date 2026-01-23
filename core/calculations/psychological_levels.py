@@ -51,9 +51,17 @@ class PsychologicalLevelsCalculator:
         Returns:
             List of Level objects representing relevant psychological levels
         """
-        # INTENTIONALLY NOT IMPLEMENTED YET
-        # This feature requires extensive research and validation to ensure it doesn't interfere
-        # with S/R detection from actual market structure. Returning empty list for now.
-        # Fixed intervals to implement later: 500, 1000, 2500, 5000, 10000, 100000
-        logger.debug("🧠 Psychological levels not enabled (research required)")
+        # NOT IMPLEMENTED - Using simpler confluence approach instead
+        # 
+        # Research showed that adding synthetic psychological levels as separate S/R levels
+        # would create noise and complexity without sufficient value.
+        # 
+        # IMPLEMENTED ALTERNATIVE (see sr_scorer.py):
+        # - Simple confluence check: when real S/R level aligns with major round number ($10K),
+        #   boost its power by 0-5 points based on proximity
+        # - Minimal complexity, real value (confluence detection)
+        # - No synthetic levels, no state machines, no overengineering
+        # 
+        # Round number avoidance for stops is already implemented in risk_manager.py
+        logger.debug("🧠 Psychological levels handled via confluence in sr_scorer.py")
         return []

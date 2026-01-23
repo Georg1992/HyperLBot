@@ -51,14 +51,15 @@ class FundingRateAnalyzer:
             # Update history
             self._update_funding_history(funding_rate, funding_data)
             
-            # Calculate analysis metrics
+            # Calculate analysis metrics - include valuable fields for trading decisions
+            funding_trend_data = self._calculate_funding_trend()
             analysis = {
                 "current_funding_rate": funding_rate,
                 "current_funding_rate_pct": funding_rate_pct,
-                "funding_trend": self._calculate_funding_trend(),
+                "funding_trend": funding_trend_data,
                 "funding_sentiment": self._analyze_funding_sentiment(funding_rate),
                 "extreme_funding_detection": self._detect_extreme_funding(funding_rate),
-                "funding_volatility": self._calculate_funding_volatility(),
+                "funding_volatility": self._calculate_funding_volatility(),  # For risk management
                 "next_funding_time": funding_data['next_funding_time'] if 'next_funding_time' in funding_data else 0,
                 "data_source": funding_data['data_source'] if 'data_source' in funding_data else 'unknown',
                 "timestamp": time.time()
@@ -130,12 +131,10 @@ class FundingRateAnalyzer:
             
             return {
                 "trend": f"{direction}_{trend_strength}",
-                "direction": direction,
-                "strength": round(strength, 3),
-                "rate_change": round(rate_change, 6),
-                "rate_change_pct": round(rate_change * 100, 4),
-                "volatility": round(rate_volatility, 6),
-                "data_points": len(recent_rates)
+                "direction": direction,  # Used by strategy_manager
+                "strength": round(strength, 3),  # Used by strategy_manager
+                "rate_change": round(rate_change, 6),  # Funding rate momentum for trend following
+                "rate_change_pct": round(rate_change * 100, 4)  # Percentage change for easier interpretation
             }
             
         except Exception as e:

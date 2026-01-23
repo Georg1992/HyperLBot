@@ -206,19 +206,36 @@ class MomentumDetector:
             else:
                 factors.append("No significant buy pressure")
             
-            # 3. Volume surge (20 points)
+            # 3. Volume surge (20 points) + Volume momentum boost (up to 10 points)
             volume_category = volume_data["category"]  # Required (NO FALLBACKS)
             volume_value = volume_data["volume_5m"]  # Required (NO FALLBACKS)
             volume_percentile = volume_data["percentile"]  # Required (NO FALLBACKS)
+            volume_momentum = volume_data.get("volume_momentum", 0.0)  # Numeric momentum for entry timing
             
+            volume_score = 0.0
             if volume_category in ["HIGH", "VERY_HIGH"] and volume_percentile > 75:
-                confidence += 20.0
+                volume_score = 20.0
                 factors.append(f"Volume surge ({volume_category}, {volume_percentile:.0f}th percentile)")
             elif volume_percentile > 60:
-                confidence += 10.0
+                volume_score = 10.0
                 factors.append(f"Above-average volume ({volume_percentile:.0f}th percentile)")
             else:
                 factors.append(f"Normal volume ({volume_percentile:.0f}th percentile)")
+            
+            # Volume momentum boost: Strong acceleration increases entry confidence
+            if volume_momentum > 0.2:  # Strong positive momentum (>20% increase)
+                momentum_boost = min(10.0, volume_momentum * 30.0)  # Up to 10 points
+                volume_score += momentum_boost
+                factors.append(f"Strong volume momentum ({volume_momentum*100:.1f}% acceleration)")
+            elif volume_momentum > 0.1:  # Moderate momentum (>10% increase)
+                momentum_boost = min(5.0, volume_momentum * 25.0)  # Up to 5 points
+                volume_score += momentum_boost
+                factors.append(f"Moderate volume momentum ({volume_momentum*100:.1f}% acceleration)")
+            elif volume_momentum < -0.1:  # Declining volume (negative momentum)
+                volume_score -= 5.0
+                factors.append(f"Volume declining ({volume_momentum*100:.1f}% deceleration)")
+            
+            confidence += volume_score
             
             # 4. Price acceleration (15 points)
             trend_direction = trend_data["direction"] if "direction" in trend_data else "SIDEWAYS"

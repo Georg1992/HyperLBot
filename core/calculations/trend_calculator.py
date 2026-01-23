@@ -45,8 +45,7 @@ class TrendCalculator:
                 "trend_4h": trend_analysis["trend_4h"],
                 "trend_24h": trend_analysis["trend_24h"],
                 "timestamp": time.time(),
-                "data_type": "trend",
-                "full_analysis": trend_analysis
+                "data_type": "trend"
             }
             
         except Exception as e:

@@ -894,7 +894,7 @@
                 });
                 
                 this.socket.on('data_update', (data) => {
-                    console.log('🔄 Received data update:', data);
+                    if (DEBUG) console.log('🔄 Received data update:', data);
                     
                     // Debug session and activity data
                     if (data.session) {
@@ -907,7 +907,7 @@
                     
                     if (data.logs) {
                         if (DEBUG) console.log('📝 Activity logs received:', data.logs.length, 'entries');
-                        if (data.logs.length > 0) {
+                        if (DEBUG && data.logs.length > 0) {
                             console.log('   Latest activity:', data.logs[data.logs.length - 1].message);
                         }
                     }
@@ -1080,7 +1080,7 @@
             }
             
             updateMarketData(market) {
-                console.log('📊 Dashboard received market data:', market);
+                if (DEBUG) console.log('📊 Dashboard received market data:', market);
                 
                 // Store market data for chart drawing (especially S/R levels)
                 this.currentMarketData = market;
@@ -1169,7 +1169,7 @@
 
                 // Update RSI
                 const rsiElement = document.getElementById('market-rsi');
-                console.log('📊 Dashboard received RSI:', market.rsi, 'Type:', typeof market.rsi);
+                if (DEBUG) console.log('📊 Dashboard received RSI:', market.rsi, 'Type:', typeof market.rsi);
                 
                 // Handle RSI as object or direct value
                 let rsiValue = null;
@@ -2161,7 +2161,7 @@
                 if (DEBUG) console.log('📊 Full logs data:', logs);
                 
                 if (!logs || logs.length === 0) {
-                    console.log('📊 No activity logs, showing waiting message');
+                    if (DEBUG) console.log('📊 No activity logs, showing waiting message');
                     container.innerHTML = '<div class="log-entry">🔍 Waiting for bot activity...</div>';
                     return;
                 }
@@ -2941,31 +2941,40 @@
             
             // Pattern type classification functions
             isCandlestickPattern(patternType) {
+                if (!patternType) return false;
                 const candlestickPatterns = [
-                    'BULLISH_ENGULFING', 'BEARISH_ENGULFING', 'HAMMER', 'DOJI', 'SHOOTING_STAR',
-                    'BULLISH_HARAMI', 'BEARISH_HARAMI', 'MORNING_STAR', 'EVENING_STAR'
+                    'ENGULFING', 'HAMMER', 'DOJI', 'SHOOTING_STAR',
+                    'HARAMI', 'MORNING_STAR', 'EVENING_STAR'
                 ];
-                return candlestickPatterns.includes(patternType);
+                return candlestickPatterns.some(p => patternType.includes(p));
             }
             
             isReversalPattern(patternType) {
+                if (!patternType) return false;
                 const reversalPatterns = [
                     'DOUBLE_TOP', 'DOUBLE_BOTTOM', 'HEAD_SHOULDERS', 'INVERSE_HEAD_SHOULDERS',
                     'TRIPLE_TOP', 'TRIPLE_BOTTOM'
                 ];
-                return reversalPatterns.includes(patternType);
+                return reversalPatterns.some(p => patternType.includes(p));
             }
             
             isContinuationPattern(patternType) {
-                const continuationPatterns = [
-                    'FLAG', 'PENNANT', 'TRIANGLE', 'WEDGE', 'RECTANGLE'
-                ];
-                return continuationPatterns.includes(patternType);
+                if (!patternType) return false;
+                const patternTypeUpper = patternType.toUpperCase();
+                // Check for continuation pattern keywords
+                return patternTypeUpper.includes('CONTINUATION') ||
+                       patternTypeUpper.includes('FLAG') ||
+                       patternTypeUpper.includes('PENNANT') ||
+                       patternTypeUpper.includes('TRIANGLE') ||
+                       patternTypeUpper.includes('WEDGE') ||
+                       patternTypeUpper.includes('CHANNEL') ||
+                       patternTypeUpper.includes('RECTANGLE');
             }
             
             // Draw candlestick patterns
             drawCandlestickPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.pattern || pattern.type || pattern.pattern_type;
+                const confidence = pattern.confidence || 0;
                 const startIndex = pattern.start_candle_index || pattern.indices?.[0] || 0;
                 const endIndex = pattern.end_candle_index || pattern.indices?.[1] || 0;
                 const patternHigh = pattern.pattern_high || 0;
@@ -3013,23 +3022,22 @@
             drawGenericPattern(ctx, pattern, candles, chartStartX, candleSlotWidth, height, minPrice, priceRange) {
                 const patternType = pattern.type || pattern.pattern || pattern.pattern_type;
                 const confidence = pattern.confidence || 0;
-                const startTime = pattern.start_time || pattern.start_candle_index || 0;
-                const endTime = pattern.end_time || pattern.end_candle_index || 0;
+                const startIndex = pattern.start_candle_index || 0;
+                const endIndex = pattern.end_candle_index || startIndex;
                 
-                // Find the candle index for the pattern
-                let candleIndex = -1;
-                for (let i = 0; i < candles.length; i++) {
-                    if (candles[i].time >= startTime && candles[i].time <= endTime) {
-                        candleIndex = i;
-                        break;
-                    }
-                }
+                // Use end index as the pattern confirmation point (most recent candle)
+                const candleIndex = Math.min(endIndex, candles.length - 1);
                 
-                if (candleIndex === -1) return;
+                // Get pattern price levels for drawing
+                const patternHigh = pattern.pattern_high || (candles[candleIndex] ? candles[candleIndex].high : 0);
+                const patternLow = pattern.pattern_low || (candles[candleIndex] ? candles[candleIndex].low : 0);
+                
+                // Use mid-point of pattern for drawing
+                const patternPrice = (patternHigh + patternLow) / 2;
                 
                 // Calculate position
                 const x = chartStartX + (candleIndex * candleSlotWidth) + (candleSlotWidth / 2);
-                const y = height - ((pattern.start_price - minPrice) / priceRange) * height;
+                const y = height - ((patternPrice - minPrice) / priceRange) * height;
                 
                 // Draw pattern indicator
                 ctx.save();

@@ -482,7 +482,9 @@ class SupportResistanceCalculator(BaseCalculator):
                 atr_14 = self._data_provider.calculate_atr(candles_data['5m'], 14)  # Required (NO FALLBACKS)
                 if atr_14 <= 0:
                     raise ValueError(f"Invalid atr_14: {atr_14} - must be positive for deduplication (NO FALLBACKS)")
-                final_dedup_tolerance = atr_14 * 0.125  # 0.125×ATR for final deduplication
+                # Use ATR multiplier from config (configurable for optimization)
+                from config.config import TradingConfig
+                final_dedup_tolerance = atr_14 * TradingConfig.ATR_MULTIPLIERS["dedup_cluster"]
                 scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
                 scored_levels.sort(key=lambda x: x.power or 0, reverse=True)
             
@@ -596,7 +598,8 @@ class SupportResistanceCalculator(BaseCalculator):
             # Example: At $90k with ATR=$90, tolerance=$135 merges levels ~0.15% apart
             if atr_14 <= 0:
                 raise ValueError(f"Invalid atr_14: {atr_14} - must be positive for deduplication (NO FALLBACKS)")
-            final_dedup_tolerance = atr_14 * 1.5  # 1.5×ATR for final deduplication (progressive: cluster 0.25×, MTF 0.5×, dedup 1.5×)
+            # Use ATR multiplier from config (configurable for optimization)
+            final_dedup_tolerance = atr_14 * TradingConfig.ATR_MULTIPLIERS["dedup_final"]
             scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
             
             return scored_levels
@@ -881,19 +884,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     "timestamp": current_time,
                     "symbol": self.symbol,
                     "timeframe": "5m",
-                    "atr_5m": atr_14,
-                    "total_levels": len(scored_levels),
-                    "filtered_levels": len(key_levels),
-                    "active_levels": active_count,
-                    "inactive_levels": inactive_count,
-                    "mtf_confirmed": mtf_confirmed_count,
-                    "broken_levels": state_summary['broken_levels_count'],
-                    "role_reversals": state_summary['role_reversals_count'],
-                    "recalculation_reasons": state_summary['recalculation_reasons'],
-                    "strongest_support": strongest_support,
-                    "strongest_resistance": strongest_resistance,
-                    "support_score": support_score,
-                    "resistance_score": resistance_score
+                    "atr_5m": atr_14  # Used by prediction_engine, entry_price_calculator, reactive_engine
                 },
                 # Root-level fields for dashboard compatibility (metadata only, not filtered levels)
                 "strongest_support": strongest_support,
@@ -930,25 +921,18 @@ class SupportResistanceCalculator(BaseCalculator):
         base_result = super()._create_error_result(error_message)
         return {
             **base_result,
+            "status": "error",
             "levels": [],
             "metadata": {
-                        "timestamp": time.time(),
+                "timestamp": time.time(),
                 "symbol": self.symbol,
                 "timeframe": "5m",
-                "atr_5m": 0.0,
-                "error": error_message,
-                "total_levels": 0,
-                "filtered_levels": 0,
-                "active_levels": 0,
-                "inactive_levels": 0,
-                "mtf_confirmed": 0,
-                "broken_levels": 0,
-                "role_reversals": 0,
-                "strongest_support": 0.0,
-                "strongest_resistance": 0.0,
-                "support_score": 0.0,
-                "resistance_score": 0.0
-            }
+                "atr_5m": 0.0  # Required for prediction_engine compatibility
+            },
+            "strongest_support": 0.0,
+            "strongest_resistance": 0.0,
+            "support_score": 0.0,
+            "resistance_score": 0.0
         }
     
     @staticmethod
