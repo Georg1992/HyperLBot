@@ -8,6 +8,7 @@ New Flow: Raw Data → Analysis Modules → MarketDataService → SessionOrchest
 import time
 from typing import Dict, Any, Optional, List
 from loguru import logger
+from core.constants import TradingConstants
 
 class MarketDataService:
     """Processed data coordinator - receives analysis from modules, coordinates for consumers"""
@@ -31,7 +32,7 @@ class MarketDataService:
         # Real-time price streaming (single source of truth)
         self._current_price = None
         self._price_timestamp = 0
-        self._price_update_interval = 0.1  # 100ms for real-time updates
+        self._price_update_interval = TradingConstants.PRICE_UPDATE_INTERVAL
         
         # RSI update throttling for dashboard (prevent spam from rapid price changes)
         self._last_rsi_dashboard_update = 0
@@ -73,26 +74,47 @@ class MarketDataService:
         self._store_processed_data(data_type, analysis_data)
     
     def get_volatility_analysis(self) -> Dict[str, Any]:
-        """Get volatility analysis from VolatilityCalculator - strategy independent"""
+        """
+        Get volatility analysis from VolatilityCalculator - strategy independent
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
             # Check if we have valid processed data
             volatility_data = self._get_processed_data("volatility")
             if volatility_data:
+                # Validate cached data
+                if volatility_data is None:
+                    raise ValueError("Cached volatility data is None - cache corruption detected")
+                if not isinstance(volatility_data, dict):
+                    raise ValueError(f"Cached volatility data is not a dict: {type(volatility_data)}")
                 return volatility_data
             
             # If no valid data, trigger analysis module to process
-            if "volatility" in self._analysis_modules:
-                logger.info("📊 Triggering volatility analysis...")
-                volatility_result = self._analysis_modules["volatility"].get_latest_analysis()
-                # Store result for future use
-                self.update_analysis_data("volatility", volatility_result)
-                return volatility_result
+            if "volatility" not in self._analysis_modules:
+                raise ValueError("No volatility analysis module registered - module initialization failed")
             
-            raise ValueError("No volatility analysis module registered")
+            logger.info("📊 Triggering volatility analysis...")
+            volatility_calculator = self._analysis_modules["volatility"]
+            if volatility_calculator is None:
+                raise ValueError("Volatility calculator module is None - module initialization failed")
+            
+            volatility_result = volatility_calculator.get_latest_analysis()
+            
+            # Validate result
+            if volatility_result is None:
+                raise ValueError("Volatility calculation returned None - calculation method failed")
+            if not isinstance(volatility_result, dict):
+                raise ValueError(f"Volatility calculation returned non-dict: {type(volatility_result)}")
+            
+            # Store result for future use
+            self.update_analysis_data("volatility", volatility_result)
+            return volatility_result
             
         except Exception as e:
             logger.error(f"❌ Failed to get volatility analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_trend_analysis(self) -> Dict[str, Any]:
         """Get trend analysis from TrendCalculator - strategy independent"""
@@ -215,64 +237,103 @@ class MarketDataService:
         
         Returns ALL significant S/R levels found in the market.
         Strategy-specific filtering happens later in prediction engine.
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
         """
         try:
             # Strategy-independent cache key
             cache_key = "support_resistance"
             sr_data = self._cache.get(cache_key)
             if sr_data:
+                # Validate cached data is not None
+                if sr_data is None:
+                    raise ValueError("Cached support_resistance data is None - cache corruption detected")
+                if not isinstance(sr_data, dict):
+                    raise ValueError(f"Cached support_resistance data is not a dict: {type(sr_data)}")
                 return sr_data
             
-            if "support_resistance" in self._analysis_modules:
-                logger.info("📊 Triggering S/R analysis (strategy-independent)...")
-                # Get current price for S/R calculation
-                current_price = None
-                if self.hyperliquid_websocket:
-                    current_price = self.hyperliquid_websocket.get_current_price()
-                elif self.hyperliquid_api:
-                    current_price = self.hyperliquid_api.get_current_price("BTC")
-                
-                if not current_price or current_price <= 0:
-                    raise ValueError("No valid current price for S/R analysis")
-                
-                # Get S/R calculator and calculate levels (strategy-independent)
-                sr_calculator = self._analysis_modules["support_resistance"]
-                # NO FALLBACKS - assume calculate_multi_timeframe_levels exists
-                # Strategy-independent: returns ALL significant levels
-                result = sr_calculator.calculate_multi_timeframe_levels(current_price)
-                # Cache with strategy-independent key
-                self._cache.set(cache_key, result, ttl=300)
-                # Also store via MarketDataService for consistency
-                self.update_analysis_data("support_resistance", result)
-                return result
+            if "support_resistance" not in self._analysis_modules:
+                raise ValueError("No S/R analysis module registered - module initialization failed")
             
-            raise ValueError("No S/R analysis module registered")
+            logger.info("📊 Triggering S/R analysis (strategy-independent)...")
+            # Get current price for S/R calculation
+            current_price = None
+            if self.hyperliquid_websocket:
+                current_price = self.hyperliquid_websocket.get_current_price()
+            elif self.hyperliquid_api:
+                current_price = self.hyperliquid_api.get_current_price("BTC")
+            
+            if not current_price or current_price <= 0:
+                raise ValueError(f"No valid current price for S/R analysis (got: {current_price})")
+            
+            # Get S/R calculator and calculate levels (strategy-independent)
+            sr_calculator = self._analysis_modules["support_resistance"]
+            if sr_calculator is None:
+                raise ValueError("S/R calculator module is None - module initialization failed")
+            
+            # NO FALLBACKS - assume calculate_multi_timeframe_levels exists
+            # Strategy-independent: returns ALL significant levels
+            result = sr_calculator.calculate_multi_timeframe_levels(current_price)
+            
+            # Validate result is not None
+            if result is None:
+                raise ValueError("S/R calculation returned None - calculation method failed")
+            if not isinstance(result, dict):
+                raise ValueError(f"S/R calculation returned non-dict: {type(result)}")
+            
+            # Cache with strategy-independent key
+            self._cache.set(cache_key, result, ttl=300)
+            # Also store via MarketDataService for consistency
+            self.update_analysis_data("support_resistance", result)
+            return result
             
         except Exception as e:
             logger.error(f"❌ Failed to get S/R analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_rsi_analysis(self) -> Dict[str, Any]:
-        """Get RSI analysis from RSICalculator"""
+        """
+        Get RSI analysis from RSICalculator
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
             # Check if we have valid processed data
             rsi_data = self._get_processed_data("rsi")
             if rsi_data:
+                # Validate cached data
+                if rsi_data is None:
+                    raise ValueError("Cached RSI data is None - cache corruption detected")
+                if not isinstance(rsi_data, dict):
+                    raise ValueError(f"Cached RSI data is not a dict: {type(rsi_data)}")
                 return rsi_data
             
             # If no valid data, trigger RSI calculation
-            if "rsi_calculator" in self._analysis_modules:
-                logger.info("📊 Triggering RSI analysis...")
-                rsi_result = self._analysis_modules["rsi_calculator"].get_latest_analysis()
-                # Store result for future use
-                self.update_analysis_data("rsi", rsi_result)
-                return rsi_result
+            if "rsi_calculator" not in self._analysis_modules:
+                raise ValueError("No RSI analysis module registered - module initialization failed")
             
-            raise ValueError("No RSI analysis module registered")
+            logger.info("📊 Triggering RSI analysis...")
+            rsi_calculator = self._analysis_modules["rsi_calculator"]
+            if rsi_calculator is None:
+                raise ValueError("RSI calculator module is None - module initialization failed")
+            
+            rsi_result = rsi_calculator.get_latest_analysis()
+            
+            # Validate result
+            if rsi_result is None:
+                raise ValueError("RSI calculation returned None - calculation method failed")
+            if not isinstance(rsi_result, dict):
+                raise ValueError(f"RSI calculation returned non-dict: {type(rsi_result)}")
+            
+            # Store result for future use
+            self.update_analysis_data("rsi", rsi_result)
+            return rsi_result
             
         except Exception as e:
             logger.error(f"❌ Failed to get RSI analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def recalculate_rsi_baseline(self, candles_5m: List[Dict]) -> None:
         """Recalculate RSI baseline at candle boundary - SRP compliant method"""
@@ -293,61 +354,112 @@ class MarketDataService:
             raise
     
     def get_volume_analysis(self) -> Dict[str, Any]:
-        """Get volume analysis from VolumeCalculator"""
+        """
+        Get volume analysis from VolumeCalculator
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
             # Check if we have valid processed data
             volume_data = self._get_processed_data("volume")
             if volume_data:
+                # Validate cached data
+                if volume_data is None:
+                    raise ValueError("Cached volume data is None - cache corruption detected")
+                if not isinstance(volume_data, dict):
+                    raise ValueError(f"Cached volume data is not a dict: {type(volume_data)}")
                 return volume_data
             
             # If no valid data, trigger volume calculation
-            if "volume" in self._analysis_modules:
-                logger.info("📊 Triggering volume analysis...")
-                volume_calculator = self._analysis_modules["volume"]
-                volume_result = volume_calculator.get_latest_analysis(
-                    hyperliquid_websocket=self.hyperliquid_websocket
-                )
-                # Store result for future use
-                self.update_analysis_data("volume", volume_result)
-                return volume_result
+            if "volume" not in self._analysis_modules:
+                raise ValueError("No volume calculator registered - module initialization failed")
             
-            raise ValueError("No volume calculator registered")
+            logger.info("📊 Triggering volume analysis...")
+            volume_calculator = self._analysis_modules["volume"]
+            if volume_calculator is None:
+                raise ValueError("Volume calculator module is None - module initialization failed")
+            
+            volume_result = volume_calculator.get_latest_analysis(
+                hyperliquid_websocket=self.hyperliquid_websocket
+            )
+            
+            # Validate result
+            if volume_result is None:
+                raise ValueError("Volume calculation returned None - calculation method failed")
+            if not isinstance(volume_result, dict):
+                raise ValueError(f"Volume calculation returned non-dict: {type(volume_result)}")
+            
+            # Store result for future use
+            self.update_analysis_data("volume", volume_result)
+            return volume_result
             
         except Exception as e:
             logger.error(f"❌ Failed to get volume analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_cross_asset_analysis(self) -> Dict[str, Any]:
-        """Get cross asset correlation analysis"""
+        """
+        Get cross asset correlation analysis
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
             # Check if we have valid processed data
             cross_asset_data = self._get_processed_data("cross_asset_correlation_analyzer")
             if cross_asset_data:
+                # Validate cached data
+                if cross_asset_data is None:
+                    raise ValueError("Cached cross asset data is None - cache corruption detected")
+                if not isinstance(cross_asset_data, dict):
+                    raise ValueError(f"Cached cross asset data is not a dict: {type(cross_asset_data)}")
                 return cross_asset_data
             
             # If no valid data, trigger cross asset analysis
-            if "cross_asset_correlation_analyzer" in self._analysis_modules:
-                logger.info("📊 Triggering cross asset correlation analysis...")
-                cross_asset_analyzer = self._analysis_modules["cross_asset_correlation_analyzer"]
-                current_price = self.get_current_price() or 110000.0
-                cross_asset_result = cross_asset_analyzer.analyze_cross_asset_correlations(current_price)
-                # Store result for future use
-                self.update_analysis_data("cross_asset_correlation_analyzer", cross_asset_result)
-                return cross_asset_result
+            if "cross_asset_correlation_analyzer" not in self._analysis_modules:
+                raise ValueError("No cross asset correlation analyzer registered - module initialization failed")
             
-            raise ValueError("No cross asset correlation analyzer registered")
+            logger.info("📊 Triggering cross asset correlation analysis...")
+            cross_asset_analyzer = self._analysis_modules["cross_asset_correlation_analyzer"]
+            if cross_asset_analyzer is None:
+                raise ValueError("Cross asset analyzer module is None - module initialization failed")
+            
+            current_price = self.get_current_price()
+            if not current_price or current_price <= 0:
+                raise ValueError(f"No valid current price for cross asset analysis (got: {current_price})")
+            
+            cross_asset_result = cross_asset_analyzer.analyze_cross_asset_correlations(current_price)
+            
+            # Validate result
+            if cross_asset_result is None:
+                raise ValueError("Cross asset analysis returned None - calculation method failed")
+            if not isinstance(cross_asset_result, dict):
+                raise ValueError(f"Cross asset analysis returned non-dict: {type(cross_asset_result)}")
+            
+            # Store result for future use
+            self.update_analysis_data("cross_asset_correlation_analyzer", cross_asset_result)
+            return cross_asset_result
             
         except Exception as e:
             logger.error(f"❌ Failed to get cross asset analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_consolidation_analysis(self, unified_data: Dict[str, Any], current_price: float) -> Dict[str, Any]:
-        """Get consolidation analysis from ConsolidationTracker"""
+        """
+        Get consolidation analysis from ConsolidationTracker
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
             if "consolidation" not in self._analysis_modules:
-                return {"active": False, "status": "Consolidation tracker not available"}
+                raise ValueError("No consolidation tracker module registered - module initialization failed")
             
             consolidation_tracker = self._analysis_modules["consolidation"]
+            if consolidation_tracker is None:
+                raise ValueError("Consolidation tracker module is None - module initialization failed")
+            
             current_time = time.time()
             
             # Detect consolidation and breakout
@@ -387,13 +499,19 @@ class MarketDataService:
                     "detected_at": breakout.detected_at
                 }
             
+            # Validate result
+            if result is None:
+                raise ValueError("Consolidation analysis returned None - calculation method failed")
+            if not isinstance(result, dict):
+                raise ValueError(f"Consolidation analysis returned non-dict: {type(result)}")
+            
             # Store result for future use
             self.update_analysis_data("consolidation", result)
             return result
             
         except Exception as e:
             logger.error(f"❌ Failed to get consolidation analysis: {e}")
-            return {"active": False, "status": f"Error: {e}"}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     # ==================================================================================
     # UNIFIED PROCESSED DATA PACKAGES - Pre-processed data for consumers
@@ -480,6 +598,17 @@ class MarketDataService:
                     except Exception as e:
                         logger.warning(f"⚠️ Failed to get {module_name} analysis: {e}")
             
+            # VALIDATION: Ensure support_resistance is always present (NO FALLBACKS - this should never happen)
+            if "support_resistance" not in unified_data:
+                error_msg = "CRITICAL: support_resistance missing from unified_data - this should never happen"
+                logger.error(f"❌ {error_msg}")
+                raise ValueError(error_msg)
+            
+            if unified_data["support_resistance"] is None:
+                error_msg = "CRITICAL: support_resistance is None in unified_data - calculation failed"
+                logger.error(f"❌ {error_msg}")
+                raise ValueError(error_msg)
+            
             return unified_data
             
         except Exception as e:
@@ -491,181 +620,272 @@ class MarketDataService:
     # ==================================================================================
     
     def get_pressure_analysis(self) -> Dict[str, Any]:
-        """Get pressure analysis data - use the pressure calculator's get_latest_analysis method"""
+        """
+        Get pressure analysis data - use the pressure calculator's get_latest_analysis method
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
-            if "pressure" in self._analysis_modules:
-                pressure_calculator = self._analysis_modules["pressure"]
-                # NO FALLBACKS - assume get_latest_analysis exists
-                pressure_result = pressure_calculator.get_latest_analysis()
-                # Store result for future use
-                self.update_analysis_data("pressure", pressure_result)
-                return pressure_result
-            else:
-                raise ValueError("No pressure analysis module registered")
+            if "pressure" not in self._analysis_modules:
+                raise ValueError("No pressure analysis module registered - module initialization failed")
+            
+            pressure_calculator = self._analysis_modules["pressure"]
+            if pressure_calculator is None:
+                raise ValueError("Pressure calculator module is None - module initialization failed")
+            
+            # NO FALLBACKS - assume get_latest_analysis exists
+            pressure_result = pressure_calculator.get_latest_analysis()
+            
+            # Validate result
+            if pressure_result is None:
+                raise ValueError("Pressure calculation returned None - calculation method failed")
+            if not isinstance(pressure_result, dict):
+                raise ValueError(f"Pressure calculation returned non-dict: {type(pressure_result)}")
+            
+            # Store result for future use
+            self.update_analysis_data("pressure", pressure_result)
+            return pressure_result
+            
         except Exception as e:
             logger.error(f"❌ Failed to get pressure analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_pattern_analysis(self) -> Dict[str, Any]:
-        """Get pattern recognition analysis data with centralized caching"""
+        """
+        Get pattern recognition analysis data with centralized caching
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
-            if "pattern_recognition" in self._analysis_modules:
-                # Use centralized cache for pattern analysis
-                from core.services.centralized_cache import get_global_centralized_cache
-                cache = get_global_centralized_cache()
-                
-                # Check cache first - use cache if valid (pattern expiration is handled in analysis, not cache invalidation)
-                cache_key = "pattern_recognition_analysis"
-                cached_data = cache.get(cache_key)
-                
-                if cached_data:
-                    # Cache hit - use cached data (patterns expiration is handled by pattern engine, not cache)
-                    patterns_count = 0
-                    if isinstance(cached_data, dict):
-                        flat_patterns = cached_data["patterns"]  # Required (NO FALLBACKS)
-                        nested_patterns = cached_data["patterns_nested"] if "patterns_nested" in cached_data else {}
-                        if isinstance(flat_patterns, list):
-                            patterns_count += len(flat_patterns)
-                        if isinstance(nested_patterns, dict):
-                            for category, pattern_list in nested_patterns.items():
-                                if isinstance(pattern_list, list):
-                                    patterns_count += len(pattern_list)
-                    # Removed excessive debug log for cached pattern analysis
-                    return cached_data
-                
-                # Cache miss or invalid - perform fresh analysis
-                logger.info("📊 Performing fresh pattern analysis...")
-                pattern_engine = self._analysis_modules["pattern_recognition"]
-                # Get recent candles for pattern analysis (50 candles for detection)
-                from core.services.historical_data_service import create_historical_data_service
-                historical_service = create_historical_data_service()
-                candles = historical_service.get_5m_candles("BTC", 50)  # 50 candles for pattern detection
-                if candles:
-                    logger.info(f"📊 Analyzing {len(candles)} candles for patterns...")
-                    analysis_result = pattern_engine.analyze_patterns(candles)
-                    
-                    # Log pattern detection results
-                    patterns_count = len(analysis_result["patterns"])  # Required (NO FALLBACKS)
-                    nested = analysis_result["patterns_nested"] if "patterns_nested" in analysis_result else {}
-                    nested_count = sum(len(v) if isinstance(v, list) else 0 for v in nested.values())
-                    logger.info(f"📊 Pattern analysis complete: {patterns_count} flat patterns, {nested_count} nested patterns")
-                    
-                    # Store in centralized cache
-                    cache.set(cache_key, analysis_result)
-                    # Also store via MarketDataService for consistency
-                    self.update_analysis_data("pattern_recognition", analysis_result)
-                    return analysis_result
-                raise ValueError("No candle data available for pattern analysis")
-            else:
-                raise ValueError("No pattern recognition module registered")
+            if "pattern_recognition" not in self._analysis_modules:
+                raise ValueError("No pattern recognition module registered - module initialization failed")
+            
+            pattern_engine = self._analysis_modules["pattern_recognition"]
+            if pattern_engine is None:
+                raise ValueError("Pattern recognition engine module is None - module initialization failed")
+            
+            # Use centralized cache for pattern analysis
+            from core.services.centralized_cache import get_global_centralized_cache
+            cache = get_global_centralized_cache()
+            
+            # Check cache first - use cache if valid (pattern expiration is handled in analysis, not cache invalidation)
+            cache_key = "pattern_recognition_analysis"
+            cached_data = cache.get(cache_key)
+            
+            if cached_data:
+                # Validate cached data
+                if cached_data is None:
+                    raise ValueError("Cached pattern data is None - cache corruption detected")
+                if not isinstance(cached_data, dict):
+                    raise ValueError(f"Cached pattern data is not a dict: {type(cached_data)}")
+                # Cache hit - use cached data (patterns expiration is handled by pattern engine, not cache)
+                return cached_data
+            
+            # Cache miss or invalid - perform fresh analysis
+            logger.info("📊 Performing fresh pattern analysis...")
+            # Get recent candles for pattern analysis (50 candles for detection)
+            from core.services.historical_data_service import create_historical_data_service
+            historical_service = create_historical_data_service()
+            candles = historical_service.get_5m_candles("BTC", 50)  # 50 candles for pattern detection
+            
+            if not candles or len(candles) < 10:
+                raise ValueError(f"Insufficient candle data for pattern analysis: {len(candles) if candles else 0} < 10 - NO FALLBACKS")
+            
+            logger.info(f"📊 Analyzing {len(candles)} candles for patterns...")
+            analysis_result = pattern_engine.analyze_patterns(candles)
+            
+            # Validate result
+            if analysis_result is None:
+                raise ValueError("Pattern analysis returned None - calculation method failed")
+            if not isinstance(analysis_result, dict):
+                raise ValueError(f"Pattern analysis returned non-dict: {type(analysis_result)}")
+            
+            # Log pattern detection results - NO FALLBACKS
+            patterns_count = len(analysis_result["patterns"])
+            nested = analysis_result["patterns_nested"]
+            nested_count = sum(len(v) if isinstance(v, list) else 0 for v in nested.values())
+            logger.info(f"📊 Pattern analysis complete: {patterns_count} flat patterns, {nested_count} nested patterns")
+            
+            # Store in centralized cache
+            cache.set(cache_key, analysis_result)
+            # Also store via MarketDataService for consistency
+            self.update_analysis_data("pattern_recognition", analysis_result)
+            return analysis_result
+            
         except Exception as e:
             logger.error(f"❌ Failed to get pattern analysis: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_market_conditions_analysis(self) -> Dict[str, Any]:
-        """Get market conditions analysis data"""
+        """
+        Get market conditions analysis data
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
-            if "market_conditions" in self._analysis_modules:
-                conditions_analyzer = self._analysis_modules["market_conditions"]
-                # Get current market data for conditions analysis
-                current_price = self.get_current_price()
-                if current_price:
-                    market_data = {
-                        "current_price": current_price,
-                        "rsi": self.get_rsi_analysis()["rsi"],  # Required (NO FALLBACKS)
-                        "trend": self.get_trend_analysis()["direction"],  # Required (NO FALLBACKS)
-                        "volatility_5m": self.get_volatility_analysis()["volatility_percentage"] / 100.0,  # Required (NO FALLBACKS)
-                        "volatility_category": self.get_volatility_analysis()["level"],  # Required (NO FALLBACKS)
-                        "volume_category": self.get_volume_analysis()["volume_category"],  # Required (NO FALLBACKS)
-                        "timestamp": time.time()  # Required (NO FALLBACKS)
-                    }
-                    # Get 1d candles for market trend analysis - request more to ensure we have enough
-                    from core.services.historical_data_service import create_historical_data_service
-                    historical_service = create_historical_data_service()
-                    candles_1d = historical_service.get_1d_candles("BTC", 30)  # Request 30 days to ensure we have at least 7
-                    
-                    conditions_result = conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d)
-                    # Store result for future use
-                    self.update_analysis_data("market_conditions", conditions_result)
-                    return conditions_result
-                raise ValueError("No current price available for market conditions analysis")
-            else:
-                raise ValueError("No market conditions module registered")
+            if "market_conditions" not in self._analysis_modules:
+                raise ValueError("No market conditions module registered - module initialization failed")
+            
+            conditions_analyzer = self._analysis_modules["market_conditions"]
+            if conditions_analyzer is None:
+                raise ValueError("Market conditions analyzer module is None - module initialization failed")
+            
+            # Get current market data for conditions analysis
+            current_price = self.get_current_price()
+            if not current_price or current_price <= 0:
+                raise ValueError(f"No valid current price for market conditions analysis (got: {current_price})")
+            
+            market_data = {
+                "current_price": current_price,
+                "rsi": self.get_rsi_analysis()["rsi"],  # Required (NO FALLBACKS)
+                "trend": self.get_trend_analysis()["direction"],  # Required (NO FALLBACKS)
+                "volatility_5m": self.get_volatility_analysis()["volatility_percentage"] / 100.0,  # Required (NO FALLBACKS)
+                "volatility_category": self.get_volatility_analysis()["level"],  # Required (NO FALLBACKS)
+                "volume_category": self.get_volume_analysis()["volume_category"],  # Required (NO FALLBACKS)
+                "timestamp": time.time()  # Required (NO FALLBACKS)
+            }
+            
+            # Get 1d candles for market trend analysis - request more to ensure we have enough
+            from core.services.historical_data_service import create_historical_data_service
+            historical_service = create_historical_data_service()
+            candles_1d = historical_service.get_1d_candles("BTC", 30)  # Request 30 days to ensure we have at least 7
+            
+            conditions_result = conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d)
+            
+            # Validate result
+            if conditions_result is None:
+                raise ValueError("Market conditions analysis returned None - calculation method failed")
+            if not isinstance(conditions_result, dict):
+                raise ValueError(f"Market conditions analysis returned non-dict: {type(conditions_result)}")
+            
+            # Store result for future use
+            self.update_analysis_data("market_conditions", conditions_result)
+            return conditions_result
+            
         except Exception as e:
             logger.error(f"❌ Failed to get market conditions analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_funding_analysis(self) -> Dict[str, Any]:
-        """Get funding rate analysis data"""
+        """
+        Get funding rate analysis data
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
-            if "funding_rate" in self._analysis_modules:
-                funding_analyzer = self._analysis_modules["funding_rate"]
-                # Get funding rate data from API
-                if self.hyperliquid_api:
-                    funding_data = self.hyperliquid_api.get_funding_rate("BTC")
-                    if funding_data:
-                        funding_result = funding_analyzer.analyze_funding_rate(funding_data)
-                        # Store result for future use
-                        self.update_analysis_data("funding_rate", funding_result)
-                        return funding_result
-                raise ValueError("No funding rate data available")
-            else:
-                raise ValueError("No funding rate module registered")
+            if "funding_rate" not in self._analysis_modules:
+                raise ValueError("No funding rate module registered - module initialization failed")
+            
+            funding_analyzer = self._analysis_modules["funding_rate"]
+            if funding_analyzer is None:
+                raise ValueError("Funding rate analyzer module is None - module initialization failed")
+            
+            # Get funding rate data from API - NO FALLBACKS
+            if not self.hyperliquid_api:
+                raise ValueError("HyperliquidAPI not available for funding rate analysis - NO FALLBACKS")
+            
+            funding_data = self.hyperliquid_api.get_funding_rate("BTC")
+            if not funding_data:
+                raise ValueError("No funding rate data available from API - NO FALLBACKS")
+            
+            funding_result = funding_analyzer.analyze_funding_rate(funding_data)
+            
+            # Validate result
+            if funding_result is None:
+                raise ValueError("Funding rate analysis returned None - calculation method failed")
+            if not isinstance(funding_result, dict):
+                raise ValueError(f"Funding rate analysis returned non-dict: {type(funding_result)}")
+            
+            # Store result for future use
+            self.update_analysis_data("funding_rate", funding_result)
+            return funding_result
+            
         except Exception as e:
             logger.error(f"❌ Failed to get funding analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_whale_data(self) -> Dict[str, Any]:
-        """Get whale analytics data"""
+        """
+        Get whale analytics data
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        
+        Note: If whale data is truly optional, callers should check availability
+        before calling, or handle the exception appropriately.
+        """
         try:
             # Use WhaleAnalysisCalculator to get fresh whale data
             from core.calculations.whale_analysis_calculator import WhaleAnalysisCalculator
             whale_calculator = WhaleAnalysisCalculator()
             whale_result = whale_calculator.get_latest_analysis()
             
+            # Validate result
+            if whale_result is None:
+                raise ValueError("Whale analysis returned None - calculation method failed")
+            if not isinstance(whale_result, dict):
+                raise ValueError(f"Whale analysis returned non-dict: {type(whale_result)}")
+            
             # Store result for future use
             self.update_analysis_data("whale_analytics", whale_result)
             return whale_result
         except Exception as e:
-            logger.warning(f"⚠️ Failed to get whale data: {e}")
-            # Return empty data instead of raising - whale data is optional
-            return {}
+            logger.error(f"❌ Failed to get whale data: {e}")
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_orderbook_analysis(self) -> Dict[str, Any]:
-        """Get orderbook analysis data"""
+        """
+        Get orderbook analysis data
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
         try:
-            if "orderbook" in self._analysis_modules:
-                orderbook_analyzer = self._analysis_modules["orderbook"]
-                # Get orderbook data for analysis
-                orderbook_data = None
-                
-                # Get orderbook data - NO FALLBACKS
-                if not self.hyperliquid_websocket:
-                    raise Exception("Hyperliquid WebSocket not available - NO FALLBACKS")
-                
-                orderbook_data = self.hyperliquid_websocket.get_orderbook_data()
-                if not orderbook_data:
-                    raise Exception("No orderbook data available - NO FALLBACKS")
-                
-                current_price = self.get_current_price()
-                if orderbook_data and current_price:
-                    analysis_result = orderbook_analyzer.analyze_orderbook(orderbook_data, current_price)
-                    # Add raw bids/asks to the result for other modules to use
-                    bids, asks = self._extract_bids_asks(orderbook_data)
-                    analysis_result['bids'] = bids
-                    analysis_result['asks'] = asks
-                    # Store result for future use
-                    self.update_analysis_data("orderbook", analysis_result)
-                    return analysis_result
-                
-                raise ValueError("No orderbook data available for analysis")
-            else:
-                raise ValueError("No orderbook module registered")
+            if "orderbook" not in self._analysis_modules:
+                raise ValueError("No orderbook module registered - module initialization failed")
+            
+            orderbook_analyzer = self._analysis_modules["orderbook"]
+            if orderbook_analyzer is None:
+                raise ValueError("Orderbook analyzer module is None - module initialization failed")
+            
+            # Get orderbook data - NO FALLBACKS
+            if not self.hyperliquid_websocket:
+                raise ValueError("Hyperliquid WebSocket not available for orderbook analysis - NO FALLBACKS")
+            
+            orderbook_data = self.hyperliquid_websocket.get_orderbook_data()
+            if not orderbook_data:
+                raise ValueError("No orderbook data available from WebSocket - NO FALLBACKS")
+            
+            current_price = self.get_current_price()
+            if not current_price or current_price <= 0:
+                raise ValueError(f"No valid current price for orderbook analysis (got: {current_price})")
+            
+            analysis_result = orderbook_analyzer.analyze_orderbook(orderbook_data, current_price)
+            
+            # Validate result
+            if analysis_result is None:
+                raise ValueError("Orderbook analysis returned None - calculation method failed")
+            if not isinstance(analysis_result, dict):
+                raise ValueError(f"Orderbook analysis returned non-dict: {type(analysis_result)}")
+            
+            # Add raw bids/asks to the result for other modules to use
+            bids, asks = self._extract_bids_asks(orderbook_data)
+            analysis_result['bids'] = bids
+            analysis_result['asks'] = asks
+            
+            # Store result for future use
+            self.update_analysis_data("orderbook", analysis_result)
+            return analysis_result
+            
         except Exception as e:
             logger.error(f"❌ Failed to get orderbook analysis: {e}")
-            raise
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _extract_bids_asks(self, orderbook_data: Dict[str, Any]) -> tuple:
         """Extract bids and asks from orderbook data"""
@@ -968,18 +1188,26 @@ class MarketDataService:
             return self._current_price
     
     def _on_websocket_price_update(self, price_data: Dict[str, Any]):
-        """Callback for WebSocket price updates - update RSI immediately"""
+        """
+        Callback for WebSocket price updates - update RSI immediately
+        
+        CRITICAL: This is a high-frequency callback. Errors are logged at debug level
+        to avoid spam, but critical errors should still be visible.
+        """
         try:
-            new_price = price_data["current_price"] if "current_price" in price_data else None
+            new_price = price_data.get("current_price") if price_data else None
             if new_price and new_price > 0:
                 # Update internal price cache
                 self._current_price = new_price
                 self._price_timestamp = time.time()
                 # Update RSI immediately
                 self._update_rsi_with_price(new_price)
+        except (KeyError, TypeError, ValueError) as e:
+            # Handle specific data format errors (non-critical for callback)
+            logger.debug(f"⚠️ WebSocket price update callback error (non-critical): {e}")
         except Exception as e:
-            # Don't log errors here to avoid spam
-            pass
+            # Unexpected errors should be logged (but not spam)
+            logger.warning(f"⚠️ Unexpected error in WebSocket price callback: {e}")
     
     def _prepare_sr_data_for_dashboard(self, sr_data: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """
@@ -989,22 +1217,33 @@ class MarketDataService:
         - Supports: Descending by price (closest to current price at top)
         - Resistances: Ascending by price (closest to current price at top)
         
+        CRITICAL: NO FALLBACKS - if sorting fails, we must know about it.
+        
         Args:
             sr_data: S/R data from analysis
             current_price: Current market price
             
         Returns:
             Dashboard-ready S/R data with sorted levels
+            
+        Raises:
+            ValueError: If sr_data is invalid or sorting fails
         """
+        if not sr_data or not isinstance(sr_data, dict):
+            raise ValueError(f"Invalid sr_data for dashboard preparation: {type(sr_data)} - NO FALLBACKS")
+        
+        if current_price <= 0:
+            raise ValueError(f"Invalid current_price for dashboard preparation: {current_price} - NO FALLBACKS")
+        
         try:
             # Create a copy to avoid mutating original data
-            dashboard_sr_data = sr_data.copy() if sr_data else {}
+            dashboard_sr_data = sr_data.copy()
             
             # Sort top_support: Descending by price (highest price = closest to current = first)
             if "top_support" in dashboard_sr_data and dashboard_sr_data["top_support"]:
                 dashboard_sr_data["top_support"] = sorted(
                     dashboard_sr_data["top_support"],
-                    key=lambda x: x.get("price_level", 0),
+                    key=lambda x: x["price_level"],
                     reverse=True  # Descending: closest to current price first
                 )
             
@@ -1012,56 +1251,75 @@ class MarketDataService:
             if "top_resistance" in dashboard_sr_data and dashboard_sr_data["top_resistance"]:
                 dashboard_sr_data["top_resistance"] = sorted(
                     dashboard_sr_data["top_resistance"],
-                    key=lambda x: x.get("price_level", float('inf')),
+                    key=lambda x: x["price_level"],
                     reverse=False  # Ascending: closest to current price first
                 )
             
             return dashboard_sr_data
             
-        except Exception as e:
+        except (KeyError, TypeError, ValueError) as e:
             logger.error(f"❌ Failed to prepare S/R data for dashboard: {e}")
-            # Return original data on error (graceful degradation)
-            return sr_data if sr_data else {}
+            raise ValueError(f"S/R data dashboard preparation failed: {e} (NO FALLBACKS)") from e
     
     def _update_rsi_with_price(self, new_price: float):
-        """Update RSI immediately when price changes (called from price updates)"""
+        """
+        Update RSI immediately when price changes (called from price updates)
+        
+        CRITICAL: This is called frequently. Errors are handled gracefully but logged.
+        """
         try:
-            if "rsi_calculator" in self._analysis_modules:
-                rsi_calculator = self._analysis_modules["rsi_calculator"]
-                # Only update if RSI is already initialized
-                if rsi_calculator.rsi_initialized:
-                    old_rsi = rsi_calculator.current_rsi
-                    rsi_calculator.update_realtime_rsi(new_price)
-                    new_rsi = rsi_calculator.current_rsi
-                    
-                    # Trigger instant dashboard update if RSI changed significantly (throttled)
-                    if abs(new_rsi - old_rsi) >= 0.1:  # Only if RSI changed by at least 0.1
-                        self._trigger_instant_rsi_dashboard_update()
+            if "rsi_calculator" not in self._analysis_modules:
+                return  # RSI calculator not available - not an error
+            
+            rsi_calculator = self._analysis_modules["rsi_calculator"]
+            if rsi_calculator is None:
+                return  # RSI calculator is None - not an error
+            
+            # Only update if RSI is already initialized
+            if not rsi_calculator.rsi_initialized:
+                return  # RSI not initialized yet - not an error
+            
+            old_rsi = rsi_calculator.current_rsi
+            rsi_calculator.update_realtime_rsi(new_price)
+            new_rsi = rsi_calculator.current_rsi
+            
+            # Trigger instant dashboard update if RSI changed significantly (throttled)
+            if abs(new_rsi - old_rsi) >= TradingConstants.RSI_CHANGE_THRESHOLD:
+                self._trigger_instant_rsi_dashboard_update()
+        except (AttributeError, TypeError) as e:
+            # Handle specific errors (missing attributes, wrong types) - non-critical
+            logger.debug(f"⚠️ RSI update error (non-critical): {e}")
         except Exception as e:
-            # Don't log errors here to avoid spam - RSI update failures are non-critical
-            pass
+            # Unexpected errors should be logged
+            logger.warning(f"⚠️ Unexpected error in RSI update: {e}")
     
     def _trigger_instant_rsi_dashboard_update(self):
-        """Trigger instant dashboard update for RSI changes (throttled to prevent spam)"""
+        """
+        Trigger instant dashboard update for RSI changes (throttled to prevent spam)
+        
+        CRITICAL: This is called frequently. Dashboard might not be initialized yet,
+        which is acceptable. Errors are handled gracefully.
+        """
         try:
             current_time = time.time()
             # Throttle: Update dashboard at most every 500ms
-            if current_time - self._last_rsi_dashboard_update >= self._rsi_dashboard_update_interval:
-                self._last_rsi_dashboard_update = current_time
-                
-                # Get dashboard instance and trigger immediate update
-                try:
-                    from core.dashboard.web_dashboard import EventDrivenTradingDashboard
-                    dashboard = EventDrivenTradingDashboard.get_global_instance()
-                    if dashboard:
-                        dashboard.force_data_update()
-                        # Removed excessive debug log for instant RSI update trigger
-                except Exception as e:
-                    # Dashboard might not be initialized yet - that's okay
-                    pass
+            if current_time - self._last_rsi_dashboard_update < self._rsi_dashboard_update_interval:
+                return  # Throttled - not an error
+            
+            self._last_rsi_dashboard_update = current_time
+            
+            # Get dashboard instance and trigger immediate update
+            from core.dashboard.web_dashboard import EventDrivenTradingDashboard
+            dashboard = EventDrivenTradingDashboard.get_global_instance()
+            if dashboard:
+                dashboard.force_data_update()
+            # If dashboard is None, that's okay - it might not be initialized yet
+        except (ImportError, AttributeError) as e:
+            # Handle specific errors (import issues, missing attributes) - non-critical
+            logger.debug(f"⚠️ Dashboard update error (non-critical): {e}")
         except Exception as e:
-            # Don't log errors here to avoid spam
-            pass
+            # Unexpected errors should be logged
+            logger.warning(f"⚠️ Unexpected error in dashboard update trigger: {e}")
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data from API"""
         try:

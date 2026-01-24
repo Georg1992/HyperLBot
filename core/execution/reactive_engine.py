@@ -17,7 +17,7 @@ from loguru import logger
 from config.config import TradingConfig
 
 from .momentum_detector import MomentumDetector, MomentumSignal
-from .position_sizer import PositionSizer
+from .position_sizer import PositionSizeCalculator
 
 
 class ReactiveEngine:
@@ -157,23 +157,32 @@ class ReactiveEngine:
                 logger.error("❌ No strategy config available for momentum trade")
                 return None
             
-            # Get position sizing parameters from strategy config
-            base_position_size_pct = strategy_config["position_size"]  # Required (NO FALLBACKS)
-            leverage = strategy_config["max_leverage"]  # Required (NO FALLBACKS)
+            # Get position sizing parameters from strategy config - NO FALLBACKS
+            base_position_size_pct = strategy_config["position_size"]
+            
+            # Validate position_size is valid for trading (NO FALLBACKS)
+            if base_position_size_pct <= 0 or base_position_size_pct > 1.0:
+                logger.warning(f"⚠️ Strategy '{strategy}' has invalid position_size ({base_position_size_pct}) - skipping momentum trade (strategy may be analysis-only)")
+                return None
+            
+            leverage = strategy_config["max_leverage"]
             
             # Prepare order parameters
             order_side = "BUY" if signal.direction == "LONG" else "SELL"
             
-            # Calculate position size using shared PositionSizer (unified logic with liquidation risk protection)
-            current_balance = PositionSizer.get_balance_from_simulator()
-            position_sizing = PositionSizer.calculate_position_size(
+            # Calculate position size AFTER confidence is available (similar to predictions)
+            # Position sizing happens after confidence so confidence can influence position size
+            # Signal already has confidence calculated
+            current_balance = PositionSizeCalculator.get_balance_from_simulator()
+            position_sizing = PositionSizeCalculator.calculate_position_size(
                 balance=current_balance,
                 base_position_size_pct=base_position_size_pct,
                 risk_reward_ratio=signal.risk_reward_ratio,
                 leverage=leverage,
                 entry_price=signal.entry_price,
                 stop_loss=signal.stop_loss,  # REQUIRED for liquidation risk calculation
-                direction=signal.direction  # REQUIRED for liquidation risk calculation
+                direction=signal.direction,  # REQUIRED for liquidation risk calculation
+                confidence=signal.confidence  # Pass confidence for future confidence-based sizing (same logic as predictions)
             )
             
             # Extract calculated values

@@ -46,11 +46,11 @@ class TrendPatternDetector(BasePatternDetector):
             if ((earlier_slope > 0.001 and recent_slope < -0.001) or  # Bullish to bearish
                 (earlier_slope < -0.001 and recent_slope > 0.001)):   # Bearish to bullish
                 
-                confidence = 0.85
+                quality = 0.85
                 direction = "BULLISH" if recent_slope > 0 else "BEARISH"
                 
                 return self._create_pattern(
-                    "TREND_CHANGE", "REVERSAL", direction, confidence,
+                    "TREND_CHANGE", "REVERSAL", direction, quality,
                     len(closes) - 10, len(closes) - 1, max(closes[-10:]), min(closes[-10:])
                 )
             

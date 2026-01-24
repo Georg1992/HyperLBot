@@ -70,28 +70,41 @@ class PressureDataProvider:
                     "ask_depth_5": 0.0,
                     "bid_depth_10": 0.0,
                     "ask_depth_10": 0.0,
+                    "bid_depth_15": 0.0,
+                    "ask_depth_15": 0.0,
                     "total_depth_5": 0.0,
-                    "total_depth_10": 0.0
+                    "total_depth_10": 0.0,
+                    "total_depth_15": 0.0
                 }
             
-            # Calculate depth for top 5 levels
+            # PROFESSIONAL: Use deeper levels (10-15) for more reliable signals
+            # Research shows deeper levels reduce noise from spoofing and transient orders
+            # Calculate depth for top 5 levels (backward compatibility)
             bid_depth_5 = sum(float(level['sz']) if 'sz' in level else 0 for level in bids[:5])
             ask_depth_5 = sum(float(level['sz']) if 'sz' in level else 0 for level in asks[:5])
             
-            # Calculate depth for top 10 levels
+            # Calculate depth for top 10 levels (primary - more reliable)
             bid_depth_10 = sum(float(level['sz']) if 'sz' in level else 0 for level in bids[:10])
             ask_depth_10 = sum(float(level['sz']) if 'sz' in level else 0 for level in asks[:10])
             
+            # Calculate depth for top 15 levels (for depth concentration calculation)
+            bid_depth_15 = sum(float(level['sz']) if 'sz' in level else 0 for level in bids[:15])
+            ask_depth_15 = sum(float(level['sz']) if 'sz' in level else 0 for level in asks[:15])
+            
             total_depth_5 = bid_depth_5 + ask_depth_5
             total_depth_10 = bid_depth_10 + ask_depth_10
+            total_depth_15 = bid_depth_15 + ask_depth_15
             
             return {
                 "bid_depth_5": bid_depth_5,
                 "ask_depth_5": ask_depth_5,
                 "bid_depth_10": bid_depth_10,
                 "ask_depth_10": ask_depth_10,
+                "bid_depth_15": bid_depth_15,
+                "ask_depth_15": ask_depth_15,
                 "total_depth_5": total_depth_5,
-                "total_depth_10": total_depth_10
+                "total_depth_10": total_depth_10,
+                "total_depth_15": total_depth_15
             }
             
         except Exception as e:
@@ -101,8 +114,11 @@ class PressureDataProvider:
                 "ask_depth_5": 0.0,
                 "bid_depth_10": 0.0,
                 "ask_depth_10": 0.0,
+                "bid_depth_15": 0.0,
+                "ask_depth_15": 0.0,
                 "total_depth_5": 0.0,
-                "total_depth_10": 0.0
+                "total_depth_10": 0.0,
+                "total_depth_15": 0.0
             }
     
     def calculate_pressure_ratios(self, depth_metrics: Dict[str, Any]) -> Dict[str, Any]:
@@ -116,12 +132,13 @@ class PressureDataProvider:
             Dictionary with pressure ratios
         """
         try:
-            total_depth_5 = depth_metrics["total_depth_5"] if "total_depth_5" in depth_metrics else 0.0
-            bid_depth_5 = depth_metrics["bid_depth_5"] if "bid_depth_5" in depth_metrics else 0.0
-            ask_depth_5 = depth_metrics["ask_depth_5"] if "ask_depth_5" in depth_metrics else 0.0
-            total_depth_10 = depth_metrics["total_depth_10"] if "total_depth_10" in depth_metrics else 0.0
+            # PROFESSIONAL: Use deeper depth (10 levels) as primary - NO FALLBACKS
+            total_depth_10 = depth_metrics["total_depth_10"]
+            bid_depth_10 = depth_metrics["bid_depth_10"]
+            ask_depth_10 = depth_metrics["ask_depth_10"]
+            total_depth_15 = depth_metrics["total_depth_15"]
             
-            if total_depth_5 == 0:
+            if total_depth_10 == 0:
                 return {
                     "bid_pressure_ratio": 0.5,
                     "ask_pressure_ratio": 0.5,
@@ -129,13 +146,13 @@ class PressureDataProvider:
                     "depth_concentration": 1.0
                 }
             
-            # Calculate pressure ratios
-            bid_pressure_ratio = bid_depth_5 / total_depth_5
-            ask_pressure_ratio = ask_depth_5 / total_depth_5
+            # Calculate pressure ratios using deeper depth (more reliable)
+            bid_pressure_ratio = bid_depth_10 / total_depth_10
+            ask_pressure_ratio = ask_depth_10 / total_depth_10
             pressure_imbalance = bid_pressure_ratio - ask_pressure_ratio
             
-            # Calculate depth concentration
-            depth_concentration = total_depth_5 / total_depth_10 if total_depth_10 > 0 else 1.0
+            # Calculate depth concentration (10 vs 15 levels for better signal quality)
+            depth_concentration = total_depth_10 / total_depth_15 if total_depth_15 > 0 else 1.0
             
             return {
                 "bid_pressure_ratio": bid_pressure_ratio,

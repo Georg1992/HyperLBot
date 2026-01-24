@@ -43,6 +43,8 @@ class RSSNewsAPI:
         # High-quality crypto news sources
         # Note: Some feeds may be temporarily disabled if they consistently fail
         self.disabled_feeds = set()  # Track feeds that consistently fail
+        self.rate_limited_feeds = {}  # Track rate-limited feeds: {feed_name: disable_until_timestamp}
+        self.feed_failure_count = {}  # Track consecutive failures per feed
         self.rss_feeds = {
             'coindesk': {
                 'url': 'https://www.coindesk.com/arc/outboundfeeds/rss/?outputType=xml',
@@ -147,7 +149,7 @@ class RSSNewsAPI:
                 'sources': list(set([article['source'] for article in all_articles])),
                 'timestamp': current_time,
                 'data_source': 'rss_feeds',
-                'cache_duration': 900  # 15 minutes cache
+                'cache_duration': 300  # 5 minutes cache (matches CentralizedCache TTL)
             }
             
             # Cache result using centralized system
@@ -164,27 +166,74 @@ class RSSNewsAPI:
             raise ValueError(f"News sentiment analysis failed - NO FALLBACKS: {e}")
     
     def _fetch_all_news(self) -> List[Dict[str, Any]]:
-        """Fetch news from all RSS feeds"""
+        """Fetch news from all RSS feeds with rate limiting protection"""
         all_articles = []
         successful_feeds = 0
+        current_time = time.time()
         
         for source_name, source_config in self.rss_feeds.items():
-            # Skip disabled feeds
+            # Skip permanently disabled feeds
             if source_name in self.disabled_feeds:
-                logger.debug(f"⏭️ Skipping disabled feed: {source_name}")
+                logger.debug(f"⏭️ Skipping permanently disabled feed: {source_name}")
                 continue
+            
+            # Check if feed is temporarily rate-limited
+            if source_name in self.rate_limited_feeds:
+                disable_until = self.rate_limited_feeds[source_name]
+                if current_time < disable_until:
+                    remaining = int(disable_until - current_time)
+                    logger.debug(f"⏭️ Skipping rate-limited feed {source_name} (disabled for {remaining}s)")
+                    continue
+                else:
+                    # Rate limit period expired, re-enable feed
+                    logger.info(f"✅ Re-enabling feed {source_name} after rate limit cooldown")
+                    del self.rate_limited_feeds[source_name]
+                    self.feed_failure_count[source_name] = 0  # Reset failure count
                 
             try:
+                # Add delay between feeds to avoid hitting rate limits
+                if successful_feeds > 0:
+                    time.sleep(1.0)  # 1 second delay between feeds
+                
                 articles = self._fetch_rss_feed(source_name, source_config)
                 if articles:
                     all_articles.extend(articles)
                     successful_feeds += 1
+                    # Reset failure count on success
+                    self.feed_failure_count[source_name] = 0
                     logger.info(f"✅ Fetched {len(articles)} BTC articles from {source_name}")
                 else:
                     logger.debug(f"📰 No BTC articles from {source_name}")
             except Exception as e:
-                logger.warning(f"⚠️ Failed to fetch from {source_name}: {e}")
-                # Don't disable feeds immediately - they might be temporarily down
+                error_str = str(e)
+                # Check for rate limiting (429)
+                if '429' in error_str or 'Too Many Requests' in error_str:
+                    # Try to extract Retry-After from error message
+                    cooldown_period = 3600  # Default: 1 hour
+                    if 'Retry after' in error_str:
+                        try:
+                            # Extract number from "Retry after X seconds"
+                            import re
+                            match = re.search(r'Retry after (\d+) seconds', error_str)
+                            if match:
+                                cooldown_period = int(match.group(1))
+                                logger.info(f"📊 Using Retry-After header: {cooldown_period} seconds")
+                        except (ValueError, AttributeError):
+                            pass  # Use default if parsing fails
+                    
+                    self.rate_limited_feeds[source_name] = current_time + cooldown_period
+                    logger.warning(f"⚠️ Rate limited by {source_name} - disabling for {cooldown_period//60} minutes (using Retry-After if available)")
+                    self.feed_failure_count[source_name] = self.feed_failure_count.get(source_name, 0) + 1
+                else:
+                    # Track other failures
+                    self.feed_failure_count[source_name] = self.feed_failure_count.get(source_name, 0) + 1
+                    logger.warning(f"⚠️ Failed to fetch from {source_name}: {e}")
+                
+                # Permanently disable feed after 5 consecutive failures (not rate limits)
+                if self.feed_failure_count.get(source_name, 0) >= 5 and '429' not in error_str:
+                    self.disabled_feeds.add(source_name)
+                    logger.error(f"❌ Permanently disabling feed {source_name} after 5 consecutive failures")
+                
                 continue
         
         logger.info(f"📊 RSS Fetch Summary: {successful_feeds}/{len(self.rss_feeds)} feeds successful, {len(all_articles)} total articles")
@@ -196,43 +245,99 @@ class RSSNewsAPI:
         return sorted_articles[:self.news_limit]
     
     def _fetch_rss_feed(self, source_name: str, source_config: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """Fetch and parse a single RSS feed"""
-        try:
-            response = requests.get(
-                source_config['url'], 
-                headers=self.headers, 
-                timeout=10,
-                verify=True  # Enable SSL verification
-            )
-            response.raise_for_status()
-            
-            feed = feedparser.parse(response.content)
-            articles = []
-            
-            for entry in feed.entries:
-                # Extract article data
-                published_date = self._parse_date(entry['published'] if 'published' in entry else '')
-                article = {
-                    'title': entry['title'] if 'title' in entry else '',
-                    'summary': entry['summary'] if 'summary' in entry else '',
-                    'link': entry['link'] if 'link' in entry else '',
-                    'published': published_date.isoformat() if published_date else None,  # Convert to ISO string for JSON
-                    'published_timestamp': published_date.timestamp() if published_date else time.time(),  # For sorting
-                    'source': source_name,
-                    'weight': source_config['weight'],
-                    'btc_keywords': source_config['btc_keywords']
-                }
+        """
+        Fetch and parse a single RSS feed with retry logic
+        
+        CRITICAL: Handles 429 rate limiting by raising exception (caught by caller)
+        """
+        max_retries = 2
+        retry_delay = 2.0  # 2 seconds between retries
+        
+        for attempt in range(max_retries + 1):
+            response = None
+            try:
+                response = requests.get(
+                    source_config['url'], 
+                    headers=self.headers, 
+                    timeout=10,
+                    verify=True  # Enable SSL verification
+                )
                 
-                # Filter for BTC-related content
-                if self._is_btc_related(article):
-                    articles.append(article)
-            
-            return articles
-            
-        except Exception as e:
-            # Log as warning instead of error to reduce noise
-            logger.warning(f"⚠️ RSS fetch failed for {source_name}: {e}")
-            return []
+                # Check for rate limiting BEFORE raise_for_status
+                if response.status_code == 429:
+                    # Check for Retry-After header (tells us how long to wait)
+                    retry_after = response.headers.get('Retry-After')
+                    if retry_after:
+                        try:
+                            retry_seconds = int(retry_after)
+                            error_msg = f"429 Client Error: Too Many Requests for url: {response.url} - Retry after {retry_seconds} seconds"
+                        except ValueError:
+                            error_msg = f"429 Client Error: Too Many Requests for url: {response.url} - Retry-After: {retry_after}"
+                    else:
+                        error_msg = f"429 Client Error: Too Many Requests for url: {response.url}"
+                    
+                    # Log rate limit headers for debugging
+                    rate_limit_headers = {
+                        'X-RateLimit-Limit': response.headers.get('X-RateLimit-Limit'),
+                        'X-RateLimit-Remaining': response.headers.get('X-RateLimit-Remaining'),
+                        'X-RateLimit-Reset': response.headers.get('X-RateLimit-Reset'),
+                        'Retry-After': response.headers.get('Retry-After')
+                    }
+                    if any(rate_limit_headers.values()):
+                        logger.debug(f"📊 Rate limit headers from {source_name}: {rate_limit_headers}")
+                    
+                    raise requests.exceptions.HTTPError(error_msg)
+                
+                response.raise_for_status()
+                
+                feed = feedparser.parse(response.content)
+                articles = []
+                
+                for entry in feed.entries:
+                    # Extract article data
+                    published_date = self._parse_date(entry['published'] if 'published' in entry else '')
+                    article = {
+                        'title': entry['title'] if 'title' in entry else '',
+                        'summary': entry['summary'] if 'summary' in entry else '',
+                        'link': entry['link'] if 'link' in entry else '',
+                        'published': published_date.isoformat() if published_date else None,  # Convert to ISO string for JSON
+                        'published_timestamp': published_date.timestamp() if published_date else time.time(),  # For sorting
+                        'source': source_name,
+                        'weight': source_config['weight'],
+                        'btc_keywords': source_config['btc_keywords']
+                    }
+                    
+                    # Filter for BTC-related content
+                    if self._is_btc_related(article):
+                        articles.append(article)
+                
+                return articles
+                
+            except requests.exceptions.HTTPError as e:
+                # Check if it's a 429 rate limit
+                if response and response.status_code == 429:
+                    # Don't retry on rate limits - let caller handle it
+                    raise
+                if '429' in str(e):
+                    # Don't retry on rate limits - let caller handle it
+                    raise
+                
+                # Retry on other HTTP errors (except 429)
+                if attempt < max_retries:
+                    logger.debug(f"⚠️ RSS fetch attempt {attempt + 1} failed for {source_name}: {e}, retrying...")
+                    time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                    continue
+                else:
+                    raise
+                    
+            except (requests.exceptions.RequestException, Exception) as e:
+                # Retry on network errors
+                if attempt < max_retries:
+                    logger.debug(f"⚠️ RSS fetch attempt {attempt + 1} failed for {source_name}: {e}, retrying...")
+                    time.sleep(retry_delay * (attempt + 1))  # Exponential backoff
+                    continue
+                else:
+                    raise
     
     def _is_btc_related(self, article: Dict[str, Any]) -> bool:
         """Check if article is Bitcoin-related"""

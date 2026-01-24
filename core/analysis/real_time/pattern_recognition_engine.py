@@ -64,11 +64,11 @@ class PatternRecognitionEngine:
             candles: List of candle data dictionaries
             
         Returns:
-            Dictionary containing patterns, confidence, and status
+            Dictionary containing patterns, quality, and status
         """
         try:
             if not candles:
-                return {"patterns": [], "overall_confidence": 0.0, "status": "no_data"}
+                return {"patterns": [], "overall_quality": 0.0, "status": "no_data"}
             
             current_time = time.time()
             
@@ -95,34 +95,34 @@ class PatternRecognitionEngine:
             # Filter expired patterns
             patterns = self._filter_expired_patterns(patterns, current_time)
             
-            # Deduplicate overlapping patterns (keep highest confidence)
+            # Deduplicate overlapping patterns (keep highest quality)
             patterns = self._deduplicate_overlapping_patterns(patterns)
             
             # Clean up expired patterns from history
             self._cleanup_expired_pattern_history(current_time)
             
-            # Calculate overall confidence
-            overall_confidence = self._calculate_overall_confidence(patterns)
+            # Calculate overall pattern quality (average of all pattern qualities)
+            overall_quality = self._calculate_overall_quality(patterns)
             
             # Prepare result with BOTH flat and nested structures for compatibility
             # Flat array for chart drawing, nested for text display
             result = {
                 "patterns": self._flatten_patterns(patterns),  # Flat array for chart overlays
                 "patterns_nested": patterns,  # Nested structure for text display
-                "overall_confidence": overall_confidence,
+                "overall_quality": overall_quality,  # Pattern quality (0-1), NOT prediction confidence
                 "status": "ok",
                 "timestamp": current_time,
                 "last_candle_timestamp": candles[-1]["timestamp"] if candles else current_time  # Track last candle for change detection (NO FALLBACKS)
             }
             
             # No internal caching - CentralizedCache handles this
-            logger.info(f"📊 Pattern analysis complete: {len(result['patterns'])} patterns, {overall_confidence:.1%} confidence")
+            logger.info(f"📊 Pattern analysis complete: {len(result['patterns'])} patterns, {overall_quality:.1%} quality")
             
             return result
             
         except Exception as e:
             logger.error(f"❌ Pattern analysis failed: {e}")
-            return {"patterns": [], "overall_confidence": 0.0, "status": "error", "error": str(e)}
+            return {"patterns": [], "overall_quality": 0.0, "status": "error", "error": str(e)}
     
     def _calculate_candle_data_hash(self, candles: List[Dict[str, Any]]) -> str:
         """
@@ -257,7 +257,7 @@ class PatternRecognitionEngine:
         """
         Remove overlapping patterns, keeping most important pattern based on:
         1. Pattern type priority (reversal > continuation > candlestick)
-        2. Confidence level
+        2. Pattern quality level
         3. Pattern clarity (price range coverage)
         Patterns overlap if they have >80% price range overlap
         """
@@ -307,7 +307,7 @@ class PatternRecognitionEngine:
         """
         Calculate pattern importance score using research-based best practices:
         
-        1. Pattern confidence (0-100 pts) - Base quality metric
+        1. Pattern quality (0-100 pts) - Base quality metric
         2. Pattern clarity bonus (0-20 pts) - How well-defined the pattern is
         3. Recency bonus (0-10 pts) - Newer patterns slightly preferred
         
@@ -322,16 +322,16 @@ class PatternRecognitionEngine:
         TODO: Implement historical pattern performance tracking to data-drive priorities
         """
         try:
-            pattern_name = pattern.get("pattern", "").upper()
+            pattern_name = pattern["pattern"].upper()
             
-            # 1. Confidence score (0-100 pts) - Most important factor
-            confidence = pattern.get("confidence", 0.5)
-            confidence_score = confidence * 100.0
+            # 1. Quality score (0-100 pts) - Most important factor
+            quality = pattern["quality"]  # Pattern detection quality (0-1), NOT prediction confidence
+            quality_score = quality * 100.0
             
             # 2. Pattern clarity bonus (0-20 pts)
             # Patterns with wider price ranges are generally clearer/stronger
-            pattern_high = pattern.get("pattern_high", 0)
-            pattern_low = pattern.get("pattern_low", 0)
+            pattern_high = pattern["pattern_high"]
+            pattern_low = pattern["pattern_low"]
             price_range = pattern_high - pattern_low
             
             # Normalize to typical BTC volatility (assume ~1% range for reference)
@@ -343,11 +343,11 @@ class PatternRecognitionEngine:
             
             # 3. Recency bonus (0-10 pts)
             # Fresher patterns slightly preferred (market conditions change)
-            age_minutes = pattern.get("age_minutes", 0)
+            age_minutes = pattern["age_minutes"]
             recency_bonus = max(0, 10 - (age_minutes / 3.0))  # 10 pts at 0min, 0 pts at 30min
             
             # Combined score
-            importance = confidence_score + clarity_bonus + recency_bonus
+            importance = quality_score + clarity_bonus + recency_bonus
             
             return importance
             
@@ -359,10 +359,10 @@ class PatternRecognitionEngine:
         """Check if two patterns significantly overlap (>80% price range overlap)"""
         try:
             # Get price ranges
-            high1 = pattern1.get("pattern_high", 0)
-            low1 = pattern1.get("pattern_low", 0)
-            high2 = pattern2.get("pattern_high", 0)
-            low2 = pattern2.get("pattern_low", 0)
+            high1 = pattern1["pattern_high"]
+            low1 = pattern1["pattern_low"]
+            high2 = pattern2["pattern_high"]
+            low2 = pattern2["pattern_low"]
             
             if not all([high1, low1, high2, low2]):
                 return False
@@ -398,8 +398,12 @@ class PatternRecognitionEngine:
         except Exception:
             return "unknown_0_0"
     
-    def _calculate_overall_confidence(self, patterns: Dict[str, List[Dict[str, Any]]]) -> float:
-        """Calculate overall confidence from all detected patterns"""
+    def _calculate_overall_quality(self, patterns: Dict[str, List[Dict[str, Any]]]) -> float:
+        """Calculate overall pattern quality from all detected patterns
+        
+        Returns average pattern quality (0-1), NOT prediction confidence.
+        'confidence' is reserved for predictions/reactions only.
+        """
         try:
             all_patterns = []
             for pattern_list in patterns.values():
@@ -408,11 +412,12 @@ class PatternRecognitionEngine:
             if not all_patterns:
                 return 0.0
             
-            total_confidence = sum(pattern["confidence"] if "confidence" in pattern else 0 for pattern in all_patterns)
-            return total_confidence / len(all_patterns)
+            # Use 'quality' field (pattern detection quality), NOT prediction confidence
+            total_quality = sum(pattern["quality"] for pattern in all_patterns)
+            return total_quality / len(all_patterns)
             
         except Exception as e:
-            logger.error(f"❌ Overall confidence calculation failed: {e}")
+            logger.error(f"❌ Overall pattern quality calculation failed: {e}")
             return 0.0
     
     def _flatten_patterns(self, patterns: Dict[str, List[Dict[str, Any]]]) -> List[Dict[str, Any]]:

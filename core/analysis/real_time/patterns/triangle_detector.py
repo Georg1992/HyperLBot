@@ -66,9 +66,9 @@ class TrianglePatternDetector(BasePatternDetector):
             
             # Check if resistance is horizontal (<0.05% per candle) and support is ascending (>0.01% per candle)
             if high_slope_pct < 0.0005 and low_slope_pct > 0.0001:
-                confidence = 0.80
+                quality = 0.80
                 return self._create_pattern(
-                    "ASCENDING_TRIANGLE", "CONTINUATION", "BULLISH", confidence,
+                    "ASCENDING_TRIANGLE", "CONTINUATION", "BULLISH", quality,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
                 )
             
@@ -104,9 +104,9 @@ class TrianglePatternDetector(BasePatternDetector):
             
             # Check if resistance is descending (<-0.01% per candle) and support is horizontal (<0.05% per candle)
             if high_slope_pct < -0.0001 and low_slope_pct < 0.0005:
-                confidence = 0.80
+                quality = 0.80
                 return self._create_pattern(
-                    "DESCENDING_TRIANGLE", "CONTINUATION", "BEARISH", confidence,
+                    "DESCENDING_TRIANGLE", "CONTINUATION", "BEARISH", quality,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
                 )
             
@@ -143,9 +143,9 @@ class TrianglePatternDetector(BasePatternDetector):
             # Check if resistance is descending and support is ascending (converging)
             # Slopes should be roughly equal in magnitude but opposite direction
             if high_slope_pct < -0.0001 and low_slope_pct > 0.0001:
-                confidence = 0.75
+                quality = 0.75
                 return self._create_pattern(
-                    "SYMMETRICAL_TRIANGLE", "CONTINUATION", "NEUTRAL", confidence,
+                    "SYMMETRICAL_TRIANGLE", "CONTINUATION", "NEUTRAL", quality,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
                 )
             

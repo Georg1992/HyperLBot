@@ -85,9 +85,9 @@ class ReversalPatternDetector(BasePatternDetector):
                     
                     # Check if valley is significantly lower than peaks
                     if valley_val < min(peak1_val, peak2_val) * 0.95:
-                        confidence = 0.80
+                        quality = 0.80
                         return self._create_pattern(
-                            "DOUBLE_TOP", "REVERSAL", "BEARISH", confidence,
+                            "DOUBLE_TOP", "REVERSAL", "BEARISH", quality,
                             peak1_idx, peak2_idx, max(peak1_val, peak2_val), valley_val
                         )
             
@@ -123,9 +123,9 @@ class ReversalPatternDetector(BasePatternDetector):
                     
                     # Check if peak is significantly higher than valleys
                     if peak_val > max(valley1_val, valley2_val) * 1.05:
-                        confidence = 0.80
+                        quality = 0.80
                         return self._create_pattern(
-                            "DOUBLE_BOTTOM", "REVERSAL", "BULLISH", confidence,
+                            "DOUBLE_BOTTOM", "REVERSAL", "BULLISH", quality,
                             valley1_idx, valley2_idx, peak_val, min(valley1_val, valley2_val)
                         )
             
@@ -158,9 +158,9 @@ class ReversalPatternDetector(BasePatternDetector):
                 head_val > right_shoulder_val and
                 abs(left_shoulder_val - right_shoulder_val) / max(left_shoulder_val, right_shoulder_val) < 0.05):
                 
-                confidence = 0.85
+                quality = 0.85
                 return self._create_pattern(
-                    "HEAD_SHOULDERS", "REVERSAL", "BEARISH", confidence,
+                    "HEAD_SHOULDERS", "REVERSAL", "BEARISH", quality,
                     left_shoulder_idx, right_shoulder_idx, head_val,
                     min(highs[left_shoulder_idx:right_shoulder_idx+1])
                 )
@@ -194,9 +194,9 @@ class ReversalPatternDetector(BasePatternDetector):
                 head_val < right_shoulder_val and
                 abs(left_shoulder_val - right_shoulder_val) / max(left_shoulder_val, right_shoulder_val) < 0.05):
                 
-                confidence = 0.85
+                quality = 0.85
                 return self._create_pattern(
-                    "INVERSE_HEAD_SHOULDERS", "REVERSAL", "BULLISH", confidence,
+                    "INVERSE_HEAD_SHOULDERS", "REVERSAL", "BULLISH", quality,
                     left_shoulder_idx, right_shoulder_idx, max(lows[left_shoulder_idx:right_shoulder_idx+1]), head_val
                 )
             
@@ -241,9 +241,9 @@ class ReversalPatternDetector(BasePatternDetector):
                     if (valley1_val < min(peak1_val, peak2_val) * 0.95 and
                         valley2_val < min(peak2_val, peak3_val) * 0.95):
                         
-                        confidence = 0.85
+                        quality = 0.85
                         return self._create_pattern(
-                            "TRIPLE_TOP", "REVERSAL", "BEARISH", confidence,
+                            "TRIPLE_TOP", "REVERSAL", "BEARISH", quality,
                             peak1_idx, peak3_idx, max(peak1_val, peak2_val, peak3_val), min(valley1_val, valley2_val)
                         )
             
@@ -288,9 +288,9 @@ class ReversalPatternDetector(BasePatternDetector):
                     if (peak1_val > max(valley1_val, valley2_val) * 1.05 and
                         peak2_val > max(valley2_val, valley3_val) * 1.05):
                         
-                        confidence = 0.85
+                        quality = 0.85
                         return self._create_pattern(
-                            "TRIPLE_BOTTOM", "REVERSAL", "BULLISH", confidence,
+                            "TRIPLE_BOTTOM", "REVERSAL", "BULLISH", quality,
                             valley1_idx, valley3_idx, max(peak1_val, peak2_val), min(valley1_val, valley2_val, valley3_val)
                         )
             

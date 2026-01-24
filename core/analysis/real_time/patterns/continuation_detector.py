@@ -46,9 +46,9 @@ class ContinuationPatternDetector(BasePatternDetector):
             slope = self._calculate_slope(recent_closes)
             
             if slope > 0.001:  # Positive slope
-                confidence = 0.90
+                quality = 0.90
                 return self._create_pattern(
-                    "BULLISH_CONTINUATION", "CONTINUATION", "BULLISH", confidence,
+                    "BULLISH_CONTINUATION", "CONTINUATION", "BULLISH", quality,
                     len(closes) - 5, len(closes) - 1, max(recent_closes), min(recent_closes)
                 )
             
@@ -70,9 +70,9 @@ class ContinuationPatternDetector(BasePatternDetector):
             slope = self._calculate_slope(recent_closes)
             
             if slope < -0.001:  # Negative slope
-                confidence = 0.90
+                quality = 0.90
                 return self._create_pattern(
-                    "BEARISH_CONTINUATION", "CONTINUATION", "BEARISH", confidence,
+                    "BEARISH_CONTINUATION", "CONTINUATION", "BEARISH", quality,
                     len(closes) - 5, len(closes) - 1, max(recent_closes), min(recent_closes)
                 )
             

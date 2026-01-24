@@ -13,12 +13,12 @@ Used by BOTH:
 - ReactiveEngine (market orders on momentum)
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from loguru import logger
 from config.config import TradingConfig
 
 
-class PositionSizer:
+class PositionSizeCalculator:
     """
     Calculates position sizes for all execution engines
     
@@ -83,17 +83,23 @@ class PositionSizer:
         leverage: int,
         entry_price: float,
         stop_loss: float = None,
-        direction: str = "LONG"
+        direction: str = "LONG",
+        confidence: Optional[float] = None  # 0.0-100.0, will be used for confidence-based sizing when implemented
     ) -> Dict[str, Any]:
         """
         Calculate position size in BTC with LIQUIDATION RISK PROTECTION
         
         Formula (FIXED for high-leverage BTC perps):
         1. Get R:R multiplier (0.5x - 1.5x)
-        2. Calculate liquidation safety factor (NEW)
-        3. Adjust position size: base_size × rr_multiplier × liq_safety_factor
-        4. Calculate position value: balance × adjusted_size × leverage
-        5. Convert to BTC: position_value / entry_price
+        2. Calculate liquidation safety factor
+        3. Calculate confidence multiplier (when confidence is implemented)
+        4. Adjust position size: base_size × rr_multiplier × liq_safety_factor × confidence_multiplier
+        5. Calculate position value: balance × adjusted_size × leverage
+        6. Convert to BTC: position_value / entry_price
+        
+        CRITICAL: Position sizing happens AFTER confidence calculation
+        - Confidence will influence position size (high confidence → larger size, low confidence → smaller size)
+        - For now, confidence is optional and not used (confidence_multiplier = 1.0)
         
         CRITICAL FIX: Position sizing now considers liquidation distance
         - Problem: High R:R → large position → liq closer to SL → wick hits liq before SL
@@ -107,6 +113,7 @@ class PositionSizer:
             entry_price: Entry price for the trade
             stop_loss: Stop loss price (REQUIRED for liquidation risk calc)
             direction: Trade direction ("LONG" or "SHORT")
+            confidence: Optional confidence (0.0-100.0) - will be used for confidence-based sizing when implemented
             
         Returns:
             Dict with:
@@ -116,6 +123,7 @@ class PositionSizer:
                 - adjusted_position_size_pct: Adjusted % after all scaling
                 - rr_multiplier: R:R multiplier applied
                 - liquidation_safety_factor: Liquidation risk reduction factor
+                - confidence_multiplier: Confidence-based multiplier (currently 1.0, will be implemented)
                 - balance: Balance used in calculation
         """
         if balance <= 0:
@@ -127,8 +135,20 @@ class PositionSizer:
         if entry_price <= 0:
             raise ValueError(f"Invalid entry_price: ${entry_price:.2f} (must be positive)")
         
+        # CONFIDENCE-BASED POSITION SIZING (TO BE IMPLEMENTED)
+        # When confidence is implemented, it will influence position size:
+        # - High confidence (70%+) → scale up position size
+        # - Medium confidence (50-70%) → base position size
+        # - Low confidence (<50%) → scale down position size
+        # For now, confidence is optional and not used
+        confidence_multiplier = 1.0  # Placeholder: will be calculated from confidence when implemented
+        if confidence is not None:
+            # TODO: Implement confidence-based position sizing
+            # confidence_multiplier = calculate_confidence_multiplier(confidence)
+            pass
+        
         # Calculate R:R multiplier
-        rr_multiplier = PositionSizer.calculate_rr_multiplier(risk_reward_ratio)
+        rr_multiplier = PositionSizeCalculator.calculate_rr_multiplier(risk_reward_ratio)
         
         # CRITICAL: Calculate liquidation safety factor (NEW)
         liquidation_safety_factor = 1.0  # Default: no reduction
@@ -191,8 +211,8 @@ class PositionSizer:
         else:
             logger.warning("⚠️ No stop loss provided - skipping liquidation risk check (NOT RECOMMENDED)")
         
-        # Adjust position size based on R:R AND liquidation safety
-        adjusted_position_size_pct = base_position_size_pct * rr_multiplier * liquidation_safety_factor
+        # Adjust position size based on R:R, liquidation safety, AND confidence (when implemented)
+        adjusted_position_size_pct = base_position_size_pct * rr_multiplier * liquidation_safety_factor * confidence_multiplier
         
         # Calculate position value in USD (accounts for leverage)
         position_value_usd = balance * adjusted_position_size_pct * leverage
@@ -200,10 +220,12 @@ class PositionSizer:
         # Convert to BTC
         position_size_btc = position_value_usd / entry_price
         
+        confidence_str = f", Conf={confidence:.1f}%" if confidence is not None else ""
         logger.info(
             f"💰 Position sizing: Balance=${balance:.2f}, "
             f"Base={base_position_size_pct*100:.1f}%, R:R={risk_reward_ratio:.2f} → rr_mult={rr_multiplier:.2f}x, "
-            f"Liq safety={liquidation_safety_factor:.2f}x → "
+            f"Liq safety={liquidation_safety_factor:.2f}x, "
+            f"Conf mult={confidence_multiplier:.2f}x{confidence_str} → "
             f"Adjusted={adjusted_position_size_pct*100:.1f}%, "
             f"Leverage={leverage}x → {position_size_btc:.4f} BTC (${position_value_usd:.2f})"
         )
@@ -215,6 +237,8 @@ class PositionSizer:
             "adjusted_position_size_pct": adjusted_position_size_pct,
             "rr_multiplier": rr_multiplier,
             "liquidation_safety_factor": liquidation_safety_factor,
+            "confidence_multiplier": confidence_multiplier,
+            "confidence": confidence,  # Include confidence in return for reference
             "balance": balance,
             "leverage": leverage,
             "entry_price": entry_price,

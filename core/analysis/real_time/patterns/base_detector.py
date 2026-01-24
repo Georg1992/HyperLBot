@@ -98,15 +98,19 @@ class BasePatternDetector(ABC):
         return max_idx
     
     def _create_pattern(self, pattern_name: str, pattern_type: str, direction: str, 
-                       confidence: float, start_idx: int, end_idx: int, 
+                       quality: float, start_idx: int, end_idx: int, 
                        pattern_high: float, pattern_low: float, 
                        indices: Optional[List[int]] = None) -> Dict[str, Any]:
-        """Create a standardized pattern dictionary"""
+        """Create a standardized pattern dictionary
+        
+        Note: Uses 'quality' field (0-1) for pattern detection quality, NOT 'confidence'.
+        'confidence' is reserved for predictions/reactions only.
+        """
         pattern = {
             "pattern": pattern_name,
             "type": pattern_type,
             "direction": direction,
-            "confidence": confidence,
+            "quality": quality,  # Pattern detection quality (0-1), NOT prediction confidence
             "start_candle_index": start_idx,
             "end_candle_index": end_idx,
             "pattern_high": pattern_high,

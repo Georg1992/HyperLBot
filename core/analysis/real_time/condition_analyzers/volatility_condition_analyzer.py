@@ -29,7 +29,7 @@ class VolatilityConditionAnalyzer:
                 "MODERATE": "MEDIUM",
                 "HIGH": "HIGH",
                 "EXTREME": "VERY_HIGH"
-            }.get(volatility_category, "UNKNOWN")
+            }[volatility_category]
             
             recommendations = []
             if volatility_category == "EXTREME":

@@ -47,7 +47,14 @@ class TradingConfig:
     LIQUIDATION_SAFETY_BUFFER_PCT = 0.005  # 0.5% buffer before liquidation triggers stop
     ATR_BASE_MULTIPLIER = 2.0  # Base stop distance: 2.0×ATR (covers ~95% of normal moves)
     NOISE_BUFFER_ATR_MULTIPLIER = 0.25  # Noise buffer for level breaks: 0.25×ATR
-    DEFAULT_SPREAD_PCT = 0.01  # Default spread if orderbook unavailable: 0.01% (typical BTC perp)
+    DEFAULT_SPREAD_PCT = 0.01
+    
+    # ATR Calculation Minimums
+    ATR_MIN_PCT = 0.0005  # 0.05% of price as minimum ATR
+    ATR_ABSOLUTE_MIN = 0.1  # Absolute minimum ATR value
+    
+    # Position Sizing Defaults
+    DEFAULT_POSITION_SIZE_PCT = 0.02  # Default 2% position size  # Default spread if orderbook unavailable: 0.01% (typical BTC perp)
     
     # Round Number Avoidance (ADDED 2026-01-12 - Audit Fix)
     # Stop hunting prevention by offsetting stops from psychological levels
@@ -62,6 +69,24 @@ class TradingConfig:
     # Quality gates for signal execution and strategy validation
     MIN_MOMENTUM_CONFIDENCE = 65.0  # Minimum confidence % for momentum signals (reactive_engine)
     MIN_LIQUIDITY_SCORE = 0.5       # Minimum liquidity depth score for scalping (0.0-1.0)
+    
+    # Strategy Scoring Thresholds
+    FUNDING_RATE_CHANGE_THRESHOLDS = {
+        "significant_increase": 0.0001,   # 0.01% increase = significant
+        "significant_decrease": -0.0001,  # -0.01% decrease = significant
+        "very_stable": 0.00005            # <0.005% change = very stable
+    }
+    
+    VOLUME_TREND_STRENGTH_THRESHOLDS = {
+        "very_strong": 0.7,   # >0.7 = very strong volume trend
+        "moderate": 0.5,       # >0.5 = moderate volume trend
+        "weak": 0.3            # <0.3 = weak volume trend
+    }
+    
+    VOLATILITY_THRESHOLDS = {
+        "high": 0.03,    # >3% = high volatility
+        "moderate": 0.01  # >1% = moderate volatility
+    }
     
     # Universal Support/Resistance Power Configuration
     # Power = pure level strength (inherent quality, not contextual)
@@ -288,14 +313,13 @@ class TradingConfig:
         "profit_target": 0.015,  # Not used (analysis only)
         "stop_loss": 0.010,  # Not used (analysis only)
         "position_size": 0.0,  # Not used (analysis only)
-        "direction_weights": {  # Not used (analysis only - comprehensive mode)
-            "trend": 0.30,
-            "rsi": 0.25,
+        "direction_weights": {
+            "trend": 0.24,
+            "rsi": 0.22,
             "pressure": 0.20,
-            "patterns": 0.15,
-            "volume": 0.10
-            # S/R NOT used: S/R determines entry/exit, NOT direction
-            # Funding NOT used: Slow-moving (8h), better for position bias than 5m direction
+            "sr_proximity": 0.16,
+            "patterns": 0.12,
+            "volume": 0.06
         },
         "min_score_diff": 0.0,  # No filtering during analysis
         # Comprehensive proximity/recency - accept all levels
@@ -332,13 +356,12 @@ class TradingConfig:
         "stop_loss": 0.008,  # 0.8% stop loss (adjusted for 40x leverage - too tight stops get hit by normal volatility)
         "position_size": 0.1,  # 10% of balance
         "direction_weights": {
-            "trend": 0.35,       # Most important - multi-TF alignment
-            "rsi": 0.30,         # High - momentum indicator
-            "pressure": 0.20,    # High - orderbook buying/selling
-            "patterns": 0.10,    # Medium - candlestick patterns
-            "volume": 0.05       # Low - confirmation only
-            # S/R NOT used: S/R determines entry/exit, NOT direction
-            # Funding NOT used: Slow-moving (8h), better for position bias than 5m direction
+            "trend": 0.28,
+            "rsi": 0.24,
+            "pressure": 0.20,
+            "sr_proximity": 0.15,
+            "patterns": 0.08,
+            "volume": 0.05
         },
         "min_score_diff": 10.0,  # Minimum score difference to make direction decision
         # Proximity/Recency configuration for contextual factors
@@ -381,13 +404,12 @@ class TradingConfig:
         "support_resistance_required": True,
         "description": "General range trading strategy for sideways markets",
         "direction_weights": {
-            "rsi": 0.45,         # Very high - RSI for oversold/overbought at boundaries
-            "pressure": 0.25,    # High - pressure at range boundaries critical
-            "trend": 0.15,       # Medium - weak trends in ranges
-            "patterns": 0.10,    # Low - reversal patterns at boundaries
-            "volume": 0.05       # Low - volume confirmation
-            # S/R REMOVED: S/R defines the range boundaries for entry/exit, NOT direction
-            # Direction in range = mean reversion (RSI + pressure determine bounce direction)
+            "rsi": 0.38,
+            "pressure": 0.25,
+            "sr_proximity": 0.20,
+            "trend": 0.10,
+            "patterns": 0.05,
+            "volume": 0.02
         },
         "min_score_diff": 15.0,  # Raised from 12.0 - need clear directional edge for lower R:R (1.2)
         "proximity_config": {
@@ -425,13 +447,12 @@ class TradingConfig:
         "breakout_threshold": 0.003,  # 0.3% minimum breakout from S/R levels
         "description": "Breakout strategy for extreme volatility markets",
         "direction_weights": {
-            "patterns": 0.35,    # Very high - breakout/breakdown patterns critical
-            "volume": 0.30,      # Very high - volume MUST confirm breakout
-            "trend": 0.20,       # High - breakout direction aligns with trend
-            "pressure": 0.10,    # Medium - momentum confirmation
-            "rsi": 0.05          # Low - RSI less relevant for breakouts
-            # S/R REMOVED: S/R defines breakout level, NOT breakout direction
-            # Direction = which way to break (patterns + volume + trend)
+            "volume": 0.32,
+            "patterns": 0.28,
+            "trend": 0.18,
+            "sr_proximity": 0.12,
+            "pressure": 0.08,
+            "rsi": 0.02
         },
         "min_score_diff": 10.0,
         "proximity_config": {
@@ -473,13 +494,12 @@ class TradingConfig:
         "support_resistance_required": True,
         "description": "Optimized for LOW and VERY_LOW volatility conditions with range detection",
         "direction_weights": {
-            "rsi": 0.50,         # Very high - RSI extremes in tight range
-            "pressure": 0.30,    # High - pressure shows which boundary will hold
-            "trend": 0.10,       # Low - weak/no trend in low vol
-            "patterns": 0.05,    # Very low - limited patterns in tight range
-            "volume": 0.05       # Very low - low volume environment
-            # S/R REMOVED: S/R defines tight range boundaries, NOT direction
-            # Direction = mean reversion signal (RSI oversold/overbought + pressure)
+            "rsi": 0.40,
+            "pressure": 0.28,
+            "sr_proximity": 0.22,
+            "trend": 0.06,
+            "patterns": 0.03,
+            "volume": 0.01
         },
         "min_score_diff": 15.0,  # Raised from 10.0 - need clearer directional edge for lower R:R (1.2)
         "proximity_config": {
@@ -514,13 +534,12 @@ class TradingConfig:
         "stop_loss": 0.013,  # 1.3% stop loss (adjusted for 40x leverage and high volatility)
         "position_size": 0.10,  # 10% of balance (adjusted for 40x)
         "direction_weights": {
-            "trend": 0.35,       # High - follow trend in volatile markets
-            "pressure": 0.30,    # High - pressure shows strong momentum
-            "volume": 0.20,      # High - volume confirms volatile moves
-            "rsi": 0.10,         # Medium - RSI for extremes
-            "patterns": 0.05     # Low - patterns too slow in high vol
-            # S/R REMOVED: S/R less reliable in high volatility (often broken)
-            # Direction = trend + momentum + volume (ride the volatility wave)
+            "trend": 0.32,
+            "pressure": 0.28,
+            "volume": 0.20,
+            "sr_proximity": 0.10,
+            "rsi": 0.08,
+            "patterns": 0.02
         },
         "min_score_diff": 12.0,
         "proximity_config": {
@@ -558,13 +577,12 @@ class TradingConfig:
         "min_spike_severity": "HIGH",
         "require_momentum_alignment": True,
         "direction_weights": {
-            "volume": 0.45,      # Very high - volume spikes are the signal
-            "pressure": 0.35,    # Very high - extreme pressure drives spikes
-            "trend": 0.10,       # Low - spikes can be counter-trend
-            "rsi": 0.05,         # Very low - RSI extremes secondary
-            "patterns": 0.05     # Very low - spikes happen fast
-            # S/R REMOVED: Spikes break through S/R (strong levels used for entry, not direction)
-            # Direction = volume spike + pressure extreme (reversal or continuation)
+            "volume": 0.42,
+            "pressure": 0.35,
+            "sr_proximity": 0.12,
+            "trend": 0.06,
+            "rsi": 0.03,
+            "patterns": 0.02
         },
         "min_score_diff": 20.0,  # Very high threshold - need extreme signals
         "proximity_config": {
@@ -603,13 +621,12 @@ class TradingConfig:
         "momentum_alignment_required": True,
         "description": "Optimized for strong trending markets with momentum confirmation",
         "direction_weights": {
-            "trend": 0.55,       # Very high - trend is everything for this strategy
-            "rsi": 0.20,         # Medium - RSI for pullback timing
-            "pressure": 0.15,    # Medium - pressure confirms trend strength
-            "volume": 0.05,      # Low - volume confirmation
-            "patterns": 0.05     # Low - patterns secondary
-            # S/R REMOVED: S/R used for entry on pullbacks, NOT direction
-            # Direction = pure trend alignment (ride the trend wave)
+            "trend": 0.50,
+            "rsi": 0.18,
+            "pressure": 0.14,
+            "sr_proximity": 0.10,
+            "volume": 0.05,
+            "patterns": 0.03
         },
         "min_score_diff": 15.0,  # Higher threshold - need strong trend confirmation
         "proximity_config": {
@@ -651,13 +668,12 @@ class TradingConfig:
         "spread_threshold": 0.0001,  # Max spread of 0.01%
         "description": "High-frequency scalping for small, quick profits with tight risk management",
         "direction_weights": {
-            "rsi": 0.40,         # Very high - RSI critical for quick reversals
-            "pressure": 0.40,    # Very high - orderbook imbalance is key
-            "trend": 0.10,       # Low - short timeframe, trend less relevant
-            "patterns": 0.05,    # Very low - patterns too slow
-            "volume": 0.05       # Very low - volume confirmation
-            # S/R REMOVED: S/R used for precise entry/exit levels, NOT direction
-            # Direction = RSI + pressure (quick mean reversion or momentum continuation)
+            "rsi": 0.36,
+            "pressure": 0.36,
+            "sr_proximity": 0.16,
+            "trend": 0.08,
+            "patterns": 0.03,
+            "volume": 0.01
         },
         "min_score_diff": 8.0,  # Lower threshold for faster decisions
         "proximity_config": {
@@ -704,8 +720,20 @@ class TradingConfig:
         "dedup_cluster": 0.125, # 0.125×ATR for clustering deduplication
         "dedup_final": 1.5,     # 1.5×ATR for final deduplication
         "near_threshold": 2.5,  # 2.5×ATR = "near" distance for scoring
-        "significant_diff": 1.25 # 1.25×ATR = significant price difference
+        "significant_diff": 1.25, # 1.25×ATR = significant price difference
+        "cluster_tolerance": 0.25  # 0.25×ATR for clustering tolerance (levels within 25% of ATR are same cluster)
     }
+    
+    # Support/Resistance Calculation Parameters
+    SR_LIQUIDATION_EXPANSION_FACTOR = 3.0  # 3x expansion for S/R discovery (expands liquidation range for level detection)
+    
+    # S/R Level Strength by Timeframe (for daily/weekly/monthly peaks)
+    SR_STRENGTH_DAILY = 80.0   # Daily peaks are strong (major daily extremes)
+    SR_STRENGTH_WEEKLY = 90.0  # Weekly peaks are very strong (major weekly extremes)
+    SR_STRENGTH_MONTHLY = 100.0  # Monthly peaks are maximum strength (major monthly extremes)
+    
+    # Pressure Calculation Parameters
+    PRESSURE_EMA_ALPHA = 0.4  # EMA smoothing factor (α = 2/(N+1) where N=4 → α=0.4 for ~4-period EMA)
     
     # Entry Quality Scoring Multipliers
     # Bonuses and penalties for entry offset quality

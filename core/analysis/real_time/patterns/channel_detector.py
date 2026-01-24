@@ -66,9 +66,9 @@ class ChannelPatternDetector(BasePatternDetector):
             
             # Check if both slopes are horizontal (< 0.05% per candle = ~0.5% over 10 candles)
             if high_slope_pct < 0.0005 and low_slope_pct < 0.0005:
-                confidence = 0.75
+                quality = 0.75
                 return self._create_pattern(
-                    "HORIZONTAL_CHANNEL", "CONTINUATION", "NEUTRAL", confidence,
+                    "HORIZONTAL_CHANNEL", "CONTINUATION", "NEUTRAL", quality,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
                 )
             
@@ -104,9 +104,9 @@ class ChannelPatternDetector(BasePatternDetector):
             
             # Check if both slopes are positive and parallel (within 0.03% per candle difference)
             if high_slope_pct > 0.0001 and low_slope_pct > 0.0001 and abs(high_slope_pct - low_slope_pct) < 0.0003:
-                confidence = 0.80
+                quality = 0.80
                 return self._create_pattern(
-                    "ASCENDING_CHANNEL", "CONTINUATION", "BULLISH", confidence,
+                    "ASCENDING_CHANNEL", "CONTINUATION", "BULLISH", quality,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
                 )
             
@@ -142,9 +142,9 @@ class ChannelPatternDetector(BasePatternDetector):
             
             # Check if both slopes are negative and parallel (within 0.03% per candle difference)
             if high_slope_pct < -0.0001 and low_slope_pct < -0.0001 and abs(high_slope_pct - low_slope_pct) < 0.0003:
-                confidence = 0.80
+                quality = 0.80
                 return self._create_pattern(
-                    "DESCENDING_CHANNEL", "CONTINUATION", "BEARISH", confidence,
+                    "DESCENDING_CHANNEL", "CONTINUATION", "BEARISH", quality,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
                 )
             

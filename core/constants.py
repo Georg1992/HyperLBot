@@ -20,9 +20,12 @@ class TradingConstants:
     MIN_TRADE_INTERVAL = 300  # 5 minutes
     SIGNAL_COOLDOWN = 300     # 5 minutes
     PRICE_DIFFERENCE_ALERT_COOLDOWN = 300  # 5 minutes
+    CANDLE_UPDATE_TIMEOUT = 310  # 5 minutes 10 seconds (slightly longer than 5 min candle interval)
+    ANALYSIS_COMPLETION_DELAY = 0.1  # 100ms delay for analysis completion
     
     # Price Monitoring
     PRICE_DIFFERENCE_THRESHOLD = 0.002  # 0.2%
+    PRICE_CHANGE_THRESHOLD = 0.001  # 0.1% threshold for price change detection
     
     # Session Management
     MAX_SESSIONS_TO_KEEP = 3
@@ -43,6 +46,9 @@ class TradingConstants:
     # Dashboard Update Intervals
     DASHBOARD_UPDATE_INTERVAL = 2    # seconds
     FORCE_UPDATE_INTERVAL = 10       # seconds
+    PRICE_UPDATE_INTERVAL = 0.1      # 100ms for real-time price updates
+    RSI_DASHBOARD_UPDATE_INTERVAL = 0.5  # 500ms for RSI dashboard updates (prevent spam)
+    RSI_CHANGE_THRESHOLD = 0.1       # RSI must change by at least 0.1 to trigger update
     
     # Confidence Thresholds
     MIN_CONFIDENCE_THRESHOLD = 0.3

@@ -820,5 +820,5 @@ class SRDetector:
             
         except Exception as e:
             logger.error(f"❌ Cluster deduplication failed: {e}")
-            return clusters
+            raise ValueError(f"Cluster deduplication failed: {e} (NO FALLBACKS)") from e
     

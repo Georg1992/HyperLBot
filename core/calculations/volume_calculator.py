@@ -106,7 +106,7 @@ class VolumeCalculator(BaseCalculator):
             
             # 1. Fetch volume data via data provider - NO FALLBACKS
             volume_data = self._data_provider.fetch_hyperliquid_volume_data(hyperliquid_websocket)
-            raw_trades = volume_data["raw_trades"] if "raw_trades" in volume_data else []
+            raw_trades = volume_data["raw_trades"]
             
             if not raw_trades:
                 raise ValueError("No raw trades available for volume calculation - NO FALLBACKS")
@@ -114,7 +114,7 @@ class VolumeCalculator(BaseCalculator):
             # 2. Calculate 5m volume via data provider
             current_time = time.time()
             volume_calc = self._data_provider.calculate_5m_volume(raw_trades, current_time)
-            current_5m_volume = volume_calc["current_5m_volume"] if "current_5m_volume" in volume_calc else 0.0
+            current_5m_volume = volume_calc["current_5m_volume"]
             
             # 3. Get volume history for analysis (REQUIRED - no fallbacks)
             volume_history = self._data_provider.get_volume_history(10)
@@ -136,7 +136,7 @@ class VolumeCalculator(BaseCalculator):
             
             # 9. Determine implications via classifier
             implications = self._classifier.determine_volume_implications(
-                categorization["level"] if "level" in categorization else "UNKNOWN",
+                categorization["level"],
                 momentum,
                 anomaly
             )
@@ -148,17 +148,17 @@ class VolumeCalculator(BaseCalculator):
                 anomaly
             )
             
-            # 11. Format results
-            volume_level = categorization["level"] if "level" in categorization else "UNKNOWN"
-            volume_trend = momentum["trend"] if "trend" in momentum else "UNKNOWN"
+            # 11. Format results - NO FALLBACKS
+            volume_level = categorization["level"]
+            volume_trend = momentum["trend"]
             result = {
                 "current_5m_volume": current_5m_volume,
                 "volume_category": volume_level,
                 "category": volume_level,  # Alias for momentum_detector compatibility (NO FALLBACKS)
                 "volume_5m": current_5m_volume,  # Alias for compatibility (NO FALLBACKS)
-                "percentile": categorization["percentile"] if "percentile" in categorization else 50.0,  # Add percentile for momentum_detector (NO FALLBACKS)
+                "percentile": categorization["percentile"],  # Add percentile for momentum_detector (NO FALLBACKS)
                 "trend": volume_trend,  # Top-level trend alias for consolidation_tracker (NO FALLBACKS)
-                "volume_momentum": momentum.get("momentum", 0.0),  # Numeric momentum for entry timing (used by momentum_detector)
+                "volume_momentum": momentum["momentum"],  # Numeric momentum for entry timing (used by momentum_detector)
                 "volume_trend_strength": trend_strength,  # Strength of volume trend (0.0-1.0) for strategy selection
                 "volume_anomaly": anomaly,  # Anomaly detection for risk management
                 "data_source": "hyperliquid_5m",

@@ -223,7 +223,8 @@ class SRLevelFilter(BaseCalculator):
         all_levels: List[Dict[str, Any]],
         current_price: float,
         strategy: str,
-        direction: Optional[str] = None
+        direction: Optional[str] = None,
+        sr_metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Filter S/R levels for entry setup generation based on strategy requirements
@@ -236,6 +237,7 @@ class SRLevelFilter(BaseCalculator):
             current_price: Current market price
             strategy: Trading strategy name
             direction: Optional direction filter ("LONG" or "SHORT")
+            sr_metadata: Support/resistance metadata (for ATR) - if None, will try to get from levels
             
         Returns:
             Dictionary with "support" and "resistance" lists of filtered levels
@@ -272,16 +274,25 @@ class SRLevelFilter(BaseCalculator):
         import time
         current_time = time.time()
         
-        # Get ATR from levels metadata (REQUIRED)
+        # Get ATR from metadata (preferred) or from levels (fallback) - NO FALLBACKS
         atr_pct = None
-        if active_support_candidates or active_resistance_candidates:
+        
+        # First, try to get from sr_metadata (single source of truth)
+        if sr_metadata and "atr_5m" in sr_metadata:
+            atr_5m = sr_metadata["atr_5m"]
+            if atr_5m > 0 and current_price > 0:
+                atr_pct = atr_5m / current_price
+        
+        # If not in metadata, try to get from levels (for backward compatibility)
+        if atr_pct is None and (active_support_candidates or active_resistance_candidates):
             for level in (active_support_candidates + active_resistance_candidates):
-                if "atr_pct" in level:
+                if "atr_pct" in level and level["atr_pct"] > 0:
                     atr_pct = level["atr_pct"]
                     break
         
-        if atr_pct is None:
-            raise ValueError("No ATR data found in levels metadata (NO FALLBACKS)")
+        # CRITICAL: Raise if ATR is still unavailable - NO FALLBACKS
+        if atr_pct is None or atr_pct <= 0:
+            raise ValueError(f"No valid ATR data found for entry setup filtering (NO FALLBACKS). Metadata: {sr_metadata is not None}, Levels with atr_pct: {sum(1 for l in (active_support_candidates + active_resistance_candidates) if 'atr_pct' in l)}")
         
         # Calculate strategy-aware score for each level
         for level in active_support_candidates:
@@ -347,7 +358,8 @@ class SRLevelFilter(BaseCalculator):
         all_levels: List[Dict[str, Any]],
         current_price: float,
         max_levels: int = 2,
-        strategy: str = "standard"
+        strategy: str = "standard",
+        sr_metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Filter S/R levels for dashboard display
@@ -357,6 +369,7 @@ class SRLevelFilter(BaseCalculator):
             current_price: Current market price
             max_levels: Maximum number of levels per side to display
             strategy: Trading strategy (for scoring weights)
+            sr_metadata: Support/resistance metadata (for ATR) - if None, will try to get from levels
             
         Returns:
             Dictionary with "support" and "resistance" lists
@@ -364,8 +377,11 @@ class SRLevelFilter(BaseCalculator):
         # Get strategy-specific max distance constraint
         from config.config import TradingConfig
         
-        strategy_config = TradingConfig.SR_LEVEL_SELECTION.get(strategy, {})
-        max_distance_pct = strategy_config.get("max_distance_pct", 0.05)  # Default 5%
+        # NO FALLBACKS
+        if strategy not in TradingConfig.SR_LEVEL_SELECTION:
+            raise ValueError(f"Strategy '{strategy}' not found in SR_LEVEL_SELECTION - NO FALLBACKS")
+        strategy_config = TradingConfig.SR_LEVEL_SELECTION[strategy]
+        max_distance_pct = strategy_config["max_distance_pct"]
         max_distance = current_price * max_distance_pct
         
         # Filter for active levels WITHIN strategy-specific distance range
@@ -391,16 +407,25 @@ class SRLevelFilter(BaseCalculator):
         import time
         current_time = time.time()
         
-        # Get ATR from levels metadata (REQUIRED)
+        # Get ATR from metadata (preferred) or from levels (fallback) - NO FALLBACKS
         atr_pct = None
-        if active_support or active_resistance:
+        
+        # First, try to get from sr_metadata (single source of truth)
+        if sr_metadata and "atr_5m" in sr_metadata:
+            atr_5m = sr_metadata["atr_5m"]
+            if atr_5m > 0 and current_price > 0:
+                atr_pct = atr_5m / current_price
+        
+        # If not in metadata, try to get from levels (for backward compatibility)
+        if atr_pct is None and (active_support or active_resistance):
             for level in (active_support + active_resistance):
-                if "atr_pct" in level:
+                if "atr_pct" in level and level["atr_pct"] > 0:
                     atr_pct = level["atr_pct"]
                     break
         
-        if atr_pct is None:
-            raise ValueError("No ATR data found in levels metadata (NO FALLBACKS)")
+        # CRITICAL: Raise if ATR is still unavailable - NO FALLBACKS
+        if atr_pct is None or atr_pct <= 0:
+            raise ValueError(f"No valid ATR data found for level filtering (NO FALLBACKS). Metadata: {sr_metadata is not None}, Levels with atr_pct: {sum(1 for l in (active_support + active_resistance) if 'atr_pct' in l)}")
         
         # Calculate strategy-aware score for each level
         for level in active_support:
@@ -427,7 +452,8 @@ class SRLevelFilter(BaseCalculator):
         all_levels: List[Dict[str, Any]],
         current_price: float,
         max_levels: int = 2,
-        strategy: str = "standard"
+        strategy: str = "standard",
+        sr_metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Filter S/R levels for strategy selection
@@ -437,19 +463,21 @@ class SRLevelFilter(BaseCalculator):
             current_price: Current market price
             max_levels: Maximum number of levels per side to use
             strategy: Trading strategy (for scoring weights)
+            sr_metadata: Support/resistance metadata (for ATR) - if None, will try to get from levels
             
         Returns:
             Dictionary with "support" and "resistance" lists
         """
         # Same logic as display filter (top N active levels by score)
-        return self.filter_for_display(all_levels, current_price, max_levels, strategy)
+        return self.filter_for_display(all_levels, current_price, max_levels, strategy, sr_metadata)
     
     def filter_for_scoring(
         self,
         all_levels: List[Dict[str, Any]],
         current_price: float,
         max_levels: int = 2,
-        strategy: str = "standard"
+        strategy: str = "standard",
+        sr_metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, List[Dict[str, Any]]]:
         """
         Filter S/R levels for factor scoring (e.g., in prediction engine)
@@ -459,9 +487,10 @@ class SRLevelFilter(BaseCalculator):
             current_price: Current market price
             max_levels: Maximum number of levels per side to use for scoring
             strategy: Trading strategy (for scoring weights)
+            sr_metadata: Support/resistance metadata (for ATR) - if None, will try to get from levels
             
         Returns:
             Dictionary with "support" and "resistance" lists
         """
         # Same logic as display filter (top N active levels by score)
-        return self.filter_for_display(all_levels, current_price, max_levels, strategy)
+        return self.filter_for_display(all_levels, current_price, max_levels, strategy, sr_metadata)

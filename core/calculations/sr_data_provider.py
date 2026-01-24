@@ -267,12 +267,18 @@ class SRDataProvider:
         """
         Fetch candles with validation and caching using injected dependencies
         
+        CRITICAL: Raises immediately if API data is missing - NO FALLBACKS
+        This ensures we catch API failures at the earliest stage.
+        
         Args:
             timeframe: Timeframe to fetch
             lookback: Number of candles to fetch
             
         Returns:
-            List of candle dictionaries (empty list if insufficient data)
+            List of candle dictionaries
+            
+        Raises:
+            ValueError: If candles are missing or insufficient (API/data issue)
         """
         try:
             # Check cache first using injected cache with proper key structure
@@ -280,22 +286,23 @@ class SRDataProvider:
             cache_key = f"sr_candles_{self.symbol}_{timeframe}_{lookback}_{timestamp_bucket}"
             cached_data = self._cache.get(cache_key)
             if cached_data:
+                # Validate cached data
+                if not isinstance(cached_data, list):
+                    raise ValueError(f"Cached {timeframe} candles data is not a list: {type(cached_data)}")
                 return cached_data
             
             # Fetch fresh data using injected historical service
             candles = self._historical_service.get_historical_candles(self.symbol, timeframe, lookback)
             
+            # CRITICAL: Raise immediately if API data is missing - NO FALLBACKS
             if not candles:
-                logger.warning(f"⚠️ No {timeframe} candles available")
-                return []
+                raise ValueError(f"No {timeframe} candles available from API/data source - NO FALLBACKS")
             
-            # Validate minimum data requirements (graceful handling)
+            # Validate minimum data requirements - raise if insufficient
             min_candles = {"5m": 50, "15m": 20, "1h": 20, "1d": 10}
             min_required = min_candles[timeframe] if timeframe in min_candles else 20
             if len(candles) < min_required:
-                logger.warning(f"⚠️ Insufficient {timeframe} candles: {len(candles)} (min: {min_required})")
-                # Return empty list instead of raising error for graceful degradation
-                return []
+                raise ValueError(f"Insufficient {timeframe} candles from API: {len(candles)} < {min_required} (NO FALLBACKS)")
             
             # Cache the data using injected cache with TTL
             ttl = self._ttl_mapping[timeframe] if timeframe in self._ttl_mapping else 300
@@ -304,9 +311,13 @@ class SRDataProvider:
             
             return candles
             
+        except ValueError:
+            # Re-raise ValueError (API/data issues) - NO FALLBACKS
+            raise
         except Exception as e:
+            # Wrap other exceptions to provide context
             logger.error(f"❌ Failed to fetch {timeframe} candles: {e}")
-            return []  # Return empty list for graceful degradation
+            raise ValueError(f"API/data fetch failed for {timeframe} candles: {e}") from e
     
     def calculate_atr(self, candles: List[Dict], period: int = 14) -> float:
         """
@@ -324,11 +335,13 @@ class SRDataProvider:
                 # Return minimum ATR based on price
                 if candles:
                     price = candles[-1]['close'] if 'close' in candles[-1] else 100.0
-                    min_atr = max(price * 0.0005, 0.1)  # 0.05% of price or 0.1 minimum
+                    from config.config import TradingConfig
+                    min_atr = max(price * TradingConfig.ATR_MIN_PCT, TradingConfig.ATR_ABSOLUTE_MIN)
                     logger.warning(f"⚠️ Insufficient candles for ATR, using minimum safety value: {min_atr:.2f}")
                     return min_atr
                 else:
-                    return 0.1  # Absolute minimum
+                    from config.config import TradingConfig
+                    return TradingConfig.ATR_ABSOLUTE_MIN
             
             true_ranges = []
             
@@ -347,8 +360,9 @@ class SRDataProvider:
             
             if len(true_ranges) < period:
                 # Return minimum ATR based on price
+                from config.config import TradingConfig
                 price = candles[-1]['close'] if 'close' in candles[-1] else 100.0
-                min_atr = max(price * 0.0005, 0.1)
+                min_atr = max(price * TradingConfig.ATR_MIN_PCT, TradingConfig.ATR_ABSOLUTE_MIN)
                 logger.warning(f"⚠️ Insufficient true ranges for ATR, using minimum safety value: {min_atr:.2f}")
                 return min_atr
             
@@ -359,8 +373,9 @@ class SRDataProvider:
                 atr = ((atr * (period - 1)) + true_ranges[i]) / period
             
             # Ensure minimum ATR
+            from config.config import TradingConfig
             price = candles[-1]['close'] if 'close' in candles[-1] else 100.0
-            min_atr = max(price * 0.0005, 0.1)
+            min_atr = max(price * TradingConfig.ATR_MIN_PCT, TradingConfig.ATR_ABSOLUTE_MIN)
             final_atr = max(atr, min_atr)
             
             return final_atr

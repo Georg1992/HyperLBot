@@ -13,6 +13,7 @@ from loguru import logger
 from core.utils.time_utils import TimeUtils
 from core.services.centralized_cache import get_global_centralized_cache
 from core.services.historical_data_service import get_global_historical_data_service
+from core.constants import TradingConstants
 
 
 class SessionOrchestrator:
@@ -239,7 +240,7 @@ class SessionOrchestrator:
                     # This should rarely trigger if boundary detection works correctly
                     # NO FALLBACKS - This is a safety mechanism, not a business logic fallback
                     # Only check if last_candle_update_time is valid (not 0.0) to avoid false warnings on first run
-                    elif last_candle_update_time > 0.0 and current_time - last_candle_update_time >= 310:  # 5 minutes 10 seconds (slightly longer than 5 min)
+                    elif last_candle_update_time > 0.0 and current_time - last_candle_update_time >= TradingConstants.CANDLE_UPDATE_TIMEOUT:
                         try:
                             logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
                             historical_service = get_global_historical_data_service()
@@ -279,6 +280,8 @@ class SessionOrchestrator:
                     
                     # STRATEGY-AWARE S/R FILTERING FOR DASHBOARD
                     # Now that we know the strategy, filter S/R levels for dashboard display
+                    filtered_levels = None  # Initialize to avoid UnboundLocalError
+                    
                     if "support_resistance" in unified_data and unified_data["support_resistance"]:
                         sr_data = unified_data["support_resistance"]
                         from core.calculations.sr_level_filter import SRLevelFilter
@@ -291,48 +294,63 @@ class SessionOrchestrator:
                             
                             # Filter levels for dashboard (strategy-aware)
                             level_filter = SRLevelFilter()
-                            all_levels = sr_data["levels"] if "levels" in sr_data else []
+                            all_levels = sr_data["levels"]
+                            sr_metadata = sr_data["metadata"]
                             
                             filtered_levels = level_filter.filter_for_display(
                                 all_levels=all_levels,
                                 current_price=current_price,
                                 max_levels=max_levels,  # Strategy-specific (scalping=1, swing=3)
-                                strategy=current_strategy
+                                strategy=current_strategy,
+                                sr_metadata=sr_metadata  # Pass metadata for ATR calculation
                             )
                             
-                    # Update S/R data with strategy-filtered levels for dashboard
-                    sr_data["key_levels"] = filtered_levels["support"] + filtered_levels["resistance"]
-                    sr_data["top_support"] = filtered_levels["support"]
-                    sr_data["top_resistance"] = filtered_levels["resistance"]
+                    # Update S/R data with strategy-filtered levels for dashboard (only if filtering succeeded)
+                    if filtered_levels is not None and "support_resistance" in unified_data and unified_data["support_resistance"]:
+                        sr_data = unified_data["support_resistance"]
+                        sr_data["key_levels"] = filtered_levels["support"] + filtered_levels["resistance"]
+                        sr_data["top_support"] = filtered_levels["support"]
+                        sr_data["top_resistance"] = filtered_levels["resistance"]
 
                     # Generate prediction
                     try:
                         prediction = self.prediction_engine.generate_prediction(unified_data, current_strategy)
                         if prediction:
-                            # Calculate position size for the prediction
+                            # Calculate position size AFTER confidence is calculated
+                            # Position sizing happens after confidence so confidence can influence position size
+                            # (Confidence calculation will be implemented later)
                             position_size_info = None
                             if self.session_manager:
                                 try:
                                     session_data = self.session_manager.get_current_session_data()
-                                    current_balance = session_data.get("current_balance", 0.0)
+                                    current_balance = session_data["current_balance"]
                                     
                                     if current_balance > 0:
-                                        from core.execution.position_sizer import PositionSizer
+                                        from core.execution.position_sizer import PositionSizeCalculator
                                         from config.config import TradingConfig
                                         
-                                        # Get strategy-specific position size %
-                                        strategy_config = TradingConfig.STRATEGY_CONFIGS.get(current_strategy, {})
-                                        base_position_size_pct = strategy_config.get("position_size", 0.02)  # Default 2%
+                                        # Get strategy-specific position size % - NO FALLBACKS
+                                        if current_strategy not in TradingConfig.STRATEGY_CONFIGS:
+                                            raise ValueError(f"Strategy '{current_strategy}' not found in STRATEGY_CONFIGS - NO FALLBACKS")
+                                        strategy_config = TradingConfig.STRATEGY_CONFIGS[current_strategy]
+                                        base_position_size_pct = strategy_config["position_size"]
                                         
-                                        position_size_info = PositionSizer.calculate_position_size(
-                                            balance=current_balance,
-                                            base_position_size_pct=base_position_size_pct,
-                                            risk_reward_ratio=prediction.risk_reward_ratio,
-                                            leverage=TradingConfig.LEVERAGE,
-                                            entry_price=prediction.entry_price,
-                                            stop_loss=prediction.stop_loss,
-                                            direction=prediction.direction
-                                        )
+                                        # Validate position_size is valid for trading (NO FALLBACKS)
+                                        if base_position_size_pct <= 0 or base_position_size_pct > 1.0:
+                                            logger.warning(f"⚠️ Strategy '{current_strategy}' has invalid position_size ({base_position_size_pct}) - skipping position size calculation (strategy may be analysis-only)")
+                                            position_size_info = None
+                                        else:
+                                            # Position size calculated AFTER confidence (confidence may be None if not implemented yet)
+                                            position_size_info = PositionSizeCalculator.calculate_position_size(
+                                                balance=current_balance,
+                                                base_position_size_pct=base_position_size_pct,
+                                                risk_reward_ratio=prediction.risk_reward_ratio,
+                                                leverage=TradingConfig.LEVERAGE,
+                                                entry_price=prediction.entry_price,
+                                                stop_loss=prediction.stop_loss,
+                                                direction=prediction.direction,
+                                                confidence=prediction.confidence  # Pass confidence for future confidence-based sizing
+                                            )
                                 except Exception as e:
                                     logger.warning(f"⚠️ Could not calculate position size: {e}")
                             
@@ -416,7 +434,8 @@ class SessionOrchestrator:
         # No need for duplicate definitions here
         
         # Price change threshold for price-sensitive modules
-        price_change_threshold = 0.001  # 0.1%
+        from core.constants import TradingConstants
+        price_change_threshold = TradingConstants.PRICE_CHANGE_THRESHOLD
         
         # Track price changes
         if self._last_price is None:
@@ -537,7 +556,7 @@ class SessionOrchestrator:
 
             # Small delay to ensure all analysis modules complete their calculations
             # This prevents strategy selection from using stale data
-            time.sleep(0.1)  # 100ms delay for analysis completion
+            time.sleep(TradingConstants.ANALYSIS_COMPLETION_DELAY)
 
             # Get comprehensive analysis data from MarketDataService
             # CRITICAL: Use "standard" strategy for analysis to avoid circular dependency

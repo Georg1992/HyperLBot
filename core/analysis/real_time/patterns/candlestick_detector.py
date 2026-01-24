@@ -94,9 +94,9 @@ class CandlestickPatternDetector(BasePatternDetector):
             close2 > close1 and close3 > close2 and
             open2 > close1 and open3 > close2):
             
-            confidence = 0.85
+            quality = 0.85
             return self._create_pattern(
-                "THREE_WHITE_SOLDIERS", "CONTINUATION", "BULLISH", confidence,
+                "THREE_WHITE_SOLDIERS", "CONTINUATION", "BULLISH", quality,
                 offset, offset + 2, max(opens), min(closes), [offset, offset + 1, offset + 2]
             )
         
@@ -105,9 +105,9 @@ class CandlestickPatternDetector(BasePatternDetector):
               close2 < close1 and close3 < close2 and
               open2 < close1 and open3 < close2):
             
-            confidence = 0.85
+            quality = 0.85
             return self._create_pattern(
-                "THREE_BLACK_CROWS", "CONTINUATION", "BEARISH", confidence,
+                "THREE_BLACK_CROWS", "CONTINUATION", "BEARISH", quality,
                 offset, offset + 2, max(opens), min(closes), [offset, offset + 1, offset + 2]
             )
         
@@ -138,9 +138,9 @@ class CandlestickPatternDetector(BasePatternDetector):
             close3 > open3 and  # Third candle bullish
             close3 > (open1 + close1) / 2):  # Third candle closes above first candle midpoint
             
-            confidence = 0.80
+            quality = 0.80
             return self._create_pattern(
-                "MORNING_STAR", "REVERSAL", "BULLISH", confidence,
+                "MORNING_STAR", "REVERSAL", "BULLISH", quality,
                 offset, offset + 2, max(open1, close1, open2, close2, open3, close3),
                 min(open1, close1, open2, close2, open3, close3), [offset, offset + 1, offset + 2]
             )
@@ -151,9 +151,9 @@ class CandlestickPatternDetector(BasePatternDetector):
               close3 < open3 and  # Third candle bearish
               close3 < (open1 + close1) / 2):  # Third candle closes below first candle midpoint
             
-            confidence = 0.80
+            quality = 0.80
             return self._create_pattern(
-                "EVENING_STAR", "REVERSAL", "BEARISH", confidence,
+                "EVENING_STAR", "REVERSAL", "BEARISH", quality,
                 offset, offset + 2, max(open1, close1, open2, close2, open3, close3),
                 min(open1, close1, open2, close2, open3, close3), [offset, offset + 1, offset + 2]
             )
@@ -182,9 +182,9 @@ class CandlestickPatternDetector(BasePatternDetector):
             curr_open < prev_close and  # Current opens below previous close
             curr_close > prev_open):    # Current closes above previous open
             
-            confidence = 0.75
+            quality = 0.75
             return self._create_pattern(
-                "BULLISH_ENGULFING", "REVERSAL", "BULLISH", confidence,
+                "BULLISH_ENGULFING", "REVERSAL", "BULLISH", quality,
                 len(candles) - 2, len(candles) - 1, max(prev_open, curr_close), min(prev_close, curr_open)
             )
         
@@ -194,9 +194,9 @@ class CandlestickPatternDetector(BasePatternDetector):
               curr_open > prev_close and  # Current opens above previous close
               curr_close < prev_open):    # Current closes below previous open
             
-            confidence = 0.75
+            quality = 0.75
             return self._create_pattern(
-                "BEARISH_ENGULFING", "REVERSAL", "BEARISH", confidence,
+                "BEARISH_ENGULFING", "REVERSAL", "BEARISH", quality,
                 len(candles) - 2, len(candles) - 1, max(prev_close, curr_open), min(prev_open, curr_close)
             )
         
@@ -230,9 +230,9 @@ class CandlestickPatternDetector(BasePatternDetector):
             
             # Bullish Harami: previous bearish, current bullish
             if prev_close < prev_open and curr_close > curr_open:
-                confidence = 0.70
+                quality = 0.70
                 return self._create_pattern(
-                    "BULLISH_HARAMI", "REVERSAL", "BULLISH", confidence,
+                    "BULLISH_HARAMI", "REVERSAL", "BULLISH", quality,
                     len(candles) - 2, len(candles) - 1, 
                     max(prev_open, prev_close, curr_open, curr_close),
                     min(prev_open, prev_close, curr_open, curr_close)
@@ -240,9 +240,9 @@ class CandlestickPatternDetector(BasePatternDetector):
             
             # Bearish Harami: previous bullish, current bearish
             elif prev_close > prev_open and curr_close < curr_open:
-                confidence = 0.70
+                quality = 0.70
                 return self._create_pattern(
-                    "BEARISH_HARAMI", "REVERSAL", "BEARISH", confidence,
+                    "BEARISH_HARAMI", "REVERSAL", "BEARISH", quality,
                     len(candles) - 2, len(candles) - 1,
                     max(prev_open, prev_close, curr_open, curr_close),
                     min(prev_open, prev_close, curr_open, curr_close)
@@ -273,9 +273,9 @@ class CandlestickPatternDetector(BasePatternDetector):
             lower_wick / total_range > 0.6 and  # Long lower wick
             upper_wick / total_range < 0.1):    # Small upper wick
             
-            confidence = 0.70
+            quality = 0.70
             return self._create_pattern(
-                "HAMMER", "REVERSAL", "BULLISH", confidence,
+                "HAMMER", "REVERSAL", "BULLISH", quality,
                 0, 0, high_price, low_price
             )
         
@@ -284,17 +284,17 @@ class CandlestickPatternDetector(BasePatternDetector):
               upper_wick / total_range > 0.6 and  # Long upper wick
               lower_wick / total_range < 0.1):    # Small lower wick
             
-            confidence = 0.70
+            quality = 0.70
             return self._create_pattern(
-                "SHOOTING_STAR", "REVERSAL", "BEARISH", confidence,
+                "SHOOTING_STAR", "REVERSAL", "BEARISH", quality,
                 0, 0, high_price, low_price
             )
         
         # Doji: very small body
         elif body_size / total_range < 0.1:
-            confidence = 0.60
+            quality = 0.60
             return self._create_pattern(
-                "DOJI", "REVERSAL", "NEUTRAL", confidence,
+                "DOJI", "REVERSAL", "NEUTRAL", quality,
                 0, 0, high_price, low_price
             )
         

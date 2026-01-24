@@ -91,9 +91,10 @@ class SupportResistanceCalculator(BaseCalculator):
         if current_price <= 0:
             raise ValueError(f"Invalid current_price: {current_price} - must be positive (NO FALLBACKS)")
         
-        # Mathematically justified: 0.25 × ATR for clustering tolerance
-        # This ensures levels within 25% of ATR are considered the same cluster
-        atr_tolerance_multiplier = 0.25
+        # Mathematically justified: Use config value for clustering tolerance
+        # This ensures levels within configured % of ATR are considered the same cluster
+        from config.config import TradingConfig
+        atr_tolerance_multiplier = TradingConfig.ATR_MULTIPLIERS["cluster_tolerance"]
         adaptive_tolerance = atr_14 * atr_tolerance_multiplier
         
         return adaptive_tolerance
@@ -220,6 +221,7 @@ class SupportResistanceCalculator(BaseCalculator):
                 monthly_groups[month_key].append(candle)
             
             # Find peaks for each period type
+            from config.config import TradingConfig
             # Daily peaks
             for day_key, day_candles in daily_groups.items():
                 if day_candles:
@@ -234,7 +236,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=80.0,  # Daily peaks are strong (major daily extremes)
+                            strength=TradingConfig.SR_STRENGTH_DAILY,  # Daily peaks are strong (major daily extremes)
                             timestamp=day_timestamp,
                             timeframe_distribution={'daily_peak': 1},
                             merged_from=1
@@ -246,7 +248,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=80.0,  # Daily peaks are strong (major daily extremes)
+                            strength=TradingConfig.SR_STRENGTH_DAILY,  # Daily peaks are strong (major daily extremes)
                             timestamp=day_timestamp,
                             timeframe_distribution={'daily_peak': 1},
                             merged_from=1
@@ -266,7 +268,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=90.0,  # Weekly peaks are very strong (major weekly extremes)
+                            strength=TradingConfig.SR_STRENGTH_WEEKLY,  # Weekly peaks are very strong (major weekly extremes)
                             timestamp=week_timestamp,
                             timeframe_distribution={'weekly_peak': 1},
                             merged_from=1
@@ -278,7 +280,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=90.0,  # Weekly peaks are very strong (major weekly extremes)
+                            strength=TradingConfig.SR_STRENGTH_WEEKLY,  # Weekly peaks are very strong (major weekly extremes)
                             timestamp=week_timestamp,
                             timeframe_distribution={'weekly_peak': 1},
                             merged_from=1
@@ -298,7 +300,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=100.0,  # Monthly peaks are maximum strength (major monthly extremes)
+                            strength=TradingConfig.SR_STRENGTH_MONTHLY,  # Monthly peaks are maximum strength (major monthly extremes)
                             timestamp=month_timestamp,
                             timeframe_distribution={'monthly_peak': 1},
                             merged_from=1
@@ -310,7 +312,7 @@ class SupportResistanceCalculator(BaseCalculator):
                             touches=1,
                             cluster_size=1,
                             weighted_touches=1.0,
-                            strength=100.0,  # Monthly peaks are maximum strength (major monthly extremes)
+                            strength=TradingConfig.SR_STRENGTH_MONTHLY,  # Monthly peaks are maximum strength (major monthly extremes)
                             timestamp=month_timestamp,
                             timeframe_distribution={'monthly_peak': 1},
                             merged_from=1
@@ -393,13 +395,14 @@ class SupportResistanceCalculator(BaseCalculator):
             
             # EXPAND liquidation range for S/R discovery (Fix Issue #2)
             # Problem: 40x leverage → ±1.2% range → filters out valid S/R levels
-            # Solution: Use 3x expanded range for S/R discovery
+            # Solution: Use configurable expanded range for S/R discovery
             #   - Tight range: Good for immediate SL/TP placement
             #   - Wide range: Needed for market structure understanding, multi-level entries, breakout targets
             # Example: At $90,778 with 40x:
             #   - Actual liquidation: $89,665 (1.2% below), $91,891 (1.2% above)
             #   - S/R discovery:     $87,000 (3.6% below), $94,000 (3.6% above)
-            expansion_factor = 3.0  # 3x expansion for S/R discovery
+            from config.config import TradingConfig
+            expansion_factor = TradingConfig.SR_LIQUIDATION_EXPANSION_FACTOR
             
             long_liquidation_actual = self._liquidation_calc.calculate_liquidation_price(current_price, "LONG")
             short_liquidation_actual = self._liquidation_calc.calculate_liquidation_price(current_price, "SHORT")
@@ -449,6 +452,10 @@ class SupportResistanceCalculator(BaseCalculator):
                 
                 if not additional_5m_candles:
                     logger.warning(f"⚠️ No candles found in liquidation range for {label}")
+                    # CRITICAL: If this is the last time range and we still have no 5m candles, raise immediately
+                    if days == lookback_ranges[-1][0] and len(candles_data['5m']) == 0:
+                        raise ValueError(f"No 5m candles available from API/data source after trying all time ranges (up to {label}) - NO FALLBACKS")
+                    # Continue to next time range - this is expected during progressive expansion
                     continue
                 
                 # Merge with existing 5m candles (avoid duplicates)
@@ -488,10 +495,20 @@ class SupportResistanceCalculator(BaseCalculator):
                 scored_levels = self._deduplicate_scored_levels(scored_levels, final_dedup_tolerance)
                 scored_levels.sort(key=lambda x: x.power or 0, reverse=True)
             
+            # CRITICAL: Validate we have minimum required data before formatting results
+            if not candles_data['5m'] or len(candles_data['5m']) < 50:
+                raise ValueError(f"Insufficient 5m candles for S/R calculation: {len(candles_data['5m']) if candles_data['5m'] else 0} < 50 - API/data issue (NO FALLBACKS)")
+            
             # Format and return results (strategy-independent, returns ALL levels)
             result = self._format_results_optimized(scored_levels, current_price, 
                                                    self._data_provider.calculate_atr(candles_data['5m'], 14),  # Required (NO FALLBACKS) 
                                                    current_time)
+            
+            # CRITICAL: Validate result structure
+            if not result or not isinstance(result, dict):
+                raise ValueError(f"S/R calculation returned invalid result: {type(result)} - NO FALLBACKS")
+            if "levels" not in result:
+                raise ValueError("S/R calculation result missing 'levels' key - NO FALLBACKS")
             
             # Log final results
             all_levels = result['levels']  # Required (NO FALLBACKS)
@@ -809,8 +826,12 @@ class SupportResistanceCalculator(BaseCalculator):
             Formatted result dictionary (strategy-independent, returns ALL levels)
         """
         try:
-            # Calculate ATR as percentage for level metadata
-            atr_pct = atr_14 / current_price if current_price > 0 else 0.0
+            # Calculate ATR as percentage for level metadata - NO FALLBACKS
+            if current_price <= 0:
+                raise ValueError(f"Invalid current_price for ATR calculation: {current_price} - must be positive (NO FALLBACKS)")
+            if atr_14 <= 0:
+                raise ValueError(f"Invalid atr_14 for ATR calculation: {atr_14} - must be positive (NO FALLBACKS)")
+            atr_pct = atr_14 / current_price
             
             # Process levels with state management
             key_levels = []
@@ -862,10 +883,13 @@ class SupportResistanceCalculator(BaseCalculator):
             # Calculate strongest support and resistance for metadata (use filter module)
             from .sr_level_filter import SRLevelFilter
             level_filter = SRLevelFilter(self.symbol)
+            # Create metadata for ATR calculation (atr_14 is available here)
+            sr_metadata_for_filter = {"atr_5m": atr_14}
             filtered_levels = level_filter.filter_for_display(
                 all_levels=key_levels,
                 current_price=current_price,
-                max_levels=1  # Only need strongest (top 1), uses default "standard" weights
+                max_levels=1,  # Only need strongest (top 1), uses default "standard" weights
+                sr_metadata=sr_metadata_for_filter  # Pass metadata for ATR calculation
             )
             
             # Get strongest levels for metadata (highest score)

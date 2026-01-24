@@ -53,9 +53,9 @@ class WedgePatternDetector(BasePatternDetector):
             
             # Check if both slopes are positive but converging (low slope > high slope)
             if high_slope > 0 and low_slope > 0 and low_slope > high_slope:
-                confidence = 0.80
+                quality = 0.80
                 return self._create_pattern(
-                    "RISING_WEDGE", "REVERSAL", "BEARISH", confidence,
+                    "RISING_WEDGE", "REVERSAL", "BEARISH", quality,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
                 )
             
@@ -84,9 +84,9 @@ class WedgePatternDetector(BasePatternDetector):
             
             # Check if both slopes are negative but converging (high slope < low slope)
             if high_slope < 0 and low_slope < 0 and high_slope < low_slope:
-                confidence = 0.80
+                quality = 0.80
                 return self._create_pattern(
-                    "FALLING_WEDGE", "REVERSAL", "BULLISH", confidence,
+                    "FALLING_WEDGE", "REVERSAL", "BULLISH", quality,
                     len(highs) - 10, len(highs) - 1, max(recent_highs), min(recent_lows)
                 )
             

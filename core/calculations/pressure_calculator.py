@@ -5,6 +5,7 @@ Modular architecture with dependency injection and optimized performance
 """
 
 import time
+from collections import deque
 from typing import Dict, List, Any, Optional
 from loguru import logger
 
@@ -16,7 +17,12 @@ from .pressure_classifier import PressureClassifier
 
 class PressureCalculator:
     """
-    Enhanced Pressure Calculator with modular architecture.
+    Professional-grade Pressure Calculator with EMA smoothing and deeper depth analysis.
+    
+    Based on professional HFT implementations:
+    - EMA smoothing (3-5 period) to reduce noise from transient orders
+    - Deeper orderbook levels (10-15) for more reliable signals
+    - Statistical normalization for better signal quality
     
     Refactored to use dependency injection for better testability and maintainability.
     Delegates responsibilities to specialized components.
@@ -27,7 +33,7 @@ class PressureCalculator:
                  analyzer: Optional[PressureAnalyzer] = None,
                  classifier: Optional[PressureClassifier] = None):
         """
-        Initialize the refactored Pressure Calculator
+        Initialize the professional-grade Pressure Calculator
         
         Args:
             symbol: Trading symbol (default: "BTC")
@@ -45,7 +51,14 @@ class PressureCalculator:
         from core.services.centralized_cache import get_global_centralized_cache
         self._cache = get_global_centralized_cache()
         
-        logger.info(f"📊 Refactored Pressure Calculator initialized for {symbol} - Modular architecture")
+        # Professional-grade: EMA smoothing for noise reduction
+        # Store pressure history for EMA calculation (5 periods for 3-5 period EMA)
+        from config.config import TradingConfig
+        self._pressure_history = deque(maxlen=5)  # Store last 5 pressure imbalances
+        self._ema_alpha = TradingConfig.PRESSURE_EMA_ALPHA  # EMA smoothing factor from config
+        self._ema_pressure = None  # Current EMA value
+        
+        logger.info(f"📊 Professional Pressure Calculator initialized for {symbol} - EMA smoothing + deeper depth")
     
     def get_latest_analysis(self) -> Dict[str, Any]:
         """
@@ -105,63 +118,92 @@ class PressureCalculator:
             if not bids or not asks:
                 raise ValueError("No orderbook data available for pressure calculation - NO FALLBACKS")
             
-            # 1. Calculate depth metrics via data provider - NO FALLBACKS
+            # 1. Calculate depth metrics via data provider - PROFESSIONAL: Use deeper levels (10-15)
             depth_metrics = self._data_provider.calculate_depth_metrics(bids, asks)
             
-            if ("total_depth_5" not in depth_metrics or depth_metrics["total_depth_5"] == 0.0):
-                raise ValueError("No orderbook depth available for pressure calculation - NO FALLBACKS")
+            # Use deeper depth (10 levels) for more reliable signals (professional practice) - NO FALLBACKS
+            if ("total_depth_10" not in depth_metrics or depth_metrics["total_depth_10"] == 0.0):
+                raise ValueError("No orderbook depth_10 available for pressure calculation - NO FALLBACKS (required for professional-grade analysis)")
             
-            # 2. Calculate pressure ratios via data provider
+            # 2. Calculate pressure ratios via data provider (using deeper depth)
             pressure_ratios = self._data_provider.calculate_pressure_ratios(depth_metrics)
             
-            # 3. Analyze pressure direction and strength via analyzer
-            pressure_imbalance = pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0
+            # 3. PROFESSIONAL: Apply EMA smoothing to reduce noise
+            raw_pressure_imbalance = pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0
+            
+            # Add to history
+            self._pressure_history.append(raw_pressure_imbalance)
+            
+            # Calculate EMA (Exponential Moving Average)
+            if self._ema_pressure is None:
+                # Initialize EMA with first value (simple average if multiple values)
+                if len(self._pressure_history) > 1:
+                    self._ema_pressure = sum(self._pressure_history) / len(self._pressure_history)
+                else:
+                    self._ema_pressure = raw_pressure_imbalance
+            else:
+                # EMA formula: EMA = α × current_value + (1 - α) × previous_EMA
+                self._ema_pressure = (self._ema_alpha * raw_pressure_imbalance) + ((1 - self._ema_alpha) * self._ema_pressure)
+            
+            # Use smoothed pressure for analysis (professional practice)
+            pressure_imbalance = self._ema_pressure
             depth_concentration = pressure_ratios["depth_concentration"] if "depth_concentration" in pressure_ratios else 1.0
+            
+            # 4. Analyze pressure direction and strength via analyzer (using smoothed value)
             direction, strength = self._analyzer.categorize_pressure_direction(
                 pressure_imbalance,
                 depth_concentration
             )
             
-            # 4. Calculate confidence via analyzer
+            # 5. Calculate confidence via analyzer (using deeper depth for better reliability)
             confidence = self._analyzer.calculate_pressure_confidence(
-                depth_metrics["total_depth_5"] if "total_depth_5" in depth_metrics else 0.0,
-                pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0
+                depth_metrics["total_depth_10"],
+                pressure_imbalance  # Use smoothed pressure
             )
             
-            # 5. Determine trend via analyzer
+            # 6. Determine trend via analyzer (using smoothed pressure)
             trend = self._analyzer.determine_pressure_trend(
-                pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0,
-                pressure_ratios["depth_concentration"] if "depth_concentration" in pressure_ratios else 1.0
+                pressure_imbalance,  # Use smoothed pressure
+                depth_concentration
             )
             
-            # 6. Classify pressure level via classifier
+            # 7. Classify pressure level via classifier
             classification = self._classifier.classify_pressure_level(direction, strength, confidence)
             
-            # 7. Determine trading implications via classifier
+            # 8. Determine trading implications via classifier
             implications = self._classifier.determine_trading_implications(classification, trend)
             
-            # 8. Get recommendations via classifier
+            # 9. Get recommendations via classifier
             recommendations = self._classifier.get_pressure_recommendations(classification, implications)
             
-            # 9. Format results
-            pressure_imbalance_val = pressure_ratios["pressure_imbalance"] if "pressure_imbalance" in pressure_ratios else 0.0
+            # 10. Format results (use smoothed pressure for net_pressure)
             # Calculate pressure_ratio for strategy_manager (bid_pressure_ratio / ask_pressure_ratio)
-            bid_pressure_ratio = pressure_ratios.get("bid_pressure_ratio", 0.5)
-            ask_pressure_ratio = pressure_ratios.get("ask_pressure_ratio", 0.5)
-            pressure_ratio = bid_pressure_ratio / ask_pressure_ratio if ask_pressure_ratio > 0 else 1.0
+            # Recalculate ratios using smoothed pressure for consistency
+            total_depth = depth_metrics["total_depth_10"]
+            bid_depth = depth_metrics["bid_depth_10"]
+            ask_depth = depth_metrics["ask_depth_10"]
+            
+            if total_depth > 0:
+                bid_pressure_ratio = bid_depth / total_depth
+                ask_pressure_ratio = ask_depth / total_depth
+                pressure_ratio = bid_pressure_ratio / ask_pressure_ratio if ask_pressure_ratio > 0 else 1.0
+            else:
+                pressure_ratio = 1.0
             
             result = {
                 "direction": direction,
                 "confidence": confidence,
                 "strength": strength,
                 "trend": trend,
-                "net_pressure": pressure_imbalance_val,  # Top-level field for momentum_detector (NO FALLBACKS)
+                "net_pressure": pressure_imbalance,  # Use smoothed EMA pressure (professional practice)
                 "pressure_ratio": pressure_ratio,  # Used by strategy_manager
-                "data_source": "live_orderbook_calculation",
+                "raw_pressure": raw_pressure_imbalance,  # Keep raw for debugging/comparison
+                "ema_pressure": self._ema_pressure,  # EMA value for transparency
+                "data_source": "live_orderbook_calculation_ema_smoothed",
                 "timestamp": time.time()
             }
             
-            logger.info(f"📊 Pressure analysis complete: {direction} (strength: {strength:.3f}, confidence: {confidence:.3f})")
+            logger.debug(f"📊 Pressure (EMA smoothed): {direction} (raw: {raw_pressure_imbalance:.3f}, EMA: {self._ema_pressure:.3f}, strength: {strength:.3f})")
             return result
             
         except Exception as e:

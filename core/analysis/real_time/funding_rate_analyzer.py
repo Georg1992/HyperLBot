@@ -139,7 +139,7 @@ class FundingRateAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Funding trend calculation failed: {e}")
-            return {"trend": "ERROR", "direction": "UNKNOWN", "strength": 0.0}
+            raise ValueError(f"Funding trend calculation failed: {e} - NO FALLBACKS") from e
     
     def _analyze_funding_sentiment(self, funding_rate: float) -> Dict[str, Any]:
         """Analyze market sentiment based on funding rate using dynamic thresholds"""

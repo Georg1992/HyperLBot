@@ -210,7 +210,7 @@ class MomentumDetector:
             volume_category = volume_data["category"]  # Required (NO FALLBACKS)
             volume_value = volume_data["volume_5m"]  # Required (NO FALLBACKS)
             volume_percentile = volume_data["percentile"]  # Required (NO FALLBACKS)
-            volume_momentum = volume_data.get("volume_momentum", 0.0)  # Numeric momentum for entry timing
+            volume_momentum = volume_data["volume_momentum"]  # Numeric momentum for entry timing
             
             volume_score = 0.0
             if volume_category in ["HIGH", "VERY_HIGH"] and volume_percentile > 75:

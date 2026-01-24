@@ -64,10 +64,6 @@ class StrategyManager:
         logger.info("🎯 Strategy Manager initialized - Centralized strategy management")
         logger.info(f"   🎯 Current strategy: {self.current_strategy}")
     
-    @staticmethod
-    def _safe_get(data: Any, key: str, default: Any) -> Any:
-        """Safely get value from dict, return default if not dict or key missing"""
-        return data[key] if isinstance(data, dict) and key in data else default
     
     def detect_optimal_strategy(self, market_data: Dict[str, Any]) -> str:
         """
@@ -151,8 +147,8 @@ class StrategyManager:
                     score_data = item[1]
                     if not isinstance(score_data, dict):
                         return 0.0
-                    score_val = score_data["score"] if "score" in score_data else 0.0
-                    return float(score_val) if score_val is not None else 0.0
+                    score_val = score_data["score"]
+                    return float(score_val)
                 except (ValueError, TypeError, AttributeError, IndexError):
                     return 0.0
             
@@ -190,6 +186,10 @@ class StrategyManager:
         
         # Extended data (nested) - Required (NO FALLBACKS)
         trend_data = market_data["trend"]
+        # Extract trend timeframes from detailed_timeframes - NO FALLBACKS
+        trend_detailed = trend_data["detailed_timeframes"]
+        trend_15m = trend_detailed["trend_15m"]
+        trend_1h = trend_detailed["trend_1h"]
         rsi_data = market_data["rsi"]
         volatility_data = market_data["volatility"]  # Get full volatility data for spike_intensity
         volume_data = market_data["volume"]  # Get full volume data for volume_trend_strength and volume_anomaly
@@ -199,103 +199,78 @@ class StrategyManager:
         funding_data = market_data["funding_analysis"]
         market_conditions = market_data["market_conditions"]
         
-        # Extract detailed values using safe get helper - ensure numeric types are floats
-        trend_strength_raw = self._safe_get(trend_data, "strength", 0.5)
-        try:
-            trend_strength = float(trend_strength_raw) if trend_strength_raw is not None else 0.5
-        except (ValueError, TypeError):
-            trend_strength = 0.5
+        # Extract detailed values - NO FALLBACKS
+        trend_strength_raw = trend_data["strength"]
+        trend_strength = float(trend_strength_raw)
         
-        rsi_trend = self._safe_get(rsi_data, "rsi_trend", "NEUTRAL")
-        rsi_signal = self._safe_get(rsi_data, "rsi_signal", "NEUTRAL")
+        rsi_trend = rsi_data["rsi_trend"]
+        rsi_signal = rsi_data["rsi_signal"]
         
-        rsi_momentum_raw = self._safe_get(rsi_data, "rsi_momentum", 0.0)
-        try:
-            rsi_momentum = float(rsi_momentum_raw) if rsi_momentum_raw is not None else 0.0
-        except (ValueError, TypeError):
-            rsi_momentum = 0.0
+        rsi_momentum_raw = rsi_data["rsi_momentum"]
+        rsi_momentum = float(rsi_momentum_raw)
         
         # STRATEGY INDEPENDENCE: S/R levels NOT used for strategy selection
         # Strategy selection is based purely on market conditions (volatility, trend, volume, RSI, pressure)
         # S/R level filtering happens AFTER strategy is selected in PredictionEngine
         current_price = float(market_data["current_price"])  # Required (NO FALLBACKS) - will raise if invalid
         
-        # Orderbook data - ensure numeric types are floats
-        spread_pct_raw = self._safe_get(orderbook_data, "spread_percentage", 0.0)
+        # Orderbook data - NO FALLBACKS
+        spread_pct_raw = orderbook_data["spread_percentage"]
+        spread_pct = float(spread_pct_raw)
+        
+        liquidity_score_raw = orderbook_data["liquidity_score"]
+        liquidity_score = float(liquidity_score_raw)
+        
+        # Pressure data - NO FALLBACKS
+        net_pressure_raw = pressure_data["net_pressure"]
+        net_pressure = float(net_pressure_raw)
+        
+        pressure_ratio_raw = pressure_data["pressure_ratio"]
+        pressure_ratio = float(pressure_ratio_raw)
+        
+        # Funding data - NO FALLBACKS
+        funding_trend = funding_data["trend"]
+        funding_direction = funding_trend["direction"]
+        
+        funding_strength_raw = funding_trend["strength"]
         try:
-            spread_pct = float(spread_pct_raw) if spread_pct_raw is not None else 0.0
+            funding_strength = float(funding_strength_raw)
         except (ValueError, TypeError):
-            spread_pct = 0.0
+            raise ValueError(f"Invalid funding_strength value: {funding_strength_raw} - NO FALLBACKS")
         
-        liquidity_score_raw = self._safe_get(orderbook_data, "liquidity_score", 0.5)
-        try:
-            liquidity_score = float(liquidity_score_raw) if liquidity_score_raw is not None else 0.5
-        except (ValueError, TypeError):
-            liquidity_score = 0.5
+        # Funding volatility for risk management - NO FALLBACKS
+        funding_volatility_data = funding_data["funding_volatility"]
+        funding_volatility_category = funding_volatility_data["category"]
         
-        # Pressure data - ensure numeric types are floats
-        net_pressure_raw = self._safe_get(pressure_data, "net_pressure", 0.0)
-        try:
-            net_pressure = float(net_pressure_raw) if net_pressure_raw is not None else 0.0
-        except (ValueError, TypeError):
-            net_pressure = 0.0
+        # Market conditions - NO FALLBACKS
+        market_condition = market_conditions["condition"]
+        risk_level = market_conditions["risk_level"]
         
-        pressure_ratio_raw = self._safe_get(pressure_data, "pressure_ratio", 1.0)
-        try:
-            pressure_ratio = float(pressure_ratio_raw) if pressure_ratio_raw is not None else 1.0
-        except (ValueError, TypeError):
-            pressure_ratio = 1.0
+        # Volatility spike intensity (for spike_hunting strategy) - NO FALLBACKS
+        spike_intensity = volatility_data["spike_intensity"]
         
-        # Funding data
-        funding_trend = self._safe_get(funding_data, "trend", {})
-        funding_direction = self._safe_get(funding_trend, "direction", "STABLE")
+        # Volume data - NO FALLBACKS
+        volume_trend_strength_raw = volume_data["volume_trend_strength"]
+        volume_trend_strength = float(volume_trend_strength_raw)
         
-        funding_strength_raw = self._safe_get(funding_trend, "strength", 0.0)
-        try:
-            funding_strength = float(funding_strength_raw) if funding_strength_raw is not None else 0.0
-        except (ValueError, TypeError):
-            funding_strength = 0.0
+        volume_anomaly = volume_data["volume_anomaly"]
         
-        # Funding volatility for risk management
-        funding_volatility_data = self._safe_get(funding_data, "funding_volatility", {})
-        funding_volatility_category = self._safe_get(funding_volatility_data, "category", "UNKNOWN") if isinstance(funding_volatility_data, dict) else "UNKNOWN"
+        # Pattern data - NO FALLBACKS
+        patterns_data = market_data["patterns"]
+        patterns_nested = patterns_data["patterns_nested"]
+        patterns_flat = patterns_data["patterns"]
         
-        # Market conditions
-        market_condition = self._safe_get(market_conditions, "condition", "NEUTRAL")
-        risk_level = self._safe_get(market_conditions, "risk_level", "MEDIUM")
+        # Use overall_quality (pattern quality), NOT prediction confidence - NO FALLBACKS
+        pattern_quality_raw = patterns_data["overall_quality"]
+        pattern_quality = float(pattern_quality_raw)
         
-        # Volatility spike intensity (for spike_hunting strategy)
-        spike_intensity = self._safe_get(volatility_data, "spike_intensity", "NONE")
-        
-        # Volume data - extract volume_trend_strength and volume_anomaly
-        volume_trend_strength_raw = self._safe_get(volume_data, "volume_trend_strength", 0.0)
-        try:
-            volume_trend_strength = float(volume_trend_strength_raw) if volume_trend_strength_raw is not None else 0.0
-        except (ValueError, TypeError):
-            volume_trend_strength = 0.0
-        
-        volume_anomaly = self._safe_get(volume_data, "volume_anomaly", {})
-        if not isinstance(volume_anomaly, dict):
-            volume_anomaly = {}
-        
-        # Pattern data
-        patterns_data = market_data["patterns"]  # Required (NO FALLBACKS)
-        patterns_nested = self._safe_get(patterns_data, "patterns_nested", {})
-        patterns_flat = self._safe_get(patterns_data, "patterns", [])
-        
-        pattern_confidence_raw = self._safe_get(patterns_data, "overall_confidence", 0.0)
-        try:
-            pattern_confidence = float(pattern_confidence_raw) if pattern_confidence_raw is not None else 0.0
-        except (ValueError, TypeError):
-            pattern_confidence = 0.0
-        
-        # Extract pattern categories for strategy selection
-        reversal_patterns = self._safe_get(patterns_nested, "reversal_patterns", [])
-        continuation_patterns = self._safe_get(patterns_nested, "continuation_patterns", [])
-        triangle_patterns = self._safe_get(patterns_nested, "triangle_patterns", [])
-        channel_patterns = self._safe_get(patterns_nested, "channel_patterns", [])
-        wedge_patterns = self._safe_get(patterns_nested, "wedge_patterns", [])
-        trend_patterns = self._safe_get(patterns_nested, "trend_patterns", [])
+        # Extract pattern categories for strategy selection - NO FALLBACKS
+        reversal_patterns = patterns_nested["reversal_patterns"]
+        continuation_patterns = patterns_nested["continuation_patterns"]
+        triangle_patterns = patterns_nested["triangle_patterns"]
+        channel_patterns = patterns_nested["channel_patterns"]
+        wedge_patterns = patterns_nested["wedge_patterns"]
+        trend_patterns = patterns_nested["trend_patterns"]
         
         return {
             "volatility_category": volatility_category,
@@ -322,13 +297,15 @@ class StrategyManager:
             "risk_level": risk_level,
             "spike_intensity": spike_intensity,  # Used by spike_hunting strategy
             # Pattern data for strategy selection
-            "pattern_confidence": pattern_confidence,
+            "pattern_quality": pattern_quality,  # Pattern detection quality, NOT prediction confidence
             "reversal_patterns": reversal_patterns,
             "continuation_patterns": continuation_patterns,
             "triangle_patterns": triangle_patterns,
             "channel_patterns": channel_patterns,
             "wedge_patterns": wedge_patterns,
-            "trend_patterns": trend_patterns
+            "trend_patterns": trend_patterns,
+            "trend_15m": trend_15m,
+            "trend_1h": trend_1h
         }
     
     def _has_pattern_in_list(self, pattern_list: List[Dict[str, Any]], pattern_names: List[str]) -> bool:
@@ -375,11 +352,8 @@ class StrategyManager:
             score -= 30.0
             factors.append(f"{data['volatility_category']} volatility (unsuitable for scalping)")
         
-        # RSI: 40-60 is ideal (MUCH STRICTER - neutral zone only) (25 points)
-        try:
-            rsi = float(data["rsi_value"]) if "rsi_value" in data and data["rsi_value"] is not None else 50.0
-        except (ValueError, TypeError):
-            rsi = 50.0
+        # RSI: 40-60 is ideal (MUCH STRICTER - neutral zone only) (25 points) - NO FALLBACKS
+        rsi = float(data["rsi_value"])
         if 40 <= rsi <= 60:
             score += 25.0
             factors.append(f"RSI {rsi:.1f} (neutral - ideal)")
@@ -448,14 +422,14 @@ class StrategyManager:
         factors = []
         
         # Volatility spike intensity check (uses config min_spike_severity: "HIGH")
-        spike_intensity = data.get("spike_intensity", "NONE")
-        spike_config = self.strategy_configs.get("spike_hunting", {})
-        min_severity = spike_config.get("min_spike_severity", "HIGH") if isinstance(spike_config, dict) else "HIGH"
+        spike_intensity = data["spike_intensity"]
+        spike_config = self.strategy_configs["spike_hunting"]
+        min_severity = spike_config["min_spike_severity"]
         
         # Severity hierarchy: NONE < MODERATE < HIGH < EXTREME
         severity_levels = {"NONE": 0, "MODERATE": 1, "HIGH": 2, "EXTREME": 3}
-        spike_level = severity_levels.get(spike_intensity, 0)
-        min_level = severity_levels.get(min_severity, 2)
+        spike_level = severity_levels[spike_intensity]
+        min_level = severity_levels[min_severity]
         
         vol_5m = float(data["volatility_5m"])  # Required (NO FALLBACKS) - will raise if invalid
         
@@ -502,7 +476,7 @@ class StrategyManager:
             factors.append(f"{data['risk_level']} risk")
         
         # Funding volatility risk check: High funding volatility indicates market instability
-        funding_volatility_cat = data.get("funding_volatility_category", "UNKNOWN")
+        funding_volatility_cat = data["funding_volatility_category"]
         if funding_volatility_cat == "HIGH":
             score -= 15.0
             factors.append("High funding volatility (market instability - avoid spike hunting)")
@@ -552,8 +526,8 @@ class StrategyManager:
         
         # Funding: Alignment with trend (20 points) + Rate change momentum (up to 5 points)
         funding_dir = data["funding_direction"]
-        funding_trend = data.get("funding_trend", {})
-        funding_rate_change = funding_trend.get("rate_change", 0.0) if isinstance(funding_trend, dict) else 0.0
+        funding_trend = data["funding_trend"]
+        funding_rate_change = funding_trend["rate_change"]
         
         funding_score = 0.0
         if data["trend_direction"] == "BULLISH" and funding_dir == "INCREASING":
@@ -570,13 +544,16 @@ class StrategyManager:
             factors.append(f"Funding misaligned ({funding_dir})")
         
         # Funding rate change momentum: Strong rate change confirms trend
-        if data["trend_direction"] == "BULLISH" and funding_rate_change > 0.0001:  # Increasing funding (bullish)
+        from config.config import TradingConfig
+        funding_thresholds = TradingConfig.FUNDING_RATE_CHANGE_THRESHOLDS
+        
+        if data["trend_direction"] == "BULLISH" and funding_rate_change > funding_thresholds["significant_increase"]:
             funding_score += 5.0
             factors.append(f"Funding rate increasing ({funding_rate_change*10000:.2f} bps)")
-        elif data["trend_direction"] == "BEARISH" and funding_rate_change < -0.0001:  # Decreasing funding (bearish)
+        elif data["trend_direction"] == "BEARISH" and funding_rate_change < funding_thresholds["significant_decrease"]:
             funding_score += 5.0
             factors.append(f"Funding rate decreasing ({funding_rate_change*10000:.2f} bps)")
-        elif abs(funding_rate_change) < 0.00005:  # Very stable funding
+        elif abs(funding_rate_change) < funding_thresholds["very_stable"]:
             funding_score += 2.0
             factors.append("Funding rate stable")
         
@@ -584,7 +561,7 @@ class StrategyManager:
         
         # Volume: High volume confirms trend (15 points) + Volume trend strength bonus (up to 10 points)
         vol_cat = data["volume_category"]
-        volume_trend_strength = data.get("volume_trend_strength", 0.0)  # Strength of volume trend (0.0-1.0)
+        volume_trend_strength = data["volume_trend_strength"]  # Strength of volume trend (0.0-1.0)
         
         volume_score = 0.0
         if vol_cat in ["HIGH", "VERY_HIGH", "EXTREME"]:
@@ -598,13 +575,15 @@ class StrategyManager:
             factors.append(f"{vol_cat} volume (weak)")
         
         # Volume trend strength bonus: Strong volume trend increases confidence
-        if volume_trend_strength > 0.7:  # Very strong volume trend
+        volume_thresholds = TradingConfig.VOLUME_TREND_STRENGTH_THRESHOLDS
+        
+        if volume_trend_strength > volume_thresholds["very_strong"]:
             volume_score += 10.0
             factors.append(f"Very strong volume trend (strength: {volume_trend_strength:.2f})")
-        elif volume_trend_strength > 0.5:  # Moderate volume trend
+        elif volume_trend_strength > volume_thresholds["moderate"]:
             volume_score += 5.0
             factors.append(f"Moderate volume trend (strength: {volume_trend_strength:.2f})")
-        elif volume_trend_strength < 0.3:  # Weak volume trend
+        elif volume_trend_strength < volume_thresholds["weak"]:
             volume_score -= 5.0
             factors.append(f"Weak volume trend (strength: {volume_trend_strength:.2f})")
         
@@ -865,11 +844,8 @@ class StrategyManager:
             score -= 10.0
             factors.append(f"{vol_cat} volume (poor)")
         
-        # RSI: Wide range acceptable (20 points)
-        try:
-            rsi = float(data["rsi_value"]) if "rsi_value" in data and data["rsi_value"] is not None else 50.0
-        except (ValueError, TypeError):
-            rsi = 50.0
+        # RSI: Wide range acceptable (20 points) - NO FALLBACKS
+        rsi = float(data["rsi_value"])
         if 35 <= rsi <= 65:
             score += 20.0
             factors.append(f"RSI {rsi:.1f} (neutral - ideal)")
@@ -897,8 +873,8 @@ class StrategyManager:
             factors.append(f"Acceptable spread ({spread*100:.3f}%)")
         
         # Trend: Clear trend helps (15 points)
-        trend_15m = data.get("trend_15m", "SIDEWAYS")
-        trend_1h = data.get("trend_1h", "SIDEWAYS")
+        trend_15m = data["trend_15m"]
+        trend_1h = data["trend_1h"]
         if trend_15m != "SIDEWAYS" and trend_15m == trend_1h:
             score += 15.0
             factors.append(f"Strong trend alignment ({trend_15m})")
@@ -914,8 +890,11 @@ class StrategyManager:
     def _calculate_confidence(self, strategy_scores: Dict[str, Dict], best_strategy: str, data: Dict[str, Any]) -> float:
         """Calculate dynamic confidence based on score quality and data completeness"""
         # Ensure best_score is float
-        best_score_data = strategy_scores[best_strategy] if best_strategy in strategy_scores else {}
-        best_score = float(best_score_data["score"]) if "score" in best_score_data and isinstance(best_score_data["score"], (int, float, str)) else 0.0
+        # NO FALLBACKS
+        if best_strategy not in strategy_scores:
+            raise ValueError(f"Strategy '{best_strategy}' not found in strategy_scores - NO FALLBACKS")
+        best_score_data = strategy_scores[best_strategy]
+        best_score = float(best_score_data["score"])
         try:
             best_score = float(best_score)
         except (ValueError, TypeError):
@@ -924,10 +903,10 @@ class StrategyManager:
         # Get 2nd best score - ensure all scores are float before sorting
         def safe_float_score(item):
             try:
-                score_val = item[1]["score"] if "score" in item[1] else 0.0
-                return float(score_val) if score_val is not None else 0.0
+                score_val = item[1]["score"]
+                return float(score_val)
             except (ValueError, TypeError):
-                return 0.0
+                raise ValueError(f"Invalid score value in strategy_scores: {item[1]} - NO FALLBACKS")
         
         sorted_scores = sorted(strategy_scores.items(), key=safe_float_score, reverse=True)
         if len(sorted_scores) > 1:
@@ -935,10 +914,10 @@ class StrategyManager:
                 second_score_data = sorted_scores[1][1]
                 second_score = float(second_score_data["score"]) if "score" in second_score_data and isinstance(second_score_data["score"], (int, float, str)) else 0.0
                 second_score = float(second_score)
-            except (ValueError, TypeError, IndexError, KeyError):
-                second_score = 0.0
+            except (ValueError, TypeError, IndexError, KeyError) as e:
+                raise ValueError(f"Invalid second_score calculation: {e} - NO FALLBACKS") from e
         else:
-            second_score = 0.0
+            raise ValueError("No second strategy found - NO FALLBACKS")
         
         # Base confidence from score magnitude (0-0.5)
         score_confidence = min(0.5, best_score / 100.0)
@@ -1027,10 +1006,13 @@ class StrategyManager:
         # Dynamic cooldown based on market volatility
         # Get current volatility from the last market data if available
         if self._last_market_data:
+            from config.config import TradingConfig
             volatility_5m = self._last_market_data["volatility_5m"]  # Required (NO FALLBACKS)
-            if volatility_5m > 0.03:  # High volatility (>3%)
+            volatility_thresholds = TradingConfig.VOLATILITY_THRESHOLDS
+            
+            if volatility_5m > volatility_thresholds["high"]:
                 cooldown = 60  # 1 minute for high volatility
-            elif volatility_5m > 0.01:  # Moderate volatility (1-3%)
+            elif volatility_5m > volatility_thresholds["moderate"]:
                 cooldown = 180  # 3 minutes for moderate volatility
             else:  # Low volatility (<1%)
                 cooldown = 300  # 5 minutes for low volatility
@@ -1044,7 +1026,10 @@ class StrategyManager:
         try:
             old_strategy = self.current_strategy
             self.current_strategy = new_strategy
-            self.current_strategy_config = self.strategy_configs[new_strategy] if new_strategy in self.strategy_configs else self.strategy_configs["standard"]
+            # NO FALLBACKS
+            if new_strategy not in self.strategy_configs:
+                raise ValueError(f"Strategy '{new_strategy}' not found in strategy_configs - NO FALLBACKS")
+            self.current_strategy_config = self.strategy_configs[new_strategy]
             self.last_strategy_switch = time.time()
             
             logger.info(f"🔄 Strategy switched: {old_strategy} → {new_strategy}")

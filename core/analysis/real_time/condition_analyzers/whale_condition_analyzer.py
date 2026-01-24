@@ -30,11 +30,11 @@ class WhaleConditionAnalyzer:
                     "whale_sentiment": "UNKNOWN"
                 }
             
-            # Use passed data
-            whale_activity = whale_data.get("whale_activity", "UNKNOWN")
-            whale_count = whale_data.get("whale_count", 0)
-            whale_sentiment = whale_data.get("whale_sentiment", "NEUTRAL")
-            exchange_flows = whale_data.get("exchange_flows", {})
+            # Use passed data - NO FALLBACKS
+            whale_activity = whale_data["whale_activity"]
+            whale_count = whale_data["whale_count"]
+            whale_sentiment = whale_data["whale_sentiment"]
+            exchange_flows = whale_data["exchange_flows"]
             
             # Convert to condition analyzer format
             factors = [f"Whale Activity: {whale_activity}"]
