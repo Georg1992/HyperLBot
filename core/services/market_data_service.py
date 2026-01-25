@@ -1241,8 +1241,12 @@ class MarketDataService:
                 return  # RSI not initialized yet - not an error
             
             old_rsi = rsi_calculator.current_rsi
-            rsi_calculator.update_realtime_rsi(new_price)
+            # update_realtime_rsi() returns updated RSI data - store it immediately
+            rsi_result = rsi_calculator.update_realtime_rsi(new_price)
             new_rsi = rsi_calculator.current_rsi
+            
+            # Store updated RSI data to cache so get_rsi_analysis() returns fresh data
+            self.update_analysis_data("rsi", rsi_result)
             
             # Trigger instant dashboard update if RSI changed significantly (throttled)
             if abs(new_rsi - old_rsi) >= TradingConstants.RSI_CHANGE_THRESHOLD:

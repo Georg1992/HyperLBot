@@ -156,6 +156,7 @@ class RSICalculator:
             
             return {
                 "rsi": self.current_rsi,
+                "value": self.current_rsi,  # Alias for momentum_detector compatibility (NO FALLBACKS)
                 "rsi_baseline": self.baseline_rsi,
                 "rsi_trend": rsi_trend,
                 "rsi_signal": rsi_signal,

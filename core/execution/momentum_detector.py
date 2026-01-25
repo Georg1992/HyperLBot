@@ -255,7 +255,7 @@ class MomentumDetector:
                 factors.append(f"Trend: {trend_direction}")
             
             # 5. RSI momentum (10 points)
-            rsi_value = rsi_data["value"]  # Required (NO FALLBACKS)
+            rsi_value = rsi_data["rsi"]  # Required (NO FALLBACKS) - RSI calculator returns "rsi" key, not "value"
             if TechnicalAnalysisConstants.RSI_NEUTRAL < rsi_value < TechnicalAnalysisConstants.RSI_OVERBOUGHT:  # Bullish but not overbought
                 confidence += 10.0
                 factors.append(f"RSI bullish ({rsi_value:.1f})")
@@ -420,7 +420,7 @@ class MomentumDetector:
                 factors.append(f"Trend: {trend_direction}")
             
             # 5. RSI momentum (10 points)
-            rsi_value = rsi_data["value"]  # Required (NO FALLBACKS)
+            rsi_value = rsi_data["rsi"]  # Required (NO FALLBACKS) - RSI calculator returns "rsi" key, not "value"
             if TechnicalAnalysisConstants.RSI_OVERSOLD < rsi_value < TechnicalAnalysisConstants.RSI_NEUTRAL:  # Bearish but not oversold
                 confidence += 10.0
                 factors.append(f"RSI bearish ({rsi_value:.1f})")

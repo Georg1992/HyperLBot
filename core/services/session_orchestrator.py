@@ -196,10 +196,12 @@ class SessionOrchestrator:
             except Exception as e:
                 logger.error(f"❌ Failed to update candle storage at boundary: {e}")
             
-            # Invalidate pattern cache when new candle closes
+            # Invalidate pattern and trend cache when new candle closes
+            # New candles affect trend calculations, so trend cache must be invalidated
             cache = get_global_centralized_cache()
             cache.invalidate(pattern="pattern_recognition")
             cache.invalidate(pattern="patterns")
+            cache.invalidate("trend")  # Trend is calculated from candles, so invalidate when new candle appears
             
             # Recalculate RSI baseline at exact candle boundary
             try:
