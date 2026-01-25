@@ -11,16 +11,18 @@ from loguru import logger
 class WhaleConditionAnalyzer:
     """Analyzes whale conditions - follows SRP"""
     
-    def __init__(self):
-        pass
+    # Activity level mapping (very_high and high both map to HIGH_ACCUMULATION)
+    _ACTIVITY_LEVEL_MAP = {
+        "very_high": "HIGH_ACCUMULATION",
+        "high": "HIGH_ACCUMULATION",
+        "medium": "NORMAL",
+        "low": "LOW"
+    }
     
     def analyze_whale_conditions(self, whale_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """Analyze whale conditions using PASSED DATA - NO REDUNDANT FETCHING"""
         try:
-            # This analyzer should receive whale data as parameter from caller
-            # For now, return minimal analysis since whale data should be passed in
             if not whale_data:
-                # Minimal response when no data provided
                 return {
                     "factors": ["Whale data not available"],
                     "risk_factors": [],
@@ -30,11 +32,19 @@ class WhaleConditionAnalyzer:
                     "whale_sentiment": "UNKNOWN"
                 }
             
-            # Use passed data - NO FALLBACKS
-            whale_activity = whale_data["whale_activity"]
-            whale_count = whale_data["whale_count"]
-            whale_sentiment = whale_data["whale_sentiment"]
+            # Extract nested data structure - NO FALLBACKS
+            whale_activity_dict = whale_data["whale_activity"]
             exchange_flows = whale_data["exchange_flows"]
+            sentiment_dict = whale_data["sentiment"]
+            
+            # Extract values from nested structures
+            whale_count = whale_activity_dict["whale_count"]
+            activity_level = whale_activity_dict["activity_level"]
+            flow_direction = exchange_flows["flow_direction"]
+            whale_sentiment = sentiment_dict["classification"]
+            
+            # Map activity_level to whale_activity string
+            whale_activity = self._ACTIVITY_LEVEL_MAP.get(activity_level, "UNKNOWN")
             
             # Convert to condition analyzer format
             factors = [f"Whale Activity: {whale_activity}"]
@@ -54,6 +64,14 @@ class WhaleConditionAnalyzer:
             elif whale_activity == "LOW":
                 positive_factors.append("Low whale activity - stable conditions")
                 factors.append("Minimal whale activity")
+            
+            # Analyze exchange flows
+            if flow_direction in ["strong_outflow", "outflow"]:
+                risk_factors.append(f"Whale outflow detected: {flow_direction}")
+                factors.append("Whales moving funds out - potential selling pressure")
+            elif flow_direction in ["strong_inflow", "inflow"]:
+                positive_factors.append(f"Whale inflow detected: {flow_direction}")
+                factors.append("Whales moving funds in - potential buying pressure")
             
             # Analyze whale sentiment
             if whale_sentiment == "BULLISH":
@@ -85,12 +103,15 @@ class WhaleConditionAnalyzer:
             }
         except Exception as e:
             logger.error(f"❌ Whale condition analysis failed: {e}")
+            # Return error result matching success structure (caller handles errors)
             return {
                 "factors": ["Whale analysis failed"],
                 "risk_factors": ["Analysis error"],
                 "positive_factors": [],
                 "whale_activity": "UNKNOWN",
                 "whale_count": 0,
+                "whale_sentiment": "UNKNOWN",
+                "exchange_flows": {},
                 "suitable_for_trading": False
             }
     

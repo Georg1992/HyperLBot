@@ -94,7 +94,13 @@ class FundingRateAnalyzer:
         """Calculate funding rate trend over time"""
         try:
             if len(self._funding_rate_history) < 3:
-                return {"trend": "INSUFFICIENT_DATA", "direction": "NEUTRAL", "strength": 0.0}
+                return {
+                    "trend": "INSUFFICIENT_DATA", 
+                    "direction": "NEUTRAL", 
+                    "strength": 0.0,
+                    "rate_change": 0.0,  # Required by strategy_manager
+                    "rate_change_pct": 0.0
+                }
             
             # Get recent funding rates (last 10 readings)
             recent_rates = [entry["funding_rate"] for entry in self._funding_rate_history[-10:]]

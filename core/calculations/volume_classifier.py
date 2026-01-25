@@ -60,6 +60,11 @@ class VolumeClassifier:
         percentile_90 = sorted_volumes[int(n * 0.90)]  # 90th percentile
         percentile_95 = sorted_volumes[int(n * 0.95)]  # 95th percentile
         
+        # Calculate actual percentile rank of current volume (0-100)
+        # Count how many values are <= current_volume
+        values_below = sum(1 for v in sorted_volumes if v <= current_volume)
+        percentile_rank = (values_below / n) * 100 if n > 0 else 0.0
+        
         # Categorize based on percentiles (objective, mathematically justified, no special logic)
         if current_volume >= percentile_95:
             level = "EXTREME"
@@ -84,6 +89,7 @@ class VolumeClassifier:
             "level": level,
             "description": description,
             "current_volume": current_volume,
+            "percentile": percentile_rank,  # Actual percentile rank (0-100)
             "percentiles": {
                 "p10": percentile_10,
                 "p25": percentile_25,

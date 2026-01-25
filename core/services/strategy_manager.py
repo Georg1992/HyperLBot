@@ -527,7 +527,12 @@ class StrategyManager:
         # Funding: Alignment with trend (20 points) + Rate change momentum (up to 5 points)
         funding_dir = data["funding_direction"]
         funding_trend = data["funding_trend"]
-        funding_rate_change = funding_trend["rate_change"]
+        funding_rate_change_raw = funding_trend["rate_change"]
+        # Ensure funding_rate_change is always a float (NO FALLBACKS)
+        try:
+            funding_rate_change = float(funding_rate_change_raw)
+        except (ValueError, TypeError):
+            raise ValueError(f"Invalid funding_rate_change value: {funding_rate_change_raw} (expected float, got {type(funding_rate_change_raw).__name__}) - NO FALLBACKS")
         
         funding_score = 0.0
         if data["trend_direction"] == "BULLISH" and funding_dir == "INCREASING":

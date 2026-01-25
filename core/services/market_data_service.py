@@ -169,14 +169,20 @@ class MarketDataService:
             trend_4h = raw_trend_data["trend_4h"]  # Required (NO FALLBACKS)
             trend_24h = raw_trend_data["trend_24h"]  # Required (NO FALLBACKS)
             
+            # Extract numeric strength from details (trend calculator returns strength as float 0.0-1.0)
+            details = raw_trend_data.get("details", {})
+            trend_1h_details = details.get("1h", {})
+            numeric_strength = trend_1h_details.get("strength", 0.0)  # Default to 0.0 if missing
+            
             # Use 1h as primary for strategy decisions, but preserve all timeframes
             primary_trend = trend_1h
             mapped_direction = self._map_trend_to_direction(primary_trend)
             
             # Create unified trend structure with ALL timeframes
+            # Use numeric strength (0.0-1.0) instead of string mapping for strategy manager compatibility
             mapped_trend = {
                 "direction": mapped_direction,
-                "strength": self._map_trend_to_strength(primary_trend),
+                "strength": float(numeric_strength),  # Numeric strength for strategy manager (NO FALLBACKS)
                 "timeframes": {
                     "short": trend_15m,      # 15m trend
                     "medium": trend_1h,       # 1h trend  
