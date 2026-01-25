@@ -238,12 +238,9 @@ class MomentumDetector:
             confidence += volume_score
             
             # 4. Price acceleration (15 points)
-            trend_direction = trend_data["direction"] if "direction" in trend_data else "SIDEWAYS"
-            trend_strength_raw = trend_data["strength"] if "strength" in trend_data else 0.0
-            try:
-                trend_strength = abs(float(trend_strength_raw)) if trend_strength_raw is not None else 0.0
-            except (ValueError, TypeError):
-                trend_strength = 0.0
+            # trend_data guaranteed by API contract - trust internal calls
+            trend_direction = trend_data["direction"]  # Required (NO FALLBACKS)
+            trend_strength = abs(float(trend_data["strength"]))  # Required (NO FALLBACKS)
             
             if trend_direction == "BULLISH" and trend_strength > 0.005:  # 0.5% strength
                 confidence += 15.0
@@ -255,7 +252,7 @@ class MomentumDetector:
                 factors.append(f"Trend: {trend_direction}")
             
             # 5. RSI momentum (10 points)
-            rsi_value = rsi_data["rsi"]  # Required (NO FALLBACKS) - RSI calculator returns "rsi" key, not "value"
+            rsi_value = rsi_data["rsi"]  # Required (NO FALLBACKS)
             if TechnicalAnalysisConstants.RSI_NEUTRAL < rsi_value < TechnicalAnalysisConstants.RSI_OVERBOUGHT:  # Bullish but not overbought
                 confidence += 10.0
                 factors.append(f"RSI bullish ({rsi_value:.1f})")
@@ -266,7 +263,7 @@ class MomentumDetector:
                 factors.append(f"RSI: {rsi_value:.1f}")
             
             # 6. Volatility check (10 points)
-            volatility_category = volatility_data["category"] if "category" in volatility_data else "NORMAL"
+            volatility_category = volatility_data["category"]  # Required (NO FALLBACKS)
             if volatility_category in ["HIGH", "EXTREME"]:
                 confidence += 10.0
                 factors.append(f"High volatility ({volatility_category})")
@@ -403,12 +400,9 @@ class MomentumDetector:
                 factors.append(f"Normal volume ({volume_percentile:.0f}th percentile)")
             
             # 4. Price acceleration (15 points)
+            # trend_data guaranteed by API contract - trust internal calls
             trend_direction = trend_data["direction"]  # Required (NO FALLBACKS)
-            trend_strength_raw = trend_data["strength"]  # Required (NO FALLBACKS)
-            try:
-                trend_strength = abs(float(trend_strength_raw)) if trend_strength_raw is not None else 0.0
-            except (ValueError, TypeError):
-                trend_strength = 0.0
+            trend_strength = abs(float(trend_data["strength"]))  # Required (NO FALLBACKS)
             
             if trend_direction == "BEARISH" and trend_strength > 0.005:
                 confidence += 15.0
@@ -420,7 +414,7 @@ class MomentumDetector:
                 factors.append(f"Trend: {trend_direction}")
             
             # 5. RSI momentum (10 points)
-            rsi_value = rsi_data["rsi"]  # Required (NO FALLBACKS) - RSI calculator returns "rsi" key, not "value"
+            rsi_value = rsi_data["rsi"]  # Required (NO FALLBACKS)
             if TechnicalAnalysisConstants.RSI_OVERSOLD < rsi_value < TechnicalAnalysisConstants.RSI_NEUTRAL:  # Bearish but not oversold
                 confidence += 10.0
                 factors.append(f"RSI bearish ({rsi_value:.1f})")
