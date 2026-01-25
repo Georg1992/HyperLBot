@@ -5,7 +5,7 @@ Session Orchestrator - Centralized session management with NO FALLBACKS policy
 
 import time
 from datetime import datetime
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from loguru import logger
 
 # Centralized imports to reduce lazy imports and improve code clarity
@@ -167,6 +167,252 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Session start failed: {e}")
 
+    def _handle_candle_boundary(self, current_time: float, current_5m_start: float, 
+                                 last_candle_update_time: float, market_data_service) -> float:
+        """
+        Handle 5-minute candle boundary detection and cache invalidation
+        
+        Returns:
+            Updated last_candle_update_time
+        """
+        # Detect new 5-minute candle close (boundary change) - EXACT UTC TIMING
+        # Candles are tied to global UTC time and appear at 00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55 minutes
+        if self._last_5m_boundary is not None and current_5m_start != self._last_5m_boundary:
+            boundary_utc = datetime.utcfromtimestamp(current_5m_start)
+            logger.info(f"🕐 New 5-minute candle boundary detected: {boundary_utc.strftime('%H:%M:%S')} UTC - updating database and invalidating caches")
+            
+            # Update candle storage IMMEDIATELY when boundary changes
+            try:
+                historical_service = get_global_historical_data_service()
+                if historical_service._candle_storage:
+                    historical_service._candle_storage.update_with_latest_candle()
+                    logger.info(f"✅ Candle storage updated at exact 5-minute boundary")
+                    
+                    # Invalidate chart cache to force dashboard refresh with new candle
+                    cache = get_global_centralized_cache()
+                    cache.invalidate(pattern="historical_candles")
+                    cache.invalidate(pattern="candles_5m")
+                    logger.debug(f"🔄 Chart cache invalidated for new candle - dashboard will refresh")
+            except Exception as e:
+                logger.error(f"❌ Failed to update candle storage at boundary: {e}")
+            
+            # Invalidate pattern cache when new candle closes
+            cache = get_global_centralized_cache()
+            cache.invalidate(pattern="pattern_recognition")
+            cache.invalidate(pattern="patterns")
+            
+            # Recalculate RSI baseline at exact candle boundary
+            try:
+                historical_service = get_global_historical_data_service()
+                from config.config import TradingConfig
+                candles_5m = historical_service.get_5m_candles(TradingConfig.SYMBOL, 30)  # Need at least 15 for RSI(14)
+                
+                # Use MarketDataService method (SRP: MarketDataService coordinates RSI)
+                if market_data_service:
+                    market_data_service.recalculate_rsi_baseline(candles_5m)
+            except Exception as e:
+                logger.error(f"❌ Failed to recalculate RSI baseline at boundary: {e}")
+            
+            self._last_5m_boundary = current_5m_start
+            return current_time  # Reset timer
+        
+        # Safety check: Update candle storage if boundary detection somehow failed (clock drift protection)
+        # This should rarely trigger if boundary detection works correctly
+        # NO FALLBACKS - This is a safety mechanism, not a business logic fallback
+        elif last_candle_update_time > 0.0 and current_time - last_candle_update_time >= TradingConstants.CANDLE_UPDATE_TIMEOUT:
+            try:
+                logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
+                historical_service = get_global_historical_data_service()
+                if historical_service._candle_storage:
+                    historical_service._candle_storage.update_with_latest_candle()
+                    return current_time
+            except Exception as e:
+                logger.error(f"❌ Failed to update candle storage (safety check): {e}")
+        
+        return last_candle_update_time
+    
+    def _prepare_market_data_iteration(self, market_data_service) -> Tuple[float, Dict[str, Any], Dict[str, Any]]:
+        """
+        Prepare market data for iteration: get price, orderbook, and unified data
+        
+        Returns:
+            Tuple of (current_price, orderbook_data, unified_data)
+            
+        Raises:
+            ValueError: If current price is invalid
+        """
+        # Get current market data from MarketDataService
+        current_price = market_data_service.get_current_price()
+        if not current_price or current_price <= 0:
+            raise ValueError("Invalid current price - cannot proceed")
+        
+        # Get orderbook data
+        orderbook_data = market_data_service.get_market_data()
+        
+        # Prepare unified market data (triggers all analysis modules)
+        # CRITICAL: Analysis is strategy-independent to avoid circular dependency
+        # We pass None for strategy to force strategy-agnostic analysis
+        unified_data = self._prepare_unified_market_data(
+            orderbook_data, current_price, market_data_service, strategy_for_analysis=None
+        )
+        
+        return current_price, orderbook_data, unified_data
+    
+    def _filter_sr_levels_for_dashboard(self, unified_data: Dict[str, Any], 
+                                        current_price: float, current_strategy: str) -> None:
+        """
+        Filter S/R levels for dashboard display based on current strategy
+        
+        Modifies unified_data in place
+        """
+        # get_support_resistance_analysis() guarantees valid dict or raises - trust API contract
+        sr_data = unified_data["support_resistance"]
+        from core.calculations.sr_level_filter import SRLevelFilter
+        from config.config import TradingConfig
+        
+        # Get strategy-specific max_levels
+        if current_strategy not in TradingConfig.SR_LEVEL_SELECTION:
+            return
+        
+        strategy_config = TradingConfig.SR_LEVEL_SELECTION[current_strategy]
+        max_levels = strategy_config["max_levels_per_side"]
+        
+        # Filter levels for dashboard (strategy-aware)
+        level_filter = SRLevelFilter()
+        all_levels = sr_data["levels"]
+        sr_metadata = sr_data["metadata"]
+        
+        filtered_levels = level_filter.filter_for_display(
+            all_levels=all_levels,
+            current_price=current_price,
+            max_levels=max_levels,  # Strategy-specific (scalping=1, swing=3)
+            strategy=current_strategy,
+            sr_metadata=sr_metadata  # Pass metadata for ATR calculation
+        )
+        
+        # Update S/R data with strategy-filtered levels for dashboard
+        if filtered_levels is not None:
+            sr_data["key_levels"] = filtered_levels["support"] + filtered_levels["resistance"]
+            sr_data["top_support"] = filtered_levels["support"]
+            sr_data["top_resistance"] = filtered_levels["resistance"]
+    
+    def _calculate_position_size(self, prediction, current_strategy: str) -> Optional[Dict[str, Any]]:
+        """
+        Calculate position size for a prediction
+        
+        Returns:
+            Position size info dict or None if calculation fails
+        """
+        if not self.session_manager:
+            return None
+        
+        try:
+            session_data = self.session_manager.get_current_session_data()
+            current_balance = session_data["current_balance"]
+            
+            if current_balance <= 0:
+                return None
+            
+            from core.execution.position_sizer import PositionSizeCalculator
+            from config.config import TradingConfig
+            
+            # Get strategy-specific position size % - NO FALLBACKS
+            if current_strategy not in TradingConfig.STRATEGY_CONFIGS:
+                raise ValueError(f"Strategy '{current_strategy}' not found in STRATEGY_CONFIGS - NO FALLBACKS")
+            
+            strategy_config = TradingConfig.STRATEGY_CONFIGS[current_strategy]
+            base_position_size_pct = strategy_config["position_size"]
+            
+            # Validate position_size is valid for trading (NO FALLBACKS)
+            if base_position_size_pct <= 0 or base_position_size_pct > 1.0:
+                logger.warning(f"⚠️ Strategy '{current_strategy}' has invalid position_size ({base_position_size_pct}) - skipping position size calculation (strategy may be analysis-only)")
+                return None
+            
+            # Position size calculated AFTER confidence (confidence may be None if not implemented yet)
+            return PositionSizeCalculator.calculate_position_size(
+                balance=current_balance,
+                base_position_size_pct=base_position_size_pct,
+                risk_reward_ratio=prediction.risk_reward_ratio,
+                leverage=TradingConfig.LEVERAGE,
+                entry_price=prediction.entry_price,
+                stop_loss=prediction.stop_loss,
+                direction=prediction.direction,
+                confidence=prediction.confidence  # Pass confidence for future confidence-based sizing
+            )
+        except Exception as e:
+            logger.warning(f"⚠️ Could not calculate position size: {e}")
+            return None
+    
+    def _process_strategy_and_prediction(self, unified_data: Dict[str, Any], 
+                                        current_price: float, dashboard_service) -> str:
+        """
+        Process strategy detection, S/R filtering, and prediction generation
+        
+        Returns:
+            Current strategy name
+        """
+        # Detect and update strategy AFTER all analysis modules are complete
+        # This ensures we have the most up-to-date market data for strategy selection
+        current_strategy = self._detect_and_update_strategy(
+            unified_data, dashboard_service
+        )
+        
+        # Update unified data with detected strategy
+        unified_data["strategy"] = current_strategy
+        
+        # Filter S/R levels for dashboard display (strategy-aware)
+        self._filter_sr_levels_for_dashboard(unified_data, current_price, current_strategy)
+        
+        # Generate prediction
+        try:
+            prediction = self.prediction_engine.generate_prediction(unified_data, current_strategy)
+            if prediction:
+                # Calculate position size
+                position_size_info = self._calculate_position_size(prediction, current_strategy)
+                
+                unified_data["prediction"] = {
+                    "direction": prediction.direction,
+                    "entry_price": prediction.entry_price,
+                    "stop_loss": prediction.stop_loss,
+                    "take_profit": prediction.take_profit,
+                    "confidence": prediction.confidence,  # Already 0-100 percentage
+                    "reasoning": prediction.reasoning,
+                    "strategy": prediction.strategy,
+                    "timestamp": prediction.timestamp,
+                    "status": "READY",
+                    "position_size_btc": position_size_info["position_size_btc"] if position_size_info else None,
+                    "position_size_usd": position_size_info["position_value_usd"] if position_size_info else None
+                }
+            else:
+                unified_data["prediction"] = None
+        except Exception as e:
+            logger.error(f"❌ Prediction generation failed: {e}")
+            unified_data["prediction"] = None
+        
+        return current_strategy
+    
+    def _process_momentum_signals(self, unified_data: Dict[str, Any], 
+                                  current_price: float, current_strategy: str) -> None:
+        """
+        Process momentum signals with reactive engine (market orders)
+        """
+        if not hasattr(self, '_reactive_engine') or not self._reactive_engine:
+            return
+        
+        try:
+            momentum_result = self._reactive_engine.process_market_data(
+                unified_data=unified_data,
+                current_price=current_price,
+                current_strategy=current_strategy  # Use detected strategy for consistency
+            )
+            if momentum_result:
+                # Momentum result is guaranteed to have direction and entry_price (NO FALLBACKS)
+                direction = momentum_result["direction"]  # Required (NO FALLBACKS)
+                entry_price = momentum_result["entry_price"]  # Required (NO FALLBACKS)
+                logger.info(f"⚡ Momentum trade executed: {direction} @ ${entry_price:.2f}")
+        except Exception as e:
+            logger.warning(f"⚠️ Reactive engine check failed: {e}")
+    
     def _main_data_loop(
         self,
         check_interval: int,
@@ -193,228 +439,51 @@ class SessionOrchestrator:
                     current_time = time.time()
                     current_5m_start = TimeUtils.get_5m_candle_start_time()
                     
-                    # Detect new 5-minute candle close (boundary change) - EXACT UTC TIMING
-                    # Candles are tied to global UTC time and appear at 00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55 minutes
-                    new_candle_closed = False
-                    if self._last_5m_boundary is not None and current_5m_start != self._last_5m_boundary:
-                        new_candle_closed = True
-                        boundary_utc = datetime.utcfromtimestamp(current_5m_start)
-                        logger.info(f"🕐 New 5-minute candle boundary detected: {boundary_utc.strftime('%H:%M:%S')} UTC - updating database and invalidating caches")
-                        
-                        # Update candle storage IMMEDIATELY when boundary changes (exact 5-minute intervals: 00, 05, 10, 15, etc.)
-                        try:
-                            historical_service = get_global_historical_data_service()
-                            if historical_service._candle_storage:
-                                historical_service._candle_storage.update_with_latest_candle()
-                                logger.info(f"✅ Candle storage updated at exact 5-minute boundary")
-                                
-                                # Invalidate chart cache to force dashboard refresh with new candle
-                                cache = get_global_centralized_cache()
-                                cache.invalidate(pattern="historical_candles")
-                                cache.invalidate(pattern="candles_5m")
-                                logger.debug(f"🔄 Chart cache invalidated for new candle - dashboard will refresh")
-                        except Exception as e:
-                            logger.error(f"❌ Failed to update candle storage at boundary: {e}")
-                        
-                        # Invalidate pattern cache when new candle closes
-                        cache = get_global_centralized_cache()
-                        cache.invalidate(pattern="pattern_recognition")
-                        cache.invalidate(pattern="patterns")
-                        
-                        # Recalculate RSI baseline at exact candle boundary (same time as candles reset)
-                        try:
-                            # Fetch fresh 5m candles for RSI baseline recalculation
-                            historical_service = get_global_historical_data_service()
-                            candles_5m = historical_service.get_5m_candles("BTC", 30)  # Need at least 15 for RSI(14)
-                            
-                            # Use MarketDataService method (SRP: MarketDataService coordinates RSI)
-                            if market_data_service:
-                                market_data_service.recalculate_rsi_baseline(candles_5m)
-                        except Exception as e:
-                            logger.error(f"❌ Failed to recalculate RSI baseline at boundary: {e}")
-                        
-                        self._last_5m_boundary = current_5m_start
-                        last_candle_update_time = current_time  # Reset timer
-                    
-                    # Safety check: Update candle storage if boundary detection somehow failed (clock drift protection)
-                    # This should rarely trigger if boundary detection works correctly
-                    # NO FALLBACKS - This is a safety mechanism, not a business logic fallback
-                    # Only check if last_candle_update_time is valid (not 0.0) to avoid false warnings on first run
-                    elif last_candle_update_time > 0.0 and current_time - last_candle_update_time >= TradingConstants.CANDLE_UPDATE_TIMEOUT:
-                        try:
-                            logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
-                            historical_service = get_global_historical_data_service()
-                            if historical_service._candle_storage:
-                                historical_service._candle_storage.update_with_latest_candle()
-                                last_candle_update_time = current_time
-                        except Exception as e:
-                            logger.error(f"❌ Failed to update candle storage (safety check): {e}")
-                    
-                    # Get current market data from MarketDataService
-                    current_price = market_data_service.get_current_price()
-                    if not current_price or current_price <= 0:
-                        logger.warning("⚠️ Invalid current price, skipping iteration")
-                        time.sleep(check_interval)
-                        continue
-
-                    # Get orderbook data
-                    orderbook_data = market_data_service.get_market_data()
-
-                    # Prepare unified market data (triggers all analysis modules)
-                    # CRITICAL: Analysis is strategy-independent to avoid circular dependency
-                    # We pass None for strategy to force strategy-agnostic analysis
-                    unified_data = self._prepare_unified_market_data(
-                        orderbook_data, current_price, market_data_service, strategy_for_analysis=None
-                    )
-
-                    # Detect and update strategy AFTER all analysis modules are complete
-                    # This ensures we have the most up-to-date market data for strategy selection
-                    current_strategy = self._detect_and_update_strategy(
-                        unified_data, dashboard_service
+                    # Handle candle boundary detection and cache invalidation
+                    last_candle_update_time = self._handle_candle_boundary(
+                        current_time, current_5m_start, last_candle_update_time, market_data_service
                     )
                     
-                    # Update unified data with detected strategy
-                    unified_data["strategy"] = current_strategy
+                    # Prepare market data for iteration
+                    # NO FALLBACKS - if data preparation fails, raise immediately
+                    current_price, orderbook_data, unified_data = self._prepare_market_data_iteration(
+                        market_data_service
+                    )
+                    
+                    # Process strategy detection and prediction generation
+                    current_strategy = self._process_strategy_and_prediction(
+                        unified_data, current_price, dashboard_service
+                    )
+                    
                     if current_strategy != strategy:
-                        logger.info(f"🔄 Strategy updated in unified data: {strategy} → {current_strategy}")
+                        logger.info(f"🔄 Strategy updated: {strategy} → {current_strategy}")
                     
-                    # STRATEGY-AWARE S/R FILTERING FOR DASHBOARD
-                    # Now that we know the strategy, filter S/R levels for dashboard display
-                    filtered_levels = None  # Initialize to avoid UnboundLocalError
-                    
-                    if "support_resistance" in unified_data and unified_data["support_resistance"]:
-                        sr_data = unified_data["support_resistance"]
-                        from core.calculations.sr_level_filter import SRLevelFilter
-                        from config.config import TradingConfig
-                        
-                        # Get strategy-specific max_levels
-                        if current_strategy in TradingConfig.SR_LEVEL_SELECTION:
-                            strategy_config = TradingConfig.SR_LEVEL_SELECTION[current_strategy]
-                            max_levels = strategy_config["max_levels_per_side"]
-                            
-                            # Filter levels for dashboard (strategy-aware)
-                            level_filter = SRLevelFilter()
-                            all_levels = sr_data["levels"]
-                            sr_metadata = sr_data["metadata"]
-                            
-                            filtered_levels = level_filter.filter_for_display(
-                                all_levels=all_levels,
-                                current_price=current_price,
-                                max_levels=max_levels,  # Strategy-specific (scalping=1, swing=3)
-                                strategy=current_strategy,
-                                sr_metadata=sr_metadata  # Pass metadata for ATR calculation
-                            )
-                            
-                    # Update S/R data with strategy-filtered levels for dashboard (only if filtering succeeded)
-                    if filtered_levels is not None and "support_resistance" in unified_data and unified_data["support_resistance"]:
-                        sr_data = unified_data["support_resistance"]
-                        sr_data["key_levels"] = filtered_levels["support"] + filtered_levels["resistance"]
-                        sr_data["top_support"] = filtered_levels["support"]
-                        sr_data["top_resistance"] = filtered_levels["resistance"]
-
-                    # Generate prediction
-                    try:
-                        prediction = self.prediction_engine.generate_prediction(unified_data, current_strategy)
-                        if prediction:
-                            # Calculate position size AFTER confidence is calculated
-                            # Position sizing happens after confidence so confidence can influence position size
-                            # (Confidence calculation will be implemented later)
-                            position_size_info = None
-                            if self.session_manager:
-                                try:
-                                    session_data = self.session_manager.get_current_session_data()
-                                    current_balance = session_data["current_balance"]
-                                    
-                                    if current_balance > 0:
-                                        from core.execution.position_sizer import PositionSizeCalculator
-                                        from config.config import TradingConfig
-                                        
-                                        # Get strategy-specific position size % - NO FALLBACKS
-                                        if current_strategy not in TradingConfig.STRATEGY_CONFIGS:
-                                            raise ValueError(f"Strategy '{current_strategy}' not found in STRATEGY_CONFIGS - NO FALLBACKS")
-                                        strategy_config = TradingConfig.STRATEGY_CONFIGS[current_strategy]
-                                        base_position_size_pct = strategy_config["position_size"]
-                                        
-                                        # Validate position_size is valid for trading (NO FALLBACKS)
-                                        if base_position_size_pct <= 0 or base_position_size_pct > 1.0:
-                                            logger.warning(f"⚠️ Strategy '{current_strategy}' has invalid position_size ({base_position_size_pct}) - skipping position size calculation (strategy may be analysis-only)")
-                                            position_size_info = None
-                                        else:
-                                            # Position size calculated AFTER confidence (confidence may be None if not implemented yet)
-                                            position_size_info = PositionSizeCalculator.calculate_position_size(
-                                                balance=current_balance,
-                                                base_position_size_pct=base_position_size_pct,
-                                                risk_reward_ratio=prediction.risk_reward_ratio,
-                                                leverage=TradingConfig.LEVERAGE,
-                                                entry_price=prediction.entry_price,
-                                                stop_loss=prediction.stop_loss,
-                                                direction=prediction.direction,
-                                                confidence=prediction.confidence  # Pass confidence for future confidence-based sizing
-                                            )
-                                except Exception as e:
-                                    logger.warning(f"⚠️ Could not calculate position size: {e}")
-                            
-                            unified_data["prediction"] = {
-                                "direction": prediction.direction,
-                                "entry_price": prediction.entry_price,
-                                "stop_loss": prediction.stop_loss,
-                                "take_profit": prediction.take_profit,
-                                "confidence": prediction.confidence,  # Already 0-100 percentage
-                                "reasoning": prediction.reasoning,
-                                "strategy": prediction.strategy,
-                                "timestamp": prediction.timestamp,
-                                "status": "READY",
-                                "position_size_btc": position_size_info["position_size_btc"] if position_size_info else None,
-                                "position_size_usd": position_size_info["position_value_usd"] if position_size_info else None
-                            }
-                        else:
-                            unified_data["prediction"] = None
-                    except Exception as e:
-                        logger.error(f"❌ Prediction generation failed: {e}")
-                        unified_data["prediction"] = None
-                    
-                    # ML training DISABLED - SQLite file-level locking causes blocking
-                    # Training makes heavy database queries that block other operations
-                    
-                    # Process momentum signals with reactive engine (market orders)
-                    # Pass current_strategy to ensure consistency with prediction engine
-                    if hasattr(self, '_reactive_engine') and self._reactive_engine:
-                        try:
-                            momentum_result = self._reactive_engine.process_market_data(
-                                unified_data=unified_data,
-                                current_price=current_price,
-                                current_strategy=current_strategy  # Use detected strategy for consistency
-                            )
-                            if momentum_result:
-                                direction = momentum_result["direction"] if "direction" in momentum_result else "UNKNOWN"
-                                entry_price = momentum_result["entry_price"] if "entry_price" in momentum_result else 0.0
-                                logger.info(f"⚡ Momentum trade executed: {direction} @ ${entry_price:.2f}")
-                        except Exception as e:
-                            logger.warning(f"⚠️ Reactive engine check failed: {e}")  # Changed from debug to warning
+                    # Process momentum signals with reactive engine
+                    self._process_momentum_signals(unified_data, current_price, current_strategy)
                     
                     # Update dashboard with unified market data (includes prediction)
                     self._update_dashboard_with_unified_data(
                         unified_data, dashboard_service
                     )
-
-                    # Update order lifecycle
-
+                    
                     # Update session time
                     if self.session_manager:
                         self.session_manager._update_session_time()
-
+                    
                     # Update strategy for next iteration
                     strategy = current_strategy
-
-                    # Historical data is managed by HistoricalDataService - single source of truth
-
+                    
                     # Sleep before next iteration
                     time.sleep(check_interval)
 
                 except Exception as e:
+                    # NO FALLBACKS - critical errors should propagate and stop the bot
+                    # Log the error with full context
                     logger.error(f"❌ Data loop iteration failed: {e}")
-                    time.sleep(check_interval)
-                    continue
+                    import traceback
+                    logger.error(f"❌ Traceback:\n{traceback.format_exc()}")
+                    # Re-raise to propagate to outer handler which will stop the bot
+                    raise
 
         except Exception as e:
             logger.error(f"❌ Main data loop failed: {e}")
@@ -430,6 +499,13 @@ class SessionOrchestrator:
         # These modules are called on-demand via MarketDataService methods
         modules_handled_by_market_data_service = {"funding_rate", "orderbook"}
         
+        # Modules that require special parameters (not in standard getter mapping)
+        # Consolidation requires unified_data parameter, so it's handled separately in _prepare_unified_market_data
+        modules_with_special_params = {"consolidation"}
+        
+        # Exclude these modules from update list (they're handled differently)
+        excluded_modules = modules_handled_by_market_data_service | modules_with_special_params
+        
         # Module update intervals are now handled by CentralizedCache
         # No need for duplicate definitions here
         
@@ -442,8 +518,8 @@ class SessionOrchestrator:
             self._last_price = current_price
             # Initialize 5-minute boundary tracking
             self._last_5m_boundary = TimeUtils.get_5m_candle_start_time()
-            # Force update all modules on first run (excluding those handled by MarketDataService)
-            return [m for m in analysis_modules.keys() if m not in modules_handled_by_market_data_service]
+            # Force update all modules on first run (excluding those handled by MarketDataService and special params)
+            return [m for m in analysis_modules.keys() if m not in excluded_modules]
         
         price_change = abs(current_price - self._last_price) / self._last_price
         self._last_price = current_price
@@ -464,8 +540,8 @@ class SessionOrchestrator:
             self._last_5m_boundary = current_5m_start
         
         for module_name, module_instance in analysis_modules.items():
-            # Skip modules handled directly by MarketDataService
-            if module_name in modules_handled_by_market_data_service:
+            # Skip excluded modules (handled by MarketDataService or require special params)
+            if module_name in excluded_modules:
                 continue
             
             # Check if module should be updated
@@ -563,9 +639,9 @@ class SessionOrchestrator:
             # The actual strategy will be determined AFTER analysis is complete
             analysis_data = market_data_service.get_dashboard_data(strategy="standard")
             
-            # Log if analysis_data is empty
+            # Validate analysis_data is not empty (NO FALLBACKS)
             if not analysis_data or len(analysis_data) == 0:
-                logger.error(f"❌ analysis_data is EMPTY from get_dashboard_data!")
+                raise ValueError("analysis_data is EMPTY from get_dashboard_data - cannot proceed (NO FALLBACKS)")
 
             # Remove non-serializable objects for dashboard compatibility
             if "raw_data_access" in analysis_data:
@@ -578,22 +654,17 @@ class SessionOrchestrator:
             trading_data = self._get_trading_data()
             
             # Get consolidation analysis (requires unified_data, so call after analysis_data)
-            consolidation_data = {}
-            try:
-                # Create temporary unified_data for consolidation analysis
-                # Strategy is None at this point (determined after analysis)
-                temp_unified = {
-                    "timestamp": time.time(),
-                    "current_price": current_price,
-                    "strategy": None,
-                    **analysis_data
-                }
-                consolidation_data = market_data_service.get_consolidation_analysis(
-                    unified_data=temp_unified,
-                    current_price=current_price
-                )
-            except Exception as e:
-                logger.warning(f"⚠️ Could not get consolidation analysis: {e}")
+            # All modules are required - NO FALLBACKS
+            temp_unified = {
+                "timestamp": time.time(),
+                "current_price": current_price,
+                "strategy": None,
+                **analysis_data
+            }
+            consolidation_data = market_data_service.get_consolidation_analysis(
+                unified_data=temp_unified,
+                current_price=current_price
+            )  # Required (NO FALLBACKS) - will raise if fails
             
             # Prepare unified data with analysis data
             # Strategy is None initially - will be set by strategy detection
@@ -637,6 +708,7 @@ class SessionOrchestrator:
                 return
 
             # Map module names to MarketDataService get methods (all strategy-independent)
+            # All modules are required - NO FALLBACKS
             module_to_getter = {
                 "rsi_calculator": lambda: market_data_service.get_rsi_analysis(),
                 "volatility": lambda: market_data_service.get_volatility_analysis(),
@@ -650,19 +722,18 @@ class SessionOrchestrator:
             }
 
             # Update modules via MarketDataService (SRP: MarketDataService coordinates all module access)
+            # All modules are required - exceptions propagate (NO FALLBACKS)
             for module_name in modules_to_update:
-                try:
-                    # Get analysis via MarketDataService (single source of truth)
-                    getter = module_to_getter[module_name] if module_name in module_to_getter else None
-                    if getter:
-                        analysis_result = getter()
-
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to update {module_name} via MarketDataService: {e}")
-                    continue
+                # Get analysis via MarketDataService (single source of truth)
+                if module_name not in module_to_getter:
+                    raise ValueError(f"Unknown module '{module_name}' not in module_to_getter mapping (NO FALLBACKS)")
+                getter = module_to_getter[module_name]  # Required (NO FALLBACKS)
+                if getter:
+                    analysis_result = getter()  # API-level validation - will raise if module fails
 
         except Exception as e:
             logger.error(f"❌ Failed to update analysis modules with live data: {e}")
+            raise  # NO FALLBACKS - must raise to prevent continuing with incomplete data
 
     def _get_session_data(self) -> Dict[str, Any]:
         """Get session data"""
@@ -704,7 +775,8 @@ class SessionOrchestrator:
         """Detect and update strategy based on market conditions using unified data"""
         try:
             if self.strategy_manager:
-                current_strategy = unified_data["strategy"]  # Required (NO FALLBACKS)
+                # Strategy is None initially (set in get_unified_analysis_data), use current_strategy from manager
+                current_strategy = self.strategy_manager.current_strategy  # Use manager's current strategy
 
                 # Detect optimal strategy using comprehensive unified data
                 new_strategy = self.strategy_manager.detect_optimal_strategy(unified_data)
@@ -723,15 +795,12 @@ class SessionOrchestrator:
                 else:
                     # Even if unchanged, ensure session manager has the correct strategy
                     if self.session_manager:
-                        current_session_strategy = self.session_manager.current_session_data["strategy"] if "strategy" in self.session_manager.current_session_data else None
+                        current_session_strategy = self.session_manager.current_session_data["strategy"]  # Required (NO FALLBACKS)
                         if current_session_strategy != current_strategy:
                             self.session_manager.current_session_data["strategy"] = current_strategy
                     return current_strategy
             else:
-                logger.warning(
-                    "⚠️ Strategy Manager not available - using default strategy"
-                )
-                return unified_data["strategy"]  # Required (NO FALLBACKS)
+                raise ValueError("Strategy Manager not available - cannot detect strategy (NO FALLBACKS)")
 
         except Exception as e:
             logger.warning(f"⚠️ Strategy detection failed: {e}")

@@ -100,13 +100,8 @@ class MarketDataService:
             if volatility_calculator is None:
                 raise ValueError("Volatility calculator module is None - module initialization failed")
             
+            # get_latest_analysis() guarantees valid dict or raises (NO FALLBACKS)
             volatility_result = volatility_calculator.get_latest_analysis()
-            
-            # Validate result
-            if volatility_result is None:
-                raise ValueError("Volatility calculation returned None - calculation method failed")
-            if not isinstance(volatility_result, dict):
-                raise ValueError(f"Volatility calculation returned non-dict: {type(volatility_result)}")
             
             # Store result for future use
             self.update_analysis_data("volatility", volatility_result)
@@ -122,8 +117,8 @@ class MarketDataService:
             # Check cache for already-mapped trend data
             trend_data = self._get_processed_data("trend")
             if trend_data:
-                # Cache stores mapped data, check if it has UNKNOWN values
-                if isinstance(trend_data, dict) and "detailed_timeframes" in trend_data:
+                # Cache stores mapped data - validate structure (NO FALLBACKS)
+                if isinstance(trend_data, dict) and "detailed_timeframes" in trend_data and "direction" in trend_data:
                     # Check if all timeframes are UNKNOWN - if so, invalidate cache and recalculate
                     timeframes = trend_data["detailed_timeframes"]  # Required (NO FALLBACKS)
                     all_unknown = all(
@@ -133,25 +128,28 @@ class MarketDataService:
                     if all_unknown:
                         logger.warning("⚠️ Cached trend data has all UNKNOWN values - invalidating cache and recalculating")
                         self._cache.invalidate("trend")
-                        trend_data = None
+                        # Continue to fetch fresh data below
                     else:
                         # Already mapped with valid data, return as-is
                         return trend_data
-                elif isinstance(trend_data, dict):
-                    # Raw data from cache (shouldn't happen, but handle it)
-                    return self._map_trend_data(trend_data)
+                else:
+                    # Invalid cached data structure - invalidate and fetch fresh (NO FALLBACKS)
+                    logger.warning("⚠️ Cached trend data has invalid structure - invalidating cache and recalculating")
+                    self._cache.invalidate("trend")
+                    # Continue to fetch fresh data below
             
-            # No valid cached data - fetch fresh trend data
-            if "trend" in self._analysis_modules:
-                logger.info("📊 Triggering trend analysis...")
-                # Strategy-independent analysis
-                raw_trend_data = self._analysis_modules["trend"].get_latest_analysis()
-                mapped_trend = self._map_trend_data(raw_trend_data)
-                # Store mapped result for future use
-                self.update_analysis_data("trend", mapped_trend)
-                return mapped_trend
+            # No valid cached data - fetch fresh trend data (NO FALLBACKS)
+            if "trend" not in self._analysis_modules:
+                raise ValueError("No trend analysis module registered - NO FALLBACKS")
             
-            raise ValueError("No trend analysis module registered")
+            logger.info("📊 Triggering trend analysis...")
+            # Strategy-independent analysis
+            # _map_trend_data() validates raw_trend_data and guarantees valid structure
+            raw_trend_data = self._analysis_modules["trend"].get_latest_analysis()
+            mapped_trend = self._map_trend_data(raw_trend_data)  # API boundary - validates and guarantees structure
+            # Store mapped result for future use
+            self.update_analysis_data("trend", mapped_trend)
+            return mapped_trend
             
         except Exception as e:
             logger.error(f"❌ Failed to get trend analysis: {e}")
@@ -286,13 +284,8 @@ class MarketDataService:
             
             # NO FALLBACKS - assume calculate_multi_timeframe_levels exists
             # Strategy-independent: returns ALL significant levels
+            # calculate_multi_timeframe_levels() guarantees valid dict or raises (NO FALLBACKS)
             result = sr_calculator.calculate_multi_timeframe_levels(current_price)
-            
-            # Validate result is not None
-            if result is None:
-                raise ValueError("S/R calculation returned None - calculation method failed")
-            if not isinstance(result, dict):
-                raise ValueError(f"S/R calculation returned non-dict: {type(result)}")
             
             # Cache with strategy-independent key
             self._cache.set(cache_key, result, ttl=300)
@@ -331,13 +324,8 @@ class MarketDataService:
             if rsi_calculator is None:
                 raise ValueError("RSI calculator module is None - module initialization failed")
             
+            # get_latest_analysis() always returns dict (may contain None/error values if not initialized)
             rsi_result = rsi_calculator.get_latest_analysis()
-            
-            # Validate result
-            if rsi_result is None:
-                raise ValueError("RSI calculation returned None - calculation method failed")
-            if not isinstance(rsi_result, dict):
-                raise ValueError(f"RSI calculation returned non-dict: {type(rsi_result)}")
             
             # Store result for future use
             self.update_analysis_data("rsi", rsi_result)
@@ -396,12 +384,7 @@ class MarketDataService:
                 hyperliquid_websocket=self.hyperliquid_websocket
             )
             
-            # Validate result
-            if volume_result is None:
-                raise ValueError("Volume calculation returned None - calculation method failed")
-            if not isinstance(volume_result, dict):
-                raise ValueError(f"Volume calculation returned non-dict: {type(volume_result)}")
-            
+            # get_latest_analysis() guarantees valid dict or raises (NO FALLBACKS)
             # Store result for future use
             self.update_analysis_data("volume", volume_result)
             return volume_result
@@ -441,13 +424,8 @@ class MarketDataService:
             if not current_price or current_price <= 0:
                 raise ValueError(f"No valid current price for cross asset analysis (got: {current_price})")
             
+            # analyze_cross_asset_correlations() guarantees valid dict or raises (NO FALLBACKS)
             cross_asset_result = cross_asset_analyzer.analyze_cross_asset_correlations(current_price)
-            
-            # Validate result
-            if cross_asset_result is None:
-                raise ValueError("Cross asset analysis returned None - calculation method failed")
-            if not isinstance(cross_asset_result, dict):
-                raise ValueError(f"Cross asset analysis returned non-dict: {type(cross_asset_result)}")
             
             # Store result for future use
             self.update_analysis_data("cross_asset_correlation_analyzer", cross_asset_result)
@@ -463,11 +441,28 @@ class MarketDataService:
         
         CRITICAL: This method MUST always return a valid dict or raise an exception.
         NO FALLBACKS - if calculation fails, we must know about it immediately.
+        
+        Note: Consolidation requires unified_data parameter, so it's called separately
+        rather than via standard getter pattern in _trigger_analysis_modules.
         """
         try:
+            # Check cache first (consistent with other modules)
+            # Note: Consolidation cache key may need to be price-sensitive, but checking cache is still consistent
+            consolidation_data = self._get_processed_data("consolidation")
+            if consolidation_data:
+                # Validate cached data
+                if consolidation_data is None:
+                    raise ValueError("Cached consolidation data is None - cache corruption detected")
+                if not isinstance(consolidation_data, dict):
+                    raise ValueError(f"Cached consolidation data is not a dict: {type(consolidation_data)}")
+                # Note: May want to invalidate if price changed significantly, but basic cache check is consistent
+                return consolidation_data
+            
+            # If no valid data, trigger consolidation analysis
             if "consolidation" not in self._analysis_modules:
                 raise ValueError("No consolidation tracker module registered - module initialization failed")
             
+            logger.info("📊 Triggering consolidation analysis...")
             consolidation_tracker = self._analysis_modules["consolidation"]
             if consolidation_tracker is None:
                 raise ValueError("Consolidation tracker module is None - module initialization failed")
@@ -511,12 +506,7 @@ class MarketDataService:
                     "detected_at": breakout.detected_at
                 }
             
-            # Validate result
-            if result is None:
-                raise ValueError("Consolidation analysis returned None - calculation method failed")
-            if not isinstance(result, dict):
-                raise ValueError(f"Consolidation analysis returned non-dict: {type(result)}")
-            
+            # Consolidation tracker always returns dict (NO FALLBACKS)
             # Store result for future use
             self.update_analysis_data("consolidation", result)
             return result
@@ -560,8 +550,9 @@ class MarketDataService:
             
             # Get all processed analysis data - STRATEGY INDEPENDENT
             # Analysis represents objective market facts, not strategy-specific interpretations
+            # Trust API-level validation - get_trend_analysis() guarantees valid dict or raises
             rsi_data = self.get_rsi_analysis()
-            trend_data = self.get_trend_analysis()
+            trend_data = self.get_trend_analysis()  # API boundary - validates and raises if invalid
             volatility_data = self.get_volatility_analysis()
             volume_data = self.get_volume_analysis()
             
@@ -572,7 +563,7 @@ class MarketDataService:
                 "strategy": None,  # Strategy determined after analysis
                 
                 # Flattened data for strategy selection (single source of truth)
-                "trend_direction": trend_data["direction"],  # Required (NO FALLBACKS)
+                "trend_direction": trend_data["direction"],  # Required (NO FALLBACKS) - validated at API level
                 "volatility_5m": volatility_data["volatility_percentage"] / 100.0,  # Required (NO FALLBACKS)
                 "volatility_category": volatility_data["level"],  # Required (NO FALLBACKS)
                 "volume_category": volume_data["volume_category"],  # Required (NO FALLBACKS)
@@ -580,7 +571,7 @@ class MarketDataService:
                 
                 # Technical Analysis Components (keep original nested structure for other uses)
                 "rsi": rsi_data,
-                "trend": trend_data,
+                "trend": trend_data,  # Required (NO FALLBACKS) - validated at API level
                 "volatility": volatility_data,
                 "volume": volume_data,
                 "support_resistance": self.get_support_resistance_analysis(),
@@ -601,26 +592,14 @@ class MarketDataService:
                 }
             }
             
-            # Add any additional analysis modules
+            # Add any additional analysis modules - all modules are required (NO FALLBACKS)
+            # All registered modules must succeed or raise
             for module_name, module_instance in self._analysis_modules.items():
-                if module_name not in ["volatility", "trend", "support_resistance"]:
-                    try:
-                        analysis_data = self._get_processed_data(module_name)
-                        if analysis_data:
-                            unified_data[module_name] = analysis_data
-                    except Exception as e:
-                        logger.warning(f"⚠️ Failed to get {module_name} analysis: {e}")
-            
-            # VALIDATION: Ensure support_resistance is always present (NO FALLBACKS - this should never happen)
-            if "support_resistance" not in unified_data:
-                error_msg = "CRITICAL: support_resistance missing from unified_data - this should never happen"
-                logger.error(f"❌ {error_msg}")
-                raise ValueError(error_msg)
-            
-            if unified_data["support_resistance"] is None:
-                error_msg = "CRITICAL: support_resistance is None in unified_data - calculation failed"
-                logger.error(f"❌ {error_msg}")
-                raise ValueError(error_msg)
+                if module_name not in ["volatility", "trend", "support_resistance", "rsi_calculator", "volume", "pressure", "patterns", "market_conditions", "funding_rate", "orderbook", "cross_asset_analysis"]:
+                    # Get analysis data - all modules are required (NO FALLBACKS)
+                    # _get_processed_data() will raise if module fails - no silent failures
+                    analysis_data = self._get_processed_data(module_name)
+                    unified_data[module_name] = analysis_data  # Required (NO FALLBACKS)
             
             return unified_data
             
@@ -640,21 +619,27 @@ class MarketDataService:
         NO FALLBACKS - if calculation fails, we must know about it immediately.
         """
         try:
+            # Check cache first (consistent with other modules)
+            pressure_data = self._get_processed_data("pressure")
+            if pressure_data:
+                # Validate cached data
+                if pressure_data is None:
+                    raise ValueError("Cached pressure data is None - cache corruption detected")
+                if not isinstance(pressure_data, dict):
+                    raise ValueError(f"Cached pressure data is not a dict: {type(pressure_data)}")
+                return pressure_data
+            
+            # If no valid data, trigger pressure calculation
             if "pressure" not in self._analysis_modules:
                 raise ValueError("No pressure analysis module registered - module initialization failed")
             
+            logger.info("📊 Triggering pressure analysis...")
             pressure_calculator = self._analysis_modules["pressure"]
             if pressure_calculator is None:
                 raise ValueError("Pressure calculator module is None - module initialization failed")
             
-            # NO FALLBACKS - assume get_latest_analysis exists
+            # get_latest_analysis() guarantees valid dict or raises (NO FALLBACKS)
             pressure_result = pressure_calculator.get_latest_analysis()
-            
-            # Validate result
-            if pressure_result is None:
-                raise ValueError("Pressure calculation returned None - calculation method failed")
-            if not isinstance(pressure_result, dict):
-                raise ValueError(f"Pressure calculation returned non-dict: {type(pressure_result)}")
             
             # Store result for future use
             self.update_analysis_data("pressure", pressure_result)
@@ -708,13 +693,8 @@ class MarketDataService:
                 raise ValueError(f"Insufficient candle data for pattern analysis: {len(candles) if candles else 0} < 10 - NO FALLBACKS")
             
             logger.info(f"📊 Analyzing {len(candles)} candles for patterns...")
+            # analyze_patterns() always returns dict (even if no patterns found)
             analysis_result = pattern_engine.analyze_patterns(candles)
-            
-            # Validate result
-            if analysis_result is None:
-                raise ValueError("Pattern analysis returned None - calculation method failed")
-            if not isinstance(analysis_result, dict):
-                raise ValueError(f"Pattern analysis returned non-dict: {type(analysis_result)}")
             
             # Log pattern detection results - NO FALLBACKS
             patterns_count = len(analysis_result["patterns"])
@@ -742,9 +722,21 @@ class MarketDataService:
         NO FALLBACKS - if calculation fails, we must know about it immediately.
         """
         try:
+            # Check cache first (consistent with other modules)
+            conditions_data = self._get_processed_data("market_conditions")
+            if conditions_data:
+                # Validate cached data
+                if conditions_data is None:
+                    raise ValueError("Cached market conditions data is None - cache corruption detected")
+                if not isinstance(conditions_data, dict):
+                    raise ValueError(f"Cached market conditions data is not a dict: {type(conditions_data)}")
+                return conditions_data
+            
+            # If no valid data, trigger market conditions analysis
             if "market_conditions" not in self._analysis_modules:
                 raise ValueError("No market conditions module registered - module initialization failed")
             
+            logger.info("📊 Triggering market conditions analysis...")
             conditions_analyzer = self._analysis_modules["market_conditions"]
             if conditions_analyzer is None:
                 raise ValueError("Market conditions analyzer module is None - module initialization failed")
@@ -770,13 +762,8 @@ class MarketDataService:
             from config.config import TradingConfig
             candles_1d = historical_service.get_1d_candles(TradingConfig.SYMBOL, 30)  # Request 30 days to ensure we have at least 7
             
+            # analyze_trading_conditions() always returns dict (may be error dict on exception)
             conditions_result = conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d)
-            
-            # Validate result
-            if conditions_result is None:
-                raise ValueError("Market conditions analysis returned None - calculation method failed")
-            if not isinstance(conditions_result, dict):
-                raise ValueError(f"Market conditions analysis returned non-dict: {type(conditions_result)}")
             
             # Store result for future use
             self.update_analysis_data("market_conditions", conditions_result)
@@ -794,9 +781,21 @@ class MarketDataService:
         NO FALLBACKS - if calculation fails, we must know about it immediately.
         """
         try:
+            # Check cache first (consistent with other modules)
+            funding_data = self._get_processed_data("funding_rate")
+            if funding_data:
+                # Validate cached data
+                if funding_data is None:
+                    raise ValueError("Cached funding rate data is None - cache corruption detected")
+                if not isinstance(funding_data, dict):
+                    raise ValueError(f"Cached funding rate data is not a dict: {type(funding_data)}")
+                return funding_data
+            
+            # If no valid data, trigger funding rate analysis
             if "funding_rate" not in self._analysis_modules:
                 raise ValueError("No funding rate module registered - module initialization failed")
             
+            logger.info("📊 Triggering funding rate analysis...")
             funding_analyzer = self._analysis_modules["funding_rate"]
             if funding_analyzer is None:
                 raise ValueError("Funding rate analyzer module is None - module initialization failed")
@@ -809,13 +808,8 @@ class MarketDataService:
             if not funding_data:
                 raise ValueError("No funding rate data available from API - NO FALLBACKS")
             
+            # analyze_funding_rate() guarantees valid dict or raises (NO FALLBACKS)
             funding_result = funding_analyzer.analyze_funding_rate(funding_data)
-            
-            # Validate result
-            if funding_result is None:
-                raise ValueError("Funding rate analysis returned None - calculation method failed")
-            if not isinstance(funding_result, dict):
-                raise ValueError(f"Funding rate analysis returned non-dict: {type(funding_result)}")
             
             # Store result for future use
             self.update_analysis_data("funding_rate", funding_result)
@@ -839,13 +833,8 @@ class MarketDataService:
             # Use WhaleAnalysisCalculator to get fresh whale data
             from core.calculations.whale_analysis_calculator import WhaleAnalysisCalculator
             whale_calculator = WhaleAnalysisCalculator()
+            # get_latest_analysis() guarantees valid dict or raises (NO FALLBACKS)
             whale_result = whale_calculator.get_latest_analysis()
-            
-            # Validate result
-            if whale_result is None:
-                raise ValueError("Whale analysis returned None - calculation method failed")
-            if not isinstance(whale_result, dict):
-                raise ValueError(f"Whale analysis returned non-dict: {type(whale_result)}")
             
             # Store result for future use
             self.update_analysis_data("whale_analytics", whale_result)
@@ -862,9 +851,21 @@ class MarketDataService:
         NO FALLBACKS - if calculation fails, we must know about it immediately.
         """
         try:
+            # Check cache first (consistent with other modules)
+            orderbook_data = self._get_processed_data("orderbook")
+            if orderbook_data:
+                # Validate cached data
+                if orderbook_data is None:
+                    raise ValueError("Cached orderbook data is None - cache corruption detected")
+                if not isinstance(orderbook_data, dict):
+                    raise ValueError(f"Cached orderbook data is not a dict: {type(orderbook_data)}")
+                return orderbook_data
+            
+            # If no valid data, trigger orderbook analysis
             if "orderbook" not in self._analysis_modules:
                 raise ValueError("No orderbook module registered - module initialization failed")
             
+            logger.info("📊 Triggering orderbook analysis...")
             orderbook_analyzer = self._analysis_modules["orderbook"]
             if orderbook_analyzer is None:
                 raise ValueError("Orderbook analyzer module is None - module initialization failed")
@@ -881,13 +882,8 @@ class MarketDataService:
             if not current_price or current_price <= 0:
                 raise ValueError(f"No valid current price for orderbook analysis (got: {current_price})")
             
+            # analyze_orderbook() guarantees valid dict or raises (NO FALLBACKS)
             analysis_result = orderbook_analyzer.analyze_orderbook(orderbook_data, current_price)
-            
-            # Validate result
-            if analysis_result is None:
-                raise ValueError("Orderbook analysis returned None - calculation method failed")
-            if not isinstance(analysis_result, dict):
-                raise ValueError(f"Orderbook analysis returned non-dict: {type(analysis_result)}")
             
             # Add raw bids/asks to the result for other modules to use
             bids, asks = self._extract_bids_asks(orderbook_data)
@@ -954,7 +950,8 @@ class MarketDataService:
             logger.info("📊 Preparing comprehensive real-time market data structure...")
             
             # Get unified analysis data (includes all components)
-            market_data = self.get_unified_analysis_data(strategy)
+            # Strategy parameter is deprecated - analysis is strategy-independent
+            market_data = self.get_unified_analysis_data()
             
             # Structure the data for easy consumption - NO FALLBACKS
             # All components must be present for confidence calculation to be reliable

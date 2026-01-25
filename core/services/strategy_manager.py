@@ -51,6 +51,9 @@ class StrategyManager:
         self._last_market_data = None
         self.pending_strategy_outcomes = []
         
+        # Analysis-only strategies (not tradeable)
+        self._analysis_only_strategies = {"comprehensive_analysis"}
+        
         # Initialize performance tracking
         for strategy_name in self.strategy_configs.keys():
             self.strategy_performance[strategy_name] = {
@@ -116,8 +119,7 @@ class StrategyManager:
             
         except Exception as e:
             logger.error(f"❌ Strategy detection failed: {e}")
-            logger.error(f"   Using current strategy: {self.current_strategy}")
-            return self.current_strategy
+            raise  # NO FALLBACKS - detection failure must raise
     
     def _select_strategy_business_logic(self, market_data: Dict[str, Any]):
         """Sophisticated strategy selection using multi-factor scoring with dynamic confidence"""
@@ -125,32 +127,23 @@ class StrategyManager:
             # Extract all available market data
             data = self._extract_market_data(market_data)
             
-            # Score all strategies
+            # Score all tradeable strategies (exclude analysis-only strategies)
             strategy_scores = {}
-            for strategy_name in self.strategy_configs.keys():
+            tradeable_strategies = [s for s in self.strategy_configs.keys() if s not in self._analysis_only_strategies]
+            for strategy_name in tradeable_strategies:
+                # _score_strategy() guarantees (float, list) tuple - trust API contract
                 score, factors = self._score_strategy(strategy_name, data)
-                # Ensure score is always a float - handle all types safely
-                try:
-                    score = float(score) if score is not None else 0.0
-                except (ValueError, TypeError):
-                    score = 0.0
                 strategy_scores[strategy_name] = {
                     "score": score,
                     "factors": factors
                 }
             
-            # Select best strategy - ensure safe float conversion
+            # Select best strategy
+            # sorted() returns list of (strategy_name, score_dict) tuples - trust API contract
             def safe_get_score(item):
-                try:
-                    if not isinstance(item, tuple) or len(item) < 2:
-                        return 0.0
-                    score_data = item[1]
-                    if not isinstance(score_data, dict):
-                        return 0.0
-                    score_val = score_data["score"]
-                    return float(score_val)
-                except (ValueError, TypeError, AttributeError, IndexError):
-                    return 0.0
+                # item is (strategy_name, score_dict) tuple from sorted()
+                score_data = item[1]
+                return float(score_data["score"])  # score_dict always has "score" key (guaranteed by _score_strategy)
             
             best_strategy = max(strategy_scores.items(), key=safe_get_score)
             strategy_name = best_strategy[0]
@@ -185,9 +178,9 @@ class StrategyManager:
         rsi_value = float(market_data["rsi_value"])
         
         # Extended data (nested) - Required (NO FALLBACKS)
-        trend_data = market_data["trend"]
-        # Extract trend timeframes from detailed_timeframes - NO FALLBACKS
-        trend_detailed = trend_data["detailed_timeframes"]
+        # Validate at service boundary (market_data comes from MarketDataService)
+        trend_data = market_data["trend"]  # Required (NO FALLBACKS) - will raise KeyError if missing
+        trend_detailed = trend_data["detailed_timeframes"]  # Required (NO FALLBACKS) - will raise KeyError if missing
         trend_15m = trend_detailed["trend_15m"]
         trend_1h = trend_detailed["trend_1h"]
         rsi_data = market_data["rsi"]
@@ -232,8 +225,9 @@ class StrategyManager:
         pressure_ratio = float(pressure_ratio_raw)
         
         # Funding data - NO FALLBACKS
-        funding_trend = funding_data["trend"]
-        funding_direction = funding_trend["direction"]
+        # Funding analyzer returns funding_trend key, not trend
+        funding_trend = funding_data["funding_trend"]  # Required (NO FALLBACKS)
+        funding_direction = funding_trend["direction"]  # Required (NO FALLBACKS)
         
         funding_strength_raw = funding_trend["strength"]
         try:
@@ -910,25 +904,18 @@ class StrategyManager:
         except (ValueError, TypeError):
             best_score = 0.0
         
-        # Get 2nd best score - ensure all scores are float before sorting
+        # Get 2nd best score
+        # strategy_scores items are (strategy_name, score_dict) tuples - trust API contract
         def safe_float_score(item):
-            try:
-                score_val = item[1]["score"]
-                return float(score_val)
-            except (ValueError, TypeError):
-                raise ValueError(f"Invalid score value in strategy_scores: {item[1]} - NO FALLBACKS")
+            # score_dict always has "score" key with float value (guaranteed by _score_strategy)
+            return float(item[1]["score"])
         
         sorted_scores = sorted(strategy_scores.items(), key=safe_float_score, reverse=True)
         if len(sorted_scores) > 1:
-            try:
-                second_score_data = sorted_scores[1][1]
-                # If second score exists, it must have a valid score value (NO FALLBACKS)
-                if "score" not in second_score_data:
-                    raise ValueError("Second strategy score data missing 'score' key (NO FALLBACKS)")
-                second_score_raw = second_score_data["score"]
-                second_score = float(second_score_raw)
-            except (ValueError, TypeError, IndexError, KeyError) as e:
-                raise ValueError(f"Invalid second_score calculation: {e} - NO FALLBACKS") from e
+            # sorted_scores[1] is (strategy_name, score_dict) tuple - trust API contract
+            second_score_data = sorted_scores[1][1]
+            # score_dict always has "score" key (guaranteed by _score_strategy)
+            second_score = float(second_score_data["score"])
         else:
             raise ValueError("No second strategy found - NO FALLBACKS")
         
@@ -995,7 +982,9 @@ class StrategyManager:
             data = self._extract_market_data(market_data)
             strategy_scores = {}
             
-            for strategy_name in self.strategy_configs.keys():
+            # Exclude analysis-only strategies and rejected strategy
+            tradeable_strategies = [s for s in self.strategy_configs.keys() if s not in self._analysis_only_strategies]
+            for strategy_name in tradeable_strategies:
                 if strategy_name == rejected_strategy:
                     continue  # Skip rejected strategy
                 score, factors = self._score_strategy(strategy_name, data)

@@ -258,7 +258,7 @@ class PositionSizeCalculator:
         try:
             from core.services.system_initializer import get_system_initializer
             system_initializer = get_system_initializer()
-            hyperliquid_simulator = system_initializer.singleton_systems["hyperliquid_simulator"] if "hyperliquid_simulator" in system_initializer.singleton_systems else None
+            hyperliquid_simulator = system_initializer.get_singleton_system("hyperliquid_simulator")  # Required (NO FALLBACKS)
             
             if hyperliquid_simulator and hasattr(hyperliquid_simulator, 'get_balance'):
                 return hyperliquid_simulator.get_balance()

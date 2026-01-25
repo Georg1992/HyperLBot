@@ -42,9 +42,8 @@ class SystemInitializer:
             self.singleton_systems["binance_websocket"] = api_results["binance_websocket"]
             
             # Step 2: Initialize Singleton Systems
+            # _initialize_singleton_systems() guarantees to return dict or raise (NO FALLBACKS)
             singleton_results = self._initialize_singleton_systems(initial_balance)
-            if not singleton_results or not isinstance(singleton_results, dict):
-                return {"success": False, "error": "Singleton system initialization failed"}
             
             # Step 3: Initialize Data Systems
             data_results = self._initialize_data_systems()

@@ -192,13 +192,9 @@ class ReactiveEngine:
             position_value_usd = position_sizing["position_value_usd"]
             
             # Get hyperliquid simulator for order placement
-            hyperliquid_simulator = None
-            try:
-                from core.services.system_initializer import get_system_initializer
-                system_initializer = get_system_initializer()
-                hyperliquid_simulator = system_initializer.singleton_systems["hyperliquid_simulator"] if "hyperliquid_simulator" in system_initializer.singleton_systems else None
-            except Exception:
-                pass
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            hyperliquid_simulator = system_initializer.get_singleton_system("hyperliquid_simulator")  # Required (NO FALLBACKS)
             
             # Prepare order metadata
             order_metadata = {
@@ -225,11 +221,11 @@ class ReactiveEngine:
                     # Hyperliquid simulator already fetched above
                     if hyperliquid_simulator and hasattr(hyperliquid_simulator, 'place_order'):
                         # Call place_order with proper position size
+                        from config.config import TradingConfig
                         order_result = hyperliquid_simulator.place_order(
                             order_type="MARKET",
                             side=order_side,
                             size=position_size_btc,  # Calculated based on balance, position_size%, R:R, leverage
-                            from config.config import TradingConfig
                             symbol=TradingConfig.SYMBOL,
                             price=None,  # Market order - no price needed
                             leverage=leverage,
@@ -243,7 +239,7 @@ class ReactiveEngine:
                                        f"(SL: ${signal.stop_loss:.2f}, TP: ${signal.take_profit:.2f})")
                             
                             # Track pending order
-                            order_id = order_result["order_id"] if "order_id" in order_result else f"momentum_{int(time.time())}"
+                            order_id = order_result["order_id"]  # Required (NO FALLBACKS)
                             self._pending_orders[order_id] = {
                                 "signal": signal,
                                 "order_result": order_result,
@@ -272,7 +268,7 @@ class ReactiveEngine:
                                 "api_result": order_result
                             }
                         else:
-                            error_msg = order_result["error"] if "error" in order_result else "Unknown error"
+                            error_msg = order_result["error"]  # Required (NO FALLBACKS)
                             logger.warning(f"⚠️ MARKET order call failed: {error_msg}")
                             return None
                     else:
@@ -318,10 +314,10 @@ class ReactiveEngine:
     def _has_pending_order(self, direction: str) -> bool:
         """Check if we have a pending order in this direction"""
         for order_id, order_data in self._pending_orders.items():
-            signal = order_data["signal"] if "signal" in order_data else None
+            signal = order_data["signal"]  # Required (NO FALLBACKS)
             if signal and signal.direction == direction:
                 # Check if order is recent (within last 30 seconds)
-                called_at = order_data["called_at"] if "called_at" in order_data else 0
+                called_at = order_data["called_at"]  # Required (NO FALLBACKS)
                 if time.time() - called_at < 30:
                     return True
         return False

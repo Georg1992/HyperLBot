@@ -500,15 +500,10 @@ class SupportResistanceCalculator(BaseCalculator):
                 raise ValueError(f"Insufficient 5m candles for S/R calculation: {len(candles_data['5m']) if candles_data['5m'] else 0} < 50 - API/data issue (NO FALLBACKS)")
             
             # Format and return results (strategy-independent, returns ALL levels)
+            # _format_results_optimized() guarantees valid dict with 'levels' key (NO FALLBACKS)
             result = self._format_results_optimized(scored_levels, current_price, 
                                                    self._data_provider.calculate_atr(candles_data['5m'], 14),  # Required (NO FALLBACKS) 
                                                    current_time)
-            
-            # CRITICAL: Validate result structure
-            if not result or not isinstance(result, dict):
-                raise ValueError(f"S/R calculation returned invalid result: {type(result)} - NO FALLBACKS")
-            if "levels" not in result:
-                raise ValueError("S/R calculation result missing 'levels' key - NO FALLBACKS")
             
             # Log final results
             all_levels = result['levels']  # Required (NO FALLBACKS)
@@ -633,9 +628,8 @@ class SupportResistanceCalculator(BaseCalculator):
             if not market_service:
                 raise ValueError("MarketDataService not available - NO FALLBACKS")
             
+            # get_trend_analysis() guarantees valid dict with required keys (NO FALLBACKS)
             trend_analysis = market_service.get_trend_analysis()
-            if not trend_analysis or not isinstance(trend_analysis, dict):
-                raise ValueError("Invalid trend analysis data - NO FALLBACKS")
             
             return {
                 'direction': trend_analysis['direction'],  # Required (NO FALLBACKS)
