@@ -207,9 +207,9 @@ class MarketDataService:
             raise
     
     def _map_trend_to_direction(self, trend: str) -> str:
-        """Map detailed trend to simple direction for strategy manager"""
+        """Map detailed trend to simple direction for strategy manager - NO FALLBACKS"""
         if not trend or trend == "UNKNOWN" or trend is None:
-            return "UNKNOWN"
+            raise ValueError(f"Invalid trend value: {trend} (NO FALLBACKS)")
             
         trend_mapping = {
             "STRONG_UPTREND": "BULLISH",
@@ -220,12 +220,14 @@ class MarketDataService:
             "WEAK_DOWNTREND": "BEARISH",
             "SIDEWAYS": "SIDEWAYS"
         }
-        return trend_mapping[trend] if trend in trend_mapping else "UNKNOWN"  # Handle edge cases explicitly
+        if trend not in trend_mapping:
+            raise ValueError(f"Unsupported trend value: {trend} - must be one of {list(trend_mapping.keys())} (NO FALLBACKS)")
+        return trend_mapping[trend]
     
     def _map_trend_to_strength(self, trend: str) -> str:
-        """Map detailed trend to strength level"""
+        """Map detailed trend to strength level - NO FALLBACKS (Note: This is deprecated, use numeric strength from details instead)"""
         if not trend or trend == "UNKNOWN" or trend is None:
-            return "UNKNOWN"
+            raise ValueError(f"Invalid trend value: {trend} (NO FALLBACKS)")
             
         strength_mapping = {
             "STRONG_UPTREND": "STRONG",
@@ -236,7 +238,9 @@ class MarketDataService:
             "WEAK_DOWNTREND": "WEAK",
             "SIDEWAYS": "NEUTRAL"
         }
-        return strength_mapping[trend] if trend in strength_mapping else "UNKNOWN"  # Handle edge cases explicitly
+        if trend not in strength_mapping:
+            raise ValueError(f"Unsupported trend value: {trend} - must be one of {list(strength_mapping.keys())} (NO FALLBACKS)")
+        return strength_mapping[trend]
     
     def get_support_resistance_analysis(self) -> Dict[str, Any]:
         """
@@ -952,91 +956,40 @@ class MarketDataService:
             # Get unified analysis data (includes all components)
             market_data = self.get_unified_analysis_data(strategy)
             
-            # Structure the data for easy consumption
+            # Structure the data for easy consumption - NO FALLBACKS
+            # All components must be present for confidence calculation to be reliable
             real_time_data = {
-                # Core market info
-                "timestamp": market_data["timestamp"] if "timestamp" in market_data else time.time(),  # Optional
+                # Core market info - Required (NO FALLBACKS)
+                "timestamp": market_data["timestamp"],  # Required (NO FALLBACKS)
                 "current_price": market_data["current_price"],  # Required (NO FALLBACKS)
-                "strategy": market_data["strategy"] if "strategy" in market_data else strategy,  # Optional
+                "strategy": market_data["strategy"],  # Required (NO FALLBACKS)
                 
-                # Technical Analysis (Primary Components) - Handle missing modules gracefully
-                "rsi": market_data["rsi"] if "rsi" in market_data else {
-                    "value": 0.0,
-                    "category": "unknown",
-                    "signal": "neutral",
-                    "timestamp": time.time()
-                },
-                
-                "trend": market_data["trend"] if "trend" in market_data else {
-                    "direction": "neutral",
-                    "strength": 0.0,
-                    "timeframes": {},
-                    "consensus": "neutral",
-                    "timestamp": time.time()
-                },
-                
-                "volume": market_data["volume"] if "volume" in market_data else {
-                    "hyperliquid_5m": {"current_volume_btc": 0.0, "volume_category": "unknown"},
-                    "binance_global": {"current_volume_btc": 0.0, "volume_category": "unknown"},
-                    "total_volume_btc": 0.0,
-                    "volume_category": "unknown",
-                    "timestamp": time.time()
-                },
-                
-                "volatility": market_data["volatility"] if "volatility" in market_data else {
-                    "current": 0.0,
-                    "category": "unknown",
-                    "change_detection": {"status": "unknown"},
-                    "multi_timeframe": {
-                        "1m": 0.0,
-                        "5m": 0.0,
-                        "1h": 0.0,
-                        "1d": 0.0
-                    },
-                    "timestamp": time.time()
-                },
-                
-                # Dashboard-specific volatility fields
-                # These ARE required - if missing, the error should propagate to show data issue
-                "volatility_5m": market_data["volatility_5m"],  # Will raise KeyError if missing
-                "volatility_category": market_data["volatility_category"],  # Will raise KeyError if missing
-                
-                "pressure": market_data["pressure"] if "pressure" in market_data else {
-                    "buy_pressure": 0.0,
-                    "sell_pressure": 0.0,
-                    "net_pressure": 0.0,
-                    "pressure_ratio": 0.0,
-                    "timestamp": time.time()
-                },
-                
+                # Technical Analysis (Primary Components) - All Required (NO FALLBACKS)
+                "rsi": market_data["rsi"],  # Required (NO FALLBACKS)
+                "trend": market_data["trend"],  # Required (NO FALLBACKS)
+                "volume": market_data["volume"],  # Required (NO FALLBACKS)
+                "volatility": market_data["volatility"],  # Required (NO FALLBACKS)
+                "volatility_5m": market_data["volatility_5m"],  # Required (NO FALLBACKS)
+                "volatility_category": market_data["volatility_category"],  # Required (NO FALLBACKS)
+                "pressure": market_data["pressure"],  # Required (NO FALLBACKS)
                 "support_resistance": self._prepare_sr_data_for_dashboard(
-                    market_data["support_resistance"] if "support_resistance" in market_data else {},  # Optional for dashboard
+                    market_data["support_resistance"],  # Required (NO FALLBACKS)
                     market_data["current_price"]  # Required (NO FALLBACKS)
                 ),
+                "patterns": market_data["patterns"],  # Required (NO FALLBACKS)
                 
-                "patterns": market_data["patterns"] if "patterns" in market_data else {
-                    "active_patterns": [],
-                    "pattern_signals": [],
-                    "confidence_scores": [],
-                    "timestamp": time.time()
-                },
+                # Additional market context - Required (NO FALLBACKS)
+                "market_conditions": market_data["market_conditions"],  # Required (NO FALLBACKS)
+                "funding_analysis": market_data["funding_analysis"],  # Required (NO FALLBACKS)
+                "orderbook_analysis": market_data["orderbook_analysis"],  # Required (NO FALLBACKS)
                 
-                # Additional market context
-                "market_conditions": market_data["market_conditions"] if "market_conditions" in market_data else {},
-                "funding_analysis": market_data["funding_analysis"] if "funding_analysis" in market_data else {},
-                "orderbook_analysis": market_data["orderbook_analysis"] if "orderbook_analysis" in market_data else {},
-                
-                # Data quality indicators
+                # Data quality indicators - All components are required (NO FALLBACKS)
+                # If we reach here, all components are present (KeyError would have been raised otherwise)
                 "data_quality": {
-                    "all_components_available": all([
-                        "rsi" in market_data and market_data["rsi"],
-                        "trend" in market_data and market_data["trend"],
-                        "volume" in market_data and market_data["volume"],
-                        "volatility" in market_data and market_data["volatility"],
-                        "support_resistance" in market_data and "status" in market_data["support_resistance"] and market_data["support_resistance"]["status"] == "ok"
-                    ]),
+                    "all_components_available": True,  # All required components are present (NO FALLBACKS)
                     "last_update": time.time(),
-                    "update_frequency": "real-time"
+                    "update_frequency": "real-time",
+                    "data_completeness": 1.0  # 100% - all required data present
                 }
             }
             

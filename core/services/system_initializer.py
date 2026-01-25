@@ -158,11 +158,17 @@ class SystemInitializer:
             from core.services.dashboard_service import create_dashboard_service, DashboardService
             from core.services.session_orchestrator import SessionOrchestrator
             
+            # Require all systems to be present (NO FALLBACKS)
+            hyperliquid_api = self.singleton_systems["hyperliquid_api"]  # Required (NO FALLBACKS)
+            hyperliquid_websocket = self.singleton_systems["hyperliquid_websocket"]  # Required (NO FALLBACKS)
+            binance_api = self.singleton_systems["binance_api"]  # Required (NO FALLBACKS)
+            binance_websocket = self.singleton_systems["binance_websocket"]  # Required (NO FALLBACKS)
+            
             market_data_service = create_market_data_service(
-                self.singleton_systems["hyperliquid_api"] if "hyperliquid_api" in self.singleton_systems else None,
-                self.singleton_systems["hyperliquid_websocket"] if "hyperliquid_websocket" in self.singleton_systems else None,
-                self.singleton_systems["binance_api"] if "binance_api" in self.singleton_systems else None,
-                self.singleton_systems["binance_websocket"] if "binance_websocket" in self.singleton_systems else None
+                hyperliquid_api,
+                hyperliquid_websocket,
+                binance_api,
+                binance_websocket
             )
             set_global_market_data_service(market_data_service)
             
@@ -206,7 +212,7 @@ class SystemInitializer:
             logger.info("📊 Initializing data systems...")
             
             # Clear caches for fresh data using simplified MarketDataService
-            market_data_service = self.singleton_systems["market_data_service"] if "market_data_service" in self.singleton_systems else None
+            market_data_service = self.singleton_systems["market_data_service"]  # Required (NO FALLBACKS)
             if market_data_service:
                 market_data_service.invalidate_processed_data()
                 logger.info("🗑️ MarketDataService cache cleared")
@@ -289,8 +295,10 @@ class SystemInitializer:
         return self.analysis_ready and self.initialization_complete
     
     def get_singleton_system(self, system_name: str):
-        """Get a specific singleton system"""
-        return self.singleton_systems[system_name] if system_name in self.singleton_systems else None
+        """Get a specific singleton system - Required (NO FALLBACKS)"""
+        if system_name not in self.singleton_systems:
+            raise ValueError(f"System '{system_name}' not found in singleton_systems (NO FALLBACKS)")
+        return self.singleton_systems[system_name]
     
     def get_all_systems_status(self) -> Dict[str, Any]:
         """Get status of all initialized systems"""

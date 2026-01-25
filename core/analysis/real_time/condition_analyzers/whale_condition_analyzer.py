@@ -43,8 +43,10 @@ class WhaleConditionAnalyzer:
             flow_direction = exchange_flows["flow_direction"]
             whale_sentiment = sentiment_dict["classification"]
             
-            # Map activity_level to whale_activity string
-            whale_activity = self._ACTIVITY_LEVEL_MAP.get(activity_level, "UNKNOWN")
+            # Map activity_level to whale_activity string - Required (NO FALLBACKS)
+            if activity_level not in self._ACTIVITY_LEVEL_MAP:
+                raise ValueError(f"Invalid activity_level '{activity_level}' - must be one of {list(self._ACTIVITY_LEVEL_MAP.keys())} (NO FALLBACKS)")
+            whale_activity = self._ACTIVITY_LEVEL_MAP[activity_level]
             
             # Convert to condition analyzer format
             factors = [f"Whale Activity: {whale_activity}"]

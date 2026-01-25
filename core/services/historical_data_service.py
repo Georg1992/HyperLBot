@@ -20,7 +20,8 @@ class HistoricalDataService:
         
         # Initialize persistent 5m candle storage
         from core.services.candle_storage import CandleStorage
-        self._candle_storage = CandleStorage(symbol="BTC")
+        from config.config import TradingConfig
+        self._candle_storage = CandleStorage(symbol=TradingConfig.SYMBOL)
         
         # Database should have 5 years of historical data
         # On bot startup: backfill missing candles from last stored candle to now
@@ -76,8 +77,9 @@ class HistoricalDataService:
             if not self._candle_storage:
                 raise ValueError(f"❌ Candle storage database not available - cannot fetch {timeframe} candles for {symbol}")
             
-            if symbol.upper() != "BTC":
-                raise ValueError(f"❌ Database only supports BTC - cannot fetch {timeframe} candles for {symbol}")
+            from config.config import TradingConfig
+            if symbol.upper() != TradingConfig.SYMBOL.upper():
+                raise ValueError(f"❌ Database only supports {TradingConfig.SYMBOL} - cannot fetch {timeframe} candles for {symbol}")
             
             # For 5m candles, get directly from database
             if timeframe == "5m":

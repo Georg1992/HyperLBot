@@ -336,7 +336,9 @@ class StrategyManager:
             "standard": self._score_standard
         }
         
-        scorer = strategy_scorers[strategy_name] if strategy_name in strategy_scorers else self._score_standard
+        if strategy_name not in strategy_scorers:
+            raise ValueError(f"Unknown strategy: {strategy_name} - must be one of {list(strategy_scorers.keys())} (NO FALLBACKS)")
+        scorer = strategy_scorers[strategy_name]
         return scorer(data)
     
     def _score_scalping(self, data: Dict[str, Any]) -> tuple:
@@ -920,8 +922,11 @@ class StrategyManager:
         if len(sorted_scores) > 1:
             try:
                 second_score_data = sorted_scores[1][1]
-                second_score = float(second_score_data["score"]) if "score" in second_score_data and isinstance(second_score_data["score"], (int, float, str)) else 0.0
-                second_score = float(second_score)
+                # If second score exists, it must have a valid score value (NO FALLBACKS)
+                if "score" not in second_score_data:
+                    raise ValueError("Second strategy score data missing 'score' key (NO FALLBACKS)")
+                second_score_raw = second_score_data["score"]
+                second_score = float(second_score_raw)
             except (ValueError, TypeError, IndexError, KeyError) as e:
                 raise ValueError(f"Invalid second_score calculation: {e} - NO FALLBACKS") from e
         else:
@@ -1084,7 +1089,9 @@ class StrategyManager:
             "trend_following": "Optimized for strong trending markets with momentum confirmation",
             "scalping": "High-frequency scalping for small, quick profits with tight risk management",
         }
-        return descriptions[strategy_name] if strategy_name in descriptions else f"Unknown strategy: {strategy_name}"  # NO FALLBACKS
+        if strategy_name not in descriptions:
+            raise ValueError(f"Unknown strategy: {strategy_name} - must be one of {list(descriptions.keys())} (NO FALLBACKS)")
+        return descriptions[strategy_name]
     
     def _record_strategy_selection(self, strategy: str, market_data: Dict[str, Any], recommendation) -> None:
         """Record strategy selection for ML learning"""
@@ -1175,7 +1182,7 @@ class StrategyManager:
                 # Get dashboard service and update
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
-                dashboard_service = system_initializer.singleton_systems["dashboard_service"] if "dashboard_service" in system_initializer.singleton_systems else None
+                dashboard_service = system_initializer.get_singleton_system("dashboard_service")  # Required (NO FALLBACKS)
                 if dashboard_service:
                     dashboard_service.update_session_data(session_manager_instance.current_session_data)
                     logger.info(f"🔄 Strategy switched to: {new_strategy}")

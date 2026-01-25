@@ -229,7 +229,8 @@ class ReactiveEngine:
                             order_type="MARKET",
                             side=order_side,
                             size=position_size_btc,  # Calculated based on balance, position_size%, R:R, leverage
-                            symbol="BTC",
+                            from config.config import TradingConfig
+                            symbol=TradingConfig.SYMBOL,
                             price=None,  # Market order - no price needed
                             leverage=leverage,
                             stop_loss=signal.stop_loss,

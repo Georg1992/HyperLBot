@@ -44,9 +44,9 @@ class FundingRateAnalyzer:
             if not funding_data:
                 raise Exception("No funding rate data provided")
             
-            # Extract funding rate
-            funding_rate = funding_data['funding_rate'] if 'funding_rate' in funding_data else 0.0
-            funding_rate_pct = funding_data['funding_rate_percentage'] if 'funding_rate_percentage' in funding_data else 0.0
+            # Extract funding rate - Required (NO FALLBACKS)
+            funding_rate = funding_data['funding_rate']  # Required (NO FALLBACKS)
+            funding_rate_pct = funding_data['funding_rate_percentage']  # Required (NO FALLBACKS)
             
             # Update history
             self._update_funding_history(funding_rate, funding_data)
@@ -60,8 +60,8 @@ class FundingRateAnalyzer:
                 "funding_sentiment": self._analyze_funding_sentiment(funding_rate),
                 "extreme_funding_detection": self._detect_extreme_funding(funding_rate),
                 "funding_volatility": self._calculate_funding_volatility(),  # For risk management
-                "next_funding_time": funding_data['next_funding_time'] if 'next_funding_time' in funding_data else 0,
-                "data_source": funding_data['data_source'] if 'data_source' in funding_data else 'unknown',
+                "next_funding_time": funding_data['next_funding_time'],  # Required (NO FALLBACKS)
+                "data_source": funding_data['data_source'],  # Required (NO FALLBACKS)
                 "timestamp": time.time()
             }
             
