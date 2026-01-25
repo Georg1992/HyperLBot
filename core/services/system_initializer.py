@@ -338,10 +338,12 @@ class SystemInitializer:
             # Register calculation modules with new factory functions
             rsi_calculator = create_rsi_calculator()
             # Initialize RSI calculator with baseline data
+            from config.config import TradingConfig
+            symbol = TradingConfig.SYMBOL
             try:
                 from core.services.historical_data_service import create_historical_data_service
                 historical_service = create_historical_data_service()
-                candles_5m = historical_service.get_5m_candles("BTC", 30)
+                candles_5m = historical_service.get_5m_candles(symbol, 30)
                 if candles_5m and len(candles_5m) >= 15:
                     rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
                 else:
@@ -350,23 +352,23 @@ class SystemInitializer:
                 logger.warning(f"⚠️ Failed to initialize RSI: {e}")
             
             market_data_service.register_analysis_module("rsi_calculator", rsi_calculator)
-            market_data_service.register_analysis_module("volatility", create_volatility_calculator("BTC"))
+            market_data_service.register_analysis_module("volatility", create_volatility_calculator(symbol))
             market_data_service.register_analysis_module("trend", create_trend_calculator())
-            market_data_service.register_analysis_module("support_resistance", create_sr_calculator("BTC"))
-            market_data_service.register_analysis_module("volume", create_volume_calculator("BTC"))
-            market_data_service.register_analysis_module("pressure", create_pressure_calculator("BTC"))
+            market_data_service.register_analysis_module("support_resistance", create_sr_calculator(symbol))
+            market_data_service.register_analysis_module("volume", create_volume_calculator(symbol))
+            market_data_service.register_analysis_module("pressure", create_pressure_calculator(symbol))
             
             # Register analysis modules with new factory functions
             # Pass market_data_service as data_provider for whale data access
             market_data_service.register_analysis_module("market_conditions", create_market_conditions_analyzer(data_provider=market_data_service))
-            market_data_service.register_analysis_module("pattern_recognition", PatternRecognitionEngine())
+            market_data_service.register_analysis_module("pattern_recognition", PatternRecognitionEngine(symbol))
             market_data_service.register_analysis_module("funding_rate", create_funding_rate_analyzer())
             market_data_service.register_analysis_module("orderbook", create_orderbook_analyzer())
             market_data_service.register_analysis_module("cross_asset_correlation_analyzer", create_cross_asset_correlation_analyzer())
             
             # Register consolidation tracker
             from core.analysis.real_time.consolidation_tracker import ConsolidationTracker
-            market_data_service.register_analysis_module("consolidation", ConsolidationTracker("BTC"))
+            market_data_service.register_analysis_module("consolidation", ConsolidationTracker(symbol))
             
             logger.info("📊 Analysis modules registered with MarketDataService using new factory functions")
             

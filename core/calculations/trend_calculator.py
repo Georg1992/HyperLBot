@@ -28,9 +28,11 @@ class TrendCalculator:
             historical_service = create_historical_data_service()
             
             # Get candles for all timeframes - must succeed or raise
-            candles_5m = historical_service.get_5m_candles("BTC", 30)
-            candles_1h = historical_service.get_1h_candles("BTC", 30)
-            candles_1d = historical_service.get_1d_candles("BTC", 30)
+            from config.config import TradingConfig
+            symbol = TradingConfig.SYMBOL
+            candles_5m = historical_service.get_5m_candles(symbol, 30)
+            candles_1h = historical_service.get_1h_candles(symbol, 30)
+            candles_1d = historical_service.get_1d_candles(symbol, 30)
             
             # Validate minimum required data - NO FALLBACKS
             if not candles_5m or len(candles_5m) < 3:
@@ -44,6 +46,7 @@ class TrendCalculator:
                 "trend_1h": trend_analysis["trend_1h"],
                 "trend_4h": trend_analysis["trend_4h"],
                 "trend_24h": trend_analysis["trend_24h"],
+                "details": trend_analysis["details"],  # Include details for strength calculation (NO FALLBACKS)
                 "timestamp": time.time(),
                 "data_type": "trend"
             }

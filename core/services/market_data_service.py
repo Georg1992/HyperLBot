@@ -170,9 +170,10 @@ class MarketDataService:
             trend_24h = raw_trend_data["trend_24h"]  # Required (NO FALLBACKS)
             
             # Extract numeric strength from details (trend calculator returns strength as float 0.0-1.0)
-            details = raw_trend_data.get("details", {})
-            trend_1h_details = details.get("1h", {})
-            numeric_strength = trend_1h_details.get("strength", 0.0)  # Default to 0.0 if missing
+            # NO FALLBACKS - details and strength are required
+            details = raw_trend_data["details"]
+            trend_1h_details = details["1h"]
+            numeric_strength = trend_1h_details["strength"]
             
             # Use 1h as primary for strategy decisions, but preserve all timeframes
             primary_trend = trend_1h
@@ -268,7 +269,8 @@ class MarketDataService:
             if self.hyperliquid_websocket:
                 current_price = self.hyperliquid_websocket.get_current_price()
             elif self.hyperliquid_api:
-                current_price = self.hyperliquid_api.get_current_price("BTC")
+                from config.config import TradingConfig
+                current_price = self.hyperliquid_api.get_current_price(TradingConfig.SYMBOL)
             
             if not current_price or current_price <= 0:
                 raise ValueError(f"No valid current price for S/R analysis (got: {current_price})")
@@ -542,7 +544,8 @@ class MarketDataService:
                         # Get historical candles for RSI baseline calculation
                         from core.services.historical_data_service import create_historical_data_service
                         historical_service = create_historical_data_service()
-                        candles_5m = historical_service.get_5m_candles("BTC", 30)
+                        from config.config import TradingConfig
+                        candles_5m = historical_service.get_5m_candles(TradingConfig.SYMBOL, 30)
                         if candles_5m and len(candles_5m) >= 15:
                             rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
                         else:
@@ -694,7 +697,8 @@ class MarketDataService:
             # Get recent candles for pattern analysis (50 candles for detection)
             from core.services.historical_data_service import create_historical_data_service
             historical_service = create_historical_data_service()
-            candles = historical_service.get_5m_candles("BTC", 50)  # 50 candles for pattern detection
+            from config.config import TradingConfig
+            candles = historical_service.get_5m_candles(TradingConfig.SYMBOL, 50)  # 50 candles for pattern detection
             
             if not candles or len(candles) < 10:
                 raise ValueError(f"Insufficient candle data for pattern analysis: {len(candles) if candles else 0} < 10 - NO FALLBACKS")
@@ -759,7 +763,8 @@ class MarketDataService:
             # Get 1d candles for market trend analysis - request more to ensure we have enough
             from core.services.historical_data_service import create_historical_data_service
             historical_service = create_historical_data_service()
-            candles_1d = historical_service.get_1d_candles("BTC", 30)  # Request 30 days to ensure we have at least 7
+            from config.config import TradingConfig
+            candles_1d = historical_service.get_1d_candles(TradingConfig.SYMBOL, 30)  # Request 30 days to ensure we have at least 7
             
             conditions_result = conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d)
             
@@ -1331,7 +1336,8 @@ class MarketDataService:
         try:
             if not self.hyperliquid_api:
                 raise ValueError("Hyperliquid API not available - NO FALLBACKS")
-            return self.hyperliquid_api.get_market_data("BTC")
+            from config.config import TradingConfig
+            return self.hyperliquid_api.get_market_data(TradingConfig.SYMBOL)
         except Exception as e:
             logger.error(f"❌ Failed to get market data: {e}")
             raise

@@ -215,10 +215,13 @@ class StrategyManager:
         current_price = float(market_data["current_price"])  # Required (NO FALLBACKS) - will raise if invalid
         
         # Orderbook data - NO FALLBACKS
-        spread_pct_raw = orderbook_data["spread_percentage"]
+        # Orderbook analyzer returns nested structure: bid_ask_spread.percentage, liquidity_depth.depth_score
+        bid_ask_spread = orderbook_data["bid_ask_spread"]
+        spread_pct_raw = bid_ask_spread["percentage"]
         spread_pct = float(spread_pct_raw)
         
-        liquidity_score_raw = orderbook_data["liquidity_score"]
+        liquidity_depth = orderbook_data["liquidity_depth"]
+        liquidity_score_raw = liquidity_depth["depth_score"]
         liquidity_score = float(liquidity_score_raw)
         
         # Pressure data - NO FALLBACKS
@@ -1135,7 +1138,7 @@ class StrategyManager:
             
             # Calculate success and profit
             profit = outcome["profit"]  # Required (NO FALLBACKS)
-            success = outcome["success"] if "success" in outcome else profit > 0
+            success = outcome["success"]  # Required (NO FALLBACKS)
             
             if success:
                 perf["successful_trades"] += 1
