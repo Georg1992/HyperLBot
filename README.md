@@ -70,6 +70,9 @@ HyperLBot is a comprehensive trading system that processes real-time market data
 ### 📊 Real-Time Analytics
 
 - **Support/Resistance Detection** - Multi-timeframe S/R level identification with clustering
+  - Swing-based levels from market structure
+  - Psychological (round-number) levels integrated
+  - Strategy-aware filtering and scoring
 - **Volatility Analysis** - ATR-based volatility categorization (LOW/MODERATE/HIGH/EXTREME)
 - **Volume Profiling** - Volume analysis with momentum and anomaly detection
 - **Trend Detection** - Multi-timeframe trend alignment
@@ -79,9 +82,11 @@ HyperLBot is a comprehensive trading system that processes real-time market data
 
 - **Strategy Manager** - Dynamic strategy selection (scalping, standard, swing)
 - **Entry Optimization** - 4 entry candidates per setup with multi-factor scoring
-- **Risk Management** - Liquidation safety, round number avoidance, spread cost analysis
+  - ATR-based round number avoidance (nudges entries away from psych levels)
+  - Fill probability, liquidation safety, level strength scoring
+- **Risk Management** - Liquidation safety, spread cost analysis
 - **Position Sizing** - Risk-adjusted position sizing with liquidation buffer
-- **Stop Loss Placement** - Intelligent SL placement avoiding obvious levels
+- **Stop Loss Placement** - Intelligent SL placement using S/R levels (swing + psychological)
 
 ### 🎨 Real-Time Dashboard
 
@@ -114,10 +119,11 @@ The system incorporates findings from academic and industry research:
    - Rejects trades where spread exceeds profit
    - Realistic R:R ratios after costs
 
-4. **Round Number Avoidance** ✅
-   - Detects $1K and $5K round numbers ($90K, $95K, $100K)
-   - Offsets stops by $75-$150 away from round numbers
-   - Reduces stop-hunt risk
+4. **Psychological Levels Integration** ✅
+   - Round-number S/R levels integrated as first-class levels
+   - BTC-specific spacing (100/1000, 500/5000, 1000/10000 based on price)
+   - ATR-based round number avoidance for entries
+   - Used for entry/stop/target selection (not direction scoring)
 
 5. **S/R Wick Filtering** ✅
    - Tracks wick rejection ratio per level
@@ -413,10 +419,18 @@ Enable debug logging:
 
 ## 📚 Documentation
 
-Additional documentation available in `.ai/` directory:
-- `codebase_audit_btc_perps.json` - Comprehensive audit & fixes
-- `CONFIDENCE_SYSTEM_ANALYSIS.md` - Confidence scoring analysis
-- `SINGLE_SOURCE_OF_TRUTH_STATUS.md` - Architecture decisions
+### Essential Documentation
+
+- **`BOT_WORKFLOW_AND_ARCHITECTURE.md`** - Complete system architecture and workflow
+- **`ML_READINESS.md`** - ML readiness status and completed fixes
+
+### Reference Documentation (`.ai/` directory)
+
+- `ARCHITECTURE_ASSUMPTIONS.md` - Design assumptions and decisions
+- `SOLID_AUDIT_REPORT.md` - SOLID principles compliance audit
+- `SOLID_IMPROVEMENTS_SUMMARY.md` - Architecture improvements made
+- `IV_SQUEEZE_ANALYSIS.md` - IV Squeeze integration analysis
+- `RESPONSIVENESS_ANALYSIS.md` - Performance and responsiveness analysis
 
 ---
 
@@ -448,4 +462,11 @@ This project is for educational and personal use. Trading involves significant f
 
 **Built with clean architecture, production-grade code quality, and a focus on reliability over convenience.**
 
-*Last Updated: January 2026*
+### Recent Updates (2026-01-27)
+
+- ✅ **Psychological Levels Integration** - Round-number S/R levels as first-class levels
+- ✅ **ML Readiness** - All 18 critical fixes complete, ready for confidence implementation
+- ✅ **Calibration Hooks** - Infrastructure for confidence validation and ML training
+- ✅ **Dead Code Removal** - Cleaned up unused psychological level code
+
+*Last Updated: January 27, 2026*
