@@ -425,7 +425,8 @@ class RiskManager:
         is_valid = risk_reward_ratio >= (min_risk_reward - 0.001)
         
         if not is_valid:
-            logger.warning(f"⚠️ R:R ratio {risk_reward_ratio:.2f}:1 below minimum {min_risk_reward}:1, but proceeding")
+            # DEBUG level: This is expected behavior - system proceeds with suboptimal R:R when no better levels available
+            logger.debug(f"📊 R:R ratio {risk_reward_ratio:.2f}:1 below minimum {min_risk_reward}:1, but proceeding (no better levels available)")
         
         logger.debug(f"🎯 Stop/Target calculated: Entry=${entry_price:.2f}, SL=${stop_loss:.2f}, TP=${take_profit:.2f}, R:R={risk_reward_ratio:.2f}:1")
         

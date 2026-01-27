@@ -151,6 +151,17 @@ class StrategyManager:
             strategy_scores = {}
             tradeable_strategies = [s for s in self.strategy_configs.keys() if s not in self._analysis_only_strategies]
             for strategy_name in tradeable_strategies:
+                # Validate strategy config has required keys (NO FALLBACKS)
+                if strategy_name not in self.strategy_configs:
+                    logger.error(f"❌ Strategy '{strategy_name}' missing from config - skipping (NO FALLBACKS)")
+                    continue
+                config = self.strategy_configs[strategy_name]
+                required_keys = ["direction_weights", "entry_proximity_config"]
+                missing_keys = [k for k in required_keys if k not in config]
+                if missing_keys:
+                    logger.error(f"❌ Strategy '{strategy_name}' missing config keys: {missing_keys} - skipping (NO FALLBACKS)")
+                    continue
+                
                 # _score_strategy() guarantees (float, list) tuple - trust API contract
                 score, factors = self._score_strategy(strategy_name, data)
                 strategy_scores[strategy_name] = {
@@ -945,26 +956,31 @@ class StrategyManager:
             best_score = 0.0
         
         # Get 2nd best score
-        # strategy_scores items are (strategy_name, score_dict) tuples - trust API contract
-        def safe_float_score(item):
-            # score_dict always has "score" key with float value (guaranteed by _score_strategy)
-            return float(item[1]["score"])
-        
-        sorted_scores = sorted(strategy_scores.items(), key=safe_float_score, reverse=True)
-        if len(sorted_scores) > 1:
-            # sorted_scores[1] is (strategy_name, score_dict) tuple - trust API contract
-            second_score_data = sorted_scores[1][1]
-            # score_dict always has "score" key (guaranteed by _score_strategy)
-            second_score = float(second_score_data["score"])
+        # Edge case: If only one strategy exists, second_score = 0.0
+        if len(strategy_scores) == 1:
+            score_gap = best_score  # Only one strategy, gap = score itself
+            gap_confidence = min(0.3, score_gap / 50.0)
         else:
-            raise ValueError("No second strategy found - NO FALLBACKS")
+            # strategy_scores items are (strategy_name, score_dict) tuples - trust API contract
+            def safe_float_score(item):
+                # score_dict always has "score" key with float value (guaranteed by _score_strategy)
+                return float(item[1]["score"])
+            
+            sorted_scores = sorted(strategy_scores.items(), key=safe_float_score, reverse=True)
+            if len(sorted_scores) > 1:
+                # sorted_scores[1] is (strategy_name, score_dict) tuple - trust API contract
+                second_score_data = sorted_scores[1][1]
+                # score_dict always has "score" key (guaranteed by _score_strategy)
+                second_score = float(second_score_data["score"])
+            else:
+                second_score = 0.0  # Fallback if somehow only one strategy in sorted list
+            
+            # Gap confidence: bigger gap = more confident (0-0.3)
+            score_gap = best_score - second_score
+            gap_confidence = min(0.3, score_gap / 50.0)
         
         # Base confidence from score magnitude (0-0.5)
         score_confidence = min(0.5, best_score / 100.0)
-        
-        # Gap confidence: bigger gap = more confident (0-0.3)
-        score_gap = best_score - second_score
-        gap_confidence = min(0.3, score_gap / 50.0)
         
         # Data quality confidence: check if critical data is available (0-0.2)
         data_quality = 0.2

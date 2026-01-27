@@ -95,15 +95,17 @@ class TradingConfig:
     PATTERN_NORMALIZATION_FACTOR = 3.0  # Increased from 2.0 to handle multiple high-quality patterns
     
     # Entry Price Calculation Configuration
-    ENTRY_FILL_DECAY_FACTOR = 3.0  # Exponential decay factor for fill probability (higher = slower decay)
+    ENTRY_FILL_DECAY_FACTOR = 5.0  # Exponential decay factor for fill probability (higher = slower decay)
+    # Increased from 3.0 to 5.0 to reduce distance bias - allows farther entries to compete better
     LIQUIDATION_SAFETY_MIDPOINT_PCT = 0.015  # 1.5% - inflection point for sigmoid curve
     LIQUIDATION_SAFETY_STEEPNESS = 0.1  # Controls sigmoid curve steepness (higher = steeper)
     
-    # Entry Scoring Configuration (Improved 2026-01-27)
+    # Entry Scoring Configuration (Improved 2026-01-27, Optimized 2026-01-27)
+    # Rebalanced to allow strong far levels to compete with weak close levels
     ENTRY_SCORING_WEIGHTS = {
-        "fill_probability": 0.40,      # Increased from 0.35 - most critical factor
+        "fill_probability": 0.30,      # Reduced from 0.40 - still important but not dominant
         "liquidation_safety": 0.35,    # Maintained - critical for 40x leverage
-        "level_strength": 0.15,        # Decreased from 0.20 - now proximity-weighted
+        "level_strength": 0.25,        # Increased from 0.15 - strong levels should matter more
         "spread_penalty": 0.10         # Maintained - but now non-linear
     }
     

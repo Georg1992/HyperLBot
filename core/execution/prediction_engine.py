@@ -1694,6 +1694,10 @@ class PredictionEngine:
             total_weight = sum(direction_weights.values())
             # CRITICAL FIX: Use epsilon comparison for float equality (prevents non-determinism)
             if not self._float_eq(total_weight, 1.0, self.WEIGHT_EPSILON):
+                weight_error = abs(total_weight - 1.0)
+                # Warn if weights are significantly off (more than 10% deviation)
+                if weight_error > 0.1:
+                    logger.warning(f"⚠️ Direction weights for {strategy} sum to {total_weight:.4f} (error: {weight_error:.4f}) - significant deviation (>10%)")
                 logger.warning(f"⚠️ Direction weights for {strategy} sum to {total_weight:.4f}, not 1.0. Normalizing...")
                 direction_weights = {k: v / total_weight for k, v in direction_weights.items()}
                 logger.debug(f"✅ Normalized weights: {direction_weights}")
@@ -1899,6 +1903,11 @@ class PredictionEngine:
             # Determine direction from scores with intelligent tie-breaking
             # CRITICAL FIX: Use epsilon comparison for score equality (prevents non-determinism)
             score_diff = abs(long_score - short_score)
+            
+            # Edge case: All factors neutral (both scores = 0.0)
+            if self._float_eq(long_score, 0.0, self.SCORE_EPSILON) and self._float_eq(short_score, 0.0, self.SCORE_EPSILON):
+                logger.warning(f"⚠️ All direction factors neutral (both scores = 0.0) - using tie-breaking")
+            
             logger.debug(f"📊 Direction scores ({strategy}): LONG={long_score:.1f}, SHORT={short_score:.1f}, diff={score_diff:.1f}")
             
             if long_score > short_score and not self._float_eq(long_score, short_score, self.SCORE_EPSILON):
@@ -1919,12 +1928,26 @@ class PredictionEngine:
                 relevant_reasons = (long_reasons if direction == "LONG" else short_reasons)[:5]
                 reasoning = f"Neutral signal (equal scores: {long_score:.1f}), tie-broken by {direction}. " + "; ".join(relevant_reasons if relevant_reasons else ["Tie-broken by trend/RSI"])
             
-            return {
+            # Expose ML-ready features for future model training
+            direction_result = {
                 "direction": direction,
                 "reasoning": reasoning,
                 "long_score": long_score,
-                "short_score": short_score
+                "short_score": short_score,
+                "score_diff": score_diff,  # ML feature: score difference
+                "factor_scores": factor_scores,  # ML feature: individual factor contributions
+                "synergy_multipliers": synergy_multipliers  # ML feature: synergy effects
             }
+            
+            # Validate ML features (debug mode - logs warnings but doesn't block)
+            try:
+                from core.utils.ml_feature_validator import MLFeatureValidator
+                is_valid, warnings = MLFeatureValidator.validate_direction_features(direction_result)
+                MLFeatureValidator.log_validation_results(is_valid, warnings, "direction")
+            except ImportError:
+                pass  # Validator not available - skip validation
+            
+            return direction_result
             
         except Exception as e:
             logger.error(f"❌ Direction scoring failed: {e}")
@@ -1997,6 +2020,12 @@ class PredictionEngine:
             synergy_multipliers["long"] *= conflict_multiplier
             synergy_multipliers["short"] *= conflict_multiplier
             synergy_multipliers["reasons"].append("Conflict: RSI and trend oppose each other → 0.90x")
+        
+        # CRITICAL FIX: Clamp synergy multipliers to [0.9, 1.2] range to prevent unrealistic amplification
+        # Multiple synergies can stack (e.g., RSI oversold + bullish trend + momentum building)
+        # Without clamping, could exceed 1.2x (e.g., 1.15 * 1.10 = 1.265x)
+        synergy_multipliers["long"] = max(0.9, min(1.2, synergy_multipliers["long"]))
+        synergy_multipliers["short"] = max(0.9, min(1.2, synergy_multipliers["short"]))
         
         return synergy_multipliers
     
@@ -2310,6 +2339,7 @@ class PredictionEngine:
             )
             
             setups = []
+            pre_filtered_count = 0  # Track levels pre-filtered by max_distance
             
             # Generate setups ONLY for the selected direction
             if direction == "LONG":
@@ -2335,35 +2365,52 @@ class PredictionEngine:
                         )
                         
                         if entry_data is None:
+                            pre_filtered_count += 1  # Track pre-filtered levels
                             continue  # Skip if entry determination failed
                         
                         entry_price = entry_data["entry_price"]  # Required (NO FALLBACKS)
                         if entry_price is None or entry_price <= 0 or entry_price >= current_price:
                             continue  # Skip if entry is invalid or unfillable
+                        
+                        # CRITICAL FIX (2026-01-27): Use combined_score from multi-factor scoring
+                        # This ensures true optimization across all candidates using fill_prob, liq_safety, level_strength, spread_penalty
+                        # The combined_score from _determine_optimal_entry_price is the proper multi-factor score
+                        entry_breakdown = entry_data.get("entry_breakdown", {})  # Required (NO FALLBACKS)
+                        combined_score = entry_breakdown.get("combined_score", 0.0)  # Required (NO FALLBACKS)
+                        
+                        # Build entry reasoning from breakdown
+                        fill_prob = entry_breakdown.get("fill_probability", 0.0)
+                        liq_safety = entry_breakdown.get("liquidation_safety", 0.0)
+                        level_strength = entry_breakdown.get("level_strength", 0.0)
+                        spread_penalty = entry_breakdown.get("spread_penalty", 0.0)
+                        distance_atr = entry_breakdown.get("distance_to_current_atr", 0.0)
+                        
+                        entry_reasoning = (
+                            f"Optimal entry at {distance_atr:.2f}×ATR from current "
+                            f"(fill_prob: {fill_prob:.1f}, liq_safety: {liq_safety:.1f}, "
+                            f"level_strength: {level_strength:.1f}, spread_penalty: {spread_penalty:.1f})"
+                        )
+                        
+                        # Debug logging: Show candidate score breakdown
+                        logger.debug(
+                            f"📊 Candidate from level ${level_price:.2f}: entry=${entry_price:.2f}, "
+                            f"score={combined_score:.1f} (fill: {fill_prob:.1f}, liq: {liq_safety:.1f}, "
+                            f"level: {level_strength:.1f}, spread: {spread_penalty:.1f})"
+                        )
                     except Exception as e:
                         logger.warning(f"⚠️ Entry price determination failed for support ${level_price:.2f}: {e}")
                         continue  # Skip this level if determination fails
                     
-                    # Score entry setup (entry quality only - direction already determined)
+                    # Use multi-factor combined_score for entry selection
                     support_with_type = {**support, "setup_type": "support_level"}
-                    entry_result = self._score_entry_setup(
-                        entry_price=entry_price,
-                        setup_type="support_level",
-                        direction="LONG",
-                        unified_data=unified_data,
-                        level_data=support_with_type,
-                        strategy=strategy,
-                        config=config
-                    )
-                    
-                    if entry_result:
-                        setups.append({
-                            "entry_price": entry_price,
-                            "entry_score": entry_result["score"],  # Required (NO FALLBACKS)
-                            "entry_reasoning": entry_result["reasoning"],  # Required (NO FALLBACKS)
-                            "setup_type": "support_level",
-                            "level_data": support_with_type
-                        })
+                    setups.append({
+                        "entry_price": entry_price,
+                        "entry_score": combined_score,  # Use multi-factor combined_score
+                        "entry_reasoning": entry_reasoning,
+                        "setup_type": "support_level",
+                        "level_data": support_with_type,
+                        "entry_breakdown": entry_breakdown  # Store full breakdown for debugging
+                    })
             
             else:  # SHORT
                 # SHORT: Only evaluate resistance levels (selling at resistance)
@@ -2388,35 +2435,51 @@ class PredictionEngine:
                         )
                         
                         if entry_data is None:
+                            pre_filtered_count += 1  # Track pre-filtered levels
                             continue  # Skip if entry determination failed
                         
                         entry_price = entry_data["entry_price"]  # Required (NO FALLBACKS)
                         if entry_price is None or entry_price <= 0 or entry_price <= current_price:
                             continue  # Skip if entry is invalid or unfillable
+                        
+                        # CRITICAL FIX (2026-01-27): Use combined_score from multi-factor scoring
+                        # This ensures true optimization across all candidates using fill_prob, liq_safety, level_strength, spread_penalty
+                        entry_breakdown = entry_data.get("entry_breakdown", {})  # Required (NO FALLBACKS)
+                        combined_score = entry_breakdown.get("combined_score", 0.0)  # Required (NO FALLBACKS)
+                        
+                        # Build entry reasoning from breakdown
+                        fill_prob = entry_breakdown.get("fill_probability", 0.0)
+                        liq_safety = entry_breakdown.get("liquidation_safety", 0.0)
+                        level_strength = entry_breakdown.get("level_strength", 0.0)
+                        spread_penalty = entry_breakdown.get("spread_penalty", 0.0)
+                        distance_atr = entry_breakdown.get("distance_to_current_atr", 0.0)
+                        
+                        entry_reasoning = (
+                            f"Optimal entry at {distance_atr:.2f}×ATR from current "
+                            f"(fill_prob: {fill_prob:.1f}, liq_safety: {liq_safety:.1f}, "
+                            f"level_strength: {level_strength:.1f}, spread_penalty: {spread_penalty:.1f})"
+                        )
+                        
+                        # Debug logging: Show candidate score breakdown
+                        logger.debug(
+                            f"📊 Candidate from level ${level_price:.2f}: entry=${entry_price:.2f}, "
+                            f"score={combined_score:.1f} (fill: {fill_prob:.1f}, liq: {liq_safety:.1f}, "
+                            f"level: {level_strength:.1f}, spread: {spread_penalty:.1f})"
+                        )
                     except Exception as e:
                         logger.warning(f"⚠️ Entry price determination failed for resistance ${level_price:.2f}: {e}")
                         continue  # Skip this level if determination fails
                     
-                    # Score entry setup (entry quality only - direction already determined)
+                    # Use multi-factor combined_score for entry selection
                     resistance_with_type = {**resistance, "setup_type": "resistance_level"}
-                    entry_result = self._score_entry_setup(
-                        entry_price=entry_price,
-                        setup_type="resistance_level",
-                        direction="SHORT",
-                        unified_data=unified_data,
-                        level_data=resistance_with_type,
-                        strategy=strategy,
-                        config=config
-                    )
-                    
-                    if entry_result:
-                        setups.append({
-                            "entry_price": entry_price,
-                            "entry_score": entry_result["score"],  # Required (NO FALLBACKS)
-                            "entry_reasoning": entry_result["reasoning"],  # Required (NO FALLBACKS)
-                            "setup_type": "resistance_level",
-                            "level_data": resistance_with_type
-                        })
+                    setups.append({
+                        "entry_price": entry_price,
+                        "entry_score": combined_score,  # Use multi-factor combined_score
+                        "entry_reasoning": entry_reasoning,
+                        "setup_type": "resistance_level",
+                        "level_data": resistance_with_type,
+                        "entry_breakdown": entry_breakdown  # Store full breakdown for debugging
+                    })
             
             # CRITICAL: There should ALWAYS be S/R levels (except at all-time high)
             # If no setups found, this indicates a system error in S/R level calculation/filtering
@@ -2444,6 +2507,9 @@ class PredictionEngine:
                                f"filtered_levels had {len(support_list)} support and {len(resistance_list)} resistance levels. "
                                f"This indicates a system error (NO FALLBACKS)")
             
+            # Log summary of entry setup generation
+            if pre_filtered_count > 0:
+                logger.debug(f"📊 Pre-filtered {pre_filtered_count} levels exceeding max_distance_atr for {direction} direction")
             logger.debug(f"📊 Generated {len(setups)} entry setups for {direction} direction ({strategy} strategy)")
             return setups
             
@@ -2515,13 +2581,25 @@ class PredictionEngine:
             level_distance_atr = calculate_distance_atr(level_distance_pct, atr_pct)
             
             # Pre-filter: Skip levels where closest candidate (at level_price) exceeds max_distance
-            # This ensures at least one candidate will be valid, preventing "No suitable candidate" errors
+            # CRITICAL FIX (2026-01-27): Allow strong levels slightly beyond max_distance to compete
+            # This enables strong far levels to compete with weak close levels
+            strength_threshold = 0.8  # Very strong level threshold
+            adaptive_max_distance = max_distance_atr * 1.2  # Allow up to 20% beyond max_distance for strong levels
+            
             if level_distance_atr > max_distance_atr:
-                logger.debug(
-                    f"⏭️ Level ${level_price:.2f} pre-filtered: distance {level_distance_atr:.2f}×ATR exceeds max {max_distance_atr:.2f}×ATR "
-                    f"(closest candidate would be too far)"
-                )
-                return None  # Skip this level - calling code handles None gracefully
+                # Adaptive pre-filtering: Allow very strong levels slightly beyond max_distance
+                if level_power >= strength_threshold and level_distance_atr <= adaptive_max_distance:
+                    logger.debug(
+                        f"📊 Strong level ${level_price:.2f} (power: {level_power:.2f}) allowed despite distance "
+                        f"{level_distance_atr:.2f}×ATR (max: {max_distance_atr:.2f}×ATR, adaptive: {adaptive_max_distance:.2f}×ATR)"
+                    )
+                    # Continue - allow this strong level to generate candidates
+                else:
+                    logger.debug(
+                        f"⏭️ Level ${level_price:.2f} pre-filtered: distance {level_distance_atr:.2f}×ATR exceeds max {max_distance_atr:.2f}×ATR "
+                        f"(power: {level_power:.2f}, threshold: {strength_threshold:.2f})"
+                    )
+                    return None  # Skip this level - calling code handles None gracefully
             
             # BTC PERP ENTRY OFFSET LOGIC (Research-backed)
             # Research findings (2025-2026 BTC perpetual futures):
@@ -2621,11 +2699,17 @@ class PredictionEngine:
                 raise ValueError(
                     f"System error: Pre-filter passed but no valid candidates for {setup_type} at ${level_price:.2f} "
                     f"(level_distance: {level_distance_atr:.2f}×ATR, max: {max_distance_atr:.2f}×ATR, "
-                    f"generated {len(candidates)} candidates, all rejected) - NO FALLBACKS"
+                    f"generated {len(candidates)} candidates, all rejected). "
+                    f"Possible causes: (1) ATR calculation error, (2) Level too far despite pre-filter, "
+                    f"(3) Candidate generation logic error - NO FALLBACKS"
                 )
             
             # Use valid candidates for scoring (replace original candidates list)
             candidates = valid_candidates
+            
+            # Log summary of candidate filtering
+            if candidates_rejected > 0:
+                logger.debug(f"📊 Rejected {candidates_rejected} candidates exceeding max_distance_atr ({max_distance_atr:.2f}×ATR) for {setup_type} at ${level_price:.2f}")
             
             for candidate_price in candidates:
                 candidates_processed += 1
@@ -2690,21 +2774,22 @@ class PredictionEngine:
                 liquidation_safety = 100.0 / (1.0 + math.exp(exponent))
                 liquidation_safety = max(0.0, min(100.0, liquidation_safety))  # Clamp result to [0, 100]
                 
-                # 3. LEVEL STRENGTH SCORE (15% weight) - PROXIMITY-WEIGHTED
-                # Level power decays with distance from current price (stronger levels closer are more relevant)
-                # Formula: level_strength = level_power * exp(-distance_atr / decay_factor)
+                # 3. LEVEL STRENGTH SCORE (25% weight) - RAW POWER (NO PROXIMITY WEIGHTING)
+                # CRITICAL FIX (2026-01-27): Removed proximity weighting from level strength
+                # Rationale: Fill probability already penalizes distance (30% weight). Double-penalizing in level
+                # strength unfairly biases against strong far levels. Raw level power allows strong levels to compete.
+                # Level strength represents inherent S/R quality (touches, bounces, time-tested), not proximity.
+                level_strength = level_power  # Use raw power, no distance decay
+                
+                # Proximity factor still calculated for ML feature exposure (exposed but not used in scoring)
                 level_strength_decay_factor = TradingConfig.LEVEL_STRENGTH_DECAY_FACTOR
                 if level_strength_decay_factor <= 0:
                     raise ValueError(f"Invalid level_strength_decay_factor: {level_strength_decay_factor} - must be positive")
-                
-                # Calculate proximity factor (how relevant is this level at this distance)
                 proximity_exponent = -distance_to_current_atr / level_strength_decay_factor
                 proximity_exponent = max(-50.0, min(50.0, proximity_exponent))  # Clamp for numerical stability
                 proximity_factor = math.exp(proximity_exponent)
-                proximity_factor = max(0.1, min(1.0, proximity_factor))  # Clamp to [0.1, 1.0] (never fully zero, never above 1.0)
-                
-                # Proximity-weighted level strength
-                level_strength = level_power * proximity_factor
+                proximity_factor = max(0.1, min(1.0, proximity_factor))  # Clamp to [0.1, 1.0]
+                # NOTE: proximity_factor is exposed in breakdown for ML features but NOT used in level_strength calculation
                 
                 # 4. SPREAD COST PENALTY (-10% weight) - NON-LINEAR
                 # Exponential penalty for very close entries (< 0.5×ATR), linear for far entries
@@ -2747,6 +2832,46 @@ class PredictionEngine:
                 )
                 # Clamp to reasonable range (penalty can make score slightly negative)
                 combined_score = max(0.0, min(100.0, combined_score))
+                # Assertion for ML validation: ensure score is always in expected range
+                assert 0.0 <= combined_score <= 100.0, f"Combined score out of range: {combined_score} (entry: ${candidate_price:.2f})"
+                
+                # Performance optimization: Early exit if perfect score found (unlikely but possible)
+                # This avoids unnecessary scoring of remaining candidates when we have a near-perfect entry
+                if combined_score >= 99.9:  # Near-perfect score (within 0.1 of maximum)
+                    logger.debug(f"🎯 Near-perfect candidate found: ${candidate_price:.2f} (score: {combined_score:.1f}) - skipping remaining candidates")
+                    best_score = combined_score
+                    best_candidate = candidate_price
+                    # Calculate breakdown for this perfect candidate (reuse code below)
+                    current_timestamp = unified_data.get("timestamp", time.time())
+                    hours_since_touch = (current_timestamp - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else 0.0
+                    distance_from_level_usd = abs(candidate_price - level_price)
+                    distance_from_level_pct = distance_from_level_usd / current_price
+                    
+                    best_breakdown = {
+                        "entry_price": candidate_price,
+                        "level_price": level_price,
+                        "offset_usd": distance_from_level_usd,
+                        "offset_pct": distance_from_level_pct * 100,
+                        "offset_atr": distance_from_level_usd / atr_5m if atr_5m > 0 else 0,
+                        "fill_probability": fill_probability,
+                        "liquidation_safety": liquidation_safety,
+                        "liquidation_price": liquidation_price,
+                        "liq_distance_pct": liq_distance_pct * 100,
+                        "level_strength": level_strength,
+                        "level_strength_raw": level_power,
+                        "proximity_factor": proximity_factor,
+                        "spread_penalty": spread_penalty,
+                        "spread_penalty_breakdown": {
+                            "base_penalty": 10.0 if distance_to_current_atr < spread_close_threshold else max(0.0, (1.0 - distance_to_current_atr) * 10.0),
+                            "exponential_boost": (spread_penalty - 10.0) if distance_to_current_atr < spread_close_threshold else 0.0,
+                            "is_close_entry": distance_to_current_atr < spread_close_threshold
+                        },
+                        "combined_score": combined_score,
+                        "distance_to_current_atr": distance_to_current_atr,
+                        "hours_since_touch": hours_since_touch,
+                        "setup_type": setup_type
+                    }
+                    break  # Exit loop early - no need to check remaining candidates
                 
                 # Track best candidate
                 if combined_score > best_score:
@@ -2771,7 +2896,7 @@ class PredictionEngine:
                         "liquidation_safety": liquidation_safety,
                         "liquidation_price": liquidation_price,
                         "liq_distance_pct": liq_distance_pct * 100,
-                        "level_strength": level_strength,  # Proximity-weighted level strength
+                        "level_strength": level_strength,  # Raw level strength (no proximity weighting)
                         "level_strength_raw": level_power,  # Original level power (ML feature)
                         "proximity_factor": proximity_factor,  # Distance decay factor (ML feature)
                         "spread_penalty": spread_penalty,
@@ -2816,22 +2941,32 @@ class PredictionEngine:
                 distance_to_psych = abs(best_candidate - nearest_psych["price_level"])
                 
                 if distance_to_psych < threshold_distance:
-                    # Nudge away from psychological level
+                    # Calculate nudged entry
                     if direction == "LONG":
                         # For LONG: nudge down (away from psych level)
-                        best_candidate = best_candidate - nudge_distance
+                        nudged_entry = best_candidate - nudge_distance
                     else:  # SHORT
                         # For SHORT: nudge up (away from psych level)
-                        best_candidate = best_candidate + nudge_distance
+                        nudged_entry = best_candidate + nudge_distance
                     
-                    # Validate nudge doesn't invalidate entry
-                    if direction == "LONG" and best_candidate >= current_price:
-                        best_candidate = original_entry  # Revert if invalid
-                    elif direction == "SHORT" and best_candidate <= current_price:
-                        best_candidate = original_entry  # Revert if invalid
+                    # CRITICAL FIX: Validate nudge doesn't violate max_distance_atr constraint
+                    nudged_distance_pct = calculate_distance_pct(nudged_entry, current_price, current_price)
+                    nudged_distance_atr = calculate_distance_atr(nudged_distance_pct, atr_pct)
+                    
+                    # Validate: (1) doesn't exceed max_distance, (2) doesn't invalidate entry direction
+                    if nudged_distance_atr <= max_distance_atr:
+                        if direction == "LONG" and nudged_entry < current_price:
+                            best_candidate = nudged_entry
+                            psych_nudge_applied = True
+                            logger.debug(f"🎯 Entry nudged away from psych level ${nearest_psych['price_level']:.2f}: ${original_entry:.2f} → ${best_candidate:.2f}")
+                        elif direction == "SHORT" and nudged_entry > current_price:
+                            best_candidate = nudged_entry
+                            psych_nudge_applied = True
+                            logger.debug(f"🎯 Entry nudged away from psych level ${nearest_psych['price_level']:.2f}: ${original_entry:.2f} → ${best_candidate:.2f}")
+                        else:
+                            logger.debug(f"⚠️ Psych nudge invalidated entry direction (LONG: {nudged_entry < current_price}, SHORT: {nudged_entry > current_price}), skipping")
                     else:
-                        psych_nudge_applied = True
-                        logger.debug(f"🎯 Entry nudged away from psych level ${nearest_psych['price_level']:.2f}: ${original_entry:.2f} → ${best_candidate:.2f}")
+                        logger.debug(f"⚠️ Psych nudge would exceed max_distance_atr ({nudged_distance_atr:.2f} > {max_distance_atr:.2f}×ATR), skipping")
             
             # Calculate distance to nearest psych level for ML features (exposed but not used yet)
             entry_distance_to_nearest_psych_pct = None
@@ -2847,12 +2982,21 @@ class PredictionEngine:
             best_breakdown["psych_nudge_applied"] = psych_nudge_applied
             best_breakdown["entry_distance_to_nearest_psych_level_pct"] = entry_distance_to_nearest_psych_pct  # ML feature (exposed but not used)
             
+            # Validate ML features (debug mode - logs warnings but doesn't block)
+            try:
+                from core.utils.ml_feature_validator import MLFeatureValidator
+                is_valid, warnings = MLFeatureValidator.validate_entry_features(best_breakdown)
+                MLFeatureValidator.log_validation_results(is_valid, warnings, "entry")
+            except ImportError:
+                pass  # Validator not available - skip validation
+            
+            # Enhanced debug logging: Show all scoring factors for verification
             logger.debug(
                 f"✅ Entry selected: ${best_candidate:.2f} "
-                f"(offset: {best_breakdown['offset_atr']:.2f}×ATR, "
-                f"fill_prob: {best_breakdown['fill_probability']:.1f}, "
-                f"liq_safety: {best_breakdown['liquidation_safety']:.1f}, "
-                f"score: {best_score:.1f})"
+                f"(offset: {best_breakdown['offset_atr']:.2f}×ATR, distance: {best_breakdown['distance_to_current_atr']:.2f}×ATR, "
+                f"fill_prob: {best_breakdown['fill_probability']:.1f}, liq_safety: {best_breakdown['liquidation_safety']:.1f}, "
+                f"level_strength: {best_breakdown['level_strength']:.1f}, spread_penalty: {best_breakdown['spread_penalty']:.1f}, "
+                f"combined_score: {best_score:.1f})"
             )
             
             return {

@@ -44,11 +44,17 @@ class StrategyDetector:
             current_strategy = self.strategy_manager.current_strategy  # Use manager's current strategy
 
             # Detect optimal strategy using comprehensive unified data
+            # NOTE: This may return optimal strategy for predictions even if cooldown blocks actual switch
             new_strategy = self.strategy_manager.detect_optimal_strategy(unified_data)
+            
+            # CRITICAL FIX: Check if strategy actually changed (not just returned for predictions)
+            # If cooldown blocked the switch, current_strategy wasn't updated, so don't log as "updated"
+            actual_current_strategy = self.strategy_manager.current_strategy
 
-            if new_strategy != current_strategy:
+            if new_strategy != actual_current_strategy:
+                # Strategy actually changed (cooldown passed or no cooldown)
                 logger.info(
-                    f"🎯 Strategy updated: {current_strategy} → {new_strategy}"
+                    f"🎯 Strategy updated: {actual_current_strategy} → {new_strategy}"
                 )
                 logger.info(f"   📊 Market conditions: volatility={unified_data['volatility_category']}, trend={unified_data['trend']['direction']}")  # Required (NO FALLBACKS)
                 
@@ -57,6 +63,14 @@ class StrategyDetector:
                     session_manager.current_session_data["strategy"] = new_strategy
                 
                 return new_strategy
+            elif new_strategy != current_strategy:
+                # Strategy would change but cooldown blocked it - using optimal for predictions only
+                logger.debug(
+                    f"📊 Optimal strategy '{new_strategy}' detected but cooldown active "
+                    f"(current: {actual_current_strategy}) - using for predictions only"
+                )
+                # Don't update session manager - strategy state unchanged
+                return actual_current_strategy
             else:
                 # Even if unchanged, ensure session manager has the correct strategy
                 if session_manager:

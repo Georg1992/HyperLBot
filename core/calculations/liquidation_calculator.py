@@ -29,6 +29,11 @@ class LiquidationCalculator:
             leverage: Leverage multiplier (default from TradingConfig)
         """
         self.leverage = leverage or TradingConfig.LEVERAGE
+        
+        # Validate leverage is in reasonable range
+        if self.leverage <= 0 or self.leverage > 100:
+            raise ValueError(f"Invalid leverage: {self.leverage} (must be 1-100, NO FALLBACKS)")
+        
         # Hyperliquid actual maintenance margin rate (observed from real positions)
         # For 40x: theoretical is 2.5%, but actual is ~1.226% due to margin tiers and position sizing
         # Using observed rate: entry $92,062 -> liq $93,191 = 1.226% multiplier
