@@ -21,7 +21,7 @@ class TradingConstants:
     SIGNAL_COOLDOWN = 300     # 5 minutes
     PRICE_DIFFERENCE_ALERT_COOLDOWN = 300  # 5 minutes
     CANDLE_UPDATE_TIMEOUT = 310  # 5 minutes 10 seconds (slightly longer than 5 min candle interval)
-    ANALYSIS_COMPLETION_DELAY = 0.1  # 100ms delay for analysis completion
+    # ANALYSIS_COMPLETION_DELAY removed - analysis modules are synchronous, no delay needed
     
     # Price Monitoring
     PRICE_DIFFERENCE_THRESHOLD = 0.002  # 0.2%

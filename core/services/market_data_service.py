@@ -329,8 +329,9 @@ class MarketDataService:
             
             # NO FALLBACKS - assume calculate_multi_timeframe_levels exists
             # Strategy-independent: returns ALL significant levels
+            # Pass self (market_data_service) for dependency injection (replaces global singleton)
             # calculate_multi_timeframe_levels() guarantees valid dict or raises (NO FALLBACKS)
-            result = sr_calculator.calculate_multi_timeframe_levels(current_price)
+            result = sr_calculator.calculate_multi_timeframe_levels(current_price, market_data_service=self)
             
             # Cache with strategy-independent key
             self._cache.set(cache_key, result, ttl=300)

@@ -331,12 +331,14 @@ class TradingConfig:
         "stop_loss": 0.010,  # Not used (analysis only)
         "position_size": 0.0,  # Not used (analysis only)
         "direction_weights": {
-            "trend": 0.24,
-            "rsi": 0.22,
-            "pressure": 0.20,
-            "sr_proximity": 0.16,
-            "patterns": 0.12,
-            "volume": 0.06
+            "trend": 0.20,
+            "rsi": 0.19,
+            "pressure": 0.17,
+            "sr_proximity": 0.14,
+            "patterns": 0.10,
+            "volume": 0.05,
+            "market_conditions": 0.08,
+            "cross_asset": 0.07
         },
         "min_score_diff": 0.0,  # No filtering during analysis
         # Comprehensive proximity/recency - accept all levels
@@ -373,12 +375,14 @@ class TradingConfig:
         "stop_loss": 0.008,  # 0.8% stop loss (adjusted for 40x leverage - too tight stops get hit by normal volatility)
         "position_size": 0.1,  # 10% of balance
         "direction_weights": {
-            "trend": 0.28,
-            "rsi": 0.24,
-            "pressure": 0.20,
-            "sr_proximity": 0.15,
-            "patterns": 0.08,
-            "volume": 0.05
+            "trend": 0.24,
+            "rsi": 0.20,
+            "pressure": 0.17,
+            "sr_proximity": 0.13,
+            "patterns": 0.07,
+            "volume": 0.04,
+            "market_conditions": 0.08,
+            "cross_asset": 0.07
         },
         "min_score_diff": 10.0,  # Minimum score difference to make direction decision
         # Proximity/Recency configuration for contextual factors
@@ -421,12 +425,14 @@ class TradingConfig:
         "support_resistance_required": True,
         "description": "General range trading strategy for sideways markets",
         "direction_weights": {
-            "rsi": 0.38,
-            "pressure": 0.25,
-            "sr_proximity": 0.20,
-            "trend": 0.10,
-            "patterns": 0.05,
-            "volume": 0.02
+            "rsi": 0.32,
+            "pressure": 0.21,
+            "sr_proximity": 0.17,
+            "trend": 0.09,
+            "patterns": 0.04,
+            "volume": 0.02,
+            "market_conditions": 0.08,
+            "cross_asset": 0.07
         },
         "min_score_diff": 15.0,  # Raised from 12.0 - need clear directional edge for lower R:R (1.2)
         "proximity_config": {
@@ -464,12 +470,14 @@ class TradingConfig:
         "breakout_threshold": 0.003,  # 0.3% minimum breakout from S/R levels
         "description": "Breakout strategy for extreme volatility markets",
         "direction_weights": {
-            "volume": 0.32,
-            "patterns": 0.28,
-            "trend": 0.18,
-            "sr_proximity": 0.12,
-            "pressure": 0.08,
-            "rsi": 0.02
+            "volume": 0.27,
+            "patterns": 0.24,
+            "trend": 0.15,
+            "sr_proximity": 0.10,
+            "pressure": 0.07,
+            "rsi": 0.02,
+            "market_conditions": 0.08,
+            "cross_asset": 0.07
         },
         "min_score_diff": 10.0,
         "proximity_config": {
@@ -511,12 +519,14 @@ class TradingConfig:
         "support_resistance_required": True,
         "description": "Optimized for LOW and VERY_LOW volatility conditions with range detection",
         "direction_weights": {
-            "rsi": 0.40,
-            "pressure": 0.28,
-            "sr_proximity": 0.22,
-            "trend": 0.06,
+            "rsi": 0.34,
+            "pressure": 0.24,
+            "sr_proximity": 0.19,
+            "trend": 0.05,
             "patterns": 0.03,
-            "volume": 0.01
+            "volume": 0.01,
+            "market_conditions": 0.08,
+            "cross_asset": 0.06
         },
         "min_score_diff": 15.0,  # Raised from 10.0 - need clearer directional edge for lower R:R (1.2)
         "proximity_config": {
@@ -551,12 +561,14 @@ class TradingConfig:
         "stop_loss": 0.013,  # 1.3% stop loss (adjusted for 40x leverage and high volatility)
         "position_size": 0.10,  # 10% of balance (adjusted for 40x)
         "direction_weights": {
-            "trend": 0.32,
-            "pressure": 0.28,
-            "volume": 0.20,
-            "sr_proximity": 0.10,
-            "rsi": 0.08,
-            "patterns": 0.02
+            "trend": 0.27,
+            "pressure": 0.24,
+            "volume": 0.17,
+            "sr_proximity": 0.09,
+            "rsi": 0.07,
+            "patterns": 0.02,
+            "market_conditions": 0.08,
+            "cross_asset": 0.06
         },
         "min_score_diff": 12.0,
         "proximity_config": {
@@ -594,12 +606,14 @@ class TradingConfig:
         "min_spike_severity": "HIGH",
         "require_momentum_alignment": True,
         "direction_weights": {
-            "volume": 0.42,
-            "pressure": 0.35,
-            "sr_proximity": 0.12,
-            "trend": 0.06,
+            "volume": 0.36,
+            "pressure": 0.30,
+            "sr_proximity": 0.10,
+            "trend": 0.05,
             "rsi": 0.03,
-            "patterns": 0.02
+            "patterns": 0.02,
+            "market_conditions": 0.08,
+            "cross_asset": 0.06
         },
         "min_score_diff": 20.0,  # Very high threshold - need extreme signals
         "proximity_config": {
@@ -638,12 +652,14 @@ class TradingConfig:
         "momentum_alignment_required": True,
         "description": "Optimized for strong trending markets with momentum confirmation",
         "direction_weights": {
-            "trend": 0.50,
-            "rsi": 0.18,
-            "pressure": 0.14,
-            "sr_proximity": 0.10,
-            "volume": 0.05,
-            "patterns": 0.03
+            "trend": 0.43,
+            "rsi": 0.15,
+            "pressure": 0.12,
+            "sr_proximity": 0.09,
+            "volume": 0.04,
+            "patterns": 0.03,
+            "market_conditions": 0.08,
+            "cross_asset": 0.06
         },
         "min_score_diff": 15.0,  # Higher threshold - need strong trend confirmation
         "proximity_config": {
@@ -685,12 +701,14 @@ class TradingConfig:
         "spread_threshold": 0.0001,  # Max spread of 0.01%
         "description": "High-frequency scalping for small, quick profits with tight risk management",
         "direction_weights": {
-            "rsi": 0.36,
-            "pressure": 0.36,
-            "sr_proximity": 0.16,
-            "trend": 0.08,
+            "rsi": 0.31,
+            "pressure": 0.31,
+            "sr_proximity": 0.14,
+            "trend": 0.07,
             "patterns": 0.03,
-            "volume": 0.01
+            "volume": 0.01,
+            "market_conditions": 0.08,
+            "cross_asset": 0.05
         },
         "min_score_diff": 8.0,  # Lower threshold for faster decisions
         "proximity_config": {

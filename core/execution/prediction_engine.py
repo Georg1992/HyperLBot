@@ -893,11 +893,303 @@ class PredictionEngine:
     
     # REMOVED: _score_funding_factor() - Funding no longer used for direction scoring
     # Funding rate often unavailable and has minimal impact on short-term direction
+    
+    def _score_market_conditions_factor(self, market_conditions_data: Dict[str, Any]) -> tuple[float, float, list]:
+        """
+        Score market conditions factor (Fear & Greed Index) for direction determination
+        
+        Contrarian signals at extremes:
+        - Extreme fear (0-20) → bullish reversal signal
+        - Extreme greed (80-100) → bearish reversal signal
+        - Balanced sentiment (30-70) → neutral
+        
+        Returns:
+            (market_conditions_long_score, market_conditions_short_score, reasons)
+        """
+        try:
+            # Market conditions may not have sentiment_data if analysis failed
+            if "sentiment_data" not in market_conditions_data:
+                return 0.0, 0.0, []
+            
+            sentiment_data = market_conditions_data["sentiment_data"]
+            if not sentiment_data:
+                return 0.0, 0.0, []
+            
+            # Get fear/greed value (handles both index_value and value keys)
+            if "index_value" in sentiment_data:
+                fear_greed_value = sentiment_data["index_value"]
+            elif "value" in sentiment_data:
+                fear_greed_value = sentiment_data["value"]
+            else:
+                return 0.0, 0.0, []
+            
+            market_conditions_long = 0.0
+            market_conditions_short = 0.0
+            reasons = []
+            
+            # Contrarian scoring at extremes
+            if fear_greed_value <= 20:  # Extreme fear - bullish reversal
+                market_conditions_long = 80.0
+                reasons.append(f"Extreme fear ({fear_greed_value}) - contrarian buy signal")
+            elif fear_greed_value <= 30:  # High fear - moderate bullish
+                market_conditions_long = 50.0
+                reasons.append(f"High fear ({fear_greed_value}) - moderate buy signal")
+            elif fear_greed_value >= 80:  # Extreme greed - bearish reversal
+                market_conditions_short = 80.0
+                reasons.append(f"Extreme greed ({fear_greed_value}) - contrarian sell signal")
+            elif fear_greed_value >= 70:  # High greed - moderate bearish
+                market_conditions_short = 50.0
+                reasons.append(f"High greed ({fear_greed_value}) - moderate sell signal")
+            # Balanced sentiment (30-70) = neutral (0.0, 0.0)
+            
+            return market_conditions_long, market_conditions_short, reasons
+            
+        except Exception as e:
+            logger.error(f"❌ Market conditions factor scoring failed: {e}")
+            return 0.0, 0.0, []  # Return neutral on error (market conditions is optional)
+    
+    def _score_cross_asset_factor(self, cross_asset_data: Dict[str, Any]) -> tuple[float, float, list]:
+        """
+        Score cross-asset correlation factor for direction determination
+        
+        Only uses correlations when they are strong (>0.5):
+        - DXY rising (dollar strength) → bearish for BTC (negative correlation)
+        - DXY falling (dollar weakness) → bullish for BTC
+        - Stocks rising → bullish for BTC (if positive correlation)
+        - Stocks falling → bearish for BTC (if positive correlation)
+        
+        Returns:
+            (cross_asset_long_score, cross_asset_short_score, reasons)
+        """
+        try:
+            cross_asset_long = 0.0
+            cross_asset_short = 0.0
+            reasons = []
+            
+            # DXY correlation (typically negative - dollar strength = BTC weakness)
+            if "dxy_correlation" in cross_asset_data:
+                dxy_corr = cross_asset_data["dxy_correlation"]
+                dxy_correlation_value = dxy_corr.get("correlation", 0.0)
+                dxy_change = dxy_corr.get("dxy_change_pct", 0.0)
+                
+                # Only use if correlation is strong (>0.5 absolute)
+                if abs(dxy_correlation_value) > 0.5:
+                    if dxy_correlation_value < 0:  # Negative correlation (typical)
+                        # DXY rising (dollar strength) → bearish for BTC
+                        if dxy_change > 0.3:  # Significant DXY rise
+                            cross_asset_short += 60.0
+                            reasons.append(f"DXY strength ({dxy_change:.2f}%) - bearish for BTC (corr: {dxy_correlation_value:.2f})")
+                        elif dxy_change < -0.3:  # Significant DXY fall
+                            cross_asset_long += 60.0
+                            reasons.append(f"DXY weakness ({dxy_change:.2f}%) - bullish for BTC (corr: {dxy_correlation_value:.2f})")
+                    else:  # Positive correlation (rare)
+                        # DXY rising → bullish for BTC
+                        if dxy_change > 0.3:
+                            cross_asset_long += 60.0
+                            reasons.append(f"DXY strength ({dxy_change:.2f}%) - bullish for BTC (corr: {dxy_correlation_value:.2f})")
+                        elif dxy_change < -0.3:
+                            cross_asset_short += 60.0
+                            reasons.append(f"DXY weakness ({dxy_change:.2f}%) - bearish for BTC (corr: {dxy_correlation_value:.2f})")
+            
+            # Stock correlation (typically positive - stocks up = BTC up)
+            if "stock_correlation" in cross_asset_data:
+                stock_corr = cross_asset_data["stock_correlation"]
+                stock_correlation_value = stock_corr.get("correlation", 0.0)
+                
+                # Get stock change from composite_change or change_percent
+                stock_change = 0.0
+                if "composite_change" in stock_corr:
+                    stock_change = stock_corr["composite_change"]
+                elif "change_percent" in stock_corr:
+                    stock_change = stock_corr["change_percent"]
+                
+                # Only use if correlation is strong (>0.5 absolute)
+                if abs(stock_correlation_value) > 0.5:
+                    if stock_correlation_value > 0:  # Positive correlation (typical)
+                        # Stocks rising → bullish for BTC
+                        if stock_change > 1.0:  # Significant stock rally
+                            cross_asset_long += 50.0
+                            reasons.append(f"Stock rally ({stock_change:.2f}%) - bullish for BTC (corr: {stock_correlation_value:.2f})")
+                        elif stock_change < -1.0:  # Significant stock selloff
+                            cross_asset_short += 50.0
+                            reasons.append(f"Stock selloff ({stock_change:.2f}%) - bearish for BTC (corr: {stock_correlation_value:.2f})")
+                    else:  # Negative correlation (rare)
+                        # Stocks rising → bearish for BTC
+                        if stock_change > 1.0:
+                            cross_asset_short += 50.0
+                            reasons.append(f"Stock rally ({stock_change:.2f}%) - bearish for BTC (corr: {stock_correlation_value:.2f})")
+                        elif stock_change < -1.0:
+                            cross_asset_long += 50.0
+                            reasons.append(f"Stock selloff ({stock_change:.2f}%) - bullish for BTC (corr: {stock_correlation_value:.2f})")
+            
+            return cross_asset_long, cross_asset_short, reasons
+            
+        except Exception as e:
+            logger.error(f"❌ Cross-asset factor scoring failed: {e}")
+            return 0.0, 0.0, []  # Return neutral on error (cross-asset is optional)
     # Can be added back if needed for long-term position bias
     
     # ==================================================================================
     # UNIFIED SCORING FRAMEWORK - Entry Factor Scorers (Reusable)
     # ==================================================================================
+    
+    def _score_entry_orderbook_factor(
+        self,
+        direction: str,
+        setup_type: str,
+        orderbook_data: Dict[str, Any],
+        entry_price: float,
+        current_price: float
+    ) -> tuple[float, list]:
+        """
+        Score orderbook imbalance factor for entry setup
+        
+        Real-time orderbook shows actual liquidity/pressure at price levels:
+        - LONG at support: Prefer entries when orderbook shows buying pressure (bids > asks)
+        - SHORT at resistance: Prefer entries when orderbook shows selling pressure (asks > bids)
+        
+        Returns:
+            (orderbook_score, reasons)
+        """
+        try:
+            score = 0.0
+            reasons = []
+            
+            # Get orderbook imbalance data
+            order_imbalance = orderbook_data.get("order_imbalance", {})
+            market_pressure = orderbook_data.get("market_pressure", {})
+            
+            if not order_imbalance or not market_pressure:
+                return 50.0, []  # Neutral if data unavailable
+            
+            imbalance_category = order_imbalance.get("category", "BALANCED")
+            imbalance_bias = order_imbalance.get("bias", 0.0)  # -1 (selling) to +1 (buying)
+            pressure_direction = market_pressure.get("direction", "NEUTRAL")
+            pressure_strength = market_pressure.get("strength", "WEAK")
+            
+            # Score based on direction and setup type alignment
+            if direction == "LONG" and setup_type == "support_level":
+                # LONG at support: Prefer when orderbook shows buying pressure
+                if imbalance_category in ["HEAVY_BUYING", "BUYING_BIAS"]:
+                    if pressure_strength == "STRONG":
+                        score = 100.0
+                        reasons.append(f"Strong buying pressure at support (imbalance: {imbalance_category}, bias: {imbalance_bias:.2f})")
+                    elif pressure_strength == "MODERATE":
+                        score = 80.0
+                        reasons.append(f"Moderate buying pressure at support (imbalance: {imbalance_category})")
+                    else:
+                        score = 60.0
+                        reasons.append(f"Buying bias at support (imbalance: {imbalance_category})")
+                elif imbalance_category == "BALANCED":
+                    score = 50.0  # Neutral
+                    reasons.append("Balanced orderbook at support")
+                else:  # SELLING_BIAS or HEAVY_SELLING
+                    score = 30.0  # Penalty - selling pressure at support is concerning
+                    reasons.append(f"Selling pressure at support (imbalance: {imbalance_category}) - caution")
+            
+            elif direction == "SHORT" and setup_type == "resistance_level":
+                # SHORT at resistance: Prefer when orderbook shows selling pressure
+                if imbalance_category in ["HEAVY_SELLING", "SELLING_BIAS"]:
+                    if pressure_strength == "STRONG":
+                        score = 100.0
+                        reasons.append(f"Strong selling pressure at resistance (imbalance: {imbalance_category}, bias: {imbalance_bias:.2f})")
+                    elif pressure_strength == "MODERATE":
+                        score = 80.0
+                        reasons.append(f"Moderate selling pressure at resistance (imbalance: {imbalance_category})")
+                    else:
+                        score = 60.0
+                        reasons.append(f"Selling bias at resistance (imbalance: {imbalance_category})")
+                elif imbalance_category == "BALANCED":
+                    score = 50.0  # Neutral
+                    reasons.append("Balanced orderbook at resistance")
+                else:  # BUYING_BIAS or HEAVY_BUYING
+                    score = 30.0  # Penalty - buying pressure at resistance is concerning
+                    reasons.append(f"Buying pressure at resistance (imbalance: {imbalance_category}) - caution")
+            
+            else:
+                # Unknown setup type - use neutral score
+                score = 50.0
+                reasons.append("Orderbook alignment (neutral)")
+            
+            return score, reasons
+            
+        except Exception as e:
+            logger.error(f"❌ Orderbook factor scoring failed: {e}")
+            return 50.0, []  # Return neutral on error (orderbook is optional)
+    
+    def _score_entry_market_conditions_factor(
+        self,
+        direction: str,
+        setup_type: str,
+        market_conditions_data: Dict[str, Any],
+        level_data: Dict[str, Any]
+    ) -> tuple[float, list]:
+        """
+        Score market conditions factor for entry setup
+        
+        In extreme sentiment, prefer entries at stronger levels:
+        - Extreme fear/greed → prefer higher power levels (more conservative)
+        - Balanced sentiment → standard scoring
+        
+        Returns:
+            (market_conditions_score, reasons)
+        """
+        try:
+            score = 0.0
+            reasons = []
+            
+            # Market conditions may not have sentiment_data if analysis failed
+            if "sentiment_data" not in market_conditions_data:
+                return 50.0, []  # Neutral if data unavailable
+            
+            sentiment_data = market_conditions_data["sentiment_data"]
+            if not sentiment_data:
+                return 50.0, []
+            
+            # Get fear/greed value
+            if "index_value" in sentiment_data:
+                fear_greed_value = sentiment_data["index_value"]
+            elif "value" in sentiment_data:
+                fear_greed_value = sentiment_data["value"]
+            else:
+                return 50.0, []
+            
+            # Get level power for comparison
+            level_power = level_data.get("power", 50.0)
+            
+            # In extreme sentiment, prefer stronger levels
+            if fear_greed_value <= 20 or fear_greed_value >= 80:  # Extreme fear or greed
+                if level_power >= 70:  # Strong level
+                    score = 100.0
+                    reasons.append(f"Strong level ({level_power:.1f}) in extreme sentiment ({fear_greed_value}) - conservative entry")
+                elif level_power >= 50:  # Moderate level
+                    score = 70.0
+                    reasons.append(f"Moderate level ({level_power:.1f}) in extreme sentiment ({fear_greed_value})")
+                else:  # Weak level
+                    score = 40.0  # Penalty - weak levels risky in extreme sentiment
+                    reasons.append(f"Weak level ({level_power:.1f}) in extreme sentiment ({fear_greed_value}) - higher risk")
+            
+            elif fear_greed_value <= 30 or fear_greed_value >= 70:  # High fear or greed
+                if level_power >= 60:  # Strong level
+                    score = 85.0
+                    reasons.append(f"Strong level ({level_power:.1f}) in high sentiment ({fear_greed_value})")
+                elif level_power >= 40:  # Moderate level
+                    score = 60.0
+                    reasons.append(f"Moderate level ({level_power:.1f}) in high sentiment ({fear_greed_value})")
+                else:  # Weak level
+                    score = 45.0  # Small penalty
+                    reasons.append(f"Weak level ({level_power:.1f}) in high sentiment ({fear_greed_value})")
+            
+            else:  # Balanced sentiment (30-70)
+                # Standard scoring - no bonus/penalty
+                score = 50.0
+                reasons.append(f"Balanced sentiment ({fear_greed_value}) - standard entry")
+            
+            return score, reasons
+            
+        except Exception as e:
+            logger.error(f"❌ Market conditions entry factor scoring failed: {e}")
+            return 50.0, []  # Return neutral on error (market conditions is optional)
     
     def _score_entry_sr_factor(
         self,
@@ -1427,7 +1719,9 @@ class PredictionEngine:
                 "rsi": {"long": 0.0, "short": 0.0},
                 "trend": {"long": 0.0, "short": 0.0},
                 "pressure": {"long": 0.0, "short": 0.0},
-                "patterns": {"long": 0.0, "short": 0.0}
+                "patterns": {"long": 0.0, "short": 0.0},
+                "market_conditions": {"long": 0.0, "short": 0.0},
+                "cross_asset": {"long": 0.0, "short": 0.0}
             }
             
             # Score each factor using unified framework (all weights required - NO FALLBACKS)
@@ -1525,6 +1819,36 @@ class PredictionEngine:
             # FUNDING REMOVED FROM DIRECTION SCORING
             # Funding is often not available and doesn't significantly impact short-term direction
             # If needed in the future, make it optional and handle missing data gracefully
+            
+            # Market Conditions (Fear & Greed Index) - Contrarian signals at extremes
+            market_conditions_weight = direction_weights.get("market_conditions", 0.0)
+            if market_conditions_weight > 0:
+                market_conditions_data = unified_data.get("market_conditions")
+                if market_conditions_data:
+                    market_conditions_long, market_conditions_short, reasons = self._score_market_conditions_factor(market_conditions_data)
+                    factor_scores["market_conditions"] = {"long": market_conditions_long, "short": market_conditions_short}
+                    long_score += market_conditions_long * market_conditions_weight
+                    short_score += market_conditions_short * market_conditions_weight
+                    # Add reasons to the direction they support
+                    if market_conditions_long > market_conditions_short:
+                        long_reasons.extend(reasons)
+                    elif market_conditions_short > market_conditions_long:
+                        short_reasons.extend(reasons)
+            
+            # Cross-Asset Correlation (DXY, Stocks) - Only when correlation is strong
+            cross_asset_weight = direction_weights.get("cross_asset", 0.0)
+            if cross_asset_weight > 0:
+                cross_asset_data = unified_data.get("cross_asset_analysis")
+                if cross_asset_data:
+                    cross_asset_long, cross_asset_short, reasons = self._score_cross_asset_factor(cross_asset_data)
+                    factor_scores["cross_asset"] = {"long": cross_asset_long, "short": cross_asset_short}
+                    long_score += cross_asset_long * cross_asset_weight
+                    short_score += cross_asset_short * cross_asset_weight
+                    # Add reasons to the direction they support
+                    if cross_asset_long > cross_asset_short:
+                        long_reasons.extend(reasons)
+                    elif cross_asset_short > cross_asset_long:
+                        short_reasons.extend(reasons)
             
             # Determine direction from scores with intelligent tie-breaking
             score_diff = abs(long_score - short_score)
@@ -1753,11 +2077,13 @@ class PredictionEngine:
             # Proximity and recency are handled separately in entry scoring (contextual factors)
             strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
             entry_weights = strategy_config["entry_weights"] if "entry_weights" in strategy_config else {  # Use default if not in strategy config
-                "support_resistance": 0.50,  # Primary factor - SR power (touch 60%, reversal_prob 30%, volume 10%)
-                "rsi": 0.20,  # Additional factor not in SR power
-                "trend": 0.15,  # Additional factor not in SR power
-                "pressure": 0.10,  # Additional factor not in SR power
-                "patterns": 0.05  # Additional factor not in SR power
+                "support_resistance": 0.45,  # Primary factor - SR power (touch 60%, reversal_prob 30%, volume 10%)
+                "rsi": 0.18,  # Additional factor not in SR power
+                "trend": 0.13,  # Additional factor not in SR power
+                "pressure": 0.09,  # Additional factor not in SR power
+                "patterns": 0.05,  # Additional factor not in SR power
+                "orderbook": 0.07,  # Real-time liquidity/pressure alignment
+                "market_conditions": 0.03  # Extreme sentiment → prefer stronger levels
                 # Note: Proximity (distance) is scored separately in _score_entry_sr_factor based on entry offset
                 # Note: Recency is handled in direction scoring, not entry scoring
             }
@@ -1825,6 +2151,28 @@ class PredictionEngine:
                 elif severity == "MODERATE":
                     total_score -= 7.0  # Small penalty for moderate anomalies
                     all_reasons.append(f"⚠️ MODERATE volume anomaly - caution")
+            
+            # Orderbook Imbalance - Real-time liquidity/pressure at entry level
+            orderbook_weight = entry_weights.get("orderbook", 0.0)
+            if orderbook_weight > 0:
+                orderbook_data = unified_data.get("orderbook_analysis")
+                if orderbook_data:
+                    orderbook_score, reasons = self._score_entry_orderbook_factor(
+                        direction, setup_type, orderbook_data, entry_price, current_price
+                    )
+                    total_score += orderbook_score * orderbook_weight
+                    all_reasons.extend(reasons)
+            
+            # Market Conditions - Prefer stronger entries in extreme sentiment
+            market_conditions_weight = entry_weights.get("market_conditions", 0.0)
+            if market_conditions_weight > 0:
+                market_conditions_data = unified_data.get("market_conditions")
+                if market_conditions_data:
+                    market_conditions_score, reasons = self._score_entry_market_conditions_factor(
+                        direction, setup_type, market_conditions_data, level_data
+                    )
+                    total_score += market_conditions_score * market_conditions_weight
+                    all_reasons.extend(reasons)
             
             # NOTE: 
             # - Volume: included in SR power (10% weight)

@@ -693,13 +693,10 @@ class SessionOrchestrator:
             
             # Trigger analysis modules to calculate and send data to MarketDataService
             # Pass raw_data so modules don't fetch again
+            # All analysis module getters are synchronous - no delay needed
             self._trigger_analysis_modules(
                 market_data_service, current_price, orderbook_data, raw_data=raw_data
             )
-
-            # Small delay to ensure all analysis modules complete their calculations
-            # This prevents strategy selection from using stale data
-            time.sleep(TradingConstants.ANALYSIS_COMPLETION_DELAY)
 
             # Get comprehensive analysis data from MarketDataService
             # CRITICAL: Use "standard" strategy for analysis to avoid circular dependency

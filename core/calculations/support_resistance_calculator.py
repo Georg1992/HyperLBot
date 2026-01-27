@@ -359,7 +359,7 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Failed to get latest S/R analysis: {e}")
             raise
     
-    def calculate_multi_timeframe_levels(self, current_price: float) -> Dict[str, Any]:
+    def calculate_multi_timeframe_levels(self, current_price: float, market_data_service=None) -> Dict[str, Any]:
         """
         Clean S/R Algorithm: Find best support/resistance levels for trading
         
@@ -481,7 +481,8 @@ class SupportResistanceCalculator(BaseCalculator):
                 # Process candles → levels (single unified pipeline)
                 processed_levels = self._process_candles_to_levels(
                     candles_data, current_price, current_time,
-                    long_liquidation, short_liquidation
+                    long_liquidation, short_liquidation,
+                    market_data_service=market_data_service
                 )
                 
                 # Merge with existing levels (avoid duplicates by price)
@@ -526,7 +527,8 @@ class SupportResistanceCalculator(BaseCalculator):
             raise  # NO FALLBACKS - calculation failure should raise, not return error dict
     
     def _process_candles_to_levels(self, candles_data: Dict[str, List[Dict]], current_price: float,
-                                   current_time: float, long_liquidation: float, short_liquidation: float) -> List:
+                                   current_time: float, long_liquidation: float, short_liquidation: float,
+                                   market_data_service=None) -> List:
         """
         Unified processing pipeline: candles → scored levels
         
@@ -601,7 +603,7 @@ class SupportResistanceCalculator(BaseCalculator):
             scorable_levels = aligned_levels  # All levels go to scoring
             
             # 6. Calculate power (pure strength: touch, volume, reversal_probability)
-            trend_data = self._get_trend_data()
+            trend_data = self._get_trend_data(market_data_service=market_data_service)
             scored_levels = self._scorer.calculate_power(
                 scorable_levels, current_price, atr_14, atr_per_tf,
                 candles_data=candles_data, trend_data=trend_data
@@ -636,16 +638,27 @@ class SupportResistanceCalculator(BaseCalculator):
             logger.error(f"❌ Processing pipeline failed: {e}")
             return []
     
-    def _get_trend_data(self) -> Dict[str, Any]:
-        """Get trend data for probability adjustment - NO FALLBACKS"""
+    def _get_trend_data(self, market_data_service=None) -> Dict[str, Any]:
+        """
+        Get trend data for probability adjustment - NO FALLBACKS
+        
+        Args:
+            market_data_service: MarketDataService instance (dependency injection)
+                If None, falls back to global singleton (for backward compatibility)
+        
+        Returns:
+            Dict with 'direction' and 'strength' keys
+        """
         try:
-            from core.services.market_data_service import get_global_market_data_service
-            market_service = get_global_market_data_service()
-            if not market_service:
-                raise ValueError("MarketDataService not available - NO FALLBACKS")
+            # Prefer dependency injection over global singleton
+            if market_data_service is None:
+                from core.services.market_data_service import get_global_market_data_service
+                market_data_service = get_global_market_data_service()
+                if not market_data_service:
+                    raise ValueError("MarketDataService not available - NO FALLBACKS")
             
             # get_trend_analysis() guarantees valid dict with required keys (NO FALLBACKS)
-            trend_analysis = market_service.get_trend_analysis()
+            trend_analysis = market_data_service.get_trend_analysis()
             
             return {
                 'direction': trend_analysis['direction'],  # Required (NO FALLBACKS)
