@@ -28,6 +28,7 @@ class SessionOrchestrator:
         self._last_price = None
         self._last_5m_boundary = None
         self._last_orderbook = {'levels': [[], []]}  # Initialize with Hyperliquid format: [bids, asks] (NO FALLBACKS)
+        self._raw_data_fetcher = None  # Will be initialized when market_data_service is available
         # Initialize all module update times (NO FALLBACKS)
         self._last_update_times = {
             'support_resistance': 0,
@@ -235,30 +236,84 @@ class SessionOrchestrator:
     
     def _prepare_market_data_iteration(self, market_data_service) -> Tuple[float, Dict[str, Any], Dict[str, Any]]:
         """
-        Prepare market data for iteration: get price, orderbook, and unified data
+        Prepare market data for iteration: fetch all raw API data, then prepare unified data
+        
+        NEW ARCHITECTURE: All raw API data is fetched upfront in parallel before analysis begins.
+        This ensures consistent dataflow and better performance.
         
         Returns:
             Tuple of (current_price, orderbook_data, unified_data)
             
         Raises:
-            ValueError: If current price is invalid
+            ValueError: If any raw data fetch fails (NO FALLBACKS)
         """
-        # Get current market data from MarketDataService
-        current_price = market_data_service.get_current_price()
+        # Initialize RawDataFetcher if not already initialized
+        if self._raw_data_fetcher is None:
+            self._raw_data_fetcher = self._initialize_raw_data_fetcher(market_data_service)
+        
+        # Fetch ALL raw API data upfront in parallel (NO FALLBACKS - all data is mandatory)
+        raw_data = self._raw_data_fetcher.fetch_all_raw_data()
+        
+        # Extract price and orderbook from raw data
+        current_price = raw_data["price"]
         if not current_price or current_price <= 0:
-            raise ValueError("Invalid current price - cannot proceed")
+            raise ValueError("Invalid current price from raw data fetch (NO FALLBACKS)")
         
-        # Get orderbook data
-        orderbook_data = market_data_service.get_market_data()
+        orderbook_data = raw_data["orderbook"]
+        if not orderbook_data:
+            raise ValueError("Invalid orderbook data from raw data fetch (NO FALLBACKS)")
         
-        # Prepare unified market data (triggers all analysis modules)
+        # Prepare unified market data (pass raw_data so analysis modules don't fetch again)
         # CRITICAL: Analysis is strategy-independent to avoid circular dependency
-        # We pass None for strategy to force strategy-agnostic analysis
         unified_data = self._prepare_unified_market_data(
-            orderbook_data, current_price, market_data_service, strategy_for_analysis=None
+            orderbook_data, current_price, market_data_service, 
+            strategy_for_analysis=None, raw_data=raw_data
         )
         
         return current_price, orderbook_data, unified_data
+    
+    def _initialize_raw_data_fetcher(self, market_data_service) -> Any:
+        """
+        Initialize RawDataFetcher with all required API instances
+        
+        Returns:
+            RawDataFetcher instance
+        """
+        try:
+            from core.services.raw_data_fetcher import create_raw_data_fetcher
+            from core.services.system_initializer import get_system_initializer
+            
+            system_initializer = get_system_initializer()
+            api_manager = system_initializer.get_singleton_system("api_manager")
+            
+            if not api_manager:
+                raise ValueError("API Manager not available - cannot initialize RawDataFetcher (NO FALLBACKS)")
+            
+            # Get all required API instances
+            hyperliquid_api = api_manager.get_api("hyperliquid_api")
+            hyperliquid_websocket = api_manager.get_websocket("hyperliquid_websocket")
+            binance_api = api_manager.get_api("binance_api")
+            binance_websocket = api_manager.get_websocket("binance_websocket")
+            fear_greed_api = api_manager.get_api("fear_greed_api")
+            whale_analytics_api = api_manager.get_api("whale_analytics_api")
+            rss_news_api = api_manager.get_api("rss_news_api")
+            
+            raw_data_fetcher = create_raw_data_fetcher(
+                hyperliquid_api=hyperliquid_api,
+                hyperliquid_websocket=hyperliquid_websocket,
+                binance_api=binance_api,
+                binance_websocket=binance_websocket,
+                fear_greed_api=fear_greed_api,
+                whale_analytics_api=whale_analytics_api,
+                rss_news_api=rss_news_api
+            )
+            
+            logger.info("📡 Raw Data Fetcher initialized")
+            return raw_data_fetcher
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize RawDataFetcher: {e}")
+            raise ValueError(f"RawDataFetcher initialization failed: {e} (NO FALLBACKS)")
     
     def _filter_sr_levels_for_dashboard(self, unified_data: Dict[str, Any], 
                                         current_price: float, current_strategy: str) -> None:
@@ -613,6 +668,7 @@ class SessionOrchestrator:
         current_price: float,
         market_data_service,
         strategy_for_analysis: str = None,
+        raw_data: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """
         Prepare unified market data for analysis
@@ -620,16 +676,25 @@ class SessionOrchestrator:
         CRITICAL: Analysis is strategy-independent to avoid circular dependency.
         Strategy is determined AFTER analysis is complete, then used for prediction.
         
+        NEW: raw_data parameter contains all pre-fetched raw API data.
+        Analysis modules should consume this data instead of fetching themselves.
+        
         Args:
-            orderbook_data: Orderbook data
-            current_price: Current market price
+            orderbook_data: Orderbook data (from raw_data)
+            current_price: Current market price (from raw_data)
             market_data_service: Market data service instance
             strategy_for_analysis: DEPRECATED - kept for backward compatibility, always uses "standard"
+            raw_data: Pre-fetched raw API data (all data is mandatory - NO FALLBACKS)
         """
         try:
+            # Validate raw_data is provided (NO FALLBACKS)
+            if raw_data is None:
+                raise ValueError("raw_data is required - all data must be fetched upfront (NO FALLBACKS)")
+            
             # Trigger analysis modules to calculate and send data to MarketDataService
+            # Pass raw_data so modules don't fetch again
             self._trigger_analysis_modules(
-                market_data_service, current_price, orderbook_data
+                market_data_service, current_price, orderbook_data, raw_data=raw_data
             )
 
             # Small delay to ensure all analysis modules complete their calculations
@@ -689,15 +754,32 @@ class SessionOrchestrator:
             raise
 
     def _trigger_analysis_modules(
-        self, market_data_service, current_price: float, orderbook_data: Dict[str, Any]
+        self, market_data_service, current_price: float, orderbook_data: Dict[str, Any], raw_data: Dict[str, Any] = None
     ) -> None:
         """
         Trigger analysis modules via MarketDataService - SRP compliant
         
         MarketDataService is the single coordinator for all analysis modules.
         This method only determines which modules need updates and delegates to MarketDataService.
+        
+        NEW: raw_data parameter contains pre-fetched raw API data.
+        Analysis modules should consume this data instead of fetching themselves.
+        
+        Args:
+            market_data_service: MarketDataService instance
+            current_price: Current market price
+            orderbook_data: Orderbook data
+            raw_data: Pre-fetched raw API data (all data is mandatory - NO FALLBACKS)
         """
         try:
+            # Validate raw_data is provided (NO FALLBACKS)
+            if raw_data is None:
+                raise ValueError("raw_data is required - all data must be fetched upfront (NO FALLBACKS)")
+            
+            # Store raw_data in MarketDataService so methods can access it later
+            # This allows get_unified_analysis_data() to call get_funding_analysis() etc. without passing raw_data
+            market_data_service.set_raw_data(raw_data)
+            
             # Get analysis modules from MarketDataService to determine what needs updating
             analysis_modules = getattr(market_data_service, "_analysis_modules", {})
 
@@ -711,6 +793,7 @@ class SessionOrchestrator:
 
             # Map module names to MarketDataService get methods (all strategy-independent)
             # All modules are required - NO FALLBACKS
+            # Pass raw_data to methods that need it
             module_to_getter = {
                 "rsi_calculator": lambda: market_data_service.get_rsi_analysis(),
                 "volatility": lambda: market_data_service.get_volatility_analysis(),
@@ -719,8 +802,9 @@ class SessionOrchestrator:
                 "volume": lambda: market_data_service.get_volume_analysis(),
                 "pressure": lambda: market_data_service.get_pressure_analysis(),
                 "pattern_recognition": lambda: market_data_service.get_pattern_analysis(),
-                "market_conditions": lambda: market_data_service.get_market_conditions_analysis(),
-                "cross_asset_correlation_analyzer": lambda: market_data_service.get_cross_asset_analysis(),
+                "market_conditions": lambda: market_data_service.get_market_conditions_analysis(raw_data=raw_data),
+                "cross_asset_correlation_analyzer": lambda: market_data_service.get_cross_asset_analysis(raw_data=raw_data),
+                "funding_rate": lambda: market_data_service.get_funding_analysis(raw_data=raw_data),
             }
 
             # Update modules via MarketDataService (SRP: MarketDataService coordinates all module access)

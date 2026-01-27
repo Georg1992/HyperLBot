@@ -48,11 +48,63 @@ class HistoricalDataService:
         
         logger.info("📊 Historical Data Service initialized - Single source for all candle data")
     
+    def _validate_candle_structure(self, candles: List[Dict]) -> None:
+        """
+        Validate candle structure at boundary - NO FALLBACKS
+        
+        All candles must have required fields: timestamp, open, high, low, close, volume
+        All price values must be positive and valid (high >= low, high >= open/close, low <= open/close)
+        
+        Raises:
+            ValueError: If any candle is missing required fields or has invalid data
+        """
+        if not candles:
+            raise ValueError("Candle list is empty (NO FALLBACKS)")
+        
+        required_fields = ["timestamp", "open", "high", "low", "close", "volume"]
+        for i, candle in enumerate(candles):
+            if not isinstance(candle, dict):
+                raise ValueError(f"Candle at index {i} is not a dictionary (NO FALLBACKS)")
+            
+            # Check all required fields are present
+            for field in required_fields:
+                if field not in candle:
+                    raise ValueError(f"Candle at index {i} missing required field '{field}' (NO FALLBACKS)")
+            
+            # Validate price values
+            try:
+                timestamp = float(candle["timestamp"])
+                open_price = float(candle["open"])
+                high_price = float(candle["high"])
+                low_price = float(candle["low"])
+                close_price = float(candle["close"])
+                volume = float(candle["volume"])
+            except (ValueError, TypeError) as e:
+                raise ValueError(f"Candle at index {i} has invalid numeric values: {e} (NO FALLBACKS)")
+            
+            # Validate price relationships
+            if open_price <= 0 or high_price <= 0 or low_price <= 0 or close_price <= 0:
+                raise ValueError(f"Candle at index {i} has non-positive prices (O:{open_price}, H:{high_price}, L:{low_price}, C:{close_price}) (NO FALLBACKS)")
+            
+            if high_price < low_price:
+                raise ValueError(f"Candle at index {i} has high < low (H:{high_price}, L:{low_price}) (NO FALLBACKS)")
+            
+            if high_price < open_price or high_price < close_price:
+                raise ValueError(f"Candle at index {i} has high < open/close (H:{high_price}, O:{open_price}, C:{close_price}) (NO FALLBACKS)")
+            
+            if low_price > open_price or low_price > close_price:
+                raise ValueError(f"Candle at index {i} has low > open/close (L:{low_price}, O:{open_price}, C:{close_price}) (NO FALLBACKS)")
+            
+            if volume < 0:
+                raise ValueError(f"Candle at index {i} has negative volume: {volume} (NO FALLBACKS)")
+    
     def get_historical_candles(self, symbol: str, timeframe: str, count: int) -> List[Dict]:
         """
         Get historical candles - database is the ONLY source of truth
         For 5m: directly from database
         For other timeframes: aggregated from 5m candles in database
+        
+        All candles are validated at boundary - NO FALLBACKS
         
         Args:
             symbol: Trading symbol (e.g., "BTC")
@@ -60,17 +112,18 @@ class HistoricalDataService:
             count: Number of candles to fetch
             
         Returns:
-            List of historical candles
+            List of validated historical candles
             
         Raises:
-            ValueError: If database is not available or insufficient data
+            ValueError: If database is not available, insufficient data, or candle validation fails
         """
         try:
             # Check cache first using centralized system
             cache_key = f"historical_candles_{symbol}_{timeframe}_{count}"
             cached_data = self._cache.get(cache_key)
             if cached_data:
-                # Removed excessive debug logging for cache usage
+                # Validate cached candles (NO FALLBACKS - trust but verify)
+                self._validate_candle_structure(cached_data)
                 return cached_data
             
             # Database is the ONLY source - no API fallbacks
@@ -87,7 +140,9 @@ class HistoricalDataService:
                 if not candles or len(candles) < count:
                     raise ValueError(f"❌ Insufficient 5m candles in database: requested {count}, got {len(candles) if candles else 0}")
                 
-                # Removed excessive debug logging for database retrievals
+                # Validate candle structure at boundary (NO FALLBACKS)
+                self._validate_candle_structure(candles)
+                
                 # Cache the result
                 self._cache.set(cache_key, candles)
                 return candles
@@ -114,7 +169,8 @@ class HistoricalDataService:
                     raise ValueError(f"❌ Insufficient 5m candles in database for 1h aggregation: requested {candles_5m_count}, got {len(candles_5m) if candles_5m else 0}")
                 
                 candles_1h = self._aggregate_5m_to_1h(candles_5m, count)
-                # Removed excessive debug logging for aggregations
+                # Validate aggregated candles (NO FALLBACKS)
+                self._validate_candle_structure(candles_1h)
                 # Cache the result
                 self._cache.set(cache_key, candles_1h)
                 return candles_1h
@@ -127,7 +183,8 @@ class HistoricalDataService:
                     raise ValueError(f"❌ Insufficient 5m candles in database for 1d aggregation: requested {candles_5m_count}, got {len(candles_5m) if candles_5m else 0}")
                 
                 candles_1d = self._aggregate_5m_to_1d(candles_5m, count)
-                # Removed excessive debug logging for aggregations
+                # Validate aggregated candles (NO FALLBACKS)
+                self._validate_candle_structure(candles_1d)
                 # Cache the result
                 self._cache.set(cache_key, candles_1d)
                 return candles_1d
@@ -202,7 +259,10 @@ class HistoricalDataService:
                 raise ValueError("NO CANDLES AVAILABLE - NO FALLBACKS: Database must be populated with historical candles")
             
             # Get real-time volume from the last candle if available
-            real_time_volume = chart_candles_5m[-1]["volume"] if chart_candles_5m and "volume" in chart_candles_5m[-1] else 0.0
+            # Candles are validated at boundary - volume is guaranteed (NO FALLBACKS)
+            if not chart_candles_5m:
+                raise ValueError("Chart candles list is empty (NO FALLBACKS)")
+            real_time_volume = chart_candles_5m[-1]["volume"]
             
             # Determine which candles to display
             # We need exactly 19 completed candles + 1 ongoing = 20 total

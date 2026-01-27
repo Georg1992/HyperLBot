@@ -327,21 +327,21 @@ def run_paper_trading():
             print("\nConfiguration:")
             print(f"Balance: ${initial_balance:.2f} (simulated)")
             
-            # Initialize system and get services (using singletons)
+            # Initialize system and get services (using singletons) - Required (NO FALLBACKS)
             system_initializer = get_system_initializer()
-            init_result = system_initializer.initialize_system(initial_balance)
-            if not init_result.get("success"):
-                logger.error(f"Failed to initialize system: {init_result.get('error') or 'Unknown error'}")  # Error message - optional
-                return
+            try:
+                init_result = system_initializer.initialize_system(initial_balance)
+                # If we reach here, initialization succeeded
+                if not init_result.get("success"):
+                    raise ValueError("System initialization returned success=False (NO FALLBACKS)")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize system: {e}")
+                raise  # NO FALLBACKS - must raise to prevent silent failures
             
-            # Get services from system initializer (all singletons)
-            market_data_service = system_initializer.singleton_systems.get("market_data_service")
-            dashboard_service = system_initializer.singleton_systems.get("dashboard_service")
-            session_orchestrator = system_initializer.singleton_systems.get("session_orchestrator")
-            
-            if not all([market_data_service, dashboard_service, session_orchestrator]):
-                logger.error("Failed to get required services")
-                return
+            # Get services from system initializer (all singletons) - Required (NO FALLBACKS)
+            market_data_service = system_initializer.get_singleton_system("market_data_service")
+            dashboard_service = system_initializer.get_singleton_system("dashboard_service")
+            session_orchestrator = system_initializer.get_singleton_system("session_orchestrator")
             
             logger.info("Starting bot...")
             logger.info("Press Ctrl+C to stop")

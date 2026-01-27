@@ -29,6 +29,10 @@ class MarketDataService:
         # Analysis module references (will be set by SystemInitializer)
         self._analysis_modules = {}
         
+        # Store raw_data when available (set by _trigger_analysis_modules or set_raw_data)
+        # This allows methods like get_funding_analysis() to access pre-fetched data
+        self._current_raw_data = None
+        
         # Real-time price streaming (single source of truth)
         self._current_price = None
         self._price_timestamp = 0
@@ -43,6 +47,43 @@ class MarketDataService:
             self.hyperliquid_websocket.add_price_callback(self._on_websocket_price_update)
         
         logger.info("📊 Processed Data Coordinator initialized - New architecture")
+    
+    # ==================================================================================
+    # RAW DATA MANAGEMENT - Store and access pre-fetched raw API data
+    # ==================================================================================
+    
+    def set_raw_data(self, raw_data: Dict[str, Any]) -> None:
+        """
+        Store raw_data for use by analysis methods
+        
+        Called by _trigger_analysis_modules() to make raw_data available
+        to methods like get_funding_analysis() that are called later.
+        
+        Args:
+            raw_data: Pre-fetched raw API data (all data is mandatory - NO FALLBACKS)
+        """
+        if raw_data is None:
+            raise ValueError("raw_data cannot be None (NO FALLBACKS)")
+        self._current_raw_data = raw_data
+    
+    def _get_raw_data(self, raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Get raw_data from parameter or stored value
+        
+        Args:
+            raw_data: Optional raw_data parameter
+            
+        Returns:
+            raw_data from parameter if provided, otherwise from stored value
+            
+        Raises:
+            ValueError: If no raw_data is available (NO FALLBACKS)
+        """
+        if raw_data is not None:
+            return raw_data
+        if self._current_raw_data is not None:
+            return self._current_raw_data
+        raise ValueError("raw_data is required but not provided and not stored (NO FALLBACKS)")
     
     # ==================================================================================
     # ANALYSIS MODULE COORDINATION - Register and manage analysis modules
@@ -173,6 +214,10 @@ class MarketDataService:
             trend_1h_details = details["1h"]
             numeric_strength = trend_1h_details["strength"]
             
+            # Timestamp is required from trend calculator (NO FALLBACKS)
+            if "timestamp" not in raw_trend_data:
+                raise ValueError("Trend data missing 'timestamp' key (NO FALLBACKS)")
+            
             # Use 1h as primary for strategy decisions, but preserve all timeframes
             primary_trend = trend_1h
             mapped_direction = self._map_trend_to_direction(primary_trend)
@@ -194,7 +239,7 @@ class MarketDataService:
                     "trend_24h": trend_24h
                 },
                 "raw_data": raw_trend_data,  # Keep original data for detailed analysis
-                "timestamp": raw_trend_data["timestamp"] if "timestamp" in raw_trend_data else time.time(),  # Optional timestamp
+                "timestamp": raw_trend_data["timestamp"],  # Required (NO FALLBACKS)
                 "data_type": "trend"
             }
             
@@ -393,12 +438,18 @@ class MarketDataService:
             logger.error(f"❌ Failed to get volume analysis: {e}")
             raise  # NO FALLBACKS - must raise to prevent silent failures
     
-    def get_cross_asset_analysis(self) -> Dict[str, Any]:
+    def get_cross_asset_analysis(self, raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Get cross asset correlation analysis
         
         CRITICAL: This method MUST always return a valid dict or raise an exception.
         NO FALLBACKS - if calculation fails, we must know about it immediately.
+        
+        NEW: raw_data parameter contains pre-fetched cross-asset data from Yahoo Finance.
+        If provided, passes it to analyzer to avoid redundant API calls.
+        
+        Args:
+            raw_data: Pre-fetched raw API data (required - NO FALLBACKS)
         """
         try:
             # Check if we have valid processed data
@@ -424,8 +475,14 @@ class MarketDataService:
             if not current_price or current_price <= 0:
                 raise ValueError(f"No valid current price for cross asset analysis (got: {current_price})")
             
+            # Pass raw_data to analyzer so it can use pre-fetched Yahoo Finance data
+            # Get raw_data from parameter or stored value
+            raw_data = self._get_raw_data(raw_data)
             # analyze_cross_asset_correlations() guarantees valid dict or raises (NO FALLBACKS)
-            cross_asset_result = cross_asset_analyzer.analyze_cross_asset_correlations(current_price)
+            cross_asset_result = cross_asset_analyzer.analyze_cross_asset_correlations(
+                current_price,
+                raw_data=raw_data  # Pass pre-fetched data
+            )
             
             # Store result for future use
             self.update_analysis_data("cross_asset_correlation_analyzer", cross_asset_result)
@@ -714,12 +771,18 @@ class MarketDataService:
             logger.error(traceback.format_exc())
             raise  # NO FALLBACKS - must raise to prevent silent failures
     
-    def get_market_conditions_analysis(self) -> Dict[str, Any]:
+    def get_market_conditions_analysis(self, raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Get market conditions analysis data
         
         CRITICAL: This method MUST always return a valid dict or raise an exception.
         NO FALLBACKS - if calculation fails, we must know about it immediately.
+        
+        NEW: raw_data parameter contains pre-fetched external API data (fear_greed, whale, news).
+        If provided, passes it to analyzer to avoid redundant API calls.
+        
+        Args:
+            raw_data: Pre-fetched raw API data (required - NO FALLBACKS)
         """
         try:
             # Check cache first (consistent with other modules)
@@ -762,8 +825,15 @@ class MarketDataService:
             from config.config import TradingConfig
             candles_1d = historical_service.get_1d_candles(TradingConfig.SYMBOL, 30)  # Request 30 days to ensure we have at least 7
             
+            # Pass raw_data to analyzer so it can use pre-fetched external API data
+            # Get raw_data from parameter or stored value
+            raw_data = self._get_raw_data(raw_data)
             # analyze_trading_conditions() always returns dict (may be error dict on exception)
-            conditions_result = conditions_analyzer.analyze_trading_conditions(market_data, candles_1d=candles_1d)
+            conditions_result = conditions_analyzer.analyze_trading_conditions(
+                market_data, 
+                candles_1d=candles_1d,
+                raw_data=raw_data  # Pass pre-fetched data
+            )
             
             # Store result for future use
             self.update_analysis_data("market_conditions", conditions_result)
@@ -773,12 +843,18 @@ class MarketDataService:
             logger.error(f"❌ Failed to get market conditions analysis: {e}")
             raise  # NO FALLBACKS - must raise to prevent silent failures
     
-    def get_funding_analysis(self) -> Dict[str, Any]:
+    def get_funding_analysis(self, raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Get funding rate analysis data
         
         CRITICAL: This method MUST always return a valid dict or raise an exception.
         NO FALLBACKS - if calculation fails, we must know about it immediately.
+        
+        NEW: raw_data parameter contains pre-fetched funding rate data.
+        If provided, uses it instead of fetching from API.
+        
+        Args:
+            raw_data: Pre-fetched raw API data (required - NO FALLBACKS)
         """
         try:
             # Check cache first (consistent with other modules)
@@ -800,16 +876,17 @@ class MarketDataService:
             if funding_analyzer is None:
                 raise ValueError("Funding rate analyzer module is None - module initialization failed")
             
-            # Get funding rate data from API - NO FALLBACKS
-            if not self.hyperliquid_api:
-                raise ValueError("HyperliquidAPI not available for funding rate analysis - NO FALLBACKS")
-            
-            funding_data = self.hyperliquid_api.get_funding_rate("BTC")
-            if not funding_data:
-                raise ValueError("No funding rate data available from API - NO FALLBACKS")
+            # Use pre-fetched raw data (all data is mandatory - NO FALLBACKS)
+            # Get raw_data from parameter or stored value
+            raw_data = self._get_raw_data(raw_data)
+            if "funding" not in raw_data:
+                raise ValueError("raw_data with 'funding' key is required (NO FALLBACKS)")
+            funding_raw = raw_data["funding"]
+            if not funding_raw:
+                raise ValueError("Pre-fetched funding rate data is empty (NO FALLBACKS)")
             
             # analyze_funding_rate() guarantees valid dict or raises (NO FALLBACKS)
-            funding_result = funding_analyzer.analyze_funding_rate(funding_data)
+            funding_result = funding_analyzer.analyze_funding_rate(funding_raw)
             
             # Store result for future use
             self.update_analysis_data("funding_rate", funding_result)
@@ -995,11 +1072,7 @@ class MarketDataService:
             
         except Exception as e:
             logger.error(f"❌ Failed to prepare real-time market data structure: {e}")
-            return {
-                "error": str(e),
-                "timestamp": time.time(),
-                "data_quality": {"all_components_available": False}
-            }
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_dashboard_data(self, strategy: str = None) -> Dict[str, Any]:
         """

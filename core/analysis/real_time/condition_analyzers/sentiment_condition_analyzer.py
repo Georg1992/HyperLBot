@@ -14,16 +14,38 @@ class SentimentConditionAnalyzer:
     def __init__(self):
         pass
     
-    def analyze_sentiment_conditions(self) -> Dict[str, Any]:
-        """Analyze sentiment conditions for trading suitability"""
+    def analyze_sentiment_conditions(self, raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Analyze sentiment conditions for trading suitability
+        
+        NEW: raw_data parameter contains pre-fetched Fear & Greed data.
+        If provided, uses it instead of fetching from API.
+        
+        Args:
+            raw_data: Pre-fetched raw API data containing "fear_greed" key (all mandatory - NO FALLBACKS)
+        """
         try:
             factors = []
             risk_factors = []
             positive_factors = []
             
-            # Get fear & greed data
-            fear_greed_data = self._get_fear_greed_data()
-            fear_greed_value = fear_greed_data["value"] if "value" in fear_greed_data else 50
+            # Use pre-fetched fear & greed data (all data is mandatory - NO FALLBACKS)
+            if not raw_data or "fear_greed" not in raw_data:
+                raise ValueError("raw_data with 'fear_greed' key is required (NO FALLBACKS)")
+            fear_greed_data = raw_data["fear_greed"]
+            if fear_greed_data is None:
+                raise ValueError("Pre-fetched fear_greed data is None (NO FALLBACKS)")
+            # Validate required keys (NO FALLBACKS)
+            if "index_value" not in fear_greed_data:
+                raise ValueError("Fear & Greed data missing 'index_value' key (NO FALLBACKS)")
+            
+            # Handle both "index_value" (from API) and "value" (legacy) keys
+            if "index_value" in fear_greed_data:
+                fear_greed_value = fear_greed_data["index_value"]
+            elif "value" in fear_greed_data:
+                fear_greed_value = fear_greed_data["value"]
+            else:
+                raise ValueError("Fear & Greed data missing both 'index_value' and 'value' keys (NO FALLBACKS)")
             
             # Analyze fear & greed levels
             if fear_greed_value <= 20:
@@ -53,24 +75,7 @@ class SentimentConditionAnalyzer:
             }
         except Exception as e:
             logger.error(f"❌ Sentiment condition analysis failed: {e}")
-            return {
-                "factors": ["Sentiment analysis failed"],
-                "risk_factors": ["Analysis error"],
-                "positive_factors": [],
-                "sentiment_level": "UNKNOWN",
-                "fear_greed_value": 50,
-                "suitable_for_trading": False
-            }
-    
-    def _get_fear_greed_data(self) -> Dict[str, Any]:
-        """Get fear & greed data"""
-        try:
-            from core.external.fear_greed_api import FearGreedAPI
-            fear_greed_api = FearGreedAPI()
-            return fear_greed_api.get_fear_greed_index()
-        except Exception as e:
-            logger.error(f"❌ Failed to get fear & greed data: {e}")
-            return {"value": 50, "classification": "NEUTRAL"}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _classify_sentiment(self, value: int) -> str:
         """Classify sentiment level"""

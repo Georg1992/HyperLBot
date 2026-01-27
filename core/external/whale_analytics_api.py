@@ -81,32 +81,52 @@ class WhaleAnalyticsAPI:
             logger.error(f"❌ Raw whale transactions fetch failed: {e}")
             raise ValueError(f"Raw whale transactions fetch failed - NO FALLBACKS: {e}")
     
-    def _fetch_whale_data(self) -> Dict[str, Any]:
-        """Fetch whale data from BlockCypher API"""
+    def get_processed_whale_data(self) -> Dict[str, Any]:
+        """
+        Get processed whale data (analyzed from raw transactions)
+        
+        Uses WhaleAnalysisCalculator to process raw transactions into expected format.
+        Returns processed whale data in the format expected by analyzers:
+        - whale_activity: {whale_count, activity_level, ...}
+        - exchange_flows: {flow_direction, ...}
+        - sentiment: {classification, ...}
+        
+        All data is mandatory - NO FALLBACKS
+        """
         try:
-            # Get recent transactions
-            transactions = self._get_recent_transactions()
+            # Get raw transactions
+            raw_transactions = self.get_raw_whale_transactions()
+            if not raw_transactions:
+                raise ValueError("Raw whale transactions list is empty (NO FALLBACKS)")
             
-            # Analyze whale activity
-            whale_analysis = self._analyze_whale_activity(transactions)
+            # Process transactions using WhaleAnalysisCalculator
+            from core.calculations.whale_analysis_calculator import create_whale_analysis_calculator
+            whale_calculator = create_whale_analysis_calculator()
             
-            # Get exchange flows
-            exchange_flows = self._analyze_exchange_flows(transactions)
+            # Analyze whale data from raw transactions
+            processed_data = whale_calculator.analyze_whale_data(raw_transactions)
             
-            # Calculate sentiment
-            sentiment = self._calculate_whale_sentiment(whale_analysis, exchange_flows)
+            if not processed_data:
+                raise ValueError("Whale analysis returned empty data (NO FALLBACKS)")
             
-            return {
-                "whale_activity": whale_analysis,
-                "exchange_flows": exchange_flows,
-                "sentiment": sentiment,
-                "timestamp": time.time(),
-                "data_source": "blockcypher"
-            }
+            # Validate required structure (NO FALLBACKS)
+            required_keys = ["whale_activity", "exchange_flows", "sentiment"]
+            for key in required_keys:
+                if key not in processed_data:
+                    raise ValueError(f"Processed whale data missing required key: {key} (NO FALLBACKS)")
+            
+            return processed_data
             
         except Exception as e:
-            logger.error(f"❌ Whale data fetch failed: {e}")
-            return {"error": str(e)}
+            logger.error(f"❌ Whale data processing failed: {e}")
+            raise ValueError(f"Whale data processing failed: {e} (NO FALLBACKS)")
+    
+    def _fetch_whale_data(self) -> Dict[str, Any]:
+        """
+        DEPRECATED: Use get_processed_whale_data() instead
+        Fetch whale data from BlockCypher API
+        """
+        return self.get_processed_whale_data()
     
     def _get_recent_transactions(self) -> List[Dict[str, Any]]:
         """Get recent large transactions from BlockCypher"""
@@ -127,20 +147,37 @@ class WhaleAnalyticsAPI:
             large_transactions = []
             for tx in transactions:
                 try:
+                    # Transaction structure validation - all fields required (NO FALLBACKS)
+                    if "outputs" not in tx:
+                        raise ValueError(f"Transaction missing 'outputs' key (NO FALLBACKS)")
+                    if "hash" not in tx:
+                        raise ValueError(f"Transaction missing 'hash' key (NO FALLBACKS)")
+                    if "confirmations" not in tx:
+                        raise ValueError(f"Transaction missing 'confirmations' key (NO FALLBACKS)")
+                    if "received" not in tx:
+                        raise ValueError(f"Transaction missing 'received' key (NO FALLBACKS)")
+                    if "inputs" not in tx:
+                        raise ValueError(f"Transaction missing 'inputs' key (NO FALLBACKS)")
+                    
                     # Calculate transaction value in USD (approximate)
-                    outputs = tx["outputs"] if "outputs" in tx else []
-                    total_value = sum(output["value"] if "value" in output else 0 for output in outputs)
+                    outputs = tx["outputs"]
+                    # Output structure validation - value is required (NO FALLBACKS)
+                    total_value = 0
+                    for output in outputs:
+                        if "value" not in output:
+                            raise ValueError(f"Transaction output missing 'value' key (NO FALLBACKS)")
+                        total_value += output["value"]
                     value_usd = (total_value / 100000000) * 112000  # Convert satoshis to BTC, then to USD
                     
                     if value_usd >= self.whale_threshold_usd:
                         large_transactions.append({
-                            "hash": tx["hash"] if "hash" in tx else "",
+                            "hash": tx["hash"],
                             "value_btc": total_value / 100000000,
                             "value_usd": value_usd,
-                            "confirmations": tx["confirmations"] if "confirmations" in tx else 0,
-                            "time": tx["received"] if "received" in tx else None,
-                            "inputs": tx["inputs"] if "inputs" in tx else [],
-                            "outputs": tx["outputs"] if "outputs" in tx else []
+                            "confirmations": tx["confirmations"],
+                            "time": tx["received"],
+                            "inputs": tx["inputs"],
+                            "outputs": tx["outputs"]
                         })
                 except Exception as e:
                     continue

@@ -6,7 +6,7 @@ Single Responsibility: Strategy decision making and configuration
 """
 
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from loguru import logger
 from config.config import TradingConfig
 
@@ -81,6 +81,12 @@ class StrategyManager:
         try:
             # Pure business logic strategy selection (no ML for now)
             recommendation = self._select_strategy_business_logic(market_data)
+            
+            # If recommendation is None, data isn't ready yet - keep current strategy
+            if recommendation is None:
+                logger.debug("⏳ Funding data not ready yet - keeping current strategy")
+                return self.current_strategy
+            
             optimal_strategy = recommendation.strategy
             reasoning = recommendation.reasoning
             
@@ -110,7 +116,14 @@ class StrategyManager:
                     # Record strategy selection for learning
                     self._record_strategy_selection(optimal_strategy, market_data, recommendation)
                 else:
-                    logger.info(f"⏳ Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}")
+                    logger.warning(
+                        f"⏳ Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}. "
+                        f"Using optimal strategy '{optimal_strategy}' for predictions despite cooldown."
+                    )
+                    # Return optimal strategy for predictions even if switch is blocked
+                    # This ensures predictions use the best strategy, while actual strategy state waits for cooldown
+                    self._record_strategy_selection(optimal_strategy, market_data, recommendation)
+                    return optimal_strategy  # Use optimal for predictions
             else:
                 # Still record for learning even if no switch
                 self._record_strategy_selection(optimal_strategy, market_data, recommendation)
@@ -121,11 +134,19 @@ class StrategyManager:
             logger.error(f"❌ Strategy detection failed: {e}")
             raise  # NO FALLBACKS - detection failure must raise
     
-    def _select_strategy_business_logic(self, market_data: Dict[str, Any]):
-        """Sophisticated strategy selection using multi-factor scoring with dynamic confidence"""
+    def _select_strategy_business_logic(self, market_data: Dict[str, Any]) -> Optional['SimpleRecommendation']:
+        """
+        Sophisticated strategy selection using multi-factor scoring with dynamic confidence
+        
+        Returns:
+            StrategyRecommendation or None if data isn't ready yet
+        """
         try:
             # Extract all available market data
+            # Returns None if funding data isn't ready yet
             data = self._extract_market_data(market_data)
+            if data is None:
+                return None  # Data not ready - skip strategy selection for this iteration
             
             # Score all tradeable strategies (exclude analysis-only strategies)
             strategy_scores = {}
@@ -166,8 +187,13 @@ class StrategyManager:
             logger.error(f"❌ Strategy selection failed: {e}")
             raise
     
-    def _extract_market_data(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Extract and normalize all available market data (NO FALLBACKS)"""
+    def _extract_market_data(self, market_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Extract and normalize all available market data (NO FALLBACKS)
+        
+        Returns:
+            Dict with extracted market data, or None if funding data isn't ready yet
+        """
         # Basic data (flattened) - ensure numeric types are floats
         volatility_category = market_data["volatility_category"]  # Required (NO FALLBACKS)
         trend_direction = market_data["trend_direction"]  # Required (NO FALLBACKS)
@@ -224,9 +250,16 @@ class StrategyManager:
         pressure_ratio_raw = pressure_data["pressure_ratio"]
         pressure_ratio = float(pressure_ratio_raw)
         
-        # Funding data - NO FALLBACKS
-        # Funding analyzer returns funding_trend key, not trend
-        funding_trend = funding_data["funding_trend"]  # Required (NO FALLBACKS)
+        # Funding data - Wait for sufficient history before using trend/volatility
+        # Funding analyzer only includes trend/volatility when history is sufficient
+        funding_trend = funding_data.get("funding_trend")  # May not be present if insufficient history
+        funding_volatility_data = funding_data.get("funding_volatility")  # May not be present if insufficient history
+        
+        # If trend/volatility not available, return None to signal we need to wait
+        # This will be handled by the caller to skip strategy selection for this iteration
+        if not funding_trend or not funding_volatility_data:
+            return None  # Signal to caller that data isn't ready yet
+        
         funding_direction = funding_trend["direction"]  # Required (NO FALLBACKS)
         
         funding_strength_raw = funding_trend["strength"]
@@ -236,7 +269,6 @@ class StrategyManager:
             raise ValueError(f"Invalid funding_strength value: {funding_strength_raw} - NO FALLBACKS")
         
         # Funding volatility for risk management - NO FALLBACKS
-        funding_volatility_data = funding_data["funding_volatility"]
         funding_volatility_category = funding_volatility_data["category"]
         
         # Market conditions - NO FALLBACKS

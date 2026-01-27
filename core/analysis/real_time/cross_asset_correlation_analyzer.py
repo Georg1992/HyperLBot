@@ -57,53 +57,69 @@ class CrossAssetCorrelationAnalyzer:
         
         logger.info("📊 Cross-Asset Correlation Analyzer initialized - Clean architecture")
     
-    def analyze_cross_asset_correlations(self, btc_price: float) -> Dict[str, Any]:
+    def analyze_cross_asset_correlations(self, btc_price: float, raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Analyze cross-asset correlations for market context.
         
+        NEW: raw_data parameter contains pre-fetched cross-asset data from Yahoo Finance.
+        If provided, uses it instead of fetching from API.
+        
         Args:
             btc_price: Current Bitcoin price for correlation calculations
+            raw_data: Pre-fetched raw API data containing "cross_asset" key (all mandatory - NO FALLBACKS)
             
         Returns:
             Dictionary with cross-asset correlation analysis
         """
         try:
-            # Get external market data
-            external_data = self._get_external_market_data()
+            # Use pre-fetched cross-asset data (all data is mandatory - NO FALLBACKS)
+            if not raw_data or "cross_asset" not in raw_data:
+                raise ValueError("raw_data with 'cross_asset' key is required (NO FALLBACKS)")
+            cross_asset_raw = raw_data["cross_asset"]
+            if cross_asset_raw is None:
+                raise ValueError("Pre-fetched cross_asset data is None (NO FALLBACKS)")
+            # Map raw_data structure to expected format (NO FALLBACKS - all keys required)
+            if "dxy" not in cross_asset_raw:
+                raise ValueError("Pre-fetched cross_asset data missing 'dxy' key (NO FALLBACKS)")
+            if "gold" not in cross_asset_raw:
+                raise ValueError("Pre-fetched cross_asset data missing 'gold' key (NO FALLBACKS)")
+            if "stocks" not in cross_asset_raw:
+                raise ValueError("Pre-fetched cross_asset data missing 'stocks' key (NO FALLBACKS)")
+            
+            external_data = {
+                "dxy": cross_asset_raw["dxy"],
+                "gold": cross_asset_raw["gold"],
+                "stock": cross_asset_raw["stocks"]
+            }
+            # Validate all data is present (NO FALLBACKS)
+            if not external_data["dxy"]:
+                raise ValueError("Pre-fetched DXY data is empty (NO FALLBACKS)")
+            if not external_data["gold"]:
+                raise ValueError("Pre-fetched Gold data is empty (NO FALLBACKS)")
+            if not external_data["stock"]:
+                raise ValueError("Pre-fetched Stock data is empty (NO FALLBACKS)")
             
             # Calculate correlations
             correlations = self._calculate_correlations(external_data, btc_price)
+            
+            # Update correlation history BEFORE building full analysis
+            # (needed for trend analysis which is included in full analysis)
+            self._update_correlation_history(correlations)
             
             # Determine market regime and risk sentiment
             regime_analysis = self._analyze_market_regime(external_data)
             risk_analysis = self._analyze_risk_sentiment(external_data)
             
-            # Build analysis result
+            # Build analysis result (includes trend analysis which now has history)
             analysis = self._build_correlation_analysis(
                 correlations, regime_analysis, risk_analysis
             )
-            
-            # Update correlation history
-            # Disable correlation history update to prevent 0.0% fallback
-            # self._update_correlation_history(analysis)
             
             return analysis
             
         except Exception as e:
             logger.error(f"❌ Cross-asset correlation analysis failed: {e}")
             raise ValueError(f"Cross-asset correlation analysis failed - NO FALLBACKS: {e}")
-    
-    def _get_external_market_data(self) -> Dict[str, Any]:
-        """Get all external market data - follows SRP and DRY"""
-        # Use single API instance to avoid DRY violation
-        from core.external.yahoo_finance_api import get_global_yahoo_finance_api
-        yahoo_api = get_global_yahoo_finance_api()
-        
-        return {
-            "dxy": self._get_dxy_data(yahoo_api),
-            "gold": self._get_gold_data(yahoo_api),
-            "stock": self._get_stock_indices_data(yahoo_api)
-        }
     
     def _calculate_correlations(self, external_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Calculate all correlations - follows SRP"""
@@ -124,24 +140,39 @@ class CrossAssetCorrelationAnalyzer:
     def _analyze_risk_sentiment(self, external_data: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze risk sentiment - follows SRP"""
         try:
-            dxy_data = external_data["dxy"] if "dxy" in external_data else {}
-            gold_data = external_data["gold"] if "gold" in external_data else {}
-            stock_data = external_data["stock"] if "stock" in external_data else {}
+            # All data is mandatory - already validated in analyze_cross_asset_correlations (NO FALLBACKS)
+            dxy_data = external_data["dxy"]
+            gold_data = external_data["gold"]
+            stock_data = external_data["stock"]
             
             # Analyze risk factors from each asset
             risk_factors = []
             
-            # DXY risk analysis
-            if "price" in dxy_data and dxy_data["price"] > 0:
-                dxy_change = dxy_data["change_percent"] if "change_percent" in dxy_data else 0
-                if dxy_change > 0.5:  # Strong dollar strength
-                    risk_factors.append("DXY_STRENGTH")
-                elif dxy_change < -0.5:  # Dollar weakness
-                    risk_factors.append("DXY_WEAKNESS")
+            # DXY risk analysis (NO FALLBACKS - data already validated)
+            if "price" not in dxy_data or dxy_data["price"] <= 0:
+                raise ValueError("DXY data missing or invalid price (NO FALLBACKS)")
+            # Both change_percent and period_change should be available from Yahoo Finance (NO FALLBACKS)
+            if "change_percent" in dxy_data:
+                dxy_change = dxy_data["change_percent"]
+            elif "period_change" in dxy_data:
+                dxy_change = dxy_data["period_change"]
+            else:
+                raise ValueError("DXY data missing both 'change_percent' and 'period_change' (NO FALLBACKS)")
+            if dxy_change > 0.5:  # Strong dollar strength
+                risk_factors.append("DXY_STRENGTH")
+            elif dxy_change < -0.5:  # Dollar weakness
+                risk_factors.append("DXY_WEAKNESS")
             
-            # Gold risk analysis
-            if "price" in gold_data and gold_data["price"] > 0:
-                gold_change = gold_data["change_percent"] if "change_percent" in gold_data else 0
+            # Gold risk analysis (NO FALLBACKS - data already validated)
+            if "price" not in gold_data or gold_data["price"] <= 0:
+                raise ValueError("Gold data missing or invalid price (NO FALLBACKS)")
+            # Both change_percent and period_change should be available from Yahoo Finance (NO FALLBACKS)
+            if "change_percent" in gold_data:
+                gold_change = gold_data["change_percent"]
+            elif "period_change" in gold_data:
+                gold_change = gold_data["period_change"]
+            else:
+                raise ValueError("Gold data missing both 'change_percent' and 'period_change' (NO FALLBACKS)")
                 if gold_change > 1.0:  # Strong gold rally
                     risk_factors.append("GOLD_RALLY")
                 elif gold_change < -1.0:  # Gold selloff
@@ -181,63 +212,26 @@ class CrossAssetCorrelationAnalyzer:
                                   regime_analysis: Dict[str, Any], 
                                   risk_analysis: Dict[str, Any]) -> Dict[str, Any]:
         """Build final correlation analysis - follows SRP"""
-        return {
+        analysis = {
             **correlations,
             "market_regime": regime_analysis,
             "risk_sentiment": risk_analysis,
-            "correlation_trends": self._analyze_correlation_trends(),
             "timestamp": time.time(),
             "data_source": "external_apis"
         }
+        
+        # Only include trend analysis if we have enough valid data points
+        # Check actual data availability, not fixed iteration count
+        if self._has_sufficient_correlation_history():
+            analysis["correlation_trends"] = self._analyze_correlation_trends()
+        
+        return analysis
     
     # _create_neutral_analysis method removed - NO FALLBACKS policy
     # If data is unavailable, analysis should raise an error instead of returning neutral values
     
-    def _create_correlation_error(self, message: str) -> Dict[str, Any]:
-        """Create correlation error response - follows DRY"""
-        return {
-            "correlation": 0.0,
-            "strength": "ERROR",
-            "interpretation": message
-        }
-    
-    def _create_correlation_unknown(self, message: str) -> Dict[str, Any]:
-        """Create correlation unknown response - follows DRY"""
-        return {
-            "correlation": 0.0,
-            "strength": "UNKNOWN",
-            "interpretation": message
-        }
-    
-    def _get_dxy_data(self, yahoo_api) -> Dict[str, Any]:
-        """Get DXY (Dollar Index) data from existing calculation modules"""
-        try:
-            dxy_data = yahoo_api.get_dxy_data()
-            return dxy_data
-            
-        except Exception as e:
-            logger.debug(f"⚪ DXY data unavailable: {e} - will use neutral correlation")
-            raise  # Re-raise to trigger graceful fallback in main method
-    
-    def _get_gold_data(self, yahoo_api) -> Dict[str, Any]:
-        """Get Gold price data from existing calculation modules"""
-        try:
-            gold_data = yahoo_api.get_gold_data()
-            return gold_data
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get Gold data: {e}")
-            raise ValueError(f"Gold data fetch failed - NO FALLBACKS: {e}")
-    
-    def _get_stock_indices_data(self, yahoo_api) -> Dict[str, Any]:
-        """Get major stock indices data from existing calculation modules"""
-        try:
-            stock_data = yahoo_api.get_stock_indices_data()
-            return stock_data
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get stock indices data: {e}")
-            raise ValueError(f"Stock data fetch failed - NO FALLBACKS: {e}")
+    # _create_correlation_error and _create_correlation_unknown methods removed - NO FALLBACKS policy
+    # All errors must raise exceptions instead of returning error responses
     
     def _analyze_dxy_correlation(self, dxy_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze DXY correlation with Bitcoin using real data only"""
@@ -247,7 +241,13 @@ class CrossAssetCorrelationAnalyzer:
             
             dxy_price = dxy_data["price"]
             # Use period_change (5-day change) for more meaningful correlation data
-            dxy_change = dxy_data["period_change"] if "period_change" in dxy_data else (dxy_data["change_percent"] if "change_percent" in dxy_data else 0)
+            # Both period_change and change_percent should be available from Yahoo Finance API (NO FALLBACKS)
+            if "period_change" in dxy_data:
+                dxy_change = dxy_data["period_change"]
+            elif "change_percent" in dxy_data:
+                dxy_change = dxy_data["change_percent"]
+            else:
+                raise ValueError("DXY data missing both 'period_change' and 'change_percent' (NO FALLBACKS)")
             
             # Calculate real-time correlation based on actual price movements
             # Use current price data to determine correlation strength
@@ -281,13 +281,13 @@ class CrossAssetCorrelationAnalyzer:
                 "interpretation": interpretation,
                 "dxy_price": dxy_price,
                 "dxy_change_pct": dxy_change,
-                "dxy_trend": dxy_data["trend"] if "trend" in dxy_data else "UNKNOWN",
+                # Note: Yahoo Finance API doesn't provide 'trend' field - it's calculated elsewhere if needed
                 "data_source": "real_time_calculation"
             }
             
         except Exception as e:
             logger.error(f"❌ DXY correlation analysis failed: {e}")
-            return self._create_correlation_error("Analysis failed")
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _analyze_gold_correlation(self, gold_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze Gold correlation with Bitcoin using real data only"""
@@ -297,7 +297,13 @@ class CrossAssetCorrelationAnalyzer:
             
             gold_price = gold_data["price"]
             # Use period_change (5-day change) for more meaningful correlation data
-            gold_change = gold_data["period_change"] if "period_change" in gold_data else (gold_data["change_percent"] if "change_percent" in gold_data else 0)
+            # Both period_change and change_percent should be available from Yahoo Finance API (NO FALLBACKS)
+            if "period_change" in gold_data:
+                gold_change = gold_data["period_change"]
+            elif "change_percent" in gold_data:
+                gold_change = gold_data["change_percent"]
+            else:
+                raise ValueError("Gold data missing both 'period_change' and 'change_percent' (NO FALLBACKS)")
             
             # Calculate real-time correlation based on actual price movements
             correlation_value = self._calculate_real_correlation(gold_change, btc_price)
@@ -330,13 +336,13 @@ class CrossAssetCorrelationAnalyzer:
                 "interpretation": interpretation,
                 "gold_price": gold_price,
                 "gold_change_pct": gold_change,
-                "gold_trend": gold_data["trend"] if "trend" in gold_data else "UNKNOWN",
+                # Note: Yahoo Finance API doesn't provide 'trend' field - it's calculated elsewhere if needed
                 "data_source": "real_time_calculation"
             }
             
         except Exception as e:
             logger.error(f"❌ Gold correlation analysis failed: {e}")
-            return self._create_correlation_error("Analysis failed")
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _analyze_stock_correlation(self, stock_data: Dict[str, Any], btc_price: float) -> Dict[str, Any]:
         """Analyze stock market correlation with Bitcoin using real data only"""
@@ -345,21 +351,32 @@ class CrossAssetCorrelationAnalyzer:
                 raise ValueError("No stock data available - NO FALLBACKS")
             
             # Use composite data from Yahoo Finance
-            composite_change = stock_data["composite_change"] if "composite_change" in stock_data else 0
-            composite_price = stock_data["composite_price"] if "composite_price" in stock_data else 0
-            indices_data = stock_data["indices"] if "indices" in stock_data else {}
+            # Stock data structure is validated earlier - all fields should be present (NO FALLBACKS)
+            if "composite_change" not in stock_data:
+                raise ValueError("Stock data missing 'composite_change' (NO FALLBACKS)")
+            if "composite_price" not in stock_data:
+                raise ValueError("Stock data missing 'composite_price' (NO FALLBACKS)")
+            if "indices" not in stock_data:
+                raise ValueError("Stock data missing 'indices' (NO FALLBACKS)")
+            composite_change = stock_data["composite_change"]
+            composite_price = stock_data["composite_price"]
+            indices_data = stock_data["indices"]
             
             # Calculate average stock market performance
             changes = []
             trends = []
             
             for index_name, index_data in indices_data.items():
-                if index_data:
-                    changes.append(index_data["change_percent"] if "change_percent" in index_data else 0)
-                    trends.append("UNKNOWN")  # Yahoo Finance doesn't provide trend
+                if not index_data:
+                    raise ValueError(f"Stock index '{index_name}' data is empty (NO FALLBACKS)")
+                if "change_percent" not in index_data:
+                    raise ValueError(f"Stock index '{index_name}' missing 'change_percent' (NO FALLBACKS)")
+                changes.append(index_data["change_percent"])
+                # Note: Yahoo Finance doesn't provide trend - it's calculated elsewhere if needed
+                trends.append("N/A")
             
             if not changes:
-                return self._create_correlation_unknown("No valid stock data")
+                raise ValueError("No valid stock data available - NO FALLBACKS")
             
             avg_change = sum(changes) / len(changes)
             
@@ -400,20 +417,22 @@ class CrossAssetCorrelationAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Stock correlation analysis failed: {e}")
-            return self._create_correlation_error("Analysis failed")
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _determine_cross_asset_regime(self, dxy_data: Dict[str, Any], gold_data: Dict[str, Any], stock_data: Dict[str, Any]) -> Dict[str, Any]:
         """Determine overall market regime based on cross-asset analysis"""
         try:
             # Analyze each asset's trend
-            dxy_trend = dxy_data["trend"] if "trend" in dxy_data else "UNKNOWN"
-            gold_trend = gold_data["trend"] if "trend" in gold_data else "UNKNOWN"
+            # Note: Yahoo Finance API doesn't provide 'trend' field - it's calculated elsewhere if needed
+            dxy_trend = "N/A"
+            gold_trend = "N/A"
             
             # Get stock trend
             stock_trends = []
             for index in ["sp500", "nasdaq", "dow"]:
                 if index in stock_data and stock_data[index]:
-                    stock_trends.append(stock_data[index]["trend"] if "trend" in stock_data[index] else "UNKNOWN")
+                    # Note: Yahoo Finance doesn't provide trend - it's calculated elsewhere if needed
+                    stock_trends.append("N/A")
             
             # Determine market regime
             if dxy_trend in ["STRONG_UP", "UP"] and gold_trend in ["STRONG_DOWN", "DOWN"] and any("DOWN" in t for t in stock_trends):
@@ -450,19 +469,64 @@ class CrossAssetCorrelationAnalyzer:
             return {"regime": "UNKNOWN", "description": "Analysis failed", "btc_outlook": "UNCERTAIN"}
     
     
-    def _analyze_correlation_trends(self) -> Dict[str, Any]:
-        """Analyze correlation trends over time"""
+    def _has_sufficient_correlation_history(self) -> bool:
+        """
+        Check if we have enough valid correlation data points for trend analysis
+        
+        Returns:
+            True if we have sufficient valid data points, False otherwise
+        """
         try:
+            # Need at least 5 data points for meaningful trend analysis
             if len(self._correlation_history) < 5:
-                return {"trend": "INSUFFICIENT_DATA", "direction": "UNKNOWN"}
+                return False
+            
+            # Verify we have valid data points (not just count)
+            # Check that recent entries have required fields
+            recent_correlations = self._correlation_history[-5:]
+            for entry in recent_correlations:
+                if "dxy_correlation" not in entry:
+                    return False
+                if "gold_correlation" not in entry:
+                    return False
+                if "stock_correlation" not in entry:
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to check correlation history: {e}")
+            return False
+    
+    def _analyze_correlation_trends(self) -> Dict[str, Any]:
+        """
+        Analyze correlation trends over time
+        
+        NO FALLBACKS: Only called when we have sufficient valid history.
+        All required fields must be present.
+        """
+        try:
+            # This method is only called when _has_sufficient_correlation_history() returns True
+            # No need to check again - validated by caller
             
             # Get recent correlations
             recent_correlations = self._correlation_history[-10:]
             
             # Analyze trend direction
-            dxy_correlations = [(c["dxy_correlation"]["correlation"] if "dxy_correlation" in c and "correlation" in c["dxy_correlation"] else 0) for c in recent_correlations]
-            gold_correlations = [(c["gold_correlation"]["correlation"] if "gold_correlation" in c and "correlation" in c["gold_correlation"] else 0) for c in recent_correlations]
-            stock_correlations = [(c["stock_correlation"]["correlation"] if "stock_correlation" in c and "correlation" in c["stock_correlation"] else 0) for c in recent_correlations]
+            # Extract correlations - all required fields should be present (NO FALLBACKS)
+            dxy_correlations = []
+            gold_correlations = []
+            stock_correlations = []
+            for c in recent_correlations:
+                if "dxy_correlation" not in c or "correlation" not in c["dxy_correlation"]:
+                    raise ValueError("Correlation history entry missing 'dxy_correlation.correlation' (NO FALLBACKS)")
+                if "gold_correlation" not in c or "correlation" not in c["gold_correlation"]:
+                    raise ValueError("Correlation history entry missing 'gold_correlation.correlation' (NO FALLBACKS)")
+                if "stock_correlation" not in c or "correlation" not in c["stock_correlation"]:
+                    raise ValueError("Correlation history entry missing 'stock_correlation.correlation' (NO FALLBACKS)")
+                dxy_correlations.append(c["dxy_correlation"]["correlation"])
+                gold_correlations.append(c["gold_correlation"]["correlation"])
+                stock_correlations.append(c["stock_correlation"]["correlation"])
             
             # Calculate trend direction
             dxy_trend = "STABLE"
@@ -476,63 +540,39 @@ class CrossAssetCorrelationAnalyzer:
                 "trend": "ANALYZED",
                 "dxy_trend": dxy_trend,
                 "data_points": len(recent_correlations),
-                "recent_dxy_correlation": dxy_correlations[-1] if dxy_correlations else 0,
-                "recent_gold_correlation": gold_correlations[-1] if gold_correlations else 0,
-                "recent_stock_correlation": stock_correlations[-1] if stock_correlations else 0
+                # All correlations are required (NO FALLBACKS - validated above)
+                "recent_dxy_correlation": dxy_correlations[-1],
+                "recent_gold_correlation": gold_correlations[-1],
+                "recent_stock_correlation": stock_correlations[-1]
             }
             
         except Exception as e:
             logger.error(f"❌ Correlation trend analysis failed: {e}")
-            return {"trend": "ERROR", "direction": "UNKNOWN"}
+            raise ValueError(f"Correlation trend analysis failed - NO FALLBACKS: {e}")
     
-    def _update_correlation_history(self, analysis: Dict[str, Any]):
-        """Update correlation history for trend analysis"""
+    def _update_correlation_history(self, correlations: Dict[str, Any]) -> None:
+        """
+        Update correlation history for trend analysis
+        
+        Uses correlation data that was already calculated from pre-fetched raw_data.
+        NO FALLBACKS: All required fields must be present in correlations.
+        """
         try:
-            # Add BTC change data for correlation calculation
-            enhanced_analysis = analysis.copy()
+            # Validate required fields (NO FALLBACKS)
+            if "dxy_correlation" not in correlations:
+                raise ValueError("Correlations missing 'dxy_correlation' (NO FALLBACKS)")
+            if "gold_correlation" not in correlations:
+                raise ValueError("Correlations missing 'gold_correlation' (NO FALLBACKS)")
+            if "stock_correlation" not in correlations:
+                raise ValueError("Correlations missing 'stock_correlation' (NO FALLBACKS)")
             
-            # Try to get current BTC price for change calculation
-            try:
-                from core.api.hyperliquid_websocket import get_websocket_instance
-                websocket = get_websocket_instance()
-                current_btc_price = websocket.get_current_price()
-                if current_btc_price:
-                    enhanced_analysis['btc_price'] = current_btc_price
-                    # Calculate BTC change if we have previous data
-                    if len(self._correlation_history) > 0:
-                        prev_btc_price = self._correlation_history[-1]['btc_price'] if 'btc_price' in self._correlation_history[-1] else 0
-                        if prev_btc_price > 0:
-                            btc_change = (current_btc_price - prev_btc_price) / prev_btc_price
-                            enhanced_analysis['btc_change'] = btc_change
-            except Exception as e:
-                logger.debug(f"Could not get BTC price for correlation history: {e}")
-            
-            # Add DXY and Gold change data if available
-            if 'dxy_correlation' in analysis:
-                dxy_data = analysis['dxy_correlation']
-                # Get the actual DXY change from the external data
-                try:
-                    from core.external.yahoo_finance_api import get_global_yahoo_finance_api
-                    yahoo_api = get_global_yahoo_finance_api()
-                    dxy_raw_data = yahoo_api.get_dxy_data()
-                    enhanced_analysis['dxy_change'] = (dxy_raw_data['change_percent'] if 'change_percent' in dxy_raw_data else 0) / 100
-                except Exception as e:
-                    logger.debug(f"Could not get DXY change for history: {e}")
-                    enhanced_analysis['dxy_change'] = 0
-            
-            if 'gold_correlation' in analysis:
-                gold_data = analysis['gold_correlation']
-                # Get the actual Gold change from the external data
-                try:
-                    from core.external.yahoo_finance_api import get_global_yahoo_finance_api
-                    yahoo_api = get_global_yahoo_finance_api()
-                    gold_raw_data = yahoo_api.get_gold_data()
-                    enhanced_analysis['gold_change'] = (gold_raw_data['change_percent'] if 'change_percent' in gold_raw_data else 0) / 100
-                except Exception as e:
-                    logger.debug(f"Could not get Gold change for history: {e}")
-                    enhanced_analysis['gold_change'] = 0
-            
-            self._correlation_history.append(enhanced_analysis)
+            # Add to history
+            self._correlation_history.append({
+                "timestamp": time.time(),
+                "dxy_correlation": correlations["dxy_correlation"],
+                "gold_correlation": correlations["gold_correlation"],
+                "stock_correlation": correlations["stock_correlation"]
+            })
             
             # Keep only recent history
             if len(self._correlation_history) > self._max_history:
@@ -540,6 +580,7 @@ class CrossAssetCorrelationAnalyzer:
                 
         except Exception as e:
             logger.error(f"❌ Failed to update correlation history: {e}")
+            raise ValueError(f"Correlation history update failed - NO FALLBACKS: {e}")
     
     
     def _calculate_real_correlation(self, asset_change: float, btc_price: float) -> float:
@@ -562,13 +603,17 @@ class CrossAssetCorrelationAnalyzer:
             #         correlation = self._calculate_pearson_correlation(recent_dxy_changes, recent_btc_changes)
             #         return correlation
             
-            # Fallback: Use current movement direction for immediate correlation
-            # This is a simplified real-time calculation, not a hardcoded value
+            # Use current movement direction for immediate correlation
+            # This is a simplified real-time calculation using actual data, not a hardcoded value
             if abs(asset_change) < 0.01:  # Less than 1% change
-                # Use historical correlation if available, otherwise return neutral
+                # Use historical correlation if available (NO FALLBACKS - all entries must have correlation)
                 if len(self._correlation_history) > 0:
                     # Use average historical correlation for this asset
-                    historical_correlations = [entry['correlation'] if 'correlation' in entry else 0 for entry in self._correlation_history[-5:]]
+                    historical_correlations = []
+                    for entry in self._correlation_history[-5:]:
+                        if 'correlation' not in entry:
+                            raise ValueError("Correlation history entry missing 'correlation' key (NO FALLBACKS)")
+                        historical_correlations.append(entry['correlation'])
                     if historical_correlations:
                         return sum(historical_correlations) / len(historical_correlations)
                 

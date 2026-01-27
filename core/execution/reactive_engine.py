@@ -97,7 +97,7 @@ class ReactiveEngine:
                 return None
             
             # Check confidence threshold (must be high enough)
-            from config.config import TradingConfig
+            # TradingConfig already imported at module level
             min_confidence = TradingConfig.MIN_MOMENTUM_CONFIDENCE
             if signal.confidence < min_confidence:
                 logger.debug(f"⚡ Signal confidence too low: {signal.confidence:.1f}% (min: {min_confidence}%)")
@@ -221,7 +221,7 @@ class ReactiveEngine:
                     # Hyperliquid simulator already fetched above
                     if hyperliquid_simulator and hasattr(hyperliquid_simulator, 'place_order'):
                         # Call place_order with proper position size
-                        from config.config import TradingConfig
+                        # TradingConfig already imported at module level
                         order_result = hyperliquid_simulator.place_order(
                             order_type="MARKET",
                             side=order_side,

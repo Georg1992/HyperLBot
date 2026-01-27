@@ -83,6 +83,23 @@ class TradingConfig:
         "weak": 0.3            # <0.3 = weak volume trend
     }
     
+    # Volume Scoring Configuration
+    VOLUME_CONFIRMATION_BONUS_MULTIPLIER = 1.2  # 20% bonus for high volume with strong trend
+    LOW_VOLUME_PENALTY = 20.0  # Penalty for low volume (reduces confidence)
+    VOLUME_ANOMALY_PENALTY = 15.0  # Penalty when volume anomaly detected (reversal risk)
+    
+    # Factor Synergy Configuration
+    SYNERGY_BONUSES = {
+        "rsi_trend_alignment": 25.0,  # RSI oversold/overbought + trend alignment
+        "momentum_building": 15.0,    # RSI recovering/declining + trend alignment
+        "factor_conflict": 10.0       # Penalty when factors conflict (e.g., RSI oversold + bearish trend)
+    }
+    
+    # Entry Price Calculation Configuration
+    ENTRY_FILL_DECAY_FACTOR = 3.0  # Exponential decay factor for fill probability (higher = slower decay)
+    LIQUIDATION_SAFETY_MIDPOINT_PCT = 0.015  # 1.5% - inflection point for sigmoid curve
+    LIQUIDATION_SAFETY_STEEPNESS = 0.1  # Controls sigmoid curve steepness (higher = steeper)
+    
     VOLATILITY_THRESHOLDS = {
         "high": 0.03,    # >3% = high volatility
         "moderate": 0.01  # >1% = moderate volatility

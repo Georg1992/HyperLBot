@@ -148,12 +148,17 @@ class SupportResistanceCalculator(BaseCalculator):
         Returns:
             Tuple of (swing_points_5m, higher_tf_levels)
         """
+        # Candles are validated at HistoricalDataService boundary - all timeframes required (NO FALLBACKS)
+        if "5m" not in candles_data:
+            raise ValueError("Candles data missing '5m' timeframe (NO FALLBACKS)")
         swing_points_5m = self._detector.detect_swing_points(
-            candles_data["5m"] if "5m" in candles_data else [], current_price, n=1, timeframe="5m")
+            candles_data["5m"], current_price, n=1, timeframe="5m")
         
         higher_tf_levels = []
         for tf in ["15m", "1h", "1d"]:
-            tf_candles = candles_data[tf] if tf in candles_data else []
+            if tf not in candles_data:
+                raise ValueError(f"Candles data missing '{tf}' timeframe (NO FALLBACKS)")
+            tf_candles = candles_data[tf]
             if tf_candles:
                 n_value = {"15m": 2, "1h": 3, "1d": 4}[tf]
                 swing_tf = self._detector.detect_swing_points(tf_candles, current_price, n=n_value, timeframe=tf)
@@ -195,9 +200,8 @@ class SupportResistanceCalculator(BaseCalculator):
             monthly_groups = {}
             
             for candle in daily_candles:
-                timestamp = candle['timestamp'] if 'timestamp' in candle else 0
-                if timestamp == 0:
-                    continue
+                # Candles are validated at boundary - timestamp is guaranteed (NO FALLBACKS)
+                timestamp = candle['timestamp']
                 
                 dt = datetime.fromtimestamp(timestamp)
                 
@@ -257,9 +261,10 @@ class SupportResistanceCalculator(BaseCalculator):
             # Weekly peaks
             for week_key, week_candles in weekly_groups.items():
                 if week_candles:
-                    week_high = max(c['high'] if 'high' in c else 0 for c in week_candles)
-                    week_low = min(c['low'] if 'low' in c else 0 for c in week_candles)
-                    week_timestamp = max(c['timestamp'] if 'timestamp' in c else 0 for c in week_candles)
+                    # Candles are validated at boundary - all fields guaranteed (NO FALLBACKS)
+                    week_high = max(c['high'] for c in week_candles)
+                    week_low = min(c['low'] for c in week_candles)
+                    week_timestamp = max(c['timestamp'] for c in week_candles)
                     
                     if week_high > 0:
                         period_peaks.append(Level(
@@ -538,11 +543,19 @@ class SupportResistanceCalculator(BaseCalculator):
         Returns: List of scored Level objects
         """
         try:
-            # Calculate ATR for all timeframes
-            atr_14 = self._data_provider.calculate_atr(candles_data['5m'] if '5m' in candles_data else [], 14)
-            candles_15m = candles_data['15m'] if '15m' in candles_data else []
-            candles_1h = candles_data['1h'] if '1h' in candles_data else []
-            candles_1d = candles_data['1d'] if '1d' in candles_data else []
+            # Candles are validated at boundary - all timeframes required (NO FALLBACKS)
+            if '5m' not in candles_data:
+                raise ValueError("Candles data missing '5m' timeframe (NO FALLBACKS)")
+            if '15m' not in candles_data:
+                raise ValueError("Candles data missing '15m' timeframe (NO FALLBACKS)")
+            if '1h' not in candles_data:
+                raise ValueError("Candles data missing '1h' timeframe (NO FALLBACKS)")
+            if '1d' not in candles_data:
+                raise ValueError("Candles data missing '1d' timeframe (NO FALLBACKS)")
+            atr_14 = self._data_provider.calculate_atr(candles_data['5m'], 14)
+            candles_15m = candles_data['15m']
+            candles_1h = candles_data['1h']
+            candles_1d = candles_data['1d']
             
             atr_per_tf = {
                 '5m': atr_14,
@@ -566,7 +579,10 @@ class SupportResistanceCalculator(BaseCalculator):
             # 3. Search for additional touches (1-touch levels)
             levels_with_1_touch = [l for l in clustered_levels if l.touches == 1]
             if levels_with_1_touch:
-                candles_5m = candles_data["5m"] if "5m" in candles_data else []
+                # Candles are validated at boundary - 5m timeframe required (NO FALLBACKS)
+                if "5m" not in candles_data:
+                    raise ValueError("Candles data missing '5m' timeframe (NO FALLBACKS)")
+                candles_5m = candles_data["5m"]
                 clustered_levels = self._search_database_for_additional_touches(
                     clustered_levels, levels_with_1_touch, candles_5m, cluster_tolerance, atr_14
                 )
@@ -1015,34 +1031,62 @@ class SupportResistanceCalculator(BaseCalculator):
                 return level["price_level"] - entry_price  # Required (NO FALLBACKS)
         
         if not candidate_levels:
-            return None
+            raise ValueError(f"No {direction} levels available below/above entry ${entry_price:.2f} (NO FALLBACKS - historical data should provide levels)")
         
-        # Filter for levels that meet minimum distance requirement
+        # Progressive filtering strategy (NO FALLBACKS - always find a level)
+        # Strategy 1: Prefer strong levels within reasonable distance that meet minimum
         valid_levels = [
             level for level in candidate_levels
             if calc_distance(level) >= min_stop_distance
         ]
         
-        if not valid_levels:
-            return None
-        
-        # Strategy 1: Prefer strong levels within reasonable distance
-        strong_levels_within_range = [
-            level for level in valid_levels
-            if level["strength_score"] >= min_strength_score  # Required (NO FALLBACKS)
-            and calc_distance(level) <= max_reasonable_distance
-        ]
-        
-        if strong_levels_within_range:
-            # Use strongest among those within reasonable distance
-            selected = max(strong_levels_within_range, key=lambda x: x["strength_score"])  # Required (NO FALLBACKS)
-            logger.debug(f"✅ Selected strong {direction} stop level: ${selected['price_level']:.2f} (strength: {selected['strength_score']:.1f}, distance: {calc_distance(selected):.2f})")
+        if valid_levels:
+            strong_levels_within_range = [
+                level for level in valid_levels
+                if level["strength_score"] >= min_strength_score  # Required (NO FALLBACKS)
+                and calc_distance(level) <= max_reasonable_distance
+            ]
+            
+            if strong_levels_within_range:
+                # Use strongest among those within reasonable distance
+                selected = max(strong_levels_within_range, key=lambda x: x["strength_score"])  # Required (NO FALLBACKS)
+                logger.debug(f"✅ Selected strong {direction} stop level: ${selected['price_level']:.2f} (strength: {selected['strength_score']:.1f}, distance: {calc_distance(selected):.2f})")
+                return selected
+            
+            # Strategy 2: Valid levels exist but not strong/within range - use closest valid
+            selected = min(valid_levels, key=lambda x: calc_distance(x))
+            logger.debug(f"✅ Selected closest valid {direction} stop level: ${selected['price_level']:.2f} (strength: {selected['strength_score']:.1f}, distance: {calc_distance(selected):.2f})")
             return selected
         
-        # Strategy 2: No strong level within range - use closest that meets minimum
-        # This maintains R:R while still providing protection
-        selected = min(valid_levels, key=lambda x: calc_distance(x))
-        logger.debug(f"✅ Selected closest {direction} stop level: ${selected['price_level']:.2f} (strength: {selected['strength_score']:.1f}, distance: {calc_distance(selected):.2f})")
+        # Strategy 3: No levels meet minimum distance - relax criteria progressively
+        # With historical data, there should always be levels - find the best available
+        
+        # First try: Relax distance but keep strength requirement
+        strong_levels_any_distance = [
+            level for level in candidate_levels
+            if level["strength_score"] >= min_strength_score
+        ]
+        
+        if strong_levels_any_distance:
+            # Use strongest level (even if closer than minimum)
+            selected = max(strong_levels_any_distance, key=lambda x: x["strength_score"])
+            distance = calc_distance(selected)
+            logger.warning(
+                f"⚠️ No {direction} level meets minimum distance (${min_stop_distance:.2f}). "
+                f"Using strongest available: ${selected['price_level']:.2f} at ${distance:.2f} distance "
+                f"(strength: {selected['strength_score']:.1f}). Stop may be tighter than optimal."
+            )
+            return selected
+        
+        # Final fallback: Use closest level regardless of strength
+        # With historical data, there should always be at least one level
+        selected = min(candidate_levels, key=lambda x: calc_distance(x))
+        distance = calc_distance(selected)
+        logger.warning(
+            f"⚠️ No {direction} level meets minimum distance (${min_stop_distance:.2f}) or strength (${min_strength_score:.1f}). "
+            f"Using closest available: ${selected['price_level']:.2f} at ${distance:.2f} distance "
+            f"(strength: {selected['strength_score']:.1f}). Stop may be tighter than optimal."
+        )
         return selected
 
 

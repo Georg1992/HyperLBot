@@ -20,17 +20,14 @@ class WhaleConditionAnalyzer:
     }
     
     def analyze_whale_conditions(self, whale_data: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Analyze whale conditions using PASSED DATA - NO REDUNDANT FETCHING"""
+        """
+        Analyze whale conditions using PASSED DATA - NO REDUNDANT FETCHING
+        
+        All data is mandatory - NO FALLBACKS
+        """
         try:
             if not whale_data:
-                return {
-                    "factors": ["Whale data not available"],
-                    "risk_factors": [],
-                    "positive_factors": [],
-                    "whale_activity": "UNKNOWN",
-                    "whale_count": 0,
-                    "whale_sentiment": "UNKNOWN"
-                }
+                raise ValueError("Whale data is required (NO FALLBACKS)")
             
             # Extract nested data structure - NO FALLBACKS
             whale_activity_dict = whale_data["whale_activity"]
@@ -105,15 +102,5 @@ class WhaleConditionAnalyzer:
             }
         except Exception as e:
             logger.error(f"❌ Whale condition analysis failed: {e}")
-            # Return error result matching success structure (caller handles errors)
-            return {
-                "factors": ["Whale analysis failed"],
-                "risk_factors": ["Analysis error"],
-                "positive_factors": [],
-                "whale_activity": "UNKNOWN",
-                "whale_count": 0,
-                "whale_sentiment": "UNKNOWN",
-                "exchange_flows": {},
-                "suitable_for_trading": False
-            }
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     

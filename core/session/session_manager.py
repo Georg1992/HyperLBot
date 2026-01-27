@@ -59,14 +59,26 @@ class SessionManager:
                 from core.simulated_account_manager import account_manager
                 account_data = account_manager.get_account_summary()
                 
-                # Use account data if available, otherwise use provided initial_balance
+                # Account data structure validation - all fields required (NO FALLBACKS)
                 if account_data:
-                    current_balance = account_data["current_balance"] if "current_balance" in account_data else initial_balance
-                    total_trades = account_data["total_trades"] if "total_trades" in account_data else 0
-                    winning_trades = account_data["winning_trades"] if "winning_trades" in account_data else 0
-                    losing_trades = account_data["losing_trades"] if "losing_trades" in account_data else 0
-                    total_pnl = account_data["total_pnl"] if "total_pnl" in account_data else 0.0
-                    win_rate = account_data["win_rate"] if "win_rate" in account_data else 0.0
+                    if "current_balance" not in account_data:
+                        raise ValueError("Account data missing 'current_balance' key (NO FALLBACKS)")
+                    if "total_trades" not in account_data:
+                        raise ValueError("Account data missing 'total_trades' key (NO FALLBACKS)")
+                    if "winning_trades" not in account_data:
+                        raise ValueError("Account data missing 'winning_trades' key (NO FALLBACKS)")
+                    if "losing_trades" not in account_data:
+                        raise ValueError("Account data missing 'losing_trades' key (NO FALLBACKS)")
+                    if "total_pnl" not in account_data:
+                        raise ValueError("Account data missing 'total_pnl' key (NO FALLBACKS)")
+                    if "win_rate" not in account_data:
+                        raise ValueError("Account data missing 'win_rate' key (NO FALLBACKS)")
+                    current_balance = account_data["current_balance"]
+                    total_trades = account_data["total_trades"]
+                    winning_trades = account_data["winning_trades"]
+                    losing_trades = account_data["losing_trades"]
+                    total_pnl = account_data["total_pnl"]
+                    win_rate = account_data["win_rate"]
                 else:
                     current_balance = initial_balance
                     total_trades = 0

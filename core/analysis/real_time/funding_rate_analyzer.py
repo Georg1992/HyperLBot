@@ -52,18 +52,20 @@ class FundingRateAnalyzer:
             self._update_funding_history(funding_rate, funding_data)
             
             # Calculate analysis metrics - include valuable fields for trading decisions
-            funding_trend_data = self._calculate_funding_trend()
             analysis = {
                 "current_funding_rate": funding_rate,
                 "current_funding_rate_pct": funding_rate_pct,
-                "funding_trend": funding_trend_data,
                 "funding_sentiment": self._analyze_funding_sentiment(funding_rate),
                 "extreme_funding_detection": self._detect_extreme_funding(funding_rate),
-                "funding_volatility": self._calculate_funding_volatility(),  # For risk management
                 "next_funding_time": funding_data['next_funding_time'],  # Required (NO FALLBACKS)
                 "data_source": funding_data['data_source'],  # Required (NO FALLBACKS)
                 "timestamp": time.time()
             }
+            
+            # Only include trend/volatility analysis if we have enough valid data points
+            if self._has_sufficient_funding_history():
+                analysis["funding_trend"] = self._calculate_funding_trend()
+                analysis["funding_volatility"] = self._calculate_funding_volatility()  # For risk management
             
             return analysis
             
@@ -80,7 +82,8 @@ class FundingRateAnalyzer:
             self._funding_rate_history.append({
                 "timestamp": current_time,
                 "funding_rate": funding_rate,
-                "data_source": funding_data['data_source'] if 'data_source' in funding_data else 'unknown'
+                # data_source is required from API (NO FALLBACKS)
+                "data_source": funding_data['data_source']
             })
             
             # Keep only recent history
@@ -90,17 +93,40 @@ class FundingRateAnalyzer:
         except Exception as e:
             logger.error(f"❌ Failed to update funding history: {e}")
     
-    def _calculate_funding_trend(self) -> Dict[str, Any]:
-        """Calculate funding rate trend over time"""
+    def _has_sufficient_funding_history(self) -> bool:
+        """
+        Check if we have enough valid funding rate data points for trend/volatility analysis
+        
+        Returns:
+            True if we have sufficient valid data points, False otherwise
+        """
         try:
-            if len(self._funding_rate_history) < 3:
-                return {
-                    "trend": "INSUFFICIENT_DATA", 
-                    "direction": "NEUTRAL", 
-                    "strength": 0.0,
-                    "rate_change": 0.0,  # Required by strategy_manager
-                    "rate_change_pct": 0.0
-                }
+            # Need at least 3 data points for trend, 5 for volatility
+            if len(self._funding_rate_history) < 5:
+                return False
+            
+            # Verify we have valid data points (not just count)
+            recent_entries = self._funding_rate_history[-5:]
+            for entry in recent_entries:
+                if "funding_rate" not in entry:
+                    return False
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to check funding history: {e}")
+            return False
+    
+    def _calculate_funding_trend(self) -> Dict[str, Any]:
+        """
+        Calculate funding rate trend over time
+        
+        NO FALLBACKS: Only called when we have sufficient valid history (3+ data points).
+        All required fields must be present.
+        """
+        try:
+            # This method is only called when _has_sufficient_funding_history() returns True
+            # Minimum 3 points for trend, but we check for 5 to also support volatility
             
             # Get recent funding rates (last 10 readings)
             recent_rates = [entry["funding_rate"] for entry in self._funding_rate_history[-10:]]
@@ -236,10 +262,15 @@ class FundingRateAnalyzer:
             return {"is_extreme": False, "extreme_type": "ERROR", "description": "Detection failed"}
     
     def _calculate_funding_volatility(self) -> Dict[str, Any]:
-        """Calculate funding rate volatility"""
+        """
+        Calculate funding rate volatility
+        
+        NO FALLBACKS: Only called when we have sufficient valid history (5+ data points).
+        All required fields must be present.
+        """
         try:
-            if len(self._funding_rate_history) < 5:
-                return {"volatility": 0.0, "category": "INSUFFICIENT_DATA"}
+            # This method is only called when _has_sufficient_funding_history() returns True
+            # No need to check again - validated by caller
             
             # Get recent funding rates
             recent_rates = [entry["funding_rate"] for entry in self._funding_rate_history[-20:]]

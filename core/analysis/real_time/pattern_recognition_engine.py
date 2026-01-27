@@ -141,12 +141,18 @@ class PatternRecognitionEngine:
         return ""
     
     def _extract_price_data(self, candles: List[Dict[str, Any]]) -> Dict[str, List[float]]:
-        """Extract price data from candles"""
+        """
+        Extract price data from candles
+        
+        Candles are validated at HistoricalDataService boundary - NO FALLBACKS
+        All required fields (high, low, open, close) are guaranteed to be present
+        """
+        # All candles are validated at boundary - trust internal data (NO FALLBACKS)
         return {
-            "high": [float(candle["high"]) if "high" in candle else 0.0 for candle in candles],
-            "low": [float(candle["low"]) if "low" in candle else 0.0 for candle in candles],
-            "close": [float(candle["close"]) if "close" in candle else 0.0 for candle in candles],
-            "open": [float(candle["open"]) if "open" in candle else 0.0 for candle in candles]
+            "high": [float(candle["high"]) for candle in candles],
+            "low": [float(candle["low"]) for candle in candles],
+            "close": [float(candle["close"]) for candle in candles],
+            "open": [float(candle["open"]) for candle in candles]
         }
     
     def _calculate_pattern_birth_times(self, patterns: Dict[str, List[Dict[str, Any]]], candles: List[Dict[str, Any]], current_time: float) -> Dict[str, List[Dict[str, Any]]]:
@@ -160,13 +166,17 @@ class PatternRecognitionEngine:
                     try:
                         # Use END index (most recent confirmation) instead of START index
                         # This prevents patterns from being "born old" when they span many candles
-                        end_idx = pattern["end_candle_index"] if "end_candle_index" in pattern else len(candles) - 1
+                        # Candles are validated at boundary - timestamp is guaranteed (NO FALLBACKS)
+                        if "end_candle_index" not in pattern:
+                            raise ValueError(f"Pattern missing 'end_candle_index' key (NO FALLBACKS)")
+                        end_idx = pattern["end_candle_index"]
                         
                         # Clamp to valid range
                         end_idx = max(0, min(end_idx, len(candles) - 1))
                         
                         if end_idx < len(candles):
-                            pattern_timestamp = candles[end_idx]["timestamp"] if "timestamp" in candles[end_idx] else current_time
+                            # Timestamp is guaranteed from validated candles (NO FALLBACKS)
+                            pattern_timestamp = candles[end_idx]["timestamp"]
                             
                             # Handle both seconds and milliseconds timestamps
                             # If timestamp is > 1e10, it's in milliseconds, convert to seconds
@@ -179,15 +189,17 @@ class PatternRecognitionEngine:
                             
                             # Sanity check: age should be reasonable (0 to 1000 minutes max)
                             if age_minutes < 0 or age_minutes > 1000:
-                                logger.warning(f"⚠️ Invalid pattern age: {age_minutes:.1f}m for pattern {pattern['pattern'] if 'pattern' in pattern else 'unknown'}, using 0")
-                                pattern["age_minutes"] = 0
-                            else:
-                                pattern["age_minutes"] = age_minutes
+                                if "pattern" not in pattern:
+                                    raise ValueError(f"Pattern missing 'pattern' key (NO FALLBACKS)")
+                                raise ValueError(f"Invalid pattern age: {age_minutes:.1f}m for pattern {pattern['pattern']} (NO FALLBACKS)")
+                            pattern["age_minutes"] = age_minutes
                         else:
-                            pattern["age_minutes"] = 0
+                            # If end_idx is out of bounds, pattern age cannot be calculated (NO FALLBACKS)
+                            raise ValueError(f"Pattern end_candle_index {end_idx} is out of bounds for {len(candles)} candles (NO FALLBACKS)")
                     except Exception as e:
-                        logger.warning(f"⚠️ Failed to calculate birth time for pattern: {e}")
-                        pattern["age_minutes"] = 0
+                        # NO FALLBACKS - must raise to prevent silent failures
+                        logger.error(f"❌ Failed to calculate birth time for pattern: {e}")
+                        raise ValueError(f"Pattern birth time calculation failed (NO FALLBACKS): {e}")
             
             return patterns
             
@@ -200,12 +212,18 @@ class PatternRecognitionEngine:
         try:
             for category, pattern_list in patterns.items():
                 for pattern in pattern_list:
-                    pattern_name = pattern["pattern"] if "pattern" in pattern else "unknown"
+                    # Pattern structure is validated - pattern key is required (NO FALLBACKS)
+                    if "pattern" not in pattern:
+                        raise ValueError("Pattern missing 'pattern' key (NO FALLBACKS)")
+                    pattern_name = pattern["pattern"]
                     pattern_key = self._get_pattern_key(pattern)
                     
                     if pattern_key not in self.pattern_history:
                         self.pattern_history[pattern_key] = current_time
-                        logger.info(f"🆕 NEW PATTERN DETECTED: {pattern_name} born {pattern['age_minutes'] if 'age_minutes' in pattern else 0:.1f}m ago (key: {pattern_key})")
+                        # age_minutes is calculated in _calculate_pattern_birth_times - required (NO FALLBACKS)
+                        if "age_minutes" not in pattern:
+                            raise ValueError(f"Pattern '{pattern_name}' missing 'age_minutes' key (NO FALLBACKS)")
+                        logger.info(f"🆕 NEW PATTERN DETECTED: {pattern_name} born {pattern['age_minutes']:.1f}m ago (key: {pattern_key})")
             
         except Exception as e:
             logger.error(f"❌ Pattern timestamp tracking failed: {e}")
@@ -219,9 +237,16 @@ class PatternRecognitionEngine:
                 filtered_list = []
                 
                 for pattern in pattern_list:
-                    pattern_name = pattern["pattern"] if "pattern" in pattern else "unknown"
-                    age_minutes = pattern["age_minutes"] if "age_minutes" in pattern else 0
-                    max_age = self.pattern_expiration[pattern_name] if pattern_name in self.pattern_expiration else 40
+                    # Pattern structure is validated - all keys required (NO FALLBACKS)
+                    if "pattern" not in pattern:
+                        raise ValueError("Pattern missing 'pattern' key (NO FALLBACKS)")
+                    if "age_minutes" not in pattern:
+                        raise ValueError(f"Pattern missing 'age_minutes' key (NO FALLBACKS)")
+                    pattern_name = pattern["pattern"]
+                    age_minutes = pattern["age_minutes"]
+                    if pattern_name not in self.pattern_expiration:
+                        raise ValueError(f"Pattern '{pattern_name}' not in pattern_expiration map (NO FALLBACKS)")
+                    max_age = self.pattern_expiration[pattern_name]
                     
                     if age_minutes <= max_age:
                         filtered_list.append(pattern)
@@ -391,9 +416,16 @@ class PatternRecognitionEngine:
     def _get_pattern_key(self, pattern: Dict[str, Any]) -> str:
         """Generate unique key for pattern tracking"""
         try:
-            pattern_name = pattern["pattern"] if "pattern" in pattern else "unknown"
-            pattern_high = pattern["pattern_high"] if "pattern_high" in pattern else 0
-            pattern_low = pattern["pattern_low"] if "pattern_low" in pattern else 0
+            # Pattern structure is validated - all keys required (NO FALLBACKS)
+            if "pattern" not in pattern:
+                raise ValueError("Pattern missing 'pattern' key (NO FALLBACKS)")
+            if "pattern_high" not in pattern:
+                raise ValueError(f"Pattern missing 'pattern_high' key (NO FALLBACKS)")
+            if "pattern_low" not in pattern:
+                raise ValueError(f"Pattern missing 'pattern_low' key (NO FALLBACKS)")
+            pattern_name = pattern["pattern"]
+            pattern_high = pattern["pattern_high"]
+            pattern_low = pattern["pattern_low"]
             return f"{pattern_name}_{pattern_high}_{pattern_low}"
         except Exception:
             return "unknown_0_0"

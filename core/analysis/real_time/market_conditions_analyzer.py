@@ -58,14 +58,19 @@ class MarketConditionsAnalyzer:
     
     def analyze_trading_conditions(self, market_data: Dict[str, Any], 
                                  historical_context: Dict[str, Any] = None, 
-                                 candles_1d=None) -> Dict[str, Any]:
+                                 candles_1d=None,
+                                 raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Analyze market conditions for trading suitability.
+        
+        NEW: raw_data parameter contains pre-fetched external API data.
+        If provided, uses it instead of fetching from APIs.
         
         Args:
             market_data: Current market data
             historical_context: Historical context data
             candles_1d: Daily candles for trend analysis
+            raw_data: Pre-fetched raw API data (fear_greed, whale, news) - all mandatory (NO FALLBACKS)
             
         Returns:
             Dict with condition analysis results
@@ -79,11 +84,12 @@ class MarketConditionsAnalyzer:
             volatility_category = market_data["volatility_category"]
             volume_category = market_data["volume_category"]
             
-            # Run all condition analyses
+            # Run all condition analyses (pass raw_data to use pre-fetched data)
             analyses = self._run_condition_analyses(
                 current_price, rsi, trend, volatility_5m, 
                 volatility_category, volume_category, 
-                historical_context, candles_1d
+                historical_context, candles_1d,
+                raw_data=raw_data
             )
             
             # Determine overall conditions
@@ -99,27 +105,36 @@ class MarketConditionsAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ Market conditions analysis failed: {e}")
-            return self._create_error_result(market_data)
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _run_condition_analyses(self, current_price: float, rsi: float, trend: str,
                                volatility_5m: float, volatility_category: str, 
                                volume_category: str, historical_context: Dict[str, Any],
-                               candles_1d) -> Dict[str, Any]:
-        """Run all condition analyses - follows SRP"""
-        # Fetch whale data from data provider if available
-        whale_data = None
-        if self._data_provider:
-            try:
-                whale_data = self._data_provider.get_whale_data()
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to fetch whale data: {e}")
+                               candles_1d, raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Run all condition analyses - follows SRP
+        
+        NEW: Uses pre-fetched raw_data if provided (all data is mandatory - NO FALLBACKS)
+        
+        Args:
+            raw_data: Pre-fetched raw API data containing:
+                - fear_greed: Fear & Greed Index data
+                - whale: Whale transactions data
+                - news: RSS news sentiment data
+        """
+        # Use pre-fetched whale data (all data is mandatory - NO FALLBACKS)
+        if not raw_data or "whale" not in raw_data:
+            raise ValueError("raw_data with 'whale' key is required (NO FALLBACKS)")
+        whale_data = raw_data["whale"]
+        if whale_data is None:
+            raise ValueError("Pre-fetched whale data is None (NO FALLBACKS)")
         
         return {
             "volatility": self.volatility_analyzer.analyze_volatility_conditions(volatility_5m, volatility_category),
             "volume": self.volume_analyzer.analyze_volume_conditions(volume_category),
-            "sentiment": self.sentiment_analyzer.analyze_sentiment_conditions(),
+            "sentiment": self.sentiment_analyzer.analyze_sentiment_conditions(raw_data=raw_data),
             "whale": self.whale_analyzer.analyze_whale_conditions(whale_data),
-            "news": self._analyze_rss_news_conditions(),
+            "news": self._analyze_rss_news_conditions(raw_data=raw_data),
             "rsi": self.rsi_analyzer.analyze_rsi_conditions(rsi),
             "trend": self._analyze_trend_conditions(trend),
                 "historical": self._analyze_historical_context(historical_context, current_price, volatility_5m, volatility_category),
@@ -229,19 +244,8 @@ class MarketConditionsAnalyzer:
             factors_text = ', '.join(risk_factors[:2]) if risk_factors else 'No factors'
             logger.warning(f"⚠️ POOR market conditions: {factors_text}")
     
-    def _create_error_result(self, market_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Create error result - follows SRP"""
-        return {
-            "condition": "POOR",
-            "reasons": ["Analysis failed"],
-            "risk_level": "HIGH",
-            "confidence": 0.3,
-            "risk_factors": ["Analysis error"],
-            "positive_factors": [],
-            "analysis_timestamp": market_data["timestamp"],  # Required (NO FALLBACKS)
-            "market_status": "NEUTRAL"
-        }
-    
+    # _create_error_result method removed - NO FALLBACKS policy
+    # All errors must raise exceptions instead of returning error responses
     
     
     
@@ -337,231 +341,29 @@ class MarketConditionsAnalyzer:
             return f"Conditions analysis unavailable"
     
     
-    def _analyze_sentiment_conditions(self) -> Dict[str, Any]:
-        """
-        Analyze Fear & Greed sentiment conditions for trading decisions
-        
-        Returns:
-            Dict containing sentiment factors, risk factors, and positive factors
-        """
-        try:
-            # Get sentiment data from existing calculation modules
-            from core.external.fear_greed_api import get_global_fear_greed_api
-            fear_greed_api = get_global_fear_greed_api()
-            
-            fear_greed_data = fear_greed_api.get_fear_greed_index()
-            
-            if not fear_greed_data or "error" in fear_greed_data:
-                return {
-                    "factors": ["Sentiment data unavailable"],
-                    "risk_factors": [],
-                    "positive_factors": [],
-                    "risk": 0,
-                    "positive": False
-                }
-            
-            sentiment_signals = fear_greed_data["sentiment_signals"]  # Required (NO FALLBACKS)
-            index_value = fear_greed_data["index_value"]  # Required (NO FALLBACKS)
-            classification = fear_greed_data["classification"]  # Required (NO FALLBACKS)
-            
-            factors = []
-            risk_factors = []
-            positive_factors = []
-            risk_level = 0
-            is_positive = False
-            
-            # Analyze sentiment zones (NO FALLBACKS)
-            sentiment_zone = sentiment_signals["sentiment_zone"]
-            trading_bias = sentiment_signals["trading_bias"]
-            extreme_condition = sentiment_signals["extreme_condition"]
-            reversal_imminent = sentiment_signals["reversal_imminent"]
-            
-            # Add sentiment factors
-            factors.append(f"Fear & Greed: {index_value} ({classification})")
-            factors.append(f"Sentiment Zone: {sentiment_zone}")
-            factors.append(f"Trading Bias: {trading_bias}")
-            
-            # Analyze extreme conditions
-            if extreme_condition:
-                if sentiment_zone == "EXTREME_FEAR":
-                    factors.append("Extreme Fear - High reversal probability")
-                    positive_factors.append("Extreme Fear - Strong buy opportunity")
-                    is_positive = True
-                elif sentiment_zone == "EXTREME_GREED":
-                    factors.append("Extreme Greed - High reversal probability")
-                    risk_factors.append("Extreme Greed - High sell risk")
-                    risk_level = 2
-            
-            # Analyze reversal conditions
-            if reversal_imminent:
-                reversal_prob = sentiment_signals["reversal_probability"]  # Required (NO FALLBACKS)
-                factors.append(f"Reversal Imminent - {reversal_prob:.0%} probability")
-                
-                if sentiment_zone in ["EXTREME_FEAR", "FEAR"]:
-                    positive_factors.append("Fear sentiment - Reversal opportunity")
-                    is_positive = True
-                elif sentiment_zone in ["EXTREME_GREED", "GREED"]:
-                    risk_factors.append("Greed sentiment - Reversal risk")
-                    risk_level = max(risk_level, 1)
-            
-            # Analyze trading bias
-            if trading_bias == "STRONG_BUY":
-                positive_factors.append("Strong buy bias from sentiment")
-                is_positive = True
-            elif trading_bias == "STRONG_SELL":
-                risk_factors.append("Strong sell bias from sentiment")
-                risk_level = max(risk_level, 1)
-            
-            # Add confidence boost information
-            confidence_boost = sentiment_signals["confidence_boost"]  # Required (NO FALLBACKS)
-            if confidence_boost > 0:
-                factors.append(f"Sentiment confidence boost: +{confidence_boost:.1%}")
-            
-            return {
-                "factors": factors,
-                "risk_factors": risk_factors,
-                "positive_factors": positive_factors,
-                "risk": risk_level,
-                "positive": is_positive,
-                "sentiment_data": fear_greed_data
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Sentiment conditions analysis failed: {e}")
-            return {
-                "factors": ["Sentiment analysis failed"],
-                "risk_factors": [],
-                "positive_factors": [],
-                "risk": 0,
-                "positive": False
-            }
-    
-    def _analyze_whale_conditions(self) -> Dict[str, Any]:
-        """
-        Analyze whale analytics conditions for trading decisions
-        
-        Returns:
-            Dict containing whale factors, risk factors, and positive factors
-        """
-        try:
-            # Get whale analytics data from existing calculation modules
-            from core.calculations.whale_analysis_calculator import create_whale_analysis_calculator
-            
-            whale_calculator = create_whale_analysis_calculator()
-            
-            # Get whale analysis from the calculator
-            whale_analysis = whale_calculator.get_latest_analysis()
-            
-            if not whale_analysis or "error" in whale_analysis:
-                return {
-                    "factors": ["Whale analytics unavailable"],
-                    "risk_factors": [],
-                    "positive_factors": [],
-                    "risk": 0,
-                    "positive": False
-                }
-            
-            whale_activity = whale_analysis["whale_activity"]  # Required (NO FALLBACKS)
-            exchange_flows = whale_analysis["exchange_flows"]  # Required (NO FALLBACKS)
-            sentiment = whale_analysis["sentiment"]  # Required (NO FALLBACKS)
-            
-            factors = []
-            risk_factors = []
-            positive_factors = []
-            risk_level = 0
-            is_positive = False
-            
-            # Analyze whale activity (NO FALLBACKS)
-            whale_count = whale_activity["whale_count"]
-            activity_level = whale_activity["activity_level"]
-            total_volume_usd = whale_activity["total_volume_usd"]
-            
-            factors.append(f"Whale Activity: {whale_count} whales ({activity_level})")
-            factors.append(f"Whale Volume: ${total_volume_usd:,.0f}")
-            
-            # Analyze exchange flows (NO FALLBACKS)
-            flow_direction = exchange_flows["flow_direction"]
-            net_flow = exchange_flows["net_flow"]
-            
-            factors.append(f"Exchange Flow: {flow_direction} (${net_flow:,.0f})")
-            
-            # Analyze sentiment (NO FALLBACKS)
-            sentiment_class = sentiment["classification"]
-            confidence = sentiment["confidence"]
-            
-            factors.append(f"Whale Sentiment: {sentiment_class} ({confidence})")
-            
-            # Determine risk and positive factors (whale-specific)
-            if sentiment_class == "bearish" and confidence == "high":
-                risk_factors.append("High confidence bearish whale sentiment")
-                risk_level = 2
-            elif sentiment_class == "bearish":
-                risk_factors.append("Bearish whale sentiment")
-                risk_level = 1
-            
-            if sentiment_class == "bullish" and confidence == "high":
-                positive_factors.append("High confidence bullish whale sentiment")
-                is_positive = True
-            elif sentiment_class == "bullish":
-                positive_factors.append("Bullish whale sentiment")
-                is_positive = True
-            
-            if activity_level in ["high", "very_high"]:
-                if sentiment_class == "bullish":
-                    positive_factors.append("High whale activity with bullish sentiment")
-                    is_positive = True
-                elif sentiment_class == "bearish":
-                    risk_factors.append("High whale activity with bearish sentiment")
-                    risk_level = max(risk_level, 1)
-            
-            if flow_direction == "strong_outflow":
-                risk_factors.append("Strong exchange outflow")
-                risk_level = max(risk_level, 1)
-            elif flow_direction == "strong_inflow":
-                positive_factors.append("Strong exchange inflow")
-                is_positive = True
-            
-            return {
-                "factors": factors,
-                "risk_factors": risk_factors,
-                "positive_factors": positive_factors,
-                "risk": risk_level,
-                "positive": is_positive,
-                "whale_data": whale_analysis
-            }
-            
-        except Exception as e:
-            logger.error(f"❌ Whale conditions analysis failed: {e}")
-            return {
-                "factors": ["Whale analysis failed"],
-                "risk_factors": [],
-                "positive_factors": [],
-                "risk": 0,
-                "positive": False
-            }
-    
-    def _analyze_rss_news_conditions(self) -> Dict[str, Any]:
+    def _analyze_rss_news_conditions(self, raw_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Analyze news sentiment conditions for trading decisions
+        
+        NEW: raw_data parameter contains pre-fetched RSS news data.
+        If provided, uses it instead of fetching from API.
+        
+        Args:
+            raw_data: Pre-fetched raw API data containing "news" key (all mandatory - NO FALLBACKS)
         
         Returns:
             Dict containing news factors, risk factors, and positive factors
         """
         try:
-            # Get news sentiment data from existing calculation modules
-            from core.external.rss_news_api import get_global_rss_news_api
-            rss_news_api = get_global_rss_news_api()
-            
-            news_data = rss_news_api.get_news_sentiment()
+            # Use pre-fetched news data (all data is mandatory - NO FALLBACKS)
+            if not raw_data or "news" not in raw_data:
+                raise ValueError("raw_data with 'news' key is required (NO FALLBACKS)")
+            news_data = raw_data["news"]
+            if news_data is None:
+                raise ValueError("Pre-fetched news data is None (NO FALLBACKS)")
             
             if not news_data or "error" in news_data:
-                return {
-                    "factors": ["News sentiment unavailable"],
-                    "risk_factors": [],
-                    "positive_factors": [],
-                    "risk": 0,
-                    "positive": False
-                }
+                raise ValueError("News sentiment data is empty or contains error (NO FALLBACKS)")
             
             sentiment = news_data["sentiment"]  # Required (NO FALLBACKS)
             impact = news_data["impact"]  # Required (NO FALLBACKS)
@@ -634,13 +436,7 @@ class MarketConditionsAnalyzer:
             
         except Exception as e:
             logger.error(f"❌ News conditions analysis failed: {e}")
-            return {
-                "factors": ["News analysis failed"],
-                "risk_factors": [],
-                "positive_factors": [],
-                "risk": 0,
-                "positive": False
-            }
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _analyze_7day_market_trend(self, current_price: float, candles_1d=None, volatility_5m: float = None) -> Dict[str, Any]:
         """

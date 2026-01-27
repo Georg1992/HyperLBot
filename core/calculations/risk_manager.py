@@ -136,39 +136,56 @@ class RiskManager:
             
             logger.debug(f"✅ Unified SHORT stop: ${stop_loss:.2f} (S/R constraint: ${stop_loss_sr_constraint:.2f}, Risk constraint: ${stop_loss_risk_constraint:.2f}, Distance: {stop_loss - entry_price:.2f})")
         
-        # CRITICAL: Cap stop loss at liquidation price with safety buffer
-        # Ensures stop triggers BEFORE liquidation for leveraged positions
+        # CRITICAL: Ensure stop loss maintains safe distance from liquidation price
+        # Calculate liquidation price early to incorporate as constraint
         from core.calculations.liquidation_calculator import LiquidationCalculator
         liq_calc = LiquidationCalculator(leverage=leverage)
         liquidation_price = liq_calc.calculate_liquidation_price(entry_price, direction)
         
-        # Safety buffer before liquidation (FIXED 2026-01-12 - now from config)
+        # Safety buffer before liquidation (from config)
         safety_buffer_pct = TradingConfig.LIQUIDATION_SAFETY_BUFFER_PCT
         
         if direction == "LONG":
             # For LONG: liquidation is below entry, stop must be above liquidation
-            # Max stop = liquidation + buffer (closer to entry, safer)
-            max_stop_from_liquidation = liquidation_price * (1.0 + safety_buffer_pct)
+            # Minimum safe stop = liquidation + buffer (ensures stop triggers before liquidation)
+            min_safe_stop_from_liquidation = liquidation_price * (1.0 + safety_buffer_pct)
             
-            if stop_loss < max_stop_from_liquidation:
-                logger.warning(f"⚠️ Stop loss ${stop_loss:.2f} exceeds liquidation price ${liquidation_price:.2f}! Capping at ${max_stop_from_liquidation:.2f} (liq + {safety_buffer_pct*100}% buffer)")
-                stop_loss = max_stop_from_liquidation
+            # Apply liquidation constraint: stop must be at least min_safe_stop_from_liquidation
+            # This is constraint 3 in the unified calculation
+            if stop_loss < min_safe_stop_from_liquidation:
+                logger.debug(
+                    f"🛡️ Stop ${stop_loss:.2f} too close to liquidation ${liquidation_price:.2f}. "
+                    f"Enforcing minimum safe distance: ${min_safe_stop_from_liquidation:.2f} (liq + {safety_buffer_pct*100}% buffer)"
+                )
+                stop_loss = min_safe_stop_from_liquidation
                 
-                # Validate capped stop is still below entry
+                # Validate safe stop is still below entry
                 if stop_loss >= entry_price:
-                    raise ValueError(f"Liquidation constraint makes trade impossible: max_stop ${stop_loss:.2f} >= entry ${entry_price:.2f} (liquidation too close to entry) (NO FALLBACKS)")
+                    raise ValueError(
+                        f"Liquidation constraint makes trade impossible: "
+                        f"min_safe_stop ${stop_loss:.2f} >= entry ${entry_price:.2f} "
+                        f"(liquidation ${liquidation_price:.2f} too close to entry) (NO FALLBACKS)"
+                    )
         else:  # SHORT
             # For SHORT: liquidation is above entry, stop must be below liquidation
-            # Max stop = liquidation - buffer (closer to entry, safer)
-            max_stop_from_liquidation = liquidation_price * (1.0 - safety_buffer_pct)
+            # Maximum safe stop = liquidation - buffer (ensures stop triggers before liquidation)
+            max_safe_stop_from_liquidation = liquidation_price * (1.0 - safety_buffer_pct)
             
-            if stop_loss > max_stop_from_liquidation:
-                logger.warning(f"⚠️ Stop loss ${stop_loss:.2f} exceeds liquidation price ${liquidation_price:.2f}! Capping at ${max_stop_from_liquidation:.2f} (liq - {safety_buffer_pct*100}% buffer)")
-                stop_loss = max_stop_from_liquidation
+            # Apply liquidation constraint: stop must be at most max_safe_stop_from_liquidation
+            if stop_loss > max_safe_stop_from_liquidation:
+                logger.debug(
+                    f"🛡️ Stop ${stop_loss:.2f} too close to liquidation ${liquidation_price:.2f}. "
+                    f"Enforcing maximum safe distance: ${max_safe_stop_from_liquidation:.2f} (liq - {safety_buffer_pct*100}% buffer)"
+                )
+                stop_loss = max_safe_stop_from_liquidation
                 
-                # Validate capped stop is still above entry
+                # Validate safe stop is still above entry
                 if stop_loss <= entry_price:
-                    raise ValueError(f"Liquidation constraint makes trade impossible: max_stop ${stop_loss:.2f} <= entry ${entry_price:.2f} (liquidation too close to entry) (NO FALLBACKS)")
+                    raise ValueError(
+                        f"Liquidation constraint makes trade impossible: "
+                        f"max_safe_stop ${stop_loss:.2f} <= entry ${entry_price:.2f} "
+                        f"(liquidation ${liquidation_price:.2f} too close to entry) (NO FALLBACKS)"
+                    )
         
         logger.debug(f"🛡️ Liquidation check: liq=${liquidation_price:.2f}, final_stop=${stop_loss:.2f}")
         

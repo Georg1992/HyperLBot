@@ -29,10 +29,10 @@ class SystemInitializer:
         try:
             logger.info("🚀 PHASE 1: SYSTEM INITIALIZATION STARTED")
             
-            # Step 1: Initialize Core APIs
+            # Step 1: Initialize Core APIs - Required (NO FALLBACKS)
             api_results = self._initialize_core_apis()
-            if not api_results["success"]:
-                return {"success": False, "error": "Core API initialization failed"}
+            if not api_results.get("success"):
+                raise ValueError("Core API initialization failed (NO FALLBACKS)")
             
             # Store APIs in singleton systems for access
             self.singleton_systems["api_manager"] = api_results["api_manager"]
@@ -45,21 +45,22 @@ class SystemInitializer:
             # _initialize_singleton_systems() guarantees to return dict or raise (NO FALLBACKS)
             singleton_results = self._initialize_singleton_systems(initial_balance)
             
-            # Step 3: Initialize Data Systems
+            # Step 3: Initialize Data Systems - Required (NO FALLBACKS)
             data_results = self._initialize_data_systems()
-            if not data_results["success"]:
-                return {"success": False, "error": "Data system initialization failed"}
+            if not data_results.get("success"):
+                raise ValueError("Data system initialization failed (NO FALLBACKS)")
             
             # Step 4: Initialize ML Systems (AI prediction logic removed)
             # NOTE: RSI is already initialized with historical data in _register_analysis_modules
+            # Required (NO FALLBACKS)
             ml_results = self._initialize_ml_systems()
-            if not ml_results["success"]:
-                return {"success": False, "error": "ML system initialization failed"}
+            if not ml_results.get("success"):
+                raise ValueError("ML system initialization failed (NO FALLBACKS)")
             
-            # Step 6: Initialize Trading Systems
+            # Step 6: Initialize Trading Systems - Required (NO FALLBACKS)
             trading_results = self._initialize_trading_systems()
-            if not trading_results["success"]:
-                return {"success": False, "error": "Trading system initialization failed"}
+            if not trading_results.get("success"):
+                raise ValueError("Trading system initialization failed (NO FALLBACKS)")
             
             # Step 7: System Health Check
             health_results = self._perform_system_health_check()
@@ -82,7 +83,7 @@ class SystemInitializer:
             
         except Exception as e:
             logger.error(f"❌ System initialization failed: {e}")
-            return {"success": False, "error": str(e)}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     
     def _initialize_core_apis(self) -> Dict[str, Any]:
@@ -94,10 +95,10 @@ class SystemInitializer:
             from core.services.api_manager import create_api_manager
             api_manager = create_api_manager()
             
-            # Initialize all APIs and WebSockets
+            # Initialize all APIs and WebSockets - Required (NO FALLBACKS)
             api_results = api_manager.initialize_all()
-            if not api_results["success"]:
-                return {"success": False, "error": api_results["error"]}
+            if not api_results.get("success"):
+                raise ValueError(f"API initialization failed: {api_results.get('error', 'Unknown error')} (NO FALLBACKS)")
             
             # Store API results in singleton_systems
             self.singleton_systems.update(api_results["apis"])
@@ -119,7 +120,7 @@ class SystemInitializer:
             
         except Exception as e:
             logger.error(f"❌ API initialization failed: {e}")
-            return {"success": False, "error": str(e)}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     # REMOVED: _initialize_rsi_with_data - was redundant with _register_analysis_modules
     # RSI is now initialized once in _register_analysis_modules with historical data
@@ -203,7 +204,7 @@ class SystemInitializer:
             
         except Exception as e:
             logger.error(f"❌ Singleton system initialization failed: {e}")
-            return {"success": False, "error": str(e)}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _initialize_data_systems(self) -> Dict[str, Any]:
         """Initialize data management systems"""
@@ -231,7 +232,7 @@ class SystemInitializer:
             
         except Exception as e:
             logger.error(f"❌ Data system initialization failed: {e}")
-            return {"success": False, "error": str(e)}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _initialize_ml_systems(self) -> Dict[str, Any]:
         """Initialize ML systems - Currently no ML systems (prediction removed)"""
@@ -242,7 +243,7 @@ class SystemInitializer:
             
         except Exception as e:
             logger.error(f"❌ ML system initialization failed: {e}")
-            return {"success": False, "error": str(e)}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _initialize_trading_systems(self) -> Dict[str, Any]:
         """Initialize trading-specific systems"""
@@ -257,7 +258,7 @@ class SystemInitializer:
                 
         except Exception as e:
             logger.error(f"❌ Trading system initialization failed: {e}")
-            return {"success": False, "error": str(e)}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def _perform_system_health_check(self) -> Dict[str, Any]:
         """Perform comprehensive system health check"""
@@ -274,20 +275,20 @@ class SystemInitializer:
             
             all_healthy = all(health_status.values())
             
-            if all_healthy:
-                logger.success("✅ System health check passed")
-            else:
-                logger.warning("⚠️ Some systems not fully ready")
+            if not all_healthy:
+                raise ValueError(f"System health check failed: {health_status} (NO FALLBACKS)")
+            
+            logger.success("✅ System health check passed")
             
             return {
-                "success": all_healthy,
+                "success": True,
                 "health_status": health_status,
-                "ready_for_analysis": all_healthy
+                "ready_for_analysis": True
             }
             
         except Exception as e:
             logger.error(f"❌ System health check failed: {e}")
-            return {"success": False, "error": str(e)}
+            raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def is_analysis_ready(self) -> bool:
         """Check if system is ready for analysis phase"""

@@ -4,6 +4,7 @@ Prediction Engine
 Generates trading predictions based on unified market data and current strategy
 """
 
+import math
 import time
 from dataclasses import dataclass
 from typing import Dict, Any, Optional, Literal
@@ -115,7 +116,7 @@ class PredictionEngine:
                 logger.info(f"✅ Prediction generated: {prediction.direction} @ ${prediction.entry_price:.2f} (strategy: {strategy})")
                 return prediction
             else:
-                logger.debug(f"⏸️ No prediction generated for strategy: {strategy}")
+                logger.info(f"⏸️ No prediction generated for strategy: {strategy}")  # Important state change
                 return None
                 
         except Exception as e:
@@ -204,7 +205,7 @@ class PredictionEngine:
         )
         
         if not setups:
-            logger.debug(f"⏸️ No valid entry setups found for {direction} direction ({strategy} strategy)")
+            logger.info(f"⏸️ No valid entry setups found for {direction} direction ({strategy} strategy)")  # Important state change
             return None
         
         # Select best entry setup (highest entry score)
@@ -434,66 +435,79 @@ class PredictionEngine:
         """
         Score trend factor for direction determination using multi-timeframe analysis
         
+        Uses numeric strength and proper trend direction mapping (no string parsing).
+        
         Returns:
             (trend_long_score, trend_short_score, reasons)
         """
         detailed_trends = self._require_key(trend_data, "detailed_timeframes", "trend factor scoring")
+        trend_strength = float(self._require_key(trend_data, "strength", "trend data structure"))  # Required (NO FALLBACKS)
         timeframe_weights = self._get_strategy_timeframe_weights(strategy)
         
         trend_long = 0.0
         trend_short = 0.0
         reasons = []
         
+        # Trend direction mapping (no string parsing - use proper data structure)
+        BULLISH_TRENDS = {"STRONG_UPTREND", "UPTREND", "WEAK_UPTREND"}
+        BEARISH_TRENDS = {"STRONG_DOWNTREND", "DOWNTREND", "WEAK_DOWNTREND"}
+        
+        bullish_tfs = 0
+        bearish_tfs = 0
+        
+        # Trend score mapping (no string parsing - direct lookup)
+        TREND_SCORE_MAP = {
+            "STRONG_UPTREND": 150.0,
+            "UPTREND": 100.0,
+            "WEAK_UPTREND": 60.0,
+            "STRONG_DOWNTREND": 150.0,
+            "DOWNTREND": 100.0,
+            "WEAK_DOWNTREND": 60.0
+        }
+        
         # Analyze each timeframe with strategy-specific weights
         for tf_name, tf_trend in detailed_trends.items():
-            if tf_trend == "UNKNOWN":
+            if tf_trend == "UNKNOWN" or tf_trend == "SIDEWAYS":
                 continue
             
-            tf_weight = timeframe_weights[tf_name] if tf_name in timeframe_weights else 0.0
+            tf_weight = timeframe_weights.get(tf_name, 0.0)
             if tf_weight == 0.0:
                 continue
             
-            trend_str = str(tf_trend).upper()
-            is_bullish = "UP" in trend_str or "BULLISH" in trend_str
-            is_bearish = "DOWN" in trend_str or "BEARISH" in trend_str
-            is_strong = "STRONG" in trend_str
-            is_weak = "WEAK" in trend_str
+            # Get base score from mapping (no string parsing)
+            tf_score = TREND_SCORE_MAP.get(tf_trend, 100.0)
             
-            if is_bullish:
-                tf_score = 100.0
-                if is_strong:
-                    tf_score = 150.0
-                elif is_weak:
-                    tf_score = 60.0
+            # Apply numeric strength multiplier (0.0-1.0) for more precision
+            tf_score *= (0.7 + 0.3 * trend_strength)  # Scale between 70%-100% of base score
+            
+            # Determine trend direction and accumulate scores
+            if tf_trend in BULLISH_TRENDS:
                 trend_long += tf_score * tf_weight
-            elif is_bearish:
-                tf_score = 100.0
-                if is_strong:
-                    tf_score = 150.0
-                elif is_weak:
-                    tf_score = 60.0
+                bullish_tfs += 1
+            elif tf_trend in BEARISH_TRENDS:
                 trend_short += tf_score * tf_weight
+                bearish_tfs += 1
         
-        # Multi-timeframe convergence bonus
-        bullish_tfs = sum(1 for tf in detailed_trends.values() 
-                         if "UP" in str(tf).upper() or "BULLISH" in str(tf).upper())
-        bearish_tfs = sum(1 for tf in detailed_trends.values() 
-                         if "DOWN" in str(tf).upper() or "BEARISH" in str(tf).upper())
-        total_tfs = len([tf for tf in detailed_trends.values() if str(tf) != "UNKNOWN"])
-        
+        # Multi-timeframe convergence bonus (more sophisticated)
+        total_tfs = bullish_tfs + bearish_tfs
         if total_tfs >= 3:
-            if bullish_tfs == total_tfs:
-                trend_long += 50.0
-                reasons.append(f"Perfect trend convergence: all {total_tfs} timeframes bullish")
-            elif bearish_tfs == total_tfs:
-                trend_short += 50.0
-                reasons.append(f"Perfect trend convergence: all {total_tfs} timeframes bearish")
-            elif bullish_tfs >= 3:
-                trend_long += 30.0
-                reasons.append(f"Strong trend alignment: {bullish_tfs}/{total_tfs} timeframes bullish")
-            elif bearish_tfs >= 3:
-                trend_short += 30.0
-                reasons.append(f"Strong trend alignment: {bearish_tfs}/{total_tfs} timeframes bearish")
+            convergence_ratio = max(bullish_tfs, bearish_tfs) / total_tfs
+            if convergence_ratio == 1.0:  # Perfect convergence
+                bonus = 50.0
+                if bullish_tfs == total_tfs:
+                    trend_long += bonus
+                    reasons.append(f"Perfect convergence: all {total_tfs} timeframes bullish")
+                else:
+                    trend_short += bonus
+                    reasons.append(f"Perfect convergence: all {total_tfs} timeframes bearish")
+            elif convergence_ratio >= 0.75:  # Strong alignment (3/4 or more)
+                bonus = 30.0
+                if bullish_tfs > bearish_tfs:
+                    trend_long += bonus
+                    reasons.append(f"Strong alignment: {bullish_tfs}/{total_tfs} timeframes bullish")
+                else:
+                    trend_short += bonus
+                    reasons.append(f"Strong alignment: {bearish_tfs}/{total_tfs} timeframes bearish")
         
         return trend_long, trend_short, reasons
     
@@ -662,9 +676,12 @@ class PredictionEngine:
         
         return patterns_long, patterns_short, reasons
     
-    def _score_volume_factor(self, volume_category: str, long_score: float, short_score: float) -> tuple[float, float, list]:
+    def _score_volume_factor_improved(self, volume_data: Dict[str, Any], volume_category: str, 
+                                     long_score: float, short_score: float) -> tuple[float, float, list]:
         """
-        Score volume factor for direction determination (confirmation only)
+        Score volume factor for direction determination with improved analysis
+        
+        Uses volume_trend_strength and volume_anomaly for more sophisticated scoring.
         
         Returns:
             (volume_long_score, volume_short_score, reasons)
@@ -673,15 +690,70 @@ class PredictionEngine:
         volume_short = 0.0
         reasons = []
         
+        # Get volume trend strength (0.0-1.0) - indicates momentum in volume direction
+        # Required (NO FALLBACKS) - volume_data should always have volume_trend_strength
+        volume_trend_strength = float(self._require_key(volume_data, "volume_trend_strength", "volume data structure"))
+        volume_anomaly = self._require_key(volume_data, "volume_anomaly", "volume data structure")  # Required (NO FALLBACKS)
+        
+        # Get configurable thresholds (NO FALLBACKS - must be in config)
+        from config.config import TradingConfig
+        volume_thresholds = TradingConfig.VOLUME_TREND_STRENGTH_THRESHOLDS
+        very_strong_threshold = volume_thresholds["very_strong"]  # Required (NO FALLBACKS)
+        
+        # High volume confirms existing direction (uses pre-volume scores to avoid circular dependency)
         if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
+            confirmation_score = 100.0
+            
+            # Boost if volume trend aligns with direction
             if long_score > short_score:
-                volume_long = 100.0
-                reasons.append(f"High volume confirms bullish ({volume_category})")
+                # Volume trend strength bonus: strong volume trend increases confirmation
+                if volume_trend_strength > very_strong_threshold:
+                    # Use configurable bonus multiplier
+                    bonus_multiplier = TradingConfig.VOLUME_CONFIRMATION_BONUS_MULTIPLIER
+                    confirmation_score = 100.0 * bonus_multiplier
+                    reasons.append(f"High volume with strong bullish trend ({volume_category}, strength: {volume_trend_strength:.2f})")
+                else:
+                    reasons.append(f"High volume confirms bullish ({volume_category})")
+                volume_long = confirmation_score
             elif short_score > long_score:
-                volume_short = 100.0
-                reasons.append(f"High volume confirms bearish ({volume_category})")
+                if volume_trend_strength > very_strong_threshold:
+                    bonus_multiplier = TradingConfig.VOLUME_CONFIRMATION_BONUS_MULTIPLIER
+                    confirmation_score = 100.0 * bonus_multiplier
+                    reasons.append(f"High volume with strong bearish trend ({volume_category}, strength: {volume_trend_strength:.2f})")
+                else:
+                    reasons.append(f"High volume confirms bearish ({volume_category})")
+                volume_short = confirmation_score
+        elif volume_category in ["LOW", "VERY_LOW"]:
+            # Low volume reduces confidence (but doesn't reverse direction)
+            low_volume_penalty = TradingConfig.LOW_VOLUME_PENALTY
+            if long_score > short_score:
+                volume_long = -low_volume_penalty
+                reasons.append(f"Low volume reduces bullish confidence ({volume_category})")
+            elif short_score > long_score:
+                volume_short = -low_volume_penalty
+                reasons.append(f"Low volume reduces bearish confidence ({volume_category})")
+        
+        # Volume anomaly detection: extreme volume spikes can indicate reversals
+        if volume_anomaly and volume_category in ["VERY_HIGH", "EXTREME"]:
+            # Anomaly suggests potential reversal - slight penalty to current direction
+            anomaly_penalty = TradingConfig.VOLUME_ANOMALY_PENALTY
+            if long_score > short_score:
+                volume_long -= anomaly_penalty
+                reasons.append("Volume anomaly detected - potential reversal risk")
+            elif short_score > long_score:
+                volume_short -= anomaly_penalty
+                reasons.append("Volume anomaly detected - potential reversal risk")
         
         return volume_long, volume_short, reasons
+    
+    def _score_volume_factor(self, volume_category: str, long_score: float, short_score: float) -> tuple[float, float, list]:
+        """
+        Legacy method - delegates to improved version
+        """
+        # This method signature is kept for backward compatibility
+        # In practice, _score_volume_factor_improved is called with full volume_data
+        volume_data = {"volume_category": volume_category, "volume_trend_strength": 0.5, "volume_anomaly": False}
+        return self._score_volume_factor_improved(volume_data, volume_category, long_score, short_score)
     
     def _score_sr_proximity_factor(self, unified_data: Dict[str, Any], strategy: str) -> tuple[float, float, list]:
         """
@@ -971,13 +1043,12 @@ class PredictionEngine:
         # Entry price relative to current price
         price_diff_pct = (entry_price - current_price) / current_price if current_price > 0 else 0.0
         
-        # ATR-based threshold (FIXED 2026-01-12)
+        # ATR-based threshold (NO FALLBACKS)
         # Use 1.25×ATR as significant distance threshold (mathematically justified)
-        # Falls back to 0.25% only if ATR unavailable (backward compatibility)
-        if atr_5m and atr_5m > 0 and current_price > 0:
-            significant_diff_threshold = (atr_5m / current_price) * 1.25  # 1.25×ATR as percentage
-        else:
-            significant_diff_threshold = 0.0025  # Fallback: 0.25% (reasonable for BTC)
+        if atr_5m is None or atr_5m <= 0 or current_price <= 0:
+            raise ValueError(f"ATR required for RSI entry scoring: atr_5m={atr_5m}, current_price={current_price} (NO FALLBACKS)")
+        
+        significant_diff_threshold = (atr_5m / current_price) * 1.25  # 1.25×ATR as percentage
         
         if direction == "LONG":
             # For LONG: entry below current (buying cheaper) is good, especially if RSI is oversold
@@ -1036,27 +1107,38 @@ class PredictionEngine:
         total_weighted_score = 0.0
         total_weight = 0.0
         
+        # Trend direction mapping (no string parsing - use proper data structure)
+        BULLISH_TRENDS = {"STRONG_UPTREND", "UPTREND", "WEAK_UPTREND"}
+        BEARISH_TRENDS = {"STRONG_DOWNTREND", "DOWNTREND", "WEAK_DOWNTREND"}
+        
+        # Trend score mapping (no string parsing - direct lookup)
+        TREND_SCORE_MAP = {
+            "STRONG_UPTREND": 1.5,
+            "UPTREND": 1.0,
+            "WEAK_UPTREND": 1.0,
+            "STRONG_DOWNTREND": 1.5,
+            "DOWNTREND": 1.0,
+            "WEAK_DOWNTREND": 1.0
+        }
+        
         for tf_name, tf_trend in detailed_trends.items():
-            if tf_trend == "UNKNOWN":
+            if tf_trend == "UNKNOWN" or tf_trend == "SIDEWAYS":
                 continue
             
-            tf_weight = timeframe_weights[tf_name] if tf_name in timeframe_weights else 0.0
+            tf_weight = timeframe_weights.get(tf_name, 0.0)
             if tf_weight == 0.0:
                 continue
             
-            trend_str = str(tf_trend).upper()
-            is_bullish = "UP" in trend_str or "BULLISH" in trend_str
-            is_bearish = "DOWN" in trend_str or "BEARISH" in trend_str
-            is_strong = "STRONG" in trend_str
+            # Get score from mapping (no string parsing)
+            tf_score = TREND_SCORE_MAP.get(tf_trend, 1.0)
             
-            if is_bullish:
+            # Determine trend direction and accumulate
+            if tf_trend in BULLISH_TRENDS:
                 bullish_tfs += 1
-                tf_score = 1.5 if is_strong else 1.0
                 total_weighted_score += tf_score * tf_weight
                 total_weight += tf_weight
-            elif is_bearish:
+            elif tf_trend in BEARISH_TRENDS:
                 bearish_tfs += 1
-                tf_score = 1.5 if is_strong else 1.0
                 total_weighted_score += tf_score * tf_weight
                 total_weight += tf_weight
         
@@ -1091,12 +1173,18 @@ class PredictionEngine:
         score = 0.0
         reasons = []
         
-        if direction == "LONG" and pressure_direction in ["BUY", "STRONG_BUY"]:
-            strength_multiplier = 1.5 if "STRONG" in pressure_direction else 1.0
+        # Pressure direction mapping (no string parsing)
+        STRONG_BUY_PRESSURES = {"STRONG_BUY"}
+        BUY_PRESSURES = {"BUY", "STRONG_BUY"}
+        STRONG_SELL_PRESSURES = {"STRONG_SELL"}
+        SELL_PRESSURES = {"SELL", "STRONG_SELL"}
+        
+        if direction == "LONG" and pressure_direction in BUY_PRESSURES:
+            strength_multiplier = 1.5 if pressure_direction in STRONG_BUY_PRESSURES else 1.0
             score = 100.0 * strength_multiplier * pressure_strength
             reasons.append(f"Buy pressure aligns with LONG: {pressure_direction} (strength: {pressure_strength:.2f})")
-        elif direction == "SHORT" and pressure_direction in ["SELL", "STRONG_SELL"]:
-            strength_multiplier = 1.5 if "STRONG" in pressure_direction else 1.0
+        elif direction == "SHORT" and pressure_direction in SELL_PRESSURES:
+            strength_multiplier = 1.5 if pressure_direction in STRONG_SELL_PRESSURES else 1.0
             score = 100.0 * strength_multiplier * pressure_strength
             reasons.append(f"Sell pressure aligns with SHORT: {pressure_direction} (strength: {pressure_strength:.2f})")
         else:
@@ -1194,10 +1282,17 @@ class PredictionEngine:
         self,
         entry_price: float,
         current_price: float,
-        direction: str
+        direction: str,
+        unified_data: Dict[str, Any]
     ) -> tuple[float, list]:
         """
         Score distance from current price factor (risk/reward consideration)
+        
+        Args:
+            entry_price: Proposed entry price
+            current_price: Current market price
+            direction: "LONG" or "SHORT"
+            unified_data: Complete market analysis data (required for ATR)
         
         Returns:
             (distance_score, reasons)
@@ -1209,10 +1304,14 @@ class PredictionEngine:
         score = 0.0
         reasons = []
         
-        # Get ATR for mathematically justified thresholds
-        # Note: unified_data not available in this method signature, use fallback
-        # This is acceptable as distance scoring can use reasonable defaults
-        atr_pct = 0.002  # Default 0.2% ATR if unavailable (reasonable fallback)
+        # Get ATR for mathematically justified thresholds (NO FALLBACKS)
+        sr_data = self._require_key(unified_data, "support_resistance", "distance scoring")
+        sr_metadata = sr_data["metadata"]
+        atr_5m = sr_metadata["atr_5m"]
+        if atr_5m <= 0 or current_price <= 0:
+            raise ValueError(f"Invalid ATR or price: atr_5m={atr_5m}, current_price={current_price} (NO FALLBACKS)")
+        
+        atr_pct = atr_5m / current_price
         
         # Mathematically justified thresholds based on ATR:
         # - Too close: <0.25×ATR (might miss if price moves quickly)
@@ -1314,49 +1413,101 @@ class PredictionEngine:
             trend_data = self._require_key(unified_data, "trend", "direction scoring")
             pressure_data = self._require_key(unified_data, "pressure", "direction scoring")
             patterns_data = self._require_key(unified_data, "patterns", "direction scoring")
-            volume_category = self._require_key(unified_data, "volume_category", "direction scoring")
-            # funding_data is optional - not always available, checked with "in" operator when needed
+            volume_data = self._require_key(unified_data, "volume", "direction scoring")
+            volume_category = unified_data["volume_category"]  # Flattened key for compatibility
             
             # Initialize scores
             long_score = 0.0
             short_score = 0.0
-            all_reasons = []
+            long_reasons = []  # Track reasons that support LONG
+            short_reasons = []  # Track reasons that support SHORT
+            
+            # Track factor scores for interaction analysis
+            factor_scores = {
+                "rsi": {"long": 0.0, "short": 0.0},
+                "trend": {"long": 0.0, "short": 0.0},
+                "pressure": {"long": 0.0, "short": 0.0},
+                "patterns": {"long": 0.0, "short": 0.0}
+            }
             
             # Score each factor using unified framework (all weights required - NO FALLBACKS)
             rsi_weight = direction_weights["rsi"]  # Required (NO FALLBACKS)
             if rsi_weight > 0:
                 rsi_long, rsi_short, reasons = self._score_rsi_factor(rsi_data)
+                factor_scores["rsi"] = {"long": rsi_long, "short": rsi_short}
                 long_score += rsi_long * rsi_weight
                 short_score += rsi_short * rsi_weight
-                all_reasons.extend(reasons)
+                # Add reasons to the direction they support (based on score contribution)
+                if rsi_long > rsi_short:
+                    long_reasons.extend(reasons)
+                elif rsi_short > rsi_long:
+                    short_reasons.extend(reasons)
+                # If equal, add to both (neutral RSI)
             
             trend_weight = direction_weights["trend"]  # Required (NO FALLBACKS)
             if trend_weight > 0:
                 trend_long, trend_short, reasons = self._score_trend_factor(trend_data, strategy)
+                factor_scores["trend"] = {"long": trend_long, "short": trend_short}
                 long_score += trend_long * trend_weight
                 short_score += trend_short * trend_weight
-                all_reasons.extend(reasons)
+                # Add reasons to the direction they support
+                if trend_long > trend_short:
+                    long_reasons.extend(reasons)
+                elif trend_short > trend_long:
+                    short_reasons.extend(reasons)
             
             pressure_weight = direction_weights["pressure"]  # Required (NO FALLBACKS)
             if pressure_weight > 0:
                 pressure_long, pressure_short, reasons = self._score_pressure_factor(pressure_data)
+                factor_scores["pressure"] = {"long": pressure_long, "short": pressure_short}
                 long_score += pressure_long * pressure_weight
                 short_score += pressure_short * pressure_weight
-                all_reasons.extend(reasons)
+                # Add reasons to the direction they support
+                if pressure_long > pressure_short:
+                    long_reasons.extend(reasons)
+                elif pressure_short > pressure_long:
+                    short_reasons.extend(reasons)
             
             patterns_weight = direction_weights["patterns"]  # Required (NO FALLBACKS)
             if patterns_weight > 0:
                 patterns_long, patterns_short, reasons = self._score_patterns_factor(patterns_data)
+                factor_scores["patterns"] = {"long": patterns_long, "short": patterns_short}
                 long_score += patterns_long * patterns_weight
                 short_score += patterns_short * patterns_weight
-                all_reasons.extend(reasons)
+                # Add reasons to the direction they support
+                if patterns_long > patterns_short:
+                    long_reasons.extend(reasons)
+                elif patterns_short > patterns_long:
+                    short_reasons.extend(reasons)
             
+            # Detect factor synergies (non-linear interactions)
+            synergy_bonus = self._detect_factor_synergies(factor_scores, rsi_data, trend_data)
+            long_score += synergy_bonus["long"]
+            short_score += synergy_bonus["short"]
+            if synergy_bonus["reasons"]:
+                # Add synergy reasons to the direction they support
+                if synergy_bonus["long"] > synergy_bonus["short"]:
+                    long_reasons.extend(synergy_bonus["reasons"])
+                elif synergy_bonus["short"] > synergy_bonus["long"]:
+                    short_reasons.extend(synergy_bonus["reasons"])
+                # If equal or conflict, add conflict reasons to both (reduces confidence)
+            
+            # Volume scoring: Uses current scores (without volume) to determine winning direction,
+            # then confirms that direction with volume analysis
             volume_weight = direction_weights["volume"]  # Required (NO FALLBACKS)
             if volume_weight > 0:
-                volume_long, volume_short, reasons = self._score_volume_factor(volume_category, long_score, short_score)
+                # Pass current scores (they don't include volume yet) so volume can confirm the winning direction
+                volume_long, volume_short, reasons = self._score_volume_factor_improved(
+                    volume_data, volume_category, long_score, short_score
+                )
                 long_score += volume_long * volume_weight
                 short_score += volume_short * volume_weight
-                all_reasons.extend(reasons)
+                # Add reasons to the direction they support
+                if volume_long > volume_short:
+                    long_reasons.extend(reasons)
+                elif volume_short > volume_long:
+                    short_reasons.extend(reasons)
+                # If equal (both negative penalties), add to both
             
             # S/R PROXIMITY: When price is approaching strong S/R levels with high reversal probability,
             # that should influence direction (support → LONG, resistance → SHORT)
@@ -1365,25 +1516,36 @@ class PredictionEngine:
                 sr_proximity_long, sr_proximity_short, reasons = self._score_sr_proximity_factor(unified_data, strategy)
                 long_score += sr_proximity_long * sr_proximity_weight
                 short_score += sr_proximity_short * sr_proximity_weight
-                all_reasons.extend(reasons)
+                # Add reasons to the direction they support
+                if sr_proximity_long > sr_proximity_short:
+                    long_reasons.extend(reasons)
+                elif sr_proximity_short > sr_proximity_long:
+                    short_reasons.extend(reasons)
             
             # FUNDING REMOVED FROM DIRECTION SCORING
             # Funding is often not available and doesn't significantly impact short-term direction
             # If needed in the future, make it optional and handle missing data gracefully
             
-            # Determine direction from scores
+            # Determine direction from scores with intelligent tie-breaking
             score_diff = abs(long_score - short_score)
             logger.debug(f"📊 Direction scores ({strategy}): LONG={long_score:.1f}, SHORT={short_score:.1f}, diff={score_diff:.1f}")
             
             if long_score > short_score:
                 direction = "LONG"
-                reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f}). " + "; ".join(all_reasons[:5])
+                # Only show reasons that support LONG direction
+                relevant_reasons = long_reasons[:5] if long_reasons else ["No specific LONG factors"]
+                reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f}). " + "; ".join(relevant_reasons)
             elif short_score > long_score:
                 direction = "SHORT"
-                reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f}). " + "; ".join(all_reasons[:5])
+                # Only show reasons that support SHORT direction
+                relevant_reasons = short_reasons[:5] if short_reasons else ["No specific SHORT factors"]
+                reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f}). " + "; ".join(relevant_reasons)
             else:
-                direction = "LONG"
-                reasoning = f"Neutral signal (equal scores: {long_score:.1f}). " + "; ".join(all_reasons[:5])
+                # Intelligent tie-breaking: use trend strength and RSI as tie-breakers
+                direction = self._break_tie(long_score, short_score, trend_data, rsi_data)
+                # Show reasons from the winning direction
+                relevant_reasons = (long_reasons if direction == "LONG" else short_reasons)[:5]
+                reasoning = f"Neutral signal (equal scores: {long_score:.1f}), tie-broken by {direction}. " + "; ".join(relevant_reasons if relevant_reasons else ["Tie-broken by trend/RSI"])
             
             return {
                 "direction": direction,
@@ -1395,6 +1557,100 @@ class PredictionEngine:
         except Exception as e:
             logger.error(f"❌ Direction scoring failed: {e}")
             return None
+    
+    def _detect_factor_synergies(self, factor_scores: Dict[str, Dict[str, float]], 
+                                 rsi_data: Dict[str, Any], trend_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Detect factor synergies (non-linear interactions) for bonus scoring
+        
+        Examples:
+        - RSI oversold + strong bullish trend = strong buy signal (synergy)
+        - RSI overbought + strong bearish trend = strong sell signal (synergy)
+        - RSI oversold + bearish trend = conflict (no synergy)
+        
+        Returns:
+            Dict with "long", "short" bonus scores and "reasons" list
+        """
+        synergy_bonus = {"long": 0.0, "short": 0.0, "reasons": []}
+        
+        rsi_value = float(self._require_key(rsi_data, "rsi", "rsi data structure"))  # Required (NO FALLBACKS)
+        rsi_trend = self._require_key(rsi_data, "rsi_trend", "rsi data structure")  # Required (NO FALLBACKS)
+        trend_direction = self._require_key(trend_data, "direction", "trend data structure")  # Required (NO FALLBACKS)
+        trend_strength = float(self._require_key(trend_data, "strength", "trend data structure"))  # Required (NO FALLBACKS)
+        
+        # Get configurable synergy bonuses (NO FALLBACKS)
+        from config.config import TradingConfig
+        synergy_config = TradingConfig.SYNERGY_BONUSES
+        
+        # Synergy 1: RSI oversold + bullish trend = strong buy signal
+        if rsi_value < technical_constants.RSI_OVERSOLD and trend_direction == "BULLISH":
+            base_bonus = synergy_config["rsi_trend_alignment"]
+            bonus = base_bonus * trend_strength  # Scale with trend strength
+            synergy_bonus["long"] += bonus
+            synergy_bonus["reasons"].append(f"Synergy: RSI oversold ({rsi_value:.1f}) + bullish trend (strength: {trend_strength:.2f})")
+        
+        # Synergy 2: RSI overbought + bearish trend = strong sell signal
+        elif rsi_value > technical_constants.RSI_OVERBOUGHT and trend_direction == "BEARISH":
+            base_bonus = synergy_config["rsi_trend_alignment"]
+            bonus = base_bonus * trend_strength
+            synergy_bonus["short"] += bonus
+            synergy_bonus["reasons"].append(f"Synergy: RSI overbought ({rsi_value:.1f}) + bearish trend (strength: {trend_strength:.2f})")
+        
+        # Synergy 3: RSI recovering + bullish trend = momentum building
+        if rsi_value < 50 and rsi_trend == "BULLISH" and trend_direction == "BULLISH":
+            base_bonus = synergy_config["momentum_building"]
+            bonus = base_bonus * trend_strength
+            synergy_bonus["long"] += bonus
+            synergy_bonus["reasons"].append(f"Synergy: RSI recovering + bullish trend alignment")
+        
+        # Synergy 4: RSI declining + bearish trend = momentum building
+        elif rsi_value > 50 and rsi_trend == "BEARISH" and trend_direction == "BEARISH":
+            base_bonus = synergy_config["momentum_building"]
+            bonus = base_bonus * trend_strength
+            synergy_bonus["short"] += bonus
+            synergy_bonus["reasons"].append(f"Synergy: RSI declining + bearish trend alignment")
+        
+        # Conflict detection: RSI and trend oppose each other
+        conflict_penalty = synergy_config["factor_conflict"]
+        if (rsi_value < technical_constants.RSI_OVERSOLD and trend_direction == "BEARISH") or \
+           (rsi_value > technical_constants.RSI_OVERBOUGHT and trend_direction == "BULLISH"):
+            # Reduce confidence when factors conflict
+            if trend_direction == "BULLISH":
+                synergy_bonus["long"] -= conflict_penalty
+            else:
+                synergy_bonus["short"] -= conflict_penalty
+            synergy_bonus["reasons"].append("Conflict: RSI and trend oppose each other")
+        
+        return synergy_bonus
+    
+    def _break_tie(self, long_score: float, short_score: float, 
+                   trend_data: Dict[str, Any], rsi_data: Dict[str, Any]) -> str:
+        """
+        Intelligent tie-breaking when scores are equal
+        
+        Uses trend strength and RSI as tie-breakers in order of priority.
+        
+        Returns:
+            "LONG" or "SHORT"
+        """
+        # Priority 1: Use trend strength and direction
+        trend_direction = self._require_key(trend_data, "direction", "trend data structure")  # Required (NO FALLBACKS)
+        trend_strength = float(self._require_key(trend_data, "strength", "trend data structure"))  # Required (NO FALLBACKS)
+        
+        if trend_direction == "BULLISH" and trend_strength > 0.5:
+            return "LONG"
+        elif trend_direction == "BEARISH" and trend_strength > 0.5:
+            return "SHORT"
+        
+        # Priority 2: Use RSI as tie-breaker
+        rsi_value = float(self._require_key(rsi_data, "rsi", "rsi data structure"))  # Required (NO FALLBACKS)
+        if rsi_value < 50:
+            return "LONG"  # RSI below neutral favors long
+        elif rsi_value > 50:
+            return "SHORT"  # RSI above neutral favors short
+        
+        # Priority 3: Default to LONG (conservative approach)
+        return "LONG"
     
     
     def _get_strategy_timeframe_weights(self, strategy: str) -> Dict[str, float]:
@@ -1863,24 +2119,40 @@ class PredictionEngine:
             from core.calculations.liquidation_calculator import LiquidationCalculator
             liq_calc = LiquidationCalculator(leverage=TradingConfig.LEVERAGE)
             
-            # Get spread for penalty calculation
+            # Get spread for penalty calculation (NO FALLBACKS)
             from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
-            orderbook_data = unified_data["orderbook_analysis"] if "orderbook_analysis" in unified_data else {}
-            spread_data = orderbook_data["bid_ask_spread"] if "bid_ask_spread" in orderbook_data and orderbook_data["bid_ask_spread"] else {"percentage": 0.01}
-            spread_pct = spread_data["percentage"] / 100.0 if "percentage" in spread_data else 0.0001  # Convert to decimal
+            orderbook_data = self._require_key(unified_data, "orderbook_analysis", "entry price calculation")
+            spread_data = self._require_key(orderbook_data, "bid_ask_spread", "entry price calculation")
+            spread_pct = spread_data["percentage"] / 100.0  # Convert to decimal (NO FALLBACKS)
             
             best_candidate = None
             best_score = -1.0
             best_breakdown = None
             
             for candidate_price in candidates:
-                # 1. FILL PROBABILITY SCORE (35% weight)
-                # Formula: 100 at current → 50 at 3×ATR → 10 at 6×ATR
+                # 1. FILL PROBABILITY SCORE (35% weight) - Non-linear exponential decay
+                # Formula: Exponential decay from 100 at current → ~50 at 3×ATR → ~10 at 6×ATR
+                # More realistic than linear: fill probability drops faster as distance increases
                 distance_to_current_pct = calculate_distance_pct(candidate_price, current_price, current_price)
                 distance_to_current_atr = calculate_distance_atr(distance_to_current_pct, atr_pct)
-                fill_probability = max(10.0, 100.0 - (distance_to_current_atr / 6.0) * 90.0)
                 
-                # 2. LIQUIDATION SAFETY SCORE (35% weight)
+                # Exponential decay: fill_prob = 100 * exp(-distance_atr / decay_factor)
+                # decay_factor = 3.0 means: at 3×ATR, fill_prob ≈ 100 * exp(-1) ≈ 37
+                # at 6×ATR, fill_prob ≈ 100 * exp(-2) ≈ 13.5
+                fill_decay_factor = TradingConfig.ENTRY_FILL_DECAY_FACTOR
+                fill_probability = 100.0 * math.exp(-distance_to_current_atr / fill_decay_factor)
+                fill_probability = max(5.0, fill_probability)  # Minimum 5% fill probability
+                
+                # Orderbook depth adjustment: Higher liquidity = better fill probability
+                # Orderbook depth is optional - if available, boost fill probability
+                if "liquidity_depth" in orderbook_data:
+                    liquidity_depth = orderbook_data["liquidity_depth"]
+                    depth_score = liquidity_depth.get("depth_score", 50.0)  # 0-100 scale
+                    # Boost fill probability by up to 15% for high liquidity
+                    liquidity_boost = (depth_score / 100.0) * 15.0
+                    fill_probability = min(100.0, fill_probability + liquidity_boost)
+                
+                # 2. LIQUIDATION SAFETY SCORE (35% weight) - Non-linear sigmoid curve
                 # Calculate liquidation price from this entry
                 liquidation_price = liq_calc.calculate_liquidation_price(candidate_price, direction)
                 # Distance from entry to liquidation (as % of entry)
@@ -1888,9 +2160,16 @@ class PredictionEngine:
                     liq_distance_pct = (candidate_price - liquidation_price) / candidate_price
                 else:  # SHORT
                     liq_distance_pct = (liquidation_price - candidate_price) / candidate_price
-                # Score: More distance = safer (40x = 1.2% to liq, want > 1.5% for safety)
-                # 100 at 2.0%, 50 at 1.2%, 0 at 0.5%
-                liquidation_safety = max(0.0, min(100.0, (liq_distance_pct - 0.005) / 0.015 * 100.0))
+                
+                # Sigmoid curve: More realistic than linear
+                # Formula: 100 / (1 + exp(-k * (distance - midpoint)))
+                # k controls steepness, midpoint is the inflection point
+                # For 40x leverage: want >1.5% for safety, 2.0% is ideal
+                liq_safety_midpoint_pct = TradingConfig.LIQUIDATION_SAFETY_MIDPOINT_PCT  # 1.5% default
+                liq_safety_steepness = TradingConfig.LIQUIDATION_SAFETY_STEEPNESS  # Controls curve steepness
+                liq_distance_normalized = (liq_distance_pct - liq_safety_midpoint_pct) * 100  # Convert to basis points
+                liquidation_safety = 100.0 / (1.0 + math.exp(-liq_safety_steepness * liq_distance_normalized))
+                liquidation_safety = max(0.0, min(100.0, liquidation_safety))
                 
                 # 3. LEVEL STRENGTH SCORE (20% weight)
                 # Use level power directly (0-100 scale)
@@ -2098,16 +2377,11 @@ class PredictionEngine:
                 leverage=leverage
             )
             
-            # Get spread for realistic profit calculations (FIXED 2026-01-12 - from config)
-            from config.config import TradingConfig
-            spread_pct = TradingConfig.DEFAULT_SPREAD_PCT  # Default if orderbook unavailable
-            if "orderbook_analysis" in unified_data:
-                orderbook_data = unified_data["orderbook_analysis"]
-                if "bid_ask_spread" in orderbook_data:
-                    bid_ask_spread = orderbook_data["bid_ask_spread"]
-                    if "percentage" in bid_ask_spread:
-                        spread_pct = bid_ask_spread["percentage"]
-                        logger.debug(f"📊 Using actual spread: {spread_pct:.3f}%")
+            # Get spread for realistic profit calculations - Required (NO FALLBACKS)
+            orderbook_data = self._require_key(unified_data, "orderbook_analysis", "unified_data structure")
+            bid_ask_spread = self._require_key(orderbook_data, "bid_ask_spread", "orderbook_analysis structure")
+            spread_pct = self._require_key(bid_ask_spread, "percentage", "bid_ask_spread structure")
+            logger.debug(f"📊 Using actual spread: {spread_pct:.3f}%")
             
             # 3. Calculate adaptive take profit at next S/R level (delegated to RiskManager)
             # NOW WITH SPREAD COSTS (FIXED 2026-01-12)

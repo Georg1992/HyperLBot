@@ -76,11 +76,12 @@
       "blocked_by": "User wants all other fixes done first"
     },
     "stop_loss_liquidation_cap": {
-      "status": "MISSING",
-      "location": "core/calculations/risk_manager.py",
-      "problem": "SL calculated based on ATR/S/R, doesn't check if beyond liquidation",
-      "priority": "CRITICAL",
-      "fix": "Cap SL at liquidation_price * (1 ± safety_buffer)"
+      "status": "RESOLVED",
+      "resolved": "2026-01-12 (pre-existing implementation)",
+      "location": "core/calculations/risk_manager.py:139-190",
+      "was": "SL calculated based on ATR/S/R, doesn't check if beyond liquidation",
+      "now": "Liquidation constraint implemented: stop_loss capped at liquidation_price * (1 ± safety_buffer_pct) with 0.5% buffer",
+      "note": "Already implemented before audit - validates stop doesn't violate liquidation safety"
     }
   }
 }
