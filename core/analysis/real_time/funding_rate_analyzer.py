@@ -62,10 +62,37 @@ class FundingRateAnalyzer:
                 "timestamp": time.time()
             }
             
-            # Only include trend/volatility analysis if we have enough valid data points
+            # CRITICAL FIX: Always provide funding_trend and funding_volatility for strategy selection
+            # If insufficient history, provide initial/default values until we have enough data
             if self._has_sufficient_funding_history():
                 analysis["funding_trend"] = self._calculate_funding_trend()
                 analysis["funding_volatility"] = self._calculate_funding_volatility()  # For risk management
+            else:
+                # Provide truly neutral values until we have sufficient history (5+ data points)
+                # These values give 0.0 points to all strategies - no bias until real data is available
+                # Direction: "UNKNOWN" (not "STABLE") to signal insufficient data
+                # Rate change: Use threshold that ensures 0.0 points (not "very_stable" which gives +2.0)
+                from config.config import TradingConfig
+                funding_thresholds = TradingConfig.FUNDING_RATE_CHANGE_THRESHOLDS
+                # Use a rate_change value that's NOT in the "very_stable" range to avoid +2.0 bonus
+                # Set to just above very_stable threshold so it doesn't match the stable condition
+                neutral_rate_change = funding_thresholds.get("very_stable", 0.0001) + 0.00001
+                
+                analysis["funding_trend"] = {
+                    "trend": "UNKNOWN_INSUFFICIENT_DATA",
+                    "direction": "UNKNOWN",  # Signals insufficient data (not "STABLE" which gives +10.0)
+                    "strength": 0.0,  # Used by strategy_manager
+                    "rate_change": neutral_rate_change,  # Above "very_stable" threshold to avoid +2.0 bonus
+                    "rate_change_pct": neutral_rate_change * 100  # Percentage change for easier interpretation
+                }
+                analysis["funding_volatility"] = {
+                    "volatility": 0.0,
+                    "volatility_pct": 0.0,
+                    "category": "UNKNOWN",  # Signals insufficient data (not "VERY_LOW" which might be misleading)
+                    "mean_rate": funding_rate,
+                    "data_points": len(self._funding_rate_history)
+                }
+                logger.debug(f"📊 Funding history insufficient ({len(self._funding_rate_history)}/5 points) - using neutral values (0.0 points) for strategy selection")
             
             return analysis
             

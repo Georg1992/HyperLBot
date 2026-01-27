@@ -465,27 +465,6 @@ class PredictionEngine:
         """Spike hunting strategy prediction logic - uses base prediction with strategy-specific parameters"""
         return self._predict(unified_data, config, "spike_hunting")
     
-    def _determine_direction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[Dict[str, Any]]:
-        """
-        Determine trade direction using unified scoring framework (global - no entry context)
-        
-        NOTE: This method returns GLOBAL direction scores (not contextual).
-        This method is kept for backward compatibility and general direction analysis.
-        
-        NOTE: This method uses "scores" (long_score, short_score) for direction determination.
-        "Confidence" is ONLY used for final predictions, not for intermediate calculations.
-        
-        Delegates to _score_direction which uses the unified scoring framework.
-        
-        Args:
-            unified_data: Complete market analysis data
-            strategy: Current trading strategy
-            
-        Returns:
-            Dict with "direction" ("LONG" or "SHORT"), "reasoning", "long_score", and "short_score"
-        """
-        return self._score_direction(unified_data, strategy)
-    
     # ==================================================================================
     # UNIFIED SCORING FRAMEWORK - Factor Scorers (Reusable)
     # ==================================================================================
@@ -773,21 +752,20 @@ class PredictionEngine:
                     patterns_short += pattern_score
                     reasons.append(f"{pattern_name} (quality={pattern_quality:.2f}, rel={pattern_reliability:.2f}, score={pattern_score:.1f})")
         
-        # CRITICAL FIX: Normalize pattern scores to consistent range [0, 100] for ML consistency
-        # Instead of hardcoded cap at 200.0, normalize to 0-100 range
-        # This ensures consistent feature ranges for ML models
-        # Base normalization: divide by 2.0 to map [0, 200] -> [0, 100]
-        # This allows 2-3 strong patterns to contribute significantly while keeping range consistent
-        NORMALIZATION_FACTOR = 2.0
-        patterns_long = patterns_long / NORMALIZATION_FACTOR
-        patterns_short = patterns_short / NORMALIZATION_FACTOR
+        # IMPROVED (2026-01-27): Normalize pattern scores to consistent range [0, 100]
+        # Increased normalization factor from 2.0 to 3.0 to handle multiple high-quality patterns
+        # This allows up to 300 points (3 strong patterns) before normalization, mapping to [0, 100]
+        from config.config import TradingConfig
+        normalization_factor = TradingConfig.PATTERN_NORMALIZATION_FACTOR
+        patterns_long = patterns_long / normalization_factor
+        patterns_short = patterns_short / normalization_factor
         # Clamp to [0, 100] range for safety
         patterns_long = max(0.0, min(100.0, patterns_long))
         patterns_short = max(0.0, min(100.0, patterns_short))
         
         return patterns_long, patterns_short, reasons
     
-    def _score_volume_factor_improved(self, volume_data: Dict[str, Any], volume_category: str) -> tuple[float, float, list]:
+    def _score_volume_factor(self, volume_data: Dict[str, Any], volume_category: str) -> tuple[float, float, list]:
         """
         Score volume factor for direction determination with improved analysis
         
@@ -883,151 +861,6 @@ class PredictionEngine:
             reasons.append("Volume anomaly detected - potential reversal risk")
         
         return volume_long, volume_short, reasons
-    
-    def _score_volume_factor(self, volume_data: Dict[str, Any], volume_category: str) -> tuple[float, float, list]:
-        """
-        Legacy method - delegates to improved version
-        """
-        # This method signature is kept for backward compatibility
-        # Delegates to improved version (no pre-scores - prevents circular dependency)
-        return self._score_volume_factor_improved(volume_data, volume_category)
-    
-    def _score_sr_proximity_factor(self, unified_data: Dict[str, Any], strategy: str) -> tuple[float, float, list]:
-        """
-        Score S/R proximity factor for direction determination
-        
-        When price is approaching a strong S/R level with high reversal probability,
-        that should influence direction:
-        - Approaching strong support with high reversal → favor LONG
-        - Approaching strong resistance with high reversal → favor SHORT
-        
-        Returns:
-            (sr_proximity_long_score, sr_proximity_short_score, reasons)
-        """
-        try:
-            # All required data must be present (NO FALLBACKS)
-            current_price = self._require_key(unified_data, "current_price", "S/R proximity factor scoring")
-            if current_price <= 0:
-                raise ValueError(f"Invalid current_price: {current_price}")
-            
-            sr_data = self._require_key(unified_data, "support_resistance", "S/R proximity factor scoring")
-            all_levels = self._require_key(sr_data, "levels", "S/R proximity factor scoring")
-            sr_metadata = self._require_key(sr_data, "metadata", "S/R proximity factor scoring")
-            atr_5m = self._require_key(sr_metadata, "atr_5m", "S/R proximity factor scoring")
-            if atr_5m <= 0:
-                raise ValueError(f"Invalid atr_5m: {atr_5m}")
-            
-            atr_pct = atr_5m / current_price if current_price > 0 else 0.0
-            
-            # Initialize scores
-            sr_proximity_long = 0.0
-            sr_proximity_short = 0.0
-            reasons = []
-            
-            # Maximum distance to consider (3×ATR - beyond this, level is too far to influence direction)
-            max_distance_atr = 3.0
-            max_distance_pct = max_distance_atr * atr_pct
-            
-            # Minimum power threshold (only consider strong levels)
-            min_power = 50.0  # Only consider levels with power >= 50
-            
-            # Find nearest strong levels within reasonable distance
-            from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
-            
-            nearest_support = None
-            nearest_resistance = None
-            nearest_support_distance_atr = float('inf')
-            nearest_resistance_distance_atr = float('inf')
-            
-            for level in all_levels:
-                # Validate level structure
-                level_price = level["price_level"]
-                level_type = level["type"]
-                level_power = level["power"]
-                level_status = level["status"]
-                
-                if not level_price or level_price <= 0:
-                    continue
-                
-                # Only consider active levels with sufficient power
-                if level_status != "active" or level_power < min_power:
-                    continue
-                
-                # Calculate distance
-                distance_pct = calculate_distance_pct(level_price, current_price, current_price)
-                distance_atr = calculate_distance_atr(distance_pct, atr_pct)
-                
-                # Only consider levels within max distance
-                if distance_atr > max_distance_atr:
-                    continue
-                
-                # Get reversal probability from power_breakdown
-                power_breakdown = level["power_breakdown"]
-                reversal_probability = power_breakdown["reversal_probability"]
-                
-                # Track nearest support and resistance
-                if level_type == "support" and level_price < current_price:
-                    if distance_atr < nearest_support_distance_atr:
-                        nearest_support = level
-                        nearest_support_distance_atr = distance_atr
-                elif level_type == "resistance" and level_price > current_price:
-                    if distance_atr < nearest_resistance_distance_atr:
-                        nearest_resistance = level
-                        nearest_resistance_distance_atr = distance_atr
-            
-            # Score based on nearest levels
-            # Closer levels with higher reversal probability = stronger signal
-            
-            if nearest_support:
-                support_price = nearest_support["price_level"]
-                support_power = nearest_support["power"]
-                support_breakdown = nearest_support["power_breakdown"]
-                support_reversal_prob = support_breakdown["reversal_probability"]
-                
-                # Score calculation:
-                # - Base score from reversal probability (0-100 points)
-                # - Proximity multiplier (closer = stronger, 0.5-1.5×)
-                # - Power multiplier (stronger level = more reliable, 0.8-1.2×)
-                
-                proximity_multiplier = max(0.5, min(1.5, 1.5 - (nearest_support_distance_atr / max_distance_atr)))
-                power_multiplier = max(0.8, min(1.2, support_power / 100.0))
-                
-                sr_proximity_long = support_reversal_prob * proximity_multiplier * power_multiplier
-                
-                if sr_proximity_long > 20.0:  # Only log significant signals
-                    reasons.append(
-                        f"Near strong support ${support_price:.2f} "
-                        f"(rev_prob={support_reversal_prob:.0f}%, "
-                        f"power={support_power:.0f}, "
-                        f"dist={nearest_support_distance_atr:.2f}×ATR)"
-                    )
-            
-            if nearest_resistance:
-                resistance_price = nearest_resistance["price_level"]
-                resistance_power = nearest_resistance["power"]
-                resistance_breakdown = nearest_resistance["power_breakdown"]
-                resistance_reversal_prob = resistance_breakdown["reversal_probability"]
-                
-                # Score calculation (same logic as support)
-                proximity_multiplier = max(0.5, min(1.5, 1.5 - (nearest_resistance_distance_atr / max_distance_atr)))
-                power_multiplier = max(0.8, min(1.2, resistance_power / 100.0))
-                
-                sr_proximity_short = resistance_reversal_prob * proximity_multiplier * power_multiplier
-                
-                if sr_proximity_short > 20.0:  # Only log significant signals
-                    reasons.append(
-                        f"Near strong resistance ${resistance_price:.2f} "
-                        f"(rev_prob={resistance_reversal_prob:.0f}%, "
-                        f"power={resistance_power:.0f}, "
-                        f"dist={nearest_resistance_distance_atr:.2f}×ATR)"
-                    )
-            
-            return sr_proximity_long, sr_proximity_short, reasons
-            
-        except Exception as e:
-            logger.error(f"❌ S/R proximity factor scoring failed: {e}")
-            # NO FALLBACKS - if S/R proximity scoring fails, it's a system error
-            raise
     
     # REMOVED: _score_funding_factor() - Funding no longer used for direction scoring
     # Funding rate often unavailable and has minimal impact on short-term direction
@@ -1951,30 +1784,39 @@ class PredictionEngine:
                 elif patterns_short > patterns_long:
                     short_reasons.extend(reasons)
             
+            # CRITICAL FIX (2026-01-27): Renormalize weights BEFORE applying synergies
+            # This ensures synergies are applied to properly scaled scores
+            # If optional weights were missing, scale scores to maintain magnitude consistency
+            total_active_weight = sum(active_weights.values()) if active_weights else 0.0
+            total_expected_weight = sum(direction_weights.values())  # Should be 1.0 after initial normalization
+            
+            # Renormalize if optional weights were missing (BEFORE synergies)
+            if not self._float_eq(total_active_weight, total_expected_weight, self.WEIGHT_EPSILON) and not self._float_zero(total_expected_weight, self.WEIGHT_EPSILON):
+                missing_weight = total_expected_weight - total_active_weight
+                scale_factor = total_expected_weight / total_active_weight if not self._float_zero(total_active_weight, self.WEIGHT_EPSILON) else 1.0
+                if not self._float_eq(scale_factor, 1.0, self.WEIGHT_EPSILON):
+                    logger.debug(f"⚠️ Renormalizing scores: missing {missing_weight:.4f} weight ({total_active_weight:.4f}/{total_expected_weight:.4f} active), scaling by {scale_factor:.4f}")
+                    long_score *= scale_factor
+                    short_score *= scale_factor
+            
             # Detect factor synergies (non-linear interactions)
-            # CRITICAL FIX: Make synergy MULTIPLICATIVE instead of additive to prevent double-counting
-            # Synergy should scale existing scores, not add on top (which amplifies already-scored factors)
-            synergy_bonus = self._detect_factor_synergies(factor_scores, rsi_data, trend_data)
+            # Uses fixed-percentage multipliers for consistent scaling regardless of score magnitude
+            synergy_multipliers = self._detect_factor_synergies(factor_scores, rsi_data, trend_data)
             
-            # CRITICAL FIX: Always use multiplicative scaling (never additive)
-            # Formula: multiplier = 1.0 + (bonus / max(abs(score), 1.0)) * 0.1
-            # This scales scores by up to 10% based on synergy, preventing over-amplification
-            # Use minimum score of 1.0 for multiplier calculation to ensure consistency
-            synergy_multiplier_long = 1.0 + (synergy_bonus["long"] / max(abs(long_score), 1.0)) * 0.1
-            synergy_multiplier_long = max(0.9, min(1.2, synergy_multiplier_long))  # Clamp to [0.9, 1.2] (10% reduction to 20% boost)
-            long_score *= synergy_multiplier_long
+            # Apply synergy multipliers (fixed percentages: 1.15x, 1.10x, 0.90x)
+            long_score *= synergy_multipliers["long"]
+            short_score *= synergy_multipliers["short"]
             
-            synergy_multiplier_short = 1.0 + (synergy_bonus["short"] / max(abs(short_score), 1.0)) * 0.1
-            synergy_multiplier_short = max(0.9, min(1.2, synergy_multiplier_short))  # Clamp to [0.9, 1.2]
-            short_score *= synergy_multiplier_short
-            
-            if synergy_bonus["reasons"]:
+            if synergy_multipliers["reasons"]:
                 # Add synergy reasons to the direction they support
-                if synergy_bonus["long"] > synergy_bonus["short"]:
-                    long_reasons.extend(synergy_bonus["reasons"])
-                elif synergy_bonus["short"] > synergy_bonus["long"]:
-                    short_reasons.extend(synergy_bonus["reasons"])
-                # If equal or conflict, add conflict reasons to both (reduces confidence)
+                if synergy_multipliers["long"] > 1.0:
+                    long_reasons.extend(synergy_multipliers["reasons"])
+                elif synergy_multipliers["short"] > 1.0:
+                    short_reasons.extend(synergy_multipliers["reasons"])
+                # If conflict (multiplier < 1.0), add conflict reasons to both (reduces confidence)
+                if synergy_multipliers["long"] < 1.0 or synergy_multipliers["short"] < 1.0:
+                    long_reasons.extend([r for r in synergy_multipliers["reasons"] if "Conflict" in r])
+                    short_reasons.extend([r for r in synergy_multipliers["reasons"] if "Conflict" in r])
             
             # Volume scoring: INDEPENDENT scoring based on volume direction/trend only
             # CRITICAL FIX: Volume no longer uses pre-scores to avoid circular dependency
@@ -1982,7 +1824,7 @@ class PredictionEngine:
             volume_weight = direction_weights["volume"]  # Required (NO FALLBACKS)
             if volume_weight > 0:
                 # Score volume independently (NO pre-scores - prevents circular dependency)
-                volume_long, volume_short, reasons = self._score_volume_factor_improved(
+                volume_long, volume_short, reasons = self._score_volume_factor(
                     volume_data, volume_category
                 )
                 long_score += volume_long * volume_weight
@@ -2048,22 +1890,11 @@ class PredictionEngine:
                     # Data missing - weight will be redistributed
                     logger.debug(f"⚠️ Cross-asset data missing, weight {cross_asset_weight:.4f} will be redistributed")
             
-            # CRITICAL FIX: Renormalize weights if optional features were missing
-            # If market_conditions or cross_asset weights were not used, scale scores to maintain magnitude consistency
-            total_active_weight = sum(active_weights.values()) if active_weights else 0.0
-            total_expected_weight = sum(direction_weights.values())  # Should be 1.0 after initial normalization
             
-            # If optional weights were missing, we need to scale scores to compensate
-            # This ensures score magnitudes remain consistent even when optional data is missing
-            # CRITICAL FIX: Use epsilon comparisons for float equality (prevents non-determinism)
-            if not self._float_eq(total_active_weight, total_expected_weight, self.WEIGHT_EPSILON) and not self._float_zero(total_expected_weight, self.WEIGHT_EPSILON):
-                missing_weight = total_expected_weight - total_active_weight
-                # Scale scores to account for missing weight (maintains score magnitude consistency)
-                scale_factor = total_expected_weight / total_active_weight if not self._float_zero(total_active_weight, self.WEIGHT_EPSILON) else 1.0
-                if not self._float_eq(scale_factor, 1.0, self.WEIGHT_EPSILON):
-                    logger.debug(f"⚠️ Renormalizing scores: missing {missing_weight:.4f} weight ({total_active_weight:.4f}/{total_expected_weight:.4f} active), scaling by {scale_factor:.4f}")
-                    long_score *= scale_factor
-                    short_score *= scale_factor
+            # Final validation: Clamp scores to [0, 100] range after all operations
+            # IMPROVED (2026-01-27): Ensure scores remain in expected range
+            long_score = max(0.0, min(100.0, long_score))
+            short_score = max(0.0, min(100.0, short_score))
             
             # Determine direction from scores with intelligent tie-breaking
             # CRITICAL FIX: Use epsilon comparison for score equality (prevents non-determinism)
@@ -2103,67 +1934,71 @@ class PredictionEngine:
     def _detect_factor_synergies(self, factor_scores: Dict[str, Dict[str, float]], 
                                  rsi_data: Dict[str, Any], trend_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Detect factor synergies (non-linear interactions) for bonus scoring
+        Detect factor synergies using fixed-percentage multipliers
+        
+        Changed from absolute bonuses to fixed multipliers for consistent scaling:
+        - rsi_trend_alignment: 1.15x (15% boost)
+        - momentum_building: 1.10x (10% boost)
+        - factor_conflict: 0.90x (10% reduction)
         
         Examples:
-        - RSI oversold + strong bullish trend = strong buy signal (synergy)
-        - RSI overbought + strong bearish trend = strong sell signal (synergy)
-        - RSI oversold + bearish trend = conflict (no synergy)
+        - RSI oversold + strong bullish trend = 1.15x multiplier
+        - RSI overbought + strong bearish trend = 1.15x multiplier
+        - RSI oversold + bearish trend = 0.90x multiplier (conflict)
         
         Returns:
-            Dict with "long", "short" bonus scores and "reasons" list
+            Dict with "long", "short" multipliers (default 1.0) and "reasons" list
         """
-        synergy_bonus = {"long": 0.0, "short": 0.0, "reasons": []}
+        synergy_multipliers = {"long": 1.0, "short": 1.0, "reasons": []}
         
         rsi_value = float(self._require_key(rsi_data, "rsi", "rsi data structure"))  # Required (NO FALLBACKS)
         rsi_trend = self._require_key(rsi_data, "rsi_trend", "rsi data structure")  # Required (NO FALLBACKS)
         trend_direction = self._require_key(trend_data, "direction", "trend data structure")  # Required (NO FALLBACKS)
         trend_strength = float(self._require_key(trend_data, "strength", "trend data structure"))  # Required (NO FALLBACKS)
         
-        # Get configurable synergy bonuses (NO FALLBACKS)
+        # Get configurable synergy multipliers (NO FALLBACKS)
         from config.config import TradingConfig
-        synergy_config = TradingConfig.SYNERGY_BONUSES
+        synergy_config = TradingConfig.SYNERGY_MULTIPLIERS
         
         # Synergy 1: RSI oversold + bullish trend = strong buy signal
         if rsi_value < technical_constants.RSI_OVERSOLD and trend_direction == "BULLISH":
-            base_bonus = synergy_config["rsi_trend_alignment"]
-            bonus = base_bonus * trend_strength  # Scale with trend strength
-            synergy_bonus["long"] += bonus
-            synergy_bonus["reasons"].append(f"Synergy: RSI oversold ({rsi_value:.1f}) + bullish trend (strength: {trend_strength:.2f})")
+            multiplier = synergy_config["rsi_trend_alignment"]  # 1.15x
+            # Scale multiplier slightly with trend strength (1.0 to 1.15 range)
+            strength_adjusted = 1.0 + (multiplier - 1.0) * trend_strength
+            synergy_multipliers["long"] *= strength_adjusted
+            synergy_multipliers["reasons"].append(f"Synergy: RSI oversold ({rsi_value:.1f}) + bullish trend (strength: {trend_strength:.2f}) → {strength_adjusted:.2f}x")
         
         # Synergy 2: RSI overbought + bearish trend = strong sell signal
         elif rsi_value > technical_constants.RSI_OVERBOUGHT and trend_direction == "BEARISH":
-            base_bonus = synergy_config["rsi_trend_alignment"]
-            bonus = base_bonus * trend_strength
-            synergy_bonus["short"] += bonus
-            synergy_bonus["reasons"].append(f"Synergy: RSI overbought ({rsi_value:.1f}) + bearish trend (strength: {trend_strength:.2f})")
+            multiplier = synergy_config["rsi_trend_alignment"]  # 1.15x
+            strength_adjusted = 1.0 + (multiplier - 1.0) * trend_strength
+            synergy_multipliers["short"] *= strength_adjusted
+            synergy_multipliers["reasons"].append(f"Synergy: RSI overbought ({rsi_value:.1f}) + bearish trend (strength: {trend_strength:.2f}) → {strength_adjusted:.2f}x")
         
         # Synergy 3: RSI recovering + bullish trend = momentum building
         if rsi_value < 50 and rsi_trend == "BULLISH" and trend_direction == "BULLISH":
-            base_bonus = synergy_config["momentum_building"]
-            bonus = base_bonus * trend_strength
-            synergy_bonus["long"] += bonus
-            synergy_bonus["reasons"].append(f"Synergy: RSI recovering + bullish trend alignment")
+            multiplier = synergy_config["momentum_building"]  # 1.10x
+            strength_adjusted = 1.0 + (multiplier - 1.0) * trend_strength
+            synergy_multipliers["long"] *= strength_adjusted
+            synergy_multipliers["reasons"].append(f"Synergy: RSI recovering + bullish trend alignment → {strength_adjusted:.2f}x")
         
         # Synergy 4: RSI declining + bearish trend = momentum building
         elif rsi_value > 50 and rsi_trend == "BEARISH" and trend_direction == "BEARISH":
-            base_bonus = synergy_config["momentum_building"]
-            bonus = base_bonus * trend_strength
-            synergy_bonus["short"] += bonus
-            synergy_bonus["reasons"].append(f"Synergy: RSI declining + bearish trend alignment")
+            multiplier = synergy_config["momentum_building"]  # 1.10x
+            strength_adjusted = 1.0 + (multiplier - 1.0) * trend_strength
+            synergy_multipliers["short"] *= strength_adjusted
+            synergy_multipliers["reasons"].append(f"Synergy: RSI declining + bearish trend alignment → {strength_adjusted:.2f}x")
         
         # Conflict detection: RSI and trend oppose each other
-        conflict_penalty = synergy_config["factor_conflict"]
+        conflict_multiplier = synergy_config["factor_conflict"]  # 0.90x
         if (rsi_value < technical_constants.RSI_OVERSOLD and trend_direction == "BEARISH") or \
            (rsi_value > technical_constants.RSI_OVERBOUGHT and trend_direction == "BULLISH"):
-            # Reduce confidence when factors conflict
-            if trend_direction == "BULLISH":
-                synergy_bonus["long"] -= conflict_penalty
-            else:
-                synergy_bonus["short"] -= conflict_penalty
-            synergy_bonus["reasons"].append("Conflict: RSI and trend oppose each other")
+            # Apply conflict reduction to both directions (reduces confidence)
+            synergy_multipliers["long"] *= conflict_multiplier
+            synergy_multipliers["short"] *= conflict_multiplier
+            synergy_multipliers["reasons"].append("Conflict: RSI and trend oppose each other → 0.90x")
         
-        return synergy_bonus
+        return synergy_multipliers
     
     def _break_tie(self, long_score: float, short_score: float, 
                    trend_data: Dict[str, Any], rsi_data: Dict[str, Any]) -> str:
@@ -2667,6 +2502,27 @@ class PredictionEngine:
             if atr_5m <= 0:
                 raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
             
+            # Get strategy config for max_distance check
+            from config.config import TradingConfig
+            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
+            entry_proximity_config = strategy_config["entry_proximity_config"]  # Required (NO FALLBACKS)
+            max_distance_atr = entry_proximity_config.get("max_distance_atr", 5.0)  # Default 5×ATR if not specified
+            
+            # CRITICAL FIX (2026-01-27): Pre-filter level by max_distance before candidate generation
+            # Calculate level distance in ATR to determine if closest candidate would be within max_distance
+            from core.utils.distance_utils import calculate_distance_pct, calculate_distance_atr
+            level_distance_pct = calculate_distance_pct(level_price, current_price, current_price)
+            level_distance_atr = calculate_distance_atr(level_distance_pct, atr_pct)
+            
+            # Pre-filter: Skip levels where closest candidate (at level_price) exceeds max_distance
+            # This ensures at least one candidate will be valid, preventing "No suitable candidate" errors
+            if level_distance_atr > max_distance_atr:
+                logger.debug(
+                    f"⏭️ Level ${level_price:.2f} pre-filtered: distance {level_distance_atr:.2f}×ATR exceeds max {max_distance_atr:.2f}×ATR "
+                    f"(closest candidate would be too far)"
+                )
+                return None  # Skip this level - calling code handles None gracefully
+            
             # BTC PERP ENTRY OFFSET LOGIC (Research-backed)
             # Research findings (2025-2026 BTC perpetual futures):
             #   - Price regularly wicks THROUGH S/R levels before bouncing (liquidation hunting)
@@ -2683,10 +2539,7 @@ class PredictionEngine:
             # Generate entry candidates with offsets INSIDE the zone (toward current price)
             candidates = []
             
-            # Strategy-specific optimal offset from config
-            from config.config import TradingConfig
-            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
-            entry_proximity_config = strategy_config["entry_proximity_config"]  # Required (NO FALLBACKS)
+            # Strategy-specific optimal offset from config (already retrieved above)
             optimal_atr_distance = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS)
             
             # Calculate optimal offset distance in USD
@@ -2736,11 +2589,46 @@ class PredictionEngine:
             spread_data = self._require_key(orderbook_data, "bid_ask_spread", "entry price calculation")
             spread_pct = spread_data["percentage"] / 100.0  # Convert to decimal (NO FALLBACKS)
             
+            # Maximum distance constraint: reject candidates beyond strategy-specific maximum
+            # This prevents selection of entries unlikely to fill
+            # NOTE: Level was already pre-filtered above, so at least closest candidate should be within max_distance
+            # This filter now serves as a safety check and to prioritize closer candidates
+            
             best_candidate = None
             best_score = -1.0
             best_breakdown = None
+            candidates_processed = 0
+            candidates_rejected = 0
+            
+            # Filter candidates by max_distance (safety check - level was pre-filtered)
+            valid_candidates = []
+            for candidate_price in candidates:
+                # Calculate distance to current price for filtering
+                distance_to_current_pct = calculate_distance_pct(candidate_price, current_price, current_price)
+                distance_to_current_atr_temp = calculate_distance_atr(distance_to_current_pct, atr_pct)
+                
+                # Filter: reject candidates beyond maximum distance
+                if distance_to_current_atr_temp > max_distance_atr:
+                    candidates_rejected += 1
+                    logger.debug(f"⏭️ Candidate ${candidate_price:.2f} rejected: distance {distance_to_current_atr_temp:.2f}×ATR exceeds maximum {max_distance_atr:.2f}×ATR")
+                    continue
+                
+                valid_candidates.append(candidate_price)
+            
+            # Safety check: After pre-filtering, at least closest candidate should be valid
+            if not valid_candidates:
+                # This should never happen if pre-filter worked correctly
+                raise ValueError(
+                    f"System error: Pre-filter passed but no valid candidates for {setup_type} at ${level_price:.2f} "
+                    f"(level_distance: {level_distance_atr:.2f}×ATR, max: {max_distance_atr:.2f}×ATR, "
+                    f"generated {len(candidates)} candidates, all rejected) - NO FALLBACKS"
+                )
+            
+            # Use valid candidates for scoring (replace original candidates list)
+            candidates = valid_candidates
             
             for candidate_price in candidates:
+                candidates_processed += 1
                 # 1. FILL PROBABILITY SCORE (35% weight) - Non-linear exponential decay
                 # Formula: Exponential decay from 100 at current → ~50 at 3×ATR → ~10 at 6×ATR
                 # More realistic than linear: fill probability drops faster as distance increases
@@ -2802,36 +2690,60 @@ class PredictionEngine:
                 liquidation_safety = 100.0 / (1.0 + math.exp(exponent))
                 liquidation_safety = max(0.0, min(100.0, liquidation_safety))  # Clamp result to [0, 100]
                 
-                # 3. LEVEL STRENGTH SCORE (20% weight)
-                # Use level power directly (0-100 scale)
-                level_strength = level_power
+                # 3. LEVEL STRENGTH SCORE (15% weight) - PROXIMITY-WEIGHTED
+                # Level power decays with distance from current price (stronger levels closer are more relevant)
+                # Formula: level_strength = level_power * exp(-distance_atr / decay_factor)
+                level_strength_decay_factor = TradingConfig.LEVEL_STRENGTH_DECAY_FACTOR
+                if level_strength_decay_factor <= 0:
+                    raise ValueError(f"Invalid level_strength_decay_factor: {level_strength_decay_factor} - must be positive")
                 
-                # 4. SPREAD COST PENALTY (-10% weight)
-                # Closer to current = pay more spread
-                # Penalty: 0 at 1×ATR distance, 10 at current price
-                spread_penalty = min(10.0, max(0.0, (1.0 - distance_to_current_atr) * 10.0))
+                # Calculate proximity factor (how relevant is this level at this distance)
+                proximity_exponent = -distance_to_current_atr / level_strength_decay_factor
+                proximity_exponent = max(-50.0, min(50.0, proximity_exponent))  # Clamp for numerical stability
+                proximity_factor = math.exp(proximity_exponent)
+                proximity_factor = max(0.1, min(1.0, proximity_factor))  # Clamp to [0.1, 1.0] (never fully zero, never above 1.0)
                 
-                # CRITICAL FIX: Normalize entry scoring weights to sum to 1.0
-                # Positive weights: 0.35 + 0.35 + 0.20 = 0.90
-                # Penalty weight: 0.10 (negative)
-                # Net sum: 0.80 (not normalized)
-                # Normalize positive weights to sum to 1.0, then subtract normalized penalty
-                POSITIVE_WEIGHT_SUM = 0.35 + 0.35 + 0.20  # 0.90
-                PENALTY_WEIGHT = 0.10
-                NORMALIZED_POSITIVE_SUM = 1.0  # Target sum for positive weights
+                # Proximity-weighted level strength
+                level_strength = level_power * proximity_factor
                 
-                # Normalize each positive weight
-                fill_weight_norm = (0.35 / POSITIVE_WEIGHT_SUM) * NORMALIZED_POSITIVE_SUM
-                liq_weight_norm = (0.35 / POSITIVE_WEIGHT_SUM) * NORMALIZED_POSITIVE_SUM
-                level_weight_norm = (0.20 / POSITIVE_WEIGHT_SUM) * NORMALIZED_POSITIVE_SUM
-                penalty_weight_norm = (PENALTY_WEIGHT / POSITIVE_WEIGHT_SUM) * NORMALIZED_POSITIVE_SUM
+                # 4. SPREAD COST PENALTY (-10% weight) - NON-LINEAR
+                # Exponential penalty for very close entries (< 0.5×ATR), linear for far entries
+                # Rationale: Spread cost increases non-linearly as distance approaches zero
+                spread_close_threshold = TradingConfig.SPREAD_PENALTY_CLOSE_THRESHOLD_ATR
+                spread_boost = TradingConfig.SPREAD_PENALTY_EXPONENTIAL_BOOST
+                spread_decay = TradingConfig.SPREAD_PENALTY_EXPONENTIAL_DECAY
+                spread_max = TradingConfig.SPREAD_PENALTY_MAX
                 
-                # WEIGHTED COMBINED SCORE (normalized to [0, 100] range)
+                if distance_to_current_atr < spread_close_threshold:
+                    # Exponential boost for very close entries
+                    close_exponent = -distance_to_current_atr / spread_decay
+                    close_exponent = max(-50.0, min(50.0, close_exponent))  # Clamp for numerical stability
+                    close_penalty_boost = spread_boost * math.exp(close_exponent)
+                    spread_penalty = 10.0 + close_penalty_boost
+                    spread_penalty = min(spread_max, spread_penalty)  # Cap at maximum
+                else:
+                    # Linear penalty for entries beyond threshold
+                    spread_penalty = max(0.0, (1.0 - distance_to_current_atr) * 10.0)
+                
+                # IMPROVED ENTRY SCORING (2026-01-27): Weights sum to 1.0, no normalization needed
+                # New weights: 40% fill, 35% liq, 15% level, 10% spread penalty
+                entry_weights = TradingConfig.ENTRY_SCORING_WEIGHTS
+                fill_weight = entry_weights["fill_probability"]
+                liq_weight = entry_weights["liquidation_safety"]
+                level_weight = entry_weights["level_strength"]
+                spread_weight = entry_weights["spread_penalty"]
+                
+                # Validate weights sum to 1.0
+                weight_sum = fill_weight + liq_weight + level_weight + spread_weight
+                if abs(weight_sum - 1.0) > self.WEIGHT_EPSILON:
+                    raise ValueError(f"Entry scoring weights must sum to 1.0, got {weight_sum}")
+                
+                # WEIGHTED COMBINED SCORE (weights already sum to 1.0, no normalization needed)
                 combined_score = (
-                    fill_probability * fill_weight_norm +
-                    liquidation_safety * liq_weight_norm +
-                    level_strength * level_weight_norm -
-                    spread_penalty * penalty_weight_norm
+                    fill_probability * fill_weight +
+                    liquidation_safety * liq_weight +
+                    level_strength * level_weight -
+                    spread_penalty * spread_weight
                 )
                 # Clamp to reasonable range (penalty can make score slightly negative)
                 combined_score = max(0.0, min(100.0, combined_score))
@@ -2859,8 +2771,15 @@ class PredictionEngine:
                         "liquidation_safety": liquidation_safety,
                         "liquidation_price": liquidation_price,
                         "liq_distance_pct": liq_distance_pct * 100,
-                        "level_strength": level_strength,
+                        "level_strength": level_strength,  # Proximity-weighted level strength
+                        "level_strength_raw": level_power,  # Original level power (ML feature)
+                        "proximity_factor": proximity_factor,  # Distance decay factor (ML feature)
                         "spread_penalty": spread_penalty,
+                        "spread_penalty_breakdown": {
+                            "base_penalty": 10.0 if distance_to_current_atr < spread_close_threshold else max(0.0, (1.0 - distance_to_current_atr) * 10.0),
+                            "exponential_boost": (spread_penalty - 10.0) if distance_to_current_atr < spread_close_threshold else 0.0,
+                            "is_close_entry": distance_to_current_atr < spread_close_threshold
+                        },
                         "combined_score": combined_score,
                         "distance_to_current_atr": distance_to_current_atr,
                         "hours_since_touch": hours_since_touch,
@@ -2868,8 +2787,17 @@ class PredictionEngine:
                     }
             
             # NO FALLBACKS - must always find best candidate
+            # After pre-filtering and candidate validation, at least one candidate should exist
             if best_candidate is None:
-                raise ValueError(f"No suitable entry candidate found - system error: scoring loop must always find best candidate (NO FALLBACKS)")
+                # This should never happen - pre-filter ensures at least closest candidate is valid
+                error_msg = (
+                    f"System error: No best candidate selected for {setup_type} at ${level_price:.2f} "
+                    f"(current: ${current_price:.2f}, level distance: {level_distance_atr:.2f}×ATR). "
+                    f"Valid candidates: {len(valid_candidates)}, processed: {candidates_processed}. "
+                    f"Max distance: {max_distance_atr:.2f}×ATR. "
+                    f"Scoring loop must always find best candidate (NO FALLBACKS)"
+                )
+                raise ValueError(error_msg)
             
             # Round number avoidance: nudge entry if too close to psychological level
             # If abs(entry - nearest_psych_level) < ATR * 0.2, nudge by ATR * 0.25 away

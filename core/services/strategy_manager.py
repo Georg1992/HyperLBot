@@ -100,7 +100,6 @@ class StrategyManager:
             # Validate strategy compatibility (redundant check removed - scoring handles this)
             # Only check if confidence is too low (<0.3) - might indicate data issues
             # Use confidence threshold from config (configurable for optimization)
-            from config.config import TradingConfig
             if recommendation.confidence < TradingConfig.CONFIDENCE_THRESHOLDS["low"]:
                 logger.warning(f"⚠️ Low confidence ({recommendation.confidence:.2f}) for {optimal_strategy}, checking alternatives")
                 # Find next best strategy
@@ -250,15 +249,17 @@ class StrategyManager:
         pressure_ratio_raw = pressure_data["pressure_ratio"]
         pressure_ratio = float(pressure_ratio_raw)
         
-        # Funding data - Wait for sufficient history before using trend/volatility
-        # Funding analyzer only includes trend/volatility when history is sufficient
+        # Funding data - Required for strategy selection (NO FALLBACKS)
+        # Funding analyzer only includes trend/volatility when history is sufficient (5+ data points)
+        # Strategy selection requires all data to be ready - wait until funding history is sufficient
         funding_trend = funding_data.get("funding_trend")  # May not be present if insufficient history
         funding_volatility_data = funding_data.get("funding_volatility")  # May not be present if insufficient history
         
+        # CRITICAL: All funding data must be available before strategy selection
         # If trend/volatility not available, return None to signal we need to wait
-        # This will be handled by the caller to skip strategy selection for this iteration
+        # This ensures strategy selection only happens when all required data is ready
         if not funding_trend or not funding_volatility_data:
-            return None  # Signal to caller that data isn't ready yet
+            return None  # Signal to caller that data isn't ready yet - wait for more funding history
         
         funding_direction = funding_trend["direction"]  # Required (NO FALLBACKS)
         
@@ -508,7 +509,9 @@ class StrategyManager:
         
         # Funding volatility risk check: High funding volatility indicates market instability
         funding_volatility_cat = data["funding_volatility_category"]
-        if funding_volatility_cat == "HIGH":
+        if funding_volatility_cat == "UNKNOWN":
+            factors.append("Funding volatility data insufficient (neutral)")
+        elif funding_volatility_cat == "HIGH":
             score -= 15.0
             factors.append("High funding volatility (market instability - avoid spike hunting)")
         elif funding_volatility_cat == "MEDIUM":
@@ -566,7 +569,11 @@ class StrategyManager:
             raise ValueError(f"Invalid funding_rate_change value: {funding_rate_change_raw} (expected float, got {type(funding_rate_change_raw).__name__}) - NO FALLBACKS")
         
         funding_score = 0.0
-        if data["trend_direction"] == "BULLISH" and funding_dir == "INCREASING":
+        # Handle UNKNOWN funding direction (insufficient history) - neutral scoring
+        if funding_dir == "UNKNOWN":
+            factors.append("Funding data insufficient (neutral)")
+        # Funding data is available - score normally
+        elif data["trend_direction"] == "BULLISH" and funding_dir == "INCREASING":
             funding_score = 20.0
             factors.append("Funding aligns with bullish trend")
         elif data["trend_direction"] == "BEARISH" and funding_dir == "DECREASING":
@@ -578,20 +585,21 @@ class StrategyManager:
         else:
             funding_score = -15.0
             factors.append(f"Funding misaligned ({funding_dir})")
-        
+            
         # Funding rate change momentum: Strong rate change confirms trend
-        from config.config import TradingConfig
-        funding_thresholds = TradingConfig.FUNDING_RATE_CHANGE_THRESHOLDS
-        
-        if data["trend_direction"] == "BULLISH" and funding_rate_change > funding_thresholds["significant_increase"]:
-            funding_score += 5.0
-            factors.append(f"Funding rate increasing ({funding_rate_change*10000:.2f} bps)")
-        elif data["trend_direction"] == "BEARISH" and funding_rate_change < funding_thresholds["significant_decrease"]:
-            funding_score += 5.0
-            factors.append(f"Funding rate decreasing ({funding_rate_change*10000:.2f} bps)")
-        elif abs(funding_rate_change) < funding_thresholds["very_stable"]:
-            funding_score += 2.0
-            factors.append("Funding rate stable")
+        # Skip if funding direction is UNKNOWN (insufficient history)
+        if funding_dir != "UNKNOWN":
+            funding_thresholds = TradingConfig.FUNDING_RATE_CHANGE_THRESHOLDS
+            
+            if data["trend_direction"] == "BULLISH" and funding_rate_change > funding_thresholds["significant_increase"]:
+                funding_score += 5.0
+                factors.append(f"Funding rate increasing ({funding_rate_change*10000:.2f} bps)")
+            elif data["trend_direction"] == "BEARISH" and funding_rate_change < funding_thresholds["significant_decrease"]:
+                funding_score += 5.0
+                factors.append(f"Funding rate decreasing ({funding_rate_change*10000:.2f} bps)")
+            elif abs(funding_rate_change) < funding_thresholds["very_stable"]:
+                funding_score += 2.0
+                factors.append("Funding rate stable")
         
         score += funding_score
         
@@ -1040,7 +1048,6 @@ class StrategyManager:
         # Dynamic cooldown based on market volatility
         # Get current volatility from the last market data if available
         if self._last_market_data:
-            from config.config import TradingConfig
             volatility_5m = self._last_market_data["volatility_5m"]  # Required (NO FALLBACKS)
             volatility_thresholds = TradingConfig.VOLATILITY_THRESHOLDS
             

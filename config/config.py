@@ -83,17 +83,38 @@ class TradingConfig:
     LOW_VOLUME_PENALTY = 20.0  # Penalty for low volume (reduces confidence)
     VOLUME_ANOMALY_PENALTY = 15.0  # Penalty when volume anomaly detected (reversal risk)
     
-    # Factor Synergy Configuration
-    SYNERGY_BONUSES = {
-        "rsi_trend_alignment": 25.0,  # RSI oversold/overbought + trend alignment
-        "momentum_building": 15.0,    # RSI recovering/declining + trend alignment
-        "factor_conflict": 10.0       # Penalty when factors conflict (e.g., RSI oversold + bearish trend)
+    # Factor Synergy Configuration (Improved 2026-01-27)
+    # Fixed-percentage multipliers for consistent scaling regardless of score magnitude
+    SYNERGY_MULTIPLIERS = {
+        "rsi_trend_alignment": 1.15,   # 15% boost when RSI oversold/overbought + trend alignment
+        "momentum_building": 1.10,     # 10% boost when RSI recovering/declining + trend alignment
+        "factor_conflict": 0.90        # 10% reduction when factors conflict (e.g., RSI oversold + bearish trend)
     }
+    
+    # Pattern Normalization Configuration (Improved 2026-01-27)
+    PATTERN_NORMALIZATION_FACTOR = 3.0  # Increased from 2.0 to handle multiple high-quality patterns
     
     # Entry Price Calculation Configuration
     ENTRY_FILL_DECAY_FACTOR = 3.0  # Exponential decay factor for fill probability (higher = slower decay)
     LIQUIDATION_SAFETY_MIDPOINT_PCT = 0.015  # 1.5% - inflection point for sigmoid curve
     LIQUIDATION_SAFETY_STEEPNESS = 0.1  # Controls sigmoid curve steepness (higher = steeper)
+    
+    # Entry Scoring Configuration (Improved 2026-01-27)
+    ENTRY_SCORING_WEIGHTS = {
+        "fill_probability": 0.40,      # Increased from 0.35 - most critical factor
+        "liquidation_safety": 0.35,    # Maintained - critical for 40x leverage
+        "level_strength": 0.15,        # Decreased from 0.20 - now proximity-weighted
+        "spread_penalty": 0.10         # Maintained - but now non-linear
+    }
+    
+    # Level strength proximity decay (how quickly level relevance decays with distance)
+    LEVEL_STRENGTH_DECAY_FACTOR = 2.5  # At 2.5×ATR, strength decays to ~37% (exp(-1))
+    
+    # Spread penalty configuration (non-linear for close entries)
+    SPREAD_PENALTY_CLOSE_THRESHOLD_ATR = 0.5  # Switch to exponential below this distance
+    SPREAD_PENALTY_EXPONENTIAL_BOOST = 5.0     # Additional penalty boost for very close entries
+    SPREAD_PENALTY_EXPONENTIAL_DECAY = 0.15   # Exponential decay factor
+    SPREAD_PENALTY_MAX = 20.0                  # Maximum spread penalty (was 10.0)
     
     VOLATILITY_THRESHOLDS = {
         "high": 0.03,    # >3% = high volatility
