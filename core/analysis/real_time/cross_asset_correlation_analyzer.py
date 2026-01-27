@@ -11,17 +11,18 @@ from typing import Dict, Any, List, Optional, Tuple, Protocol
 from loguru import logger
 
 # Factory function for dependency injection
-def create_cross_asset_correlation_analyzer(data_provider: 'ExternalDataProvider' = None) -> 'CrossAssetCorrelationAnalyzer':
+def create_cross_asset_correlation_analyzer(data_provider: 'ExternalDataProvider' = None, cache=None) -> 'CrossAssetCorrelationAnalyzer':
     """
     Factory function to create CrossAssetCorrelationAnalyzer with dependency injection
     
     Args:
         data_provider: ExternalDataProvider instance (optional)
+        cache: CentralizedCache instance (optional, falls back to global singleton)
     
     Returns:
         Configured CrossAssetCorrelationAnalyzer instance
     """
-    return CrossAssetCorrelationAnalyzer(data_provider=data_provider)
+    return CrossAssetCorrelationAnalyzer(data_provider=data_provider, cache=cache)
 
 # Deprecated global instance functions removed - use create_cross_asset_correlation_analyzer() instead
 
@@ -45,10 +46,21 @@ class CrossAssetCorrelationAnalyzer:
     - DIP: Depends on abstractions (ExternalDataProvider) not concretions
     """
     
-    def __init__(self, data_provider: ExternalDataProvider = None):
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+    def __init__(self, data_provider: ExternalDataProvider = None, cache=None):
+        """
+        Initialize Cross-Asset Correlation Analyzer with dependency injection (DIP compliance)
+        
+        Args:
+            data_provider: ExternalDataProvider instance (optional)
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         self._data_provider = data_provider
         
         # Correlation history for trend analysis

@@ -626,6 +626,10 @@
                             <span class="data-label">Pressure:</span>
                             <span class="data-value" id="market-pressure">Loading...</span>
                         </div>
+                        <div class="data-item">
+                            <span class="data-label">IV Squeeze:</span>
+                            <span class="data-value" id="market-iv-squeeze">Loading...</span>
+                        </div>
                         <div class="data-item" style="grid-column: 1 / -1;">
                             <span class="data-label">🎯 Key Levels:</span>
                             <div id="support-resistance-levels" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
@@ -1073,6 +1077,40 @@
                     if (pressureElement) {
                         pressureElement.textContent = 'N/A';
                         pressureElement.className = 'data-value trend-neutral';
+                    }
+                }
+                
+                // Update IV Squeeze
+                if (market.iv_squeeze && typeof market.iv_squeeze === 'object') {
+                    const ivSqueezeElement = document.getElementById('market-iv-squeeze');
+                    if (ivSqueezeElement) {
+                        const isSqueeze = market.iv_squeeze.is_squeeze || false;
+                        const squeezeStrength = market.iv_squeeze.squeeze_strength || 0.0;
+                        const durationMinutes = market.iv_squeeze.duration_minutes || 0.0;
+                        const squeezeReleased = market.iv_squeeze.squeeze_released || false;
+                        
+                        let squeezeDisplay = '';
+                        if (isSqueeze) {
+                            const strengthPercent = (squeezeStrength * 100).toFixed(0);
+                            const durationText = durationMinutes > 0 ? `${durationMinutes.toFixed(1)}m` : 'Just started';
+                            squeezeDisplay = `🔴 ACTIVE (${strengthPercent}% tight, ${durationText})`;
+                            ivSqueezeElement.className = 'data-value negative'; // Red for active squeeze
+                        } else if (squeezeReleased) {
+                            squeezeDisplay = '🟢 RELEASED (Breakout potential)';
+                            ivSqueezeElement.className = 'data-value positive'; // Green for release
+                        } else {
+                            squeezeDisplay = '⚪ No Squeeze';
+                            ivSqueezeElement.className = 'data-value'; // Neutral
+                        }
+                        
+                        ivSqueezeElement.textContent = squeezeDisplay;
+                        if (DEBUG) console.log('📊 IV Squeeze updated:', squeezeDisplay);
+                    }
+                } else {
+                    const ivSqueezeElement = document.getElementById('market-iv-squeeze');
+                    if (ivSqueezeElement) {
+                        ivSqueezeElement.textContent = 'N/A';
+                        ivSqueezeElement.className = 'data-value';
                     }
                 }
                 

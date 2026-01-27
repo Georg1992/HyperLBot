@@ -21,7 +21,8 @@ class VolumeCalculator(BaseCalculator):
     def __init__(self, symbol: str = "BTC",
                  data_provider: Optional[VolumeDataProvider] = None,
                  analyzer: Optional[VolumeAnalyzer] = None,
-                 classifier: Optional[VolumeClassifier] = None):
+                 classifier: Optional[VolumeClassifier] = None,
+                 historical_service=None):
         """
         Initialize Volume Calculator
         
@@ -30,12 +31,13 @@ class VolumeCalculator(BaseCalculator):
             data_provider: VolumeDataProvider instance (injected dependency)
             analyzer: VolumeAnalyzer instance (injected dependency)
             classifier: VolumeClassifier instance (injected dependency)
+            historical_service: HistoricalDataService instance (optional, for VolumeDataProvider)
         """
         # Initialize base class
         super().__init__(symbol)
         
-        # Dependency injection with defaults
-        self._data_provider = data_provider or VolumeDataProvider(symbol)
+        # Dependency injection with defaults (DIP compliance)
+        self._data_provider = data_provider or VolumeDataProvider(symbol, historical_service=historical_service)
         self._analyzer = analyzer or VolumeAnalyzer()
         self._classifier = classifier or VolumeClassifier()
         
@@ -185,14 +187,15 @@ class VolumeCalculator(BaseCalculator):
 
 
 # Factory function for backward compatibility
-def create_volume_calculator(symbol: str = "BTC") -> VolumeCalculator:
+def create_volume_calculator(symbol: str = "BTC", historical_service=None) -> VolumeCalculator:
     """
-    Factory function to create VolumeCalculator with dependency injection
+    Factory function to create VolumeCalculator with dependency injection (DIP compliance)
     
     Args:
         symbol: Trading symbol
+        historical_service: HistoricalDataService instance (optional, for VolumeDataProvider)
     
     Returns:
         Configured VolumeCalculator instance
     """
-    return VolumeCalculator(symbol=symbol)
+    return VolumeCalculator(symbol=symbol, historical_service=historical_service)

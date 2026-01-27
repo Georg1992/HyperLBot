@@ -49,13 +49,14 @@ class CentralizedCache:
             "pressure": 60,               # 1 minute
             
             # Analysis data - moderate updates
-            "support_resistance": 300,    # 5 minutes
+            "support_resistance": 180,    # 3 minutes (optimized for faster level detection)
             "patterns": 300,              # 5 minutes (matches 5m candle closes)
             "pattern_recognition": 300,   # 5 minutes (matches 5m candle closes)
             "market_conditions": 300,     # 5 minutes
             "cross_asset_analysis": 60,  # 1 minute
             "funding_analysis": 300,      # 5 minutes
             "orderbook_analysis": 60,     # 1 minute
+            "iv_squeeze": 60,             # 1 minute (volatility changes rapidly - critical for timing)
             
             # Historical data - long cache (data doesn't change)
             "historical_candles": 1800,    # 30 minutes

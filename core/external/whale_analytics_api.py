@@ -23,12 +23,22 @@ class WhaleAnalyticsAPI:
     - Free API (no costs)
     """
     
-    def __init__(self):
+    def __init__(self, cache=None):
+        """
+        Initialize Whale Analytics API with dependency injection (DIP compliance)
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
         self.api_base = "https://api.blockcypher.com/v1/btc/main"
         
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         
         self.whale_threshold_usd = 100000  # $100k minimum whale size
         
@@ -101,7 +111,8 @@ class WhaleAnalyticsAPI:
             
             # Process transactions using WhaleAnalysisCalculator
             from core.calculations.whale_analysis_calculator import create_whale_analysis_calculator
-            whale_calculator = create_whale_analysis_calculator()
+            # Inject cache dependency (DIP compliance)
+            whale_calculator = create_whale_analysis_calculator(cache=self._cache)
             
             # Analyze whale data from raw transactions
             processed_data = whale_calculator.analyze_whale_data(raw_transactions)
@@ -222,12 +233,15 @@ class WhaleAnalyticsAPI:
 # Singleton pattern implementation
 _global_whale_analytics_api = None
 
-def get_global_whale_analytics_api() -> WhaleAnalyticsAPI:
-    """Get the global WhaleAnalyticsAPI singleton instance"""
+def get_global_whale_analytics_api(cache=None) -> WhaleAnalyticsAPI:
+    """
+    Get the global WhaleAnalyticsAPI singleton instance
+    
+    Args:
+        cache: CentralizedCache instance (optional, falls back to global singleton)
+    """
     global _global_whale_analytics_api
     if _global_whale_analytics_api is None:
-        _global_whale_analytics_api = WhaleAnalyticsAPI()
+        _global_whale_analytics_api = WhaleAnalyticsAPI(cache=cache)
     return _global_whale_analytics_api
 
-# Backward compatibility
-whale_analytics_api = get_global_whale_analytics_api()

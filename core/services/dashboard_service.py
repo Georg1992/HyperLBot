@@ -18,10 +18,20 @@ class DashboardService:
     
     _global_instance = None
     
-    def __init__(self, heartbeat_file=None):
+    def __init__(self, heartbeat_file=None, historical_service=None):
+        """
+        Initialize Dashboard Service
+        
+        Args:
+            heartbeat_file: Path to heartbeat file (optional)
+            historical_service: HistoricalDataService instance (optional, falls back to global singleton)
+        """
         self.heartbeat_file = heartbeat_file or "data/temp/bot_heartbeat.json"
         self._lock = threading.RLock()
         self._data_file = os.path.join("data", "temp", "dashboard_data.json")
+        
+        # Store historical service for dependency injection (DIP compliance)
+        self._historical_service = historical_service
         
         # Ensure temp directory exists
         os.makedirs(os.path.dirname(self._data_file), exist_ok=True)
@@ -138,8 +148,12 @@ class DashboardService:
             
             # Call historical_data_service.prepare_chart_data() to get actual candles
             # This handles UTC-based 5-minute boundaries and proper candle display
-            from core.services.historical_data_service import get_global_historical_data_service
-            historical_service = get_global_historical_data_service()
+            # Use injected historical service or fall back to global singleton (DIP compliance)
+            if self._historical_service is None:
+                from core.services.historical_data_service import get_global_historical_data_service
+                historical_service = get_global_historical_data_service()
+            else:
+                historical_service = self._historical_service
             
             # prepare_chart_data returns complete chart data with historical candles, ongoing candle, and pattern analysis
             # NO FALLBACKS - prepare_chart_data raises on error
@@ -300,19 +314,20 @@ class DashboardService:
 # Factory function for dependency injection with singleton pattern
 _global_dashboard_service = None
 
-def create_dashboard_service(heartbeat_file=None) -> DashboardService:
+def create_dashboard_service(heartbeat_file=None, historical_service=None) -> DashboardService:
     """
-    Factory function to create DashboardService with singleton pattern
+    Factory function to create DashboardService with singleton pattern (DIP compliance)
     Prevents redundant initializations
     
     Args:
         heartbeat_file: Optional heartbeat file path
+        historical_service: HistoricalDataService instance (optional, falls back to global singleton)
     
     Returns:
         Configured DashboardService instance (singleton)
     """
     global _global_dashboard_service
     if _global_dashboard_service is None:
-        _global_dashboard_service = DashboardService(heartbeat_file=heartbeat_file)
+        _global_dashboard_service = DashboardService(heartbeat_file=heartbeat_file, historical_service=historical_service)
         logger.info("🎛️ DashboardService singleton created")
     return _global_dashboard_service

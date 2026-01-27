@@ -13,15 +13,29 @@ from loguru import logger
 class HistoricalDataService:
     """Centralized service for all historical candle data"""
     
-    def __init__(self):
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+    def __init__(self, cache=None, candle_storage=None):
+        """
+        Initialize Historical Data Service with dependency injection (DIP compliance)
         
-        # Initialize persistent 5m candle storage
-        from core.services.candle_storage import CandleStorage
-        from config.config import TradingConfig
-        self._candle_storage = CandleStorage(symbol=TradingConfig.SYMBOL)
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+            candle_storage: CandleStorage instance (optional, creates new if None)
+        """
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
+        
+        # Dependency injection for candle storage (DIP compliance)
+        if candle_storage is None:
+            from core.services.candle_storage import CandleStorage
+            from config.config import TradingConfig
+            self._candle_storage = CandleStorage(symbol=TradingConfig.SYMBOL)
+        else:
+            self._candle_storage = candle_storage
         
         # Database should have 5 years of historical data
         # On bot startup: backfill missing candles from last stored candle to now
@@ -611,17 +625,21 @@ class HistoricalDataService:
 
 
 # Factory function for dependency injection with singleton pattern
-def create_historical_data_service() -> HistoricalDataService:
+def create_historical_data_service(cache=None, candle_storage=None) -> HistoricalDataService:
     """
     Factory function to create HistoricalDataService with singleton pattern
     Prevents redundant initializations
+    
+    Args:
+        cache: CentralizedCache instance (optional, falls back to global singleton)
+        candle_storage: CandleStorage instance (optional, creates new if None)
     
     Returns:
         Configured HistoricalDataService instance (singleton)
     """
     global _global_historical_data_service
     if _global_historical_data_service is None:
-        _global_historical_data_service = HistoricalDataService()
+        _global_historical_data_service = HistoricalDataService(cache=cache, candle_storage=candle_storage)
         logger.debug("📊 HistoricalDataService singleton created")
     return _global_historical_data_service
 
@@ -635,7 +653,3 @@ def get_global_historical_data_service() -> HistoricalDataService:
         _global_historical_data_service = create_historical_data_service()
     return _global_historical_data_service
 
-# Backward compatibility
-def get_global_chart_data_service() -> HistoricalDataService:
-    """Backward compatibility - returns HistoricalDataService"""
-    return get_global_historical_data_service()

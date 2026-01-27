@@ -9,19 +9,25 @@ import time
 from typing import Dict, Any, Optional, List
 from loguru import logger
 from core.constants import TradingConstants
+from core.services.price_update_handler import PriceUpdateHandler
+from core.services.trend_data_mapper import TrendDataMapper
 
 class MarketDataService:
     """Processed data coordinator - receives analysis from modules, coordinates for consumers"""
     
-    def __init__(self, hyperliquid_api, hyperliquid_websocket, binance_api=None, binance_websocket=None):
+    def __init__(self, hyperliquid_api, hyperliquid_websocket, binance_api=None, binance_websocket=None, cache=None):
         self.hyperliquid_api = hyperliquid_api
         self.hyperliquid_websocket = hyperliquid_websocket
         self.binance_api = binance_api
         self.binance_websocket = binance_websocket
         
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         
         # Update intervals are now handled by CentralizedCache
         # No need for duplicate definitions here
@@ -33,18 +39,20 @@ class MarketDataService:
         # This allows methods like get_funding_analysis() to access pre-fetched data
         self._current_raw_data = None
         
-        # Real-time price streaming (single source of truth)
-        self._current_price = None
-        self._price_timestamp = 0
-        self._price_update_interval = TradingConstants.PRICE_UPDATE_INTERVAL
-        
-        # RSI update throttling for dashboard (prevent spam from rapid price changes)
-        self._last_rsi_dashboard_update = 0
-        self._rsi_dashboard_update_interval = 0.5  # Update dashboard at most every 500ms
+        # Extracted components for SRP compliance
+        self._price_update_handler = PriceUpdateHandler(
+            hyperliquid_websocket=hyperliquid_websocket,
+            hyperliquid_api=hyperliquid_api,
+            cache=cache
+        )
+        self._trend_data_mapper = TrendDataMapper()
         
         # Register WebSocket callback to update RSI immediately when price changes
         if self.hyperliquid_websocket:
-            self.hyperliquid_websocket.add_price_callback(self._on_websocket_price_update)
+            # Pass self as market_data_service for RSI data updates
+            self.hyperliquid_websocket.add_price_callback(
+                lambda price_data: self._price_update_handler.on_websocket_price_update(price_data, market_data_service=self)
+            )
         
         logger.info("📊 Processed Data Coordinator initialized - New architecture")
     
@@ -187,7 +195,7 @@ class MarketDataService:
             # Strategy-independent analysis
             # _map_trend_data() validates raw_trend_data and guarantees valid structure
             raw_trend_data = self._analysis_modules["trend"].get_latest_analysis()
-            mapped_trend = self._map_trend_data(raw_trend_data)  # API boundary - validates and guarantees structure
+            mapped_trend = self._trend_data_mapper.map_trend_data(raw_trend_data)  # API boundary - validates and guarantees structure
             # Store mapped result for future use
             self.update_analysis_data("trend", mapped_trend)
             return mapped_trend
@@ -196,94 +204,6 @@ class MarketDataService:
             logger.error(f"❌ Failed to get trend analysis: {e}")
             raise
     
-    def _map_trend_data(self, raw_trend_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Map trend calculator output to unified format - NO FALLBACKS"""
-        try:
-            if not raw_trend_data or not isinstance(raw_trend_data, dict):
-                raise ValueError(f"Invalid raw_trend_data: expected dict, got {type(raw_trend_data)} - NO FALLBACKS")
-            
-            # Extract all timeframe trends
-            trend_15m = raw_trend_data["trend_15m"]  # Required (NO FALLBACKS)
-            trend_1h = raw_trend_data["trend_1h"]  # Required (NO FALLBACKS)
-            trend_4h = raw_trend_data["trend_4h"]  # Required (NO FALLBACKS)
-            trend_24h = raw_trend_data["trend_24h"]  # Required (NO FALLBACKS)
-            
-            # Extract numeric strength from details (trend calculator returns strength as float 0.0-1.0)
-            # NO FALLBACKS - details and strength are required
-            details = raw_trend_data["details"]
-            trend_1h_details = details["1h"]
-            numeric_strength = trend_1h_details["strength"]
-            
-            # Timestamp is required from trend calculator (NO FALLBACKS)
-            if "timestamp" not in raw_trend_data:
-                raise ValueError("Trend data missing 'timestamp' key (NO FALLBACKS)")
-            
-            # Use 1h as primary for strategy decisions, but preserve all timeframes
-            primary_trend = trend_1h
-            mapped_direction = self._map_trend_to_direction(primary_trend)
-            
-            # Create unified trend structure with ALL timeframes
-            # Use numeric strength (0.0-1.0) instead of string mapping for strategy manager compatibility
-            mapped_trend = {
-                "direction": mapped_direction,
-                "strength": float(numeric_strength),  # Numeric strength for strategy manager (NO FALLBACKS)
-                "timeframes": {
-                    "short": trend_15m,      # 15m trend
-                    "medium": trend_1h,       # 1h trend  
-                    "long": trend_24h         # 24h trend
-                },
-                "detailed_timeframes": {
-                    "trend_15m": trend_15m,
-                    "trend_1h": trend_1h,
-                    "trend_4h": trend_4h,
-                    "trend_24h": trend_24h
-                },
-                "raw_data": raw_trend_data,  # Keep original data for detailed analysis
-                "timestamp": raw_trend_data["timestamp"],  # Required (NO FALLBACKS)
-                "data_type": "trend"
-            }
-            
-            return mapped_trend
-            
-        except Exception as e:
-            logger.error(f"❌ Trend mapping failed: {e}")
-            raise
-    
-    def _map_trend_to_direction(self, trend: str) -> str:
-        """Map detailed trend to simple direction for strategy manager - NO FALLBACKS"""
-        if not trend or trend == "UNKNOWN" or trend is None:
-            raise ValueError(f"Invalid trend value: {trend} (NO FALLBACKS)")
-            
-        trend_mapping = {
-            "STRONG_UPTREND": "BULLISH",
-            "UPTREND": "BULLISH", 
-            "WEAK_UPTREND": "BULLISH",
-            "STRONG_DOWNTREND": "BEARISH",
-            "DOWNTREND": "BEARISH",
-            "WEAK_DOWNTREND": "BEARISH",
-            "SIDEWAYS": "SIDEWAYS"
-        }
-        if trend not in trend_mapping:
-            raise ValueError(f"Unsupported trend value: {trend} - must be one of {list(trend_mapping.keys())} (NO FALLBACKS)")
-        return trend_mapping[trend]
-    
-    def _map_trend_to_strength(self, trend: str) -> str:
-        """Map detailed trend to strength level - NO FALLBACKS (Note: This is deprecated, use numeric strength from details instead)"""
-        if not trend or trend == "UNKNOWN" or trend is None:
-            raise ValueError(f"Invalid trend value: {trend} (NO FALLBACKS)")
-            
-        strength_mapping = {
-            "STRONG_UPTREND": "STRONG",
-            "STRONG_DOWNTREND": "STRONG",
-            "UPTREND": "MODERATE",
-            "DOWNTREND": "MODERATE", 
-            "WEAK_UPTREND": "WEAK",
-            "WEAK_DOWNTREND": "WEAK",
-            "SIDEWAYS": "NEUTRAL"
-        }
-        if trend not in strength_mapping:
-            raise ValueError(f"Unsupported trend value: {trend} - must be one of {list(strength_mapping.keys())} (NO FALLBACKS)")
-        return strength_mapping[trend]
     
     def get_support_resistance_analysis(self) -> Dict[str, Any]:
         """
@@ -591,6 +511,9 @@ class MarketDataService:
             # Initialize RSI if not already initialized (only initialization, no updates here)
             if current_price and "rsi_calculator" in self._analysis_modules:
                 rsi_calculator = self._analysis_modules["rsi_calculator"]
+                # Set RSI calculator in price update handler for real-time updates
+                self._price_update_handler.set_rsi_calculator(rsi_calculator)
+                
                 if not rsi_calculator.rsi_initialized:
                     try:
                         # Get historical candles for RSI baseline calculation
@@ -650,10 +573,14 @@ class MarketDataService:
                 }
             }
             
+            # Add IV Squeeze analysis (requires current_price)
+            iv_squeeze_data = self.get_iv_squeeze_analysis(current_price=current_price)
+            unified_data["iv_squeeze"] = iv_squeeze_data
+            
             # Add any additional analysis modules - all modules are required (NO FALLBACKS)
             # All registered modules must succeed or raise
             for module_name, module_instance in self._analysis_modules.items():
-                if module_name not in ["volatility", "trend", "support_resistance", "rsi_calculator", "volume", "pressure", "patterns", "market_conditions", "funding_rate", "orderbook", "cross_asset_analysis"]:
+                if module_name not in ["volatility", "trend", "support_resistance", "rsi_calculator", "volume", "pressure", "patterns", "market_conditions", "funding_rate", "orderbook", "cross_asset_analysis", "iv_squeeze"]:
                     # Get analysis data - all modules are required (NO FALLBACKS)
                     # _get_processed_data() will raise if module fails - no silent failures
                     analysis_data = self._get_processed_data(module_name)
@@ -722,13 +649,10 @@ class MarketDataService:
             if pattern_engine is None:
                 raise ValueError("Pattern recognition engine module is None - module initialization failed")
             
-            # Use centralized cache for pattern analysis
-            from core.services.centralized_cache import get_global_centralized_cache
-            cache = get_global_centralized_cache()
-            
+            # Use injected cache (DIP compliance)
             # Check cache first - use cache if valid (pattern expiration is handled in analysis, not cache invalidation)
             cache_key = "pattern_recognition_analysis"
-            cached_data = cache.get(cache_key)
+            cached_data = self._cache.get(cache_key)
             
             if cached_data:
                 # Validate cached data
@@ -760,8 +684,8 @@ class MarketDataService:
             nested_count = sum(len(v) if isinstance(v, list) else 0 for v in nested.values())
             logger.info(f"📊 Pattern analysis complete: {patterns_count} flat patterns, {nested_count} nested patterns")
             
-            # Store in centralized cache
-            cache.set(cache_key, analysis_result)
+            # Store in centralized cache (use injected cache - DIP compliance)
+            self._cache.set(cache_key, analysis_result)
             # Also store via MarketDataService for consistency
             self.update_analysis_data("pattern_recognition", analysis_result)
             return analysis_result
@@ -910,7 +834,8 @@ class MarketDataService:
         try:
             # Use WhaleAnalysisCalculator to get fresh whale data
             from core.calculations.whale_analysis_calculator import WhaleAnalysisCalculator
-            whale_calculator = WhaleAnalysisCalculator()
+            # Inject cache dependency (DIP compliance)
+            whale_calculator = WhaleAnalysisCalculator(cache=self._cache)
             # get_latest_analysis() guarantees valid dict or raises (NO FALLBACKS)
             whale_result = whale_calculator.get_latest_analysis()
             
@@ -919,6 +844,50 @@ class MarketDataService:
             return whale_result
         except Exception as e:
             logger.error(f"❌ Failed to get whale data: {e}")
+            raise  # NO FALLBACKS - must raise to prevent silent failures
+    
+    def get_iv_squeeze_analysis(self, candles: List[Dict] = None, current_price: float = None) -> Dict[str, Any]:
+        """
+        Get IV Squeeze analysis from IVSqueezeAnalyzer - strategy independent
+        
+        CRITICAL: This method MUST always return a valid dict or raise an exception.
+        NO FALLBACKS - if calculation fails, we must know about it immediately.
+        """
+        try:
+            # Check if we have valid processed data
+            cache_key = "iv_squeeze"
+            iv_squeeze_data = self._get_processed_data(cache_key)
+            if iv_squeeze_data:
+                # Validate cached data
+                if iv_squeeze_data is None:
+                    raise ValueError("Cached IV squeeze data is None - cache corruption detected")
+                if not isinstance(iv_squeeze_data, dict):
+                    raise ValueError(f"Cached IV squeeze data is not a dict: {type(iv_squeeze_data)}")
+                return iv_squeeze_data
+            
+            # If no valid data, trigger analysis module to process
+            if "iv_squeeze" not in self._analysis_modules:
+                raise ValueError("No IV squeeze analysis module registered - module initialization failed")
+            
+            logger.info("📊 Triggering IV Squeeze analysis...")
+            iv_squeeze_analyzer = self._analysis_modules["iv_squeeze"]
+            if iv_squeeze_analyzer is None:
+                raise ValueError("IV Squeeze analyzer module is None - module initialization failed")
+            
+            # get_latest_analysis() guarantees valid dict or raises (NO FALLBACKS)
+            # Pass candles and current_price if provided
+            if candles is not None or current_price is not None:
+                iv_squeeze_result = iv_squeeze_analyzer.get_latest_analysis(candles=candles, current_price=current_price)
+            else:
+                iv_squeeze_result = iv_squeeze_analyzer.get_latest_analysis()
+            
+            # Store result for future use (cache with 1-minute TTL - volatility changes rapidly)
+            # TTL matches centralized cache policy for consistency
+            self._cache.set(cache_key, iv_squeeze_result)  # Uses cache policy (60s)
+            return iv_squeeze_result
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get IV Squeeze analysis: {e}")
             raise  # NO FALLBACKS - must raise to prevent silent failures
     
     def get_orderbook_analysis(self) -> Dict[str, Any]:
@@ -1179,70 +1148,11 @@ class MarketDataService:
     
     def get_current_price(self) -> Optional[float]:
         """Get current price (single source of truth for all components)"""
-        try:
-            current_time = time.time()
-            
-            # Check if we need to update the price
-            if (self._current_price is None or 
-                current_time - self._price_timestamp > self._price_update_interval):
-                
-                # Update price from WebSocket (real-time) - NO FALLBACKS
-                if not self.hyperliquid_websocket:
-                    raise Exception("Hyperliquid WebSocket not available - NO FALLBACKS")
-                
-                new_price = self.hyperliquid_websocket.get_current_price()
-                if new_price is None:
-                    raise Exception("No price data available from WebSocket - NO FALLBACKS")
-                
-                if new_price != self._current_price:
-                    self._current_price = new_price
-                    self._price_timestamp = current_time
-                    # Update RSI immediately when price changes
-                    self._update_rsi_with_price(new_price)
-            
-            return self._current_price
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get current price: {e}")
-            raise Exception(f"Current price unavailable - NO FALLBACKS: {e}")
+        return self._price_update_handler.get_current_price()
     
     def update_current_price(self) -> Optional[float]:
         """Force update current price from WebSocket (for real-time streaming)"""
-        try:
-            if self.hyperliquid_websocket:
-                new_price = self.hyperliquid_websocket.get_current_price()
-                if new_price is not None and new_price != self._current_price:
-                    self._current_price = new_price
-                    self._price_timestamp = time.time()
-                    # Update RSI immediately when price changes
-                    self._update_rsi_with_price(new_price)
-                    return new_price
-            return self._current_price
-        except Exception as e:
-            logger.error(f"❌ Failed to update current price: {e}")
-            return self._current_price
-    
-    def _on_websocket_price_update(self, price_data: Dict[str, Any]):
-        """
-        Callback for WebSocket price updates - update RSI immediately
-        
-        CRITICAL: This is a high-frequency callback. Errors are logged at debug level
-        to avoid spam, but critical errors should still be visible.
-        """
-        try:
-            new_price = price_data.get("current_price") if price_data else None
-            if new_price and new_price > 0:
-                # Update internal price cache
-                self._current_price = new_price
-                self._price_timestamp = time.time()
-                # Update RSI immediately
-                self._update_rsi_with_price(new_price)
-        except (KeyError, TypeError, ValueError) as e:
-            # Handle specific data format errors (non-critical for callback)
-            logger.debug(f"⚠️ WebSocket price update callback error (non-critical): {e}")
-        except Exception as e:
-            # Unexpected errors should be logged (but not spam)
-            logger.warning(f"⚠️ Unexpected error in WebSocket price callback: {e}")
+        return self._price_update_handler.update_current_price()
     
     def _prepare_sr_data_for_dashboard(self, sr_data: Dict[str, Any], current_price: float) -> Dict[str, Any]:
         """
@@ -1296,69 +1206,6 @@ class MarketDataService:
             logger.error(f"❌ Failed to prepare S/R data for dashboard: {e}")
             raise ValueError(f"S/R data dashboard preparation failed: {e} (NO FALLBACKS)") from e
     
-    def _update_rsi_with_price(self, new_price: float):
-        """
-        Update RSI immediately when price changes (called from price updates)
-        
-        CRITICAL: This is called frequently. Errors are handled gracefully but logged.
-        """
-        try:
-            if "rsi_calculator" not in self._analysis_modules:
-                return  # RSI calculator not available - not an error
-            
-            rsi_calculator = self._analysis_modules["rsi_calculator"]
-            if rsi_calculator is None:
-                return  # RSI calculator is None - not an error
-            
-            # Only update if RSI is already initialized
-            if not rsi_calculator.rsi_initialized:
-                return  # RSI not initialized yet - not an error
-            
-            old_rsi = rsi_calculator.current_rsi
-            # update_realtime_rsi() returns updated RSI data - store it immediately
-            rsi_result = rsi_calculator.update_realtime_rsi(new_price)
-            new_rsi = rsi_calculator.current_rsi
-            
-            # Store updated RSI data to cache so get_rsi_analysis() returns fresh data
-            self.update_analysis_data("rsi", rsi_result)
-            
-            # Trigger instant dashboard update if RSI changed significantly (throttled)
-            if abs(new_rsi - old_rsi) >= TradingConstants.RSI_CHANGE_THRESHOLD:
-                self._trigger_instant_rsi_dashboard_update()
-        except (AttributeError, TypeError) as e:
-            # Handle specific errors (missing attributes, wrong types) - non-critical
-            logger.debug(f"⚠️ RSI update error (non-critical): {e}")
-        except Exception as e:
-            # Unexpected errors should be logged
-            logger.warning(f"⚠️ Unexpected error in RSI update: {e}")
-    
-    def _trigger_instant_rsi_dashboard_update(self):
-        """
-        Trigger instant dashboard update for RSI changes (throttled to prevent spam)
-        
-        CRITICAL: This is called frequently. Dashboard might not be initialized yet,
-        which is acceptable. Errors are handled gracefully.
-        """
-        try:
-            current_time = time.time()
-            # Throttle: Update dashboard at most every 500ms
-            if current_time - self._last_rsi_dashboard_update < self._rsi_dashboard_update_interval:
-                return  # Throttled - not an error
-            
-            self._last_rsi_dashboard_update = current_time
-            
-            # Get dashboard instance and trigger immediate update
-            from core.dashboard.web_dashboard import EventDrivenTradingDashboard
-            dashboard = EventDrivenTradingDashboard.get_global_instance()
-            if dashboard:
-                dashboard.force_data_update()
-            # If dashboard is None, that's okay - it might not be initialized yet
-        except (ImportError, AttributeError) as e:
-            # Handle specific errors (import issues, missing attributes) - non-critical
-            logger.debug(f"⚠️ Dashboard update error (non-critical): {e}")
-        except Exception as e:
-            # Unexpected errors should be logged
-            logger.warning(f"⚠️ Unexpected error in dashboard update trigger: {e}")
     def get_market_data(self) -> Dict[str, Any]:
         """Get market data from API"""
         try:
@@ -1371,7 +1218,7 @@ class MarketDataService:
             raise
     
 # Factory function for dependency injection
-def create_market_data_service(hyperliquid_api, hyperliquid_websocket, binance_api=None, binance_websocket=None) -> MarketDataService:
+def create_market_data_service(hyperliquid_api, hyperliquid_websocket, binance_api=None, binance_websocket=None, cache=None) -> MarketDataService:
     """
     Factory function to create MarketDataService with dependency injection
     
@@ -1380,11 +1227,12 @@ def create_market_data_service(hyperliquid_api, hyperliquid_websocket, binance_a
         hyperliquid_websocket: HyperliquidWebSocket instance
         binance_api: BinanceAPI instance (optional)
         binance_websocket: BinanceWebSocket instance (optional)
+        cache: CentralizedCache instance (optional, falls back to global singleton)
     
     Returns:
         Configured MarketDataService instance
     """
-    return MarketDataService(hyperliquid_api, hyperliquid_websocket, binance_api, binance_websocket)
+    return MarketDataService(hyperliquid_api, hyperliquid_websocket, binance_api, binance_websocket, cache=cache)
 
 # Global instance for backward compatibility
 _global_market_data_service = None

@@ -15,11 +15,16 @@ from datetime import datetime, timedelta
 # Singleton pattern implementation
 _global_blockcypher_api = None
 
-def get_global_blockcypher_api() -> 'BlockCypherAPI':
-    """Get the global BlockCypherAPI singleton instance"""
+def get_global_blockcypher_api(cache=None) -> 'BlockCypherAPI':
+    """
+    Get the global BlockCypherAPI singleton instance
+    
+    Args:
+        cache: CentralizedCache instance (optional, falls back to global singleton)
+    """
     global _global_blockcypher_api
     if _global_blockcypher_api is None:
-        _global_blockcypher_api = BlockCypherAPI()
+        _global_blockcypher_api = BlockCypherAPI(cache=cache)
     return _global_blockcypher_api
 
 class BlockCypherAPI:
@@ -28,13 +33,23 @@ class BlockCypherAPI:
     COMPLETELY FREE - No API key required, no registration needed
     """
 
-    def __init__(self):
+    def __init__(self, cache=None):
+        """
+        Initialize BlockCypher API with dependency injection (DIP compliance)
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
         # BlockCypher API configuration
         self.api_base_url = "https://api.blockcypher.com/v1/btc/main"
         
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         
         self.rate_limit_delay = 1  # 1 second between requests (generous rate limit)
         
@@ -187,5 +202,3 @@ class BlockCypherAPI:
             logger.error(f"❌ BlockCypher API connection test failed: {e}")
             return False
 
-# Backward compatibility
-blockcypher_api = get_global_blockcypher_api()

@@ -15,11 +15,20 @@ logger = logging.getLogger(__name__)
 class YahooFinanceAPI:
     """Yahoo Finance API service for cross-asset data"""
     
-    def __init__(self):
-        """Initialize Yahoo Finance API service"""
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+    def __init__(self, cache=None):
+        """
+        Initialize Yahoo Finance API service with dependency injection (DIP compliance)
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         
         self._last_request_time = 0
         self._min_request_interval = 1.0  # Minimum 1 second between requests
@@ -295,14 +304,19 @@ class YahooFinanceAPI:
 _yahoo_finance_api_instance = None
 _yahoo_finance_api_lock = threading.Lock()
 
-def get_global_yahoo_finance_api() -> YahooFinanceAPI:
-    """Get global Yahoo Finance API instance (singleton)"""
+def get_global_yahoo_finance_api(cache=None) -> YahooFinanceAPI:
+    """
+    Get global Yahoo Finance API instance (singleton)
+    
+    Args:
+        cache: CentralizedCache instance (optional, falls back to global singleton)
+    """
     global _yahoo_finance_api_instance
     
     if _yahoo_finance_api_instance is None:
         with _yahoo_finance_api_lock:
             if _yahoo_finance_api_instance is None:
-                _yahoo_finance_api_instance = YahooFinanceAPI()
+                _yahoo_finance_api_instance = YahooFinanceAPI(cache=cache)
                 logger.info("🌐 Global Yahoo Finance API instance created")
     
     return _yahoo_finance_api_instance

@@ -996,16 +996,5 @@ class HyperliquidSimulator:
     
 
 
-# Global simulator instance (will be initialized with proper balance by SystemInitializer)
-# This is kept for backward compatibility but should not be used directly
-_global_simulator = None
-
-def get_global_simulator():
-    """Get or create global simulator instance"""
-    global _global_simulator
-    if _global_simulator is None:
-        _global_simulator = HyperliquidSimulator(initial_balance=10000.0)
-    return _global_simulator
-
-# Legacy compatibility
-hyperliquid_simulator = None  # Will be set by SystemInitializer
+# Legacy compatibility - set by SystemInitializer
+hyperliquid_simulator = None

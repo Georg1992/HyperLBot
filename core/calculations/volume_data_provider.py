@@ -12,8 +12,16 @@ from loguru import logger
 class VolumeDataProvider:
     """Data provider for volume calculations"""
     
-    def __init__(self, symbol: str = "BTC"):
+    def __init__(self, symbol: str = "BTC", historical_service=None):
+        """
+        Initialize Volume Data Provider
+        
+        Args:
+            symbol: Trading symbol (default: "BTC")
+            historical_service: HistoricalDataService instance (optional, falls back to global singleton)
+        """
         self.symbol = symbol
+        self._historical_service = historical_service  # Store for use in methods
         logger.debug(f"VolumeDataProvider initialized for {symbol}")
     
     def fetch_raw_trades(self) -> List[Dict[str, Any]]:
@@ -81,8 +89,12 @@ class VolumeDataProvider:
         Raises:
             ValueError: If database is unavailable or insufficient data exists
         """
-        from core.services.historical_data_service import get_global_historical_data_service
-        historical_service = get_global_historical_data_service()
+        # Use injected historical service or fall back to global singleton (DIP compliance)
+        if self._historical_service is None:
+            from core.services.historical_data_service import get_global_historical_data_service
+            historical_service = get_global_historical_data_service()
+        else:
+            historical_service = self._historical_service
         
         if not historical_service:
             raise ValueError("Historical data service not available for volume history")

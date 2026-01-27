@@ -31,7 +31,8 @@ class PressureCalculator:
     def __init__(self, symbol: str = "BTC",
                  data_provider: Optional[PressureDataProvider] = None,
                  analyzer: Optional[PressureAnalyzer] = None,
-                 classifier: Optional[PressureClassifier] = None):
+                 classifier: Optional[PressureClassifier] = None,
+                 cache=None):
         """
         Initialize the professional-grade Pressure Calculator
         
@@ -40,6 +41,7 @@ class PressureCalculator:
             data_provider: PressureDataProvider instance (injected dependency)
             analyzer: PressureAnalyzer instance (injected dependency)
             classifier: PressureClassifier instance (injected dependency)
+            cache: CentralizedCache instance (optional, falls back to global singleton)
         """
         # Dependency injection with defaults
         self.symbol = symbol
@@ -47,9 +49,13 @@ class PressureCalculator:
         self._analyzer = analyzer or PressureAnalyzer()
         self._classifier = classifier or PressureClassifier()
         
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         
         # Professional-grade: EMA smoothing for noise reduction
         # Store pressure history for EMA calculation (5 periods for 3-5 period EMA)

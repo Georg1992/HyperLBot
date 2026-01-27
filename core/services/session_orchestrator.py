@@ -14,17 +14,34 @@ from core.utils.time_utils import TimeUtils
 from core.services.centralized_cache import get_global_centralized_cache
 from core.services.historical_data_service import get_global_historical_data_service
 from core.constants import TradingConstants
+from core.services.strategy_detector import StrategyDetector
+from core.services.momentum_processor import MomentumProcessor
+from core.services.dashboard_updater import DashboardUpdater
 
 
 class SessionOrchestrator:
     """Centralized session orchestrator with NO FALLBACKS policy"""
 
-    def __init__(self, config, initial_balance: float = None):
+    def __init__(self, config, initial_balance: float = None, cache=None):
         self.config = config
         self.initial_balance = initial_balance
+        
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
+        
         self.session_manager = None
         self.strategy_manager = None
         self.prediction_engine = None
+        
+        # Extracted components for SRP compliance
+        self._strategy_detector = None  # Will be initialized when dependencies are available
+        self._momentum_processor = None  # Will be initialized when reactive_engine is available
+        self._dashboard_updater = None  # Will be initialized when dependencies are available
+        
         self._last_price = None
         self._last_5m_boundary = None
         self._last_orderbook = {'levels': [[], []]}  # Initialize with Hyperliquid format: [bids, asks] (NO FALLBACKS)
@@ -44,7 +61,8 @@ class SessionOrchestrator:
             'orderbook': 0,
             'market_conditions': 0,
             'cross_asset_correlation_analyzer': 0,
-            'consolidation': 0  # Consolidation tracker module
+            'consolidation': 0,  # Consolidation tracker module
+            'iv_squeeze': 0  # IV Squeeze analyzer module
         }
         
         # Initialize reactive execution engine (for momentum breakouts with market orders)
@@ -130,6 +148,9 @@ class SessionOrchestrator:
             
             # Ensure Prediction Engine is initialized
             self._ensure_prediction_engine_initialized()
+            
+            # Initialize extracted components (SRP compliance)
+            self._initialize_extracted_components(dashboard_service)
 
             # Start session
             self._start_session(market_data_service, dashboard_service, strategy_name)
@@ -151,6 +172,32 @@ class SessionOrchestrator:
         else:
             raise Exception("MarketDataService price not available or invalid")
 
+    def _initialize_extracted_components(self, dashboard_service):
+        """
+        Initialize extracted components (SRP compliance)
+        
+        Args:
+            dashboard_service: DashboardService instance
+        """
+        # Initialize StrategyDetector
+        if self.strategy_manager and self.prediction_engine:
+            self._strategy_detector = StrategyDetector(
+                strategy_manager=self.strategy_manager,
+                prediction_engine=self.prediction_engine
+            )
+        
+        # Initialize MomentumProcessor
+        if hasattr(self, '_reactive_engine') and self._reactive_engine:
+            self._momentum_processor = MomentumProcessor(reactive_engine=self._reactive_engine)
+        else:
+            self._momentum_processor = MomentumProcessor(reactive_engine=None)
+        
+        # Initialize DashboardUpdater
+        self._dashboard_updater = DashboardUpdater(
+            dashboard_service=dashboard_service,
+            session_manager=self.session_manager
+        )
+    
     def _start_session(self, market_data_service, dashboard_service, strategy: str):
         """Start trading session"""
         try:
@@ -176,6 +223,16 @@ class SessionOrchestrator:
         Returns:
             Updated last_candle_update_time
         """
+        # Get historical service from system initializer (DIP compliance)
+        historical_service = None
+        try:
+            from core.services.system_initializer import get_system_initializer
+            system_initializer = get_system_initializer()
+            if "historical_data_service" in system_initializer.singleton_systems:
+                historical_service = system_initializer.get_singleton_system("historical_data_service")
+        except Exception:
+            pass  # Will fall back to global singleton if needed
+        
         # Detect new 5-minute candle close (boundary change) - EXACT UTC TIMING
         # Candles are tied to global UTC time and appear at 00, 05, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55 minutes
         if self._last_5m_boundary is not None and current_5m_start != self._last_5m_boundary:
@@ -184,29 +241,29 @@ class SessionOrchestrator:
             
             # Update candle storage IMMEDIATELY when boundary changes
             try:
-                historical_service = get_global_historical_data_service()
+                if not historical_service:
+                    historical_service = get_global_historical_data_service()
                 if historical_service._candle_storage:
                     historical_service._candle_storage.update_with_latest_candle()
                     logger.info(f"✅ Candle storage updated at exact 5-minute boundary")
                     
                     # Invalidate chart cache to force dashboard refresh with new candle
-                    cache = get_global_centralized_cache()
-                    cache.invalidate(pattern="historical_candles")
-                    cache.invalidate(pattern="candles_5m")
+                    self._cache.invalidate(pattern="historical_candles")
+                    self._cache.invalidate(pattern="candles_5m")
                     logger.debug(f"🔄 Chart cache invalidated for new candle - dashboard will refresh")
             except Exception as e:
                 logger.error(f"❌ Failed to update candle storage at boundary: {e}")
             
             # Invalidate pattern and trend cache when new candle closes
             # New candles affect trend calculations, so trend cache must be invalidated
-            cache = get_global_centralized_cache()
-            cache.invalidate(pattern="pattern_recognition")
-            cache.invalidate(pattern="patterns")
-            cache.invalidate("trend")  # Trend is calculated from candles, so invalidate when new candle appears
+            self._cache.invalidate(pattern="pattern_recognition")
+            self._cache.invalidate(pattern="patterns")
+            self._cache.invalidate("trend")  # Trend is calculated from candles, so invalidate when new candle appears
             
             # Recalculate RSI baseline at exact candle boundary
             try:
-                historical_service = get_global_historical_data_service()
+                if not historical_service:
+                    historical_service = get_global_historical_data_service()
                 from config.config import TradingConfig
                 candles_5m = historical_service.get_5m_candles(TradingConfig.SYMBOL, 30)  # Need at least 15 for RSI(14)
                 
@@ -225,7 +282,8 @@ class SessionOrchestrator:
         elif last_candle_update_time > 0.0 and current_time - last_candle_update_time >= TradingConstants.CANDLE_UPDATE_TIMEOUT:
             try:
                 logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
-                historical_service = get_global_historical_data_service()
+                if not historical_service:
+                    historical_service = get_global_historical_data_service()
                 if historical_service._candle_storage:
                     historical_service._candle_storage.update_with_latest_candle()
                     return current_time
@@ -315,44 +373,6 @@ class SessionOrchestrator:
             logger.error(f"❌ Failed to initialize RawDataFetcher: {e}")
             raise ValueError(f"RawDataFetcher initialization failed: {e} (NO FALLBACKS)")
     
-    def _filter_sr_levels_for_dashboard(self, unified_data: Dict[str, Any], 
-                                        current_price: float, current_strategy: str) -> None:
-        """
-        Filter S/R levels for dashboard display based on current strategy
-        
-        Modifies unified_data in place
-        """
-        # get_support_resistance_analysis() guarantees valid dict or raises - trust API contract
-        sr_data = unified_data["support_resistance"]
-        from core.calculations.sr_level_filter import SRLevelFilter
-        from config.config import TradingConfig
-        
-        # Get strategy-specific max_levels
-        if current_strategy not in TradingConfig.SR_LEVEL_SELECTION:
-            return
-        
-        strategy_config = TradingConfig.SR_LEVEL_SELECTION[current_strategy]
-        max_levels = strategy_config["max_levels_per_side"]
-        
-        # Filter levels for dashboard (strategy-aware)
-        level_filter = SRLevelFilter()
-        all_levels = sr_data["levels"]
-        sr_metadata = sr_data["metadata"]
-        
-        filtered_levels = level_filter.filter_for_display(
-            all_levels=all_levels,
-            current_price=current_price,
-            max_levels=max_levels,  # Strategy-specific (scalping=1, swing=3)
-            strategy=current_strategy,
-            sr_metadata=sr_metadata  # Pass metadata for ATR calculation
-        )
-        
-        # Update S/R data with strategy-filtered levels for dashboard
-        if filtered_levels is not None:
-            sr_data["key_levels"] = filtered_levels["support"] + filtered_levels["resistance"]
-            sr_data["top_support"] = filtered_levels["support"]
-            sr_data["top_resistance"] = filtered_levels["resistance"]
-    
     def _calculate_position_size(self, prediction, current_strategy: str) -> Optional[Dict[str, Any]]:
         """
         Calculate position size for a prediction
@@ -410,15 +430,21 @@ class SessionOrchestrator:
         """
         # Detect and update strategy AFTER all analysis modules are complete
         # This ensures we have the most up-to-date market data for strategy selection
-        current_strategy = self._detect_and_update_strategy(
-            unified_data, dashboard_service
-        )
+        if self._strategy_detector:
+            current_strategy = self._strategy_detector.detect_and_update_strategy(
+                unified_data, session_manager=self.session_manager
+            )
+        else:
+            # Fallback if not initialized
+            current_strategy = "standard"
+            logger.warning("⚠️ StrategyDetector not initialized, using default strategy")
         
         # Update unified data with detected strategy
         unified_data["strategy"] = current_strategy
         
         # Filter S/R levels for dashboard display (strategy-aware)
-        self._filter_sr_levels_for_dashboard(unified_data, current_price, current_strategy)
+        if self._strategy_detector:
+            self._strategy_detector.filter_sr_levels_for_dashboard(unified_data, current_price, current_strategy)
         
         # Generate prediction
         try:
@@ -453,22 +479,10 @@ class SessionOrchestrator:
         """
         Process momentum signals with reactive engine (market orders)
         """
-        if not hasattr(self, '_reactive_engine') or not self._reactive_engine:
-            return
-        
-        try:
-            momentum_result = self._reactive_engine.process_market_data(
-                unified_data=unified_data,
-                current_price=current_price,
-                current_strategy=current_strategy  # Use detected strategy for consistency
+        if self._momentum_processor:
+            self._momentum_processor.process_momentum_signals(
+                unified_data, current_price, current_strategy
             )
-            if momentum_result:
-                # Momentum result is guaranteed to have direction and entry_price (NO FALLBACKS)
-                direction = momentum_result["direction"]  # Required (NO FALLBACKS)
-                entry_price = momentum_result["entry_price"]  # Required (NO FALLBACKS)
-                logger.info(f"⚡ Momentum trade executed: {direction} @ ${entry_price:.2f}")
-        except Exception as e:
-            logger.warning(f"⚠️ Reactive engine check failed: {e}")
     
     def _main_data_loop(
         self,
@@ -519,9 +533,8 @@ class SessionOrchestrator:
                     self._process_momentum_signals(unified_data, current_price, current_strategy)
                     
                     # Update dashboard with unified market data (includes prediction)
-                    self._update_dashboard_with_unified_data(
-                        unified_data, dashboard_service
-                    )
+                    if self._dashboard_updater:
+                        self._dashboard_updater.update_dashboard_with_unified_data(unified_data)
                     
                     # Update session time
                     if self.session_manager:
@@ -589,9 +602,8 @@ class SessionOrchestrator:
                 new_candle_closed = True
                 logger.info(f"🕐 New 5-minute candle closed - pattern detection will be triggered")
                 # Invalidate pattern cache when new candle closes
-                cache = get_global_centralized_cache()
-                cache.invalidate(pattern="pattern_recognition")
-                cache.invalidate(pattern="patterns")
+                self._cache.invalidate(pattern="pattern_recognition")
+                self._cache.invalidate(pattern="patterns")
                 self._last_5m_boundary = current_5m_start
         else:
             self._last_5m_boundary = current_5m_start
@@ -606,9 +618,8 @@ class SessionOrchestrator:
             
             # Check time interval using CentralizedCache intervals
             last_update = self._last_update_times[module_name]  # Always exists (initialized in __init__)
-            # Get interval from CentralizedCache singleton
-            cache = get_global_centralized_cache()
-            interval = cache._get_ttl_policy(module_name)  # Get TTL policy for module
+            # Get interval from injected cache (DIP compliance)
+            interval = self._cache._get_ttl_policy(module_name)  # Get TTL policy for module
             
             if current_time - last_update >= interval:
                 should_update = True
@@ -618,7 +629,8 @@ class SessionOrchestrator:
                 should_update = True
             
             # Check price change for price-sensitive modules
-            price_sensitive_modules = ['rsi_calculator', 'support_resistance']
+            # IV Squeeze is volatility-based and correlates with price movements
+            price_sensitive_modules = ['rsi_calculator', 'support_resistance', 'iv_squeeze']
             if module_name in price_sensitive_modules and price_change >= price_change_threshold:
                 should_update = True
             
@@ -802,6 +814,7 @@ class SessionOrchestrator:
                 "market_conditions": lambda: market_data_service.get_market_conditions_analysis(raw_data=raw_data),
                 "cross_asset_correlation_analyzer": lambda: market_data_service.get_cross_asset_analysis(raw_data=raw_data),
                 "funding_rate": lambda: market_data_service.get_funding_analysis(raw_data=raw_data),
+                "iv_squeeze": lambda: market_data_service.get_iv_squeeze_analysis(current_price=current_price),
             }
 
             # Update modules via MarketDataService (SRP: MarketDataService coordinates all module access)
@@ -852,42 +865,6 @@ class SessionOrchestrator:
             logger.error(f"❌ Failed to get trading data: {e}")
             raise
 
-    def _detect_and_update_strategy(
-        self, unified_data: Dict[str, Any], dashboard_service
-    ) -> str:
-        """Detect and update strategy based on market conditions using unified data"""
-        try:
-            if self.strategy_manager:
-                # Strategy is None initially (set in get_unified_analysis_data), use current_strategy from manager
-                current_strategy = self.strategy_manager.current_strategy  # Use manager's current strategy
-
-                # Detect optimal strategy using comprehensive unified data
-                new_strategy = self.strategy_manager.detect_optimal_strategy(unified_data)
-
-                if new_strategy != current_strategy:
-                    logger.info(
-                        f"🎯 Strategy updated: {current_strategy} → {new_strategy}"
-                    )
-                    logger.info(f"   📊 Market conditions: volatility={unified_data['volatility_category']}, trend={unified_data['trend']['direction']}")  # Required (NO FALLBACKS)
-                    
-                    # Update session manager with new strategy
-                    if self.session_manager and self.session_manager.current_session_data:
-                        self.session_manager.current_session_data["strategy"] = new_strategy
-                    
-                    return new_strategy
-                else:
-                    # Even if unchanged, ensure session manager has the correct strategy
-                    if self.session_manager:
-                        current_session_strategy = self.session_manager.current_session_data["strategy"]  # Required (NO FALLBACKS)
-                        if current_session_strategy != current_strategy:
-                            self.session_manager.current_session_data["strategy"] = current_strategy
-                    return current_strategy
-            else:
-                raise ValueError("Strategy Manager not available - cannot detect strategy (NO FALLBACKS)")
-
-        except Exception as e:
-            logger.warning(f"⚠️ Strategy detection failed: {e}")
-            raise  # NO FALLBACKS - detection failure should raise
 
 
     def _end_session(self):
@@ -899,23 +876,3 @@ class SessionOrchestrator:
         except Exception as e:
             logger.error(f"❌ Session end failed: {e}")
 
-    def _update_dashboard_with_unified_data(
-        self, unified_data: Dict[str, Any], dashboard_service
-    ):
-        """Update dashboard with unified market data and session data"""
-        try:
-            # Update market data with analysis data (includes strategy in unified_data)
-            dashboard_service.update_market_data(unified_data)
-            
-            # Update session data from SessionManager (ensure strategy is synced)
-            if self.session_manager:
-                session_data = self.session_manager.get_current_session_data()
-                # Ensure session data has the latest strategy from unified_data
-                if "strategy" in unified_data:
-                    session_data["strategy"] = unified_data["strategy"]
-                    if self.session_manager:
-                        self.session_manager.current_session_data["strategy"] = unified_data["strategy"]
-                dashboard_service.update_session_data(session_data)
-
-        except Exception as e:
-            logger.error(f"❌ Dashboard update failed: {e}")

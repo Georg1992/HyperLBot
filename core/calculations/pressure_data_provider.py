@@ -170,11 +170,17 @@ class PressureDataProvider:
                 "depth_concentration": 1.0
             }
     
-    def invalidate_cache(self):
-        """Invalidate any cached pressure data"""
+    def invalidate_cache(self, cache=None):
+        """
+        Invalidate any cached pressure data
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
         try:
-            from core.services.centralized_cache import get_global_centralized_cache
-            cache = get_global_centralized_cache()
+            if cache is None:
+                from core.services.centralized_cache import get_global_centralized_cache
+                cache = get_global_centralized_cache()
             cache.invalidate_pattern("pressure_*")
             logger.debug("📊 PressureDataProvider cache invalidated")
         except Exception as e:

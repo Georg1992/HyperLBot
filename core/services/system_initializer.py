@@ -95,8 +95,13 @@ class SystemInitializer:
             from core.services.api_manager import create_api_manager
             api_manager = create_api_manager()
             
+            # Get cache instance to inject (DIP compliance)
+            from core.services.centralized_cache import get_global_centralized_cache
+            cache = get_global_centralized_cache()
+            
             # Initialize all APIs and WebSockets - Required (NO FALLBACKS)
-            api_results = api_manager.initialize_all()
+            # Inject cache dependency (DIP compliance)
+            api_results = api_manager.initialize_all(cache=cache)
             if not api_results.get("success"):
                 raise ValueError(f"API initialization failed: {api_results.get('error', 'Unknown error')} (NO FALLBACKS)")
             
@@ -164,16 +169,29 @@ class SystemInitializer:
             binance_api = self.singleton_systems["binance_api"]  # Required (NO FALLBACKS)
             binance_websocket = self.singleton_systems["binance_websocket"]  # Required (NO FALLBACKS)
             
+            # Create centralized cache and inject it (DIP compliance)
+            from core.services.centralized_cache import CentralizedCache, get_global_centralized_cache
+            # Use global singleton instance (ensures single instance across system)
+            cache = get_global_centralized_cache()
+            
             market_data_service = create_market_data_service(
                 hyperliquid_api,
                 hyperliquid_websocket,
                 binance_api,
-                binance_websocket
+                binance_websocket,
+                cache=cache  # Dependency injection (DIP compliance)
             )
             set_global_market_data_service(market_data_service)
             
-            dashboard_service = DashboardService.get_global_instance() or create_dashboard_service()
-            session_orchestrator = SessionOrchestrator(TradingConfig, initial_balance)  # Use real account balance
+            # Create historical service first (for dependency injection)
+            from core.services.historical_data_service import create_historical_data_service
+            historical_service = create_historical_data_service(cache=cache)
+            self.singleton_systems["historical_data_service"] = historical_service
+            
+            # Create dashboard service with injected historical service (DIP compliance)
+            dashboard_service = DashboardService.get_global_instance() or create_dashboard_service(historical_service=historical_service)
+            # Inject cache dependency (DIP compliance)
+            session_orchestrator = SessionOrchestrator(TradingConfig, initial_balance, cache=cache)
             
             self.singleton_systems["market_data_service"] = market_data_service
             self.singleton_systems["dashboard_service"] = dashboard_service
@@ -349,8 +367,15 @@ class SystemInitializer:
             from config.config import TradingConfig
             symbol = TradingConfig.SYMBOL
             try:
-                from core.services.historical_data_service import create_historical_data_service
-                historical_service = create_historical_data_service()
+                # Get historical service from singleton systems (already created in _initialize_singleton_systems)
+                historical_service = self.singleton_systems.get("historical_data_service")
+                if not historical_service:
+                    # Fallback if not yet created
+                    from core.services.historical_data_service import create_historical_data_service
+                    from core.services.centralized_cache import get_global_centralized_cache
+                    cache = get_global_centralized_cache()
+                    historical_service = create_historical_data_service(cache=cache)
+                
                 candles_5m = historical_service.get_5m_candles(symbol, 30)
                 if candles_5m and len(candles_5m) >= 15:
                     rsi_calculator.calculate_hyperliquid_baseline_rsi(candles_5m)
@@ -359,11 +384,19 @@ class SystemInitializer:
             except Exception as e:
                 logger.warning(f"⚠️ Failed to initialize RSI: {e}")
             
+            # Get historical service for dependency injection (DIP compliance)
+            historical_service = self.singleton_systems.get("historical_data_service")
+            
+            # Get cache for dependency injection (DIP compliance)
+            from core.services.centralized_cache import get_global_centralized_cache
+            cache = get_global_centralized_cache()
+            
             market_data_service.register_analysis_module("rsi_calculator", rsi_calculator)
             market_data_service.register_analysis_module("volatility", create_volatility_calculator(symbol))
             market_data_service.register_analysis_module("trend", create_trend_calculator())
             market_data_service.register_analysis_module("support_resistance", create_sr_calculator(symbol))
-            market_data_service.register_analysis_module("volume", create_volume_calculator(symbol))
+            # Inject historical service dependency (DIP compliance)
+            market_data_service.register_analysis_module("volume", create_volume_calculator(symbol, historical_service=historical_service))
             market_data_service.register_analysis_module("pressure", create_pressure_calculator(symbol))
             
             # Register analysis modules with new factory functions
@@ -372,11 +405,16 @@ class SystemInitializer:
             market_data_service.register_analysis_module("pattern_recognition", PatternRecognitionEngine(symbol))
             market_data_service.register_analysis_module("funding_rate", create_funding_rate_analyzer())
             market_data_service.register_analysis_module("orderbook", create_orderbook_analyzer())
-            market_data_service.register_analysis_module("cross_asset_correlation_analyzer", create_cross_asset_correlation_analyzer())
+            # Inject cache dependency (DIP compliance)
+            market_data_service.register_analysis_module("cross_asset_correlation_analyzer", create_cross_asset_correlation_analyzer(cache=cache))
             
             # Register consolidation tracker
             from core.analysis.real_time.consolidation_tracker import ConsolidationTracker
             market_data_service.register_analysis_module("consolidation", ConsolidationTracker(symbol))
+            
+            # Register IV Squeeze analyzer
+            from core.analysis.real_time.iv_squeeze_analyzer import IVSqueezeAnalyzer
+            market_data_service.register_analysis_module("iv_squeeze", IVSqueezeAnalyzer(symbol))
             
             logger.info("📊 Analysis modules registered with MarketDataService using new factory functions")
             

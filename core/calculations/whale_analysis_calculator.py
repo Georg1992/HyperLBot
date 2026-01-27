@@ -21,13 +21,23 @@ class WhaleAnalysisCalculator:
     - Volume and count metrics
     """
     
-    def __init__(self):
+    def __init__(self, cache=None):
+        """
+        Initialize Whale Analysis Calculator
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
         self.whale_threshold_usd = 100000  # $100k minimum whale size
         self.analysis_window_hours = 6  # Analyze last 6 hours
         
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         
         # Known exchange addresses
         self.exchange_addresses = {
@@ -409,13 +419,16 @@ class WhaleAnalysisCalculator:
 
 
 # Factory function for dependency injection
-def create_whale_analysis_calculator() -> WhaleAnalysisCalculator:
+def create_whale_analysis_calculator(cache=None) -> WhaleAnalysisCalculator:
     """
     Factory function to create WhaleAnalysisCalculator with dependency injection
+    
+    Args:
+        cache: CentralizedCache instance (optional, falls back to global singleton)
     
     Returns:
         Configured WhaleAnalysisCalculator instance
     """
-    return WhaleAnalysisCalculator()
+    return WhaleAnalysisCalculator(cache=cache)
 
 # Deprecated singleton functions removed - use create_whale_analysis_calculator() instead

@@ -30,13 +30,18 @@ class APIManager:
         
         logger.info("🔌 API Manager created")
     
-    def initialize_all(self) -> Dict[str, Any]:
-        """Initialize all APIs and WebSockets"""
+    def initialize_all(self, cache=None) -> Dict[str, Any]:
+        """
+        Initialize all APIs and WebSockets
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
         try:
             logger.info("🚀 Initializing all APIs and WebSockets...")
             
-            # Initialize APIs
-            api_results = self._initialize_apis()
+            # Initialize APIs (inject cache - DIP compliance)
+            api_results = self._initialize_apis(cache=cache)
             if not api_results["success"]:
                 return {"success": False, "error": "API initialization failed"}
             
@@ -73,8 +78,13 @@ class APIManager:
             logger.error(f"❌ API Manager initialization failed: {e}")
             return {"success": False, "error": str(e)}
     
-    def _initialize_apis(self) -> Dict[str, Any]:
-        """Initialize all APIs"""
+    def _initialize_apis(self, cache=None) -> Dict[str, Any]:
+        """
+        Initialize all APIs
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
         try:
             logger.info("📡 Initializing APIs...")
             
@@ -88,19 +98,19 @@ class APIManager:
             self.binance_api = get_global_binance_api()
             self.initialization_results["binance_api"] = "✅ Initialized"
             
-            # 3. Fear & Greed API
+            # 3. Fear & Greed API (inject cache - DIP compliance)
             from core.external.fear_greed_api import get_global_fear_greed_api
-            self.fear_greed_api = get_global_fear_greed_api()
+            self.fear_greed_api = get_global_fear_greed_api(cache=cache)
             self.initialization_results["fear_greed_api"] = "✅ Initialized"
             
-            # 4. Whale Analytics API
+            # 4. Whale Analytics API (inject cache - DIP compliance)
             from core.external.whale_analytics_api import get_global_whale_analytics_api
-            self.whale_analytics_api = get_global_whale_analytics_api()
+            self.whale_analytics_api = get_global_whale_analytics_api(cache=cache)
             self.initialization_results["whale_analytics_api"] = "✅ Initialized"
             
-            # 5. RSS News API
+            # 5. RSS News API (inject cache - DIP compliance)
             from core.external.rss_news_api import get_global_rss_news_api
-            self.rss_news_api = get_global_rss_news_api()
+            self.rss_news_api = get_global_rss_news_api(cache=cache)
             self.initialization_results["rss_news_api"] = "✅ Initialized"
             
             return {"success": True}
@@ -267,13 +277,3 @@ def create_api_manager() -> APIManager:
         Configured APIManager instance
     """
     return APIManager()
-
-# Global API Manager instance for backward compatibility
-_global_api_manager = None
-
-def get_global_api_manager() -> APIManager:
-    """Get the global API Manager singleton instance"""
-    global _global_api_manager
-    if _global_api_manager is None:
-        _global_api_manager = create_api_manager()
-    return _global_api_manager

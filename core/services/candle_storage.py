@@ -7,6 +7,8 @@ Persistent storage for 5m candles with rolling 5-year window
 import os
 import sqlite3
 import time
+import threading
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from loguru import logger
@@ -41,48 +43,73 @@ class CandleStorage:
         # Database file path
         self.db_path = os.path.join(data_dir, f"candles_5m_{symbol.lower()}.db")
         
+        # Thread safety lock for database operations
+        self._lock = threading.Lock()
+        
         # Initialize database
         self._init_database()
         
         logger.info(f"💾 Candle Storage initialized: {self.db_path}")
     
+    @contextmanager
+    def _get_connection(self):
+        """
+        Context manager for database connections - ensures proper cleanup
+        
+        Usage:
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                # ... operations ...
+                conn.commit()  # Auto-commits and closes on exit
+        """
+        conn = None
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row  # Enable dict-like row access
+            yield conn
+            conn.commit()
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            raise
+        finally:
+            if conn:
+                conn.close()
+    
     def _init_database(self):
         """Initialize SQLite database with schema"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Create candles table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS candles_5m (
-                    timestamp REAL PRIMARY KEY,
-                    open REAL NOT NULL,
-                    high REAL NOT NULL,
-                    low REAL NOT NULL,
-                    close REAL NOT NULL,
-                    volume REAL NOT NULL,
-                    trades_count INTEGER DEFAULT 0
-                )
-            """)
-            
-            # Create index on timestamp for fast queries
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_timestamp 
-                ON candles_5m(timestamp)
-            """)
-            
-            # Create indexes on low and high for price range queries (smart S/R detection)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_low 
-                ON candles_5m(low)
-            """)
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_high 
-                ON candles_5m(high)
-            """)
-            
-            conn.commit()
-            conn.close()
+            with self._get_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Create candles table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS candles_5m (
+                        timestamp REAL PRIMARY KEY,
+                        open REAL NOT NULL,
+                        high REAL NOT NULL,
+                        low REAL NOT NULL,
+                        close REAL NOT NULL,
+                        volume REAL NOT NULL,
+                        trades_count INTEGER DEFAULT 0
+                    )
+                """)
+                
+                # Create index on timestamp for fast queries
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_timestamp 
+                    ON candles_5m(timestamp)
+                """)
+                
+                # Create indexes on low and high for price range queries (smart S/R detection)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_low 
+                    ON candles_5m(low)
+                """)
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_high 
+                    ON candles_5m(high)
+                """)
             
         except Exception as e:
             logger.error(f"❌ Failed to initialize candle storage database: {e}")
@@ -94,21 +121,21 @@ class CandleStorage:
         
         Returns:
             Timestamp of last candle, or None if database is empty
+            
+        Raises:
+            Exception: If database operation fails (NO FALLBACKS)
         """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT MAX(timestamp) FROM candles_5m")
-            result = cursor.fetchone()
-            
-            conn.close()
-            
-            return result[0] if result and result[0] else None
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get last timestamp: {e}")
-            return None
+        with self._lock:  # Thread-safe
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT MAX(timestamp) FROM candles_5m")
+                    result = cursor.fetchone()
+                    return result[0] if result and result[0] else None
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to get last timestamp: {e}")
+                raise  # NO FALLBACKS - raise instead of returning None
     
     def get_first_timestamp(self) -> Optional[float]:
         """
@@ -116,21 +143,21 @@ class CandleStorage:
         
         Returns:
             Timestamp of first candle, or None if database is empty
+            
+        Raises:
+            Exception: If database operation fails (NO FALLBACKS)
         """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT MIN(timestamp) FROM candles_5m")
-            result = cursor.fetchone()
-            
-            conn.close()
-            
-            return result[0] if result and result[0] else None
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get first timestamp: {e}")
-            return None
+        with self._lock:  # Thread-safe
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT MIN(timestamp) FROM candles_5m")
+                    result = cursor.fetchone()
+                    return result[0] if result and result[0] else None
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to get first timestamp: {e}")
+                raise  # NO FALLBACKS - raise instead of returning None
     
     def insert_candles(self, candles: List[Dict[str, Any]]):
         """
@@ -138,37 +165,38 @@ class CandleStorage:
         
         Args:
             candles: List of candle dictionaries with timestamp, open, high, low, close, volume
+            
+        Raises:
+            Exception: If database operation fails (NO FALLBACKS)
         """
         if not candles:
             return
         
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            for candle in candles:
-                cursor.execute("""
-                    INSERT OR REPLACE INTO candles_5m 
-                    (timestamp, open, high, low, close, volume, trades_count)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (
-                    candle['timestamp'] if 'timestamp' in candle else 0,
-                    candle['open'] if 'open' in candle else 0,
-                    candle['high'] if 'high' in candle else 0,
-                    candle['low'] if 'low' in candle else 0,
-                    candle['close'] if 'close' in candle else 0,
-                    candle['volume'] if 'volume' in candle else 0,
-                    candle['trades_count'] if 'trades_count' in candle else 0
-                ))
-            
-            conn.commit()
-            conn.close()
-            
-            logger.debug(f"💾 Inserted {len(candles)} candles into storage")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to insert candles: {e}")
-            raise
+        with self._lock:  # Thread-safe
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    for candle in candles:
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO candles_5m 
+                            (timestamp, open, high, low, close, volume, trades_count)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            candle['timestamp'] if 'timestamp' in candle else 0,
+                            candle['open'] if 'open' in candle else 0,
+                            candle['high'] if 'high' in candle else 0,
+                            candle['low'] if 'low' in candle else 0,
+                            candle['close'] if 'close' in candle else 0,
+                            candle['volume'] if 'volume' in candle else 0,
+                            candle['trades_count'] if 'trades_count' in candle else 0
+                        ))
+                
+                logger.debug(f"💾 Inserted {len(candles)} candles into storage")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to insert candles: {e}")
+                raise
     
     def get_candles_by_count(self, count: int) -> List[Dict[str, Any]]:
         """
@@ -179,30 +207,30 @@ class CandleStorage:
             
         Returns:
             List of candle dictionaries, sorted by timestamp (oldest first)
+            
+        Raises:
+            Exception: If database operation fails (NO FALLBACKS)
         """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT timestamp, open, high, low, close, volume, trades_count
-                FROM candles_5m
-                ORDER BY timestamp DESC
-                LIMIT ?
-            """, (count,))
-            
-            rows = cursor.fetchall()
-            conn.close()
-            
-            # Convert rows to dictionaries (oldest first)
-            candles = [dict(row) for row in reversed(rows)]
-            
-            return candles
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get candles by count: {e}")
-            return []
+        with self._lock:  # Thread-safe
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT timestamp, open, high, low, close, volume, trades_count
+                        FROM candles_5m
+                        ORDER BY timestamp DESC
+                        LIMIT ?
+                    """, (count,))
+                    
+                    rows = cursor.fetchall()
+                    
+                    # Convert rows to dictionaries (oldest first)
+                    candles = [dict(row) for row in reversed(rows)]
+                    return candles
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to get candles by count: {e}")
+                raise  # NO FALLBACKS - raise instead of returning empty list
     
     def get_candles_by_range(self, start_timestamp: float, end_timestamp: float) -> List[Dict[str, Any]]:
         """
@@ -214,30 +242,30 @@ class CandleStorage:
             
         Returns:
             List of candle dictionaries, sorted by timestamp (oldest first)
+            
+        Raises:
+            Exception: If database operation fails (NO FALLBACKS)
         """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT timestamp, open, high, low, close, volume, trades_count
-                FROM candles_5m
-                WHERE timestamp >= ? AND timestamp <= ?
-                ORDER BY timestamp ASC
-            """, (start_timestamp, end_timestamp))
-            
-            rows = cursor.fetchall()
-            conn.close()
-            
-            # Convert rows to dictionaries
-            candles = [dict(row) for row in rows]
-            
-            return candles
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get candles by range: {e}")
-            return []
+        with self._lock:  # Thread-safe
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT timestamp, open, high, low, close, volume, trades_count
+                        FROM candles_5m
+                        WHERE timestamp >= ? AND timestamp <= ?
+                        ORDER BY timestamp ASC
+                    """, (start_timestamp, end_timestamp))
+                    
+                    rows = cursor.fetchall()
+                    
+                    # Convert rows to dictionaries
+                    candles = [dict(row) for row in rows]
+                    return candles
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to get candles by range: {e}")
+                raise  # NO FALLBACKS - raise instead of returning empty list
     
     def get_candles_by_price_range(self, min_price: float, max_price: float, 
                                    max_candles: int = 50000,
@@ -257,50 +285,52 @@ class CandleStorage:
             - low <= max_price AND high >= min_price (price range overlap)
             - timestamp >= min_timestamp (if provided)
             sorted by timestamp (oldest first)
+            
+        Raises:
+            Exception: If database operation fails (NO FALLBACKS)
         """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
-            cursor = conn.cursor()
-            
-            # Query candles where the price range overlaps with our target range
-            # A candle is relevant if: low <= max_price AND high >= min_price
-            # Also filter by time if min_timestamp is provided
-            if min_timestamp is not None:
-                cursor.execute("""
-                    SELECT timestamp, open, high, low, close, volume, trades_count
-                    FROM candles_5m
-                    WHERE low <= ? AND high >= ? AND timestamp >= ?
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                """, (max_price, min_price, min_timestamp, max_candles))
-            else:
-                cursor.execute("""
-                    SELECT timestamp, open, high, low, close, volume, trades_count
-                    FROM candles_5m
-                    WHERE low <= ? AND high >= ?
-                    ORDER BY timestamp DESC
-                    LIMIT ?
-                """, (max_price, min_price, max_candles))
-            
-            rows = cursor.fetchall()
-            conn.close()
-            
-            # Convert rows to dictionaries and reverse to get oldest first
-            candles = [dict(row) for row in reversed(rows)]
-            
-            # Only log if significant number found (reduce noise)
-            if len(candles) > 1000:
-                if min_timestamp is not None:
-                    logger.debug(f"🔍 Smart query (price + time): Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f}")
-                else:
-                    logger.debug(f"🔍 Price range query: Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f}")
-            
-            return candles
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get candles by price range: {e}")
-            return []
+        with self._lock:  # Thread-safe
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Query candles where the price range overlaps with our target range
+                    # A candle is relevant if: low <= max_price AND high >= min_price
+                    # Also filter by time if min_timestamp is provided
+                    if min_timestamp is not None:
+                        cursor.execute("""
+                            SELECT timestamp, open, high, low, close, volume, trades_count
+                            FROM candles_5m
+                            WHERE low <= ? AND high >= ? AND timestamp >= ?
+                            ORDER BY timestamp DESC
+                            LIMIT ?
+                        """, (max_price, min_price, min_timestamp, max_candles))
+                    else:
+                        cursor.execute("""
+                            SELECT timestamp, open, high, low, close, volume, trades_count
+                            FROM candles_5m
+                            WHERE low <= ? AND high >= ?
+                            ORDER BY timestamp DESC
+                            LIMIT ?
+                        """, (max_price, min_price, max_candles))
+                    
+                    rows = cursor.fetchall()
+                    
+                    # Convert rows to dictionaries and reverse to get oldest first
+                    candles = [dict(row) for row in reversed(rows)]
+                    
+                    # Only log if significant number found (reduce noise)
+                    if len(candles) > 1000:
+                        if min_timestamp is not None:
+                            logger.debug(f"🔍 Smart query (price + time): Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f}")
+                        else:
+                            logger.debug(f"🔍 Price range query: Found {len(candles)} candles in price range ${min_price:.2f}-${max_price:.2f}")
+                    
+                    return candles
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to get candles by price range: {e}")
+                raise  # NO FALLBACKS - raise instead of returning empty list
     
     def cleanup_old_candles(self, years: float = 5.0):
         """
@@ -308,26 +338,26 @@ class CandleStorage:
         
         Args:
             years: Number of years to keep (default: 5.0)
+            
+        Raises:
+            Exception: If database operation fails (NO FALLBACKS)
         """
-        try:
-            current_time = time.time()
-            cutoff_timestamp = current_time - (years * 365 * 24 * 3600)  # 5 years ago
-            
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("DELETE FROM candles_5m WHERE timestamp < ?", (cutoff_timestamp,))
-            deleted_count = cursor.rowcount
-            
-            conn.commit()
-            conn.close()
-            
-            if deleted_count > 0:
-                logger.info(f"🧹 Cleaned up {deleted_count} candles older than {years} years")
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to cleanup old candles: {e}")
-            raise
+        with self._lock:  # Thread-safe
+            try:
+                current_time = time.time()
+                cutoff_timestamp = current_time - (years * 365 * 24 * 3600)  # 5 years ago
+                
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("DELETE FROM candles_5m WHERE timestamp < ?", (cutoff_timestamp,))
+                    deleted_count = cursor.rowcount
+                
+                if deleted_count > 0:
+                    logger.info(f"🧹 Cleaned up {deleted_count} candles older than {years} years")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to cleanup old candles: {e}")
+                raise
     
     def get_candle_count(self) -> int:
         """
@@ -335,21 +365,21 @@ class CandleStorage:
         
         Returns:
             Number of candles
+            
+        Raises:
+            Exception: If database operation fails (NO FALLBACKS)
         """
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT COUNT(*) FROM candles_5m")
-            count = cursor.fetchone()[0]
-            
-            conn.close()
-            
-            return count
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to get candle count: {e}")
-            return 0
+        with self._lock:  # Thread-safe
+            try:
+                with self._get_connection() as conn:
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT COUNT(*) FROM candles_5m")
+                    count = cursor.fetchone()[0]
+                    return count
+                    
+            except Exception as e:
+                logger.error(f"❌ Failed to get candle count: {e}")
+                raise  # NO FALLBACKS - raise instead of returning 0
     
     def initialize_with_historical_data(self, years: float = 5.0):
         """

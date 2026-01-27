@@ -175,7 +175,7 @@ class PredictionEngine:
         # ==================================================================================
         direction_result = self._score_direction(unified_data, strategy)
         if not direction_result:
-            logger.warning(f"⚠️ Direction determination failed for {strategy} strategy")
+            logger.info(f"⏸️ Direction determination failed for {strategy} strategy - insufficient market data or conflicting signals")
             return None
         
         direction = direction_result["direction"]  # Required (NO FALLBACKS)
@@ -187,7 +187,7 @@ class PredictionEngine:
         # Check minimum score difference threshold (configurable) - NO FALLBACKS
         min_score_diff = config["min_score_diff"]
         if score_diff < min_score_diff:
-            logger.debug(f"⏸️ Direction signal too weak: {direction} (score diff: {score_diff:.1f} < {min_score_diff:.1f})")
+            logger.info(f"⏸️ Direction signal too weak for {strategy}: {direction} (LONG: {long_score:.1f}, SHORT: {short_score:.1f}, diff: {score_diff:.1f} < {min_score_diff:.1f})")
             return None
         
         logger.info(f"📊 Direction determined: {direction} (LONG: {long_score:.1f}, SHORT: {short_score:.1f}, diff: {score_diff:.1f})")
@@ -1191,6 +1191,15 @@ class PredictionEngine:
             logger.error(f"❌ Market conditions entry factor scoring failed: {e}")
             return 50.0, []  # Return neutral on error (market conditions is optional)
     
+    # NOTE: IV Squeeze scoring method removed
+    # IV Squeeze is for timing/decisions (WHEN to enter), not entry price accuracy (WHERE to enter)
+    # Will be used in confidence calculation when implemented
+    # Method kept commented for future use:
+    #
+    # def _score_entry_iv_squeeze_factor(self, iv_squeeze_data: Dict[str, Any]) -> tuple[float, list]:
+    #     """Score IV Squeeze for confidence calculation (future implementation)"""
+    #     pass
+    
     def _score_entry_sr_factor(
         self,
         entry_price: float,
@@ -2084,6 +2093,7 @@ class PredictionEngine:
                 "patterns": 0.05,  # Additional factor not in SR power
                 "orderbook": 0.07,  # Real-time liquidity/pressure alignment
                 "market_conditions": 0.03  # Extreme sentiment → prefer stronger levels
+                # Note: IV Squeeze removed - it's for timing/decisions, not entry price accuracy
                 # Note: Proximity (distance) is scored separately in _score_entry_sr_factor based on entry offset
                 # Note: Recency is handled in direction scoring, not entry scoring
             }
@@ -2173,6 +2183,10 @@ class PredictionEngine:
                     )
                     total_score += market_conditions_score * market_conditions_weight
                     all_reasons.extend(reasons)
+            
+            # NOTE: IV Squeeze removed from entry setup scoring
+            # IV Squeeze is for timing/decisions (WHEN to enter), not entry price accuracy (WHERE to enter)
+            # Will be used in confidence calculation when implemented
             
             # NOTE: 
             # - Volume: included in SR power (10% weight)

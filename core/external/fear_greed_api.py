@@ -22,12 +22,22 @@ class FearGreedAPI:
     Provides critical sentiment signals for BTC trading decisions
     """
     
-    def __init__(self):
+    def __init__(self, cache=None):
+        """
+        Initialize Fear & Greed API with dependency injection (DIP compliance)
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
         self.api_url = "https://api.alternative.me/fng/"
         
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         
         logger.info("😨 Fear & Greed Index Fetcher initialized - Market sentiment analysis")
     
@@ -255,15 +265,18 @@ class FearGreedAPI:
 # Singleton pattern implementation
 _global_fear_greed_api = None
 
-def get_global_fear_greed_api() -> FearGreedAPI:
-    """Get the global FearGreedAPI singleton instance"""
+def get_global_fear_greed_api(cache=None) -> FearGreedAPI:
+    """
+    Get the global FearGreedAPI singleton instance
+    
+    Args:
+        cache: CentralizedCache instance (optional, falls back to global singleton)
+    """
     global _global_fear_greed_api
     if _global_fear_greed_api is None:
-        _global_fear_greed_api = FearGreedAPI()
+        _global_fear_greed_api = FearGreedAPI(cache=cache)
     return _global_fear_greed_api
 
-# Backward compatibility
-fear_greed_api = get_global_fear_greed_api()
 
 
 def main():

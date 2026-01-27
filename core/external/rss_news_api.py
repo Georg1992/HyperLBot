@@ -30,10 +30,20 @@ class RSSNewsAPI:
     - Real-time updates
     """
     
-    def __init__(self):
-        # Use centralized cache system
-        from core.services.centralized_cache import get_global_centralized_cache
-        self._cache = get_global_centralized_cache()
+    def __init__(self, cache=None):
+        """
+        Initialize RSS News API with dependency injection (DIP compliance)
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
+        # Dependency injection for cache (DIP compliance)
+        # Fallback to global singleton for backward compatibility
+        if cache is None:
+            from core.services.centralized_cache import get_global_centralized_cache
+            self._cache = get_global_centralized_cache()
+        else:
+            self._cache = cache
         
         self.news_limit = 50  # Max articles to analyze per update
         
@@ -628,11 +638,16 @@ class RSSNewsAPI:
 # Singleton pattern implementation
 _global_rss_news_api = None
 
-def get_global_rss_news_api() -> RSSNewsAPI:
-    """Get the global RSSNewsAPI singleton instance"""
+def get_global_rss_news_api(cache=None) -> RSSNewsAPI:
+    """
+    Get the global RSSNewsAPI singleton instance
+    
+    Args:
+        cache: CentralizedCache instance (optional, falls back to global singleton)
+    """
     global _global_rss_news_api
     if _global_rss_news_api is None:
-        _global_rss_news_api = RSSNewsAPI()
+        _global_rss_news_api = RSSNewsAPI(cache=cache)
     return _global_rss_news_api
 
 # Backward compatibility

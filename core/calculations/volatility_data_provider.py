@@ -98,12 +98,18 @@ class VolatilityDataProvider:
             logger.error(f"❌ Basic volatility calculation failed: {e}")
             return {"volatility": 0.0, "range": 0.0, "avg_price": 0.0}
     
-    def invalidate_cache(self):
-        """Invalidate any cached data"""
+    def invalidate_cache(self, cache=None):
+        """
+        Invalidate any cached data
+        
+        Args:
+            cache: CentralizedCache instance (optional, falls back to global singleton)
+        """
         try:
             # Clear any cached candle data
-            from core.services.centralized_cache import get_global_centralized_cache
-            cache = get_global_centralized_cache()
+            if cache is None:
+                from core.services.centralized_cache import get_global_centralized_cache
+                cache = get_global_centralized_cache()
             cache.invalidate_pattern("historical_candles_*")
             logger.debug("📊 VolatilityDataProvider cache invalidated")
         except Exception as e:
