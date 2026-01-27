@@ -38,10 +38,16 @@ class LiquidationCalculator:
         # For 40x: theoretical is 2.5%, but actual is ~1.226% due to margin tiers and position sizing
         # Using observed rate: entry $92,062 -> liq $93,191 = 1.226% multiplier
         # This is more accurate than theoretical 2.5%
-        if self.leverage == 40:
-            self.maintenance_margin_rate = 0.01226  # Actual observed rate for 40x
-        else:
+        # CRITICAL FIX: Use config instead of hardcoded value
+        maintenance_rates = TradingConfig.MAINTENANCE_MARGIN_RATES
+        use_formula = TradingConfig.MAINTENANCE_MARGIN_RATE_USE_FORMULA
+        
+        if self.leverage in maintenance_rates:
+            self.maintenance_margin_rate = maintenance_rates[self.leverage]
+        elif use_formula:
             self.maintenance_margin_rate = 1.0 / self.leverage  # Theoretical for other leverages
+        else:
+            raise ValueError(f"Leverage {self.leverage} not in MAINTENANCE_MARGIN_RATES and formula disabled (NO FALLBACKS)")
         
     def calculate_liquidation_price(self, entry_price: float, side: str = "LONG") -> float:
         """

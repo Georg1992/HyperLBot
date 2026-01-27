@@ -30,6 +30,9 @@ class StrategyManager:
     4. Validate strategy appropriateness for current conditions
     """
     
+    # Float precision epsilon for score comparisons (prevents non-determinism in tie-breaking)
+    SCORE_EPSILON = 0.01  # For score comparisons (scores are typically 0-100 range)
+    
     def __init__(self, config: TradingConfig = None):
         # TradingConfig is a class with static attributes, not an instance
         # If config is provided, use it; otherwise use TradingConfig class directly
@@ -43,7 +46,7 @@ class StrategyManager:
         self.current_strategy = "standard"
         self.current_strategy_config = self.strategy_configs["standard"]
         self.last_strategy_switch = 0
-        self.strategy_switch_cooldown = 300  # 5 minutes between switches
+        self.strategy_switch_cooldown = TradingConfig.STRATEGY_SWITCH_COOLDOWN_DEFAULT
         
         # Strategy performance tracking
         self.strategy_performance = {}
@@ -169,14 +172,31 @@ class StrategyManager:
                     "factors": factors
                 }
             
-            # Select best strategy
-            # sorted() returns list of (strategy_name, score_dict) tuples - trust API contract
+            # Select best strategy with explicit tie-breaking
+            # CRITICAL FIX: Use explicit tie-breaking instead of relying on max() insertion order
+            # This ensures deterministic, semantically meaningful selection when scores are equal
             def safe_get_score(item):
                 # item is (strategy_name, score_dict) tuple from sorted()
                 score_data = item[1]
                 return float(score_data["score"])  # score_dict always has "score" key (guaranteed by _score_strategy)
             
-            best_strategy = max(strategy_scores.items(), key=safe_get_score)
+            # Find maximum score
+            max_score = max(safe_get_score(item) for item in strategy_scores.items())
+            
+            # Find all strategies with maximum score (potential ties)
+            tied_strategies = [
+                (name, score_data) for name, score_data in strategy_scores.items()
+                if abs(float(score_data["score"]) - max_score) < self.SCORE_EPSILON
+            ]
+            
+            # If only one strategy has max score, use it
+            if len(tied_strategies) == 1:
+                best_strategy = tied_strategies[0]
+            else:
+                # Multiple strategies tied - use explicit tie-breaking
+                logger.debug(f"📊 {len(tied_strategies)} strategies tied at score {max_score:.2f}, using tie-breaking")
+                best_strategy = self._break_strategy_tie(tied_strategies, data)
+            
             strategy_name = best_strategy[0]
             score_data = best_strategy[1]
             
@@ -1021,6 +1041,83 @@ class StrategyManager:
         factors_str = ", ".join(factors[:5])  # Limit to 5 factors
         return f"{strategy} ({conf_level} confidence: {confidence:.2f}) - {factors_str}"
     
+    def _break_strategy_tie(self, tied_strategies: List[tuple], data: Dict[str, Any]) -> tuple:
+        """
+        Intelligent tie-breaking when multiple strategies have the same score
+        
+        Priority order:
+        1. Current strategy (prefer stability - avoid unnecessary switches)
+        2. Strategy with better historical performance (if available)
+        3. More specific strategy (e.g., "scalping" over "standard" when conditions match)
+        4. Default to "standard" as fallback
+        
+        Args:
+            tied_strategies: List of (strategy_name, score_data) tuples with equal scores
+            data: Market data dict (for context)
+            
+        Returns:
+            (strategy_name, score_data) tuple of the selected strategy
+        """
+        if not tied_strategies:
+            raise ValueError("No strategies provided for tie-breaking (NO FALLBACKS)")
+        
+        if len(tied_strategies) == 1:
+            return tied_strategies[0]
+        
+        # Priority 1: Prefer current strategy (stability)
+        current_strategy_name = self.current_strategy
+        for strategy_tuple in tied_strategies:
+            if strategy_tuple[0] == current_strategy_name:
+                logger.debug(f"📊 Tie broken: Preferring current strategy '{current_strategy_name}' (stability)")
+                return strategy_tuple
+        
+        # Priority 2: Prefer strategy with better historical performance
+        # Calculate performance score: win_rate * (1 + profit_factor)
+        best_performance = -1.0
+        best_performance_strategy = None
+        
+        for strategy_tuple in tied_strategies:
+            strategy_name = strategy_tuple[0]
+            if strategy_name in self.strategy_performance:
+                perf = self.strategy_performance[strategy_name]
+                total_trades = perf["total_trades"]
+                
+                if total_trades > 0:
+                    win_rate = perf["successful_trades"] / total_trades
+                    # Normalize profit (assume average profit per trade is reasonable)
+                    avg_profit = perf["total_profit"] / total_trades if total_trades > 0 else 0.0
+                    profit_factor = min(1.0, abs(avg_profit) / 100.0)  # Normalize to [0, 1]
+                    performance_score = win_rate * (1.0 + profit_factor)
+                    
+                    if performance_score > best_performance:
+                        best_performance = performance_score
+                        best_performance_strategy = strategy_tuple
+        
+        if best_performance_strategy and best_performance > 0:
+            logger.debug(f"📊 Tie broken: Preferring '{best_performance_strategy[0]}' (performance: {best_performance:.3f})")
+            return best_performance_strategy
+        
+        # Priority 3: Prefer more specific strategies over generic "standard"
+        # Specific strategies: scalping, spike_hunting, low_volatility_range, etc.
+        # Generic strategies: standard
+        specific_strategies = ["scalping", "spike_hunting", "low_volatility_range", "high_volatility", 
+                              "trend_following", "breakout", "range_trading"]
+        
+        for strategy_tuple in tied_strategies:
+            if strategy_tuple[0] in specific_strategies:
+                logger.debug(f"📊 Tie broken: Preferring specific strategy '{strategy_tuple[0]}' over generic")
+                return strategy_tuple
+        
+        # Priority 4: Default to "standard" if available, otherwise first in list
+        for strategy_tuple in tied_strategies:
+            if strategy_tuple[0] == "standard":
+                logger.debug(f"📊 Tie broken: Defaulting to 'standard' strategy")
+                return strategy_tuple
+        
+        # Fallback: Return first strategy (deterministic - first in tied list)
+        logger.debug(f"📊 Tie broken: Using first strategy '{tied_strategies[0][0]}' (fallback)")
+        return tied_strategies[0]
+    
     def get_current_strategy_config(self) -> Dict[str, Any]:
         """Get current strategy configuration"""
         return self.current_strategy_config.copy()
@@ -1047,9 +1144,26 @@ class StrategyManager:
                 strategy_scores[strategy_name] = score
             
             if strategy_scores:
-                best = max(strategy_scores.items(), key=lambda x: x[1])
-                logger.info(f"✅ Alternative strategy: {best[0]} (score: {best[1]:.2f})")
-                return best[0]
+                # CRITICAL FIX: Use explicit tie-breaking instead of relying on max() insertion order
+                max_score = max(score for score in strategy_scores.values())
+                tied_strategies = [
+                    (name, score) for name, score in strategy_scores.items()
+                    if abs(score - max_score) < self.SCORE_EPSILON
+                ]
+                
+                if len(tied_strategies) == 1:
+                    best_name, best_score = tied_strategies[0]
+                else:
+                    # Multiple strategies tied - use explicit tie-breaking
+                    logger.debug(f"📊 {len(tied_strategies)} alternative strategies tied at score {max_score:.2f}, using tie-breaking")
+                    # Convert to same format as _break_strategy_tie expects: (name, {"score": score})
+                    tied_strategies_formatted = [(name, {"score": score}) for name, score in tied_strategies]
+                    best_tuple = self._break_strategy_tie(tied_strategies_formatted, data)
+                    best_name = best_tuple[0]
+                    best_score = best_tuple[1]["score"]
+                
+                logger.info(f"✅ Alternative strategy: {best_name} (score: {best_score:.2f})")
+                return best_name
             
             return "standard"
         except Exception as e:
@@ -1068,13 +1182,13 @@ class StrategyManager:
             volatility_thresholds = TradingConfig.VOLATILITY_THRESHOLDS
             
             if volatility_5m > volatility_thresholds["high"]:
-                cooldown = 60  # 1 minute for high volatility
+                cooldown = TradingConfig.STRATEGY_SWITCH_COOLDOWN_HIGH_VOLATILITY
             elif volatility_5m > volatility_thresholds["moderate"]:
-                cooldown = 180  # 3 minutes for moderate volatility
+                cooldown = TradingConfig.STRATEGY_SWITCH_COOLDOWN_MODERATE_VOLATILITY
             else:  # Low volatility (<1%)
-                cooldown = 300  # 5 minutes for low volatility
+                cooldown = TradingConfig.STRATEGY_SWITCH_COOLDOWN_LOW_VOLATILITY
         else:
-            cooldown = self.strategy_switch_cooldown  # Default 5 minutes
+            cooldown = self.strategy_switch_cooldown  # Default from config
         
         return time_since_last_switch >= cooldown
     

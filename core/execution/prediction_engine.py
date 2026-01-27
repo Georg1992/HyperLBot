@@ -2583,8 +2583,9 @@ class PredictionEngine:
             # Pre-filter: Skip levels where closest candidate (at level_price) exceeds max_distance
             # CRITICAL FIX (2026-01-27): Allow strong levels slightly beyond max_distance to compete
             # This enables strong far levels to compete with weak close levels
-            strength_threshold = 0.8  # Very strong level threshold
-            adaptive_max_distance = max_distance_atr * 1.2  # Allow up to 20% beyond max_distance for strong levels
+            # CRITICAL FIX: Use config instead of hardcoded values
+            strength_threshold = TradingConfig.ADAPTIVE_PRE_FILTER_STRENGTH_THRESHOLD
+            adaptive_max_distance = max_distance_atr * TradingConfig.ADAPTIVE_PRE_FILTER_DISTANCE_EXTENSION
             
             if level_distance_atr > max_distance_atr:
                 # Adaptive pre-filtering: Allow very strong levels slightly beyond max_distance
@@ -2625,7 +2626,8 @@ class PredictionEngine:
             
             # Generate 4 entry candidates with increasing offset INSIDE zone
             # Offset factors: 0 (AT level), 0.3, 0.6, 1.0 (toward current)
-            offset_factors = [0.0, 0.3, 0.6, 1.0]
+            # CRITICAL FIX: Use config instead of hardcoded values
+            offset_factors = TradingConfig.ENTRY_CANDIDATE_OFFSET_FACTORS
             
             if setup_type == "support_level":  # LONG at support
                 # Enter ABOVE support (closer to current price, inside zone)

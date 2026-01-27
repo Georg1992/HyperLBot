@@ -956,7 +956,7 @@ class SupportResistanceCalculator(BaseCalculator):
                     "timestamp": current_time,
                     "symbol": self.symbol,
                     "timeframe": "5m",
-                    "atr_5m": atr_14  # Used by prediction_engine, entry_price_calculator, reactive_engine
+                    "atr_5m": atr_14  # Used by prediction_engine, reactive_engine
                 },
                 # Root-level fields for dashboard compatibility (metadata only, not filtered levels)
                 "strongest_support": strongest_support,

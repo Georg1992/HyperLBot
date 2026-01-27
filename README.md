@@ -1,151 +1,83 @@
-# HyperLBot - Real-Time Market Analysis & Trading System
+# HyperLBot
 
-A production-grade, high-performance trading system featuring real-time data processing, predictive analytics, and sophisticated risk management. Built with clean architecture principles and a strict **NO FALLBACKS** policy for maximum reliability.
+> Production-grade algorithmic trading system for cryptocurrency perpetual futures with real-time market analysis, multi-strategy execution, and sophisticated risk management.
 
-## 🎯 Overview
+[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Status](https://img.shields.io/badge/status-active-success.svg)]()
 
-HyperLBot is a comprehensive trading system that processes real-time market data with sub-second latency to generate trading signals. The system emphasizes reliability, performance, and production-grade code quality.
-
-**Key Highlights:**
-- ⚡ **Real-time processing** with WebSocket data streams
-- 📊 **Multi-timeframe analysis** (5m, 15m, 1h, 1d candles)
-- 🎯 **Strategy-aware decision engine** with dynamic adaptation
-- 🔒 **NO FALLBACKS policy** - fail-fast with clear errors
-- 📈 **75% performance improvement** through optimization
-- 🎨 **Live dashboard** with real-time updates via WebSocket
+HyperLBot is a high-performance trading system designed for Hyperliquid perpetual futures. It processes real-time market data with sub-second latency to generate trading signals using multi-timeframe analysis, support/resistance detection, and dynamic strategy selection.
 
 ---
 
-## 🏗️ Architecture
+## Table of Contents
 
-### Core Design Principles
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [Documentation](#documentation)
+- [Performance](#performance)
+- [Contributing](#contributing)
+- [License](#license)
 
-1. **Single Responsibility Principle (SRP)** - Each module has one clear purpose
-2. **Singleton Pattern** - Critical services use singletons to prevent redundancy
-3. **NO FALLBACKS** - Required data must be present; fail fast on missing/invalid data
-4. **Centralized Caching** - TTL-based caching prevents redundant calculations
-5. **Event-Driven Updates** - WebSocket-based real-time data flow
+---
 
-### System Components
+## Features
 
+### Core Capabilities
+
+- **Real-Time Analysis** - WebSocket-based data streams with <100ms processing latency
+- **Multi-Strategy Engine** - 9 trading strategies with dynamic selection and explicit tie-breaking
+- **Advanced S/R Detection** - Multi-timeframe support/resistance identification with psychological levels
+- **Candle Database** - SQLite database with rolling 5-year window for efficient historical analysis
+- **Risk Management** - Liquidation safety scoring, position sizing, and stop-loss optimization for 40x leverage
+- **Live Dashboard** - Real-time WebSocket dashboard with market indicators and trade signals
+- **Paper Trading** - Realistic simulation with fees, slippage, and liquidation mechanics
+
+### Technical Highlights
+
+- **NO FALLBACKS Policy** - Fail-fast design ensures data integrity and production reliability
+- **75% Performance Improvement** - Optimized caching and centralized data coordination
+- **Deterministic Calculations** - Epsilon-based comparisons for ML-ready reproducibility
+- **Clean Architecture** - SOLID principles, singleton patterns, and modular design
+- **Rolling Window Database** - Automatic cleanup maintains 5-year historical window for optimal performance
+
+---
+
+## Quick Start
+
+```bash
+# Clone repository
+git clone <repository-url>
+cd HyperLBot
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Run paper trading
+python main.py
+# Select option 1: Paper Trading
+
+# Access dashboard
+# Open http://localhost:5002 in your browser
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Session Orchestrator                     │
-│              (Coordinates all system components)              │
-└──────────────┬───────────────────────────────┬──────────────┘
-               │                               │
-       ┌───────▼────────┐            ┌────────▼─────────┐
-       │ Market Data    │            │   Dashboard      │
-       │   Service      │            │    Service       │
-       │ (Unified data) │◄───────────┤ (WebSocket UI)   │
-       └───────┬────────┘            └──────────────────┘
-               │
-       ┌───────▼────────────────────────────────────────┐
-       │         Analysis Modules (Cached)              │
-       ├────────────────────────────────────────────────┤
-       │ • RSI Calculator      • Volume Analyzer        │
-       │ • Volatility Tracker  • S/R Detector           │
-       │ • Trend Analyzer      • Pattern Recognition    │
-       │ • Market Conditions   • Pressure Analysis      │
-       └────────────────────────────────────────────────┘
-               │
-       ┌───────▼────────┐
-       │  Prediction    │
-       │    Engine      │
-       │ (Entry setup)  │
-       └────────────────┘
-```
+
+**That's it!** The bot will start analyzing market data and generating trading signals.
 
 ---
 
-## ✨ Key Features
-
-### 🚀 Performance Optimizations
-
-- **75% reduction in redundant calculations** - Eliminated duplicate calculator instantiation
-- **Strategy-aware caching** - Intelligent cache invalidation based on data changes
-- **Centralized data coordination** - Single source of truth for all market data
-- **Optimized candle fetching** - Smart database queries with price range filtering
-
-### 📊 Real-Time Analytics
-
-- **Support/Resistance Detection** - Multi-timeframe S/R level identification with clustering
-  - Swing-based levels from market structure
-  - Psychological (round-number) levels integrated
-  - Strategy-aware filtering and scoring
-- **Volatility Analysis** - ATR-based volatility categorization (LOW/MODERATE/HIGH/EXTREME)
-- **Volume Profiling** - Volume analysis with momentum and anomaly detection
-- **Trend Detection** - Multi-timeframe trend alignment
-- **Pattern Recognition** - Candlestick patterns and chart formations
-
-### 🎯 Trading Intelligence
-
-- **Strategy Manager** - Dynamic strategy selection (scalping, standard, swing)
-- **Entry Optimization** - 4 entry candidates per setup with multi-factor scoring
-  - ATR-based round number avoidance (nudges entries away from psych levels)
-  - Fill probability, liquidation safety, level strength scoring
-- **Risk Management** - Liquidation safety, spread cost analysis
-- **Position Sizing** - Risk-adjusted position sizing with liquidation buffer
-- **Stop Loss Placement** - Intelligent SL placement using S/R levels (swing + psychological)
-
-### 🎨 Real-Time Dashboard
-
-- **WebSocket Updates** - Live data streaming to web interface
-- **Strategy-Aware Display** - Shows only relevant S/R levels per strategy
-- **Market Indicators** - RSI, volatility, volume, pressure, trend analysis
-- **Prediction Display** - Real-time trading signals with confidence scores
-- **Performance Tracking** - Win rate, balance, trade history
-
----
-
-## 🔬 Research-Backed Improvements
-
-The system incorporates findings from academic and industry research:
-
-### Critical Fixes (2026-01-12 Audit)
-
-1. **Entry Offset Logic** ✅
-   - Professional entry: 0.3-0.5× ATR inside S/R zone (not AT level)
-   - Prevents liquidation on stop-hunt wicks
-   - Research: Market makers hunt stops at obvious levels
-
-2. **Position Sizing Safety** ✅
-   - Liquidation distance factor in position sizing
-   - Buffer zones: ≥50%=1.0x, 30-50%=0.8-1.0x, 15-30%=0.5-0.8x, <15%=0.3-0.5x
-   - Prevents blow-ups from tight stop-losses
-
-3. **Spread Cost Integration** ✅
-   - Round-trip spread costs in P&L calculations
-   - Rejects trades where spread exceeds profit
-   - Realistic R:R ratios after costs
-
-4. **Psychological Levels Integration** ✅
-   - Round-number S/R levels integrated as first-class levels
-   - BTC-specific spacing (100/1000, 500/5000, 1000/10000 based on price)
-   - ATR-based round number avoidance for entries
-   - Used for entry/stop/target selection (not direction scoring)
-
-5. **S/R Wick Filtering** ✅
-   - Tracks wick rejection ratio per level
-   - Stop-hunt risk scoring: LOW/MOD/HIGH/VERY_HIGH
-   - Consistency penalty for repeated wick levels
-
-**Sources:**
-- Academic: "S/R Levels towards Profitability in Algorithmic Trading" (MDPI 2025)
-- Industry: Hyperliquid liquidation cascade analysis ($6.7B event)
-- Professional: BTC perp entry offset best practices
-
----
-
-## 📋 Installation
+## Installation
 
 ### Prerequisites
 
-- Python 3.8+
-- Internet connection
-- Windows/Linux/macOS
+- Python 3.8 or higher
+- Internet connection for market data
+- Windows, Linux, or macOS
 
-### Quick Start
+### Step-by-Step Installation
 
 1. **Clone the repository**
    ```bash
@@ -153,320 +85,299 @@ The system incorporates findings from academic and industry research:
    cd HyperLBot
    ```
 
-2. **Install dependencies**
+2. **Create virtual environment** (recommended)
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   ```
+
+3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-3. **Configure environment** (optional)
+4. **Configure environment** (optional)
    ```bash
    cp env_example.txt .env
    # Edit .env with your settings
    ```
 
-4. **Run the bot**
+5. **Verify installation**
    ```bash
    python main.py
    ```
 
 ---
 
-## 🎮 Usage
-
-### Main Menu
-
-```
-HyperLBot Menu:
-1. Paper Trading (Testing Mode)     # Simulated trading with virtual balance
-2. Real Trading (Production Mode)   # Currently disabled
-3. Start Dashboard Only             # Launch web dashboard
-4. Exit
-```
-
-### Paper Trading Mode
-
-- **Initial Balance**: Default $10,000 (configurable)
-- **Account Persistence**: Saves balance and trade history
-- **Realistic Simulation**: Includes fees, slippage, liquidation mechanics
-
-### Dashboard Access
-
-Once started, dashboard is available at:
-```
-http://localhost:5000
-```
-
-Features:
-- Real-time market data updates
-- Strategy selection display
-- Prediction signals with confidence
-- Performance metrics
-- Activity logs
-
----
-
-## 🛠️ Configuration
-
-### Trading Parameters
-
-**Leverage Options:**
-- 20x - Conservative
-- 30x - Moderate (default)
-- 40x - Aggressive
-
-**Strategy Types:**
-```python
-"scalping": {
-    "max_levels_per_side": 1,      # Show 1 S/R level
-    "max_distance_pct": 0.015,     # 1.5% max distance
-    "risk_reward_min": 1.5,        # Minimum R:R ratio
-    "position_size": 0.02          # 2% of balance
-}
-
-"standard": {
-    "max_levels_per_side": 2,      # Show 2 S/R levels
-    "max_distance_pct": 0.03,      # 3% max distance
-    "risk_reward_min": 2.0,        # Minimum R:R ratio
-    "position_size": 0.015         # 1.5% of balance
-}
-
-"swing": {
-    "max_levels_per_side": 3,      # Show 3 S/R levels
-    "max_distance_pct": 0.05,      # 5% max distance
-    "risk_reward_min": 3.0,        # Minimum R:R ratio
-    "position_size": 0.01          # 1% of balance
-}
-```
+## Configuration
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `WALLET_ADDRESS` | Hyperliquid wallet address | Optional |
-| `WALLET_PRIVATE_KEY` | Wallet private key | Optional |
-| `SYMBOL` | Trading symbol | BTC |
-| `LEVERAGE` | Leverage multiplier | 30 |
-| `LOG_LEVEL` | Logging verbosity | INFO |
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `SYMBOL` | Trading symbol | `BTC` | No |
+| `LEVERAGE` | Leverage multiplier | `40` | No |
+| `LOG_LEVEL` | Logging verbosity | `INFO` | No |
+| `WALLET_ADDRESS` | Hyperliquid wallet | - | For live trading |
+| `WALLET_PRIVATE_KEY` | Wallet private key | - | For live trading |
+
+### Strategy Configuration
+
+Strategies are configured in `config/config.py`. Each strategy includes:
+
+- `max_levels_per_side` - Number of S/R levels to consider
+- `max_distance_pct` - Maximum distance from current price
+- `risk_reward_min` - Minimum risk:reward ratio
+- `position_size` - Position size as percentage of balance
+- `confidence_threshold` - Minimum confidence to execute
+
+**Available Strategies:**
+- `scalping` - High-frequency, tight stops (1.5:1 R:R)
+- `standard` - Balanced approach (2.0:1 R:R)
+- `trend_following` - Momentum-based (2.0:1 R:R)
+- `breakout` - Volatility plays (2.0:1 R:R)
+- `range_trading` - Sideways markets (1.2:1 R:R)
+- `low_volatility_range` - Tight ranges (1.2:1 R:R)
+- `high_volatility` - Extreme moves (2.0:1 R:R)
+- `spike_hunting` - Reversal plays (2.5:1 R:R)
+
+See `config/config.py` for complete configuration options.
 
 ---
 
-## 🏛️ Project Structure
+## Usage
 
+### Paper Trading Mode
+
+Paper trading simulates real trading with a virtual balance:
+
+```bash
+python main.py
+# Select: 1. Paper Trading (Testing Mode)
 ```
-HyperLBot/
-├── main.py                              # Entry point
-├── config/
-│   └── config.py                        # Configuration & validation
-├── core/
-│   ├── services/
-│   │   ├── session_orchestrator.py     # Main coordinator
-│   │   ├── market_data_service.py      # Unified data provider
-│   │   ├── dashboard_service.py        # Dashboard coordination
-│   │   ├── strategy_manager.py         # Strategy selection
-│   │   └── system_initializer.py       # System bootstrap
-│   ├── calculations/
-│   │   ├── support_resistance_calculator.py  # S/R detection
-│   │   ├── sr_level_filter.py          # Strategy-aware filtering
-│   │   ├── volatility_calculator.py    # Volatility analysis
-│   │   ├── volume_calculator.py        # Volume profiling
-│   │   ├── rsi_calculator.py           # RSI indicator
-│   │   └── risk_manager.py             # Risk calculations
-│   ├── execution/
-│   │   ├── prediction_engine.py        # Entry setup generation
-│   │   ├── position_sizer.py           # Position sizing
-│   │   └── fee_manager.py              # Fee calculations
-│   ├── analysis/
-│   │   └── real_time/
-│   │       ├── market_conditions_analyzer.py  # Market state
-│   │       └── pattern_recognition_engine.py  # Patterns
-│   ├── dashboard/
-│   │   ├── web_dashboard.py            # Flask server
-│   │   └── templates/
-│   │       └── realtime_dashboard.html # Frontend UI
-│   └── api/
-│       ├── hyperliquid_api.py          # Hyperliquid client
-│       └── hyperliquid_websocket.py    # WebSocket data
-└── data/
-    └── candles_5m_btc.db               # SQLite candle cache
+
+**Features:**
+- Default balance: $120 (configurable)
+- Realistic fees and slippage
+- Liquidation mechanics
+- Trade history persistence
+
+### Dashboard Mode
+
+Launch the web dashboard for real-time monitoring:
+
+```bash
+python main.py
+# Select: 3. Start Dashboard Only
 ```
+
+**Dashboard URL:** `http://localhost:5002`
+
+**Features:**
+- Real-time market data
+- Strategy selection display
+- Trading signals with confidence scores
+- Performance metrics
+- Activity logs
+
+### Real Trading
+
+⚠️ **Currently disabled for safety.** Real trading requires:
+- Valid wallet credentials
+- Thorough testing in paper mode
+- Understanding of risks
 
 ---
 
-## 🔍 Technical Highlights
+## Architecture
 
-### NO FALLBACKS Policy
+### System Design
 
-The system follows a strict **NO FALLBACKS** policy:
-
-```python
-# ❌ OLD (with fallbacks):
-spread = data.get("spread_pct", 0.01)  # Default if missing
-
-# ✅ NEW (NO FALLBACKS):
-spread = data["spread_pct"]  # Raises KeyError if missing
 ```
+┌─────────────────────────────────────────┐
+│      Session Orchestrator               │
+│   (Coordinates all components)          │
+└──────────┬──────────────────┬───────────┘
+           │                  │
+    ┌──────▼──────┐    ┌──────▼──────┐
+    │ Market Data │    │  Dashboard  │
+    │   Service   │    │   Service   │
+    └──────┬──────┘    └─────────────┘
+           │
+    ┌──────▼──────────────────────┐
+    │   Analysis Modules          │
+    │  (RSI, Volatility, S/R,     │
+    │   Volume, Trends, Patterns)  │
+    └──────┬──────────────────────┘
+           │
+    ┌──────▼──────┐
+    │ Prediction  │
+    │   Engine    │
+    └─────────────┘
+           │
+    ┌──────▼──────────────┐
+    │  Candle Storage     │
+    │  (SQLite Database)  │
+    │  Rolling 5-Year    │
+    │  Window            │
+    └─────────────────────┘
+```
+
+### Data Storage
+
+**Candle Database** - SQLite-based persistent storage for 5-minute candles:
+
+- **Rolling Window** - Automatically maintains 5-year historical window (~525,600 candles)
+- **Auto-Cleanup** - Removes data older than 5 years to keep database size optimal
+- **Startup Backfill** - Automatically fills missing candles on bot initialization
+- **Continuous Updates** - Appends new candles every 5 minutes at candle boundaries
+- **Fast Local Queries** - No API calls needed for historical data
+- **Multi-Timeframe Support** - Aggregates 5m candles to 15m, 1h, and 1d timeframes
+- **Thread-Safe** - WAL mode enables concurrent reads during writes
 
 **Benefits:**
-- Errors surface immediately (fail-fast)
-- No silent data corruption
-- Clear debugging (no mystery defaults)
-- Production reliability
+- Efficient S/R level detection using 5 years of historical data
+- Fast volume percentile calculations (7-day rolling window)
+- Reliable trend analysis with extensive historical context
+- Reduced API dependency for historical analysis
 
-### Performance Optimization
+### Key Components
 
-**Before:**
-```
-• Multiple modules creating duplicate calculators
-• Volatility fetched 4x per cycle
-• Volume fetched 3x per cycle  
-• RSI fetched 2x per cycle
-→ ~75% wasted computation
-```
+- **Session Orchestrator** - Main coordinator for all system components
+- **Market Data Service** - Unified data provider with caching
+- **Candle Storage** - SQLite database with rolling 5-year window for historical analysis
+- **Strategy Manager** - Dynamic strategy selection with tie-breaking
+- **Prediction Engine** - Entry setup generation with multi-factor scoring
+- **Position Sizer** - Risk-adjusted position sizing
+- **Dashboard Service** - WebSocket-based real-time UI
 
-**After:**
-```
-• Single calculator instance per module
-• Centralized data coordination
-• TTL-based caching
-• Strategy-aware invalidation
-→ 75% reduction in redundant calls
-```
+### Design Principles
 
-### Logging Architecture
+1. **NO FALLBACKS** - Required data must be present; fail fast on errors
+2. **Single Responsibility** - Each module has one clear purpose
+3. **Centralized Caching** - TTL-based caching prevents redundant calculations
+4. **Event-Driven** - WebSocket-based real-time data flow
+5. **Deterministic** - All calculations are reproducible for ML integration
 
-**Production Logging Strategy:**
-- ✅ **ERROR** - All errors logged
-- ✅ **WARNING** - Important anomalies
-- ✅ **INFO** - Critical state changes only
-- ❌ **DEBUG** - Removed (was 50+ debug logs)
-
-**Frontend:**
-```javascript
-const DEBUG = false;  // Set true for troubleshooting
-if (DEBUG) console.log(...);  // 37 logs wrapped
-```
+For detailed architecture documentation, see [`BOT_WORKFLOW_AND_ARCHITECTURE.md`](BOT_WORKFLOW_AND_ARCHITECTURE.md).
 
 ---
 
-## 📊 Performance Metrics
+## Documentation
 
-### System Performance
+### Essential Guides
+
+- **[Architecture & Workflow](BOT_WORKFLOW_AND_ARCHITECTURE.md)** - Complete system architecture and data flow
+- **[ML Integration Evaluation](ML_INTEGRATION_EVALUATION.md)** - Comprehensive ML readiness assessment
+- **[ML Readiness Summary](ML_READINESS_SUMMARY.md)** - Quick reference for ML integration status
+
+### Technical Documentation
+
+- **[Strategy Tie-Breaking](STRATEGY_TIE_BREAKING_FIX.md)** - Implementation details
+- **[Config & Dead Code Audit](CONFIG_AND_DEAD_CODE_AUDIT.md)** - Code quality report
+- **[Dead Code Removal](DEAD_CODE_REMOVAL_COMPLETE.md)** - Cleanup summary
+
+### Reference Documentation
+
+See `.ai/` directory for:
+- Architecture assumptions
+- SOLID principles audit
+- Performance analysis
+- IV Squeeze analysis
+
+---
+
+## Performance
+
+### System Metrics
 
 - **Data Processing Latency**: <100ms
-- **WebSocket Update Frequency**: ~1-2s
+- **WebSocket Update Frequency**: 1-2 seconds
 - **Cache Hit Rate**: ~85%
 - **Redundant Calculations**: Reduced by 75%
+- **Database Efficiency**: Rolling 5-year window keeps database size optimal (~525,600 candles)
 
-### Trading Performance (Paper Trading)
+### Trading Performance
 
 *Performance varies by market conditions and strategy*
 
-- **Strategies**: Scalping, Standard, Swing
-- **Risk-Reward**: 1.5:1 to 3:1 (strategy-dependent)
+- **Strategies**: 9 strategies with dynamic selection
+- **Risk-Reward**: 1.2:1 to 2.5:1 (strategy-dependent)
 - **Position Sizing**: 1-2% of balance per trade
-- **Maximum Drawdown Protection**: Liquidation buffer zones
+- **Leverage**: Optimized for 40x (configurable)
+
+### Research-Backed Features
+
+The system incorporates findings from:
+- Academic research on S/R level profitability (MDPI 2025)
+- Industry analysis of Hyperliquid liquidation cascades
+- Professional BTC perpetual futures best practices
+
+Key improvements:
+- Entry offset logic (0.3-0.5× ATR inside S/R zone)
+- Liquidation safety buffer zones
+- Spread cost integration
+- Psychological level integration
+- S/R wick filtering
 
 ---
 
-## ⚠️ Important Notes
+## Contributing
 
-### Risk Disclaimer
+This is a personal project, but feedback and suggestions are welcome.
 
-- **Cryptocurrency trading involves substantial risk**
-- **Past performance does not guarantee future results**
-- **Test thoroughly in paper trading mode**
-- **Never trade with funds you cannot afford to lose**
-- **Monitor positions actively**
+### Development Setup
 
-### Security Best Practices
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Test thoroughly
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
-- 🔒 Never share private keys
-- 🔐 Use environment variables for secrets
-- 🛡️ Keep dependencies updated
-- 📝 Review logs for anomalies
-- 🚫 Disable real trading until thoroughly tested
+### Code Quality
 
----
-
-## 🐛 Troubleshooting
-
-### Common Issues
-
-**Import Errors:**
-```bash
-pip install -r requirements.txt --upgrade
-```
-
-**Database Locked:**
-- SQLite file-level locking is normal
-- Close other instances before starting
-
-**WebSocket Connection:**
-- Check internet connection
-- Verify Hyperliquid API is accessible
-
-**Dashboard Not Loading:**
-- Ensure port 5000 is available
-- Check browser console for errors
-
-### Debug Mode
-
-Enable debug logging:
-1. Set `LOG_LEVEL=DEBUG` in `.env`
-2. Set `DEBUG = true` in `realtime_dashboard.html` (line ~778)
+- Follow PEP 8 style guidelines
+- Maintain NO FALLBACKS policy
+- Add tests for new features
+- Update documentation
 
 ---
 
-## 📚 Documentation
-
-### Essential Documentation
-
-- **`BOT_WORKFLOW_AND_ARCHITECTURE.md`** - Complete system architecture and workflow
-- **`ML_READINESS.md`** - ML readiness status and completed fixes
-
-### Reference Documentation (`.ai/` directory)
-
-- `ARCHITECTURE_ASSUMPTIONS.md` - Design assumptions and decisions
-- `SOLID_AUDIT_REPORT.md` - SOLID principles compliance audit
-- `SOLID_IMPROVEMENTS_SUMMARY.md` - Architecture improvements made
-- `IV_SQUEEZE_ANALYSIS.md` - IV Squeeze integration analysis
-- `RESPONSIVENESS_ANALYSIS.md` - Performance and responsiveness analysis
-
----
-
-## 🤝 Contributing
-
-This is a personal project, but feedback and suggestions are welcome:
-
-1. **Fork** the repository
-2. **Create** a feature branch
-3. **Make** your changes
-4. **Test** thoroughly
-5. **Submit** a pull request
-
----
-
-## 📄 License
+## License
 
 This project is for educational and personal use. Trading involves significant financial risk.
 
+**⚠️ Risk Disclaimer:**
+- Cryptocurrency trading involves substantial risk
+- Past performance does not guarantee future results
+- Test thoroughly in paper trading mode
+- Never trade with funds you cannot afford to lose
+- Monitor positions actively
+
 ---
 
-## 🔗 Resources
+## Resources
 
-- [Hyperliquid](https://app.hyperliquid.xyz/)
+- [Hyperliquid Exchange](https://app.hyperliquid.xyz/)
+- [Hyperliquid Documentation](https://hyperliquid.gitbook.io/hyperliquid-docs/)
 - [Python Documentation](https://docs.python.org/)
 - [WebSocket Protocol](https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API)
 
 ---
 
+## Recent Updates
+
+**2026-01-27**
+- ✅ ML integration evaluation completed
+- ✅ Strategy selection tie-breaking implemented
+- ✅ Determinism verification completed
+- ✅ Dead code removal (609 lines)
+- ✅ Config cleanup (all hardcoded values moved to config)
+
+**Status:** System ready for ML-based confidence calculation integration.
+
+---
+
 **Built with clean architecture, production-grade code quality, and a focus on reliability over convenience.**
-
-### Recent Updates (2026-01-27)
-
-- ✅ **Psychological Levels Integration** - Round-number S/R levels as first-class levels
-- ✅ **ML Readiness** - All 18 critical fixes complete, ready for confidence implementation
-- ✅ **Calibration Hooks** - Infrastructure for confidence validation and ML training
-- ✅ **Dead Code Removal** - Cleaned up unused psychological level code
-
-*Last Updated: January 27, 2026*

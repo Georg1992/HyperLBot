@@ -53,6 +53,16 @@ class TradingConfig:
     ATR_MIN_PCT = 0.0005  # 0.05% of price as minimum ATR
     ATR_ABSOLUTE_MIN = 0.1  # Absolute minimum ATR value
     
+    # Liquidation Calculation Configuration
+    # Maintenance margin rates (observed from real positions)
+    # For 40x: theoretical is 2.5%, but actual is ~1.226% due to margin tiers and position sizing
+    # Using observed rate: entry $92,062 -> liq $93,191 = 1.226% multiplier
+    MAINTENANCE_MARGIN_RATES = {
+        40: 0.01226,  # Actual observed rate for 40x (more accurate than theoretical 2.5%)
+        # Other leverages use formula: 1.0 / leverage (theoretical)
+    }
+    MAINTENANCE_MARGIN_RATE_USE_FORMULA = True  # Use 1/leverage for leverages not in MAINTENANCE_MARGIN_RATES
+    
     # Position Sizing Defaults
     DEFAULT_POSITION_SIZE_PCT = 0.02  # Default 2% position size  # Default spread if orderbook unavailable: 0.01% (typical BTC perp)
     
@@ -898,6 +908,23 @@ class TradingConfig:
     # Whale Analytics Configuration
     WHALE_ANALYTICS_ENABLED = bool(os.getenv("WHALE_ANALYTICS_ENABLED", "True").lower() == "true")
     WHALE_CONFIRMATION_THRESHOLD = float(os.getenv("WHALE_CONFIRMATION_THRESHOLD", "0.7"))
+    
+    # Strategy Switch Cooldown Configuration
+    # Dynamic cooldown based on market volatility (prevents excessive strategy switching)
+    STRATEGY_SWITCH_COOLDOWN_DEFAULT = 300  # 5 minutes default cooldown
+    STRATEGY_SWITCH_COOLDOWN_HIGH_VOLATILITY = 60  # 1 minute for high volatility
+    STRATEGY_SWITCH_COOLDOWN_MODERATE_VOLATILITY = 180  # 3 minutes for moderate volatility
+    STRATEGY_SWITCH_COOLDOWN_LOW_VOLATILITY = 300  # 5 minutes for low volatility
+    
+    # Adaptive Pre-Filtering Configuration
+    # Allows strong far levels to compete with weak close levels
+    ADAPTIVE_PRE_FILTER_STRENGTH_THRESHOLD = 0.8  # Very strong level threshold (0-1.0)
+    ADAPTIVE_PRE_FILTER_DISTANCE_EXTENSION = 1.2  # Allow up to 20% beyond max_distance for strong levels
+    
+    # Entry Candidate Generation Configuration
+    # Generates 4 entry candidates per S/R level with different offsets
+    # Offset factors: 0.0 (at level), 0.3, 0.6, 1.0 (toward current price)
+    ENTRY_CANDIDATE_OFFSET_FACTORS = [0.0, 0.3, 0.6, 1.0]  # ATR multipliers for candidate generation
     
     @classmethod
     def validate_config(cls):
