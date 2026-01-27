@@ -127,39 +127,70 @@ Access at `http://localhost:5002`
 ### System Design
 
 ```
-┌─────────────────────────────────────────┐
-│      Session Orchestrator               │
-│   (Coordinates all components)          │
-└──────────┬──────────────────┬───────────┘
-           │                  │
-    ┌──────▼──────┐    ┌──────▼──────┐
-    │ Market Data │    │  Dashboard  │
-    │   Service   │    │   Service   │
-    └──────┬──────┘    └─────────────┘
-           │
-    ┌──────▼──────────────┐
-    │  Candle Storage     │◄───┐
-    │  (SQLite Database)  │    │ (writes)
-    │  Rolling 5-Year    │    │
-    └──────┬──────────────┘    │
-           │ (reads)            │
-    ┌──────▼──────────────────────┐
-    │   Analysis Modules          │
-    │  (RSI, Volatility, S/R,     │
-    │   Volume, Trends, Patterns)  │
-    └──────┬──────────────────────┘
-           │
-    ┌──────▼──────┐
-    │ Prediction  │
-    │   Engine    │
-    └─────────────┘
+┌─────────────────────────────────────────────────────────┐
+│              External APIs                              │
+│  HyperliquidAPI  HyperliquidWebSocket  BinanceAPI       │
+│  FearGreedAPI   WhaleAnalyticsAPI     RSSNewsAPI       │
+│  YahooFinanceAPI                                       │
+└──────────────┬──────────────────────────────────────────┘
+               │
+    ┌──────────▼──────────┐
+    │   RawDataFetcher    │
+    │  (Parallel fetch)    │
+    └──────────┬──────────┘
+               │
+    ┌──────────▼──────────────────────────┐
+    │      Session Orchestrator           │
+    │   (Coordinates all components)      │
+    └──────────┬──────────────┬───────────┘
+               │              │
+    ┌──────────▼──────┐  ┌────▼──────────┐
+    │ Market Data     │  │   Dashboard   │
+    │   Service       │  │    Service    │
+    └──────────┬──────┘  └───────────────┘
+               │
+    ┌──────────▼──────────────┐
+    │   Candle Storage        │◄───┐
+    │  (SQLite Database)      │    │ (writes new candles)
+    │  Rolling 5-Year Window  │    │
+    └──────────┬──────────────┘    │
+               │ (reads historical)│
+    ┌──────────▼──────────────────────┐
+    │   Analysis Modules              │
+    │  (RSI, Volatility, S/R,        │
+    │   Volume, Trends, Patterns)     │
+    │  Uses: raw_data + historical    │
+    └──────────┬──────────────────────┘
+               │
+    ┌──────────▼──────────┐
+    │  Strategy Manager   │
+    └──────────┬──────────┘
+               │
+    ┌──────────▼──────────┐
+    │  Prediction Engine   │
+    └──────────────────────┘
 ```
+
+**Data Flow:**
+1. **APIs** → **RawDataFetcher** (parallel fetch: price, orderbook, funding, fear_greed, whale, news, cross_asset)
+2. **RawDataFetcher** → **Session Orchestrator** (raw_data dict)
+3. **Session Orchestrator** → **Market Data Service** (triggers analysis)
+4. **Market Data Service** → **Analysis Modules** (provides raw_data)
+5. **Candle Storage** → **Analysis Modules** (provides historical candles)
+6. **Analysis Modules** → **Market Data Service** (processed analysis)
+7. **Market Data Service** → **Session Orchestrator** (unified_data)
+8. **Session Orchestrator** → **Strategy Manager** (unified_data)
+9. **Strategy Manager** → **Prediction Engine** (strategy + unified_data)
+10. **Market Data Service** → **Candle Storage** (writes new candles at 5m boundaries)
 
 ### Components
 
-- **Session Orchestrator** - Coordinates system components
-- **Market Data Service** - Unified data provider with caching
+- **External APIs** - Hyperliquid (REST + WebSocket), Binance, FearGreed, WhaleAnalytics, RSSNews, YahooFinance
+- **RawDataFetcher** - Fetches all raw API data in parallel (price, orderbook, funding, fear_greed, whale, news, cross_asset)
+- **Session Orchestrator** - Coordinates system components and main data loop
+- **Market Data Service** - Coordinates processed analysis data from modules
 - **Candle Storage** - SQLite database with rolling 5-year window
+- **Analysis Modules** - Process raw and historical data (RSI, Volatility, S/R, Volume, Trends, Patterns)
 - **Strategy Manager** - Dynamic strategy selection with tie-breaking
 - **Prediction Engine** - Entry setup generation with multi-factor scoring
 - **Position Sizer** - Risk-adjusted position sizing
@@ -172,15 +203,19 @@ SQLite storage for 5-minute candles:
 - Rolling 5-year window (~525,600 candles)
 - Auto-cleanup of data older than 5 years
 - Startup backfill of missing candles
-- Continuous updates every 5 minutes
+- Continuous updates every 5 minutes at candle boundaries
 - Aggregates to 15m, 1h, 1d timeframes
 - WAL mode for concurrent reads/writes
 
-Used for:
+**Data Flow:**
+- **Writes:** Market Data Service writes new candles when 5-minute boundary closes
+- **Reads:** Analysis Modules query historical candles for S/R detection, volume analysis, trend analysis
+
+**Used by Analysis Modules:**
 - S/R level detection (5 years historical)
 - Volume percentile calculations (7-day window)
-- Trend analysis
-- Reduces API dependency
+- Trend analysis (multi-timeframe)
+- Reduces API dependency for historical queries
 
 ### Design Principles
 
