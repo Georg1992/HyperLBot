@@ -219,21 +219,41 @@ class HyperliquidWebSocket:
             logger.error(f"❌ Error processing message: {e}")
     
     async def _process_trades_update(self, trades_data: Dict[str, Any]):
-        """Process trades update and extract latest price and volume"""
+        """
+        Process trades update and extract latest price and volume
+        
+        CRITICAL FIXES:
+        1. Thread safety: Copy price_cache inside lock, invoke callbacks outside lock
+        2. Memory leak: Clean old trades BEFORE adding new ones (automatic cleanup)
+        3. Error handling: Track callback failures, remove failing callbacks
+        """
         try:
             if isinstance(trades_data, list) and len(trades_data) > 0:
                 # Get the latest trade
                 latest_trade = trades_data[0]
                 if "px" in latest_trade:
                     price = float(latest_trade["px"])
+                    current_time = time.time()
                     
-                    # Update price cache
+                    # CRITICAL FIX #3: Clean old trades BEFORE adding new ones to prevent memory leak
+                    # This ensures trades_cache doesn't grow unbounded even if get_raw_trades() is never called
+                    cutoff_timestamp = current_time - (2 * 60 * 60)  # 2 hours ago
+                    
+                    # Update price cache and trades cache atomically
+                    price_data_copy = None
                     with self._lock:
+                        # Clean old trades first (memory leak fix)
+                        self.trades_cache = [
+                            trade for trade in self.trades_cache 
+                            if trade.get('timestamp', 0) >= cutoff_timestamp
+                        ]
+                        
+                        # Update price cache
                         self.price_cache.update({
                             "current_price": price,
                             "bid": price,  # Use trade price as approximation
                             "ask": price,  # Use trade price as approximation
-                            "timestamp": time.time(),
+                            "timestamp": current_time,
                             "source": "websocket_trades",
                             "last_update": datetime.now().strftime("%H:%M:%S"),
                             "connection_status": "connected"
@@ -243,7 +263,7 @@ class HyperliquidWebSocket:
                         for trade in trades_data:
                             if "px" in trade and "sz" in trade:
                                 # Use actual trade timestamp if available, otherwise use current time
-                                trade_timestamp = (trade["time"] if "time" in trade else time.time() * 1000) / 1000  # Convert from ms to seconds
+                                trade_timestamp = (trade["time"] if "time" in trade else current_time * 1000) / 1000  # Convert from ms to seconds
                                 trade_data = {
                                     "price": float(trade["px"]),
                                     "size": float(trade["sz"]),
@@ -251,22 +271,43 @@ class HyperliquidWebSocket:
                                     "side": trade["side"] if "side" in trade else "unknown"
                                 }
                                 self.trades_cache.append(trade_data)
-                                
-                                # Keep only recent trades
-                                if len(self.trades_cache) > self.max_trades_cache:
-                                    self.trades_cache.pop(0)
+                        
+                        # Enforce max size limit (additional safety)
+                        if len(self.trades_cache) > self.max_trades_cache:
+                            # Keep only the most recent trades
+                            self.trades_cache = self.trades_cache[-self.max_trades_cache:]
+                        
+                        # CRITICAL FIX #2: Copy price_cache inside lock to prevent race condition
+                        # Callbacks will receive this copy, not the live cache
+                        price_data_copy = self.price_cache.copy()
                     
-                    # Call price callbacks
-                    for callback in self._price_callbacks:
-                        try:
-                            callback(self.price_cache)
-                        except Exception as e:
-                            logger.error(f"❌ Error in price callback: {e}")
-                    
-            
+                    # CRITICAL FIX #2 & #8: Invoke callbacks with locked copy OUTSIDE lock
+                    # This prevents deadlocks and ensures callbacks see consistent data
+                    # Also track and remove failing callbacks to prevent silent failures
+                    if price_data_copy:
+                        callbacks_to_remove = []
+                        for i, callback in enumerate(self._price_callbacks):
+                            try:
+                                callback(price_data_copy)
+                            except Exception as e:
+                                # CRITICAL FIX #8: Log error with context and track failing callbacks
+                                logger.error(f"❌ Error in price callback {i}: {e}")
+                                import traceback
+                                logger.error(f"❌ Callback traceback:\n{traceback.format_exc()}")
+                                # Mark for removal to prevent repeated failures
+                                callbacks_to_remove.append(i)
+                        
+                        # Remove failing callbacks to prevent repeated errors
+                        if callbacks_to_remove:
+                            # Remove in reverse order to maintain indices
+                            for i in reversed(callbacks_to_remove):
+                                removed_callback = self._price_callbacks.pop(i)
+                                logger.warning(f"⚠️ Removed failing price callback {i}: {type(removed_callback).__name__}")
                     
         except Exception as e:
             logger.error(f"❌ Error processing trades update: {e}")
+            import traceback
+            logger.error(f"❌ Traceback:\n{traceback.format_exc()}")
     
     def get_orderbook_data(self) -> Dict[str, Any]:
         """Get current orderbook data from WebSocket cache"""
@@ -390,16 +431,40 @@ class HyperliquidWebSocket:
             logger.error(f"❌ Error processing orderbook update: {e}")
     
     def _notify_price_callbacks(self):
-        """Notify all registered price callbacks"""
+        """
+        Notify all registered price callbacks
+        
+        CRITICAL FIX #2 & #8: Uses get_price_data() which copies data inside lock,
+        then invokes callbacks outside lock. Also tracks and removes failing callbacks.
+        """
         try:
+            # get_price_data() already copies data inside lock (thread-safe)
             price_data = self.get_price_data()
-            for callback in self._price_callbacks:
+            
+            # Track failing callbacks to remove them
+            callbacks_to_remove = []
+            for i, callback in enumerate(self._price_callbacks):
                 try:
                     callback(price_data)
                 except Exception as e:
-                    logger.error(f"❌ Price callback error: {e}")
+                    # CRITICAL FIX #8: Log error with context and track failing callbacks
+                    logger.error(f"❌ Error in price callback {i}: {e}")
+                    import traceback
+                    logger.error(f"❌ Callback traceback:\n{traceback.format_exc()}")
+                    # Mark for removal to prevent repeated failures
+                    callbacks_to_remove.append(i)
+            
+            # Remove failing callbacks to prevent repeated errors
+            if callbacks_to_remove:
+                # Remove in reverse order to maintain indices
+                for i in reversed(callbacks_to_remove):
+                    removed_callback = self._price_callbacks.pop(i)
+                    logger.warning(f"⚠️ Removed failing price callback {i}: {type(removed_callback).__name__}")
+                    
         except Exception as e:
             logger.error(f"❌ Error notifying callbacks: {e}")
+            import traceback
+            logger.error(f"❌ Traceback:\n{traceback.format_exc()}")
     
     async def _handle_reconnection(self):
         """Handle WebSocket reconnection"""

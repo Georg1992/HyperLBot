@@ -56,14 +56,9 @@ class TradingConfig:
     # Position Sizing Defaults
     DEFAULT_POSITION_SIZE_PCT = 0.02  # Default 2% position size  # Default spread if orderbook unavailable: 0.01% (typical BTC perp)
     
-    # Round Number Avoidance (ADDED 2026-01-12 - Audit Fix)
-    # Stop hunting prevention by offsetting stops from psychological levels
-    ROUND_NUMBER_CONFIG = {
-        "major_threshold_usd": 100.0,  # Within $100 of $5K round = VERY DANGEROUS
-        "minor_threshold_usd": 150.0,  # Within $150 of $1K round = DANGEROUS
-        "major_offset_usd": 150.0,     # Offset $150 for major levels ($90K, $95K, etc)
-        "minor_offset_usd": 75.0       # Offset $75 for minor levels ($91K, $92K, etc)
-    }
+    # REMOVED: Round Number Avoidance - arbitrary offset removed
+    # Rationale: If S/R levels are at round numbers, that's where stops should be.
+    # Round number avoidance was an artificial manipulation that modified calculated stops.
     
     # Trading Signal Thresholds (ADDED 2026-01-12 - Audit Fix)
     # Quality gates for signal execution and strategy validation

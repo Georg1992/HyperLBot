@@ -38,8 +38,54 @@ class PredictionEngine:
     Each strategy has different requirements and logic for generating predictions.
     """
     
+    # Float precision epsilon for comparisons (prevents non-determinism)
+    FLOAT_EPSILON = 1e-6  # For general float comparisons
+    SCORE_EPSILON = 0.01  # For score comparisons (scores are typically 0-100 range)
+    WEIGHT_EPSILON = 0.001  # For weight comparisons (weights are typically 0-1 range)
+    
     def __init__(self):
+        # Initialize calibration hooks (optional - won't break if unavailable)
+        self._calibration_hooks = None
+        try:
+            from core.ml.calibration_hooks import CalibrationHooks
+            self._calibration_hooks = CalibrationHooks()
+            logger.info("🤖 Prediction Engine initialized with calibration hooks")
+        except Exception as e:
+            logger.debug(f"Calibration hooks not available: {e} - continuing without calibration")
         logger.info("🤖 Prediction Engine initialized")
+    
+    @classmethod
+    def _float_eq(cls, a: float, b: float, epsilon: float = None) -> bool:
+        """
+        Float equality comparison with epsilon tolerance
+        
+        Args:
+            a: First float value
+            b: Second float value
+            epsilon: Tolerance (defaults to FLOAT_EPSILON)
+        
+        Returns:
+            True if |a - b| < epsilon
+        """
+        if epsilon is None:
+            epsilon = cls.FLOAT_EPSILON
+        return abs(a - b) < epsilon
+    
+    @classmethod
+    def _float_zero(cls, a: float, epsilon: float = None) -> bool:
+        """
+        Check if float is effectively zero
+        
+        Args:
+            a: Float value to check
+            epsilon: Tolerance (defaults to FLOAT_EPSILON)
+        
+        Returns:
+            True if |a| < epsilon
+        """
+        if epsilon is None:
+            epsilon = cls.FLOAT_EPSILON
+        return abs(a) < epsilon
     
     @staticmethod
     def _require_key(data: Dict[str, Any], key: str, context: str = "") -> Any:
@@ -83,6 +129,19 @@ class PredictionEngine:
         if atr_pct <= 0:
             raise ValueError(f"Invalid ATR percentage: {atr_pct} - must be positive (NO FALLBACKS)")
         
+        # CRITICAL FIX: Validate ATR reasonableness to prevent corrupted calculations
+        # ATR should be between 0.01% and 10% of price for BTC (reasonable range)
+        # Extremely small ATR (< 0.01%) suggests data corruption or very low volatility
+        # Extremely large ATR (> 10%) suggests data corruption or extreme volatility
+        MIN_ATR_PCT = 0.0001  # 0.01% minimum
+        MAX_ATR_PCT = 0.10    # 10% maximum
+        if atr_pct < MIN_ATR_PCT:
+            raise ValueError(f"ATR percentage {atr_pct:.6f} ({atr_pct*100:.4f}%) is too small (< {MIN_ATR_PCT*100:.2f}%). "
+                           f"This suggests data corruption or invalid ATR calculation.")
+        if atr_pct > MAX_ATR_PCT:
+            raise ValueError(f"ATR percentage {atr_pct:.6f} ({atr_pct*100:.2f}%) is too large (> {MAX_ATR_PCT*100:.0f}%). "
+                           f"This suggests data corruption or extreme market conditions.")
+        
         return atr_pct
     
     def generate_prediction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[TradingPrediction]:
@@ -98,30 +157,39 @@ class PredictionEngine:
         """
         try:
             # Get strategy configuration
+            # NO FALLBACKS - strategy must exist in config
+            if strategy not in TradingConfig.STRATEGY_CONFIGS:
+                raise ValueError(f"Unknown strategy: {strategy} - must be in TradingConfig.STRATEGY_CONFIGS (NO FALLBACKS)")
             strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
-            if not strategy_config:
-                logger.warning(f"⚠️ Unknown strategy: {strategy}")
-                return None
             
             # Generate strategy-specific prediction (confidence will be calculated after all parameters integrated)
             prediction = self._generate_strategy_prediction(unified_data, strategy, strategy_config)
             
             # Always return prediction if generated
             if prediction:
-                # Ensure timestamp is set
+                # CRITICAL FIX: Use unified_data timestamp (data timestamp), not time.time() (generation time)
+                # This prevents lookahead bias in ML training - prediction timestamp must match data timestamp
+                # NO FALLBACKS - timestamp must be present in unified_data
+                prediction_timestamp = self._require_key(unified_data, "timestamp", "prediction timestamp")
                 if not prediction.timestamp:
-                    prediction.timestamp = time.time()
+                    prediction.timestamp = prediction_timestamp
+                elif abs(prediction.timestamp - prediction_timestamp) > 1.0:
+                    # If timestamp differs significantly, use data timestamp (more accurate)
+                    logger.debug(f"⚠️ Prediction timestamp {prediction.timestamp} differs from data timestamp {prediction_timestamp}, using data timestamp")
+                    prediction.timestamp = prediction_timestamp
                 
                 # Log prediction generation
                 logger.info(f"✅ Prediction generated: {prediction.direction} @ ${prediction.entry_price:.2f} (strategy: {strategy})")
                 return prediction
             else:
-                logger.info(f"⏸️ No prediction generated for strategy: {strategy}")  # Important state change
-                return None
+                # This should never happen - prediction should ALWAYS be generated
+                # If it does, it's a system error
+                raise ValueError(f"No prediction generated for strategy: {strategy} - system error: prediction must ALWAYS be generated (NO FALLBACKS)")
                 
         except Exception as e:
             logger.error(f"❌ Prediction generation failed: {e}")
-            return None
+            # NO FALLBACKS - prediction generation must succeed
+            raise
     
     def _generate_strategy_prediction(
         self, 
@@ -173,10 +241,13 @@ class PredictionEngine:
         # ==================================================================================
         # STEP 2: DETERMINE DIRECTION PERFECTLY (market condition decision)
         # ==================================================================================
+        # CRITICAL: Direction scoring MUST always return a result (NO FALLBACKS)
+        # If it returns None, that's a system error that should propagate
         direction_result = self._score_direction(unified_data, strategy)
         if not direction_result:
-            logger.info(f"⏸️ Direction determination failed for {strategy} strategy - insufficient market data or conflicting signals")
-            return None
+            # This should never happen if _score_direction is working correctly
+            # If it does, it's a critical error that should stop the bot
+            raise ValueError(f"Direction scoring returned None for {strategy} strategy - this indicates a system error (NO FALLBACKS)")
         
         direction = direction_result["direction"]  # Required (NO FALLBACKS)
         direction_reasoning = direction_result["reasoning"]  # Required (NO FALLBACKS)
@@ -184,13 +255,15 @@ class PredictionEngine:
         short_score = direction_result["short_score"]  # Required (NO FALLBACKS)
         score_diff = abs(long_score - short_score)
         
-        # Check minimum score difference threshold (configurable) - NO FALLBACKS
-        min_score_diff = config["min_score_diff"]
+        # CRITICAL CHANGE: Always generate predictions, even if weak
+        # Confidence will be calculated later to rate weak predictions as low confidence
+        # This ensures we always have the "best setup at current moment" even if it's bad
+        # NO FALLBACKS - min_score_diff must be in config
+        min_score_diff = self._require_key(config, "min_score_diff", "strategy config")
         if score_diff < min_score_diff:
-            logger.info(f"⏸️ Direction signal too weak for {strategy}: {direction} (LONG: {long_score:.1f}, SHORT: {short_score:.1f}, diff: {score_diff:.1f} < {min_score_diff:.1f})")
-            return None
-        
-        logger.info(f"📊 Direction determined: {direction} (LONG: {long_score:.1f}, SHORT: {short_score:.1f}, diff: {score_diff:.1f})")
+            logger.info(f"⚠️ Direction signal weak for {strategy}: {direction} (LONG: {long_score:.1f}, SHORT: {short_score:.1f}, diff: {score_diff:.1f} < {min_score_diff:.1f}) - generating anyway with low confidence")
+        else:
+            logger.info(f"📊 Direction determined: {direction} (LONG: {long_score:.1f}, SHORT: {short_score:.1f}, diff: {score_diff:.1f})")
         logger.debug(f"📊 Direction reasoning: {direction_reasoning}")
         
         # ==================================================================================
@@ -204,9 +277,12 @@ class PredictionEngine:
             config=config
         )
         
+        # CRITICAL: Entry setup generation MUST always return at least one setup (NO FALLBACKS)
+        # If no setups found, _generate_setups_for_direction should be fixed to always generate one
         if not setups:
-            logger.info(f"⏸️ No valid entry setups found for {direction} direction ({strategy} strategy)")  # Important state change
-            return None
+            # This should never happen - _generate_setups_for_direction should always return at least current price entry
+            # If it does, it's a critical error that should stop the bot
+            raise ValueError(f"No entry setups found for {direction} direction ({strategy} strategy) - _generate_setups_for_direction must always return at least one setup (NO FALLBACKS)")
         
         # Select best entry setup (highest entry score)
         best_setup = max(setups, key=lambda x: x["entry_score"])  # Required (NO FALLBACKS)
@@ -248,7 +324,7 @@ class PredictionEngine:
             strategy=strategy
         )
         
-        return self._create_prediction(
+        prediction = self._create_prediction(
             direction=direction,
             entry_price=entry_price,
             stop_loss=stop_loss,
@@ -258,6 +334,23 @@ class PredictionEngine:
             strategy=strategy,
             risk_reward_ratio=rr_ratio
         )
+        
+        # Log prediction for calibration (if hooks available)
+        if self._calibration_hooks:
+            try:
+                direction_scores = {
+                    "long_score": long_score,
+                    "short_score": short_score,
+                    "score_diff": abs(long_score - short_score)
+                }
+                self._calibration_hooks.log_prediction(
+                    prediction, unified_data, direction_scores, entry_score
+                )
+            except Exception as e:
+                logger.debug(f"Failed to log prediction for calibration: {e}")
+                # Don't break prediction generation if calibration logging fails
+        
+        return prediction
     
     def _create_prediction(
         self,
@@ -299,9 +392,12 @@ class PredictionEngine:
         - Requires tight spreads and high liquidity
         - Lower decision threshold (8.0 vs 10.0)
         """
-        # Validate scalping-specific requirements
-        if not self._validate_scalping_requirements(unified_data, config):
-            return None
+        # CRITICAL CHANGE: Always generate predictions, even if scalping requirements aren't met
+        # Validation will log warnings but won't block prediction generation
+        # Confidence will be calculated later to rate suboptimal conditions as low confidence
+        validation_passed = self._validate_scalping_requirements(unified_data, config)
+        if not validation_passed:
+            logger.warning(f"⚠️ Scalping requirements not met - generating prediction anyway with low confidence")
         
         # Use base prediction logic with scalping strategy
         # Note: Scalping still uses limit orders at S/R levels, not market orders
@@ -470,12 +566,19 @@ class PredictionEngine:
             if tf_trend == "UNKNOWN" or tf_trend == "SIDEWAYS":
                 continue
             
-            tf_weight = timeframe_weights.get(tf_name, 0.0)
-            if tf_weight == 0.0:
+            # NO FALLBACKS - if timeframe exists in detailed_trends, it must have a weight
+            if tf_name not in timeframe_weights:
+                logger.warning(f"⚠️ Timeframe {tf_name} in detailed_trends but not in timeframe_weights - skipping")
+                continue
+            tf_weight = timeframe_weights[tf_name]
+            # CRITICAL FIX: Use epsilon comparison for float zero check (prevents non-determinism)
+            if self._float_zero(tf_weight, self.WEIGHT_EPSILON):
                 continue
             
-            # Get base score from mapping (no string parsing)
-            tf_score = TREND_SCORE_MAP.get(tf_trend, 100.0)
+            # NO FALLBACKS - trend must be in TREND_SCORE_MAP
+            if tf_trend not in TREND_SCORE_MAP:
+                raise ValueError(f"Unknown trend direction '{tf_trend}' for timeframe {tf_name} - not in TREND_SCORE_MAP (NO FALLBACKS)")
+            tf_score = TREND_SCORE_MAP[tf_trend]
             
             # Apply numeric strength multiplier (0.0-1.0) for more precision
             tf_score *= (0.7 + 0.3 * trend_strength)  # Scale between 70%-100% of base score
@@ -492,7 +595,8 @@ class PredictionEngine:
         total_tfs = bullish_tfs + bearish_tfs
         if total_tfs >= 3:
             convergence_ratio = max(bullish_tfs, bearish_tfs) / total_tfs
-            if convergence_ratio == 1.0:  # Perfect convergence
+            # CRITICAL FIX: Use epsilon comparison for float equality (prevents non-determinism)
+            if self._float_eq(convergence_ratio, 1.0, self.FLOAT_EPSILON):  # Perfect convergence
                 bonus = 50.0
                 if bullish_tfs == total_tfs:
                     trend_long += bonus
@@ -669,19 +773,37 @@ class PredictionEngine:
                     patterns_short += pattern_score
                     reasons.append(f"{pattern_name} (quality={pattern_quality:.2f}, rel={pattern_reliability:.2f}, score={pattern_score:.1f})")
         
-        # Cap scores at reasonable maximum (multiple strong patterns shouldn't dominate)
-        max_pattern_score = 200.0  # Allow 2-3 strong patterns to contribute significantly
-        patterns_long = min(patterns_long, max_pattern_score)
-        patterns_short = min(patterns_short, max_pattern_score)
+        # CRITICAL FIX: Normalize pattern scores to consistent range [0, 100] for ML consistency
+        # Instead of hardcoded cap at 200.0, normalize to 0-100 range
+        # This ensures consistent feature ranges for ML models
+        # Base normalization: divide by 2.0 to map [0, 200] -> [0, 100]
+        # This allows 2-3 strong patterns to contribute significantly while keeping range consistent
+        NORMALIZATION_FACTOR = 2.0
+        patterns_long = patterns_long / NORMALIZATION_FACTOR
+        patterns_short = patterns_short / NORMALIZATION_FACTOR
+        # Clamp to [0, 100] range for safety
+        patterns_long = max(0.0, min(100.0, patterns_long))
+        patterns_short = max(0.0, min(100.0, patterns_short))
         
         return patterns_long, patterns_short, reasons
     
-    def _score_volume_factor_improved(self, volume_data: Dict[str, Any], volume_category: str, 
-                                     long_score: float, short_score: float) -> tuple[float, float, list]:
+    def _score_volume_factor_improved(self, volume_data: Dict[str, Any], volume_category: str) -> tuple[float, float, list]:
         """
         Score volume factor for direction determination with improved analysis
         
-        Uses volume_trend_strength and volume_anomaly for more sophisticated scoring.
+        CRITICAL FIX: Volume scoring is now INDEPENDENT - it scores based on volume direction/trend,
+        NOT on pre-volume scores. This removes circular dependency where volume "confirms" a direction
+        that volume itself may have influenced.
+        
+        Volume scoring logic:
+        - High volume with bullish trend → LONG score
+        - High volume with bearish trend → SHORT score
+        - Low volume → penalty to both (reduces confidence)
+        - Volume anomaly → penalty (potential reversal)
+        
+        Args:
+            volume_data: Volume analysis data
+            volume_category: Volume category (LOW, HIGH, etc.)
         
         Returns:
             (volume_long_score, volume_short_score, reasons)
@@ -695,65 +817,80 @@ class PredictionEngine:
         volume_trend_strength = float(self._require_key(volume_data, "volume_trend_strength", "volume data structure"))
         volume_anomaly = self._require_key(volume_data, "volume_anomaly", "volume data structure")  # Required (NO FALLBACKS)
         
+        # Derive volume_trend_direction from trend field (NO FALLBACKS - trend must exist)
+        # Volume calculator returns "trend" field which contains direction (BULLISH/BEARISH/NEUTRAL)
+        volume_trend = self._require_key(volume_data, "trend", "volume data structure")
+        # Map trend to direction format
+        if volume_trend in ["BULLISH", "UP", "INCREASING", "RISING"]:
+            volume_trend_direction = "BULLISH"
+        elif volume_trend in ["BEARISH", "DOWN", "DECREASING", "FALLING"]:
+            volume_trend_direction = "BEARISH"
+        else:
+            volume_trend_direction = "NEUTRAL"  # UNKNOWN, SIDEWAYS, etc.
+        
         # Get configurable thresholds (NO FALLBACKS - must be in config)
         from config.config import TradingConfig
         volume_thresholds = TradingConfig.VOLUME_TREND_STRENGTH_THRESHOLDS
         very_strong_threshold = volume_thresholds["very_strong"]  # Required (NO FALLBACKS)
         
-        # High volume confirms existing direction (uses pre-volume scores to avoid circular dependency)
+        # CRITICAL FIX: Score volume INDEPENDENTLY based on volume direction/trend, not pre-scores
+        # High volume with bullish trend → LONG score
+        # High volume with bearish trend → SHORT score
         if volume_category in ["HIGH", "VERY_HIGH", "EXTREME"]:
-            confirmation_score = 100.0
+            base_confirmation_score = 100.0
             
-            # Boost if volume trend aligns with direction
-            if long_score > short_score:
-                # Volume trend strength bonus: strong volume trend increases confirmation
+            # Determine volume direction from volume_trend_direction or volume trend strength
+            # If volume trend is bullish (increasing volume on up moves), score LONG
+            # If volume trend is bearish (increasing volume on down moves), score SHORT
+            if volume_trend_direction in ["BULLISH", "UP", "INCREASING"]:
+                # High volume with bullish trend → LONG
                 if volume_trend_strength > very_strong_threshold:
-                    # Use configurable bonus multiplier
                     bonus_multiplier = TradingConfig.VOLUME_CONFIRMATION_BONUS_MULTIPLIER
-                    confirmation_score = 100.0 * bonus_multiplier
+                    volume_long = base_confirmation_score * bonus_multiplier
                     reasons.append(f"High volume with strong bullish trend ({volume_category}, strength: {volume_trend_strength:.2f})")
                 else:
+                    volume_long = base_confirmation_score
                     reasons.append(f"High volume confirms bullish ({volume_category})")
-                volume_long = confirmation_score
-            elif short_score > long_score:
+            elif volume_trend_direction in ["BEARISH", "DOWN", "DECREASING"]:
+                # High volume with bearish trend → SHORT
                 if volume_trend_strength > very_strong_threshold:
                     bonus_multiplier = TradingConfig.VOLUME_CONFIRMATION_BONUS_MULTIPLIER
-                    confirmation_score = 100.0 * bonus_multiplier
+                    volume_short = base_confirmation_score * bonus_multiplier
                     reasons.append(f"High volume with strong bearish trend ({volume_category}, strength: {volume_trend_strength:.2f})")
                 else:
+                    volume_short = base_confirmation_score
                     reasons.append(f"High volume confirms bearish ({volume_category})")
-                volume_short = confirmation_score
+            else:
+                # NEUTRAL volume trend - high volume is neutral (no directional bias)
+                # Still give moderate score to both (volume confirms activity, not direction)
+                volume_long = base_confirmation_score * 0.5
+                volume_short = base_confirmation_score * 0.5
+                reasons.append(f"High volume but neutral trend ({volume_category})")
         elif volume_category in ["LOW", "VERY_LOW"]:
-            # Low volume reduces confidence (but doesn't reverse direction)
+            # Low volume reduces confidence for BOTH directions (not direction-specific)
+            # This is a penalty, not a directional signal
             low_volume_penalty = TradingConfig.LOW_VOLUME_PENALTY
-            if long_score > short_score:
-                volume_long = -low_volume_penalty
-                reasons.append(f"Low volume reduces bullish confidence ({volume_category})")
-            elif short_score > long_score:
-                volume_short = -low_volume_penalty
-                reasons.append(f"Low volume reduces bearish confidence ({volume_category})")
+            volume_long = -low_volume_penalty
+            volume_short = -low_volume_penalty
+            reasons.append(f"Low volume reduces confidence ({volume_category})")
         
         # Volume anomaly detection: extreme volume spikes can indicate reversals
+        # Apply penalty to BOTH directions (reduces confidence, doesn't favor one direction)
         if volume_anomaly and volume_category in ["VERY_HIGH", "EXTREME"]:
-            # Anomaly suggests potential reversal - slight penalty to current direction
             anomaly_penalty = TradingConfig.VOLUME_ANOMALY_PENALTY
-            if long_score > short_score:
-                volume_long -= anomaly_penalty
-                reasons.append("Volume anomaly detected - potential reversal risk")
-            elif short_score > long_score:
-                volume_short -= anomaly_penalty
-                reasons.append("Volume anomaly detected - potential reversal risk")
+            volume_long -= anomaly_penalty
+            volume_short -= anomaly_penalty
+            reasons.append("Volume anomaly detected - potential reversal risk")
         
         return volume_long, volume_short, reasons
     
-    def _score_volume_factor(self, volume_category: str, long_score: float, short_score: float) -> tuple[float, float, list]:
+    def _score_volume_factor(self, volume_data: Dict[str, Any], volume_category: str) -> tuple[float, float, list]:
         """
         Legacy method - delegates to improved version
         """
         # This method signature is kept for backward compatibility
-        # In practice, _score_volume_factor_improved is called with full volume_data
-        volume_data = {"volume_category": volume_category, "volume_trend_strength": 0.5, "volume_anomaly": False}
-        return self._score_volume_factor_improved(volume_data, volume_category, long_score, short_score)
+        # Delegates to improved version (no pre-scores - prevents circular dependency)
+        return self._score_volume_factor_improved(volume_data, volume_category)
     
     def _score_sr_proximity_factor(self, unified_data: Dict[str, Any], strategy: str) -> tuple[float, float, list]:
         """
@@ -889,7 +1026,8 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ S/R proximity factor scoring failed: {e}")
-            return 0.0, 0.0, []
+            # NO FALLBACKS - if S/R proximity scoring fails, it's a system error
+            raise
     
     # REMOVED: _score_funding_factor() - Funding no longer used for direction scoring
     # Funding rate often unavailable and has minimal impact on short-term direction
@@ -907,21 +1045,18 @@ class PredictionEngine:
             (market_conditions_long_score, market_conditions_short_score, reasons)
         """
         try:
-            # Market conditions may not have sentiment_data if analysis failed
-            if "sentiment_data" not in market_conditions_data:
-                return 0.0, 0.0, []
-            
-            sentiment_data = market_conditions_data["sentiment_data"]
+            # NO FALLBACKS - if market_conditions_data is provided, it must have valid sentiment_data
+            sentiment_data = self._require_key(market_conditions_data, "sentiment_data", "market_conditions_data structure")
             if not sentiment_data:
-                return 0.0, 0.0, []
+                raise ValueError("sentiment_data is empty in market_conditions_data (NO FALLBACKS)")
             
-            # Get fear/greed value (handles both index_value and value keys)
+            # Get fear/greed value - must have either index_value or value
             if "index_value" in sentiment_data:
-                fear_greed_value = sentiment_data["index_value"]
+                fear_greed_value = self._require_key(sentiment_data, "index_value", "sentiment_data structure")
             elif "value" in sentiment_data:
-                fear_greed_value = sentiment_data["value"]
+                fear_greed_value = self._require_key(sentiment_data, "value", "sentiment_data structure")
             else:
-                return 0.0, 0.0, []
+                raise ValueError("sentiment_data must have either 'index_value' or 'value' key (NO FALLBACKS)")
             
             market_conditions_long = 0.0
             market_conditions_short = 0.0
@@ -946,7 +1081,8 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ Market conditions factor scoring failed: {e}")
-            return 0.0, 0.0, []  # Return neutral on error (market conditions is optional)
+            # NO FALLBACKS - if market conditions scoring fails, it's a system error
+            raise
     
     def _score_cross_asset_factor(self, cross_asset_data: Dict[str, Any]) -> tuple[float, float, list]:
         """
@@ -969,8 +1105,9 @@ class PredictionEngine:
             # DXY correlation (typically negative - dollar strength = BTC weakness)
             if "dxy_correlation" in cross_asset_data:
                 dxy_corr = cross_asset_data["dxy_correlation"]
-                dxy_correlation_value = dxy_corr.get("correlation", 0.0)
-                dxy_change = dxy_corr.get("dxy_change_pct", 0.0)
+                # NO FALLBACKS - if dxy_correlation exists, it must have these fields
+                dxy_correlation_value = self._require_key(dxy_corr, "correlation", "dxy_correlation structure")
+                dxy_change = self._require_key(dxy_corr, "dxy_change_pct", "dxy_correlation structure")
                 
                 # Only use if correlation is strong (>0.5 absolute)
                 if abs(dxy_correlation_value) > 0.5:
@@ -994,7 +1131,8 @@ class PredictionEngine:
             # Stock correlation (typically positive - stocks up = BTC up)
             if "stock_correlation" in cross_asset_data:
                 stock_corr = cross_asset_data["stock_correlation"]
-                stock_correlation_value = stock_corr.get("correlation", 0.0)
+                # NO FALLBACKS - if stock_correlation exists, it must have correlation field
+                stock_correlation_value = self._require_key(stock_corr, "correlation", "stock_correlation structure")
                 
                 # Get stock change from composite_change or change_percent
                 stock_change = 0.0
@@ -1026,7 +1164,8 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ Cross-asset factor scoring failed: {e}")
-            return 0.0, 0.0, []  # Return neutral on error (cross-asset is optional)
+            # NO FALLBACKS - if cross-asset scoring fails, it's a system error
+            raise
     # Can be added back if needed for long-term position bias
     
     # ==================================================================================
@@ -1056,16 +1195,14 @@ class PredictionEngine:
             reasons = []
             
             # Get orderbook imbalance data
-            order_imbalance = orderbook_data.get("order_imbalance", {})
-            market_pressure = orderbook_data.get("market_pressure", {})
+            # NO FALLBACKS - orderbook data must have these fields
+            order_imbalance = self._require_key(orderbook_data, "order_imbalance", "orderbook_analysis structure")
+            market_pressure = self._require_key(orderbook_data, "market_pressure", "orderbook_analysis structure")
             
-            if not order_imbalance or not market_pressure:
-                return 50.0, []  # Neutral if data unavailable
-            
-            imbalance_category = order_imbalance.get("category", "BALANCED")
-            imbalance_bias = order_imbalance.get("bias", 0.0)  # -1 (selling) to +1 (buying)
-            pressure_direction = market_pressure.get("direction", "NEUTRAL")
-            pressure_strength = market_pressure.get("strength", "WEAK")
+            imbalance_category = self._require_key(order_imbalance, "category", "order_imbalance structure")
+            imbalance_bias = self._require_key(order_imbalance, "bias", "order_imbalance structure")  # -1 (selling) to +1 (buying)
+            pressure_direction = self._require_key(market_pressure, "direction", "market_pressure structure")
+            pressure_strength = self._require_key(market_pressure, "strength", "market_pressure structure")
             
             # Score based on direction and setup type alignment
             if direction == "LONG" and setup_type == "support_level":
@@ -1115,7 +1252,8 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ Orderbook factor scoring failed: {e}")
-            return 50.0, []  # Return neutral on error (orderbook is optional)
+            # NO FALLBACKS - if orderbook scoring fails, it's a system error
+            raise
     
     def _score_entry_market_conditions_factor(
         self,
@@ -1138,24 +1276,22 @@ class PredictionEngine:
             score = 0.0
             reasons = []
             
-            # Market conditions may not have sentiment_data if analysis failed
-            if "sentiment_data" not in market_conditions_data:
-                return 50.0, []  # Neutral if data unavailable
-            
-            sentiment_data = market_conditions_data["sentiment_data"]
+            # NO FALLBACKS - if market_conditions_data is provided, it must have valid sentiment_data
+            sentiment_data = self._require_key(market_conditions_data, "sentiment_data", "market_conditions_data structure")
             if not sentiment_data:
-                return 50.0, []
+                raise ValueError("sentiment_data is empty in market_conditions_data (NO FALLBACKS)")
             
-            # Get fear/greed value
+            # Get fear/greed value - must have either index_value or value
             if "index_value" in sentiment_data:
-                fear_greed_value = sentiment_data["index_value"]
+                fear_greed_value = self._require_key(sentiment_data, "index_value", "sentiment_data structure")
             elif "value" in sentiment_data:
-                fear_greed_value = sentiment_data["value"]
+                fear_greed_value = self._require_key(sentiment_data, "value", "sentiment_data structure")
             else:
-                return 50.0, []
+                raise ValueError("sentiment_data must have either 'index_value' or 'value' key (NO FALLBACKS)")
             
             # Get level power for comparison
-            level_power = level_data.get("power", 50.0)
+            # NO FALLBACKS - level_data must have power
+            level_power = self._require_key(level_data, "power", "level_data structure")
             
             # In extreme sentiment, prefer stronger levels
             if fear_greed_value <= 20 or fear_greed_value >= 80:  # Extreme fear or greed
@@ -1189,7 +1325,8 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ Market conditions entry factor scoring failed: {e}")
-            return 50.0, []  # Return neutral on error (market conditions is optional)
+            # NO FALLBACKS - if market conditions entry scoring fails, it's a system error
+            raise
     
     # NOTE: IV Squeeze scoring method removed
     # IV Squeeze is for timing/decisions (WHEN to enter), not entry price accuracy (WHERE to enter)
@@ -1356,7 +1493,8 @@ class PredictionEngine:
             if rsi_value < technical_constants.RSI_OVERSOLD and price_diff_pct < 0:  # Oversold + entry below current = very good
                 score = 100.0
                 reasons.append(f"RSI oversold ({rsi_value:.1f}) + entry below current ({price_diff_pct*100:.2f}%)")
-            elif rsi_value < 50 and rsi_trend == "BULLISH" and price_diff_pct <= 0:
+            # CRITICAL FIX: Use epsilon comparison for zero check (prevents non-determinism)
+            elif rsi_value < 50 and rsi_trend == "BULLISH" and (self._float_zero(price_diff_pct, self.FLOAT_EPSILON) or price_diff_pct < 0):
                 score = 70.0
                 reasons.append(f"RSI recovering ({rsi_value:.1f}) + entry at/below current")
             elif price_diff_pct < -significant_diff_threshold:  # Entry significantly below current (1.25×ATR)
@@ -1370,7 +1508,8 @@ class PredictionEngine:
             if rsi_value > technical_constants.RSI_OVERBOUGHT and price_diff_pct > 0:  # Overbought + entry above current = very good
                 score = 100.0
                 reasons.append(f"RSI overbought ({rsi_value:.1f}) + entry above current ({price_diff_pct*100:.2f}%)")
-            elif rsi_value > 50 and rsi_trend == "BEARISH" and price_diff_pct >= 0:
+            # CRITICAL FIX: Use epsilon comparison for zero check (prevents non-determinism)
+            elif rsi_value > 50 and rsi_trend == "BEARISH" and (self._float_zero(price_diff_pct, self.FLOAT_EPSILON) or price_diff_pct > 0):
                 score = 70.0
                 reasons.append(f"RSI declining ({rsi_value:.1f}) + entry at/above current")
             elif price_diff_pct > significant_diff_threshold:  # Entry significantly above current (1.25×ATR)
@@ -1426,12 +1565,19 @@ class PredictionEngine:
             if tf_trend == "UNKNOWN" or tf_trend == "SIDEWAYS":
                 continue
             
-            tf_weight = timeframe_weights.get(tf_name, 0.0)
-            if tf_weight == 0.0:
+            # NO FALLBACKS - if timeframe exists in detailed_trends, it must have a weight
+            if tf_name not in timeframe_weights:
+                logger.warning(f"⚠️ Timeframe {tf_name} in detailed_trends but not in timeframe_weights - skipping")
+                continue
+            tf_weight = timeframe_weights[tf_name]
+            # CRITICAL FIX: Use epsilon comparison for float zero check (prevents non-determinism)
+            if self._float_zero(tf_weight, self.WEIGHT_EPSILON):
                 continue
             
-            # Get score from mapping (no string parsing)
-            tf_score = TREND_SCORE_MAP.get(tf_trend, 1.0)
+            # NO FALLBACKS - trend must be in TREND_SCORE_MAP
+            if tf_trend not in TREND_SCORE_MAP:
+                raise ValueError(f"Unknown trend direction '{tf_trend}' for timeframe {tf_name} - not in TREND_SCORE_MAP (NO FALLBACKS)")
+            tf_score = TREND_SCORE_MAP[tf_trend]
             
             # Determine trend direction and accumulate
             if tf_trend in BULLISH_TRENDS:
@@ -1598,8 +1744,9 @@ class PredictionEngine:
         Returns:
             (distance_score, reasons)
         """
+        # NO FALLBACKS - current_price must be valid
         if current_price <= 0:
-            return 0.0, []
+            raise ValueError(f"Invalid current_price: {current_price} - must be positive (NO FALLBACKS)")
         
         distance_pct = abs(entry_price - current_price) / current_price
         score = 0.0
@@ -1709,6 +1856,18 @@ class PredictionEngine:
             strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
             direction_weights = strategy_config["direction_weights"]  # Required in all strategies (NO FALLBACKS)
             
+            # CRITICAL FIX: Validate and normalize weights to prevent ML training/inference mismatch
+            # Weights must sum to 1.0 for consistent score magnitudes across strategies
+            total_weight = sum(direction_weights.values())
+            # CRITICAL FIX: Use epsilon comparison for float equality (prevents non-determinism)
+            if not self._float_eq(total_weight, 1.0, self.WEIGHT_EPSILON):
+                logger.warning(f"⚠️ Direction weights for {strategy} sum to {total_weight:.4f}, not 1.0. Normalizing...")
+                direction_weights = {k: v / total_weight for k, v in direction_weights.items()}
+                logger.debug(f"✅ Normalized weights: {direction_weights}")
+            
+            # Track which weights are actually used (for optional features that may be missing)
+            active_weights = {}
+            
             # Extract indicators - all required (NO FALLBACKS)
             rsi_data = self._require_key(unified_data, "rsi", "direction scoring")
             trend_data = self._require_key(unified_data, "trend", "direction scoring")
@@ -1724,6 +1883,10 @@ class PredictionEngine:
             short_reasons = []  # Track reasons that support SHORT
             
             # Track factor scores for interaction analysis
+            # NOTE: RSI, trend, and pressure are correlated (all derived from price movements)
+            # They're scored independently and added, which can amplify signals when aligned.
+            # Synergy bonus (multiplicative) helps address correlation but doesn't fully eliminate it.
+            # For ML training: Consider using interaction terms or PCA to decorrelate features.
             factor_scores = {
                 "rsi": {"long": 0.0, "short": 0.0},
                 "trend": {"long": 0.0, "short": 0.0},
@@ -1734,12 +1897,14 @@ class PredictionEngine:
             }
             
             # Score each factor using unified framework (all weights required - NO FALLBACKS)
+            # Track active weights for renormalization if optional features are missing
             rsi_weight = direction_weights["rsi"]  # Required (NO FALLBACKS)
             if rsi_weight > 0:
                 rsi_long, rsi_short, reasons = self._score_rsi_factor(rsi_data)
                 factor_scores["rsi"] = {"long": rsi_long, "short": rsi_short}
                 long_score += rsi_long * rsi_weight
                 short_score += rsi_short * rsi_weight
+                active_weights["rsi"] = rsi_weight
                 # Add reasons to the direction they support (based on score contribution)
                 if rsi_long > rsi_short:
                     long_reasons.extend(reasons)
@@ -1753,6 +1918,7 @@ class PredictionEngine:
                 factor_scores["trend"] = {"long": trend_long, "short": trend_short}
                 long_score += trend_long * trend_weight
                 short_score += trend_short * trend_weight
+                active_weights["trend"] = trend_weight
                 # Add reasons to the direction they support
                 if trend_long > trend_short:
                     long_reasons.extend(reasons)
@@ -1765,6 +1931,7 @@ class PredictionEngine:
                 factor_scores["pressure"] = {"long": pressure_long, "short": pressure_short}
                 long_score += pressure_long * pressure_weight
                 short_score += pressure_short * pressure_weight
+                active_weights["pressure"] = pressure_weight
                 # Add reasons to the direction they support
                 if pressure_long > pressure_short:
                     long_reasons.extend(reasons)
@@ -1777,6 +1944,7 @@ class PredictionEngine:
                 factor_scores["patterns"] = {"long": patterns_long, "short": patterns_short}
                 long_score += patterns_long * patterns_weight
                 short_score += patterns_short * patterns_weight
+                active_weights["patterns"] = patterns_weight
                 # Add reasons to the direction they support
                 if patterns_long > patterns_short:
                     long_reasons.extend(reasons)
@@ -1784,9 +1952,22 @@ class PredictionEngine:
                     short_reasons.extend(reasons)
             
             # Detect factor synergies (non-linear interactions)
+            # CRITICAL FIX: Make synergy MULTIPLICATIVE instead of additive to prevent double-counting
+            # Synergy should scale existing scores, not add on top (which amplifies already-scored factors)
             synergy_bonus = self._detect_factor_synergies(factor_scores, rsi_data, trend_data)
-            long_score += synergy_bonus["long"]
-            short_score += synergy_bonus["short"]
+            
+            # CRITICAL FIX: Always use multiplicative scaling (never additive)
+            # Formula: multiplier = 1.0 + (bonus / max(abs(score), 1.0)) * 0.1
+            # This scales scores by up to 10% based on synergy, preventing over-amplification
+            # Use minimum score of 1.0 for multiplier calculation to ensure consistency
+            synergy_multiplier_long = 1.0 + (synergy_bonus["long"] / max(abs(long_score), 1.0)) * 0.1
+            synergy_multiplier_long = max(0.9, min(1.2, synergy_multiplier_long))  # Clamp to [0.9, 1.2] (10% reduction to 20% boost)
+            long_score *= synergy_multiplier_long
+            
+            synergy_multiplier_short = 1.0 + (synergy_bonus["short"] / max(abs(short_score), 1.0)) * 0.1
+            synergy_multiplier_short = max(0.9, min(1.2, synergy_multiplier_short))  # Clamp to [0.9, 1.2]
+            short_score *= synergy_multiplier_short
+            
             if synergy_bonus["reasons"]:
                 # Add synergy reasons to the direction they support
                 if synergy_bonus["long"] > synergy_bonus["short"]:
@@ -1795,16 +1976,18 @@ class PredictionEngine:
                     short_reasons.extend(synergy_bonus["reasons"])
                 # If equal or conflict, add conflict reasons to both (reduces confidence)
             
-            # Volume scoring: Uses current scores (without volume) to determine winning direction,
-            # then confirms that direction with volume analysis
+            # Volume scoring: INDEPENDENT scoring based on volume direction/trend only
+            # CRITICAL FIX: Volume no longer uses pre-scores to avoid circular dependency
+            # Volume scores based on volume_trend_direction and volume_category only
             volume_weight = direction_weights["volume"]  # Required (NO FALLBACKS)
             if volume_weight > 0:
-                # Pass current scores (they don't include volume yet) so volume can confirm the winning direction
+                # Score volume independently (NO pre-scores - prevents circular dependency)
                 volume_long, volume_short, reasons = self._score_volume_factor_improved(
-                    volume_data, volume_category, long_score, short_score
+                    volume_data, volume_category
                 )
                 long_score += volume_long * volume_weight
                 short_score += volume_short * volume_weight
+                active_weights["volume"] = volume_weight
                 # Add reasons to the direction they support
                 if volume_long > volume_short:
                     long_reasons.extend(reasons)
@@ -1812,69 +1995,94 @@ class PredictionEngine:
                     short_reasons.extend(reasons)
                 # If equal (both negative penalties), add to both
             
-            # S/R PROXIMITY: When price is approaching strong S/R levels with high reversal probability,
-            # that should influence direction (support → LONG, resistance → SHORT)
-            sr_proximity_weight = direction_weights["sr_proximity"]
-            if sr_proximity_weight > 0:
-                sr_proximity_long, sr_proximity_short, reasons = self._score_sr_proximity_factor(unified_data, strategy)
-                long_score += sr_proximity_long * sr_proximity_weight
-                short_score += sr_proximity_short * sr_proximity_weight
-                # Add reasons to the direction they support
-                if sr_proximity_long > sr_proximity_short:
-                    long_reasons.extend(reasons)
-                elif sr_proximity_short > sr_proximity_long:
-                    short_reasons.extend(reasons)
+            # S/R PROXIMITY REMOVED FROM DIRECTION SCORING
+            # CRITICAL FIX: S/R proximity creates circular dependency:
+            # - Direction influenced by S/R proximity → Entry selected from S/R levels → Feedback loop
+            # - Direction should be momentum-based (RSI, trend, volume, pressure), not location-based
+            # - Entry selection already uses S/R levels, so proximity info is redundant in direction
+            # - Removing prevents ML spurious correlations and overconfidence near S/R levels
+            # S/R proximity is still used in entry scoring (where it belongs)
             
             # FUNDING REMOVED FROM DIRECTION SCORING
             # Funding is often not available and doesn't significantly impact short-term direction
             # If needed in the future, make it optional and handle missing data gracefully
             
             # Market Conditions (Fear & Greed Index) - Contrarian signals at extremes
-            market_conditions_weight = direction_weights.get("market_conditions", 0.0)
-            if market_conditions_weight > 0:
-                market_conditions_data = unified_data.get("market_conditions")
-                if market_conditions_data:
+            # CRITICAL FIX: Track if optional features are used for weight renormalization
+            # NO FALLBACKS - if weight is specified, data must exist
+            if "market_conditions" in direction_weights:
+                market_conditions_weight = direction_weights["market_conditions"]
+                if market_conditions_weight > 0:
+                    market_conditions_data = self._require_key(unified_data, "market_conditions", "unified_data structure")
                     market_conditions_long, market_conditions_short, reasons = self._score_market_conditions_factor(market_conditions_data)
                     factor_scores["market_conditions"] = {"long": market_conditions_long, "short": market_conditions_short}
                     long_score += market_conditions_long * market_conditions_weight
                     short_score += market_conditions_short * market_conditions_weight
+                    active_weights["market_conditions"] = market_conditions_weight
                     # Add reasons to the direction they support
                     if market_conditions_long > market_conditions_short:
                         long_reasons.extend(reasons)
                     elif market_conditions_short > market_conditions_long:
                         short_reasons.extend(reasons)
+                else:
+                    # Data missing - weight will be redistributed
+                    logger.debug(f"⚠️ Market conditions data missing, weight {market_conditions_weight:.4f} will be redistributed")
             
             # Cross-Asset Correlation (DXY, Stocks) - Only when correlation is strong
-            cross_asset_weight = direction_weights.get("cross_asset", 0.0)
-            if cross_asset_weight > 0:
-                cross_asset_data = unified_data.get("cross_asset_analysis")
-                if cross_asset_data:
+            # NO FALLBACKS - if weight is specified, data must exist
+            if "cross_asset" in direction_weights:
+                cross_asset_weight = direction_weights["cross_asset"]
+                if cross_asset_weight > 0:
+                    cross_asset_data = self._require_key(unified_data, "cross_asset_analysis", "unified_data structure")
                     cross_asset_long, cross_asset_short, reasons = self._score_cross_asset_factor(cross_asset_data)
                     factor_scores["cross_asset"] = {"long": cross_asset_long, "short": cross_asset_short}
                     long_score += cross_asset_long * cross_asset_weight
                     short_score += cross_asset_short * cross_asset_weight
+                    active_weights["cross_asset"] = cross_asset_weight
                     # Add reasons to the direction they support
                     if cross_asset_long > cross_asset_short:
                         long_reasons.extend(reasons)
                     elif cross_asset_short > cross_asset_long:
                         short_reasons.extend(reasons)
+                else:
+                    # Data missing - weight will be redistributed
+                    logger.debug(f"⚠️ Cross-asset data missing, weight {cross_asset_weight:.4f} will be redistributed")
+            
+            # CRITICAL FIX: Renormalize weights if optional features were missing
+            # If market_conditions or cross_asset weights were not used, scale scores to maintain magnitude consistency
+            total_active_weight = sum(active_weights.values()) if active_weights else 0.0
+            total_expected_weight = sum(direction_weights.values())  # Should be 1.0 after initial normalization
+            
+            # If optional weights were missing, we need to scale scores to compensate
+            # This ensures score magnitudes remain consistent even when optional data is missing
+            # CRITICAL FIX: Use epsilon comparisons for float equality (prevents non-determinism)
+            if not self._float_eq(total_active_weight, total_expected_weight, self.WEIGHT_EPSILON) and not self._float_zero(total_expected_weight, self.WEIGHT_EPSILON):
+                missing_weight = total_expected_weight - total_active_weight
+                # Scale scores to account for missing weight (maintains score magnitude consistency)
+                scale_factor = total_expected_weight / total_active_weight if not self._float_zero(total_active_weight, self.WEIGHT_EPSILON) else 1.0
+                if not self._float_eq(scale_factor, 1.0, self.WEIGHT_EPSILON):
+                    logger.debug(f"⚠️ Renormalizing scores: missing {missing_weight:.4f} weight ({total_active_weight:.4f}/{total_expected_weight:.4f} active), scaling by {scale_factor:.4f}")
+                    long_score *= scale_factor
+                    short_score *= scale_factor
             
             # Determine direction from scores with intelligent tie-breaking
+            # CRITICAL FIX: Use epsilon comparison for score equality (prevents non-determinism)
             score_diff = abs(long_score - short_score)
             logger.debug(f"📊 Direction scores ({strategy}): LONG={long_score:.1f}, SHORT={short_score:.1f}, diff={score_diff:.1f}")
             
-            if long_score > short_score:
+            if long_score > short_score and not self._float_eq(long_score, short_score, self.SCORE_EPSILON):
                 direction = "LONG"
                 # Only show reasons that support LONG direction
                 relevant_reasons = long_reasons[:5] if long_reasons else ["No specific LONG factors"]
                 reasoning = f"LONG signal (score: {long_score:.1f} vs {short_score:.1f}). " + "; ".join(relevant_reasons)
-            elif short_score > long_score:
+            elif short_score > long_score and not self._float_eq(long_score, short_score, self.SCORE_EPSILON):
                 direction = "SHORT"
                 # Only show reasons that support SHORT direction
                 relevant_reasons = short_reasons[:5] if short_reasons else ["No specific SHORT factors"]
                 reasoning = f"SHORT signal (score: {short_score:.1f} vs {long_score:.1f}). " + "; ".join(relevant_reasons)
             else:
                 # Intelligent tie-breaking: use trend strength and RSI as tie-breakers
+                # Scores are effectively equal (within epsilon)
                 direction = self._break_tie(long_score, short_score, trend_data, rsi_data)
                 # Show reasons from the winning direction
                 relevant_reasons = (long_reasons if direction == "LONG" else short_reasons)[:5]
@@ -1889,7 +2097,8 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ Direction scoring failed: {e}")
-            return None
+            # NO FALLBACKS - direction scoring must succeed
+            raise
     
     def _detect_factor_synergies(self, factor_scores: Dict[str, Dict[str, float]], 
                                  rsi_data: Dict[str, Any], trend_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -2070,7 +2279,16 @@ class PredictionEngine:
         """
         Score an entry setup using unified scoring framework
         
+        CRITICAL: Entry scoring is LOCATIONAL (S/R, ATR, proximity, fill probability)
+        and is INDEPENDENT of direction scores. The 'direction' parameter is used ONLY
+        for LONG vs SHORT logic (e.g., LONG entries should be below current price),
+        NOT for scoring based on direction strength.
+        
         Uses factor scorers to calculate a total entry score, then returns setup details.
+        
+        Args:
+            direction: "LONG" or "SHORT" - used for entry logic only, NOT for scoring
+                      (entry scoring is independent of direction scores)
         
         Returns:
             Dict with "entry_price", "setup_type", "score", "reasoning", or None if invalid
@@ -2097,6 +2315,15 @@ class PredictionEngine:
                 # Note: Proximity (distance) is scored separately in _score_entry_sr_factor based on entry offset
                 # Note: Recency is handled in direction scoring, not entry scoring
             }
+            
+            # CRITICAL FIX: Validate and normalize entry weights to prevent ML training/inference mismatch
+            # Weights must sum to 1.0 for consistent score magnitudes across strategies
+            total_weight = sum(entry_weights.values())
+            # CRITICAL FIX: Use epsilon comparison for float equality (prevents non-determinism)
+            if not self._float_eq(total_weight, 1.0, self.WEIGHT_EPSILON):
+                logger.warning(f"⚠️ Entry weights for {strategy} sum to {total_weight:.4f}, not 1.0. Normalizing...")
+                entry_weights = {k: v / total_weight for k, v in entry_weights.items()}
+                logger.debug(f"✅ Normalized entry weights: {entry_weights}")
             
             # Extract indicators - all required (NO FALLBACKS)
             rsi_data = self._require_key(unified_data, "rsi", "entry scoring")
@@ -2147,26 +2374,17 @@ class PredictionEngine:
                 total_score += patterns_score * patterns_weight
                 all_reasons.extend(reasons)
             
-            # Volume anomaly risk check: Apply penalty if anomaly detected
-            volume_data = unified_data["volume"]
-            volume_anomaly = volume_data["volume_anomaly"]
-            if volume_anomaly and volume_anomaly["is_anomaly"]:
-                severity = volume_anomaly["severity"]
-                if severity == "EXTREME":
-                    total_score -= 30.0  # Significant penalty for extreme anomalies
-                    all_reasons.append(f"⚠️ EXTREME volume anomaly - high risk entry")
-                elif severity == "HIGH":
-                    total_score -= 15.0  # Moderate penalty for high anomalies
-                    all_reasons.append(f"⚠️ HIGH volume anomaly - increased risk")
-                elif severity == "MODERATE":
-                    total_score -= 7.0  # Small penalty for moderate anomalies
-                    all_reasons.append(f"⚠️ MODERATE volume anomaly - caution")
+            # CRITICAL FIX: Volume anomaly removed from entry scoring
+            # Volume anomaly should only affect direction (when to trade), not entry quality (where to trade)
+            # Entry scoring should focus on S/R power, proximity, fill probability, liquidation safety
+            # Volume anomaly is already considered in direction scoring via volume factor
             
             # Orderbook Imbalance - Real-time liquidity/pressure at entry level
-            orderbook_weight = entry_weights.get("orderbook", 0.0)
-            if orderbook_weight > 0:
-                orderbook_data = unified_data.get("orderbook_analysis")
-                if orderbook_data:
+            # NO FALLBACKS - if orderbook weight is specified, data must exist
+            if "orderbook" in entry_weights:
+                orderbook_weight = entry_weights["orderbook"]
+                if orderbook_weight > 0:
+                    orderbook_data = self._require_key(unified_data, "orderbook_analysis", "unified_data structure")
                     orderbook_score, reasons = self._score_entry_orderbook_factor(
                         direction, setup_type, orderbook_data, entry_price, current_price
                     )
@@ -2174,10 +2392,12 @@ class PredictionEngine:
                     all_reasons.extend(reasons)
             
             # Market Conditions - Prefer stronger entries in extreme sentiment
-            market_conditions_weight = entry_weights.get("market_conditions", 0.0)
-            if market_conditions_weight > 0:
-                market_conditions_data = unified_data.get("market_conditions")
-                if market_conditions_data:
+            # NO FALLBACKS - if market_conditions weight is specified, data must exist
+            if "market_conditions" in entry_weights:
+                market_conditions_weight = entry_weights["market_conditions"]
+                if market_conditions_weight > 0:
+                    # NO FALLBACKS - if weight is specified, data must exist
+                    market_conditions_data = self._require_key(unified_data, "market_conditions", "unified_data structure")
                     market_conditions_score, reasons = self._score_entry_market_conditions_factor(
                         direction, setup_type, market_conditions_data, level_data
                     )
@@ -2206,7 +2426,8 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ Entry setup scoring failed: {e}")
-            return None
+            # NO FALLBACKS - entry setup scoring must succeed
+            raise
     
     def _generate_setups_for_direction(
         self,
@@ -2362,12 +2583,39 @@ class PredictionEngine:
                             "level_data": resistance_with_type
                         })
             
+            # CRITICAL: There should ALWAYS be S/R levels (except at all-time high)
+            # If no setups found, this indicates a system error in S/R level calculation/filtering
+            # NO FALLBACKS - fix the S/R level system, don't create fake entries
+            if not setups:
+                # NO FALLBACKS - filtered_levels must have support and resistance keys
+                support_count = len(self._require_key(filtered_levels, "support", "filtered_levels structure"))
+                resistance_count = len(self._require_key(filtered_levels, "resistance", "filtered_levels structure"))
+                total_levels = len(all_levels)
+                
+                raise ValueError(
+                    f"No entry setups generated for {direction} direction ({strategy} strategy) - SYSTEM ERROR (NO FALLBACKS). "
+                    f"Total S/R levels: {total_levels}, Filtered support: {support_count}, Filtered resistance: {resistance_count}. "
+                    f"Current price: ${current_price:.2f}. "
+                    f"This indicates S/R level calculation or filtering is broken - there should ALWAYS be levels available."
+                )
+            
+            # CRITICAL: Must always return at least one setup (NO FALLBACKS)
+            # If no S/R levels found, this indicates a system error - should never happen
+            if not setups:
+                # NO FALLBACKS - filtered_levels must have support and resistance keys
+                support_list = self._require_key(filtered_levels, "support", "filtered_levels structure")
+                resistance_list = self._require_key(filtered_levels, "resistance", "filtered_levels structure")
+                raise ValueError(f"No entry setups generated for {direction} direction ({strategy} strategy) - "
+                               f"filtered_levels had {len(support_list)} support and {len(resistance_list)} resistance levels. "
+                               f"This indicates a system error (NO FALLBACKS)")
+            
             logger.debug(f"📊 Generated {len(setups)} entry setups for {direction} direction ({strategy} strategy)")
             return setups
             
         except Exception as e:
             logger.error(f"❌ Setup generation for {direction} direction failed: {e}")
-            return []
+            # NO FALLBACKS - if setup generation fails, it's a critical error
+            raise
     
     def _determine_optimal_entry_price(
         self,
@@ -2463,9 +2711,10 @@ class PredictionEngine:
                     if candidate > current_price:
                         candidates.append(candidate)
             
+            # NO FALLBACKS - must always generate at least one candidate
             if not candidates:
-                logger.warning(f"⚠️ No valid entry candidates for {setup_type} at ${level_price:.2f} (current: ${current_price:.2f})")
-                return None
+                raise ValueError(f"No valid entry candidates for {setup_type} at ${level_price:.2f} (current: ${current_price:.2f}) - "
+                               f"system error: _determine_optimal_entry_price must always generate candidates (NO FALLBACKS)")
             
             # Score each candidate using BTC perp-optimized scoring
             # Factors (research-backed for 40x leverage perps):
@@ -2501,15 +2750,26 @@ class PredictionEngine:
                 # Exponential decay: fill_prob = 100 * exp(-distance_atr / decay_factor)
                 # decay_factor = 3.0 means: at 3×ATR, fill_prob ≈ 100 * exp(-1) ≈ 37
                 # at 6×ATR, fill_prob ≈ 100 * exp(-2) ≈ 13.5
+                # CRITICAL FIX: Add numerical stability bounds to prevent overflow/underflow
                 fill_decay_factor = TradingConfig.ENTRY_FILL_DECAY_FACTOR
-                fill_probability = 100.0 * math.exp(-distance_to_current_atr / fill_decay_factor)
-                fill_probability = max(5.0, fill_probability)  # Minimum 5% fill probability
+                if fill_decay_factor <= 0:
+                    raise ValueError(f"Invalid fill_decay_factor: {fill_decay_factor} - must be positive")
+                if distance_to_current_atr < 0:
+                    distance_to_current_atr = 0.0  # Clamp to 0 (shouldn't happen, but safety check)
+                
+                # Clamp exponent to prevent overflow/underflow
+                # exp(-50) ≈ 1.9e-22 (effectively 0), exp(50) ≈ 5.2e+21 (would overflow)
+                exponent = -distance_to_current_atr / fill_decay_factor
+                exponent = max(-50.0, min(50.0, exponent))  # Clamp to safe range
+                fill_probability = 100.0 * math.exp(exponent)
+                fill_probability = max(5.0, min(100.0, fill_probability))  # Clamp result to [5, 100]
                 
                 # Orderbook depth adjustment: Higher liquidity = better fill probability
                 # Orderbook depth is optional - if available, boost fill probability
+                # NO FALLBACKS - if liquidity_depth exists, it must have depth_score
                 if "liquidity_depth" in orderbook_data:
                     liquidity_depth = orderbook_data["liquidity_depth"]
-                    depth_score = liquidity_depth.get("depth_score", 50.0)  # 0-100 scale
+                    depth_score = self._require_key(liquidity_depth, "depth_score", "liquidity_depth structure")
                     # Boost fill probability by up to 15% for high liquidity
                     liquidity_boost = (depth_score / 100.0) * 15.0
                     fill_probability = min(100.0, fill_probability + liquidity_boost)
@@ -2527,11 +2787,20 @@ class PredictionEngine:
                 # Formula: 100 / (1 + exp(-k * (distance - midpoint)))
                 # k controls steepness, midpoint is the inflection point
                 # For 40x leverage: want >1.5% for safety, 2.0% is ideal
+                # CRITICAL FIX: Add numerical stability bounds to prevent overflow
                 liq_safety_midpoint_pct = TradingConfig.LIQUIDATION_SAFETY_MIDPOINT_PCT  # 1.5% default
                 liq_safety_steepness = TradingConfig.LIQUIDATION_SAFETY_STEEPNESS  # Controls curve steepness
+                if liq_safety_steepness <= 0:
+                    raise ValueError(f"Invalid liq_safety_steepness: {liq_safety_steepness} - must be positive")
+                
                 liq_distance_normalized = (liq_distance_pct - liq_safety_midpoint_pct) * 100  # Convert to basis points
-                liquidation_safety = 100.0 / (1.0 + math.exp(-liq_safety_steepness * liq_distance_normalized))
-                liquidation_safety = max(0.0, min(100.0, liquidation_safety))
+                
+                # Clamp exponent to prevent overflow
+                # exp(-50) ≈ 1.9e-22 (effectively 0), exp(50) ≈ 5.2e+21 (would overflow)
+                exponent = -liq_safety_steepness * liq_distance_normalized
+                exponent = max(-50.0, min(50.0, exponent))  # Clamp to safe range
+                liquidation_safety = 100.0 / (1.0 + math.exp(exponent))
+                liquidation_safety = max(0.0, min(100.0, liquidation_safety))  # Clamp result to [0, 100]
                 
                 # 3. LEVEL STRENGTH SCORE (20% weight)
                 # Use level power directly (0-100 scale)
@@ -2542,13 +2811,30 @@ class PredictionEngine:
                 # Penalty: 0 at 1×ATR distance, 10 at current price
                 spread_penalty = min(10.0, max(0.0, (1.0 - distance_to_current_atr) * 10.0))
                 
-                # WEIGHTED COMBINED SCORE
+                # CRITICAL FIX: Normalize entry scoring weights to sum to 1.0
+                # Positive weights: 0.35 + 0.35 + 0.20 = 0.90
+                # Penalty weight: 0.10 (negative)
+                # Net sum: 0.80 (not normalized)
+                # Normalize positive weights to sum to 1.0, then subtract normalized penalty
+                POSITIVE_WEIGHT_SUM = 0.35 + 0.35 + 0.20  # 0.90
+                PENALTY_WEIGHT = 0.10
+                NORMALIZED_POSITIVE_SUM = 1.0  # Target sum for positive weights
+                
+                # Normalize each positive weight
+                fill_weight_norm = (0.35 / POSITIVE_WEIGHT_SUM) * NORMALIZED_POSITIVE_SUM
+                liq_weight_norm = (0.35 / POSITIVE_WEIGHT_SUM) * NORMALIZED_POSITIVE_SUM
+                level_weight_norm = (0.20 / POSITIVE_WEIGHT_SUM) * NORMALIZED_POSITIVE_SUM
+                penalty_weight_norm = (PENALTY_WEIGHT / POSITIVE_WEIGHT_SUM) * NORMALIZED_POSITIVE_SUM
+                
+                # WEIGHTED COMBINED SCORE (normalized to [0, 100] range)
                 combined_score = (
-                    fill_probability * 0.35 +
-                    liquidation_safety * 0.35 +
-                    level_strength * 0.20 -
-                    spread_penalty * 0.10
+                    fill_probability * fill_weight_norm +
+                    liquidation_safety * liq_weight_norm +
+                    level_strength * level_weight_norm -
+                    spread_penalty * penalty_weight_norm
                 )
+                # Clamp to reasonable range (penalty can make score slightly negative)
+                combined_score = max(0.0, min(100.0, combined_score))
                 
                 # Track best candidate
                 if combined_score > best_score:
@@ -2556,8 +2842,10 @@ class PredictionEngine:
                     best_candidate = candidate_price
                     
                     # Calculate distance metrics
-                    import time
-                    hours_since_touch = (time.time() - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else 0.0
+                    # CRITICAL FIX: Use unified_data timestamp (data timestamp), not time.time() (generation time)
+                    # This prevents lookahead bias in ML training - timestamp must match prediction timestamp
+                    current_timestamp = unified_data.get("timestamp", time.time())
+                    hours_since_touch = (current_timestamp - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else 0.0
                     distance_from_level_usd = abs(candidate_price - level_price)
                     distance_from_level_pct = distance_from_level_usd / current_price
                     
@@ -2579,9 +2867,57 @@ class PredictionEngine:
                         "setup_type": setup_type
                     }
             
+            # NO FALLBACKS - must always find best candidate
             if best_candidate is None:
-                logger.warning(f"⚠️ No suitable entry candidate found")
-                return None
+                raise ValueError(f"No suitable entry candidate found - system error: scoring loop must always find best candidate (NO FALLBACKS)")
+            
+            # Round number avoidance: nudge entry if too close to psychological level
+            # If abs(entry - nearest_psych_level) < ATR * 0.2, nudge by ATR * 0.25 away
+            original_entry = best_candidate
+            psych_nudge_applied = False
+            nudge_distance = atr_5m * 0.25  # ATR * 0.25
+            threshold_distance = atr_5m * 0.2  # ATR * 0.2
+            
+            # Find nearest psychological level
+            sr_data = unified_data.get("support_resistance", {})
+            all_levels = sr_data.get("levels", [])
+            psych_levels = [l for l in all_levels if l.get("source") == "psych"]
+            
+            if psych_levels:
+                nearest_psych = min(psych_levels, key=lambda l: abs(l["price_level"] - best_candidate))
+                distance_to_psych = abs(best_candidate - nearest_psych["price_level"])
+                
+                if distance_to_psych < threshold_distance:
+                    # Nudge away from psychological level
+                    if direction == "LONG":
+                        # For LONG: nudge down (away from psych level)
+                        best_candidate = best_candidate - nudge_distance
+                    else:  # SHORT
+                        # For SHORT: nudge up (away from psych level)
+                        best_candidate = best_candidate + nudge_distance
+                    
+                    # Validate nudge doesn't invalidate entry
+                    if direction == "LONG" and best_candidate >= current_price:
+                        best_candidate = original_entry  # Revert if invalid
+                    elif direction == "SHORT" and best_candidate <= current_price:
+                        best_candidate = original_entry  # Revert if invalid
+                    else:
+                        psych_nudge_applied = True
+                        logger.debug(f"🎯 Entry nudged away from psych level ${nearest_psych['price_level']:.2f}: ${original_entry:.2f} → ${best_candidate:.2f}")
+            
+            # Calculate distance to nearest psych level for ML features (exposed but not used yet)
+            entry_distance_to_nearest_psych_pct = None
+            if psych_levels:
+                nearest_psych = min(psych_levels, key=lambda l: abs(l["price_level"] - best_candidate))
+                entry_distance_to_nearest_psych_pct = abs(best_candidate - nearest_psych["price_level"]) / current_price if current_price > 0 else None
+            
+            # Update breakdown with final entry price and psych metrics
+            best_breakdown["entry_price"] = best_candidate
+            best_breakdown["offset_usd"] = abs(best_candidate - level_price)
+            best_breakdown["offset_pct"] = abs(best_candidate - level_price) / current_price * 100 if current_price > 0 else 0.0
+            best_breakdown["offset_atr"] = abs(best_candidate - level_price) / atr_5m if atr_5m > 0 else 0.0
+            best_breakdown["psych_nudge_applied"] = psych_nudge_applied
+            best_breakdown["entry_distance_to_nearest_psych_level_pct"] = entry_distance_to_nearest_psych_pct  # ML feature (exposed but not used)
             
             logger.debug(
                 f"✅ Entry selected: ${best_candidate:.2f} "
@@ -2599,7 +2935,8 @@ class PredictionEngine:
             
         except Exception as e:
             logger.error(f"❌ Optimal entry price determination failed: {e}")
-            return None
+            # NO FALLBACKS - entry price determination must succeed
+            raise
     
     def _calculate_stop_and_target(
         self,
@@ -2614,6 +2951,10 @@ class PredictionEngine:
         """
         Calculate sophisticated stop loss and take profit
         
+        CRITICAL: Stop/target calculation uses level_data and setup_type for S/R level
+        selection only (where to place stop), NOT for entry score usage. Stop placement
+        is based on S/R levels and ATR, independent of entry scoring.
+        
         Delegates to RiskManager module for all risk calculations.
         
         Args:
@@ -2621,8 +2962,8 @@ class PredictionEngine:
             direction: "LONG" or "SHORT"
             config: Strategy configuration
             unified_data: Complete market analysis data
-            level_data: Level metadata for the entry level (optional)
-            setup_type: "support_level" or "resistance_level" (optional)
+            level_data: Level metadata for the entry level (optional) - used for S/R level selection only
+            setup_type: "support_level" or "resistance_level" (optional) - used for S/R level selection only
             
         Returns:
             (stop_loss, take_profit, rr_ratio, stop_loss_pct, take_profit_pct) tuple
@@ -2725,8 +3066,12 @@ class PredictionEngine:
             
             # 2. Calculate unified stop loss (delegated to RiskManager)
             # Include leverage for liquidation price capping
+            # NO FALLBACKS - leverage must be in config or TradingConfig
             from config.config import TradingConfig
-            leverage = config["max_leverage"] if "max_leverage" in config else TradingConfig.LEVERAGE  # Strategy uses max_leverage
+            if "max_leverage" in config:
+                leverage = config["max_leverage"]
+            else:
+                leverage = TradingConfig.LEVERAGE  # Use default from TradingConfig (this is OK - it's a system default, not a fallback)
             
             stop_loss = RiskManager.calculate_stop_loss(
                 entry_price=entry_price,
@@ -2778,6 +3123,20 @@ class PredictionEngine:
             
             stop_loss_pct = (risk_distance / entry_price) * 100.0 if entry_price > 0 else 0.0
             take_profit_pct = (reward_distance / entry_price) * 100.0 if entry_price > 0 else 0.0
+            
+            # Calculate distance to nearest psych level for ML features (exposed but not used yet)
+            stop_distance_to_nearest_psych_pct = None
+            sr_data = unified_data.get("support_resistance", {})
+            all_levels = sr_data.get("levels", [])
+            psych_levels = [l for l in all_levels if l.get("source") == "psych"]
+            
+            if psych_levels and current_price > 0:
+                nearest_psych = min(psych_levels, key=lambda l: abs(l["price_level"] - stop_loss))
+                stop_distance_to_nearest_psych_pct = abs(stop_loss - nearest_psych["price_level"]) / current_price
+            
+            # Note: ML features (stop_distance_to_nearest_psych_pct, entry_distance_to_nearest_psych_pct)
+            # are calculated but not yet used in confidence/prediction
+            # They will be available in prediction breakdown for future ML training
             
             return stop_loss, take_profit, risk_reward_ratio, stop_loss_pct, take_profit_pct
             

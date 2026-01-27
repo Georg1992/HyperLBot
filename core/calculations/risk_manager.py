@@ -189,91 +189,14 @@ class RiskManager:
         
         logger.debug(f"🛡️ Liquidation check: liq=${liquidation_price:.2f}, final_stop=${stop_loss:.2f}")
         
-        # CRITICAL: Avoid placing stops at round numbers (ADDED 2026-01-12)
-        # Research: Stops cluster heavily at psychological levels ($90K, $95K, $100K)
-        # → Market makers actively hunt these clusters → liquidation cascade risk
-        # Solution: Small deterministic offset moves stop away from obvious levels
-        stop_loss = RiskManager._avoid_round_number_stop(stop_loss, direction, entry_price)
+        # REMOVED: Round number avoidance - artificial offset that modifies S/R-based stops
+        # Rationale: If S/R levels are at round numbers, that's where stops should be.
+        # Round number avoidance was an arbitrary manipulation that:
+        # - Changed risk/reward ratios
+        # - Created inconsistency for ML training
+        # - Fought against actual market structure
         
         return stop_loss
-    
-    @staticmethod
-    def _avoid_round_number_stop(stop_loss: float, direction: str, entry_price: float) -> float:
-        """
-        Avoid placing stops at round numbers to reduce stop hunting risk
-        
-        Research (BTC perp trading psychology 2025):
-        - Stops cluster at $1000 increments ($90K, $91K, $92K, etc)
-        - Major clusters at $5K increments ($90K, $95K, $100K, etc)
-        - Market makers actively hunt these obvious levels
-        - Small offset ($50-$150) significantly reduces hunt risk
-        
-        Strategy:
-        - Detect proximity to round $1000 or $5000 levels
-        - Apply deterministic offset AWAY from entry (safer than toward)
-        - Offset size: $50-$150 based on proximity
-        
-        Args:
-            stop_loss: Calculated stop loss price
-            direction: "LONG" or "SHORT"
-            entry_price: Entry price (for validation)
-            
-        Returns:
-            Adjusted stop loss avoiding round numbers
-        """
-        try:
-            # Round to nearest $1000
-            nearest_1k = round(stop_loss / 1000.0) * 1000.0
-            distance_to_1k = abs(stop_loss - nearest_1k)
-            
-            # Round to nearest $5000
-            nearest_5k = round(stop_loss / 5000.0) * 5000.0
-            distance_to_5k = abs(stop_loss - nearest_5k)
-            
-            # Check if stop is dangerously close to a round number
-            # Get round number thresholds from config (FIXED 2026-01-12)
-            from config.config import TradingConfig
-            rn_config = TradingConfig.ROUND_NUMBER_CONFIG
-            
-            # Check proximity to round numbers
-            if distance_to_5k < rn_config["major_threshold_usd"]:
-                # Major round number detected ($90K, $95K, etc)
-                offset = rn_config["major_offset_usd"]
-                round_level = nearest_5k
-                logger.debug(f"⚠️ Stop at ${stop_loss:.2f} too close to major round number ${round_level:.0f} (${distance_to_5k:.0f} away)")
-            elif distance_to_1k < rn_config["minor_threshold_usd"]:
-                # Minor round number detected ($91K, $92K, etc)
-                offset = rn_config["minor_offset_usd"]
-                round_level = nearest_1k
-                logger.debug(f"⚠️ Stop at ${stop_loss:.2f} too close to round number ${round_level:.0f} (${distance_to_1k:.0f} away)")
-            else:
-                # Stop is safe distance from round numbers
-                return stop_loss
-            
-            # Apply offset AWAY from entry (safer direction)
-            # For LONG: stop is below entry, offset DOWN (away from entry)
-            # For SHORT: stop is above entry, offset UP (away from entry)
-            if direction == "LONG":
-                adjusted_stop = stop_loss - offset
-            else:  # SHORT
-                adjusted_stop = stop_loss + offset
-            
-            # Validate adjusted stop is still on correct side of entry
-            if direction == "LONG" and adjusted_stop >= entry_price:
-                logger.warning(f"⚠️ Round number offset would invalidate LONG stop (${adjusted_stop:.2f} >= entry ${entry_price:.2f}), using original")
-                return stop_loss
-            elif direction == "SHORT" and adjusted_stop <= entry_price:
-                logger.warning(f"⚠️ Round number offset would invalidate SHORT stop (${adjusted_stop:.2f} <= entry ${entry_price:.2f}), using original")
-                return stop_loss
-            
-            logger.info(f"🎯 Stop adjusted to avoid round number: ${stop_loss:.2f} → ${adjusted_stop:.2f} (offset ${offset:.0f}, away from ${round_level:.0f})")
-            return adjusted_stop
-            
-        except (ValueError, TypeError, ZeroDivisionError) as e:
-            # Only catch specific calculation errors
-            # Re-raise to maintain NO FALLBACKS policy
-            logger.error(f"❌ Round number avoidance calculation error: {e}")
-            raise ValueError(f"Round number avoidance failed: {e} (NO FALLBACKS)")
     
     @staticmethod
     def calculate_take_profit(

@@ -924,9 +924,34 @@ class SupportResistanceCalculator(BaseCalculator):
             # Get state summary for metadata
             state_summary = self._state.get_state_summary()
             
+            # Generate and merge psychological levels
+            from .psychological_level_generator import PsychologicalLevelGenerator
+            psych_levels = PsychologicalLevelGenerator.generate_levels(current_price)
+            
+            # Set ATR percentage for psych levels
+            for psych_level in psych_levels:
+                psych_level["atr_pct"] = atr_pct
+            
+            # Merge psych levels into key_levels (append, don't replace)
+            # Deduplicate: if psych level is within tolerance of existing level, keep existing (higher power)
+            tolerance = atr_14 * 0.1  # 10% of ATR for deduplication
+            for psych_level in psych_levels:
+                is_duplicate = False
+                for existing_level in key_levels:
+                    if abs(psych_level["price_level"] - existing_level["price_level"]) <= tolerance:
+                        # Existing level takes precedence (it has real market data)
+                        is_duplicate = True
+                        break
+                
+                if not is_duplicate:
+                    key_levels.append(psych_level)
+            
+            # Re-sort by power after merging
+            key_levels.sort(key=lambda x: (x["power"] if "power" in x and x["power"] is not None else (x["strength_score"] if "strength_score" in x and x["strength_score"] is not None else 0)), reverse=True)
+            
             result = {
                 "status": "ok",
-                "levels": key_levels,  # All swing-based S/R levels (modules filter as needed)
+                "levels": key_levels,  # All S/R levels (swing-based + psychological)
                 "metadata": {
                     "timestamp": current_time,
                     "symbol": self.symbol,

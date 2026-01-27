@@ -56,17 +56,23 @@ class CandleStorage:
         """
         Context manager for database connections - ensures proper cleanup
         
+        CRITICAL FIX: Proper transaction management with rollback on errors.
+        Only commits if no exception occurred.
+        
         Usage:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
                 # ... operations ...
-                conn.commit()  # Auto-commits and closes on exit
+                # Auto-commits on successful exit, rolls back on exception
         """
         conn = None
         try:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row  # Enable dict-like row access
+            # Enable WAL mode for better concurrency (fixes issue #5)
+            conn.execute("PRAGMA journal_mode=WAL;")
             yield conn
+            # Only commit if no exception occurred
             conn.commit()
         except Exception as e:
             if conn:
@@ -77,10 +83,24 @@ class CandleStorage:
                 conn.close()
     
     def _init_database(self):
-        """Initialize SQLite database with schema"""
+        """
+        Initialize SQLite database with schema
+        
+        CRITICAL FIX: Enables WAL mode for better concurrency (fixes issue #5).
+        WAL mode allows concurrent reads while writes are in progress.
+        """
         try:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
+                
+                # CRITICAL: Enable WAL mode for better concurrency
+                # This allows concurrent reads while writes are in progress
+                # Fixes the blocking issue where ML training was disabled
+                cursor.execute("PRAGMA journal_mode=WAL;")
+                # Set synchronous mode to NORMAL for better performance with WAL
+                cursor.execute("PRAGMA synchronous=NORMAL;")
+                # Increase cache size for better performance
+                cursor.execute("PRAGMA cache_size=-64000;")  # 64MB cache
                 
                 # Create candles table
                 cursor.execute("""
@@ -110,6 +130,8 @@ class CandleStorage:
                     CREATE INDEX IF NOT EXISTS idx_high 
                     ON candles_5m(high)
                 """)
+                
+                logger.info("✅ Database initialized with WAL mode (concurrent read/write enabled)")
             
         except Exception as e:
             logger.error(f"❌ Failed to initialize candle storage database: {e}")
@@ -163,6 +185,9 @@ class CandleStorage:
         """
         Insert candles into database (with conflict handling - replace if exists)
         
+        CRITICAL FIX: Uses explicit transaction for atomic batch operations.
+        All candles are inserted atomically - if any fails, entire batch is rolled back.
+        
         Args:
             candles: List of candle dictionaries with timestamp, open, high, low, close, volume
             
@@ -177,22 +202,36 @@ class CandleStorage:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
                     
-                    for candle in candles:
-                        cursor.execute("""
-                            INSERT OR REPLACE INTO candles_5m 
-                            (timestamp, open, high, low, close, volume, trades_count)
-                            VALUES (?, ?, ?, ?, ?, ?, ?)
-                        """, (
-                            candle['timestamp'] if 'timestamp' in candle else 0,
-                            candle['open'] if 'open' in candle else 0,
-                            candle['high'] if 'high' in candle else 0,
-                            candle['low'] if 'low' in candle else 0,
-                            candle['close'] if 'close' in candle else 0,
-                            candle['volume'] if 'volume' in candle else 0,
-                            candle['trades_count'] if 'trades_count' in candle else 0
-                        ))
-                
-                logger.debug(f"💾 Inserted {len(candles)} candles into storage")
+                    # CRITICAL: Begin explicit transaction for atomic batch insert
+                    # This ensures all candles are inserted atomically
+                    # If any candle insert fails, entire batch is rolled back
+                    cursor.execute("BEGIN TRANSACTION")
+                    
+                    try:
+                        for candle in candles:
+                            cursor.execute("""
+                                INSERT OR REPLACE INTO candles_5m 
+                                (timestamp, open, high, low, close, volume, trades_count)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                candle['timestamp'] if 'timestamp' in candle else 0,
+                                candle['open'] if 'open' in candle else 0,
+                                candle['high'] if 'high' in candle else 0,
+                                candle['low'] if 'low' in candle else 0,
+                                candle['close'] if 'close' in candle else 0,
+                                candle['volume'] if 'volume' in candle else 0,
+                                candle['trades_count'] if 'trades_count' in candle else 0
+                            ))
+                        
+                        # Commit transaction only after all inserts succeed
+                        conn.commit()
+                        logger.debug(f"💾 Inserted {len(candles)} candles into storage (atomic transaction)")
+                        
+                    except Exception as e:
+                        # Rollback transaction on any error
+                        conn.rollback()
+                        logger.error(f"❌ Failed to insert candles batch - transaction rolled back: {e}")
+                        raise
                 
             except Exception as e:
                 logger.error(f"❌ Failed to insert candles: {e}")

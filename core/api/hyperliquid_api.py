@@ -27,7 +27,12 @@ class HyperliquidAPI:
             self._authenticate()
     
     def _authenticate(self):
-        """Authenticate with Hyperliquid API using wallet"""
+        """
+        Authenticate with Hyperliquid API using wallet
+        
+        CRITICAL FIX #4: Security - Never log wallet addresses or private keys.
+        Logging sensitive data is a security vulnerability.
+        """
         try:
             # Skip if already authenticated
             if self._authenticated:
@@ -35,14 +40,28 @@ class HyperliquidAPI:
                 
             # For wallet-based authentication, we use the wallet address directly
             # No additional headers needed for basic info requests
-            logger.debug("Using wallet-based authentication")
-            logger.debug(f"Wallet address: {self.wallet_address}")
+            
+            # CRITICAL FIX #4: Never log wallet addresses or private keys
+            # Only log that authentication is being attempted (without sensitive data)
+            if self.wallet_address:
+                # Log only a masked version for debugging (first 6, last 4 chars)
+                masked_address = f"{self.wallet_address[:6]}...{self.wallet_address[-4:]}" if len(self.wallet_address) > 10 else "***"
+                logger.debug(f"Using wallet-based authentication (address: {masked_address})")
+            else:
+                logger.debug("Using wallet-based authentication (no wallet address provided)")
+            
+            # CRITICAL: Never log private key, even in debug mode
+            if self.wallet_private_key:
+                logger.debug("Private key provided (not logged for security)")
+            else:
+                logger.debug("No private key provided")
             
             # Mark as authenticated
             self._authenticated = True
             
         except Exception as e:
-            logger.error(f"Authentication failed: {e}")
+            # CRITICAL: Don't include sensitive data in error messages
+            logger.error(f"Authentication failed: {str(e)}")
             raise
 
     # ==================================================================================

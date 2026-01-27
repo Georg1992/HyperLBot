@@ -614,37 +614,6 @@ class SRScorer:
             logger.error(f"❌ Recency score calculation failed: {e}")
             return 50.0  # Default to neutral score on error
     
-    def _check_psychological_confluence(self, level_price: float) -> float:
-        """
-        Check if level aligns with major psychological round number
-        
-        Simple confluence check: If real S/R level is within $200 of major round number
-        ($10K intervals), give it a small power boost.
-        
-        Args:
-            level_price: Level price to check
-            
-        Returns:
-            Power boost (0-5 points)
-        """
-        try:
-            # Find nearest major round number ($10K intervals: $90K, $100K, $110K, etc.)
-            nearest_major = round(level_price / 10000) * 10000
-            distance = abs(level_price - nearest_major)
-            
-            # If within $200 of major psychological level, boost power
-            if distance < 200:
-                # Boost: 5 points at exact match, 0 points at $200 distance
-                # Linear decay: boost = 5 * (1 - distance/200)
-                boost = 5.0 * (1.0 - distance / 200.0)
-                return max(0.0, min(5.0, boost))
-            
-            return 0.0
-            
-        except Exception as e:
-            logger.error(f"❌ Psychological confluence check failed: {e}")
-            return 0.0
-    
     def _calculate_power_weighted(self, touch_score: float, reversal_probability: float,
                                  volume_score: float, level_price: float = 0.0) -> float:
         """
@@ -682,11 +651,11 @@ class SRScorer:
                 logger.warning(f"⚠️ Power out of range: {normalized_power}")
                 normalized_power = max(0.0, min(100.0, normalized_power))
             
-            # Add psychological confluence bonus (0-5 points)
-            if level_price > 0:
-                psych_boost = self._check_psychological_confluence(level_price)
-                if psych_boost > 0:
-                    normalized_power = min(100.0, normalized_power + psych_boost)
+            # REMOVED: Psychological confluence bonus - arbitrary assumption
+            # Rationale: If S/R level is calculated from market structure, it doesn't need
+            # a bonus just because it happens to be near a round number. Round numbers are
+            # only relevant if they're actual S/R levels (which would be detected by the
+            # S/R calculation itself, not by an arbitrary bonus).
             
             return normalized_power
             

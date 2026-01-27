@@ -510,6 +510,19 @@ class SessionOrchestrator:
                     current_time = time.time()
                     current_5m_start = TimeUtils.get_5m_candle_start_time()
                     
+                    # CRITICAL FIX: Add buffer to prevent race conditions during candle boundary transitions
+                    # Don't process if we're within 2 seconds of a boundary (candle might be incomplete)
+                    # This prevents using incomplete candle data during the transition window
+                    BOUNDARY_BUFFER_SECONDS = 2.0
+                    seconds_into_candle = current_time - current_5m_start
+                    is_near_boundary = seconds_into_candle < BOUNDARY_BUFFER_SECONDS or seconds_into_candle > (300 - BOUNDARY_BUFFER_SECONDS)
+                    
+                    if is_near_boundary:
+                        # Skip this iteration if too close to boundary (prevent race condition)
+                        logger.debug(f"⏸️ Near candle boundary ({(current_time - current_5m_start):.1f}s into candle) - skipping to prevent race condition")
+                        time.sleep(1)  # Wait 1 second before retry
+                        continue
+                    
                     # Handle candle boundary detection and cache invalidation
                     last_candle_update_time = self._handle_candle_boundary(
                         current_time, current_5m_start, last_candle_update_time, market_data_service
@@ -646,26 +659,56 @@ class SessionOrchestrator:
         return modules_to_update
     
     def _has_orderbook_changed(self, orderbook_data: Dict[str, Any]) -> bool:
-        """Check if orderbook data has changed significantly"""
-        # Validate orderbook data structure (Hyperliquid format: levels[0]=bids, levels[1]=asks)
+        """
+        Check if orderbook data has changed significantly
+        
+        CRITICAL FIX #6: Comprehensive validation of orderbook structure before access.
+        Prevents IndexError and TypeError crashes on malformed data.
+        """
+        # CRITICAL FIX #6: Comprehensive validation of orderbook structure
         if 'levels' not in orderbook_data:
             raise ValueError(f"Invalid orderbook data structure - missing 'levels'. Keys: {list(orderbook_data.keys())}")
         
         levels = orderbook_data['levels']
-        if not isinstance(levels, list) or len(levels) < 2:
-            raise ValueError(f"Invalid orderbook levels structure - expected list with 2 elements (bids, asks)")
+        if not isinstance(levels, list):
+            raise ValueError(f"Invalid orderbook levels structure - 'levels' must be a list, got {type(levels).__name__}")
+        
+        if len(levels) < 2:
+            raise ValueError(f"Invalid orderbook levels structure - expected list with 2 elements (bids, asks), got {len(levels)} elements")
+        
+        # CRITICAL FIX #6: Validate that levels[0] and levels[1] are lists (not None or other types)
+        if levels[0] is None:
+            raise ValueError("Invalid orderbook structure - levels[0] (bids) is None")
+        if levels[1] is None:
+            raise ValueError("Invalid orderbook structure - levels[1] (asks) is None")
+        
+        if not isinstance(levels[0], list):
+            raise ValueError(f"Invalid orderbook structure - levels[0] (bids) must be a list, got {type(levels[0]).__name__}")
+        if not isinstance(levels[1], list):
+            raise ValueError(f"Invalid orderbook structure - levels[1] (asks) must be a list, got {type(levels[1]).__name__}")
         
         if self._last_orderbook is None:
             self._last_orderbook = orderbook_data
             return True
         
+        # CRITICAL FIX #6: Validate last_orderbook structure before accessing
+        if 'levels' not in self._last_orderbook:
+            raise ValueError(f"Invalid last_orderbook structure - missing 'levels'. Keys: {list(self._last_orderbook.keys())}")
+        
+        last_levels = self._last_orderbook['levels']
+        if not isinstance(last_levels, list) or len(last_levels) < 2:
+            raise ValueError(f"Invalid last_orderbook levels structure - expected list with 2 elements, got {type(last_levels).__name__} with {len(last_levels) if isinstance(last_levels, list) else 0} elements")
+        
+        if not isinstance(last_levels[0], list) or not isinstance(last_levels[1], list):
+            raise ValueError(f"Invalid last_orderbook structure - levels[0] and levels[1] must be lists")
+        
         # Simple comparison - could be enhanced with more sophisticated change detection
         # Hyperliquid format: levels[0] = bids, levels[1] = asks
-        current_bids = levels[0]  # Required (NO FALLBACKS)
-        current_asks = levels[1]  # Required (NO FALLBACKS)
-        last_levels = self._last_orderbook['levels']
-        last_bids = last_levels[0]  # Required (NO FALLBACKS)
-        last_asks = last_levels[1]  # Required (NO FALLBACKS)
+        # Now safe to access after validation
+        current_bids = levels[0]  # Required (NO FALLBACKS) - validated above
+        current_asks = levels[1]  # Required (NO FALLBACKS) - validated above
+        last_bids = last_levels[0]  # Required (NO FALLBACKS) - validated above
+        last_asks = last_levels[1]  # Required (NO FALLBACKS) - validated above
         
         # Check if bid/ask levels have changed
         if current_bids != last_bids or current_asks != last_asks:
