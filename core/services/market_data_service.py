@@ -97,6 +97,21 @@ class MarketDataService:
     # ANALYSIS MODULE COORDINATION - Register and manage analysis modules
     # ==================================================================================
     
+    def update_pressure_strategy(self, strategy: str) -> None:
+        """
+        Update pressure calculator strategy for adaptive EMA smoothing
+        
+        Args:
+            strategy: Current trading strategy
+        """
+        try:
+            if "pressure" in self._analysis_modules:
+                pressure_calculator = self._analysis_modules["pressure"]
+                if pressure_calculator and hasattr(pressure_calculator, 'update_strategy'):
+                    pressure_calculator.update_strategy(strategy)
+        except Exception as e:
+            logger.debug(f"⚠️ Failed to update pressure strategy: {e}")
+    
     def register_analysis_module(self, module_name: str, module_instance: Any) -> None:
         """Register an analysis module for data coordination"""
         self._analysis_modules[module_name] = module_instance
@@ -623,8 +638,16 @@ class MarketDataService:
             if pressure_calculator is None:
                 raise ValueError("Pressure calculator module is None - module initialization failed")
             
+            # Get unified_data from cache for dynamic thresholds (if available)
+            unified_data = None
+            try:
+                unified_data = self._cache.get("unified_analysis_data") if self._cache else None
+            except:
+                pass  # Unified data not available - use static thresholds
+            
             # get_latest_analysis() guarantees valid dict or raises (NO FALLBACKS)
-            pressure_result = pressure_calculator.get_latest_analysis()
+            # Pass unified_data for dynamic thresholds
+            pressure_result = pressure_calculator.get_latest_analysis(unified_data=unified_data)
             
             # Store result for future use
             self.update_analysis_data("pressure", pressure_result)

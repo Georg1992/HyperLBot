@@ -229,13 +229,7 @@ SQLite storage for 5-minute candles:
 
 ## Documentation
 
-- **[Architecture & Workflow](BOT_WORKFLOW_AND_ARCHITECTURE.md)** - System architecture and data flow
-- **[ML Integration Evaluation](ML_INTEGRATION_EVALUATION.md)** - ML readiness assessment
-- **[ML Readiness Summary](ML_READINESS_SUMMARY.md)** - ML integration status
-- **[Strategy Tie-Breaking](STRATEGY_TIE_BREAKING_FIX.md)** - Implementation details
-- **[Config & Dead Code Audit](CONFIG_AND_DEAD_CODE_AUDIT.md)** - Code quality report
-
-Reference documentation in `.ai/` directory.
+Architecture, data flow, and design principles are described in the [Architecture](#architecture) section above.
 
 ---
 

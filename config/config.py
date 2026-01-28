@@ -110,6 +110,19 @@ class TradingConfig:
     LIQUIDATION_SAFETY_MIDPOINT_PCT = 0.015  # 1.5% - inflection point for sigmoid curve
     LIQUIDATION_SAFETY_STEEPNESS = 0.1  # Controls sigmoid curve steepness (higher = steeper)
     
+    # Fill Probability Configuration
+    FILL_PROBABILITY_MIN = 5.0  # Minimum fill probability (clamped lower bound)
+    FILL_PROBABILITY_MAX = 100.0  # Maximum fill probability (clamped upper bound)
+    FILL_PROBABILITY_LIQUIDITY_BOOST_MAX = 15.0  # Maximum boost from orderbook liquidity (percentage points)
+    
+    # Fill Probability Sanity Caps (to prevent optimistic bias for far entries)
+    FILL_PROBABILITY_CAP_AT_0_5_ATR = 95.0  # Maximum fill probability at <= 0.5×ATR distance
+    FILL_PROBABILITY_CAP_AT_2_0_ATR = 50.0  # Maximum fill probability at >= 2.0×ATR distance
+    FILL_PROBABILITY_CAP_AT_3_0_ATR = 30.0  # Maximum fill probability at >= 3.0×ATR distance
+    
+    # Direction Tie-Breaking Configuration
+    DIRECTION_TIE_BREAK_TREND_STRENGTH_THRESHOLD = 0.5  # Minimum trend strength for tie-breaking (0-1.0)
+    
     # Entry Scoring Configuration (Improved 2026-01-27, Optimized 2026-01-27)
     # Rebalanced to allow strong far levels to compete with weak close levels
     ENTRY_SCORING_WEIGHTS = {
@@ -123,6 +136,7 @@ class TradingConfig:
     LEVEL_STRENGTH_DECAY_FACTOR = 2.5  # At 2.5×ATR, strength decays to ~37% (exp(-1))
     
     # Spread penalty configuration (non-linear for close entries)
+    SPREAD_PENALTY_BASE = 10.0                  # Base spread penalty value
     SPREAD_PENALTY_CLOSE_THRESHOLD_ATR = 0.5  # Switch to exponential below this distance
     SPREAD_PENALTY_EXPONENTIAL_BOOST = 5.0     # Additional penalty boost for very close entries
     SPREAD_PENALTY_EXPONENTIAL_DECAY = 0.15   # Exponential decay factor
@@ -359,14 +373,13 @@ class TradingConfig:
         "stop_loss": 0.010,  # Not used (analysis only)
         "position_size": 0.0,  # Not used (analysis only)
         "direction_weights": {
-            "trend": 0.20,
-            "rsi": 0.19,
-            "pressure": 0.17,
-            "sr_proximity": 0.14,
-            "patterns": 0.10,
-            "volume": 0.05,
-            "market_conditions": 0.08,
-            "cross_asset": 0.07
+            "trend": 0.233,      # 0.20 + (0.20/0.86 * 0.14) - redistributed from sr_proximity
+            "rsi": 0.221,        # 0.19 + (0.19/0.86 * 0.14)
+            "pressure": 0.198,   # 0.17 + (0.17/0.86 * 0.14)
+            "patterns": 0.116,   # 0.10 + (0.10/0.86 * 0.14)
+            "volume": 0.058,    # 0.05 + (0.05/0.86 * 0.14)
+            "market_conditions": 0.093,  # 0.08 + (0.08/0.86 * 0.14)
+            "cross_asset": 0.081  # 0.07 + (0.07/0.86 * 0.14)
         },
         "min_score_diff": 0.0,  # No filtering during analysis
         # Comprehensive proximity/recency - accept all levels
@@ -403,14 +416,13 @@ class TradingConfig:
         "stop_loss": 0.008,  # 0.8% stop loss (adjusted for 40x leverage - too tight stops get hit by normal volatility)
         "position_size": 0.1,  # 10% of balance
         "direction_weights": {
-            "trend": 0.24,
-            "rsi": 0.20,
-            "pressure": 0.17,
-            "sr_proximity": 0.13,
-            "patterns": 0.07,
-            "volume": 0.04,
-            "market_conditions": 0.08,
-            "cross_asset": 0.07
+            "trend": 0.276,      # 0.24 + (0.24/0.87 * 0.13) - redistributed from sr_proximity
+            "rsi": 0.230,       # 0.20 + (0.20/0.87 * 0.13)
+            "pressure": 0.195,  # 0.17 + (0.17/0.87 * 0.13)
+            "patterns": 0.080,  # 0.07 + (0.07/0.87 * 0.13)
+            "volume": 0.046,    # 0.04 + (0.04/0.87 * 0.13)
+            "market_conditions": 0.092,  # 0.08 + (0.08/0.87 * 0.13)
+            "cross_asset": 0.081  # 0.07 + (0.07/0.87 * 0.13)
         },
         "min_score_diff": 10.0,  # Minimum score difference to make direction decision
         # Proximity/Recency configuration for contextual factors
@@ -453,14 +465,13 @@ class TradingConfig:
         "support_resistance_required": True,
         "description": "General range trading strategy for sideways markets",
         "direction_weights": {
-            "rsi": 0.32,
-            "pressure": 0.21,
-            "sr_proximity": 0.17,
-            "trend": 0.09,
-            "patterns": 0.04,
-            "volume": 0.02,
-            "market_conditions": 0.08,
-            "cross_asset": 0.07
+            "rsi": 0.386,       # 0.32 + (0.32/0.83 * 0.17) - redistributed from sr_proximity
+            "pressure": 0.253,  # 0.21 + (0.21/0.83 * 0.17)
+            "trend": 0.108,     # 0.09 + (0.09/0.83 * 0.17)
+            "patterns": 0.048,  # 0.04 + (0.04/0.83 * 0.17)
+            "volume": 0.024,   # 0.02 + (0.02/0.83 * 0.17)
+            "market_conditions": 0.096,  # 0.08 + (0.08/0.83 * 0.17)
+            "cross_asset": 0.085  # 0.07 + (0.07/0.83 * 0.17)
         },
         "min_score_diff": 15.0,  # Raised from 12.0 - need clear directional edge for lower R:R (1.2)
         "proximity_config": {
@@ -498,14 +509,13 @@ class TradingConfig:
         "breakout_threshold": 0.003,  # 0.3% minimum breakout from S/R levels
         "description": "Breakout strategy for extreme volatility markets",
         "direction_weights": {
-            "volume": 0.27,
-            "patterns": 0.24,
-            "trend": 0.15,
-            "sr_proximity": 0.10,
-            "pressure": 0.07,
-            "rsi": 0.02,
-            "market_conditions": 0.08,
-            "cross_asset": 0.07
+            "volume": 0.300,    # 0.27 + (0.27/0.90 * 0.10) - redistributed from sr_proximity
+            "patterns": 0.267,  # 0.24 + (0.24/0.90 * 0.10)
+            "trend": 0.167,    # 0.15 + (0.15/0.90 * 0.10)
+            "pressure": 0.078,  # 0.07 + (0.07/0.90 * 0.10)
+            "rsi": 0.022,      # 0.02 + (0.02/0.90 * 0.10)
+            "market_conditions": 0.089,  # 0.08 + (0.08/0.90 * 0.10)
+            "cross_asset": 0.077  # 0.07 + (0.07/0.90 * 0.10) - adjusted for exact sum
         },
         "min_score_diff": 10.0,
         "proximity_config": {
@@ -547,14 +557,13 @@ class TradingConfig:
         "support_resistance_required": True,
         "description": "Optimized for LOW and VERY_LOW volatility conditions with range detection",
         "direction_weights": {
-            "rsi": 0.34,
-            "pressure": 0.24,
-            "sr_proximity": 0.19,
-            "trend": 0.05,
-            "patterns": 0.03,
-            "volume": 0.01,
-            "market_conditions": 0.08,
-            "cross_asset": 0.06
+            "rsi": 0.420,       # 0.34 + (0.34/0.81 * 0.19) - redistributed from sr_proximity
+            "pressure": 0.296,  # 0.24 + (0.24/0.81 * 0.19)
+            "trend": 0.062,    # 0.05 + (0.05/0.81 * 0.19)
+            "patterns": 0.037, # 0.03 + (0.03/0.81 * 0.19)
+            "volume": 0.012,   # 0.01 + (0.01/0.81 * 0.19)
+            "market_conditions": 0.099,  # 0.08 + (0.08/0.81 * 0.19)
+            "cross_asset": 0.074  # 0.06 + (0.06/0.81 * 0.19)
         },
         "min_score_diff": 15.0,  # Raised from 10.0 - need clearer directional edge for lower R:R (1.2)
         "proximity_config": {
@@ -589,14 +598,13 @@ class TradingConfig:
         "stop_loss": 0.013,  # 1.3% stop loss (adjusted for 40x leverage and high volatility)
         "position_size": 0.10,  # 10% of balance (adjusted for 40x)
         "direction_weights": {
-            "trend": 0.27,
-            "pressure": 0.24,
-            "volume": 0.17,
-            "sr_proximity": 0.09,
-            "rsi": 0.07,
-            "patterns": 0.02,
-            "market_conditions": 0.08,
-            "cross_asset": 0.06
+            "trend": 0.297,    # 0.27 + (0.27/0.91 * 0.09) - redistributed from sr_proximity
+            "pressure": 0.264,  # 0.24 + (0.24/0.91 * 0.09)
+            "volume": 0.187,   # 0.17 + (0.17/0.91 * 0.09)
+            "rsi": 0.077,     # 0.07 + (0.07/0.91 * 0.09)
+            "patterns": 0.022, # 0.02 + (0.02/0.91 * 0.09)
+            "market_conditions": 0.088,  # 0.08 + (0.08/0.91 * 0.09)
+            "cross_asset": 0.065  # 0.06 + (0.06/0.91 * 0.09) - adjusted for exact sum
         },
         "min_score_diff": 12.0,
         "proximity_config": {
@@ -634,14 +642,13 @@ class TradingConfig:
         "min_spike_severity": "HIGH",
         "require_momentum_alignment": True,
         "direction_weights": {
-            "volume": 0.36,
-            "pressure": 0.30,
-            "sr_proximity": 0.10,
-            "trend": 0.05,
-            "rsi": 0.03,
-            "patterns": 0.02,
-            "market_conditions": 0.08,
-            "cross_asset": 0.06
+            "volume": 0.400,   # 0.36 + (0.36/0.90 * 0.10) - redistributed from sr_proximity
+            "pressure": 0.333, # 0.30 + (0.30/0.90 * 0.10)
+            "trend": 0.056,   # 0.05 + (0.05/0.90 * 0.10)
+            "rsi": 0.033,     # 0.03 + (0.03/0.90 * 0.10)
+            "patterns": 0.022, # 0.02 + (0.02/0.90 * 0.10)
+            "market_conditions": 0.089,  # 0.08 + (0.08/0.90 * 0.10)
+            "cross_asset": 0.067  # 0.06 + (0.06/0.90 * 0.10)
         },
         "min_score_diff": 20.0,  # Very high threshold - need extreme signals
         "proximity_config": {
@@ -680,14 +687,13 @@ class TradingConfig:
         "momentum_alignment_required": True,
         "description": "Optimized for strong trending markets with momentum confirmation",
         "direction_weights": {
-            "trend": 0.43,
-            "rsi": 0.15,
-            "pressure": 0.12,
-            "sr_proximity": 0.09,
-            "volume": 0.04,
-            "patterns": 0.03,
-            "market_conditions": 0.08,
-            "cross_asset": 0.06
+            "trend": 0.472,    # 0.43 + (0.43/0.91 * 0.09) - redistributed from sr_proximity
+            "rsi": 0.165,      # 0.15 + (0.15/0.91 * 0.09)
+            "pressure": 0.132, # 0.12 + (0.12/0.91 * 0.09)
+            "volume": 0.044,  # 0.04 + (0.04/0.91 * 0.09)
+            "patterns": 0.033, # 0.03 + (0.03/0.91 * 0.09)
+            "market_conditions": 0.088,  # 0.08 + (0.08/0.91 * 0.09)
+            "cross_asset": 0.066  # 0.06 + (0.06/0.91 * 0.09) - adjusted for exact sum
         },
         "min_score_diff": 15.0,  # Higher threshold - need strong trend confirmation
         "proximity_config": {
@@ -729,14 +735,13 @@ class TradingConfig:
         "spread_threshold": 0.0001,  # Max spread of 0.01%
         "description": "High-frequency scalping for small, quick profits with tight risk management",
         "direction_weights": {
-            "rsi": 0.31,
-            "pressure": 0.31,
-            "sr_proximity": 0.14,
-            "trend": 0.07,
-            "patterns": 0.03,
-            "volume": 0.01,
-            "market_conditions": 0.08,
-            "cross_asset": 0.05
+            "rsi": 0.361,      # 0.31 + (0.31/0.86 * 0.14) - redistributed from sr_proximity
+            "pressure": 0.361, # 0.31 + (0.31/0.86 * 0.14)
+            "trend": 0.081,    # 0.07 + (0.07/0.86 * 0.14)
+            "patterns": 0.035, # 0.03 + (0.03/0.86 * 0.14)
+            "volume": 0.012,   # 0.01 + (0.01/0.86 * 0.14)
+            "market_conditions": 0.093,  # 0.08 + (0.08/0.86 * 0.14)
+            "cross_asset": 0.057  # 0.05 + (0.05/0.86 * 0.14) - adjusted for exact sum
         },
         "min_score_diff": 8.0,  # Lower threshold for faster decisions
         "proximity_config": {
@@ -796,7 +801,45 @@ class TradingConfig:
     SR_STRENGTH_MONTHLY = 100.0  # Monthly peaks are maximum strength (major monthly extremes)
     
     # Pressure Calculation Parameters
-    PRESSURE_EMA_ALPHA = 0.4  # EMA smoothing factor (α = 2/(N+1) where N=4 → α=0.4 for ~4-period EMA)
+    # Pressure Calculation Configuration - Improved for reliability and noise reduction
+    PRESSURE_EMA_ALPHA = 0.4  # Default EMA smoothing factor (α = 2/(N+1) where N=4 → α=0.4 for ~4-period EMA)
+    
+    # Adaptive EMA smoothing per strategy (faster for scalping, slower for trend-following)
+    PRESSURE_EMA_ALPHA_BY_STRATEGY = {
+        "scalping": 0.5,              # Faster (α=0.5 = ~3-period EMA) - needs real-time signals
+        "high_volatility": 0.5,       # Faster - volatile markets need quick adaptation
+        "spike_hunting": 0.45,        # Slightly faster - catch spikes quickly
+        "breakout": 0.45,             # Slightly faster - momentum-driven
+        "standard": 0.4,              # Default - balanced
+        "range_trading": 0.35,        # Slower - range markets need stability
+        "low_volatility_range": 0.35, # Slower - low vol needs more smoothing
+        "trend_following": 0.3,       # Slowest (α=0.3 = ~6-period EMA) - trend needs stability
+        "comprehensive_analysis": 0.4  # Default
+    }
+    
+    # Minimum depth filter - ignore thin orderbooks (prevents noise from low liquidity)
+    PRESSURE_MIN_DEPTH_THRESHOLD = 5.0  # Minimum total_depth_10 in BTC (configurable)
+    PRESSURE_MIN_DEPTH_ENABLED = True    # Enable/disable minimum depth filter
+    
+    # Dynamic threshold configuration
+    PRESSURE_DYNAMIC_THRESHOLDS_ENABLED = True  # Enable dynamic thresholds based on volatility/depth
+    PRESSURE_BASE_STRONG_THRESHOLD = 0.4       # Base strong threshold (40%)
+    PRESSURE_BASE_MODERATE_THRESHOLD = 0.2      # Base moderate threshold (20%)
+    PRESSURE_VOLATILITY_ADJUSTMENT_FACTOR = 0.1 # How much volatility affects thresholds (10% per 1% vol)
+    PRESSURE_DEPTH_ADJUSTMENT_FACTOR = 0.05     # How much depth affects thresholds (5% per 10 BTC depth)
+    PRESSURE_THRESHOLD_MIN = 0.15               # Minimum threshold (15% - prevents too sensitive)
+    PRESSURE_THRESHOLD_MAX = 0.6                 # Maximum threshold (60% - prevents too insensitive)
+    
+    # Depth concentration protection against manipulation/spoofing
+    PRESSURE_DEPTH_CONCENTRATION_MAX_BOOST = 1.15  # Maximum 15% boost (was 1.2 = 20%)
+    PRESSURE_DEPTH_CONCENTRATION_MAX_PENALTY = 0.85  # Maximum 15% penalty (was 0.8 = 20%)
+    PRESSURE_DEPTH_CONCENTRATION_HIGH = 0.8      # High concentration threshold
+    PRESSURE_DEPTH_CONCENTRATION_LOW = 0.5       # Low concentration threshold
+    
+    # Entry scoring adjustment to avoid double-counting pressure
+    PRESSURE_ENTRY_WEIGHT_REDUCTION_ENABLED = True  # Reduce entry weight if direction already heavy on pressure
+    PRESSURE_ENTRY_REDUCTION_THRESHOLD = 0.25       # If direction weight > 25%, reduce entry weight
+    PRESSURE_ENTRY_REDUCTION_FACTOR = 0.5           # Reduce entry weight by 50% if threshold exceeded
     
     # Entry Quality Scoring Multipliers
     # Bonuses and penalties for entry offset quality
@@ -920,6 +963,12 @@ class TradingConfig:
     # Allows strong far levels to compete with weak close levels
     ADAPTIVE_PRE_FILTER_STRENGTH_THRESHOLD = 0.8  # Very strong level threshold (0-1.0)
     ADAPTIVE_PRE_FILTER_DISTANCE_EXTENSION = 1.2  # Allow up to 20% beyond max_distance for strong levels
+    
+    # Performance-Based Tie-Breaking Configuration (ML-Safe)
+    # Performance tie-breaking introduces time-dependent non-determinism
+    # Disable for ML training to ensure replay determinism
+    MIN_PERF_TRADES = 50  # Minimum trades required for statistical significance
+    ENABLE_PERFORMANCE_TIEBREAK = False  # Default False for ML determinism (set True for live trading)
     
     # Entry Candidate Generation Configuration
     # Generates 4 entry candidates per S/R level with different offsets

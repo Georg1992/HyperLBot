@@ -270,8 +270,9 @@ class MomentumDetector:
             else:
                 factors.append(f"Volatility: {volatility_category}")
             
-            # Minimum confidence threshold
-            if confidence < 60.0:
+            # Minimum confidence threshold (conservative - prefer missing breakouts over false positives)
+            # Threshold set to 65% to ensure high-quality signals only
+            if confidence < 65.0:
                 logger.debug(f"⚡ LONG breakout signal too weak: {confidence:.1f}% (resistance @ ${level_price:.2f})")
                 continue
             
@@ -432,8 +433,9 @@ class MomentumDetector:
             else:
                 factors.append(f"Volatility: {volatility_category}")
             
-            # Minimum confidence threshold
-            if confidence < 60.0:
+            # Minimum confidence threshold (conservative - prefer missing breakouts over false positives)
+            # Threshold set to 65% to ensure high-quality signals only
+            if confidence < 65.0:
                 logger.debug(f"⚡ SHORT breakdown signal too weak: {confidence:.1f}% (support @ ${level_price:.2f})")
                 continue
             

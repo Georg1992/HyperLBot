@@ -5,10 +5,10 @@ Centralized strategy detection, selection, and management
 Single Responsibility: Strategy decision making and configuration
 """
 
-import time
 from typing import Dict, Any, List, Optional
 from loguru import logger
 from config.config import TradingConfig
+# CRITICAL: time module removed - all timestamps must come from market_data for determinism
 
 
 class SimpleRecommendation:
@@ -45,12 +45,15 @@ class StrategyManager:
         # Current strategy state
         self.current_strategy = "standard"
         self.current_strategy_config = self.strategy_configs["standard"]
-        self.last_strategy_switch = 0
+        self.last_strategy_switch = 0.0  # Initialize to 0.0 (will be set on first switch with data timestamp)
         self.strategy_switch_cooldown = TradingConfig.STRATEGY_SWITCH_COOLDOWN_DEFAULT
+        
+        # Track optimal strategy for logging/UI (separate from current_strategy state)
+        self.last_optimal_strategy = "standard"
+        self.last_selection_reason = ""  # Reason for strategy selection (tie-break/cooldown)
         
         # Strategy performance tracking
         self.strategy_performance = {}
-        self.strategy_usage_count = {}
         self._last_market_data = None
         self.pending_strategy_outcomes = []
         
@@ -63,9 +66,8 @@ class StrategyManager:
                 "total_trades": 0,
                 "successful_trades": 0,
                 "total_profit": 0.0,
-                "last_used": 0
+                "last_used": 0.0  # Changed to 0.0 for consistency with timestamp type
             }
-            self.strategy_usage_count[strategy_name] = 0
         
         logger.info("🎯 Strategy Manager initialized - Centralized strategy management")
         logger.info(f"   🎯 Current strategy: {self.current_strategy}")
@@ -75,13 +77,26 @@ class StrategyManager:
         """
         Detect the optimal strategy using ML-powered analysis (SINGLE SOURCE OF TRUTH)
         
+        CRITICAL: This method is replay-deterministic. All time-based operations use
+        market_data["timestamp"] instead of time.time() to ensure identical inputs
+        produce identical outputs for ML training.
+        
         Args:
             market_data: Current market data (price, volatility, trend, volume, etc.)
+                MUST contain "timestamp" key for deterministic cooldown (NO FALLBACKS)
             
         Returns:
-            str: Current active strategy name
+            str: Current active strategy name (self.current_strategy)
+                Note: Use self.last_optimal_strategy to access the optimal recommendation
+                if it differs from current_strategy (e.g., due to cooldown)
+        
+        Raises:
+            ValueError: If market_data["timestamp"] is missing (NO FALLBACKS)
         """
         try:
+            # CRITICAL FIX: Extract and validate timestamp for deterministic cooldown
+            data_timestamp = self._get_data_timestamp(market_data)
+            
             # Pure business logic strategy selection (no ML for now)
             recommendation = self._select_strategy_business_logic(market_data)
             
@@ -92,6 +107,9 @@ class StrategyManager:
             
             optimal_strategy = recommendation.strategy
             reasoning = recommendation.reasoning
+            
+            # Store optimal strategy for logging/UI (separate from current_strategy state)
+            self.last_optimal_strategy = optimal_strategy
             
             # Store market data for dynamic cooldown calculation
             self._last_market_data = market_data.copy()
@@ -107,34 +125,68 @@ class StrategyManager:
                 logger.warning(f"⚠️ Low confidence ({recommendation.confidence:.2f}) for {optimal_strategy}, checking alternatives")
                 # Find next best strategy
                 optimal_strategy = self._find_next_best_strategy_by_score(market_data, optimal_strategy)
+                self.last_optimal_strategy = optimal_strategy
                 logger.info(f"🔄 Selected alternative strategy: {optimal_strategy}")
             
             # Check if strategy switch is needed and allowed
+            cooldown_blocked = False
             if optimal_strategy != self.current_strategy:
-                if self._can_switch_strategy():
+                if self._can_switch_strategy(data_timestamp):
                     logger.info(f"🔄 Strategy switch: {self.current_strategy} → {optimal_strategy}")
-                    self._switch_strategy(optimal_strategy)
+                    self._switch_strategy(optimal_strategy, data_timestamp)
+                    self.last_selection_reason = f"Strategy switch: {self.current_strategy} → {optimal_strategy}"
                     
                     # Record strategy selection for learning
-                    self._record_strategy_selection(optimal_strategy, market_data, recommendation)
+                    self._record_strategy_selection(optimal_strategy, market_data, recommendation, data_timestamp)
                 else:
+                    cooldown_blocked = True
                     logger.warning(
                         f"⏳ Strategy switch blocked (cooldown): {self.current_strategy} → {optimal_strategy}. "
-                        f"Using optimal strategy '{optimal_strategy}' for predictions despite cooldown."
+                        f"Optimal strategy '{optimal_strategy}' available for predictions but state unchanged."
                     )
-                    # Return optimal strategy for predictions even if switch is blocked
-                    # This ensures predictions use the best strategy, while actual strategy state waits for cooldown
-                    self._record_strategy_selection(optimal_strategy, market_data, recommendation)
-                    return optimal_strategy  # Use optimal for predictions
+                    self.last_selection_reason = f"Cooldown blocked switch: {self.current_strategy} → {optimal_strategy} (optimal available for predictions)"
+                    # Record strategy selection even if switch blocked
+                    self._record_strategy_selection(optimal_strategy, market_data, recommendation, data_timestamp)
             else:
                 # Still record for learning even if no switch
-                self._record_strategy_selection(optimal_strategy, market_data, recommendation)
+                self.last_selection_reason = f"Optimal strategy unchanged: {optimal_strategy}"
+                self._record_strategy_selection(optimal_strategy, market_data, recommendation, data_timestamp)
             
+            # CRITICAL FIX: Always return self.current_strategy (source of truth)
+            # Use self.last_optimal_strategy if you need the optimal recommendation
             return self.current_strategy
             
         except Exception as e:
             logger.error(f"❌ Strategy detection failed: {e}")
             raise  # NO FALLBACKS - detection failure must raise
+    
+    def _get_data_timestamp(self, market_data: Dict[str, Any]) -> float:
+        """
+        Extract and validate timestamp from market_data for deterministic operations
+        
+        Args:
+            market_data: Market data dictionary
+            
+        Returns:
+            float: Timestamp value
+            
+        Raises:
+            ValueError: If timestamp is missing or invalid (NO FALLBACKS)
+        """
+        if "timestamp" not in market_data:
+            raise ValueError(
+                "market_data must contain 'timestamp' for deterministic strategy selection (NO FALLBACKS). "
+                "This ensures replay determinism for ML training."
+            )
+        
+        timestamp = market_data["timestamp"]
+        try:
+            timestamp_float = float(timestamp)
+            if timestamp_float <= 0:
+                raise ValueError(f"Invalid timestamp: {timestamp_float} (must be positive, NO FALLBACKS)")
+            return timestamp_float
+        except (ValueError, TypeError) as e:
+            raise ValueError(f"Invalid timestamp type in market_data: {type(timestamp)} - must be numeric (NO FALLBACKS)") from e
     
     def _select_strategy_business_logic(self, market_data: Dict[str, Any]) -> Optional['SimpleRecommendation']:
         """
@@ -1060,7 +1112,6 @@ class StrategyManager:
         """
         if not tied_strategies:
             raise ValueError("No strategies provided for tie-breaking (NO FALLBACKS)")
-        
         if len(tied_strategies) == 1:
             return tied_strategies[0]
         
@@ -1072,41 +1123,54 @@ class StrategyManager:
                 return strategy_tuple
         
         # Priority 2: Prefer strategy with better historical performance
-        # Calculate performance score: win_rate * (1 + profit_factor)
-        best_performance = -1.0
-        best_performance_strategy = None
+        # CRITICAL FIX: ML-safe + replay-deterministic performance tie-breaking
+        # Only use performance-based tie-break if explicitly enabled and sufficient data exists
+        from config.config import TradingConfig
         
-        for strategy_tuple in tied_strategies:
-            strategy_name = strategy_tuple[0]
-            if strategy_name in self.strategy_performance:
-                perf = self.strategy_performance[strategy_name]
-                total_trades = perf["total_trades"]
-                
-                if total_trades > 0:
-                    win_rate = perf["successful_trades"] / total_trades
-                    # Normalize profit (assume average profit per trade is reasonable)
-                    avg_profit = perf["total_profit"] / total_trades if total_trades > 0 else 0.0
-                    profit_factor = min(1.0, abs(avg_profit) / 100.0)  # Normalize to [0, 1]
-                    performance_score = win_rate * (1.0 + profit_factor)
+        if TradingConfig.ENABLE_PERFORMANCE_TIEBREAK:
+            # Calculate performance score: win_rate * (1 + profit_factor)
+            best_performance = -1.0
+            best_performance_strategy = None
+            
+            for strategy_tuple in tied_strategies:
+                strategy_name = strategy_tuple[0]
+                if strategy_name in self.strategy_performance:
+                    perf = self.strategy_performance[strategy_name]
+                    total_trades = perf["total_trades"]
                     
-                    if performance_score > best_performance:
-                        best_performance = performance_score
-                        best_performance_strategy = strategy_tuple
-        
-        if best_performance_strategy and best_performance > 0:
-            logger.debug(f"📊 Tie broken: Preferring '{best_performance_strategy[0]}' (performance: {best_performance:.3f})")
-            return best_performance_strategy
+                    # CRITICAL: Only use performance if sufficient trades for statistical significance
+                    if total_trades >= TradingConfig.MIN_PERF_TRADES:
+                        win_rate = perf["successful_trades"] / total_trades
+                        # Normalize profit (assume average profit per trade is reasonable)
+                        avg_profit = perf["total_profit"] / total_trades if total_trades > 0 else 0.0
+                        profit_factor = min(1.0, abs(avg_profit) / 100.0)  # Normalize to [0, 1]
+                        performance_score = win_rate * (1.0 + profit_factor)
+                        
+                        if performance_score > best_performance:
+                            best_performance = performance_score
+                            best_performance_strategy = strategy_tuple
+            
+            if best_performance_strategy and best_performance > 0:
+                logger.debug(f"📊 Tie broken: Preferring '{best_performance_strategy[0]}' (performance: {best_performance:.3f}, trades: {self.strategy_performance[best_performance_strategy[0]]['total_trades']})")
+                return best_performance_strategy
+        else:
+            logger.debug("📊 Performance tie-break disabled (ENABLE_PERFORMANCE_TIEBREAK=False) - skipping for ML determinism")
         
         # Priority 3: Prefer more specific strategies over generic "standard"
         # Specific strategies: scalping, spike_hunting, low_volatility_range, etc.
         # Generic strategies: standard
-        specific_strategies = ["scalping", "spike_hunting", "low_volatility_range", "high_volatility", 
+        # CRITICAL FIX: Explicit priority order ensures deterministic tie-breaking
+        # Order: most specific → least specific → generic
+        specific_strategies_priority = ["scalping", "spike_hunting", "low_volatility_range", "high_volatility", 
                               "trend_following", "breakout", "range_trading"]
         
-        for strategy_tuple in tied_strategies:
-            if strategy_tuple[0] in specific_strategies:
-                logger.debug(f"📊 Tie broken: Preferring specific strategy '{strategy_tuple[0]}' over generic")
-                return strategy_tuple
+        # CRITICAL FIX: Use explicit priority order for deterministic tie-breaking
+        # Check strategies in priority order (most specific first)
+        for priority_strategy in specific_strategies_priority:
+            for strategy_tuple in tied_strategies:
+                if strategy_tuple[0] == priority_strategy:
+                    logger.debug(f"📊 Tie broken: Preferring specific strategy '{priority_strategy}' (priority order)")
+                    return strategy_tuple
         
         # Priority 4: Default to "standard" if available, otherwise first in list
         for strategy_tuple in tied_strategies:
@@ -1170,10 +1234,26 @@ class StrategyManager:
             logger.error(f"❌ Error finding alternative strategy: {e}")
             return "standard"
     
-    def _can_switch_strategy(self) -> bool:
-        """Check if strategy switching is allowed (dynamic cooldown based on volatility)"""
-        current_time = time.time()
-        time_since_last_switch = current_time - self.last_strategy_switch
+    def _can_switch_strategy(self, data_timestamp: float) -> bool:
+        """
+        Check if strategy switching is allowed (dynamic cooldown based on volatility)
+        
+        CRITICAL: Uses data_timestamp instead of time.time() for replay determinism.
+        
+        Args:
+            data_timestamp: Timestamp from market_data (for deterministic cooldown)
+            
+        Returns:
+            bool: True if switching is allowed, False if cooldown is active
+        """
+        # CRITICAL FIX: Use data_timestamp instead of time.time()
+        # Initialize last_strategy_switch on first call if not set
+        if self.last_strategy_switch == 0.0:
+            # First call - allow switch and initialize timestamp
+            self.last_strategy_switch = data_timestamp
+            return True
+        
+        time_since_last_switch = data_timestamp - self.last_strategy_switch
         
         # Dynamic cooldown based on market volatility
         # Get current volatility from the last market data if available
@@ -1192,8 +1272,16 @@ class StrategyManager:
         
         return time_since_last_switch >= cooldown
     
-    def _switch_strategy(self, new_strategy: str):
-        """Switch to new strategy"""
+    def _switch_strategy(self, new_strategy: str, data_timestamp: float) -> None:
+        """
+        Switch to new strategy
+        
+        CRITICAL: Uses data_timestamp instead of time.time() for replay determinism.
+        
+        Args:
+            new_strategy: Strategy name to switch to
+            data_timestamp: Timestamp from market_data (for deterministic state tracking)
+        """
         try:
             old_strategy = self.current_strategy
             self.current_strategy = new_strategy
@@ -1201,7 +1289,9 @@ class StrategyManager:
             if new_strategy not in self.strategy_configs:
                 raise ValueError(f"Strategy '{new_strategy}' not found in strategy_configs - NO FALLBACKS")
             self.current_strategy_config = self.strategy_configs[new_strategy]
-            self.last_strategy_switch = time.time()
+            
+            # CRITICAL FIX: Use data_timestamp instead of time.time()
+            self.last_strategy_switch = data_timestamp
             
             logger.info(f"🔄 Strategy switched: {old_strategy} → {new_strategy}")
             logger.info(f"   📊 New config: {self.current_strategy_config}")
@@ -1218,14 +1308,25 @@ class StrategyManager:
             self.current_strategy = "standard"
             self.current_strategy_config = self.strategy_configs["standard"]
     
-    def force_strategy(self, strategy_name: str) -> bool:
-        """Force switch to specific strategy (bypass cooldown)"""
+    def force_strategy(self, strategy_name: str, data_timestamp: Optional[float] = None) -> bool:
+        """
+        Force switch to specific strategy (bypass cooldown)
+        
+        Args:
+            strategy_name: Strategy name to force
+            data_timestamp: Optional timestamp (if None, uses current time for non-deterministic mode)
+                For deterministic mode, always provide timestamp from market_data
+        """
         try:
             if strategy_name not in self.strategy_configs:
                 logger.error(f"❌ Unknown strategy: {strategy_name}")
                 return False
             
-            self._switch_strategy(strategy_name)
+            # CRITICAL FIX: Require timestamp for determinism (NO FALLBACKS)
+            if data_timestamp is None:
+                raise ValueError("force_strategy requires data_timestamp for deterministic strategy selection (NO FALLBACKS)")
+            
+            self._switch_strategy(strategy_name, data_timestamp)
             logger.info(f"🔧 Strategy forced to: {strategy_name}")
             return True
             
@@ -1251,10 +1352,20 @@ class StrategyManager:
             raise ValueError(f"Unknown strategy: {strategy_name} - must be one of {list(descriptions.keys())} (NO FALLBACKS)")
         return descriptions[strategy_name]
     
-    def _record_strategy_selection(self, strategy: str, market_data: Dict[str, Any], recommendation) -> None:
-        """Record strategy selection for ML learning"""
+    def _record_strategy_selection(self, strategy: str, market_data: Dict[str, Any], 
+                                  recommendation, data_timestamp: float) -> None:
+        """
+        Record strategy selection for ML learning
+        
+        CRITICAL: Uses data_timestamp instead of time.time() for replay determinism.
+        
+        Args:
+            strategy: Strategy name that was selected
+            market_data: Market data dictionary
+            recommendation: Strategy recommendation object
+            data_timestamp: Timestamp from market_data (for deterministic records)
+        """
         try:
-            
             # Record the strategy selection (without outcome yet)
             # The outcome will be recorded later when trades are executed
             selection_record = {
@@ -1262,7 +1373,7 @@ class StrategyManager:
                 "market_conditions": market_data,
                 "confidence": recommendation.confidence,
                 "reasoning": recommendation.reasoning,
-                "timestamp": time.time()
+                "timestamp": data_timestamp  # CRITICAL FIX: Use data_timestamp instead of time.time()
             }
             
             # Store for later outcome recording
@@ -1275,9 +1386,30 @@ class StrategyManager:
         except Exception as e:
             logger.error(f"❌ Strategy selection recording failed: {e}")
     
-    def record_strategy_outcome(self, strategy: str, outcome: Dict[str, Any]) -> None:
-        """Record the outcome of a strategy for ML learning"""
+    def record_strategy_outcome(self, strategy: str, outcome: Dict[str, Any], 
+                               data_timestamp: Optional[float] = None) -> None:
+        """
+        Record the outcome of a strategy for ML learning
+        
+        CRITICAL: Uses data_timestamp instead of time.time() for replay determinism.
+        If data_timestamp is not provided, uses timestamp from outcome dict or raises.
+        
+        Args:
+            strategy: Strategy name
+            outcome: Outcome dictionary (must contain "profit" and "success")
+            data_timestamp: Optional timestamp from market_data (preferred for determinism)
+                If None, attempts to extract from outcome["timestamp"]
+        """
         try:
+            # Extract timestamp for deterministic tracking
+            if data_timestamp is None:
+                if "timestamp" in outcome:
+                    data_timestamp = float(outcome["timestamp"])
+                else:
+                    raise ValueError(
+                        "record_strategy_outcome requires data_timestamp or outcome['timestamp'] "
+                        "for deterministic tracking (NO FALLBACKS)"
+                    )
             
             # Find the most recent selection for this strategy
             for record in reversed(self.pending_strategy_outcomes):
@@ -1294,12 +1426,12 @@ class StrategyManager:
                     "total_trades": 0,
                     "successful_trades": 0,
                     "total_profit": 0.0,
-                    "last_used": 0
+                    "last_used": 0.0
                 }
             
             perf = self.strategy_performance[strategy]
             perf["total_trades"] += 1
-            perf["last_used"] = time.time()
+            perf["last_used"] = data_timestamp  # CRITICAL FIX: Use data_timestamp instead of time.time()
             
             # Calculate success and profit
             profit = outcome["profit"]  # Required (NO FALLBACKS)

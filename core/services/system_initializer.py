@@ -154,8 +154,13 @@ class SystemInitializer:
             
             self.singleton_systems["strategy_manager"] = strategy_manager
             
+            # Initialize HyperliquidSimulator for position sizing and order execution
+            # CRITICAL: Required by ReactiveEngine for balance access (NO FALLBACKS)
+            from core.api.hyperliquid_simulator import HyperliquidSimulator
+            hyperliquid_simulator = HyperliquidSimulator(initial_balance=initial_balance)
+            self.singleton_systems["hyperliquid_simulator"] = hyperliquid_simulator
+            
             # Note: account_manager is used via direct import, not via singleton
-            # Note: hyperliquid_simulator is not used yet (trading execution not implemented)
             # Note: historical_data_coordinator is not used (replaced by HistoricalDataService)
             
             # Initialize data services

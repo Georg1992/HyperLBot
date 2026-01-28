@@ -5,8 +5,8 @@ Generates trading predictions based on unified market data and current strategy
 """
 
 import math
-import time
 from dataclasses import dataclass
+# CRITICAL: time module removed - all timestamps must come from unified_data for determinism
 from typing import Dict, Any, Optional, Literal
 from loguru import logger
 from config.config import TradingConfig
@@ -28,6 +28,8 @@ class TradingPrediction:
     risk_reward_ratio: float = 0.0  # Actual R:R achieved (for position sizing)
     position_size_btc: Optional[float] = None  # Position size in BTC (calculated if balance provided)
     position_size_usd: Optional[float] = None  # Position value in USD (calculated if balance provided)
+    executable: bool = False  # Whether prediction can be executed (requires confidence)
+    execution_gate_reason: str = "confidence_not_implemented"  # Reason why execution is blocked
 
 
 class PredictionEngine:
@@ -178,8 +180,20 @@ class PredictionEngine:
                     logger.debug(f"⚠️ Prediction timestamp {prediction.timestamp} differs from data timestamp {prediction_timestamp}, using data timestamp")
                     prediction.timestamp = prediction_timestamp
                 
-                # Log prediction generation
-                logger.info(f"✅ Prediction generated: {prediction.direction} @ ${prediction.entry_price:.2f} (strategy: {strategy})")
+                # CRITICAL FIX: Set executable=False until confidence exists
+                prediction.executable = False
+                prediction.execution_gate_reason = "confidence_not_implemented"
+                prediction.confidence = None  # Ensure confidence is None until implemented
+                
+                # Log strategy routing for transparency
+                state_strategy = unified_data.get("state_strategy", strategy)
+                prediction_strategy_actual = unified_data.get("prediction_strategy", strategy)
+                logger.info(
+                    f"✅ Prediction generated: {prediction.direction} @ ${prediction.entry_price:.2f} "
+                    f"(strategy_used_by_engine={strategy}, state_strategy={state_strategy}, "
+                    f"prediction_strategy={prediction_strategy_actual}, "
+                    f"executable={prediction.executable}, reason={prediction.execution_gate_reason}, confidence={prediction.confidence})"
+                )
                 return prediction
             else:
                 # This should never happen - prediction should ALWAYS be generated
@@ -364,6 +378,8 @@ class PredictionEngine:
         risk_reward_ratio: float = 0.0
     ) -> TradingPrediction:
         """Create a TradingPrediction object - single responsibility: prediction creation"""
+        # CRITICAL FIX: Use unified_data timestamp instead of time.time() for determinism
+        # timestamp will be set in generate_prediction() from unified_data["timestamp"]
         return TradingPrediction(
             direction=direction,
             entry_price=entry_price,
@@ -372,8 +388,10 @@ class PredictionEngine:
             confidence=confidence,
             reasoning=reasoning,
             strategy=strategy,
-            timestamp=time.time(),
-            risk_reward_ratio=risk_reward_ratio
+            timestamp=0.0,  # Will be set from unified_data["timestamp"] in generate_prediction()
+            risk_reward_ratio=risk_reward_ratio,
+            executable=False,  # Set explicitly
+            execution_gate_reason="confidence_not_implemented"
         )
     
     # REMOVED: calculate_position_size static method (dead code, never called)
@@ -1799,7 +1817,21 @@ class PredictionEngine:
                 missing_weight = total_expected_weight - total_active_weight
                 scale_factor = total_expected_weight / total_active_weight if not self._float_zero(total_active_weight, self.WEIGHT_EPSILON) else 1.0
                 if not self._float_eq(scale_factor, 1.0, self.WEIGHT_EPSILON):
-                    logger.debug(f"⚠️ Renormalizing scores: missing {missing_weight:.4f} weight ({total_active_weight:.4f}/{total_expected_weight:.4f} active), scaling by {scale_factor:.4f}")
+                    # CRITICAL FIX: Track inactive factors for transparency
+                    inactive_factors = {}
+                    for factor_name, weight in direction_weights.items():
+                        if factor_name not in active_weights:
+                            if factor_name in ["market_conditions", "cross_asset"]:
+                                inactive_factors[factor_name] = "optional_missing"
+                            else:
+                                inactive_factors[factor_name] = "missing_data"
+                    
+                    inactive_str = ", ".join([f"{k}({v})" for k, v in inactive_factors.items()])
+                    logger.debug(
+                        f"⚠️ Renormalizing scores: missing {missing_weight:.4f} weight "
+                        f"({total_active_weight:.4f}/{total_expected_weight:.4f} active), scaling by {scale_factor:.4f}. "
+                        f"Inactive factors: {inactive_str}"
+                    )
                     long_score *= scale_factor
                     short_score *= scale_factor
             
@@ -2043,16 +2075,22 @@ class PredictionEngine:
         trend_direction = self._require_key(trend_data, "direction", "trend data structure")  # Required (NO FALLBACKS)
         trend_strength = float(self._require_key(trend_data, "strength", "trend data structure"))  # Required (NO FALLBACKS)
         
-        if trend_direction == "BULLISH" and trend_strength > 0.5:
+        # Get tie-breaking threshold from config
+        from config.config import TradingConfig
+        from core.constants import TechnicalAnalysisConstants
+        tie_break_threshold = TradingConfig.DIRECTION_TIE_BREAK_TREND_STRENGTH_THRESHOLD
+        rsi_neutral = TechnicalAnalysisConstants.RSI_NEUTRAL
+        
+        if trend_direction == "BULLISH" and trend_strength > tie_break_threshold:
             return "LONG"
-        elif trend_direction == "BEARISH" and trend_strength > 0.5:
+        elif trend_direction == "BEARISH" and trend_strength > tie_break_threshold:
             return "SHORT"
         
         # Priority 2: Use RSI as tie-breaker
         rsi_value = float(self._require_key(rsi_data, "rsi", "rsi data structure"))  # Required (NO FALLBACKS)
-        if rsi_value < 50:
+        if rsi_value < rsi_neutral:
             return "LONG"  # RSI below neutral favors long
-        elif rsi_value > 50:
+        elif rsi_value > rsi_neutral:
             return "SHORT"  # RSI above neutral favors short
         
         # Priority 3: Default to LONG (conservative approach)
@@ -2228,8 +2266,23 @@ class PredictionEngine:
             
             pressure_weight = entry_weights["pressure"]  # Required (NO FALLBACKS)
             if pressure_weight > 0:
+                # IMPROVEMENT 4: Avoid double-counting pressure in entry scoring
+                # If direction already heavily weighted on pressure, reduce entry weight
+                direction_weights = strategy_config.get("direction_weights", {})
+                direction_pressure_weight = direction_weights.get("pressure", 0.0)
+                
+                adjusted_pressure_weight = pressure_weight
+                if TradingConfig.PRESSURE_ENTRY_WEIGHT_REDUCTION_ENABLED:
+                    if direction_pressure_weight > TradingConfig.PRESSURE_ENTRY_REDUCTION_THRESHOLD:
+                        reduction_factor = TradingConfig.PRESSURE_ENTRY_REDUCTION_FACTOR
+                        adjusted_pressure_weight = pressure_weight * reduction_factor
+                        logger.debug(
+                            f"📊 Pressure entry weight reduced: {pressure_weight:.3f} → {adjusted_pressure_weight:.3f} "
+                            f"(direction weight: {direction_pressure_weight:.3f} > {TradingConfig.PRESSURE_ENTRY_REDUCTION_THRESHOLD:.3f})"
+                        )
+                
                 pressure_score, reasons = self._score_entry_pressure_factor(direction, pressure_data)
-                total_score += pressure_score * pressure_weight
+                total_score += pressure_score * adjusted_pressure_weight
                 all_reasons.extend(reasons)
             
             patterns_weight = entry_weights["patterns"]  # Required (NO FALLBACKS)
@@ -2497,16 +2550,6 @@ class PredictionEngine:
                     f"This indicates S/R level calculation or filtering is broken - there should ALWAYS be levels available."
                 )
             
-            # CRITICAL: Must always return at least one setup (NO FALLBACKS)
-            # If no S/R levels found, this indicates a system error - should never happen
-            if not setups:
-                # NO FALLBACKS - filtered_levels must have support and resistance keys
-                support_list = self._require_key(filtered_levels, "support", "filtered_levels structure")
-                resistance_list = self._require_key(filtered_levels, "resistance", "filtered_levels structure")
-                raise ValueError(f"No entry setups generated for {direction} direction ({strategy} strategy) - "
-                               f"filtered_levels had {len(support_list)} support and {len(resistance_list)} resistance levels. "
-                               f"This indicates a system error (NO FALLBACKS)")
-            
             # Log summary of entry setup generation
             if pre_filtered_count > 0:
                 logger.debug(f"📊 Pre-filtered {pre_filtered_count} levels exceeding max_distance_atr for {direction} direction")
@@ -2539,10 +2582,10 @@ class PredictionEngine:
         - 1.0×ATR inside
         
         Scores each candidate by:
-        - Fill probability (35%): Closer to current = higher
+        - Fill probability (30%): Closer to current = higher
         - Liquidation safety (35%): Distance from liquidation
-        - Level strength (20%): S/R power
-        - Spread penalty (-10%): Cost of execution
+        - Level strength (25%): S/R power
+        - Spread penalty (10%): Cost of execution
         
         Returns the best scoring candidate.
         
@@ -2568,11 +2611,25 @@ class PredictionEngine:
             if atr_5m <= 0:
                 raise ValueError(f"Invalid atr_5m: {atr_5m} - must be positive (NO FALLBACKS)")
             
-            # Get strategy config for max_distance check
+            # Get strategy config for max_distance check and offset calculation
             from config.config import TradingConfig
             strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
             entry_proximity_config = strategy_config["entry_proximity_config"]  # Required (NO FALLBACKS)
             max_distance_atr = entry_proximity_config.get("max_distance_atr", 5.0)  # Default 5×ATR if not specified
+            optimal_atr_distance = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS) - needed for adaptive pre-filter validation
+            offset_factors = TradingConfig.ENTRY_CANDIDATE_OFFSET_FACTORS
+            max_offset_atr = max(offset_factors) * optimal_atr_distance
+            
+            # Extract level_power early for pre-filtering check
+            level_power = level_data["power"]  # Required (NO FALLBACKS)
+            
+            # Get strategy config for max_distance check and offset calculation
+            from config.config import TradingConfig
+            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
+            entry_proximity_config = strategy_config["entry_proximity_config"]  # Required (NO FALLBACKS)
+            optimal_atr_distance = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS)
+            offset_factors = TradingConfig.ENTRY_CANDIDATE_OFFSET_FACTORS
+            max_offset_atr = max(offset_factors) * optimal_atr_distance
             
             # CRITICAL FIX (2026-01-27): Pre-filter level by max_distance before candidate generation
             # Calculate level distance in ATR to determine if closest candidate would be within max_distance
@@ -2585,20 +2642,69 @@ class PredictionEngine:
             # This enables strong far levels to compete with weak close levels
             # CRITICAL FIX: Use config instead of hardcoded values
             strength_threshold = TradingConfig.ADAPTIVE_PRE_FILTER_STRENGTH_THRESHOLD
-            adaptive_max_distance = max_distance_atr * TradingConfig.ADAPTIVE_PRE_FILTER_DISTANCE_EXTENSION
+            # Validate config values (NO FALLBACKS)
+            if not (0.0 <= strength_threshold <= 1.0):
+                raise ValueError(f"Invalid ADAPTIVE_PRE_FILTER_STRENGTH_THRESHOLD: {strength_threshold} (must be 0.0-1.0, NO FALLBACKS)")
+            
+            distance_extension = TradingConfig.ADAPTIVE_PRE_FILTER_DISTANCE_EXTENSION
+            if distance_extension < 1.0:
+                raise ValueError(f"Invalid ADAPTIVE_PRE_FILTER_DISTANCE_EXTENSION: {distance_extension} (must be >= 1.0, NO FALLBACKS)")
+            
+            adaptive_max_distance = max_distance_atr * distance_extension
+            
+            # CRITICAL FIX: Validate scale consistency for adaptive pre-filter
+            # level_power is in range [0, 100], strength_threshold is in range [0, 1.0]
+            # Normalize level_power to [0, 1.0] before comparison
+            # Power scale: [0-100] from SRScorer.calculate_power() and PsychologicalLevelGenerator
+            if level_power > 100.0 or level_power < 0.0:
+                raise ValueError(f"Invalid level_power: {level_power} (must be in range [0, 100], NO FALLBACKS)")
+            
+            # Normalize level_power from [0, 100] to [0, 1.0] for comparison with strength_threshold
+            normalized_power = level_power / 100.0
+            assert 0.0 <= normalized_power <= 1.0, f"Normalized power out of range: {normalized_power} (from level_power: {level_power})"
             
             if level_distance_atr > max_distance_atr:
                 # Adaptive pre-filtering: Allow very strong levels slightly beyond max_distance
-                if level_power >= strength_threshold and level_distance_atr <= adaptive_max_distance:
+                if normalized_power >= strength_threshold and level_distance_atr <= adaptive_max_distance:
+                    # CRITICAL FIX: Validate that this level can generate at least one valid candidate
+                    # Calculate optimal_offset_usd here (needed for validation)
+                    optimal_offset_usd_temp = atr_5m * optimal_atr_distance
+                    max_offset_usd = optimal_offset_usd_temp * max(offset_factors)  # Maximum offset in USD
+                    
+                    if setup_type == "support_level":  # LONG
+                        # CRITICAL: Factor=0.0 candidate = level_price itself should always be valid
+                        # if level_price < current_price (already checked before calling this method)
+                        # So we only need to check distance constraint for adaptive pre-filter
+                        closest_candidate_distance_atr = level_distance_atr - max_offset_atr
+                        if closest_candidate_distance_atr > max_distance_atr:
+                            logger.debug(
+                                f"⏭️ Strong support level ${level_price:.2f} (power: {level_power:.2f}) rejected: "
+                                f"even closest candidate would be {closest_candidate_distance_atr:.2f}×ATR "
+                                f"(exceeds max {max_distance_atr:.2f}×ATR, level_distance: {level_distance_atr:.2f}×ATR, max_offset: {max_offset_atr:.2f}×ATR)"
+                            )
+                            return None  # Skip this level - cannot generate valid candidates
+                    else:  # resistance_level - SHORT
+                        # CRITICAL: Factor=0.0 candidate = level_price itself should always be valid
+                        # if level_price > current_price (already checked before calling this method)
+                        # So we only need to check distance constraint for adaptive pre-filter
+                        closest_candidate_distance_atr = level_distance_atr - max_offset_atr
+                        if closest_candidate_distance_atr > max_distance_atr:
+                            logger.debug(
+                                f"⏭️ Strong resistance level ${level_price:.2f} (power: {level_power:.2f}) rejected: "
+                                f"even closest candidate would be {closest_candidate_distance_atr:.2f}×ATR "
+                                f"(exceeds max {max_distance_atr:.2f}×ATR, level_distance: {level_distance_atr:.2f}×ATR, max_offset: {max_offset_atr:.2f}×ATR)"
+                            )
+                            return None  # Skip this level - cannot generate valid candidates
+                    
                     logger.debug(
-                        f"📊 Strong level ${level_price:.2f} (power: {level_power:.2f}) allowed despite distance "
-                        f"{level_distance_atr:.2f}×ATR (max: {max_distance_atr:.2f}×ATR, adaptive: {adaptive_max_distance:.2f}×ATR)"
+                        f"📊 Strong level ${level_price:.2f} (power: {level_power:.2f}, normalized: {normalized_power:.3f}) allowed despite distance "
+                        f"{level_distance_atr:.2f}×ATR (max: {max_distance_atr:.2f}×ATR, adaptive: {adaptive_max_distance:.2f}×ATR, threshold: {strength_threshold:.3f})"
                     )
-                    # Continue - allow this strong level to generate candidates
+                    # Continue - allow this strong level to generate candidates (at least one will be valid)
                 else:
                     logger.debug(
                         f"⏭️ Level ${level_price:.2f} pre-filtered: distance {level_distance_atr:.2f}×ATR exceeds max {max_distance_atr:.2f}×ATR "
-                        f"(power: {level_power:.2f}, threshold: {strength_threshold:.2f})"
+                        f"(power: {level_power:.2f}, normalized: {normalized_power:.3f}, threshold: {strength_threshold:.3f})"
                     )
                     return None  # Skip this level - calling code handles None gracefully
             
@@ -2618,16 +2724,11 @@ class PredictionEngine:
             # Generate entry candidates with offsets INSIDE the zone (toward current price)
             candidates = []
             
-            # Strategy-specific optimal offset from config (already retrieved above)
-            optimal_atr_distance = entry_proximity_config["optimal_atr"]  # Required (NO FALLBACKS)
+            # Strategy-specific optimal offset from config (already retrieved above for validation)
+            # optimal_atr_distance and offset_factors already calculated above for adaptive pre-filter
             
             # Calculate optimal offset distance in USD
             optimal_offset_usd = atr_5m * optimal_atr_distance
-            
-            # Generate 4 entry candidates with increasing offset INSIDE zone
-            # Offset factors: 0 (AT level), 0.3, 0.6, 1.0 (toward current)
-            # CRITICAL FIX: Use config instead of hardcoded values
-            offset_factors = TradingConfig.ENTRY_CANDIDATE_OFFSET_FACTORS
             
             if setup_type == "support_level":  # LONG at support
                 # Enter ABOVE support (closer to current price, inside zone)
@@ -2645,9 +2746,42 @@ class PredictionEngine:
                         candidates.append(candidate)
             
             # NO FALLBACKS - must always generate at least one candidate
+            # If no candidates generated, this indicates a logic error in candidate generation
+            # CRITICAL: With factor=0.0, candidate = level_price should always be valid if level_price < current_price (LONG) or level_price > current_price (SHORT)
             if not candidates:
-                raise ValueError(f"No valid entry candidates for {setup_type} at ${level_price:.2f} (current: ${current_price:.2f}) - "
-                               f"system error: _determine_optimal_entry_price must always generate candidates (NO FALLBACKS)")
+                # Enhanced error message with diagnostic information to identify root cause
+                offset_info = f"offset_factors: {offset_factors}, optimal_offset_usd: ${optimal_offset_usd:.2f}"
+                if setup_type == "support_level":
+                    price_constraint = f"level_price ${level_price:.2f} < current_price ${current_price:.2f}"
+                    # Check each offset factor
+                    candidate_checks = []
+                    for factor in offset_factors:
+                        candidate = level_price + (optimal_offset_usd * factor)
+                        is_valid = 0 < candidate < current_price
+                        candidate_checks.append(f"factor={factor}: ${candidate:.2f} valid={is_valid}")
+                    candidates_info = ", ".join(candidate_checks)
+                    level_price_valid = 0 < level_price < current_price and level_distance_atr <= max_distance_atr
+                    level_price_info = f"level_price itself should be valid: {level_price_valid} (level_distance: {level_distance_atr:.2f}×ATR <= max: {max_distance_atr:.2f}×ATR)"
+                else:
+                    price_constraint = f"level_price ${level_price:.2f} > current_price ${current_price:.2f}"
+                    # Check each offset factor
+                    candidate_checks = []
+                    for factor in offset_factors:
+                        candidate = level_price - (optimal_offset_usd * factor)
+                        is_valid = candidate > current_price
+                        candidate_checks.append(f"factor={factor}: ${candidate:.2f} valid={is_valid}")
+                    candidates_info = ", ".join(candidate_checks)
+                    level_price_valid = level_price > current_price and level_distance_atr <= max_distance_atr
+                    level_price_info = f"level_price itself should be valid: {level_price_valid} (level_distance: {level_distance_atr:.2f}×ATR <= max: {max_distance_atr:.2f}×ATR)"
+                
+                raise ValueError(
+                    f"No valid entry candidates for {setup_type} at ${level_price:.2f} (current: ${current_price:.2f}) - "
+                    f"system error: _determine_optimal_entry_price must always generate candidates (NO FALLBACKS). "
+                    f"Level distance: {level_distance_atr:.2f}×ATR, max_distance: {max_distance_atr:.2f}×ATR, "
+                    f"{offset_info}, {price_constraint}, {level_price_info}. "
+                    f"Candidate checks: {candidates_info}. "
+                    f"This indicates candidate generation logic error - fix the root cause."
+                )
             
             # Score each candidate using BTC perp-optimized scoring
             # Factors (research-backed for 40x leverage perps):
@@ -2656,7 +2790,7 @@ class PredictionEngine:
             #   3. Level strength (20%): S/R power (inherent quality)
             #   4. Spread penalty (-10%): Closer to current = pay more spread
             
-            level_power = level_data["power"]  # Required (NO FALLBACKS)
+            # level_power already extracted above for pre-filtering
             last_touch_timestamp = level_data["last_touch_timestamp"]  # Required (NO FALLBACKS)
             
             # Calculate liquidation price for safety scoring
@@ -2736,7 +2870,21 @@ class PredictionEngine:
                 exponent = -distance_to_current_atr / fill_decay_factor
                 exponent = max(-50.0, min(50.0, exponent))  # Clamp to safe range
                 fill_probability = 100.0 * math.exp(exponent)
-                fill_probability = max(5.0, min(100.0, fill_probability))  # Clamp result to [5, 100]
+                
+                # CRITICAL FIX: Apply sanity caps based on distance to prevent optimistic bias
+                # Enforce monotonic decreasing caps: closer entries can have higher fill probability
+                if distance_to_current_atr <= 0.5:
+                    fill_probability = min(fill_probability, TradingConfig.FILL_PROBABILITY_CAP_AT_0_5_ATR)
+                elif distance_to_current_atr >= 3.0:
+                    fill_probability = min(fill_probability, TradingConfig.FILL_PROBABILITY_CAP_AT_3_0_ATR)
+                elif distance_to_current_atr >= 2.0:
+                    fill_probability = min(fill_probability, TradingConfig.FILL_PROBABILITY_CAP_AT_2_0_ATR)
+                
+                # Clamp result using config values (final bounds)
+                fill_probability = max(
+                    TradingConfig.FILL_PROBABILITY_MIN,
+                    min(TradingConfig.FILL_PROBABILITY_MAX, fill_probability)
+                )
                 
                 # Orderbook depth adjustment: Higher liquidity = better fill probability
                 # Orderbook depth is optional - if available, boost fill probability
@@ -2744,9 +2892,9 @@ class PredictionEngine:
                 if "liquidity_depth" in orderbook_data:
                     liquidity_depth = orderbook_data["liquidity_depth"]
                     depth_score = self._require_key(liquidity_depth, "depth_score", "liquidity_depth structure")
-                    # Boost fill probability by up to 15% for high liquidity
-                    liquidity_boost = (depth_score / 100.0) * 15.0
-                    fill_probability = min(100.0, fill_probability + liquidity_boost)
+                    # Boost fill probability by up to configured maximum for high liquidity
+                    liquidity_boost = (depth_score / 100.0) * TradingConfig.FILL_PROBABILITY_LIQUIDITY_BOOST_MAX
+                    fill_probability = min(TradingConfig.FILL_PROBABILITY_MAX, fill_probability + liquidity_boost)
                 
                 # 2. LIQUIDATION SAFETY SCORE (35% weight) - Non-linear sigmoid curve
                 # Calculate liquidation price from this entry
@@ -2801,16 +2949,18 @@ class PredictionEngine:
                 spread_decay = TradingConfig.SPREAD_PENALTY_EXPONENTIAL_DECAY
                 spread_max = TradingConfig.SPREAD_PENALTY_MAX
                 
+                spread_base = TradingConfig.SPREAD_PENALTY_BASE
+                
                 if distance_to_current_atr < spread_close_threshold:
                     # Exponential boost for very close entries
                     close_exponent = -distance_to_current_atr / spread_decay
                     close_exponent = max(-50.0, min(50.0, close_exponent))  # Clamp for numerical stability
                     close_penalty_boost = spread_boost * math.exp(close_exponent)
-                    spread_penalty = 10.0 + close_penalty_boost
+                    spread_penalty = spread_base + close_penalty_boost
                     spread_penalty = min(spread_max, spread_penalty)  # Cap at maximum
                 else:
                     # Linear penalty for entries beyond threshold
-                    spread_penalty = max(0.0, (1.0 - distance_to_current_atr) * 10.0)
+                    spread_penalty = max(0.0, (1.0 - distance_to_current_atr) * spread_base)
                 
                 # IMPROVED ENTRY SCORING (2026-01-27): Weights sum to 1.0, no normalization needed
                 # New weights: 40% fill, 35% liq, 15% level, 10% spread penalty
@@ -2844,7 +2994,8 @@ class PredictionEngine:
                     best_score = combined_score
                     best_candidate = candidate_price
                     # Calculate breakdown for this perfect candidate (reuse code below)
-                    current_timestamp = unified_data.get("timestamp", time.time())
+                    # CRITICAL FIX: Use unified_data timestamp (NO FALLBACKS)
+                    current_timestamp = self._require_key(unified_data, "timestamp", "entry scoring timestamp")
                     hours_since_touch = (current_timestamp - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else 0.0
                     distance_from_level_usd = abs(candidate_price - level_price)
                     distance_from_level_pct = distance_from_level_usd / current_price
@@ -2864,8 +3015,8 @@ class PredictionEngine:
                         "proximity_factor": proximity_factor,
                         "spread_penalty": spread_penalty,
                         "spread_penalty_breakdown": {
-                            "base_penalty": 10.0 if distance_to_current_atr < spread_close_threshold else max(0.0, (1.0 - distance_to_current_atr) * 10.0),
-                            "exponential_boost": (spread_penalty - 10.0) if distance_to_current_atr < spread_close_threshold else 0.0,
+                            "base_penalty": spread_base if distance_to_current_atr < spread_close_threshold else max(0.0, (1.0 - distance_to_current_atr) * spread_base),
+                            "exponential_boost": (spread_penalty - spread_base) if distance_to_current_atr < spread_close_threshold else 0.0,
                             "is_close_entry": distance_to_current_atr < spread_close_threshold
                         },
                         "combined_score": combined_score,
@@ -2883,7 +3034,8 @@ class PredictionEngine:
                     # Calculate distance metrics
                     # CRITICAL FIX: Use unified_data timestamp (data timestamp), not time.time() (generation time)
                     # This prevents lookahead bias in ML training - timestamp must match prediction timestamp
-                    current_timestamp = unified_data.get("timestamp", time.time())
+                    # CRITICAL FIX: Use unified_data timestamp (NO FALLBACKS)
+                    current_timestamp = self._require_key(unified_data, "timestamp", "entry scoring timestamp")
                     hours_since_touch = (current_timestamp - last_touch_timestamp) / 3600.0 if last_touch_timestamp > 0 else 0.0
                     distance_from_level_usd = abs(candidate_price - level_price)
                     distance_from_level_pct = distance_from_level_usd / current_price
@@ -2903,8 +3055,8 @@ class PredictionEngine:
                         "proximity_factor": proximity_factor,  # Distance decay factor (ML feature)
                         "spread_penalty": spread_penalty,
                         "spread_penalty_breakdown": {
-                            "base_penalty": 10.0 if distance_to_current_atr < spread_close_threshold else max(0.0, (1.0 - distance_to_current_atr) * 10.0),
-                            "exponential_boost": (spread_penalty - 10.0) if distance_to_current_atr < spread_close_threshold else 0.0,
+                            "base_penalty": spread_base if distance_to_current_atr < spread_close_threshold else max(0.0, (1.0 - distance_to_current_atr) * spread_base),
+                            "exponential_boost": (spread_penalty - spread_base) if distance_to_current_atr < spread_close_threshold else 0.0,
                             "is_close_entry": distance_to_current_atr < spread_close_threshold
                         },
                         "combined_score": combined_score,

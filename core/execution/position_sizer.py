@@ -254,23 +254,39 @@ class PositionSizeCalculator:
         
         Returns:
             Current balance in USD
-        """
-        try:
-            from core.services.system_initializer import get_system_initializer
-            system_initializer = get_system_initializer()
-            # Try to get simulator, but don't fail if it doesn't exist (trading execution not implemented)
-            hyperliquid_simulator = None
-            try:
-                if "hyperliquid_simulator" in system_initializer.singleton_systems:
-                    hyperliquid_simulator = system_initializer.get_singleton_system("hyperliquid_simulator")
-            except Exception:
-                pass  # Simulator not available - trading execution not implemented
             
-            if hyperliquid_simulator and hasattr(hyperliquid_simulator, 'get_balance'):
-                return hyperliquid_simulator.get_balance()
-            else:
-                logger.warning("⚠️ Could not access simulator balance - using default")
-                return 10000.0  # Default for testing
+        Raises:
+            ValueError: If simulator is not available or balance cannot be accessed (NO FALLBACKS)
+        """
+        from core.services.system_initializer import get_system_initializer
+        system_initializer = get_system_initializer()
+        
+        # Require simulator to be available (NO FALLBACKS)
+        if "hyperliquid_simulator" not in system_initializer.singleton_systems:
+            raise ValueError(
+                "Hyperliquid simulator not available - cannot get balance (NO FALLBACKS). "
+                "Ensure simulator is initialized before accessing balance."
+            )
+        
+        hyperliquid_simulator = system_initializer.get_singleton_system("hyperliquid_simulator")
+        
+        if not hyperliquid_simulator:
+            raise ValueError(
+                "Hyperliquid simulator instance is None - cannot get balance (NO FALLBACKS)"
+            )
+        
+        if not hasattr(hyperliquid_simulator, 'get_balance'):
+            raise ValueError(
+                f"Hyperliquid simulator does not have 'get_balance' method (NO FALLBACKS). "
+                f"Simulator type: {type(hyperliquid_simulator)}"
+            )
+        
+        try:
+            balance = hyperliquid_simulator.get_balance()
+            if balance is None:
+                raise ValueError("Simulator get_balance() returned None (NO FALLBACKS)")
+            return balance
         except Exception as e:
-            logger.warning(f"⚠️ Error getting balance: {e} - using default")
-            return 10000.0  # Default for testing
+            raise ValueError(
+                f"Failed to get balance from simulator: {e} (NO FALLBACKS)"
+            ) from e

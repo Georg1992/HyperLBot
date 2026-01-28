@@ -191,16 +191,19 @@ class ReactiveEngine:
             adjusted_position_size_pct = position_sizing["adjusted_position_size_pct"]
             position_value_usd = position_sizing["position_value_usd"]
             
-            # Get hyperliquid simulator for order placement (optional - trading execution not implemented yet)
+            # Get hyperliquid simulator for order placement
+            # CRITICAL: Simulator is initialized in SystemInitializer (required for balance access)
             hyperliquid_simulator = None
             try:
                 from core.services.system_initializer import get_system_initializer
                 system_initializer = get_system_initializer()
-                # Try to get simulator, but don't fail if it doesn't exist (trading execution not implemented)
+                # Simulator should be available (initialized in SystemInitializer)
                 if "hyperliquid_simulator" in system_initializer.singleton_systems:
                     hyperliquid_simulator = system_initializer.get_singleton_system("hyperliquid_simulator")
+                else:
+                    logger.warning("⚠️ Hyperliquid simulator not found in singleton systems - order placement will be logged only")
             except Exception as e:
-                logger.debug(f"⚠️ Hyperliquid simulator not available (trading execution not implemented): {e}")
+                logger.warning(f"⚠️ Failed to get Hyperliquid simulator: {e} - order placement will be logged only")
                 hyperliquid_simulator = None
             
             # Prepare order metadata

@@ -26,12 +26,16 @@ class StrategyDetector:
         """
         Detect and update strategy based on unified market data
         
+        CRITICAL FIX: Simplified logic - uses StrategyManager as single source of truth.
+        StrategyManager.detect_optimal_strategy() always returns self.current_strategy.
+        Use strategy_manager.last_optimal_strategy to access optimal recommendation.
+        
         Args:
-            unified_data: Unified market data dictionary
+            unified_data: Unified market data dictionary (must contain "timestamp")
             session_manager: SessionManager instance (optional)
             
         Returns:
-            Current strategy name
+            Current strategy name (from strategy_manager.current_strategy)
             
         Raises:
             ValueError: If strategy detection fails (NO FALLBACKS)
@@ -40,44 +44,66 @@ class StrategyDetector:
             if not self.strategy_manager:
                 raise ValueError("Strategy Manager not available - cannot detect strategy (NO FALLBACKS)")
             
-            # Strategy is None initially (set in get_unified_analysis_data), use current_strategy from manager
-            current_strategy = self.strategy_manager.current_strategy  # Use manager's current strategy
+            # CRITICAL FIX: Store previous strategy before detection
+            previous_strategy = self.strategy_manager.current_strategy
 
             # Detect optimal strategy using comprehensive unified data
-            # NOTE: This may return optimal strategy for predictions even if cooldown blocks actual switch
-            new_strategy = self.strategy_manager.detect_optimal_strategy(unified_data)
+            # CRITICAL: detect_optimal_strategy() always returns self.current_strategy (source of truth)
+            # The optimal recommendation is stored in strategy_manager.last_optimal_strategy
+            actual_strategy = self.strategy_manager.detect_optimal_strategy(unified_data)
             
-            # CRITICAL FIX: Check if strategy actually changed (not just returned for predictions)
-            # If cooldown blocked the switch, current_strategy wasn't updated, so don't log as "updated"
-            actual_current_strategy = self.strategy_manager.current_strategy
+            # Get optimal strategy for logging (may differ from actual_strategy if cooldown blocked)
+            optimal_strategy = self.strategy_manager.last_optimal_strategy
 
-            if new_strategy != actual_current_strategy:
+            # CRITICAL FIX: Simplified logic - only check if strategy actually changed
+            if actual_strategy != previous_strategy:
                 # Strategy actually changed (cooldown passed or no cooldown)
                 logger.info(
-                    f"🎯 Strategy updated: {actual_current_strategy} → {new_strategy}"
+                    f"🎯 Strategy updated: {previous_strategy} → {actual_strategy}"
                 )
                 logger.info(f"   📊 Market conditions: volatility={unified_data['volatility_category']}, trend={unified_data['trend']['direction']}")  # Required (NO FALLBACKS)
                 
                 # Update session manager with new strategy
                 if session_manager and session_manager.current_session_data:
-                    session_manager.current_session_data["strategy"] = new_strategy
-                
-                return new_strategy
-            elif new_strategy != current_strategy:
-                # Strategy would change but cooldown blocked it - using optimal for predictions only
+                    session_manager.current_session_data["strategy"] = actual_strategy
+            elif optimal_strategy != actual_strategy:
+                # Optimal strategy differs from current (cooldown blocked switch)
                 logger.debug(
-                    f"📊 Optimal strategy '{new_strategy}' detected but cooldown active "
-                    f"(current: {actual_current_strategy}) - using for predictions only"
+                    f"📊 Optimal strategy '{optimal_strategy}' detected but cooldown active "
+                    f"(current: {actual_strategy}) - using '{actual_strategy}' for state, '{optimal_strategy}' for predictions"
                 )
-                # Don't update session manager - strategy state unchanged
-                return actual_current_strategy
+                # Don't update session manager state - strategy state unchanged
             else:
-                # Even if unchanged, ensure session manager has the correct strategy
-                if session_manager:
-                    current_session_strategy = session_manager.current_session_data["strategy"]  # Required (NO FALLBACKS)
-                    if current_session_strategy != current_strategy:
-                        session_manager.current_session_data["strategy"] = current_strategy
-                return current_strategy
+                # Strategy unchanged - ensure session manager has correct strategy
+                if session_manager and session_manager.current_session_data:
+                    current_session_strategy = session_manager.current_session_data.get("strategy")
+                    if current_session_strategy != actual_strategy:
+                        session_manager.current_session_data["strategy"] = actual_strategy
+            
+            # CRITICAL FIX: Expose both state_strategy and prediction_strategy
+            # state_strategy: cooldown-protected persistent state (current_strategy)
+            # prediction_strategy: optimal strategy for this tick (may differ during cooldown)
+            unified_data["state_strategy"] = actual_strategy
+            unified_data["strategy"] = actual_strategy  # Backwards compatibility
+            
+            # Set prediction_strategy to optimal if it differs from state, otherwise use state
+            optimal_strategy = self.strategy_manager.last_optimal_strategy
+            if optimal_strategy != actual_strategy:
+                unified_data["prediction_strategy"] = optimal_strategy
+                cooldown_blocked = True
+            else:
+                unified_data["prediction_strategy"] = actual_strategy
+                cooldown_blocked = False
+            
+            # Log strategy routing clearly
+            logger.info(
+                f"📊 Strategy routing: state_strategy={actual_strategy}, "
+                f"prediction_strategy={unified_data['prediction_strategy']}, "
+                f"cooldown_blocked={cooldown_blocked}, "
+                f"reason={self.strategy_manager.last_selection_reason}"
+            )
+            
+            return actual_strategy
 
         except Exception as e:
             logger.warning(f"⚠️ Strategy detection failed: {e}")

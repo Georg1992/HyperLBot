@@ -36,6 +36,7 @@ class SessionOrchestrator:
         self.session_manager = None
         self.strategy_manager = None
         self.prediction_engine = None
+        self.market_data_service = None  # Will be set in _start_session
         
         # Extracted components for SRP compliance
         self._strategy_detector = None  # Will be initialized when dependencies are available
@@ -202,6 +203,9 @@ class SessionOrchestrator:
         """Start trading session"""
         try:
             logger.info(f"🎯 Starting trading session with strategy: {strategy}")
+
+            # Store market_data_service as instance attribute for use in other methods
+            self.market_data_service = market_data_service
 
             dashboard_service.clear_stale_data()
             market_data_service.invalidate_processed_data()
@@ -435,20 +439,30 @@ class SessionOrchestrator:
                 unified_data, session_manager=self.session_manager
             )
         else:
-            # Fallback if not initialized
-            current_strategy = "standard"
-            logger.warning("⚠️ StrategyDetector not initialized, using default strategy")
+            # CRITICAL FIX: Raise error instead of silent fallback (NO FALLBACKS policy)
+            # StrategyDetector must be initialized before main loop starts
+            raise RuntimeError(
+                "StrategyDetector not initialized - cannot proceed (NO FALLBACKS). "
+                "Ensure _strategy_detector is initialized in _start_session() before main loop."
+            )
         
         # Update unified data with detected strategy
         unified_data["strategy"] = current_strategy
+        
+        # Update pressure calculator strategy for adaptive EMA smoothing
+        if self.market_data_service:
+            self.market_data_service.update_pressure_strategy(current_strategy)
         
         # Filter S/R levels for dashboard display (strategy-aware)
         if self._strategy_detector:
             self._strategy_detector.filter_sr_levels_for_dashboard(unified_data, current_price, current_strategy)
         
         # Generate prediction
+        # CRITICAL FIX: Use prediction_strategy (optimal for this tick) not state_strategy
+        # This ensures predictions use optimal strategy configs even during cooldown
+        prediction_strategy = unified_data.get("prediction_strategy", current_strategy)
         try:
-            prediction = self.prediction_engine.generate_prediction(unified_data, current_strategy)
+            prediction = self.prediction_engine.generate_prediction(unified_data, prediction_strategy)
             if prediction:
                 # Calculate position size
                 position_size_info = self._calculate_position_size(prediction, current_strategy)
@@ -533,6 +547,35 @@ class SessionOrchestrator:
                     current_price, orderbook_data, unified_data = self._prepare_market_data_iteration(
                         market_data_service
                     )
+                    
+                    # CRITICAL FIX: Update simulator order book for order execution
+                    # HyperliquidSimulator needs order book data for MARKET order execution
+                    try:
+                        from core.services.system_initializer import get_system_initializer
+                        system_initializer = get_system_initializer()
+                        if "hyperliquid_simulator" in system_initializer.singleton_systems:
+                            hyperliquid_simulator = system_initializer.get_singleton_system("hyperliquid_simulator")
+                            if hyperliquid_simulator and orderbook_data:
+                                # Convert orderbook format: WebSocket provides {"levels": [[bids], [asks]]}
+                                # Simulator expects {"bids": [...], "asks": [...]}
+                                if "levels" in orderbook_data and len(orderbook_data["levels"]) >= 2:
+                                    bids_raw = orderbook_data["levels"][0]
+                                    asks_raw = orderbook_data["levels"][1]
+                                    
+                                    # Convert to simulator format: list of dicts with 'price' and 'size'
+                                    bids_formatted = [{"price": float(bid["px"]), "size": float(bid.get("sz", 0))} for bid in bids_raw if "px" in bid]
+                                    asks_formatted = [{"price": float(ask["px"]), "size": float(ask.get("sz", 0))} for ask in asks_raw if "px" in ask]
+                                    
+                                    simulator_orderbook = {
+                                        "bids": bids_formatted,
+                                        "asks": asks_formatted
+                                    }
+                                    hyperliquid_simulator.update_order_book(simulator_orderbook)
+                                    logger.debug(f"📊 Updated simulator order book: {len(bids_formatted)} bids, {len(asks_formatted)} asks")
+                                else:
+                                    logger.debug("⚠️ Orderbook data missing 'levels' or insufficient levels - skipping simulator update")
+                    except Exception as e:
+                        logger.debug(f"⚠️ Failed to update simulator order book: {e}")
                     
                     # Process strategy detection and prediction generation
                     current_strategy = self._process_strategy_and_prediction(

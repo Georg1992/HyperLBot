@@ -5,7 +5,7 @@ Handles complex pressure analysis and trend calculations
 """
 
 import time
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 from loguru import logger
 from core.constants import MagicNumbers
 
@@ -19,41 +19,62 @@ class PressureAnalyzer:
     def __init__(self):
         logger.debug("📊 PressureAnalyzer initialized")
     
-    def categorize_pressure_direction(self, pressure_imbalance: float, depth_concentration: float) -> Tuple[str, float]:
+    def categorize_pressure_direction(self, pressure_imbalance: float, depth_concentration: float,
+                                     strong_threshold: Optional[float] = None,
+                                     moderate_threshold: Optional[float] = None) -> Tuple[str, float]:
         """
-        Categorize pressure direction and strength.
+        Categorize pressure direction and strength with dynamic thresholds and protected depth concentration.
         
         Args:
             pressure_imbalance: Pressure imbalance value
             depth_concentration: Depth concentration value
+            strong_threshold: Dynamic strong threshold (uses MagicNumbers if None)
+            moderate_threshold: Dynamic moderate threshold (uses MagicNumbers if None)
         
         Returns:
             Tuple of (direction, strength)
         """
         try:
+            from config.config import TradingConfig
+            
+            # Use dynamic thresholds if provided, otherwise use constants
+            strong_thresh = strong_threshold if strong_threshold is not None else MagicNumbers.PRESSURE_STRONG_THRESHOLD
+            moderate_thresh = moderate_threshold if moderate_threshold is not None else MagicNumbers.PRESSURE_MODERATE_THRESHOLD
+            
             abs_imbalance = abs(pressure_imbalance)
             
-            if pressure_imbalance > MagicNumbers.PRESSURE_STRONG_THRESHOLD:
+            if pressure_imbalance > strong_thresh:
                 direction = "STRONG_BUY"
                 strength = min(MagicNumbers.PRESSURE_MAX_STRENGTH, MagicNumbers.DEFAULT_STRENGTH + abs_imbalance)
-            elif pressure_imbalance > MagicNumbers.PRESSURE_MODERATE_THRESHOLD:
+            elif pressure_imbalance > moderate_thresh:
                 direction = "BUY"
                 strength = MagicNumbers.DEFAULT_STRENGTH + (abs_imbalance * 2)
-            elif pressure_imbalance < -MagicNumbers.PRESSURE_STRONG_THRESHOLD:
+            elif pressure_imbalance < -strong_thresh:
                 direction = "STRONG_SELL"
                 strength = min(MagicNumbers.PRESSURE_MAX_STRENGTH, MagicNumbers.DEFAULT_STRENGTH + abs_imbalance)
-            elif pressure_imbalance < -MagicNumbers.PRESSURE_MODERATE_THRESHOLD:
+            elif pressure_imbalance < -moderate_thresh:
                 direction = "SELL"
                 strength = MagicNumbers.DEFAULT_STRENGTH + (abs_imbalance * 2)
             else:
                 direction = "NEUTRAL"
                 strength = MagicNumbers.DEFAULT_STRENGTH - (abs_imbalance * 2)
             
-            # Adjust strength based on depth concentration
-            if depth_concentration > 0.8:
-                strength *= 1.2  # Higher concentration = more reliable
-            elif depth_concentration < 0.5:
-                strength *= 0.8  # Lower concentration = less reliable
+            # IMPROVEMENT 5: Protected depth concentration adjustments (prevents manipulation/spoofing)
+            # Cap adjustments to prevent extreme manipulation
+            if depth_concentration > TradingConfig.PRESSURE_DEPTH_CONCENTRATION_HIGH:
+                # High concentration boost (capped at max boost)
+                concentration_multiplier = min(
+                    TradingConfig.PRESSURE_DEPTH_CONCENTRATION_MAX_BOOST,
+                    1.0 + (depth_concentration - TradingConfig.PRESSURE_DEPTH_CONCENTRATION_HIGH) * 0.5
+                )
+                strength *= concentration_multiplier
+            elif depth_concentration < TradingConfig.PRESSURE_DEPTH_CONCENTRATION_LOW:
+                # Low concentration penalty (capped at max penalty)
+                concentration_multiplier = max(
+                    TradingConfig.PRESSURE_DEPTH_CONCENTRATION_MAX_PENALTY,
+                    1.0 - (TradingConfig.PRESSURE_DEPTH_CONCENTRATION_LOW - depth_concentration) * 0.5
+                )
+                strength *= concentration_multiplier
             
             return direction, max(0.0, min(1.0, strength))
             
