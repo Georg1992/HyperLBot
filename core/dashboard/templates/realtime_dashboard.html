@@ -91,6 +91,12 @@
             gap: 20px;
         }
 
+        .right-column-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
         .full-width-row {
             grid-column: 1 / -1;
         }
@@ -650,64 +656,82 @@
                     </div>
                 </div>
 
-                <!-- Trade Predictions Card -->
-                <div class="card">
-                    <h2>🎯 AI Prediction <span id="prediction-status" style="font-size: 14px; color: #888; font-weight: normal;">(Analyzing...)</span></h2>
-                    <div style="font-size: 12px; color: #666; margin-bottom: 15px; font-style: italic;">
-                        Real-time AI prediction with entry/exit points and confidence
-                    </div>
-                    <div id="trade-predictions-container">
-                        <!-- Active Prediction Display -->
-                        <div id="active-prediction" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 20px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
-                            <div style="text-align: center; color: #888; padding: 20px;">
-                                <div style="font-size: 36px; margin-bottom: 10px;">🧠</div>
-                                <div>Waiting for market data...</div>
+                <!-- Right Column: Prediction and Reaction stacked vertically -->
+                <div class="right-column-stack">
+                    <!-- Trade Predictions Card -->
+                    <div class="card">
+                        <h2>🎯 AI Prediction <span id="prediction-status" style="font-size: 14px; color: #888; font-weight: normal;">(Analyzing...)</span></h2>
+                        <div style="font-size: 12px; color: #666; margin-bottom: 15px; font-style: italic;">
+                            Real-time AI prediction with entry/exit points and confidence
+                        </div>
+                        <div id="trade-predictions-container">
+                            <!-- Active Prediction Display -->
+                            <div id="active-prediction" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 20px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1);">
+                                <div style="text-align: center; color: #888; padding: 20px;">
+                                    <div style="font-size: 36px; margin-bottom: 10px;">🧠</div>
+                                    <div>Waiting for market data...</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Prediction Placeholder (hidden when active) -->
+                            <div id="prediction-placeholder" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 30px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1); text-align: center; display: none;">
+                                <div style="font-size: 48px; margin-bottom: 20px;">🎯</div>
+                                <div style="font-size: 18px; color: #FFD700; margin-bottom: 10px;"><strong>Trade Predictions</strong></div>
+                                <div style="color: #888; margin-bottom: 15px;">
+                                    AI will predict specific trade opportunities with:
+                                </div>
+                                <!-- ML Trading Predictions -->
+                                <div id="ml-trading-predictions" style="margin-top: 20px;">
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                        <div style="background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); border-radius: 8px; padding: 15px;">
+                                            <div style="color: #00FF88; font-weight: bold; margin-bottom: 5px;">📈 Signal</div>
+                                            <div id="ml-signal" style="font-size: 14px; color: #00FF88;">HOLD</div>
+                                        </div>
+                                        <div style="background: rgba(255,68,68,0.1); border: 1px solid rgba(255,68,68,0.3); border-radius: 8px; padding: 15px;">
+                                            <div style="color: #FF4444; font-weight: bold; margin-bottom: 5px;">💰 Entry Price</div>
+                                            <div id="ml-entry-price" style="font-size: 14px; color: #FF4444;">$0.00</div>
+                                        </div>
+                                        <div style="background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); border-radius: 8px; padding: 15px;">
+                                            <div style="color: #FFC107; font-weight: bold; margin-bottom: 5px;">📊 Size (BTC)</div>
+                                            <div id="ml-size-btc" style="font-size: 14px; color: #FFC107;">0.000000</div>
+                                        </div>
+                                        <div style="background: rgba(33,150,243,0.1); border: 1px solid rgba(33,150,243,0.3); border-radius: 8px; padding: 15px;">
+                                            <div style="color: #2196F3; font-weight: bold; margin-bottom: 5px;">🛡️ Stop Loss</div>
+                                            <div id="ml-stop-loss" style="font-size: 14px; color: #2196F3;">$0.00</div>
+                                        </div>
+                                        <div style="background: rgba(156,39,176,0.1); border: 1px solid rgba(156,39,176,0.3); border-radius: 8px; padding: 15px;">
+                                            <div style="color: #9C27B0; font-weight: bold; margin-bottom: 5px;">🎯 Take Profit</div>
+                                            <div id="ml-take-profit" style="font-size: 14px; color: #9C27B0;">$0.00</div>
+                                        </div>
+                                        <div style="background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.3); border-radius: 8px; padding: 15px;">
+                                            <div style="color: #4CAF50; font-weight: bold; margin-bottom: 5px;">📈 Confidence</div>
+                                            <div id="ml-confidence" style="font-size: 14px; color: #4CAF50;">0%</div>
+                                        </div>
+                                    </div>
+                                    <div style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                                        <div style="color: #FFD700; font-weight: bold; margin-bottom: 5px;">🤖 ML Reasoning</div>
+                                        <div id="ml-reasoning" style="font-size: 12px; color: #ccc;">No prediction available</div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        
-                        <!-- Prediction Placeholder (hidden when active) -->
-                        <div id="prediction-placeholder" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 30px; margin-bottom: 15px; border: 1px solid rgba(255,255,255,0.1); text-align: center; display: none;">
-                            <div style="font-size: 48px; margin-bottom: 20px;">🎯</div>
-                            <div style="font-size: 18px; color: #FFD700; margin-bottom: 10px;"><strong>Trade Predictions</strong></div>
-                            <div style="color: #888; margin-bottom: 15px;">
-                                AI will predict specific trade opportunities with:
-                            </div>
-                            <!-- ML Trading Predictions -->
-                            <div id="ml-trading-predictions" style="margin-top: 20px;">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                                    <div style="background: rgba(0,255,136,0.1); border: 1px solid rgba(0,255,136,0.3); border-radius: 8px; padding: 15px;">
-                                        <div style="color: #00FF88; font-weight: bold; margin-bottom: 5px;">📈 Signal</div>
-                                        <div id="ml-signal" style="font-size: 14px; color: #00FF88;">HOLD</div>
-                                    </div>
-                                    <div style="background: rgba(255,68,68,0.1); border: 1px solid rgba(255,68,68,0.3); border-radius: 8px; padding: 15px;">
-                                        <div style="color: #FF4444; font-weight: bold; margin-bottom: 5px;">💰 Entry Price</div>
-                                        <div id="ml-entry-price" style="font-size: 14px; color: #FF4444;">$0.00</div>
-                                    </div>
-                                    <div style="background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); border-radius: 8px; padding: 15px;">
-                                        <div style="color: #FFC107; font-weight: bold; margin-bottom: 5px;">📊 Size (BTC)</div>
-                                        <div id="ml-size-btc" style="font-size: 14px; color: #FFC107;">0.000000</div>
-                                    </div>
-                                    <div style="background: rgba(33,150,243,0.1); border: 1px solid rgba(33,150,243,0.3); border-radius: 8px; padding: 15px;">
-                                        <div style="color: #2196F3; font-weight: bold; margin-bottom: 5px;">🛡️ Stop Loss</div>
-                                        <div id="ml-stop-loss" style="font-size: 14px; color: #2196F3;">$0.00</div>
-                                    </div>
-                                    <div style="background: rgba(156,39,176,0.1); border: 1px solid rgba(156,39,176,0.3); border-radius: 8px; padding: 15px;">
-                                        <div style="color: #9C27B0; font-weight: bold; margin-bottom: 5px;">🎯 Take Profit</div>
-                                        <div id="ml-take-profit" style="font-size: 14px; color: #9C27B0;">$0.00</div>
-                                    </div>
-                                    <div style="background: rgba(76,175,80,0.1); border: 1px solid rgba(76,175,80,0.3); border-radius: 8px; padding: 15px;">
-                                        <div style="color: #4CAF50; font-weight: bold; margin-bottom: 5px;">📈 Confidence</div>
-                                        <div id="ml-confidence" style="font-size: 14px; color: #4CAF50;">0%</div>
-                                    </div>
-                                </div>
-                                <div style="margin-top: 15px; padding: 10px; background: rgba(0,0,0,0.2); border-radius: 8px;">
-                                    <div style="color: #FFD700; font-weight: bold; margin-bottom: 5px;">🤖 ML Reasoning</div>
-                                    <div id="ml-reasoning" style="font-size: 12px; color: #ccc;">No prediction available</div>
+                    </div>
+
+                    <!-- Reaction Card -->
+                    <div class="card">
+                        <h2>⚡ Reaction <span id="reaction-status" style="font-size: 14px; color: #888; font-weight: normal;">(Analyzing...)</span></h2>
+                        <div style="font-size: 12px; color: #666; margin-bottom: 15px; font-style: italic;">
+                            Real-time market reaction signals (breakout/reversal/sweep)
+                        </div>
+                        <div id="reaction-container">
+                            <div id="active-reaction" style="background: rgba(255,255,255,0.05); border-radius: 10px; padding: 20px; border: 1px solid rgba(255,255,255,0.1);">
+                                <div style="text-align: center; color: #888; padding: 20px;">
+                                    <div style="font-size: 36px; margin-bottom: 10px;">⚡</div>
+                                    <div>Waiting for reaction data...</div>
                                 </div>
                             </div>
-                                    </div>
-                                </div>
-                                
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -953,10 +977,11 @@
                         this.updateMarketData(data.market);
                     }
                     
-                    // Update prediction
-                    if (data.prediction) {
-                        this.updatePrediction(data.prediction);
-                    }
+                    // Update prediction (always call; handler shows "No Signal" when null/empty)
+                    this.updatePrediction(data.prediction ?? null);
+
+                    // Update reaction (always call; handler shows "No Signal" when null/empty)
+                    this.updateReaction(data.reaction ?? null);
                     
                     // Update trading summary
                     if (data.summary) {
@@ -2055,6 +2080,172 @@
                 // Update status
                 predictionStatus.textContent = `(${confidenceStatus})`;
                 predictionStatus.style.color = confidenceColor;
+            }
+
+            updateReaction(reaction) {
+                if (DEBUG) console.log('⚡ Updating reaction:', reaction);
+                
+                const activeReaction = document.getElementById('active-reaction');
+                const reactionStatus = document.getElementById('reaction-status');
+                
+                if (!reaction) {
+                    activeReaction.innerHTML = `
+                        <div style="text-align: center; color: #888; padding: 20px;">
+                            <div style="font-size: 36px; margin-bottom: 10px;">⏳</div>
+                            <div style="font-size: 16px; margin-bottom: 5px;">Waiting for reaction…</div>
+                        </div>
+                    `;
+                    reactionStatus.textContent = '(Loading…)';
+                    reactionStatus.style.color = '#888';
+                    return;
+                }
+
+                const setupType = reaction.setup_type || 'market_follow_through';
+                const setupTypeLabels = { 'breakout': 'Breakout', 'market_follow_through': 'Market', 'reversal': 'Reversal', 'sweep_revert': 'Sweep & Revert' };
+                const setupLabel = setupTypeLabels[setupType] || setupType.replace(/_/g, ' ');
+                const candidateScore = reaction.candidate_score != null ? Number(reaction.candidate_score) : 0;
+                const entryPrice = reaction.entry_price || 0;
+
+                // Always LONG or SHORT (never NONE)
+                const isLong = reaction.direction === 'LONG';
+                const directionColor = isLong ? '#00FF88' : '#FF4444';
+                const directionIcon = isLong ? '📈' : '📉';
+                const directionBg = isLong ? 'rgba(0,255,136,0.1)' : 'rgba(255,68,68,0.1)';
+                const directionBorder = isLong ? 'rgba(0,255,136,0.3)' : 'rgba(255,68,68,0.3)';
+
+                // Confidence placeholder (not implemented yet); real values when we add it
+                const confidence = reaction.confidence != null ? Number(reaction.confidence) : null;
+                let confidenceColor = '#888';
+                let confidenceStatus = 'Not implemented yet';
+                let confidenceDisplay = '—';
+                if (confidence != null) {
+                    if (confidence >= 75) { confidenceColor = '#00FF88'; confidenceStatus = 'Ready'; }
+                    else if (confidence >= 65) { confidenceColor = '#FFD700'; confidenceStatus = 'Building'; }
+                    else if (confidence >= 50) { confidenceColor = '#FFA500'; confidenceStatus = 'Tracking'; }
+                    else { confidenceStatus = 'Low'; }
+                    confidenceDisplay = confidence.toFixed(1);
+                }
+
+                const stopLoss = reaction.stop_loss || 0;
+                const takeProfit = reaction.take_profit || 0;
+                const rrRatio = reaction.rr_ratio || 0;
+
+                // Calculate risk/reward
+                let riskPct = 0;
+                let rewardPct = 0;
+                if (entryPrice > 0) {
+                    if (isLong) {
+                        riskPct = stopLoss > 0 ? ((entryPrice - stopLoss) / entryPrice) * 100 : 0;
+                        rewardPct = takeProfit > 0 ? ((takeProfit - entryPrice) / entryPrice) * 100 : 0;
+                    } else {
+                        riskPct = stopLoss > 0 ? ((stopLoss - entryPrice) / entryPrice) * 100 : 0;
+                        rewardPct = takeProfit > 0 ? ((entryPrice - takeProfit) / entryPrice) * 100 : 0;
+                    }
+                }
+
+                // Update display
+                activeReaction.innerHTML = `
+                    <!-- Header: Direction & Setup Type -->
+                    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px; margin-bottom: 20px;">
+                        <!-- Direction -->
+                        <div style="background: ${directionBg}; border: 2px solid ${directionBorder}; border-radius: 12px; padding: 20px; display: flex; align-items: center; gap: 15px;">
+                            <div style="font-size: 42px;">${directionIcon}</div>
+                            <div style="flex: 1;">
+                                <div style="font-size: 11px; color: #888; margin-bottom: 5px; text-transform: uppercase; letter-spacing: 1px;">Reaction Direction</div>
+                                <div style="font-size: 28px; font-weight: bold; color: ${directionColor}; margin-bottom: 5px;">${reaction.direction}</div>
+                                <div style="font-size: 11px; color: #aaa;">Type: <span style="color: ${directionColor};">${setupLabel}</span></div>
+                            </div>
+                        </div>
+                        
+                        <!-- Confidence (placeholder – not implemented yet) -->
+                        <div style="background: rgba(0,0,0,0.4); border: 2px solid #888; border-radius: 12px; padding: 20px; text-align: center; display: flex; flex-direction: column; justify-content: center;">
+                            <div style="font-size: 11px; color: #888; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Confidence</div>
+                            <div style="font-size: 24px; font-weight: bold; color: #888; margin-bottom: 5px; line-height: 1;">—</div>
+                            <div style="font-size: 11px; color: #888; font-weight: 600; margin-top: 5px;">Not implemented yet</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Trade Parameters -->
+                    <div style="margin-bottom: 20px;">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Trade Parameters</div>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;">
+                            <!-- Entry Price -->
+                            <div style="background: linear-gradient(135deg, rgba(255,215,0,0.1) 0%, rgba(255,215,0,0.05) 100%); border: 1px solid rgba(255,215,0,0.3); border-radius: 10px; padding: 15px; text-align: center;">
+                                <div style="font-size: 10px; color: #FFD700; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">Entry Price</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #FFD700; margin-bottom: 4px;">$${entryPrice ? entryPrice.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
+                                <div style="font-size: 9px; color: #666;">Market Order</div>
+                            </div>
+                            
+                            <!-- Stop Loss -->
+                            <div style="background: linear-gradient(135deg, rgba(255,68,68,0.1) 0%, rgba(255,68,68,0.05) 100%); border: 1px solid rgba(255,68,68,0.3); border-radius: 10px; padding: 15px; text-align: center;">
+                                <div style="font-size: 10px; color: #FF4444; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">Stop Loss</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #FF4444; margin-bottom: 4px;">$${stopLoss ? stopLoss.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
+                                <div style="font-size: 9px; color: #666;">Risk: ${riskPct.toFixed(2)}%</div>
+                            </div>
+                            
+                            <!-- Take Profit -->
+                            <div style="background: linear-gradient(135deg, rgba(0,255,136,0.1) 0%, rgba(0,255,136,0.05) 100%); border: 1px solid rgba(0,255,136,0.3); border-radius: 10px; padding: 15px; text-align: center;">
+                                <div style="font-size: 10px; color: #00FF88; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">Take Profit</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #00FF88; margin-bottom: 4px;">$${takeProfit ? takeProfit.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A'}</div>
+                                <div style="font-size: 9px; color: #666;">Reward: ${rewardPct.toFixed(2)}%</div>
+                            </div>
+                            
+                            <!-- Risk/Reward Ratio -->
+                            <div style="background: linear-gradient(135deg, rgba(156,39,176,0.1) 0%, rgba(156,39,176,0.05) 100%); border: 1px solid rgba(156,39,176,0.3); border-radius: 10px; padding: 15px; text-align: center;">
+                                <div style="font-size: 10px; color: #9C27B0; margin-bottom: 8px; font-weight: 600; text-transform: uppercase;">Risk/Reward</div>
+                                <div style="font-size: 16px; font-weight: bold; color: ${rrRatio >= 2 ? '#00FF88' : rrRatio >= 1 ? '#FFD700' : '#FF4444'}; margin-bottom: 4px;">${rrRatio.toFixed(2)}:1</div>
+                                <div style="font-size: 9px; color: #666;">${rrRatio >= 2 ? 'Excellent' : rrRatio >= 1 ? 'Good' : 'Low'}</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Status & Meta Info (Status, Strategy, Confidence, Score) -->
+                    <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 15px;">
+                        <!-- Status -->
+                        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 6px; text-transform: uppercase;">Status</div>
+                            <div style="font-size: 14px; font-weight: bold; color: ${(reaction.status === 'READY' || reaction.executable) ? '#00FF88' : '#888'};">
+                                ${reaction.status || (reaction.executable ? 'READY' : reaction.execution_gate_reason || 'NOT EXECUTABLE')}
+                            </div>
+                        </div>
+                        
+                        <!-- Strategy -->
+                        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 6px; text-transform: uppercase;">Strategy</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #aaa;">
+                                ${reaction.strategy || reaction.strategy_used_by_engine || 'standard'}
+                            </div>
+                        </div>
+                        
+                        <!-- Confidence -->
+                        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 6px; text-transform: uppercase;">Confidence</div>
+                            <div style="font-size: 14px; font-weight: bold; color: ${confidenceColor};">
+                                ${confidence != null ? confidenceDisplay + '% ' + confidenceStatus : '— ' + confidenceStatus}
+                            </div>
+                        </div>
+                        
+                        <!-- Score (candidate_score 0–100) -->
+                        <div style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 12px; text-align: center;">
+                            <div style="font-size: 10px; color: #888; margin-bottom: 6px; text-transform: uppercase;">Score</div>
+                            <div style="font-size: 14px; font-weight: bold; color: #aaa;">${candidateScore.toFixed(1)}</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Reasoning (if available) -->
+                    ${reaction.reasoning ? `
+                    <div style="margin-bottom: 15px;">
+                        <div style="font-size: 11px; color: #888; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px; font-weight: 600;">Reasoning</div>
+                        <div style="background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.1); border-radius: 10px; padding: 15px; max-height: 120px; overflow-y: auto;">
+                            <div style="font-size: 11px; color: #aaa; line-height: 1.6;">${reaction.reasoning}</div>
+                        </div>
+                    </div>
+                    ` : ''}
+                `;
+
+                // Update status
+                reactionStatus.textContent = `(${setupLabel})`;
+                reactionStatus.style.color = directionColor;
             }
             
             updateTradingSummary(summary) {

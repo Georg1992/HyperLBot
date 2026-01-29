@@ -8,15 +8,40 @@ This enables validation of confidence estimates against actual results.
 NO ML MODELS - Pure infrastructure for logging and calibration metrics.
 """
 
-import time
 import sqlite3
 import threading
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from pathlib import Path
 from contextlib import contextmanager
 from loguru import logger
 from dataclasses import dataclass, asdict
 import json
+
+from config.config import TradingConfig
+
+
+def _nested_get(data: Dict[str, Any], path: List[str]) -> Optional[Any]:
+    """Follow path (e.g. ['trend','strength']) into data. Return None if any key missing."""
+    cur = data
+    for k in path:
+        if not isinstance(cur, dict) or k not in cur:
+            return None
+        cur = cur[k]
+    return cur
+
+
+def _require_calibration_key(
+    unified_data: Dict[str, Any],
+    path: List[str],
+    context: str,
+) -> Any:
+    """Read required calibration key from nested path. Raise ValueError if missing (NO FALLBACKS)."""
+    v = _nested_get(unified_data, path)
+    if v is None:
+        raise ValueError(
+            f"Calibration required key missing (NO FALLBACKS): path={path!r} ({context})"
+        )
+    return v
 
 
 @dataclass
@@ -79,6 +104,7 @@ class CalibrationHooks:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
+        self.consecutive_failures = 0
         self._init_database()
         logger.info(f"📊 Calibration hooks initialized: {self.db_path}")
     
@@ -166,42 +192,70 @@ class CalibrationHooks:
                 logger.error(f"❌ Failed to initialize calibration database: {e}")
                 raise
     
+    def _extract_calibration_features(self, unified_data: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, str]]:
+        """
+        Extract calibration features from nested unified_data. NO FALLBACKS for required keys.
+        Optional keys: if missing, record in inactive_features as "optional_missing".
+        """
+        required_paths = {
+            "volatility_category": ["volatility_category"],
+            "volatility_5m": ["volatility_5m"],
+            "trend_direction": ["trend_direction"],
+            "volume_category": ["volume_category"],
+            "rsi_value": ["rsi_value"],
+        }
+        optional_paths = {
+            "trend_strength": ["trend", "strength"],
+            "rsi_trend": ["rsi", "rsi_trend"],
+            "spread_pct": ["orderbook_analysis", "bid_ask_spread", "percentage"],
+            "liquidity_score": ["orderbook_analysis", "liquidity_depth", "depth_score"],
+            "net_pressure": ["pressure", "net_pressure"],
+            "pressure_ratio": ["pressure", "pressure_ratio"],
+            "funding_direction": ["funding_analysis", "funding_trend", "direction"],
+            "volume_trend_strength": ["volume", "volume_trend_strength"],
+            "spike_intensity": ["volatility", "spike_intensity"],
+            "risk_level": ["market_conditions", "risk_level"],
+        }
+        inactive: Dict[str, str] = {}
+        features: Dict[str, Any] = {}
+
+        for key, path in required_paths.items():
+            v = _require_calibration_key(unified_data, path, f"key={key}")
+            if key == "rsi_value":
+                features[key] = float(v)
+            elif key == "volatility_5m":
+                features[key] = float(v)
+            else:
+                features[key] = v
+
+        for key, path in optional_paths.items():
+            v = _nested_get(unified_data, path)
+            if v is None:
+                inactive[key] = "optional_missing"
+                continue
+            if key in ("trend_strength", "spread_pct", "liquidity_score", "net_pressure", "pressure_ratio", "volume_trend_strength"):
+                try:
+                    features[key] = float(v)
+                except (TypeError, ValueError):
+                    inactive[key] = "optional_missing"
+            else:
+                features[key] = v
+
+        if inactive:
+            features["inactive_features"] = inactive
+        return features, inactive
+
     def log_prediction(self, prediction, unified_data: Dict[str, Any], 
                       direction_scores: Dict[str, float], entry_score: float) -> str:
         """
-        Log a prediction for calibration
-        
-        Args:
-            prediction: TradingPrediction object
-            unified_data: Complete market data used for prediction
-            direction_scores: Dict with 'long_score', 'short_score', 'score_diff'
-            entry_score: Entry setup score
-        
-        Returns:
-            prediction_id: Unique ID for this prediction
+        Log a prediction for calibration. Reads from nested unified_data; no silent defaults.
+        Required keys (raise if missing): volatility_category, volatility_5m, trend_direction,
+        volume_category, rsi_value. Optional keys use nested paths; missing → inactive_features.
         """
         try:
             prediction_id = f"pred_{int(prediction.timestamp * 1000)}"
-            
-            # Extract features for calibration
-            features = {
-                "volatility_category": unified_data.get("volatility_category", "UNKNOWN"),
-                "volatility_5m": unified_data.get("volatility_5m", 0.0),
-                "trend_direction": unified_data.get("trend_direction", "UNKNOWN"),
-                "trend_strength": unified_data.get("trend_strength", 0.0),
-                "volume_category": unified_data.get("volume_category", "UNKNOWN"),
-                "rsi_value": unified_data.get("rsi_value", 50.0),
-                "rsi_trend": unified_data.get("rsi_trend", "NEUTRAL"),
-                "spread_pct": unified_data.get("spread_pct", 0.0),
-                "liquidity_score": unified_data.get("liquidity_score", 0.0),
-                "net_pressure": unified_data.get("net_pressure", 0.0),
-                "pressure_ratio": unified_data.get("pressure_ratio", 1.0),
-                "funding_direction": unified_data.get("funding_direction", "STABLE"),
-                "volume_trend_strength": unified_data.get("volume_trend_strength", 0.5),
-                "spike_intensity": unified_data.get("spike_intensity", "NONE"),
-                "risk_level": unified_data.get("risk_level", "MEDIUM")
-            }
-            
+            features, _ = self._extract_calibration_features(unified_data)
+
             record = PredictionRecord(
                 prediction_id=prediction_id,
                 timestamp=prediction.timestamp,
@@ -212,17 +266,17 @@ class CalibrationHooks:
                 take_profit=prediction.take_profit,
                 confidence=prediction.confidence,
                 reasoning=prediction.reasoning,
-                long_score=direction_scores.get("long_score", 0.0),
-                short_score=direction_scores.get("short_score", 0.0),
-                score_diff=direction_scores.get("score_diff", 0.0),
+                long_score=float(direction_scores.get("long_score") or 0.0),
+                short_score=float(direction_scores.get("short_score") or 0.0),
+                score_diff=float(direction_scores.get("score_diff") or 0.0),
                 entry_score=entry_score,
-                volatility_category=features["volatility_category"],
-                trend_direction=features["trend_direction"],
-                volume_category=features["volume_category"],
-                rsi_value=features["rsi_value"],
-                features_json=json.dumps(features)
+                volatility_category=str(features["volatility_category"]),
+                trend_direction=str(features["trend_direction"]),
+                volume_category=str(features["volume_category"]),
+                rsi_value=float(features["rsi_value"]),
+                features_json=json.dumps(features),
             )
-            
+
             with self._lock:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
@@ -239,22 +293,36 @@ class CalibrationHooks:
                         record.entry_score, record.volatility_category, record.trend_direction,
                         record.volume_category, record.rsi_value, record.features_json
                     ))
-            
+
+            self.consecutive_failures = 0
             logger.debug(f"📊 Logged prediction {prediction_id} for calibration")
             return prediction_id
-            
+
+        except ValueError as e:
+            req_key_msg = "Calibration required key missing"
+            if req_key_msg in str(e):
+                self.consecutive_failures += 1
+                threshold = int(getattr(TradingConfig, "CALIBRATION_FAILURE_THRESHOLD", 50))
+                if self.consecutive_failures >= threshold:
+                    raise RuntimeError(
+                        "Calibration disabled: repeated required-key failures"
+                    ) from e
+            logger.error(f"❌ Failed to log prediction for calibration: {e}")
+            raise
         except Exception as e:
             logger.error(f"❌ Failed to log prediction for calibration: {e}")
-            # Don't raise - calibration logging shouldn't break prediction generation
-            return ""
+            raise  # NO FALLBACKS - propagate so caller can handle
     
     def log_outcome(self, prediction_id: str, outcome: Dict[str, Any]) -> bool:
         """
-        Log outcome for a prediction
+        Log outcome for a prediction.
+        outcome_timestamp: use from outcome if present; else use prediction timestamp (from DB).
+        Never use 0.0 (no dummy timestamps).
         
         Args:
             prediction_id: ID from log_prediction()
             outcome: Dict with:
+                - outcome_timestamp: float (optional; else prediction timestamp used)
                 - hit_stop: bool
                 - hit_target: bool
                 - profit_pct: float
@@ -273,6 +341,25 @@ class CalibrationHooks:
             with self._lock:
                 with self._get_connection() as conn:
                     cursor = conn.cursor()
+                    ot = outcome.get("outcome_timestamp")
+                    if ot is not None:
+                        try:
+                            outcome_ts = float(ot)
+                        except (TypeError, ValueError):
+                            outcome_ts = None
+                    else:
+                        outcome_ts = None
+                    if outcome_ts is None:
+                        cursor.execute(
+                            "SELECT timestamp FROM predictions WHERE prediction_id = ?",
+                            (prediction_id,),
+                        )
+                        row = cursor.fetchone()
+                        if not row or row[0] is None:
+                            raise ValueError(
+                                "log_outcome: outcome_timestamp missing and no prediction timestamp (NO FALLBACKS)"
+                            )
+                        outcome_ts = float(row[0])
                     cursor.execute("""
                         INSERT OR REPLACE INTO outcomes
                         (prediction_id, outcome_timestamp, hit_stop, hit_target, profit_pct,
@@ -280,7 +367,7 @@ class CalibrationHooks:
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         prediction_id,
-                        time.time(),
+                        outcome_ts,
                         int(outcome.get("hit_stop", False)),
                         int(outcome.get("hit_target", False)),
                         outcome.get("profit_pct", 0.0),
@@ -292,7 +379,9 @@ class CalibrationHooks:
             
             logger.debug(f"📊 Logged outcome for prediction {prediction_id}")
             return True
-            
+
+        except ValueError:
+            raise  # No timestamp available, etc. (NO FALLBACKS)
         except Exception as e:
             logger.error(f"❌ Failed to log outcome for calibration: {e}")
             return False

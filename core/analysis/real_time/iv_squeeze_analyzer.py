@@ -11,7 +11,6 @@ IV Squeeze occurs when:
 Based on TradingView implementation by Sunil Bhave
 """
 
-import time
 from typing import Dict, Any, Optional, List
 from loguru import logger
 
@@ -44,9 +43,10 @@ class IVSqueezeAnalyzer:
         self.keltner_length = 20
         self.keltner_mult = 1.0
         
-        # State tracking
+        # State tracking (all timestamps from data_timestamp, never time.time())
         self._squeeze_start_time: Optional[float] = None
         self._last_squeeze_state = False
+        self._last_release_timestamp: Optional[float] = None
         self._squeeze_history: List[Dict[str, Any]] = []
         
         logger.info(f"📊 IV Squeeze Analyzer initialized for {symbol}")
@@ -213,27 +213,34 @@ class IVSqueezeAnalyzer:
             from config.config import TradingConfig
             return TradingConfig.ATR_ABSOLUTE_MIN
     
-    def detect_squeeze(self, candles: List[Dict], current_price: float = None) -> Dict[str, Any]:
+    def detect_squeeze(
+        self,
+        candles: List[Dict],
+        current_price: float = None,
+        data_timestamp: float = None,
+    ) -> Dict[str, Any]:
         """
-        Detect IV Squeeze condition
+        Detect IV Squeeze condition.
+        Uses data_timestamp only (no time.time()) for determinism.
         
         Args:
             candles: List of candle dictionaries (need at least max(bollinger_length, keltner_length))
             current_price: Current market price (optional, uses last candle close if not provided)
+            data_timestamp: Unix timestamp for this tick (required for determinism; use unified_data["timestamp"])
         
         Returns:
             Dictionary with squeeze analysis:
-            - is_squeeze: bool - Whether squeeze is currently active
-            - squeeze_strength: float - 0.0-1.0, how tight the squeeze is
-            - duration_minutes: float - How long squeeze has been active
-            - bollinger_bands: Dict with upper, middle, lower
-            - keltner_channels: Dict with upper, middle, lower
-            - squeeze_released: bool - Whether squeeze just released (breakout)
+            - is_squeeze, squeeze_strength, duration_minutes, squeeze_released
+            - release_timestamp: set when squeeze_released transitions False→True; else kept from last release
+            - bollinger_bands, keltner_channels, current_price, timestamp (= data_timestamp)
         
         Raises:
-            ValueError: If insufficient candles (NO FALLBACKS)
+            ValueError: If insufficient candles or data_timestamp missing (NO FALLBACKS)
         """
         try:
+            if data_timestamp is None:
+                raise ValueError("data_timestamp is required for IV Squeeze (NO FALLBACKS)")
+            current_time = float(data_timestamp)
             if current_price is None:
                 if not candles:
                     raise ValueError("No candles provided and no current_price (NO FALLBACKS)")
@@ -241,42 +248,28 @@ class IVSqueezeAnalyzer:
                 if current_price <= 0:
                     raise ValueError(f"Invalid current_price from candles: {current_price} (NO FALLBACKS)")
             
-            # Calculate Bollinger Bands
             bb = self.calculate_bollinger_bands(candles)
-            
-            # Calculate Keltner Channels
             kc = self.calculate_keltner_channels(candles)
-            
-            # Detect squeeze condition
-            # Squeeze: Lower BB > Lower KC AND Upper BB < Upper KC
             is_squeeze = (bb['lower'] > kc['lower']) and (bb['upper'] < kc['upper'])
-            
-            # Calculate squeeze strength (0.0 = no squeeze, 1.0 = maximum squeeze)
-            # Strength = how much BB is inside KC (normalized)
             if is_squeeze:
                 bb_width = bb['upper'] - bb['lower']
                 kc_width = kc['upper'] - kc['lower']
-                if kc_width > 0:
-                    # How much of KC width is occupied by BB
-                    squeeze_strength = min(1.0, bb_width / kc_width)
-                else:
-                    squeeze_strength = 0.0
+                squeeze_strength = min(1.0, bb_width / kc_width) if kc_width > 0 else 0.0
             else:
                 squeeze_strength = 0.0
             
-            # Track squeeze duration
-            current_time = time.time()
             squeeze_released = False
+            release_timestamp: Optional[float] = self._last_release_timestamp
             
             if is_squeeze:
                 if not self._last_squeeze_state:
-                    # Squeeze just started
                     self._squeeze_start_time = current_time
                 duration_minutes = (current_time - self._squeeze_start_time) / 60.0 if self._squeeze_start_time else 0.0
             else:
                 if self._last_squeeze_state:
-                    # Squeeze just released (breakout)
                     squeeze_released = True
+                    release_timestamp = current_time
+                    self._last_release_timestamp = current_time
                     duration_minutes = (current_time - self._squeeze_start_time) / 60.0 if self._squeeze_start_time else 0.0
                     logger.info(f"📊 IV Squeeze released after {duration_minutes:.1f} minutes - potential breakout")
                 else:
@@ -285,16 +278,14 @@ class IVSqueezeAnalyzer:
             
             self._last_squeeze_state = is_squeeze
             
-            # Store squeeze history (keep last 10)
             if len(self._squeeze_history) >= 10:
                 self._squeeze_history.pop(0)
-            
             self._squeeze_history.append({
                 'timestamp': current_time,
                 'is_squeeze': is_squeeze,
                 'squeeze_strength': squeeze_strength,
                 'duration_minutes': duration_minutes,
-                'current_price': current_price
+                'current_price': current_price,
             })
             
             result = {
@@ -302,59 +293,41 @@ class IVSqueezeAnalyzer:
                 'squeeze_strength': squeeze_strength,
                 'duration_minutes': duration_minutes if is_squeeze else 0.0,
                 'squeeze_released': squeeze_released,
-                'bollinger_bands': {
-                    'upper': bb['upper'],
-                    'middle': bb['middle'],
-                    'lower': bb['lower']
-                },
-                'keltner_channels': {
-                    'upper': kc['upper'],
-                    'middle': kc['middle'],
-                    'lower': kc['lower']
-                },
+                'release_timestamp': release_timestamp,
+                'bollinger_bands': {'upper': bb['upper'], 'middle': bb['middle'], 'lower': bb['lower']},
+                'keltner_channels': {'upper': kc['upper'], 'middle': kc['middle'], 'lower': kc['lower']},
                 'current_price': current_price,
-                'timestamp': current_time
+                'timestamp': current_time,
             }
-            
             if is_squeeze:
                 logger.debug(f"📊 IV Squeeze detected: strength={squeeze_strength:.2f}, duration={duration_minutes:.1f}m")
-            
             return result
-            
         except Exception as e:
             logger.error(f"❌ IV Squeeze detection failed: {e}")
-            raise  # NO FALLBACKS
+            raise
     
-    def get_latest_analysis(self, candles: List[Dict] = None, current_price: float = None) -> Dict[str, Any]:
+    def get_latest_analysis(
+        self,
+        candles: List[Dict] = None,
+        current_price: float = None,
+        data_timestamp: float = None,
+    ) -> Dict[str, Any]:
         """
-        Get latest IV Squeeze analysis
-        
-        Args:
-            candles: List of candle dictionaries (optional, will fetch if not provided)
-            current_price: Current market price (optional)
-        
-        Returns:
-            IV Squeeze analysis dictionary
-        
-        Raises:
-            ValueError: If candles cannot be fetched or insufficient data (NO FALLBACKS)
+        Get latest IV Squeeze analysis.
+        data_timestamp required for determinism (use unified_data["timestamp"] or tick timestamp).
         """
         try:
-            # Fetch candles if not provided
             if candles is None:
                 from core.services.historical_data_service import get_global_historical_data_service
                 historical_service = get_global_historical_data_service()
-                
-                # Need at least max(bollinger_length, keltner_length) candles
-                required_candles = max(self.bollinger_length, self.keltner_length) + 5  # Add buffer
+                required_candles = max(self.bollinger_length, self.keltner_length) + 5
                 candles = historical_service.get_5m_candles(self.symbol, required_candles)
-                
                 if not candles or len(candles) < max(self.bollinger_length, self.keltner_length):
-                    raise ValueError(f"Insufficient candles for IV Squeeze analysis: {len(candles) if candles else 0} < {max(self.bollinger_length, self.keltner_length)} (NO FALLBACKS)")
-            
-            # Detect squeeze
-            return self.detect_squeeze(candles, current_price)
-            
+                    raise ValueError(
+                        f"Insufficient candles for IV Squeeze analysis: {len(candles) if candles else 0} < "
+                        f"{max(self.bollinger_length, self.keltner_length)} (NO FALLBACKS)"
+                    )
+            return self.detect_squeeze(candles, current_price, data_timestamp)
         except Exception as e:
             logger.error(f"❌ Failed to get latest IV Squeeze analysis: {e}")
-            raise  # NO FALLBACKS
+            raise

@@ -210,14 +210,7 @@ class TechnicalAnalysisConstants:
     SPREAD_SIGNIFICANT = 0.001       # 0.1% significant spread
     DEPTH_SIGNIFICANT = 0.001        # 0.1% significant depth
     
-    # Volatility Categories (separate from volume categories)
-    VOLATILITY_CATEGORY_EXTREMELY_HIGH = "EXTREMELY_HIGH"
-    VOLATILITY_CATEGORY_VERY_HIGH = "VERY_HIGH"
-    VOLATILITY_CATEGORY_HIGH = "HIGH"
-    VOLATILITY_CATEGORY_ABOVE_AVERAGE = "ABOVE_AVERAGE"
-    VOLATILITY_CATEGORY_NORMAL = "NORMAL"
-    VOLATILITY_CATEGORY_BELOW_AVERAGE = "BELOW_AVERAGE"
-    VOLATILITY_CATEGORY_LOW = "LOW"
+    # Volatility classification thresholds: use config.config.TradingConfig.VOL_LVL_* only (single source of truth).
 
 
 class TradingExecutionConstants:
@@ -258,14 +251,8 @@ class VariabilityConstants:
     HIGH_VOLATILITY = 0.03           # 3.0% - active Bitcoin trading
     EXTREME_VOLATILITY = 0.08        # 8.0% - very volatile Bitcoin market
     
-    # 5-Minute Volatility Thresholds (for real-time trading) - REALISTIC Bitcoin 5m thresholds
-    # UPDATED: Adjusted thresholds based on actual market observations
-    VOLATILITY_5M_VERY_LOW = 0.0005    # 0.05% - almost no movement
-    VOLATILITY_5M_LOW = 0.0015         # 0.15% - low movement
-    VOLATILITY_5M_MODERATE = 0.0030    # 0.30% - moderate movement
-    VOLATILITY_5M_HIGH = 0.0040        # 0.40% - high movement (lowered from 0.60%)
-    VOLATILITY_5M_EXTREME = 0.0080     # 0.80% - extreme movement (lowered from 1.20%)
-    
+    # 5m classification thresholds: use config.config.TradingConfig.VOL_LVL_* only (single source of truth).
+
     # Trading Condition Scores
     OPTIMAL_TRADING_SCORE = 0.7      # 70% score for optimal conditions
     GOOD_TRADING_SCORE = 0.5         # 50% score for good conditions

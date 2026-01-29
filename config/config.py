@@ -74,7 +74,8 @@ class TradingConfig:
     # Quality gates for signal execution and strategy validation
     MIN_MOMENTUM_CONFIDENCE = 65.0  # Minimum confidence % for momentum signals (reactive_engine)
     MIN_LIQUIDITY_SCORE = 0.5       # Minimum liquidity depth score for scalping (0.0-1.0)
-    
+    CALIBRATION_FAILURE_THRESHOLD = 50  # Consecutive required-key failures → disable calibration (raise)
+
     # Strategy Scoring Thresholds
     FUNDING_RATE_CHANGE_THRESHOLDS = {
         "significant_increase": 0.0001,   # 0.01% increase = significant
@@ -119,7 +120,25 @@ class TradingConfig:
     FILL_PROBABILITY_CAP_AT_0_5_ATR = 95.0  # Maximum fill probability at <= 0.5×ATR distance
     FILL_PROBABILITY_CAP_AT_2_0_ATR = 50.0  # Maximum fill probability at >= 2.0×ATR distance
     FILL_PROBABILITY_CAP_AT_3_0_ATR = 30.0  # Maximum fill probability at >= 3.0×ATR distance
-    
+
+    # IV Squeeze (timing only – WHEN to act, not direction or entry)
+    SQUEEZE_BOOST_MAX = 10.0  # Max additive boost to ReactiveEngine breakout candidate score
+    ENABLE_SQUEEZE_FEATURES = True  # Include ivs_* in FeatureVector
+    STRICT_IVS_PRESENCE = False  # If True, raise when iv_squeeze missing; else use 0 / no_squeeze
+
+    # Reaction direction scorer (microstructure) – weights and thresholds
+    # All weights must sum to 1.0. Factors normalized to [-1,1] or [0,1] then combined.
+    REACTION_DIRECTION_WEIGHTS = {
+        "orderbook_imbalance": 0.30,   # bias -1..1 -> long/short
+        "pressure": 0.25,              # direction + strength
+        "spread_penalty": 0.10,       # wide spread reduces both scores
+        "level_proximity": 0.15,      # nearest S/R distance for “immediate move” context
+        "volatility_momentum": 0.20,  # ATR / range vs norm
+    }
+    REACTION_SPREAD_WIDE_PCT = 0.05   # spread >= this % reduces score (e.g. 0.05%)
+    REACTION_LEVEL_PROXIMITY_ATR = 3.0  # consider level “near” if within this many ATR
+    REACTION_VOLATILITY_ATR_RATIO = 1.5  # range/atr above this = momentum burst
+
     # Direction Tie-Breaking Configuration
     DIRECTION_TIE_BREAK_TREND_STRENGTH_THRESHOLD = 0.5  # Minimum trend strength for tie-breaking (0-1.0)
     
@@ -146,7 +165,24 @@ class TradingConfig:
         "high": 0.03,    # >3% = high volatility
         "moderate": 0.01  # >1% = moderate volatility
     }
-    
+
+    # 5m Volatility Pipeline (spike detection, adaptive blending, classification)
+    VOL_EPS = 1e-12
+    VOL_ABS_SPIKE_THRESHOLD_5M = 0.010   # 1% backstop absolute spike
+    VOL_SPIKE_MULTIPLIER_5M = 2.0        # relative spike: current >= weighted * this
+    VOL_SPIKE_RATIO_MODERATE = 2.0       # ratio < this -> MODERATE
+    VOL_SPIKE_RATIO_HIGH = 3.0           # ratio < this -> HIGH; else EXTREME
+    VOL_BLEND_W_STRONG = 0.95
+    VOL_BLEND_W_HIGH = 0.85
+    VOL_BLEND_W_MED = 0.75
+    VOL_BLEND_W_BASE = 0.65
+    VOL_BLEND_RATIO_STRONG = 2.5
+    VOL_BLEND_RATIO_HIGH = 1.5
+    VOL_BLEND_RATIO_MED = 1.1
+    VOL_LVL_LOW_MAX = 0.0015
+    VOL_LVL_MOD_MAX = 0.0030
+    VOL_LVL_HIGH_MAX = 0.0060
+
     # Universal Support/Resistance Power Configuration
     # Power = pure level strength (inherent quality, not contextual)
     # Only includes: touch count, volume, reversal_probability

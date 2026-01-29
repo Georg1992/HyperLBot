@@ -38,20 +38,19 @@ class TestPsychologicalLevelGenerator:
             assert price % 500 < 0.01 or price % 5000 < 0.01
     
     def test_price_above_50k(self):
-        """Test spacing for price > $50k (e.g., near $100k)"""
+        """Test spacing for price > $50k (minor=1000, major=10000)"""
         current_price = 95000.0
         levels = PsychologicalLevelGenerator.generate_levels(current_price)
         
-        # Should have minor=1000, major=10000 spacing
         assert len(levels) > 0
         
         prices = [l["price_level"] for l in levels]
         for price in prices:
-            # Should be divisible by 1000 (minor) or 10000 (major)
             assert price % 1000 < 0.01 or price % 10000 < 0.01
         
-        # Should include $100k (major level)
-        assert any(abs(l["price_level"] - 100000.0) < 0.01 for l in levels)
+        # ±5% around 95k is [90250, 99750]; 100k is above max, so not included.
+        assert min(prices) >= 90250.0
+        assert max(prices) <= 99750.0
     
     def test_level_format(self):
         """Test that levels conform to S/R level format"""

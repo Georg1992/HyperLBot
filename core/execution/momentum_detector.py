@@ -142,6 +142,50 @@ class MomentumDetector:
         except Exception as e:
             logger.error(f"❌ Momentum detection failed: {e}")
             return None
+
+    def evaluate_breakouts(
+        self,
+        unified_data: Dict[str, Any],
+        current_price: float,
+        atr_5m: float,
+    ) -> Dict[str, Optional[MomentumSignal]]:
+        """
+        Evaluate LONG and SHORT breakout signals separately for candidate enumeration.
+        Returns {"long": MomentumSignal or None, "short": MomentumSignal or None}.
+        """
+        out: Dict[str, Optional[MomentumSignal]] = {"long": None, "short": None}
+        try:
+            sr_data = unified_data["support_resistance"]
+            pressure_data = unified_data["pressure"]
+            volume_data = unified_data["volume"]
+            rsi_data = unified_data["rsi"]
+            volatility_data = unified_data["volatility"]
+            trend_data = unified_data["trend"]
+            levels = sr_data.get("levels") or []
+            active_support = [
+                l for l in levels
+                if l.get("type") == "support" and l.get("status") == "active"
+                and l.get("price_level", 0) < current_price
+            ]
+            active_resistance = [
+                l for l in levels
+                if l.get("type") == "resistance" and l.get("status") == "active"
+                and l.get("price_level", float("inf")) > current_price
+            ]
+            if not all([pressure_data, volume_data]):
+                return out
+            out["long"] = self._check_long_breakout(
+                current_price, active_resistance, pressure_data, volume_data,
+                rsi_data, volatility_data, trend_data, atr_5m,
+            )
+            out["short"] = self._check_short_breakout(
+                current_price, active_support, pressure_data, volume_data,
+                rsi_data, volatility_data, trend_data, atr_5m,
+            )
+            return out
+        except Exception as e:
+            logger.debug(f"Momentum evaluate_breakouts failed: {e}")
+            return out
     
     def _check_long_breakout(
         self,

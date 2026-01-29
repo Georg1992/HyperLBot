@@ -125,9 +125,12 @@ class DashboardService:
                 # Update nested market section with filtered data
                 self._data["market"].update(market_dict)
                 
-                # Surface prediction to top-level for UI consumption (always set, even None)
+                # Surface prediction/reaction for UI. Never filter by executable or confidence.
+                # Always show best decision; execution gating is separate.
                 pred_obj = market_data["prediction"] if "prediction" in market_data else None
                 self._data["prediction"] = pred_obj
+                rxn = market_data.get("reaction") if "reaction" in market_data else None
+                self._data["reaction"] = rxn
                 
                 self._save_data()
                 # WebSocket emission happens automatically via file monitoring

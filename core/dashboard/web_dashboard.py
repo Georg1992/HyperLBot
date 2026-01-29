@@ -228,6 +228,11 @@ class EventDrivenTradingDashboard:
             session_data = data['session'] if 'session' in data else {}
             rsi_data = market_data['rsi'] if 'rsi' in market_data else {}
             
+            rxn = data.get('reaction')
+            reaction_fingerprint = (
+                (rxn.get('direction'), rxn.get('setup_type'), rxn.get('timestamp'))
+                if isinstance(rxn, dict) else None
+            )
             hash_data = {
                 'price': market_data['current_price'] if 'current_price' in market_data else 0,
                 'rsi': rsi_data['rsi'] if 'rsi' in rsi_data else 0,
@@ -245,7 +250,8 @@ class EventDrivenTradingDashboard:
                 'session_id': session_data['session_id'] if 'session_id' in session_data else '',
                 'status': session_data['status'] if 'status' in session_data else '',
                 'session_time': session_data['session_time'] if 'session_time' in session_data else '0m',
-                'timestamp': data['timestamp'] if 'timestamp' in data else ''
+                'timestamp': data['timestamp'] if 'timestamp' in data else '',
+                'reaction': reaction_fingerprint,
             }
             return str(hash(json.dumps(hash_data, sort_keys=True)))
         except:
@@ -332,6 +338,13 @@ class EventDrivenTradingDashboard:
                     pred_conf = prediction["confidence"] if "confidence" in prediction else "N/A"
                     logger.debug(f"📡 ✅ FOUND PREDICTION (predictions list): dir={pred_dir} conf={pred_conf}")
             
+            # Get reaction (top-level first, then market) – same pattern as prediction
+            reaction = None
+            if "reaction" in dashboard_data and dashboard_data["reaction"] is not None:
+                reaction = dashboard_data["reaction"]
+            elif "reaction" in market_data_dict and market_data_dict["reaction"] is not None:
+                reaction = market_data_dict["reaction"]
+
             # Format data for dashboard - DashboardService ONLY
             dashboard_data = {
                 "session": {
@@ -351,6 +364,7 @@ class EventDrivenTradingDashboard:
                 "logs": dashboard_data["logs"] if "logs" in dashboard_data else [],
                 "predictions": [prediction] if prediction else [],  # Always a list for compatibility
                 "prediction": prediction,  # Top-level prediction (single object) - THIS IS WHAT UI READS
+                "reaction": reaction,  # Reaction data from ReactiveEngine
                 "trades": dashboard_data["trades"] if "trades" in dashboard_data else [],  # Includes pending orders, open positions, closed trades
                 "orderbook": {"bids": [], "asks": []},
                 "candleData": candle_data,  # Add candle data to dashboard data
@@ -374,6 +388,8 @@ class EventDrivenTradingDashboard:
                 "market": {"error": str(e)},
                 "logs": [],
                 "predictions": [],
+                "prediction": None,
+                "reaction": None,
                 "trades": [],
                 "orderbook": {"error": str(e)},
                 "timestamp": datetime.now().isoformat(),
@@ -428,6 +444,8 @@ class EventDrivenTradingDashboard:
             "market": {"error": error_message},
             "logs": [],
             "predictions": [],
+            "prediction": None,
+            "reaction": None,
             "trades": [],
             "orderbook": {"error": error_message},
             "global_volume": {"error": error_message},

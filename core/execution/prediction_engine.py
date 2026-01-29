@@ -12,6 +12,16 @@ from loguru import logger
 from config.config import TradingConfig
 from core.constants import technical_constants
 from .position_sizer import PositionSizeCalculator
+from core.decision.base_engine import BaseDecisionEngine
+from core.decision.models import (
+    DecisionContext,
+    DirectionResult,
+    EntryResult,
+    RiskResult,
+    default_feature_vector,
+    fill_ivs_feature_vector,
+    rsi_trend_to_numeric,
+)
 
 
 @dataclass
@@ -32,19 +42,23 @@ class TradingPrediction:
     execution_gate_reason: str = "confidence_not_implemented"  # Reason why execution is blocked
 
 
-class PredictionEngine:
+class PredictionEngine(BaseDecisionEngine):
     """
-    Strategy-aware prediction engine
-    
-    Takes unified market data and generates trading predictions based on the current strategy.
-    Each strategy has different requirements and logic for generating predictions.
+    Strategy-aware prediction engine (limit setups at S/R + psych + ATR).
+    Subclasses BaseDecisionEngine; always produces DecisionResult.
     """
-    
+
     # Float precision epsilon for comparisons (prevents non-determinism)
     FLOAT_EPSILON = 1e-6  # For general float comparisons
     SCORE_EPSILON = 0.01  # For score comparisons (scores are typically 0-100 range)
     WEIGHT_EPSILON = 0.001  # For weight comparisons (weights are typically 0-1 range)
-    
+
+    def engine_type(self) -> str:
+        return "prediction"
+
+    def entry_type(self) -> str:
+        return "limit"
+
     def __init__(self):
         # Initialize calibration hooks (optional - won't break if unavailable)
         self._calibration_hooks = None
@@ -55,6 +69,119 @@ class PredictionEngine:
         except Exception as e:
             logger.debug(f"Calibration hooks not available: {e} - continuing without calibration")
         logger.info("🤖 Prediction Engine initialized")
+
+    def build_context(
+        self,
+        unified_data: Dict[str, Any],
+        strategy_used_by_engine: str,
+    ) -> DecisionContext:
+        self._require_key(unified_data, "current_price", "build_context")
+        self._require_key(unified_data, "timestamp", "build_context")
+        return super().build_context(unified_data, strategy_used_by_engine)
+
+    def compute_direction(self, context: DecisionContext) -> DirectionResult:
+        dr = self._score_direction(context.unified_data, context.strategy_used_by_engine)
+        return DirectionResult(
+            direction=dr["direction"],
+            long_score=float(dr["long_score"]),
+            short_score=float(dr["short_score"]),
+            score_diff=float(dr["score_diff"]),
+            reasoning=dr["reasoning"],
+            factor_scores=dr.get("factor_scores") or {},
+            breakdown_direction=dr.get("breakdown_direction"),
+        )
+
+    def compute_entry(
+        self,
+        context: DecisionContext,
+        direction: DirectionResult,
+    ) -> EntryResult:
+        cfg = TradingConfig.STRATEGY_CONFIGS[context.strategy_used_by_engine]
+        setups = self._generate_setups_for_direction(
+            context.unified_data,
+            direction.direction,
+            context.strategy_used_by_engine,
+            cfg,
+        )
+        if not setups:
+            raise ValueError(
+                f"No entry setups for {direction.direction} ({context.strategy_used_by_engine}) - "
+                "must always generate at least one (NO FALLBACKS)"
+            )
+        best = max(setups, key=lambda x: x["entry_score"])
+        breakdown = best.get("entry_breakdown") or {}
+        breakdown = {**breakdown, "level_data": best["level_data"], "setup_type": best["setup_type"]}
+        reasoning = best.get("entry_reasoning") or ""
+        return EntryResult(
+            entry_price=best["entry_price"],
+            setup_type="sr_setup",
+            direction=direction.direction,
+            breakdown=breakdown,
+            entry_score=best["entry_score"],
+            reasoning=reasoning,
+        )
+
+    def compute_sl_tp(
+        self,
+        context: DecisionContext,
+        entry: EntryResult,
+    ) -> RiskResult:
+        cfg = TradingConfig.STRATEGY_CONFIGS[context.strategy_used_by_engine]
+        level_data = entry.breakdown.get("level_data")
+        setup_type = entry.breakdown.get("setup_type")
+        sl, tp, rr, sl_pct, tp_pct = self._calculate_stop_and_target(
+            entry_price=entry.entry_price,
+            direction=entry.direction,
+            config=cfg,
+            unified_data=context.unified_data,
+            strategy=context.strategy_used_by_engine,
+            level_data=level_data,
+            setup_type=setup_type,
+        )
+        return RiskResult(stop_loss=sl, take_profit=tp, rr_ratio=rr, breakdown={"stop_loss_pct": sl_pct, "take_profit_pct": tp_pct})
+
+    def build_feature_vector(
+        self,
+        context: DecisionContext,
+        direction: DirectionResult,
+        entry: EntryResult,
+        risk: RiskResult,
+    ) -> Dict[str, Any]:
+        fv = default_feature_vector()
+        fv["timestamp"] = context.timestamp
+        fv["long_score"] = direction.long_score
+        fv["short_score"] = direction.short_score
+        fv["score_diff"] = direction.score_diff
+        fv["engine_prediction"] = 1.0
+        fv["engine_reaction"] = 0.0
+        fv["entry_limit"] = 1.0
+        fv["entry_market"] = 0.0
+        fv["setup_type_categorical"] = 4  # sr_setup
+        ud = context.unified_data
+        rsi_d = ud.get("rsi") or {}
+        rsi = rsi_d.get("rsi")
+        fv["rsi"] = float(rsi) if rsi is not None else 0.0
+        fv["rsi_trend"] = rsi_trend_to_numeric(rsi_d.get("rsi_trend") or rsi_d.get("trend"))
+        tr = ud.get("trend") or {}
+        fv["trend_strength"] = float(tr.get("strength") or tr.get("strength_score") or 0.0)
+        fv["trend_alignment"] = 1.0 if (tr.get("direction") or "").upper() in ("BULLISH", "BEARISH") else 0.0
+        vol = ud.get("volatility") or {}
+        fv["volatility_atr_pct"] = float(vol.get("volatility_percentage") or vol.get("volatility_5m") or 0.0) / 100.0 if vol else 0.0
+        vol_cat = (ud.get("volume") or {}).get("category") or ud.get("volume_category") or ""
+        fv["volume_anomaly"] = 1.0 if vol_cat in ("HIGH", "VERY_HIGH") else 0.0
+        pr = ud.get("pressure") or {}
+        fv["pressure_strength"] = float(pr.get("strength") or 0.0)
+        ob = ud.get("orderbook_analysis") or ud.get("orderbook") or {}
+        spread = ob.get("spread_pct") or ob.get("spread") or 0.0
+        fv["spread_pct"] = float(spread) if spread is not None else 0.0
+        bd = entry.breakdown
+        fv["sr_strength"] = float(bd.get("level_strength_raw") or bd.get("level_strength") or 0.0)
+        fv["sr_distance_atr"] = float(bd.get("distance_to_current_atr") or 0.0)
+        fv["psych_distance_pct"] = float(bd.get("entry_distance_to_nearest_psych_level_pct") or 0.0)
+        fv["level_source_sr"] = 1.0 if (bd.get("level_source") or "sr") == "sr" else 0.0
+        fv["level_source_psych"] = 1.0 if (bd.get("level_source") or "") == "psych" else 0.0
+        fill_ivs_feature_vector(fv, ud, strict_ivs=getattr(TradingConfig, "STRICT_IVS_PRESENCE", False))
+        return fv
     
     @classmethod
     def _float_eq(cls, a: float, b: float, epsilon: float = None) -> bool:
@@ -146,63 +273,33 @@ class PredictionEngine:
         
         return atr_pct
     
-    def generate_prediction(self, unified_data: Dict[str, Any], strategy: str) -> Optional[TradingPrediction]:
+    def generate_prediction(self, unified_data: Dict[str, Any], strategy: str):
         """
-        Generate a trading prediction based on unified data and strategy
-        
-        Args:
-            unified_data: Complete market analysis data
-            strategy: Current trading strategy name
-            
-        Returns:
-            TradingPrediction if conditions are met, None otherwise
+        Generate best limit setup (DecisionResult). Always returns; never None.
+        Uses run() -> compute_direction -> compute_entry -> compute_sl_tp -> build_result.
         """
+        from core.decision.models import DecisionResult
+
         try:
-            # Get strategy configuration
-            # NO FALLBACKS - strategy must exist in config
             if strategy not in TradingConfig.STRATEGY_CONFIGS:
                 raise ValueError(f"Unknown strategy: {strategy} - must be in TradingConfig.STRATEGY_CONFIGS (NO FALLBACKS)")
-            strategy_config = TradingConfig.STRATEGY_CONFIGS[strategy]  # Required (NO FALLBACKS)
-            
-            # Generate strategy-specific prediction (confidence will be calculated after all parameters integrated)
-            prediction = self._generate_strategy_prediction(unified_data, strategy, strategy_config)
-            
-            # Always return prediction if generated
-            if prediction:
-                # CRITICAL FIX: Use unified_data timestamp (data timestamp), not time.time() (generation time)
-                # This prevents lookahead bias in ML training - prediction timestamp must match data timestamp
-                # NO FALLBACKS - timestamp must be present in unified_data
-                prediction_timestamp = self._require_key(unified_data, "timestamp", "prediction timestamp")
-                if not prediction.timestamp:
-                    prediction.timestamp = prediction_timestamp
-                elif abs(prediction.timestamp - prediction_timestamp) > 1.0:
-                    # If timestamp differs significantly, use data timestamp (more accurate)
-                    logger.debug(f"⚠️ Prediction timestamp {prediction.timestamp} differs from data timestamp {prediction_timestamp}, using data timestamp")
-                    prediction.timestamp = prediction_timestamp
-                
-                # CRITICAL FIX: Set executable=False until confidence exists
-                prediction.executable = False
-                prediction.execution_gate_reason = "confidence_not_implemented"
-                prediction.confidence = None  # Ensure confidence is None until implemented
-                
-                # Log strategy routing for transparency
-                state_strategy = unified_data.get("state_strategy", strategy)
-                prediction_strategy_actual = unified_data.get("prediction_strategy", strategy)
-                logger.info(
-                    f"✅ Prediction generated: {prediction.direction} @ ${prediction.entry_price:.2f} "
-                    f"(strategy_used_by_engine={strategy}, state_strategy={state_strategy}, "
-                    f"prediction_strategy={prediction_strategy_actual}, "
-                    f"executable={prediction.executable}, reason={prediction.execution_gate_reason}, confidence={prediction.confidence})"
-                )
-                return prediction
-            else:
-                # This should never happen - prediction should ALWAYS be generated
-                # If it does, it's a system error
-                raise ValueError(f"No prediction generated for strategy: {strategy} - system error: prediction must ALWAYS be generated (NO FALLBACKS)")
-                
+            result = self.run(unified_data, strategy)
+            if not isinstance(result, DecisionResult):
+                raise ValueError("run() must return DecisionResult (NO FALLBACKS)")
+            # Log per unified contract: state_strategy | prediction_strategy | strategy_used_by_engine
+            fv = result.feature_vector or {}
+            logger.info(
+                f"state_strategy={result.state_strategy} prediction_strategy={result.prediction_strategy} "
+                f"strategy_used_by_engine={result.strategy_used_by_engine} | "
+                f"engine_type={result.engine_type} setup_type={result.setup_type} direction={result.direction} "
+                f"entry_type={result.entry_type} entry_price={result.entry_price} rr_ratio={result.rr_ratio} "
+                f"executable={result.executable} confidence={result.confidence} | "
+                f"ivs_is_squeeze={fv.get('ivs_is_squeeze', 0)} ivs_released={fv.get('ivs_released', 0)} "
+                f"timing_score={result.timing_score}"
+            )
+            return result
         except Exception as e:
             logger.error(f"❌ Prediction generation failed: {e}")
-            # NO FALLBACKS - prediction generation must succeed
             raise
     
     def _generate_strategy_prediction(
@@ -808,14 +905,16 @@ class PredictionEngine:
         volume_short = 0.0
         reasons = []
         
-        # Get volume trend strength (0.0-1.0) - indicates momentum in volume direction
-        # Required (NO FALLBACKS) - volume_data should always have volume_trend_strength
-        volume_trend_strength = float(self._require_key(volume_data, "volume_trend_strength", "volume data structure"))
-        volume_anomaly = self._require_key(volume_data, "volume_anomaly", "volume data structure")  # Required (NO FALLBACKS)
+        # Volume schema aligned with StrategyManager: volume_trend_strength, trend, volume_anomaly.
+        # Use safe .get() so we stay active whenever volume_category exists (canonical);
+        # missing nested keys => neutral scoring, never "missing_data" or skip.
+        _raw_strength = volume_data.get("volume_trend_strength")
+        volume_trend_strength = float(_raw_strength) if _raw_strength is not None else 0.0
+        _raw_anomaly = volume_data.get("volume_anomaly")
+        volume_anomaly = _raw_anomaly if isinstance(_raw_anomaly, dict) else {"is_anomaly": False, "severity": "NORMAL"}
         
-        # Derive volume_trend_direction from trend field (NO FALLBACKS - trend must exist)
-        # Volume calculator returns "trend" field which contains direction (BULLISH/BEARISH/NEUTRAL)
-        volume_trend = self._require_key(volume_data, "trend", "volume data structure")
+        _raw_trend = volume_data.get("trend")
+        volume_trend = _raw_trend if isinstance(_raw_trend, str) else "NEUTRAL"
         # Map trend to direction format
         if volume_trend in ["BULLISH", "UP", "INCREASING", "RISING"]:
             volume_trend_direction = "BULLISH"
@@ -872,7 +971,8 @@ class PredictionEngine:
         
         # Volume anomaly detection: extreme volume spikes can indicate reversals
         # Apply penalty to BOTH directions (reduces confidence, doesn't favor one direction)
-        if volume_anomaly and volume_category in ["VERY_HIGH", "EXTREME"]:
+        is_anomaly = bool(volume_anomaly.get("is_anomaly") if isinstance(volume_anomaly, dict) else False)
+        if is_anomaly and volume_category in ["VERY_HIGH", "EXTREME"]:
             anomaly_penalty = TradingConfig.VOLUME_ANOMALY_PENALTY
             volume_long -= anomaly_penalty
             volume_short -= anomaly_penalty
@@ -1806,72 +1906,21 @@ class PredictionEngine:
                 elif patterns_short > patterns_long:
                     short_reasons.extend(reasons)
             
-            # CRITICAL FIX (2026-01-27): Renormalize weights BEFORE applying synergies
-            # This ensures synergies are applied to properly scaled scores
-            # If optional weights were missing, scale scores to maintain magnitude consistency
-            total_active_weight = sum(active_weights.values()) if active_weights else 0.0
-            total_expected_weight = sum(direction_weights.values())  # Should be 1.0 after initial normalization
-            
-            # Renormalize if optional weights were missing (BEFORE synergies)
-            if not self._float_eq(total_active_weight, total_expected_weight, self.WEIGHT_EPSILON) and not self._float_zero(total_expected_weight, self.WEIGHT_EPSILON):
-                missing_weight = total_expected_weight - total_active_weight
-                scale_factor = total_expected_weight / total_active_weight if not self._float_zero(total_active_weight, self.WEIGHT_EPSILON) else 1.0
-                if not self._float_eq(scale_factor, 1.0, self.WEIGHT_EPSILON):
-                    # CRITICAL FIX: Track inactive factors for transparency
-                    inactive_factors = {}
-                    for factor_name, weight in direction_weights.items():
-                        if factor_name not in active_weights:
-                            if factor_name in ["market_conditions", "cross_asset"]:
-                                inactive_factors[factor_name] = "optional_missing"
-                            else:
-                                inactive_factors[factor_name] = "missing_data"
-                    
-                    inactive_str = ", ".join([f"{k}({v})" for k, v in inactive_factors.items()])
-                    logger.debug(
-                        f"⚠️ Renormalizing scores: missing {missing_weight:.4f} weight "
-                        f"({total_active_weight:.4f}/{total_expected_weight:.4f} active), scaling by {scale_factor:.4f}. "
-                        f"Inactive factors: {inactive_str}"
-                    )
-                    long_score *= scale_factor
-                    short_score *= scale_factor
-            
-            # Detect factor synergies (non-linear interactions)
-            # Uses fixed-percentage multipliers for consistent scaling regardless of score magnitude
-            synergy_multipliers = self._detect_factor_synergies(factor_scores, rsi_data, trend_data)
-            
-            # Apply synergy multipliers (fixed percentages: 1.15x, 1.10x, 0.90x)
-            long_score *= synergy_multipliers["long"]
-            short_score *= synergy_multipliers["short"]
-            
-            if synergy_multipliers["reasons"]:
-                # Add synergy reasons to the direction they support
-                if synergy_multipliers["long"] > 1.0:
-                    long_reasons.extend(synergy_multipliers["reasons"])
-                elif synergy_multipliers["short"] > 1.0:
-                    short_reasons.extend(synergy_multipliers["reasons"])
-                # If conflict (multiplier < 1.0), add conflict reasons to both (reduces confidence)
-                if synergy_multipliers["long"] < 1.0 or synergy_multipliers["short"] < 1.0:
-                    long_reasons.extend([r for r in synergy_multipliers["reasons"] if "Conflict" in r])
-                    short_reasons.extend([r for r in synergy_multipliers["reasons"] if "Conflict" in r])
-            
             # Volume scoring: INDEPENDENT scoring based on volume direction/trend only
-            # CRITICAL FIX: Volume no longer uses pre-scores to avoid circular dependency
-            # Volume scores based on volume_trend_direction and volume_category only
+            # CRITICAL: Run BEFORE renormalization / inactive_factors so volume is active when present.
             volume_weight = direction_weights["volume"]  # Required (NO FALLBACKS)
             if volume_weight > 0:
-                # Score volume independently (NO pre-scores - prevents circular dependency)
                 volume_long, volume_short, reasons = self._score_volume_factor(
                     volume_data, volume_category
                 )
+                factor_scores["volume"] = {"long": volume_long, "short": volume_short}
                 long_score += volume_long * volume_weight
                 short_score += volume_short * volume_weight
                 active_weights["volume"] = volume_weight
-                # Add reasons to the direction they support
                 if volume_long > volume_short:
                     long_reasons.extend(reasons)
                 elif volume_short > volume_long:
                     short_reasons.extend(reasons)
-                # If equal (both negative penalties), add to both
             
             # S/R PROXIMITY REMOVED FROM DIRECTION SCORING
             # CRITICAL FIX: S/R proximity creates circular dependency:
@@ -1886,8 +1935,6 @@ class PredictionEngine:
             # If needed in the future, make it optional and handle missing data gracefully
             
             # Market Conditions (Fear & Greed Index) - Contrarian signals at extremes
-            # CRITICAL FIX: Track if optional features are used for weight renormalization
-            # NO FALLBACKS - if weight is specified, data must exist
             if "market_conditions" in direction_weights:
                 market_conditions_weight = direction_weights["market_conditions"]
                 if market_conditions_weight > 0:
@@ -1926,6 +1973,40 @@ class PredictionEngine:
                     # Data missing - weight will be redistributed
                     logger.debug(f"⚠️ Cross-asset data missing, weight {cross_asset_weight:.4f} will be redistributed")
             
+            # Build inactive_factors after all factor scoring (volume, market_conditions, cross_asset)
+            inactive_factors = {}
+            for factor_name in direction_weights:
+                if factor_name not in active_weights:
+                    inactive_factors[factor_name] = "optional_missing" if factor_name in ("market_conditions", "cross_asset") else "missing_data"
+
+            # Renormalize if any weight was missing (before synergies)
+            total_active_weight = sum(active_weights.values()) if active_weights else 0.0
+            total_expected_weight = sum(direction_weights.values())
+            if not self._float_eq(total_active_weight, total_expected_weight, self.WEIGHT_EPSILON) and not self._float_zero(total_expected_weight, self.WEIGHT_EPSILON):
+                missing_weight = total_expected_weight - total_active_weight
+                scale_factor = total_expected_weight / total_active_weight if not self._float_zero(total_active_weight, self.WEIGHT_EPSILON) else 1.0
+                if not self._float_eq(scale_factor, 1.0, self.WEIGHT_EPSILON):
+                    inactive_str = ", ".join([f"{k}({v})" for k, v in inactive_factors.items()])
+                    logger.debug(
+                        f"⚠️ Renormalizing scores: missing {missing_weight:.4f} weight "
+                        f"({total_active_weight:.4f}/{total_expected_weight:.4f} active), scaling by {scale_factor:.4f}. "
+                        f"Inactive factors: {inactive_str}"
+                    )
+                    long_score *= scale_factor
+                    short_score *= scale_factor
+            
+            # Detect factor synergies (non-linear interactions)
+            synergy_multipliers = self._detect_factor_synergies(factor_scores, rsi_data, trend_data)
+            long_score *= synergy_multipliers["long"]
+            short_score *= synergy_multipliers["short"]
+            if synergy_multipliers["reasons"]:
+                if synergy_multipliers["long"] > 1.0:
+                    long_reasons.extend(synergy_multipliers["reasons"])
+                elif synergy_multipliers["short"] > 1.0:
+                    short_reasons.extend(synergy_multipliers["reasons"])
+                if synergy_multipliers["long"] < 1.0 or synergy_multipliers["short"] < 1.0:
+                    long_reasons.extend([r for r in synergy_multipliers["reasons"] if "Conflict" in r])
+                    short_reasons.extend([r for r in synergy_multipliers["reasons"] if "Conflict" in r])
             
             # Final validation: Clamp scores to [0, 100] range after all operations
             # IMPROVED (2026-01-27): Ensure scores remain in expected range
@@ -1960,6 +2041,26 @@ class PredictionEngine:
                 relevant_reasons = (long_reasons if direction == "LONG" else short_reasons)[:5]
                 reasoning = f"Neutral signal (equal scores: {long_score:.1f}), tie-broken by {direction}. " + "; ".join(relevant_reasons if relevant_reasons else ["Tie-broken by trend/RSI"])
             
+            # Top factors by |long - short| contribution (for breakdown_direction)
+            def _contrib(name: str) -> float:
+                fs = factor_scores.get(name) or {}
+                lv = float(fs.get("long") or 0.0)
+                sv = float(fs.get("short") or 0.0)
+                return abs(lv - sv)
+            top_factors = sorted(
+                [k for k in factor_scores if _contrib(k) > 0],
+                key=_contrib,
+                reverse=True
+            )[:5]
+
+            # Direction strength breakdown (always emit; no suppression for weakness)
+            breakdown_direction = {
+                "diff": score_diff,
+                "normalized_diff": score_diff / 100.0 if score_diff else 0.0,
+                "top_factors": top_factors,
+                "inactive_factors": inactive_factors,
+            }
+
             # Expose ML-ready features for future model training
             direction_result = {
                 "direction": direction,
@@ -1968,7 +2069,8 @@ class PredictionEngine:
                 "short_score": short_score,
                 "score_diff": score_diff,  # ML feature: score difference
                 "factor_scores": factor_scores,  # ML feature: individual factor contributions
-                "synergy_multipliers": synergy_multipliers  # ML feature: synergy effects
+                "synergy_multipliers": synergy_multipliers,  # ML feature: synergy effects
+                "breakdown_direction": breakdown_direction,
             }
             
             # Validate ML features (debug mode - logs warnings but doesn't block)

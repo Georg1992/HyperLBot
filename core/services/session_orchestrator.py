@@ -15,7 +15,7 @@ from core.services.centralized_cache import get_global_centralized_cache
 from core.services.historical_data_service import get_global_historical_data_service
 from core.constants import TradingConstants
 from core.services.strategy_detector import StrategyDetector
-from core.services.momentum_processor import MomentumProcessor
+from core.services.momentum_processor import MomentumProcessor, build_stub_reaction
 from core.services.dashboard_updater import DashboardUpdater
 
 
@@ -247,14 +247,11 @@ class SessionOrchestrator:
             try:
                 if not historical_service:
                     historical_service = get_global_historical_data_service()
-                if historical_service._candle_storage:
-                    historical_service._candle_storage.update_with_latest_candle()
-                    logger.info(f"✅ Candle storage updated at exact 5-minute boundary")
-                    
-                    # Invalidate chart cache to force dashboard refresh with new candle
-                    self._cache.invalidate(pattern="historical_candles")
-                    self._cache.invalidate(pattern="candles_5m")
-                    logger.debug(f"🔄 Chart cache invalidated for new candle - dashboard will refresh")
+                historical_service.update_latest_candle()
+                logger.info(f"✅ Candle storage updated at exact 5-minute boundary")
+                self._cache.invalidate(pattern="historical_candles")
+                self._cache.invalidate(pattern="candles_5m")
+                logger.debug(f"🔄 Chart cache invalidated for new candle - dashboard will refresh")
             except Exception as e:
                 logger.error(f"❌ Failed to update candle storage at boundary: {e}")
             
@@ -288,9 +285,8 @@ class SessionOrchestrator:
                 logger.warning(f"⚠️ Candle update missed boundary - updating now (elapsed: {current_time - last_candle_update_time:.0f}s)")
                 if not historical_service:
                     historical_service = get_global_historical_data_service()
-                if historical_service._candle_storage:
-                    historical_service._candle_storage.update_with_latest_candle()
-                    return current_time
+                historical_service.update_latest_candle()
+                return current_time
             except Exception as e:
                 logger.error(f"❌ Failed to update candle storage (safety check): {e}")
         
@@ -462,26 +458,24 @@ class SessionOrchestrator:
         # This ensures predictions use optimal strategy configs even during cooldown
         prediction_strategy = unified_data.get("prediction_strategy", current_strategy)
         try:
-            prediction = self.prediction_engine.generate_prediction(unified_data, prediction_strategy)
-            if prediction:
-                # Calculate position size
-                position_size_info = self._calculate_position_size(prediction, current_strategy)
-                
-                unified_data["prediction"] = {
-                    "direction": prediction.direction,
-                    "entry_price": prediction.entry_price,
-                    "stop_loss": prediction.stop_loss,
-                    "take_profit": prediction.take_profit,
-                    "confidence": prediction.confidence,  # Already 0-100 percentage
-                    "reasoning": prediction.reasoning,
-                    "strategy": prediction.strategy,
-                    "timestamp": prediction.timestamp,
-                    "status": "READY",
-                    "position_size_btc": position_size_info["position_size_btc"] if position_size_info else None,
-                    "position_size_usd": position_size_info["position_value_usd"] if position_size_info else None
-                }
-            else:
-                unified_data["prediction"] = None
+            result = self.prediction_engine.generate_prediction(unified_data, prediction_strategy)
+            # DecisionResult always returned (never None)
+            position_size_info = self._calculate_position_size(result, current_strategy)
+            unified_data["prediction"] = {
+                "direction": result.direction,
+                "entry_price": result.entry_price,
+                "stop_loss": result.stop_loss,
+                "take_profit": result.take_profit,
+                "confidence": result.confidence,
+                "reasoning": result.reasoning,
+                "strategy": result.strategy_used_by_engine,
+                "timestamp": result.timestamp,
+                "status": "READY",
+                "executable": result.executable,
+                "execution_gate_reason": result.execution_gate_reason,
+                "position_size_btc": position_size_info["position_size_btc"] if position_size_info else None,
+                "position_size_usd": position_size_info["position_value_usd"] if position_size_info else None,
+            }
         except Exception as e:
             logger.error(f"❌ Prediction generation failed: {e}")
             unified_data["prediction"] = None
@@ -491,11 +485,16 @@ class SessionOrchestrator:
     def _process_momentum_signals(self, unified_data: Dict[str, Any], 
                                   current_price: float, current_strategy: str) -> None:
         """
-        Process momentum signals with reactive engine (market orders)
+        Process momentum signals with reactive engine (market orders).
+        Always leaves unified_data["reaction"] set (engine output or stub).
         """
         if self._momentum_processor:
             self._momentum_processor.process_momentum_signals(
                 unified_data, current_price, current_strategy
+            )
+        if "reaction" not in unified_data:
+            unified_data["reaction"] = build_stub_reaction(
+                unified_data, current_price, current_strategy, "no_reaction"
             )
     
     def _main_data_loop(
@@ -785,13 +784,12 @@ class SessionOrchestrator:
             raw_data: Pre-fetched raw API data (all data is mandatory - NO FALLBACKS)
         """
         try:
-            # Validate raw_data is provided (NO FALLBACKS)
             if raw_data is None:
                 raise ValueError("raw_data is required - all data must be fetched upfront (NO FALLBACKS)")
-            
-            # Trigger analysis modules to calculate and send data to MarketDataService
-            # Pass raw_data so modules don't fetch again
-            # All analysis module getters are synchronous - no delay needed
+            # Deterministic timestamp: latest closed 5m candle (public API, no private attr access)
+            historical_service = get_global_historical_data_service()
+            data_ts = historical_service.get_last_closed_candle_timestamp("5m")
+            market_data_service.set_tick_timestamp(data_ts)
             self._trigger_analysis_modules(
                 market_data_service, current_price, orderbook_data, raw_data=raw_data
             )
@@ -815,10 +813,8 @@ class SessionOrchestrator:
             # Get trading data
             trading_data = self._get_trading_data()
             
-            # Get consolidation analysis (requires unified_data, so call after analysis_data)
-            # All modules are required - NO FALLBACKS
             temp_unified = {
-                "timestamp": time.time(),
+                "timestamp": data_ts,
                 "current_price": current_price,
                 "strategy": None,
                 **analysis_data
@@ -826,12 +822,9 @@ class SessionOrchestrator:
             consolidation_data = market_data_service.get_consolidation_analysis(
                 unified_data=temp_unified,
                 current_price=current_price
-            )  # Required (NO FALLBACKS) - will raise if fails
-            
-            # Prepare unified data with analysis data
-            # Strategy is None initially - will be set by strategy detection
+            )
             unified_data = {
-                "timestamp": time.time(),
+                "timestamp": data_ts,
                 "current_price": current_price,
                 "strategy": None,  # Determined after analysis
                 "orderbook_data": orderbook_data,  # Level 2 orderbook with bids/asks

@@ -221,6 +221,36 @@ class HistoricalDataService:
         """
         raise ValueError("❌ 1m candles not available from database - database only stores 5m candles")
     
+    def get_last_closed_candle_timestamp(self, interval: str = "5m") -> float:
+        """
+        Public API: timestamp of the latest closed candle for the given interval.
+        Used for deterministic unified_data timestamp; no private attribute access by callers.
+
+        Args:
+            interval: Candle interval. Only "5m" supported (database stores 5m candles).
+
+        Returns:
+            Timestamp (seconds) of the latest closed candle.
+
+        Raises:
+            ValueError: If interval is not "5m", or no candle data available (NO FALLBACKS).
+        """
+        if interval != "5m":
+            raise ValueError(
+                f"get_last_closed_candle_timestamp only supports interval '5m' (NO FALLBACKS): got {interval!r}"
+            )
+        ts = self._candle_storage.get_last_timestamp()
+        if ts is None:
+            raise ValueError("No candle timestamp available for deterministic unified_data (NO FALLBACKS)")
+        return float(ts)
+
+    def update_latest_candle(self) -> None:
+        """
+        Public API: update storage with the latest completed 5m candle.
+        Callers must not use _candle_storage directly.
+        """
+        self._candle_storage.update_with_latest_candle()
+
     def get_5m_candles(self, symbol: str, count: int, use_storage: bool = True) -> List[Dict]:
         """
         Get 5-minute candles - database is the ONLY source

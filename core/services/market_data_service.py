@@ -36,8 +36,10 @@ class MarketDataService:
         self._analysis_modules = {}
         
         # Store raw_data when available (set by _trigger_analysis_modules or set_raw_data)
-        # This allows methods like get_funding_analysis() to access pre-fetched data
         self._current_raw_data = None
+        
+        # Tick timestamp for deterministic IV Squeeze (set by orchestrator before _trigger)
+        self._tick_timestamp: Optional[float] = None
         
         # Extracted components for SRP compliance
         self._price_update_handler = PriceUpdateHandler(
@@ -92,6 +94,14 @@ class MarketDataService:
         if self._current_raw_data is not None:
             return self._current_raw_data
         raise ValueError("raw_data is required but not provided and not stored (NO FALLBACKS)")
+
+    def set_tick_timestamp(self, ts: float) -> None:
+        """Set tick timestamp for deterministic IV Squeeze (orchestrator calls before _trigger)."""
+        self._tick_timestamp = float(ts)
+
+    def get_tick_timestamp(self) -> Optional[float]:
+        """Return current tick timestamp, or None if not set."""
+        return self._tick_timestamp
     
     # ==================================================================================
     # ANALYSIS MODULE COORDINATION - Register and manage analysis modules
@@ -459,25 +469,27 @@ class MarketDataService:
             consolidation_tracker = self._analysis_modules["consolidation"]
             if consolidation_tracker is None:
                 raise ValueError("Consolidation tracker module is None - module initialization failed")
-            
-            current_time = time.time()
-            
+            # Deterministic: use unified_data timestamp (candle-based), not time.time()
+            if "timestamp" not in unified_data:
+                raise ValueError("unified_data['timestamp'] required for consolidation (NO FALLBACKS)")
+            current_time = float(unified_data["timestamp"])
+
             # Detect consolidation and breakout
             consolidation = consolidation_tracker.detect_consolidation(
                 unified_data=unified_data,
                 current_price=current_price,
                 current_time=current_time
             )
-            
+
             breakout = consolidation_tracker.detect_breakout(
                 unified_data=unified_data,
                 current_price=current_price,
                 current_time=current_time
             )
-            
+
             # Get consolidation info
             consolidation_info = consolidation_tracker.get_consolidation_info()
-            
+
             result = {
                 "consolidation": consolidation_info,
                 "breakout": None,
@@ -552,10 +564,14 @@ class MarketDataService:
             volatility_data = self.get_volatility_analysis()
             volume_data = self.get_volume_analysis()
             
+            # Deterministic timestamp from tick (set by orchestrator from latest closed 5m candle)
+            ts = self.get_tick_timestamp()
+            if ts is None:
+                raise ValueError("tick_timestamp required for unified_data (NO FALLBACKS); set before analysis")
             unified_data = {
                 # Core market data
                 "current_price": current_price,
-                "timestamp": time.time(),
+                "timestamp": float(ts),
                 "strategy": None,  # Strategy determined after analysis
                 
                 # Flattened data for strategy selection (single source of truth)
@@ -579,13 +595,6 @@ class MarketDataService:
                 "cross_asset_analysis": self.get_cross_asset_analysis(),
                 "funding_analysis": self.get_funding_analysis(),  # Required - will raise if API fails
                 "orderbook_analysis": self.get_orderbook_analysis(),
-                
-                # Raw data access for additional processing
-                "raw_data_access": {
-                    "hyperliquid_api": self.hyperliquid_api,
-                    "hyperliquid_websocket": self.hyperliquid_websocket,
-                    "binance_api": self.binance_api
-                }
             }
             
             # Add IV Squeeze analysis (requires current_price)
@@ -896,13 +905,15 @@ class MarketDataService:
             iv_squeeze_analyzer = self._analysis_modules["iv_squeeze"]
             if iv_squeeze_analyzer is None:
                 raise ValueError("IV Squeeze analyzer module is None - module initialization failed")
-            
-            # get_latest_analysis() guarantees valid dict or raises (NO FALLBACKS)
-            # Pass candles and current_price if provided
+            data_ts = self.get_tick_timestamp()
+            if data_ts is None:
+                raise ValueError("tick_timestamp required for IV Squeeze (NO FALLBACKS); set via set_tick_timestamp before _trigger")
             if candles is not None or current_price is not None:
-                iv_squeeze_result = iv_squeeze_analyzer.get_latest_analysis(candles=candles, current_price=current_price)
+                iv_squeeze_result = iv_squeeze_analyzer.get_latest_analysis(
+                    candles=candles, current_price=current_price, data_timestamp=data_ts
+                )
             else:
-                iv_squeeze_result = iv_squeeze_analyzer.get_latest_analysis()
+                iv_squeeze_result = iv_squeeze_analyzer.get_latest_analysis(data_timestamp=data_ts)
             
             # Store result for future use (cache with 1-minute TTL - volatility changes rapidly)
             # TTL matches centralized cache policy for consistency
@@ -1002,71 +1013,6 @@ class MarketDataService:
             logger.error(f"❌ Failed to extract bids/asks: {e}")
             raise ValueError(f"Failed to extract bids/asks from orderbook data: {e}")
     
-    def get_real_time_market_data(self, strategy: str = "standard") -> Dict[str, Any]:
-        """
-        Get comprehensive real-time market data structure
-        
-        Returns:
-            Dict with all real-time market components:
-            - RSI: Relative Strength Index
-            - Trends: Multi-timeframe trend analysis
-            - Volume: Hyperliquid 5m + Binance global volume
-            - Volatility: Multi-timeframe volatility analysis
-            - Pressure: Buy/sell pressure analysis
-            - S/R Levels: Support and resistance levels
-            - Patterns: Pattern recognition results
-        """
-        try:
-            logger.info("📊 Preparing comprehensive real-time market data structure...")
-            
-            # Get unified analysis data (includes all components)
-            # Strategy parameter is deprecated - analysis is strategy-independent
-            market_data = self.get_unified_analysis_data()
-            
-            # Structure the data for easy consumption - NO FALLBACKS
-            # All components must be present for confidence calculation to be reliable
-            real_time_data = {
-                # Core market info - Required (NO FALLBACKS)
-                "timestamp": market_data["timestamp"],  # Required (NO FALLBACKS)
-                "current_price": market_data["current_price"],  # Required (NO FALLBACKS)
-                "strategy": market_data["strategy"],  # Required (NO FALLBACKS)
-                
-                # Technical Analysis (Primary Components) - All Required (NO FALLBACKS)
-                "rsi": market_data["rsi"],  # Required (NO FALLBACKS)
-                "trend": market_data["trend"],  # Required (NO FALLBACKS)
-                "volume": market_data["volume"],  # Required (NO FALLBACKS)
-                "volatility": market_data["volatility"],  # Required (NO FALLBACKS)
-                "volatility_5m": market_data["volatility_5m"],  # Required (NO FALLBACKS)
-                "volatility_category": market_data["volatility_category"],  # Required (NO FALLBACKS)
-                "pressure": market_data["pressure"],  # Required (NO FALLBACKS)
-                "support_resistance": self._prepare_sr_data_for_dashboard(
-                    market_data["support_resistance"],  # Required (NO FALLBACKS)
-                    market_data["current_price"]  # Required (NO FALLBACKS)
-                ),
-                "patterns": market_data["patterns"],  # Required (NO FALLBACKS)
-                
-                # Additional market context - Required (NO FALLBACKS)
-                "market_conditions": market_data["market_conditions"],  # Required (NO FALLBACKS)
-                "funding_analysis": market_data["funding_analysis"],  # Required (NO FALLBACKS)
-                "orderbook_analysis": market_data["orderbook_analysis"],  # Required (NO FALLBACKS)
-                
-                # Data quality indicators - All components are required (NO FALLBACKS)
-                # If we reach here, all components are present (KeyError would have been raised otherwise)
-                "data_quality": {
-                    "all_components_available": True,  # All required components are present (NO FALLBACKS)
-                    "last_update": time.time(),
-                    "update_frequency": "real-time",
-                    "data_completeness": 1.0  # 100% - all required data present
-                }
-            }
-            
-            logger.info("📊 Real-time market data structure prepared successfully")
-            return real_time_data
-            
-        except Exception as e:
-            logger.error(f"❌ Failed to prepare real-time market data structure: {e}")
-            raise  # NO FALLBACKS - must raise to prevent silent failures
-    
     def get_dashboard_data(self, strategy: str = None) -> Dict[str, Any]:
         """
         Get optimized data package for dashboard UI with prediction data
@@ -1079,17 +1025,9 @@ class MarketDataService:
             # Get unified analysis data (strategy-independent)
             # Strategy parameter is deprecated but kept for backward compatibility
             analysis_data = self.get_unified_analysis_data()
-            
-            # Prediction data removed - will be re-implemented with clean architecture
-            prediction_data = {}
-            prediction_result = None
-            
-            # Add dashboard-specific data
             dashboard_data = {
                 **analysis_data,
-                "prediction_data": prediction_data,
-                "prediction": prediction_result,
-                "dashboard_ready": True,
+                "prediction": None,
                 "last_update": time.time()
             }
             

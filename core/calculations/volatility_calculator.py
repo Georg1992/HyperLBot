@@ -4,7 +4,6 @@ Enhanced Volatility Calculator - Refactored Version
 Modular architecture with dependency injection and optimized performance
 """
 
-import time
 from typing import Dict, List, Any, Optional
 from loguru import logger
 
@@ -93,34 +92,45 @@ class VolatilityCalculator(BaseCalculator):
             # 2. Calculate weighted volatility from analyzer
             weighted_vol_data = self._analyzer.calculate_weighted_volatility(candles)
             
-            # 3. Detect volatility spikes
+            basic_vol = basic_vol_data["volatility"] if "volatility" in basic_vol_data else 0.0
+            weighted_vol = weighted_vol_data["weighted_volatility"] if "weighted_volatility" in weighted_vol_data else 0.0
             current_vol = weighted_vol_data["current_volatility"] if "current_volatility" in weighted_vol_data else 0.0
-            spike_data = self._analyzer.detect_volatility_spikes(current_vol, 0.01)
-            
-            # 4. Calculate primary volatility
-            primary_volatility = self._analyzer.calculate_primary_volatility(
-                basic_vol_data["volatility"] if "volatility" in basic_vol_data else 0.0,
-                weighted_vol_data["weighted_volatility"] if "weighted_volatility" in weighted_vol_data else 0.0,
-                current_vol,
-                spike_data["is_spike"] if "is_spike" in spike_data else False
+
+            # 3. Detect volatility spikes (relative + absolute)
+            spike_data = self._analyzer.detect_volatility_spikes(
+                current_vol, weighted_vol, basic_vol
             )
-            
+            is_spike = spike_data["is_spike"]
+            spike_intensity = spike_data["spike_intensity"]
+
+            # 4. Adaptive blending -> primary volatility
+            primary_volatility, baseline, ratio = self._analyzer.calculate_primary_volatility(
+                basic_vol, weighted_vol, current_vol, is_spike, spike_intensity
+            )
+
             # 5. Classify volatility level
             classification = self._classifier.classify_volatility_level(primary_volatility)
-            
-            # 6. Format results - only include fields that are actually used
             volatility_level = classification["level"] if "level" in classification else "UNKNOWN"
+
+            if is_spike:
+                logger.debug(
+                    f"📊 Volatility spike: current={current_vol:.6f} weighted={weighted_vol:.6f} "
+                    f"basic={basic_vol:.6f} baseline={baseline:.6f} ratio={ratio:.2f} "
+                    f"intensity={spike_intensity} primary={primary_volatility:.6f}"
+                )
+
+            # 6. Output – same keys; no unused debug fields (baseline/ratio removed per audit)
             result = {
                 "volatility": primary_volatility,
-                "volatility_5m": primary_volatility,  # Used by strategy_manager, consolidation_tracker
-                "volatility_percentage": primary_volatility * 100,  # Used to calculate volatility_5m
-                "level": volatility_level,  # Used by market_data_service
-                "category": volatility_level,  # Used by momentum_detector, consolidation_tracker
-                "volatility_category": volatility_level,  # Used by strategy_manager, market_conditions_analyzer
-                "spike_intensity": spike_data["spike_intensity"] if "spike_intensity" in spike_data else "NONE",  # Used by spike_hunting strategy
+                "volatility_5m": primary_volatility,
+                "volatility_percentage": primary_volatility * 100,
+                "level": volatility_level,
+                "category": volatility_level,
+                "volatility_category": volatility_level,
+                "spike_intensity": spike_intensity,
             }
             
-            logger.info(f"📊 Volatility analysis complete: {classification['level'] if 'level' in classification else 'UNKNOWN'} ({primary_volatility*100:.4f}%)")
+            logger.info(f"📊 Volatility analysis complete: {volatility_level} ({primary_volatility*100:.4f}%)")
             return result
             
         except Exception as e:
